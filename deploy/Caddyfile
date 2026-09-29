@@ -1,0 +1,15 @@
+# Caddy gets and renews the HTTPS certificate for GATEWAY_DOMAIN by itself.
+{$GATEWAY_DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 33MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+	# Caddy replaces any X-Forwarded-For a client sends, so the gateway's per-network limits see the real address.
+	reverse_proxy gateway:8100
+}

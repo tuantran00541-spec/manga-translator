@@ -8,11 +8,12 @@ from pathlib import Path
 import cv2
 import requests
 
+from app.ai_mode.vision_json import stage_headers
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.render.font_guide import BASE_FONT_ROLES, DEFAULT_LETTERING_FONT, font_specimen_b64, lettering_font
-from app.translation.context import TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
+from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini, _read_image
@@ -27,7 +28,8 @@ _TRANSLATIONS_SCHEMA = {
     "properties": {
         "translations": {"type": "array", "items": {
             "type": "object",
-            "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"}},
+            "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"},
+                           "role": {"type": "string"}, "container": {"type": "string"}},
             "required": ["id", "translated_text"],
         }},
         "font_choices": {"type": "object"},
@@ -60,6 +62,7 @@ class VisionTranslationResult:
     missing_ids: frozenset[str] = frozenset()
     enlarge_ids: frozenset[str] = frozenset()
     colors: dict[str, str] = field(default_factory=dict)
+    containers: dict[str, str] = field(default_factory=dict)
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -180,21 +183,24 @@ def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[V
 
 
 MARK_COLOR = (0, 0, 230)  # BGR red
+ELSEWHERE_COLOR = (128, 128, 128)  # text lettered by the neighbouring slice
+ELSEWHERE_LABEL = "X"
 
 
-def mark_objects(image, objects: list[dict]):
-    """A copy of the slice with each object's box outlined and labelled with its id."""
+def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
+    """A copy of the slice with each object's box outlined and labelled with its id; grey X boxes are lettered elsewhere."""
     marked = image.copy()
     width = marked.shape[1]
     thickness = max(2, width // 400)
     scale = max(0.6, width / 1000)
-    for obj in objects:
-        x1, y1, x2, y2 = (int(v) for v in obj["bbox_xyxy"])
-        cv2.rectangle(marked, (x1, y1), (x2, y2), MARK_COLOR, thickness)
-        label = str(obj["id"])
+    boxes = [(obj["bbox_xyxy"], str(obj["id"]), MARK_COLOR) for obj in objects]
+    boxes += [(box, ELSEWHERE_LABEL, ELSEWHERE_COLOR) for box in elsewhere]
+    for box, label, color in boxes:
+        x1, y1, x2, y2 = (int(v) for v in box)
+        cv2.rectangle(marked, (x1, y1), (x2, y2), color, thickness)
         (tw, th), base = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
         ty = max(th + base, y1)
-        cv2.rectangle(marked, (x1, ty - th - base), (x1 + tw + 4, ty), MARK_COLOR, -1)
+        cv2.rectangle(marked, (x1, ty - th - base), (x1 + tw + 4, ty), color, -1)
         cv2.putText(marked, label, (x1 + 2, ty - base), cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), thickness)
     return marked
 
@@ -209,6 +215,7 @@ class VisionPageTranslator:
         self, original_path: Path, cleaned_path: Path, items: list[dict],
         *, api_key: str, source_lang: str, target_lang: str,
         memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
+        elsewhere: list | tuple = (),
     ) -> VisionTranslationResult:
         if not api_key.strip():
             raise ValueError(f"{self.provider.label} API key is not configured")
@@ -235,12 +242,16 @@ class VisionPageTranslator:
              f"{json.dumps(memory.snapshot(), ensure_ascii=False, separators=(',', ':'))}\n\n"
              if memory is not None else "")
             + f"{where}Translate these text objects from {source_name}.\n"
-            + json.dumps({"image_width": w, "image_height": h, "objects": objects},
+            + json.dumps({"image_width": w, "image_height": h, "objects": objects,
+                          **({"lettered_elsewhere": [list(map(int, box)) for box in elsewhere]} if elsewhere else {})},
                          ensure_ascii=False, separators=(",", ":"))
+            + ("\nlettered_elsewhere boxes (grey X in IMAGE 2) hold text the neighbouring slice translates: "
+               "never translate it, and never fold its words or meaning into any object's translation."
+               if elsewhere else "")
             + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above. '
             + "Write every translated_text in normal sentence case, never in all capitals."
         )
-        original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(mark_objects(cleaned, objects))
+        original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(mark_objects(cleaned, objects, elsewhere))
         ids = set(real)
         max_tokens = min(4096, max(1200, 160 * len(items) + 700))
         if self.provider.protocol == "gemini":
@@ -251,7 +262,7 @@ class VisionPageTranslator:
         ids = set(real.values())
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
             result, data = _drop_foreign_script(result, data)
-        roles, review, answered, enlarge, colors = {}, set(), set(), set(), {}
+        roles, containers, review, answered, enlarge, colors = {}, {}, set(), set(), set(), {}
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
                 continue
@@ -259,6 +270,9 @@ class VisionPageTranslator:
             role = str(entry.get("role") or "").strip().lower()
             if role in TYPOGRAPHY_ROLES:
                 roles[str(entry["id"])] = role
+            container = str(entry.get("container") or "").strip().lower()
+            if container in CONTAINERS:
+                containers[str(entry["id"])] = container
             if entry.get("review") is True:
                 review.add(str(entry["id"]))
             if entry.get("enlarge") is True:
@@ -270,13 +284,15 @@ class VisionPageTranslator:
                  for key, value in (result.font_choices or {}).items()}
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
+            # Every bubble, box or screen of one kind letters in the font that kind first got; blank lines set nothing.
             fonts = {
-                str(item["id"]): {"font_id": memory.admit_font(fonts[str(item["id"])]["font_id"]), "font_mode": "ai"}
-                for item in items if str(item["id"]) in fonts
+                key: {"font_id": memory.container_font(containers.get(key), roles.get(key), fonts[key]["font_id"])
+                      if result.translations.get(key) else DEFAULT_LETTERING_FONT, "font_mode": "ai"}
+                for key in (str(item["id"]) for item in items) if key in fonts
             }
         return replace(
             result, font_choices=fonts, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
-            enlarge_ids=frozenset(enlarge), colors=colors,
+            enlarge_ids=frozenset(enlarge), colors=colors, containers=containers,
         )
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
@@ -305,7 +321,8 @@ class VisionPageTranslator:
         try:
             response = requests.post(
                 url,
-                headers={"Authorization": f"Bearer {api_key.strip()}", "Content-Type": "application/json"},
+                headers={"Authorization": f"Bearer {api_key.strip()}", "Content-Type": "application/json",
+                         **stage_headers(self.provider, "translate")},
                 json=payload,
                 timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
                 allow_redirects=False,

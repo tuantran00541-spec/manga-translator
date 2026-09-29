@@ -18,6 +18,8 @@ OUTLINE = 0.12  # share of the reach every letter keeps as outline, even one mat
 EDGE = 60.0  # Lab lightness gradient above which a pixel is drawn art, not fading glow
 RING = 6  # width of the band past the crop where the background colours are read
 LEFT_SHARE = 0.004  # share of an erased block the model may still read before it gets another pass
+REACH_ROUNDS = 3  # times a box grows toward letters its edge still cuts
+CHAIN = 0.6  # widest gap, in letter heights, between letters of one text
 
 _session = None
 _lock = threading.Lock()
@@ -96,21 +98,95 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
     return region
 
 
-def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], np.ndarray]:
-    """Padded box and the erase mask of its letters, outline and glow."""
+SPECK = 0.35  # letters shorter than this share of the text size (dots, accents, noise) never lead growth
+
+
+def _parts(seed: np.ndarray):
+    """Component labels of the letters, and which of them are letter-sized rather than specks."""
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(seed.astype(np.uint8))
+    size = text_size(seed)
+    big = np.zeros(n, bool)
+    big[1:] = stats[1:, cv2.CC_STAT_HEIGHT] >= max(4, SPECK * size)
+    return labels, big, size
+
+
+def _chained(seed: np.ndarray, inside: np.ndarray) -> np.ndarray:
+    """Letters in the first box, letter-sized ones linked to them by gaps under CHAIN letter heights, and specks beside those."""
+    labels, big, size = _parts(seed)
+    if len(big) <= 1:
+        return seed
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * max(4, int(CHAIN * size)) + 1,) * 2)
+    keep = np.zeros(len(big), bool)
+    keep[np.unique(labels[inside & seed])] = True
+    keep[0] = False
+    while True:
+        near = cv2.dilate(np.isin(labels, np.nonzero(keep & big)[0]).astype(np.uint8), kernel) > 0
+        grown = keep.copy()
+        grown[np.unique(labels[near & seed])] = True
+        grown[0] = False
+        # Specks join the text beside them but never lead it further.
+        if (grown & big == keep & big).all():
+            return np.isin(labels, np.nonzero(grown)[0])
+        keep = grown
+
+
+def _cut(seed: np.ndarray) -> tuple[bool, bool, bool, bool]:
+    """Which sides of the crop cut a letter-sized letter: left, top, right, bottom."""
+    labels, big, _ = _parts(seed)
+    edge = {side: np.unique(part) for side, part in
+            (("l", labels[:, :2]), ("t", labels[:2]), ("r", labels[:, -2:]), ("b", labels[-2:]))}
+    return tuple(bool(big[edge[side]].any()) for side in "ltrb")
+
+
+def _reach_cut_letters(image: np.ndarray, first: tuple[int, int, int, int], step: int):
+    """Grow the crop while its edge cuts letters, keeping only the text the first box holds; returns crop and seed."""
+    h, w = image.shape[:2]
+    bx1, by1, bx2, by2 = first
+    seed = letters(image[by1:by2, bx1:bx2])
+    for _ in range(REACH_ROUNDS):
+        left, top, right, bottom = _cut(seed)
+        cut = (left and bx1 > 0, top and by1 > 0, right and bx2 < w, bottom and by2 < h)
+        if not any(cut):
+            break
+        bx1, by1 = max(0, bx1 - step * cut[0]), max(0, by1 - step * cut[1])
+        bx2, by2 = min(w, bx2 + step * cut[2]), min(h, by2 + step * cut[3])
+        seed = letters(image[by1:by2, bx1:bx2])
+    if (bx1, by1, bx2, by2) == first:
+        return first, seed
+    inside = np.zeros(seed.shape, bool)
+    inside[first[1] - by1:first[3] - by1, first[0] - bx1:first[2] - bx1] = True
+    seed = _chained(seed, inside)
+    # The crop shrinks back to the first box plus the letters it had cut.
+    ys, xs = np.nonzero(seed)
+    if not len(xs):
+        return first, seed[first[1] - by1:first[3] - by1, first[0] - bx1:first[2] - bx1]
+    margin = max(8, text_size(seed) // 2)
+    nx1, ny1 = min(first[0], max(bx1, bx1 + int(xs.min()) - margin)), min(first[1], max(by1, by1 + int(ys.min()) - margin))
+    nx2 = max(first[2], min(bx2, bx1 + int(xs.max()) + 1 + margin))
+    ny2 = max(first[3], min(by2, by1 + int(ys.max()) + 1 + margin))
+    return (nx1, ny1, nx2, ny2), seed[ny1 - by1:ny2 - by1, nx1 - bx1:nx2 - bx1]
+
+
+def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_letters: bool = False):
+    """Padded box, grown over letters its edge cuts, and the erase mask of its letters, outline and glow.
+
+    ``with_letters`` also returns the letters alone, which show where the lines of text are.
+    """
     x1, y1, x2, y2 = box
     h, w = image.shape[:2]
     pad = max(8, int((y2 - y1) * PAD_SHARE))
-    bx1, by1, bx2, by2 = max(0, x1 - pad), max(0, y1 - pad), min(w, x2 + pad), min(h, y2 + pad)
+    first = (max(0, x1 - pad), max(0, y1 - pad), min(w, x2 + pad), min(h, y2 + pad))
+    if min(first[2] - first[0], first[3] - first[1]) < 8:
+        empty = np.zeros((max(0, first[3] - first[1]), max(0, first[2] - first[0])), bool)
+        return (first, empty, empty) if with_letters else (first, empty)
+    (bx1, by1, bx2, by2), seed = _reach_cut_letters(image, first, pad)
     crop = image[by1:by2, bx1:bx2]
-    if min(crop.shape[:2]) < 8:
-        return (bx1, by1, bx2, by2), np.zeros(crop.shape[:2], bool)
-    seed = letters(crop)
     ex1, ey1, ex2, ey2 = max(0, bx1 - RING), max(0, by1 - RING), min(w, bx2 + RING), min(h, by2 + RING)
     ring = np.ones((ey2 - ey1, ex2 - ex1), bool)
     ring[by1 - ey1:by2 - ey1, bx1 - ex1:bx2 - ex1] = False
     bg = cv2.cvtColor(image[ey1:ey2, ex1:ex2], cv2.COLOR_BGR2LAB)[ring]
-    return (bx1, by1, bx2, by2), grow(crop, seed, bg, int(text_size(seed) * REACH))
+    grown = grow(crop, seed, bg, int(text_size(seed) * REACH))
+    return ((bx1, by1, bx2, by2), grown, seed) if with_letters else ((bx1, by1, bx2, by2), grown)
 
 
 def still_reads(clean: np.ndarray, box: tuple[int, int, int, int]) -> bool:

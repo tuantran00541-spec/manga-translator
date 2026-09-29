@@ -23,6 +23,7 @@ from app.manifest_utils import (
 )
 from app.ocr.quality import should_block_translation
 from app.render.font_catalog import FontNotFoundError, resolve_font_id
+from app.render.page_renderer import letter_box
 from app.secret_store import (
     SecretStoreUnavailable,
     get_provider_api_key,
@@ -362,6 +363,8 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
             "id": obj_id,
             "text": str(obj.get("ocr_text") or "").strip(),
             "region": rect,
+            # The renderer letters where the source lettering was, so that is the room a translation has.
+            "fit_region": list(letter_box(obj, tuple(rect)) or rect),
             "initial_translation": str(obj.get("translation") or ""),
         })
     return candidates
@@ -384,7 +387,7 @@ def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
         cap = source_cap_px(raw, candidate["region"])
         if cap:
             candidate["source_cap_px"] = cap
-            candidate["max_chars"] = char_budget(font_path, candidate["region"], cap)
+            candidate["max_chars"] = char_budget(font_path, candidate.get("fit_region") or candidate["region"], cap)
 
 
 @router.post("/page/vision")
@@ -426,11 +429,13 @@ async def translate_page_in_context(
             candidates = _vision_candidates(page, force=req.force)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
+        elsewhere: list[list[int]] = []
         if skip_seam_mirrors:
             from app.ai_mode.seams import seam_mirror_ids
 
             # The slice that owns a text crossing the cut translates it; this one gets a copy.
             mirrors = seam_mirror_ids(manifest, req.page_index)
+            elsewhere = [candidate["region"] for candidate in candidates if candidate["id"] in mirrors]
             candidates = [candidate for candidate in candidates if candidate["id"] not in mirrors]
         if len(candidates) > 100:
             raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
@@ -467,7 +472,7 @@ async def translate_page_in_context(
         translated = await run_in_threadpool(
             translator.translate_page, original_path, clean_path, candidates,
             api_key=api_key, source_lang=req.source_lang, target_lang=req.target_lang,
-            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total,
+            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total, elsewhere=elsewhere,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -522,6 +527,9 @@ async def translate_page_in_context(
             role = getattr(translated, "roles", {}).get(candidate["id"])
             if role:
                 obj["typography_role"] = role
+            container = getattr(translated, "containers", {}).get(candidate["id"])
+            if container:
+                obj["container"] = container
             if candidate["id"] in getattr(translated, "review_ids", ()):
                 obj["needs_review"] = True
                 review += 1

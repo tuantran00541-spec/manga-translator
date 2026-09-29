@@ -22,13 +22,13 @@ class LoginVerifyRequest(BaseModel):
 
 
 class CheckoutRequest(BaseModel):
-    plan: str = Field(pattern="^(plus|pro)$")
     provider: str = Field(pattern="^(payos|lemonsqueezy)$")
+    amount: float = Field(gt=0, le=100_000_000)
 
 
 def _require_tiers() -> None:
     if not cloud.tiers_enabled():
-        raise HTTPException(404, "Plans are disabled")
+        raise HTTPException(404, "Manga Cloud is disabled")
 
 
 @router.get("")
@@ -67,16 +67,45 @@ async def logout() -> dict:
     return await run_in_threadpool(cloud.entitlements, fresh=True)
 
 
-@router.get("/plans")
-async def plans() -> dict:
+async def _forget_token() -> dict:
+    try:
+        await run_in_threadpool(delete_cloud_token)
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    cloud.invalidate()
+    return await run_in_threadpool(cloud.entitlements, fresh=True)
+
+
+@router.post("/logout-all")
+async def logout_everywhere() -> dict:
     _require_tiers()
-    return await run_in_threadpool(cloud.billing_plans)
+    await run_in_threadpool(cloud.logout_all)
+    return await _forget_token()
+
+
+@router.delete("")
+async def delete_account() -> dict:
+    _require_tiers()
+    await run_in_threadpool(cloud.delete_account)
+    return await _forget_token()
+
+
+@router.get("/ledger")
+async def ledger() -> dict:
+    _require_tiers()
+    return await run_in_threadpool(cloud.ledger)
+
+
+@router.get("/topups")
+async def topups() -> dict:
+    _require_tiers()
+    return await run_in_threadpool(cloud.billing_topups)
 
 
 @router.post("/checkout")
 async def checkout(req: CheckoutRequest) -> dict:
     _require_tiers()
-    result = await run_in_threadpool(cloud.checkout, req.plan, req.provider)
+    result = await run_in_threadpool(cloud.checkout, req.provider, req.amount)
     url = str(result.get("checkout_url") or "")
     if urlparse(url).scheme != "https":
         raise HTTPException(502, "Manga Cloud returned an invalid checkout link")

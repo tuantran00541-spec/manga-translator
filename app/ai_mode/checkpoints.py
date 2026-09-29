@@ -116,6 +116,6 @@ def review_clean(provider, model: str, api_key: str, page_index: int,
     # This check thinks (low effort) so it looks at every part of the slice.
     result = request_vision_json(provider, model, api_key, CLEAN_REVIEW_PROMPT,
                                  [("IMAGE 1: ORIGINAL", original), ("IMAGE 2: CLEAN", clean)], max_tokens=1200,
-                                 reasoning_effort=CLEAN_REVIEW_EFFORT)
+                                 reasoning_effort=CLEAN_REVIEW_EFFORT, stage="review")
     height, width = original.shape[:2]
     return parse_clean_review(result.data, page_index, width, height), result.estimated_cost_usd

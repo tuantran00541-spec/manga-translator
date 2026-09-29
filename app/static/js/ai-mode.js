@@ -59,13 +59,13 @@
       provider.prepend(new Option("Manga Cloud", CLOUD));
     }
     const stored = storage("get", "manga_translation_provider");
-    if (!stored || stored === CLOUD || !account.features?.includes("byok")) provider.value = CLOUD;
+    if (!stored || stored === CLOUD) provider.value = CLOUD;
   }
 
   const postJson = (url, body) => requestJson(url, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
   });
-  let plans = null;
+  let topups = null;
   let loginEmail = "";
 
   function formatMoney(value, currency) {
@@ -74,27 +74,30 @@
       : `$${Number(value).toFixed(2)}`;
   }
 
-  function renderUpgrade(signedIn) {
+  function renderTopup(signedIn) {
     const box = $("ai-mode-upgrade");
     const options = $("ai-mode-upgrade-options");
-    const providers = plans?.providers || {};
-    const canBuy = signedIn && account?.plan !== "pro" && (providers.payos || providers.lemonsqueezy);
+    const providers = topups?.providers || {};
+    const canBuy = signedIn && !account?.offline && (providers.payos || providers.lemonsqueezy);
     box.hidden = !canBuy;
     if (!canBuy) return;
+    const note = document.createElement("p");
+    note.className = "ai-mode-topup-note";
+    note.textContent = `Trả đúng chi phí A.I + ${topups.fee_percent}% phí; một chương dài khoảng `
+      + `${formatMoney(topups.chapter_estimate_usd, "USD")}. Dùng key A.I của bạn thì miễn phí.`;
     const buttons = [];
-    for (const plan of ["plus", "pro"]) {
-      if (plan === "plus" && account.plan === "plus") continue;
-      const price = plans.plans?.[plan] || {};
-      const label = plan === "plus" ? "Plus" : "Pro";
-      if (providers.payos) buttons.push([plan, "payos", `${label} · ${formatMoney(price.vnd, "VND")}/${plans.period_days} ngày · QR ngân hàng`]);
-      if (providers.lemonsqueezy) buttons.push([plan, "lemonsqueezy", `${label} · ${formatMoney(price.usd, "USD")}/tháng · Thẻ quốc tế`]);
-    }
-    options.replaceChildren(...buttons.map(([plan, provider, text]) => {
+    const add = (provider, quote, via) => {
+      const paid = quote.pay !== quote.credit ? ` (trả ${formatMoney(quote.pay, quote.currency)})` : "";
+      buttons.push([provider, quote.credit, `Nạp ${formatMoney(quote.credit, quote.currency)}${paid} · ${via}`]);
+    };
+    if (providers.payos) (topups.topups?.payos || []).forEach((quote) => add("payos", quote, "QR ngân hàng"));
+    if (providers.lemonsqueezy) (topups.topups?.lemonsqueezy || []).forEach((quote) => add("lemonsqueezy", quote, "Thẻ quốc tế"));
+    options.replaceChildren(note, ...buttons.map(([provider, amount, text]) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "ui-btn ui-btn-compact";
       button.textContent = text;
-      button.addEventListener("click", () => checkout(plan, provider, button));
+      button.addEventListener("click", () => checkout(provider, amount, button));
       return button;
     }));
   }
@@ -105,26 +108,23 @@
     bar.hidden = !account?.tiers;
     if (!account?.tiers) return;
     const signedIn = account.signed_in && !account.invalid_token;
-    const quota = account.quota;
-    let text = "Đăng nhập bằng email để dùng A.I mode.";
+    let text = "Đăng nhập để dùng Manga Cloud, hoặc chọn nhà cung cấp khác và dùng key A.I của bạn (miễn phí).";
     if (account.invalid_token) text = "Phiên đăng nhập đã hết — đăng nhập lại.";
-    else if (account.offline) text = "Không kết nối được Manga Cloud — tạm dùng tính năng gói Free.";
-    else if (signedIn && quota) {
-      text = `${account.email} · Gói ${account.plan_label || account.plan} · còn ${quota.remaining}/${quota.limit} chương A.I mode tháng ${quota.period}`;
-      if (account.plan_expires_at) {
-        text += ` · hết hạn ${new Date(account.plan_expires_at * 1000).toLocaleDateString("vi-VN")}`;
-      }
+    else if (account.offline) text = "Không kết nối được Manga Cloud — vẫn dùng được key A.I của bạn.";
+    else if (signedIn && typeof account.balance_usd === "number") {
+      text = `${account.email} · Số dư ${formatMoney(account.balance_usd, "USD")}`;
+      if (typeof account.chapters_left === "number") text += ` (≈ ${account.chapters_left} chương)`;
     }
     $("ai-mode-plan-text").textContent = text;
     $("ai-mode-login-form").hidden = signedIn;
-    $("ai-mode-signout").hidden = !signedIn;
-    renderUpgrade(signedIn);
+    $("ai-mode-account").hidden = !signedIn;
+    renderTopup(signedIn);
   }
 
   async function loadAccount() {
     try {
       account = await requestJson("/api/account");
-      if (account?.tiers && !plans) plans = await requestJson("/api/account/plans").catch(() => null);
+      if (account?.tiers && !topups) topups = await requestJson("/api/account/topups").catch(() => null);
     } catch (_) {
       account = null;
     }
@@ -170,12 +170,12 @@
     }
   }
 
-  async function checkout(plan, provider, button) {
+  async function checkout(provider, amount, button) {
     button.disabled = true;
     try {
-      const result = await postJson("/api/account/checkout", { plan, provider });
+      const result = await postJson("/api/account/checkout", { provider, amount });
       window.open(result.checkout_url, "_blank", "noopener");
-      window.showToast?.("Đã mở trang thanh toán. Gói tự nâng sau khi thanh toán xong.", "success");
+      window.showToast?.("Đã mở trang thanh toán. Số dư tự cộng sau khi thanh toán xong.", "success");
     } catch (err) {
       window.showToast?.("Không mở được thanh toán: " + err.message, "error");
     } finally {
@@ -193,6 +193,52 @@
     renderAccount();
   }
 
+  async function signOutEverywhere() {
+    if (!window.confirm("Đăng xuất Manga Cloud trên mọi máy đang dùng tài khoản này?")) return;
+    try {
+      account = await postJson("/api/account/logout-all");
+      window.showToast?.("Đã đăng xuất mọi thiết bị", "success");
+    } catch (err) {
+      window.showToast?.("Không đăng xuất được: " + err.message, "error");
+    }
+    resetLogin();
+    renderAccount();
+  }
+
+  async function deleteAccount() {
+    const warning = "Xoá tài khoản Manga Cloud? Email và phiên đăng nhập bị xoá. "
+      + "Số dư còn lại được giữ và trở lại nếu bạn đăng nhập lại bằng đúng email này.";
+    if (!window.confirm(warning)) return;
+    try {
+      account = await requestJson("/api/account", { method: "DELETE" });
+      window.showToast?.("Đã xoá tài khoản", "success");
+    } catch (err) {
+      window.showToast?.("Không xoá được: " + err.message, "error");
+    }
+    resetLogin();
+    renderAccount();
+  }
+
+  async function showPayments() {
+    const list = $("ai-mode-payment-list");
+    try {
+      const { ledger } = await requestJson("/api/account/ledger");
+      const kinds = { topup: "Nạp tiền", chapter: "Chương A.I mode", refund: "Hoàn tiền", adjust: "Điều chỉnh" };
+      list.replaceChildren(...(ledger.length ? ledger : [null]).map((line) => {
+        const item = document.createElement("li");
+        const sign = line && line.amount_usd > 0 ? "+" : line && line.amount_usd < 0 ? "−" : "";
+        item.textContent = line
+          ? `${new Date(line.created_at * 1000).toLocaleDateString("vi-VN")} · ${kinds[line.kind] || line.kind} · `
+            + `${sign}${formatMoney(Math.abs(line.amount_usd), "USD")} · còn ${formatMoney(line.balance_usd, "USD")}`
+          : "Chưa có giao dịch nào.";
+        return item;
+      }));
+      list.hidden = false;
+    } catch (err) {
+      window.showToast?.("Không tải được lịch sử: " + err.message, "error");
+    }
+  }
+
   function watchReturnFromCheckout() {
     const params = new URLSearchParams(window.location.search);
     const state = params.get("billing");
@@ -202,14 +248,16 @@
     window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : "") + window.location.hash);
     if (state !== "paid") return;
     window.showToast?.("Đang chờ xác nhận thanh toán…", "info");
-    const before = account?.plan;
+    const before = account?.balance_usd;
     let tries = 0;
     const timer = window.setInterval(async () => {
       tries += 1;
       await loadAccount();
-      if ((account?.plan && account.plan !== before) || tries >= 20) {
+      const now = account?.balance_usd;
+      const grew = typeof now === "number" && typeof before === "number" && now > before;
+      if (grew || tries >= 20) {
         window.clearInterval(timer);
-        if (account?.plan !== before) window.showToast?.(`Đã nâng lên gói ${account.plan_label || account.plan}`, "success");
+        if (grew) window.showToast?.(`Đã cộng ${formatMoney(now - before, "USD")} vào số dư`, "success");
       }
     }, 3000);
   }
@@ -372,6 +420,9 @@
     });
     $("ai-mode-login-form").addEventListener("submit", submitLogin);
     $("ai-mode-signout").addEventListener("click", signOut);
+    $("ai-mode-signout-all").addEventListener("click", signOutEverywhere);
+    $("ai-mode-delete-account").addEventListener("click", deleteAccount);
+    $("ai-mode-payments").addEventListener("click", showPayments);
     $("ai-mode-model").addEventListener("change", (event) => {
       storage("set", "manga_translation_vision_model_" + provider.value, event.target.value.trim());
     });

@@ -25,13 +25,15 @@ UNION_SHARE = 0.3  # boxes sharing this much of the smaller one are one text
 SAME_LINE = 0.7  # overlapping boxes sharing this much of the shorter height are pieces of one line
 
 
-def _text_box(x1, y1, x2, y2, score, mask, source_model) -> BubbleBox:
-    return BubbleBox(
+def _text_box(x1, y1, x2, y2, score, mask, source_model, letters=None) -> BubbleBox:
+    box = BubbleBox(
         x1, y1, x2, y2, score, mask,
         source_model=source_model, class_name="text", semantic_type="free_text",
         mask_source="text_segmenter", safe_to_inpaint=True, ocr_eligible=True,
         source_role="text_segmenter",
     )
+    box.letters = letters  # the letters alone, without outline or glow; they show the lines
+    return box
 
 
 def _merge(boxes: list[tuple[int, int, int, int, float]]) -> list[tuple[int, int, int, int, float]]:
@@ -81,12 +83,84 @@ def _join_grown(boxes: list[BubbleBox]) -> list[BubbleBox]:
     joined = []
     for x1, y1, x2, y2, score in rects:
         mask = np.zeros((y2 - y1, x2 - x1), np.uint8)
+        letters = np.zeros((y2 - y1, x2 - x1), bool)
         for b in boxes:
             if b.x1 >= x1 and b.y1 >= y1 and b.x2 <= x2 and b.y2 <= y2:
                 view = mask[b.y1 - y1:b.y2 - y1, b.x1 - x1:b.x2 - x1]
                 np.maximum(view, b.mask, out=view)
-        joined.append(_text_box(x1, y1, x2, y2, score, mask, boxes[0].source_model))
+                if getattr(b, "letters", None) is not None:
+                    letters[b.y1 - y1:b.y2 - y1, b.x1 - x1:b.x2 - x1] |= b.letters
+        joined.append(_text_box(x1, y1, x2, y2, score, mask, boxes[0].source_model, letters))
     return joined
+
+
+BLOCK_GAP = 1.5  # an empty band this many line heights tall separates two texts, not two lines of one
+BLOCK_OFFSET = 0.15  # two texts' centres this far apart, as a share of the wider one, are not one centred block
+BLOCK_SPACING = 3.0  # a gap this many times the widest line gap inside both texts parts them
+BLOCK_MIN_WIDTH = 0.4  # a group narrower than this share of the other is a stray mark (bubble edge, SFX chip), not a text
+BLOCK_LINE_SPREAD = 2.0  # a row this many times taller than the usual line is a mark, not a line of text
+
+
+def _separate(mask: np.ndarray, upper: list, lower: list) -> bool:
+    """True when two groups of lines read as two texts rather than one spaced block."""
+    def extent(group):
+        cols = np.flatnonzero(mask[group[0][0]:group[-1][1]].any(axis=0))
+        return float(cols[0]), float(cols[-1] + 1)
+
+    # Only two real texts part: each of two lines or more, neither a sliver beside the other.
+    if len(upper) < 2 or len(lower) < 2:
+        return False
+    (a1, a2), (b1, b2) = extent(upper), extent(lower)
+    if min(a2 - a1, b2 - b1) < BLOCK_MIN_WIDTH * max(a2 - a1, b2 - b1):
+        return False
+    if abs((a1 + a2) - (b1 + b2)) / 2 > BLOCK_OFFSET * max(a2 - a1, b2 - b1):
+        return True
+    inner = [nxt[0] - line[1] for group in (upper, lower) for line, nxt in zip(group, group[1:])]
+    return lower[0][0] - upper[-1][1] >= BLOCK_SPACING * max(inner)
+
+
+def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
+    """A box holding two texts stacked with a wide gap (two captions, a staircase of boxes) becomes one box per text."""
+    letters = getattr(box, "letters", None)
+    if letters is None or box.mask is None or not letters.any():
+        return [box]
+    rows = letters.any(axis=1)
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], rows.astype(np.int8), [0]))))
+    lines = [(int(start), int(end)) for start, end in zip(edges[::2], edges[1::2])]
+    if len(lines) < 2:
+        return [box]
+    height = float(np.median([end - start for start, end in lines]))
+    # Rows far taller than a line are marks (a bubble edge, a drawn letter), not text; they never part texts.
+    lines = [(start, end) for start, end in lines if end - start <= BLOCK_LINE_SPREAD * height]
+    if len(lines) < 2:
+        return [box]
+    groups = [[lines[0]]]
+    for line in lines[1:]:
+        if line[0] - groups[-1][-1][1] >= BLOCK_GAP * height:
+            groups.append([line])
+        else:
+            groups[-1].append(line)
+    # A wide gap alone may be a spaced bubble; two texts also sit off each other's centre or space their own lines closer.
+    merged = [groups[0]]
+    for group in groups[1:]:
+        if _separate(letters, merged[-1], group):
+            merged.append(group)
+        else:
+            merged[-1] = merged[-1] + group
+    if len(merged) < 2:
+        return [box]
+    # Each text takes the rows up to the middle of the gaps round it, and its own columns with a line of room.
+    blocks = [(group[0][0], group[-1][1]) for group in merged]
+    cuts = [0] + [(upper[1] + lower[0]) // 2 for upper, lower in zip(blocks, blocks[1:])] + [letters.shape[0]]
+    reach = int(height)
+    pieces = []
+    for (top, bottom), band_top, band_bottom in zip(blocks, cuts, cuts[1:]):
+        cols = np.flatnonzero(letters[top:bottom].any(axis=0))
+        y1, y2 = max(int(band_top), int(top) - reach), min(int(band_bottom), int(bottom) + reach)
+        x1, x2 = max(0, int(cols[0]) - reach), min(letters.shape[1], int(cols[-1]) + 1 + reach)
+        pieces.append(_text_box(box.x1 + x1, box.y1 + y1, box.x1 + x2, box.y1 + y2, box.confidence,
+                                np.ascontiguousarray(box.mask[y1:y2, x1:x2]), box.source_model, letters[y1:y2, x1:x2]))
+    return pieces
 
 
 def _rows(output: np.ndarray, conf_threshold: float) -> np.ndarray:
@@ -220,10 +294,10 @@ class KiuyhaTextDetector:
         """Detected text blocks with letter masks, ready for inpainting and OCR."""
         boxes = []
         for x1, y1, x2, y2, score in self.detect_slice(image):
-            (x1, y1, x2, y2), mask = letter_mask(image, (x1, y1, x2, y2))
+            (x1, y1, x2, y2), mask, letters = letter_mask(image, (x1, y1, x2, y2), with_letters=True)
             if mask.any():
-                boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model))
-        return _join_grown(boxes)
+                boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters))
+        return [piece for box in _join_grown(boxes) for piece in _split_blocks(box)]
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
         """First-pass boxes the letter model still reads after inpainting, masked by what is left of their strokes."""

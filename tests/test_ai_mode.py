@@ -304,6 +304,81 @@ def test_review_stage_applies_each_slice_in_one_pass_without_duplicating_boxes(m
     assert (runner.report["kept_regions"], runner.report["missed_added"], runner.report["repainted_regions"]) == (1, 1, 2)
 
 
+def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeypatch):
+    import contextlib
+
+    from app.ai_mode.checkpoints import CleanReview
+    from app.dependencies import pipeline
+
+    # Shadow Slave 1, slice 135: the scan boxed the "Read at ASURASCANS.COM" watermark as a logo.
+    watermark, kept = (323, 2825, 752, 3107), {"x1": 10, "y1": 10, "x2": 200, "y2": 100}
+    stored = {"pages": [{"preserve_regions": [dict(zip(("x1", "y1", "x2", "y2"), watermark)), kept]}]}
+    runner = _runner(monkeypatch, "review", stored)
+    runner._scan_logos[0] = [watermark]
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0])
+    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.zeros((10, 10, 3)), np.zeros((10, 10, 3))))
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda chapter_id: contextlib.nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: stored)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, manifest: None)
+    monkeypatch.setattr(ai_job, "review_clean", lambda provider, model, key, index, a, b: (
+        CleanReview(0, residue=((330, 2830, 740, 3100),)), None))
+    seen = []
+    monkeypatch.setattr(pipeline, "apply_review_fixes",
+                        lambda chapter, index, **fixes: seen.append(list(stored["pages"][0]["preserve_regions"])),
+                        raising=False)
+    asyncio.run(runner.review())
+    assert seen == [[kept]], "the watermark is no longer protected when the repaint runs; other regions stay"
+    assert runner.report["logos_freed"] == 1
+
+
+def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
+    import app.routers.chapters as chapters_router
+    from app.ai_mode.checkpoints import CleanReview
+
+    runner = _runner(monkeypatch, "clean", {"pages": [{}, {}, {}]})
+    runner.job.stages["review"] = {"done": 0, "total": 0, "detail": ""}
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1, 2])
+    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.zeros((10, 10, 3)), np.zeros((10, 10, 3))))
+
+    async def no_glossary(indices):
+        return {}
+
+    monkeypatch.setattr(runner, "_read_glossary", no_glossary)
+    monkeypatch.setattr(ai_job, "POLL_SECONDS", 0)
+    # Slice 2 is clean first; the cleanup of 0 and 1 only goes on once slice 2 has been reviewed.
+    state = {"done": [2], "status": "running", "polls": 0}
+    reviewed_while_cleaning = []
+
+    class Jobs:
+        def start(self, chapter_id, page_indices, workers):
+            return {"job_id": "clean"}
+
+        def snapshot(self, job_id):
+            state["polls"] += 1
+            assert state["polls"] < 100_000, "slice 2 was never reviewed during the cleanup"
+            if any(index == 2 for index, _ in reviewed_while_cleaning):
+                state["done"], state["status"] = [2, 0, 1], "completed"
+            return {"status": state["status"], "completed": len(state["done"]), "total": 3,
+                    "done_indices": list(state["done"]), "errors": []}
+
+    def review_clean(provider, model, key, index, a, b):
+        reviewed_while_cleaning.append((index, state["status"] == "running"))
+        return CleanReview(index), None
+
+    monkeypatch.setattr(chapters_router, "chapter_processing_jobs", Jobs())
+    monkeypatch.setattr(ai_job, "review_clean", review_clean)
+
+    async def scenario():
+        await runner.clean()
+        runner.job.stage = "review"
+        await runner.review()
+
+    asyncio.run(scenario())
+    assert sorted(index for index, _ in reviewed_while_cleaning) == [0, 1, 2], "every slice is reviewed once"
+    assert (2, True) in reviewed_while_cleaning, "review overlaps the cleanup"
+    assert runner.job.stages["review"]["done"] == 3
+
+
 def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch):
     from app.dependencies import pipeline
 

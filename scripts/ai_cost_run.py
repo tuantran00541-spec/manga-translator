@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -55,6 +56,18 @@ def _pages(archive_path: Path, out: Path, max_width: int = 800) -> int:
         return len(names)
 
 
+def _full_slices(pages: list, out: Path, numbers: set[int]) -> None:
+    """Save the original and cleaned image of the given slices at full size."""
+    folder = out / "full"
+    for number in sorted(numbers):
+        page = pages[number - 1] if 0 < number <= len(pages) else {}
+        for kind in ("original", "clean"):
+            source = Path(page.get(kind) or "")
+            if source.is_file():
+                folder.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, folder / f"{number:03d}_{kind}{source.suffix}")
+
+
 def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
     """Save each active slice as original | final side by side for a close review."""
     from app.routers.image import _rendered_file_path
@@ -81,6 +94,21 @@ def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
             (folder / f"{index + 1:03d}.jpg").write_bytes(buf.tobytes())
             saved += 1
     return saved
+
+
+def _clean_timing(pages: list) -> dict:
+    """Summed cleanup time per step over the chapter, to see which one the stage waits on."""
+    totals: dict[str, float] = {}
+    for page in pages:
+        metrics = page.get("processing_metrics") or {}
+        steps = dict(metrics.get("timing_ms") or {})
+        for section in ("auto_inpaint", "manual_inpaint"):
+            for key in ("lama_model_ms", "session_lock_wait_ms", "ort_global_lock_wait_ms"):
+                steps[f"{section}.{key}"] = (metrics.get(section) or {}).get(key, 0)
+        for key, value in steps.items():
+            if isinstance(value, (int, float)):
+                totals[key] = totals.get(key, 0.0) + float(value)
+    return {key: round(value) for key, value in sorted(totals.items())}
 
 
 def _objects(pages: list) -> list[dict]:
@@ -198,8 +226,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("url")
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--plan", default="pro")
+    parser.add_argument("--balance", type=float, default=5.0, help="USD credited to the test account")
     parser.add_argument("--timeout-min", type=float, default=60)
+    parser.add_argument("--full-slices", default="", help="comma-separated slice numbers saved at full size")
     args = parser.parse_args()
     out = args.out.resolve()
     if not out.is_relative_to(ROOT):
@@ -218,7 +247,8 @@ def main() -> int:
         _wait(f"{GATEWAY}/health", gateway)
         account = requests.post(f"{GATEWAY}/v1/admin/accounts", json={"email": "cost-run@example.com"},
                                 headers={"X-Admin-Key": ADMIN}, timeout=10).json()
-        requests.post(f"{GATEWAY}/v1/admin/accounts/{account['account_id']}/plan", json={"plan": args.plan},
+        requests.post(f"{GATEWAY}/v1/admin/accounts/{account['account_id']}/credit",
+                      json={"amount_usd": args.balance, "note": "cost run"},
                       headers={"X-Admin-Key": ADMIN}, timeout=10).raise_for_status()
         app_env = {k: v for k, v in os.environ.items() if not k.startswith("GATEWAY_")}
         app_env.update(MANGA_TIERS="1", MANGA_CLOUD_URL=f"{GATEWAY}/v1", MANGA_CLOUD_TOKEN=account["token"])
@@ -245,7 +275,7 @@ def main() -> int:
         with sqlite3.connect(db) as conn:
             conn.row_factory = sqlite3.Row
             rows = [dict(r) for r in conn.execute(
-                "SELECT status, requests, prompt_tokens, completion_tokens, cost_usd FROM jobs")]
+                "SELECT status, requests, prompt_tokens, completion_tokens, cost_usd, charged_micros FROM jobs")]
     finally:
         for proc in (app, gateway):
             if proc is not None:
@@ -254,7 +284,6 @@ def main() -> int:
     usage = rows[0] if rows else {}
     report = {
         "url": args.url,
-        "plan": args.plan,
         "model": os.environ.get("GATEWAY_UPSTREAM_MODEL"),
         "price_usd_per_m": {"input": float(os.environ.get("GATEWAY_PRICE_INPUT_PER_M", "0")),
                             "output": float(os.environ.get("GATEWAY_PRICE_OUTPUT_PER_M", "0"))},
@@ -282,10 +311,12 @@ def main() -> int:
         pages = json.loads(manifest_path.read_text(encoding="utf-8")).get("pages", [])
         report["slices"] = len(pages)
         report["slices_active"] = sum(1 for p in pages if not p.get("skipped"))
+        report["clean_ms"] = _clean_timing(pages)
         try:
             report["pairs"] = _pairs(str(chapter_id), pages, out)
         except Exception as exc:  # noqa: BLE001 - the pairs are a review aid, never a reason to lose the report
             report["pairs_error"] = repr(exc)[:300]
+        _full_slices(pages, out, {int(n) for n in args.full_slices.split(",") if n.strip().isdigit()})
         (out / "objects.json").write_text(json.dumps(_objects(pages), ensure_ascii=False), encoding="utf-8")
         report["lines"] = []
         for index, page in enumerate(pages):
@@ -298,7 +329,8 @@ def main() -> int:
                 report["lines"].append({
                     "slice": index + 1, "id": obj.get("id"), "source": obj.get("ocr_text") or obj.get("text") or "",
                     "translation": obj.get("translation") or "",
-                    "role": obj.get("typography_role"), "font": (obj.get("style") or {}).get("font"),
+                    "role": obj.get("typography_role"), "container": obj.get("container"),
+                    "font": obj.get("font_ai_id") or (obj.get("style") or {}).get("font"),
                     "review": bool(obj.get("needs_review")), "page_width": width,
                     **_fit_metrics(obj, width),
                 })

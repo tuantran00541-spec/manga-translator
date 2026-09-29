@@ -15,6 +15,9 @@ TYPOGRAPHY_ROLES = frozenset({
     "dialogue", "narration", "thought", "whisper", "shout", "dark_threat",
     "system_ui", "skill_name", "title", "free_text", "sfx",
 })
+CONTAINERS = frozenset({"bubble", "spiky", "box", "screen", "free"})
+LOCKED_CONTAINERS = CONTAINERS - {"free"}  # text on the art varies; every drawn container keeps one font
+EMPHASIS_ROLES = frozenset({"shout", "dark_threat", "sfx"})  # a shout in a plain bubble keeps its own font
 
 _BASE = """
 ROLE
@@ -25,6 +28,7 @@ TRANSLATION
 - Every character keeps one voice across the chapter (cold: short and firm; powerful: weighty; close friends: casual). Never let everyone speak the same flat AI prose.
 - Translate meaning, not English structure. If a line reads like a translation, rewrite it.
 - Be concise without losing lore, relationships, threats, hesitation, sarcasm, implication, cause and effect, or proper names.
+- Length: a translation is about as long as its source line, never much longer. Say it the short way a person would say it out loud: drop words the scene already makes clear, never explain, pad or add what the source does not say, and split nothing into two sentences the source says in one. max_chars is a hard ceiling, not a target.
 - Lock terms: people's names keep their source spelling; places, organisations, spells, techniques, titles, captions and signs are translated, never left in the source language. Reuse the same form every time; tell a descriptive phrase from the name of an organisation.
 - Punctuation is acting: keep "...", "-", "—", "?!", "!!" as in the source; never add "..." to a character who speaks bluntly.
 - No invented memes, out-of-world slang or jokes the source does not make.
@@ -33,8 +37,9 @@ TRANSLATION
 
 LETTERING
 - Role of each object: dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text or sfx.
-- Font: a chapter uses at most 3 fonts. dialogue.mac-dinh-3 is the base font for nearly all dialogue, thoughts and narration; roles dialogue, thought and whisper always get it. Keep emphasis.bangers for real shouts. Pick another font from FONTS only when IMAGE 1 letters that text in a clearly different style (a bold caption on the art, a screen, a skill name, a sound effect) and it matches the FONT SAMPLES image; reuse a font from fonts_in_use in CHAPTER MEMORY before adding one. When unsure, use the base font.
-- Size: the renderer picks the largest size that still breathes inside the bubble. Keep the line short enough for that: about as long as the source line, shorter if the bubble is small. If it cannot fit, rewrite it shorter first; if it still cannot, set "review": true.
+- Container of each object: "bubble" (round or oval speech balloon), "spiky" (jagged shout balloon), "box" (square or rectangular caption or dialogue box), "screen" (system window, phone or panel UI) or "free" (lettered on the art with no container).
+- Font: a chapter uses at most 3 fonts. Once a container kind has a font it keeps it: container_fonts in CHAPTER MEMORY is fixed for the chapter, so letter every object in that kind of container in that font (only shouts and threats in a plain bubble or box may differ). dialogue.mac-dinh-3 is the base font for nearly all dialogue, thoughts and narration; roles dialogue, thought and whisper get it unless their container already has a font. Keep emphasis.bangers for real shouts. Pick another font from FONTS only when IMAGE 1 letters that text in a clearly different style (a bold caption on the art, a screen, a skill name, a sound effect) and it matches the FONT SAMPLES image; reuse a font from fonts_in_use in CHAPTER MEMORY before adding one. When unsure, use the base font.
+- Size: the translation is lettered where the source letters were, at about their size. Keep the line short enough for that: about as long as the source line, shorter if the bubble is small. If it cannot fit, rewrite it shorter first; if it still cannot, set "review": true.
 - Break lines yourself with "\\n" at phrase boundaries; an oval bubble reads short, long, short. Never leave one orphan word, a lone punctuation mark, a split name or number and unit, or a hyphen inside a Vietnamese word.
 - Colour: the renderer letters in the source letters' measured colour. Add "color" (#rrggbb) only when IMAGE 1 letters that text in a distinct colour the measurement could miss (red or glowing titles, coloured skill names, gradients); otherwise leave it out.
 - Free text keeps its scale and weight: a large source line stays a strong, short line. When free text or a caption would be too small to read at the source size (tiny notes, several captions in one box), set "enlarge": true and the renderer letters it bigger, growing its area a little.
@@ -43,19 +48,20 @@ LETTERING
 
 _INPUT_IMAGES = """
 INPUT
-One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, with each object's box outlined in red and labelled with its id; the text of an object is what IMAGE 1 shows inside that box, never text from elsewhere. Each object has an id, an OCR hint that is often empty or wrong, bbox_xyxy in image pixels, and usually max_chars: how many characters (spaces included) fit its box when lettered about as large as the source. Stay within max_chars; rephrase shorter rather than go over, so bubbles and free text keep the size of the original lettering. CHAPTER MEMORY holds the GLOSSARY (names, terms and forms of address fixed for the whole chapter; always use them exactly and never respell a name), the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
+One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, with each object's box outlined in red and labelled with its id; the text of an object is what IMAGE 1 shows inside that box, never text from elsewhere. Each object has an id, an OCR hint that is often empty or wrong, bbox_xyxy in image pixels, and usually max_chars: how many characters (spaces included) fit where the source letters were when lettered about as large as the source. Stay within max_chars; rephrase shorter rather than go over, so bubbles and free text keep the size of the original lettering. CHAPTER MEMORY holds the GLOSSARY (names, terms and forms of address fixed for the whole chapter; always use them exactly and never respell a name), the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
 """.strip()
 
 _VIETNAMESE = """
 VIETNAMESE
 - Choose pronouns from the relationship, never I→tôi and you→bạn by reflex: tôi/anh/chị/em, ta/ngươi, tao/mày, mình/cậu, thần/bệ hạ, thuộc hạ/ngài. Once a pair is fixed, keep it until the story changes the relationship, and report the change in "address".
 - Rewrite translationese such as "Điều mà tôi muốn nói là…" or "Đó là lý do tại sao…" into natural speech.
+- Vietnamese runs longer than English, so cut what speech drops: a subject pronoun the scene makes clear, "thì", "là", "mà", "một cách", "những", "các", and "đã/đang/sẽ" when the time is clear. Prefer the short word: "vì" over "bởi vì", "nếu" over "trong trường hợp", "giờ" over "bây giờ thì".
 - Cultivation: sư phụ, sư huynh, đạo hữu, bổn tọa, Hán Việt realm names. Game and system stories: Level, Skill, Stat, Dungeon, "Hệ thống", "hồi quy", "thức tỉnh". Military ranks become Vietnamese ranks.
 """.strip()
 
 _OUTPUT = """
 Answer with JSON only:
-{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
+{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","container":"<container>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
  "font_choices":{{"<id>":"<font_id from FONTS>"}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, age, relationship>"}}],
@@ -91,17 +97,30 @@ class ChapterMemory:
         self.address: dict[tuple[str, str], dict[str, str]] = {}
         self.recent: deque[dict] = deque(maxlen=RECENT_LINES)
         self.fonts: list[str] = [DEFAULT_LETTERING_FONT]
+        self.container_fonts: dict[str, str] = {}
         self._lock = threading.Lock()
+
+    def _admit(self, font_id: str) -> str:
+        if font_id in self.fonts:
+            return font_id
+        if len(self.fonts) < MAX_CHAPTER_FONTS:
+            self.fonts.append(font_id)
+            return font_id
+        return DEFAULT_LETTERING_FONT
 
     def admit_font(self, font_id: str) -> str:
         """The font to letter with: a font already in use, a new one within the chapter budget, else the base font."""
         with self._lock:
-            if font_id in self.fonts:
-                return font_id
-            if len(self.fonts) < MAX_CHAPTER_FONTS:
-                self.fonts.append(font_id)
-                return font_id
-            return DEFAULT_LETTERING_FONT
+            return self._admit(font_id)
+
+    def container_font(self, container: str | None, role: str | None, font_id: str) -> str:
+        """The font a container kind was first lettered in, which it keeps for the chapter; else ``admit_font``."""
+        with self._lock:
+            if container not in LOCKED_CONTAINERS or (role in EMPHASIS_ROLES and container != "spiky"):
+                return self._admit(font_id)
+            if container not in self.container_fonts:
+                self.container_fonts[container] = self._admit(font_id)
+            return self.container_fonts[container]
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -112,6 +131,7 @@ class ChapterMemory:
                 "address": [{"from": a, "to": b, **terms} for (a, b), terms in self.address.items()],
                 "recent_lines": list(self.recent),
                 "fonts_in_use": list(self.fonts),
+                "container_fonts": dict(self.container_fonts),
             }
 
     def update(self, slice_number: int, data: dict, translations: dict[str, str], order: list[str]) -> None:

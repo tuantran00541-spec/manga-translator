@@ -4,7 +4,6 @@ import asyncio
 import socket
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
@@ -71,11 +70,12 @@ class Stack:
                              headers={"X-Admin-Key": ADMIN}, timeout=5).json()
         return body["account_id"], body["token"]
 
-    def set_plan(self, account_id: str, plan: str, key: str = ADMIN) -> requests.Response:
-        return requests.post(
-            f"{self.api}/admin/accounts/{account_id}/plan", json={"plan": plan},
-            headers={"X-Admin-Key": key}, timeout=5,
+    def credit(self, account_id: str, amount_usd: float) -> None:
+        response = requests.post(
+            f"{self.api}/admin/accounts/{account_id}/credit", json={"amount_usd": amount_usd, "note": "test"},
+            headers={"X-Admin-Key": ADMIN}, timeout=5,
         )
+        assert response.status_code == 200
 
     def chat(self, token: str) -> requests.Response:
         return requests.post(
@@ -102,28 +102,30 @@ def stack(tmp_path, monkeypatch):
     s.close()
 
 
-def _sign_in(stack, monkeypatch, email="reader@example.com") -> str:
+def _sign_in(stack, monkeypatch, email="reader@example.com", balance=0.0) -> str:
     account_id, token = stack.signup(email)
+    if balance:
+        stack.credit(account_id, balance)
     monkeypatch.setenv("MANGA_CLOUD_TOKEN", token)
     cloud.invalidate()
     return account_id
 
 
-def test_free_plan_allows_three_chapters_then_refuses_with_402(stack, monkeypatch):
-    _sign_in(stack, monkeypatch)
-    assert cloud.entitlements()["quota"]["remaining"] == 3
-    for _ in range(3):
-        cloud.reserve_job()
+def test_an_empty_wallet_is_refused_with_402_until_it_is_topped_up(stack, monkeypatch):
+    account_id = _sign_in(stack, monkeypatch)
+    assert cloud.entitlements()["balance_usd"] == 0
     with pytest.raises(HTTPException) as refused:
         cloud.reserve_job()
-    assert refused.value.status_code == 402
-    assert "Free" in refused.value.detail
-    quota = cloud.entitlements(fresh=True)["quota"]
-    assert (quota["used"], quota["remaining"]) == (3, 0)
+    assert refused.value.status_code == 402 and "Số dư" in refused.value.detail
+    stack.credit(account_id, 1.0)
+    job = cloud.reserve_job()
+    assert job["cost_cap_usd"] == pytest.approx(1.0 / 1.05, abs=1e-6)
+    data = cloud.entitlements(fresh=True)
+    assert (data["balance_usd"], data["chapters_left"]) == (1.0, 3)
 
 
 def test_only_a_live_job_token_reaches_the_ai_and_the_gateway_picks_the_model(stack, monkeypatch):
-    _sign_in(stack, monkeypatch)
+    _sign_in(stack, monkeypatch, balance=1.0)
     account_token = cloud._token()
     assert stack.chat(account_token).status_code == 401, "an account token alone must not buy A.I calls"
     job = cloud.reserve_job()
@@ -139,7 +141,7 @@ def test_only_a_live_job_token_reaches_the_ai_and_the_gateway_picks_the_model(st
 
 def test_the_cost_guard_stops_a_job_that_spends_far_more_than_a_chapter(stack, monkeypatch):
     monkeypatch.setattr("gateway.store.JOB_COST_GUARD_USD", 0.10)
-    _sign_in(stack, monkeypatch)
+    _sign_in(stack, monkeypatch, balance=10.0)
     job = cloud.reserve_job()
     assert job["cost_cap_usd"] == 0.10
     statuses = [stack.chat(job["job_token"]).status_code for _ in range(6)]
@@ -147,80 +149,34 @@ def test_the_cost_guard_stops_a_job_that_spends_far_more_than_a_chapter(stack, m
     allowed = int(0.10 // CALL_COST)
     assert statuses == [200] * allowed + [402] * (6 - allowed)
     assert allowed * CALL_COST <= 0.10
-    assert cloud.entitlements(fresh=True)["quota"]["cost_usd"] == pytest.approx(allowed * CALL_COST)
 
 
-def test_a_failed_job_is_refunded_only_when_it_never_called_the_ai(stack, monkeypatch):
-    _sign_in(stack, monkeypatch)
+def test_each_call_is_charged_at_cost_plus_the_fee_and_booked_as_one_chapter(stack, monkeypatch):
+    _sign_in(stack, monkeypatch, balance=1.0)
+    job = cloud.reserve_job()
+    for _ in range(3):
+        assert stack.chat(job["job_token"]).status_code == 200
+    assert cloud.entitlements(fresh=True)["balance_usd"] == pytest.approx(1.0 - 3 * CALL_COST * 1.05)
+    assert cloud.finish_job(job["job_token"], "completed")["charged_usd"] == pytest.approx(3 * CALL_COST * 1.05)
+    ledger = cloud.ledger()["ledger"]
+    assert [line["kind"] for line in ledger] == ["chapter", "adjust"]
     unused = cloud.reserve_job()
-    assert cloud.finish_job(unused["job_token"], "failed")["refunded"] is True
-    spent = cloud.reserve_job()
-    stack.chat(spent["job_token"])
-    assert cloud.finish_job(spent["job_token"], "failed")["refunded"] is False
-    assert cloud.entitlements(fresh=True)["quota"]["used"] == 1
+    assert cloud.finish_job(unused["job_token"], "failed")["charged_usd"] == 0, "a job that never called the A.I is free"
 
 
-def test_parallel_reservations_never_exceed_the_quota(stack, monkeypatch):
-    _sign_in(stack, monkeypatch)
-
-    def attempt(_):
-        try:
-            cloud.reserve_job()
-            return "ok"
-        except HTTPException as exc:
-            return exc.status_code
-
-    with ThreadPoolExecutor(12) as pool:
-        results = list(pool.map(attempt, range(24)))
-    assert results.count("ok") == 3
-    assert results.count(402) == 21
-
-
-def test_upgrade_unlocks_quota_and_features(stack, monkeypatch):
-    account_id = _sign_in(stack, monkeypatch)
-    with pytest.raises(HTTPException) as locked:
-        cloud.require_feature("visual_qc")
-    assert locked.value.status_code == 402
-    assert stack.set_plan(account_id, "pro", key="wrong").status_code == 403
-    assert stack.set_plan(account_id, "plus").status_code == 200
-    cloud.invalidate()
-    cloud.require_feature("visual_qc")
-    with pytest.raises(HTTPException):
-        cloud.require_feature("byok")
-    data = cloud.entitlements()
-    assert data["plan"] == "plus" and data["quota"]["remaining"] == 30
-
-
-def test_quota_resets_next_month_and_stale_unused_reservations_do_not_count(stack, monkeypatch):
-    _sign_in(stack, monkeypatch)
-    for _ in range(3):
-        cloud.reserve_job()
-    stack.clock[0] += 7 * 3600
-    assert cloud.entitlements(fresh=True)["quota"]["used"] == 0, "abandoned jobs with no A.I calls expire"
-    for _ in range(3):
-        stack.chat(cloud.reserve_job()["job_token"])
-    stack.clock[0] += 31 * 86400
-    quota = cloud.entitlements(fresh=True)["quota"]
-    assert quota["period"] == "2026-10" and quota["remaining"] == 3
-
-
-def test_tiers_off_keeps_every_feature_open(monkeypatch):
+def test_tiers_off_hides_manga_cloud(monkeypatch):
     monkeypatch.setenv("MANGA_TIERS", "0")
     cloud.invalidate()
-    cloud.require_feature("visual_qc")
-    cloud.require_feature("byok")
-    assert cloud.entitlements()["plan"] == "unlimited"
+    assert cloud.entitlements() == {"tiers": False, "signed_in": False}
 
 
-def test_offline_gateway_falls_back_to_free_features(monkeypatch):
+def test_offline_gateway_is_reported_and_cannot_start_a_chapter(monkeypatch):
     monkeypatch.setenv("MANGA_TIERS", "1")
     monkeypatch.setenv("MANGA_CLOUD_URL", f"http://127.0.0.1:{_free_port()}/v1")
     monkeypatch.setenv("MANGA_CLOUD_TOKEN", "mc_whatever")
     monkeypatch.setenv("NO_PROXY", "127.0.0.1")
     cloud.invalidate()
     assert cloud.entitlements()["offline"] is True
-    with pytest.raises(HTTPException):
-        cloud.require_feature("visual_qc")
     with pytest.raises(HTTPException) as down:
         cloud.reserve_job()
     assert down.value.status_code == 503
@@ -259,15 +215,15 @@ def _start(req):
     return asyncio.run(scenario())
 
 
-def test_ai_mode_runs_through_the_gateway_and_spends_one_chapter(stack, monkeypatch):
-    _sign_in(stack, monkeypatch)
+def test_ai_mode_runs_through_the_gateway_and_is_charged_for_one_chapter(stack, monkeypatch):
+    _sign_in(stack, monkeypatch, balance=1.0)
     monkeypatch.setattr(ai_mode_router, "validate_url", lambda url: url)
     monkeypatch.setattr(ai_mode_router, "ai_mode_jobs", AIModeJobManager(runner_factory=CloudCallingRunner))
     snapshot = _start(ai_mode_router.AIModeStartRequest(url="https://example.com/c/1", provider="manga-cloud"))
     assert snapshot["status"] == "completed"
     assert stack.upstream_calls[-1]["model"] == "vision-upstream"
-    quota = cloud.entitlements(fresh=True)["quota"]
-    assert quota["used"] == 1 and quota["cost_usd"] == pytest.approx(CALL_COST)
+    usage = cloud.entitlements(fresh=True)["usage_30d"]
+    assert usage == {"chapters": 1, "charged_usd": pytest.approx(CALL_COST * 1.05)}
     with stack.store._connect() as db:
         assert [row["status"] for row in db.execute("SELECT status FROM jobs")] == ["completed"]
 
@@ -282,12 +238,26 @@ def test_manga_cloud_is_unusable_outside_an_ai_mode_job(stack, monkeypatch):
     assert get_provider_api_key("manga-cloud") is None
 
 
-def test_free_plan_cannot_bypass_the_quota_with_its_own_key(stack, monkeypatch):
+def test_an_own_key_needs_no_balance(stack, monkeypatch):
     _sign_in(stack, monkeypatch)
     monkeypatch.setattr(ai_mode_router, "validate_url", lambda url: url)
-    with pytest.raises(HTTPException) as locked:
-        _start(ai_mode_router.AIModeStartRequest(url="https://example.com/c/1", provider="openai"))
-    assert locked.value.status_code == 402
+    monkeypatch.setattr(ai_mode_router, "get_provider_api_key", lambda *_args, **_kwargs: "sk-own")
+    seen = {}
+
+    class OwnKeyRunner:
+        def __init__(self, job, provider, api_key):
+            seen.update(provider=provider.id, key=api_key)
+
+        def __getattr__(self, _name):
+            async def stage():
+                return None
+            return stage
+
+    monkeypatch.setattr(ai_mode_router, "ai_mode_jobs", AIModeJobManager(runner_factory=OwnKeyRunner))
+    snapshot = _start(ai_mode_router.AIModeStartRequest(url="https://example.com/c/1", provider="deepseek"))
+    assert snapshot["status"] == "completed" and seen == {"provider": "deepseek", "key": "sk-own"}
+    with stack.store._connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0, "no Manga Cloud job is opened"
 
 
 def test_app_login_with_email_code_stores_the_session_and_checkout_reports_missing_billing(stack, monkeypatch):
@@ -310,13 +280,27 @@ def test_app_login_with_email_code_stores_the_session_and_checkout_reports_missi
             email=sent["email"], code=f"{(int(sent['dev_code']) + 1) % 1_000_000:06d}")))
     assert wrong.value.status_code == 400
     me = asyncio.run(account_router.verify_login(account_router.LoginVerifyRequest(email=sent["email"], code=sent["dev_code"])))
-    assert me["signed_in"] and me["email"] == "reader@example.com" and me["quota"]["remaining"] == 3
+    assert me["signed_in"] and me["email"] == "reader@example.com" and me["balance_usd"] == 0
     assert saved["token"].startswith("mc_")
 
     with pytest.raises(HTTPException) as unavailable:
-        asyncio.run(account_router.checkout(account_router.CheckoutRequest(plan="plus", provider="payos")))
+        asyncio.run(account_router.checkout(account_router.CheckoutRequest(provider="payos", amount=50000)))
     assert unavailable.value.status_code == 503
 
     out = asyncio.run(account_router.logout())
     assert out["signed_in"] is False
     assert stack.chat(saved["token"]).status_code == 401
+
+
+def test_the_app_lists_the_ledger_signs_out_everywhere_and_deletes_the_account(stack, monkeypatch):
+    _sign_in(stack, monkeypatch)
+    assert cloud.ledger() == {"ledger": []}
+    assert [quote["credit"] for quote in cloud.billing_topups()["topups"]["lemonsqueezy"]] == [2, 5, 10, 20]
+    cloud.logout_all()
+    assert cloud.entitlements(fresh=True)["invalid_token"] is True
+    _sign_in(stack, monkeypatch, "other@example.com")
+    cloud.delete_account()
+    assert cloud.entitlements(fresh=True)["invalid_token"] is True
+    with pytest.raises(HTTPException) as gone:
+        cloud.ledger()
+    assert gone.value.status_code == 401

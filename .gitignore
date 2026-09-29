@@ -51,3 +51,7 @@ debug/
 
 # Bench output lives on the audit-evidence branch.
 audit-results/
+
+deploy/gateway.env
+.cache/
+.manga-install.json

@@ -62,18 +62,25 @@ def request_vision_json(
     schema: dict | None = None,
     max_tokens: int = 2048,
     reasoning_effort: str | None = None,
+    stage: str | None = None,
 ) -> VisionJSONResult:
-    """Return the model's JSON object for ``prompt`` and labelled ``images``."""
+    """Return the model's JSON object for ``prompt`` and labelled ``images``; ``stage`` names the checkpoint."""
     key = str(api_key or "").strip()
     if not key:
         raise ValueError(f"{provider.label} API key is not configured")
     encoded = [(label, _encode_for_gemini(image)) for label, image in images]
     if provider.protocol == "gemini":
         return _gemini(model, key, prompt, encoded, schema=schema, max_tokens=max_tokens)
-    return _openai(provider, model, key, prompt, encoded, max_tokens=max_tokens, reasoning_effort=reasoning_effort)
+    return _openai(provider, model, key, prompt, encoded, max_tokens=max_tokens, reasoning_effort=reasoning_effort,
+                   stage=stage)
 
 
-def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_effort=None) -> VisionJSONResult:
+def stage_headers(provider: AIProvider, stage: str | None) -> dict:
+    """Manga Cloud picks a model per checkpoint from this header."""
+    return {"X-MT-Stage": stage} if stage and provider.id == CLOUD_PROVIDER_ID else {}
+
+
+def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_effort=None, stage=None) -> VisionJSONResult:
     url = str(provider.chat_url or "")
     if not url:
         raise ValueError("Provider does not have chat completions")
@@ -97,7 +104,8 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
     try:
         response = requests.post(
             url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
+                     **stage_headers(provider, stage)},
             json=payload,
             timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
             allow_redirects=False,

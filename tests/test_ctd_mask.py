@@ -85,3 +85,19 @@ def test_an_erased_block_is_passed_again_only_while_letters_remain():
     assert not ctd_mask.still_reads(clean, (50, 50, 350, 150))
     cv2.putText(clean, "LEFT", (120, 120), cv2.FONT_HERSHEY_DUPLEX, 1.5, (20, 20, 20), 4)
     assert ctd_mask.still_reads(clean, (50, 50, 350, 150))
+
+
+def test_letters_the_box_cuts_are_erased_up_to_the_end_of_the_line():
+    # Shadow Slave 1, slice 70: the detector box stopped short of "TRIALS" and "NIGHTMARE...".
+    image = np.full((420, 1600, 3), 245, np.uint8)
+    cv2.putText(image, "BY OVERCOMING TRIALS", (330, 180), cv2.FONT_HERSHEY_DUPLEX, 2.2, (15, 15, 15), 6)
+    cv2.putText(image, "INSIDE THE NIGHTMARE...", (330, 290), cv2.FONT_HERSHEY_DUPLEX, 2.2, (15, 15, 15), 6)
+    cv2.putText(image, "OTHER BUBBLE", (1450, 390), cv2.FONT_HERSHEY_DUPLEX, 1.0, (15, 15, 15), 3)
+    box, mask = ctd_mask.letter_mask(image, (330, 120, 1000, 310))
+    full = _full(image, box, mask)
+    ink = image.max(axis=2) < 60
+    line = ink.copy()
+    line[330:, :] = False  # the far bubble
+    assert (full & line).sum() >= 0.98 * line.sum(), "the whole caption is erased, dots included"
+    assert not (full & ink)[340:, 1440:].any(), "a separate text farther away is not taken"
+    assert box[2] < 1440, "the box grows over the cut letters only"

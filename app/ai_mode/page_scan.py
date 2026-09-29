@@ -70,7 +70,9 @@ SCAN_PROMPT = (
     "caption, narration, system window, sign or sound effect, just artwork, gutter or blank space.\n"
     "3. logos: boxes around the SERIES TITLE LOGO (stylised title artwork, usually near the "
     "start of the chapter) and publisher/studio logos drawn as artwork. These are kept "
-    "untouched. Never box speech bubbles, captions, narration, sound effects or plain text.\n"
+    "untouched. Never box speech bubbles, captions, narration, sound effects or plain text, and never "
+    "box scanlator or uploader watermarks, site names or URLs ('Read at <site>', group logos): those "
+    "are erased, not kept.\n"
     "Boxes are [ymin, xmin, ymax, xmax] normalised to 0-1000 inside that slice's image. "
     "Confidences are 0-1. Return JSON only: "
     '{"slices":[{"slice":<number>,"is_credit":false,"credit_confidence":0.0,"no_text":false,"no_text_confidence":0.0,'
@@ -184,6 +186,6 @@ def scan_slices(
     images = [(f"SLICE {index}", _thumbnail(image)) for index, image in slices]
     result = request_vision_json(
         provider, model, api_key, SCAN_PROMPT, images,
-        schema=SCAN_SCHEMA, max_tokens=min(4096, 400 + 220 * len(slices)),
+        schema=SCAN_SCHEMA, max_tokens=min(4096, 400 + 220 * len(slices)), stage="scan",
     )
     return parse_scan(result.data, sizes), result.estimated_cost_usd

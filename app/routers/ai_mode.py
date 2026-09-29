@@ -95,7 +95,6 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
             raise HTTPException(409, str(exc)) from exc
         finally:
             unbind_cloud_job(bound)
-    await run_in_threadpool(cloud.require_feature, "byok")
     # Resolve the provider and key before downloading anything, so a missing
     # key fails in a second instead of after the chapter was fetched.
     try:

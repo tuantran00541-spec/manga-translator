@@ -5,11 +5,10 @@ from pathlib import Path
 
 import requests
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, field_validator
 
-from app import cloud
 from app.ai_providers import (
     PROVIDERS,
     cloud_job_provider,
@@ -480,11 +479,7 @@ def clear_deepseek_visual_qc_key() -> dict:
     return {"configured": False, "source": "none", "model": DEFAULT_DEEPSEEK_MODEL}
 
 
-async def _visual_qc_plan() -> None:
-    await run_in_threadpool(cloud.require_feature, "visual_qc")
-
-
-@router.post("/inspect", dependencies=[Depends(_visual_qc_plan)])
+@router.post("/inspect")
 async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     manifest = load_manifest_raw(req.chapter_id)
@@ -595,7 +590,6 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
 
 @router.post(
     "/chapter",
-    dependencies=[Depends(_visual_qc_plan)],
     responses={
         400: {"description": "Invalid chapter QC request"},
         409: {"description": "Provider key missing or chapter QC already active"},
@@ -658,7 +652,6 @@ def cancel_chapter_visual_qc(job_id: str) -> dict:
 
 @router.post(
     "/chapter/{job_id}/retry",
-    dependencies=[Depends(_visual_qc_plan)],
     responses={
         400: {"description": "Invalid retry request"},
         404: {"description": "Visual QC job not found"},

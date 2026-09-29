@@ -45,7 +45,7 @@ def read_glossary(provider, model: str, api_key: str, target_name: str, target_l
     language = _VIETNAMESE if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"} else ""
     prompt = GLOSSARY_PROMPT.format(target=target_name, language=language)
     images = [(f"SLICE {index + 1}", image) for index, image in slices]
-    result = request_vision_json(provider, model, api_key, prompt, images, max_tokens=3000)
+    result = request_vision_json(provider, model, api_key, prompt, images, max_tokens=3000, stage="glossary")
     return result.data, result.estimated_cost_usd
 
 

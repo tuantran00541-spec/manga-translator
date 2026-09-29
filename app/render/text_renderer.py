@@ -215,6 +215,7 @@ def render_text_in_box(
     vertical_align: str = "middle",
     source_cap_px: int | None = None,
     enlarge: bool = False,
+    min_source_share: float = 0.0,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -352,6 +353,10 @@ def render_text_in_box(
                 "Translation does not fit at the minimum readable font size; "
                 "shorten the translation or enlarge the text region."
             )
+        if source_cap_px and not enlarge and min_source_share:
+            from app.render.source_size import matching_font_px
+            if actual_size < min_source_share * matching_font_px(font_path_str, int(source_cap_px)):
+                raise ValueError("Translation fits only well below the source letter size")
         font = get_font_object(font_path_str, actual_size)
 
     shape = str(shape or "").lower()
