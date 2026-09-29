@@ -186,6 +186,6 @@ def scan_slices(
     images = [(f"SLICE {index}", _thumbnail(image)) for index, image in slices]
     result = request_vision_json(
         provider, model, api_key, SCAN_PROMPT, images,
-        schema=SCAN_SCHEMA, max_tokens=min(4096, 400 + 220 * len(slices)),
+        schema=SCAN_SCHEMA, max_tokens=min(4096, 400 + 220 * len(slices)), stage="scan",
     )
     return parse_scan(result.data, sizes), result.estimated_cost_usd

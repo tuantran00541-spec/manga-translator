@@ -86,3 +86,34 @@ def test_cache_hits_are_billed_at_the_cached_price():
     billed = Upstream("b", "k", "m", 1.0, 2.0, cached_usd_per_m=0.02).cost(usage)
     assert billed == (200 * 1.0 + 800 * 0.02 + 100 * 2.0) / 1_000_000
     assert Upstream("b", "k", "m", 1.0, 2.0).cost(usage) == (1000 * 1.0 + 100 * 2.0) / 1_000_000
+
+
+def test_each_checkpoint_has_its_model_and_an_overloaded_one_hands_over_at_once(monkeypatch):
+    from gateway.app import Route, upstream_from_env
+
+    monkeypatch.setenv("GATEWAY_STAGE_MODELS", '[{"stage": "review", "model": "muse", "price": [0.1, 0.2]},'
+                                               ' {"stage": "review", "model": "mimo", "price": [0.15, 0.3]}]')
+    upstream = upstream_from_env()
+    assert [route.model for route in upstream.chain("review")] == ["muse", "mimo"]
+    assert upstream.chain("scan") == [upstream.default], "a checkpoint without its own models uses the default"
+    sent, slept = [], []
+    monkeypatch.setattr(gateway_app.requests, "post", lambda url, **kwargs: sent.append(kwargs["json"]["model"]) or (
+        _Response(503) if len(sent) == 1 else _Response(200, {"ok": True})))
+    monkeypatch.setattr(gateway_app.time, "sleep", slept.append)
+    trace: dict = {}
+    assert upstream.send({"model": "muse"}, trace, ["muse", "mimo"])[0] == 200
+    assert sent == ["muse", "mimo"] and not slept and trace["model"] == "mimo"
+    assert upstream.cost({"prompt_tokens": 1_000_000}, "mimo") == Route("mimo", 0.15, 0.3).cost({"prompt_tokens": 1_000_000})
+
+    monkeypatch.setenv("GATEWAY_STAGE_MODELS", '[{"stage": "read", "model": "x", "price": [0, 0]}]')
+    with pytest.raises(ValueError):
+        upstream_from_env()
+
+
+def test_only_manga_cloud_requests_name_their_checkpoint():
+    from app.ai_mode.vision_json import stage_headers
+    from app.ai_providers import PROVIDERS
+    from app.cloud import cloud_provider
+
+    assert stage_headers(cloud_provider(), "review") == {"X-MT-Stage": "review"}
+    assert stage_headers(PROVIDERS["openai"], "review") == {}

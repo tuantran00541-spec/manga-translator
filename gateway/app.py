@@ -65,26 +65,23 @@ class Upstream:
     # Extra attempts after a dropped connection, a timeout, 429 or 5xx.
     retries: int = 2
     retry_wait_s: float = 2.0
-    stages: dict = field(default_factory=dict)  # checkpoint name -> Route that answers it
-    fallbacks: tuple = ()  # Routes tried, in order, when a model is overloaded or failing
+    # Step name -> Routes tried in order; a later one answers when an earlier one is overloaded or failing.
+    stages: dict = field(default_factory=dict)
+    fallbacks: tuple = ()  # the same for requests that name no step
 
     @property
     def default(self) -> Route:
         return Route(self.model, self.input_usd_per_m, self.output_usd_per_m, self.cached_usd_per_m)
 
-    def route(self, stage: str | None) -> Route:
-        return self.stages.get(stage) or self.default
-
     def chain(self, stage: str | None) -> list[Route]:
-        """The stage's model, then each fallback that is a different model."""
-        first = self.route(stage)
-        return [first] + [route for route in self.fallbacks if route.model != first.model]
+        """The step's models in order, or the default model and the general fallbacks."""
+        if self.stages.get(stage):
+            return list(self.stages[stage])
+        return [self.default] + [route for route in self.fallbacks if route.model != self.model]
 
     def priced(self, model: str | None) -> Route:
-        for route in (self.default, *self.stages.values(), *self.fallbacks):
-            if route.model == model:
-                return route
-        return self.default
+        routes = [self.default, *self.fallbacks] + [route for chain in self.stages.values() for route in chain]
+        return next((route for route in routes if route.model == model), self.default)
 
     def cost(self, usage: dict, model: str | None = None) -> float:
         return self.priced(model).cost(usage)
@@ -202,6 +199,15 @@ def _routes_from_env(name: str) -> list[tuple[str | None, Route]]:
     return routes
 
 
+def _stage_chains(routes: list[tuple[str | None, Route]]) -> dict[str, tuple[Route, ...]]:
+    chains: dict[str, list[Route]] = {}
+    for stage, route in routes:
+        if stage is None:
+            raise ValueError("GATEWAY_STAGE_MODELS: every entry names its stage")
+        chains.setdefault(stage, []).append(route)
+    return {stage: tuple(chain) for stage, chain in chains.items()}
+
+
 def upstream_from_env() -> Upstream:
     return Upstream(
         base=os.getenv("GATEWAY_UPSTREAM_BASE", "https://api.deepseek.com"),
@@ -214,7 +220,7 @@ def upstream_from_env() -> Upstream:
         cached_usd_per_m=(float(os.environ["GATEWAY_PRICE_CACHED_PER_M"])
                           if os.getenv("GATEWAY_PRICE_CACHED_PER_M", "").strip() else None),
         retries=max(0, int(os.getenv("GATEWAY_UPSTREAM_RETRIES", "2") or 0)),
-        stages={stage: route for stage, route in _routes_from_env("GATEWAY_STAGE_MODELS")},
+        stages=_stage_chains(_routes_from_env("GATEWAY_STAGE_MODELS")),
         fallbacks=tuple(route for _stage, route in _routes_from_env("GATEWAY_FALLBACK_MODELS")),
     )
 

@@ -8,6 +8,7 @@ from pathlib import Path
 import cv2
 import requests
 
+from app.ai_mode.vision_json import stage_headers
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
@@ -320,7 +321,8 @@ class VisionPageTranslator:
         try:
             response = requests.post(
                 url,
-                headers={"Authorization": f"Bearer {api_key.strip()}", "Content-Type": "application/json"},
+                headers={"Authorization": f"Bearer {api_key.strip()}", "Content-Type": "application/json",
+                         **stage_headers(self.provider, "translate")},
                 json=payload,
                 timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
                 allow_redirects=False,
