@@ -67,13 +67,7 @@ jobs:
           test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha_text_1280.onnx
 
       - name: Process the whole chapter
-        run: |
-          python -m pip install py-spy==0.4.0
-          mkdir -p audit-results/chapter-run
-          sudo -E env "PATH=$PATH" "PYTHONPATH=$PYTHONPATH" "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" \
-            py-spy record --rate 20 --format raw --output audit-results/chapter-run/profile.txt \
-            -- python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run
-          test -f audit-results/chapter-run/report.json
+        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run
 
       - name: Save evidence to audit-evidence
         if: always()
