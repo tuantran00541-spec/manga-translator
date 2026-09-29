@@ -1,0 +1,45 @@
+# Manga Cloud gateway behind Caddy (HTTPS). Run from this folder: docker compose up -d --build
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/gateway.Dockerfile
+    env_file: gateway.env
+    environment:
+      # Only Caddy may tell the gateway who the client is.
+      GATEWAY_TRUSTED_PROXIES: 172.30.0.2
+    volumes:
+      - gateway-data:/data
+    networks:
+      edge:
+        ipv4_address: 172.30.0.3
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      GATEWAY_DOMAIN: ${GATEWAY_DOMAIN:?set GATEWAY_DOMAIN, e.g. cloud.example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      edge:
+        ipv4_address: 172.30.0.2
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  gateway-data:
+  caddy-data:
+  caddy-config:
