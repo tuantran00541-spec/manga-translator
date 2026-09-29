@@ -39,7 +39,8 @@ def stage_seconds(manifest: dict) -> dict:
         detector, inpaint = metrics.get("detector") or {}, metrics.get("auto_inpaint") or {}
         add("text_model_ms", detector.get("text_model_ms"))
         add("second_pass_boxes", detector.get("second_pass_boxes"))
-        for name in ("lama_model_ms", "lama_model_runs", "session_lock_wait_ms", "ort_global_lock_wait_ms"):
+        for name in ("lama_model_ms", "lama_model_runs", "lama_regions", "smart_fill_regions",
+                     "session_lock_wait_ms", "ort_global_lock_wait_ms"):
             add(name, inpaint.get(name))
     run = manifest.get("last_processing_run") or {}
     for name, value in (run.get("shared_seam") or {}).items():
