@@ -167,21 +167,26 @@ def _reach_cut_letters(image: np.ndarray, first: tuple[int, int, int, int], step
     return (nx1, ny1, nx2, ny2), seed[ny1 - by1:ny2 - by1, nx1 - bx1:nx2 - bx1]
 
 
-def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], np.ndarray]:
-    """Padded box, grown over letters its edge cuts, and the erase mask of its letters, outline and glow."""
+def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_letters: bool = False):
+    """Padded box, grown over letters its edge cuts, and the erase mask of its letters, outline and glow.
+
+    ``with_letters`` also returns the letters alone, which show where the lines of text are.
+    """
     x1, y1, x2, y2 = box
     h, w = image.shape[:2]
     pad = max(8, int((y2 - y1) * PAD_SHARE))
     first = (max(0, x1 - pad), max(0, y1 - pad), min(w, x2 + pad), min(h, y2 + pad))
     if min(first[2] - first[0], first[3] - first[1]) < 8:
-        return first, np.zeros((max(0, first[3] - first[1]), max(0, first[2] - first[0])), bool)
+        empty = np.zeros((max(0, first[3] - first[1]), max(0, first[2] - first[0])), bool)
+        return (first, empty, empty) if with_letters else (first, empty)
     (bx1, by1, bx2, by2), seed = _reach_cut_letters(image, first, pad)
     crop = image[by1:by2, bx1:bx2]
     ex1, ey1, ex2, ey2 = max(0, bx1 - RING), max(0, by1 - RING), min(w, bx2 + RING), min(h, by2 + RING)
     ring = np.ones((ey2 - ey1, ex2 - ex1), bool)
     ring[by1 - ey1:by2 - ey1, bx1 - ex1:bx2 - ex1] = False
     bg = cv2.cvtColor(image[ey1:ey2, ex1:ex2], cv2.COLOR_BGR2LAB)[ring]
-    return (bx1, by1, bx2, by2), grow(crop, seed, bg, int(text_size(seed) * REACH))
+    grown = grow(crop, seed, bg, int(text_size(seed) * REACH))
+    return ((bx1, by1, bx2, by2), grown, seed) if with_letters else ((bx1, by1, bx2, by2), grown)
 
 
 def still_reads(clean: np.ndarray, box: tuple[int, int, int, int]) -> bool:

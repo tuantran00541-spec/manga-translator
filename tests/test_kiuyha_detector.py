@@ -207,3 +207,35 @@ def test_a_line_box_inside_a_block_box_is_not_a_second_text():
 
 
 
+
+
+class _WholeSession(_Session):
+    """One box over the whole of the given rectangle, as the model returns for a staircase of captions."""
+
+    def __init__(self, rect):
+        super().__init__([1, 3, 1280, 1280])
+        self.rect = rect
+
+    def run(self, _names, feeds):
+        self.blobs.append(feeds["images"])
+        rows = np.zeros((1, 300, 6), np.float32)
+        rows[0, 0] = [*self.rect, 0.9, 0]
+        return [rows]
+
+
+def test_two_captions_in_a_staircase_of_boxes_become_two_texts():
+    # Shadow Slave 1, slice 51: one box took both captions, so one translation ran across the black between them.
+    image = np.full((1280, 1280, 3), 150, np.uint8)  # the art round the boxes, lighter than the fake model's ink
+    image[100:560, 40:760] = 255
+    image[520:1000, 380:1240] = 255
+    for i, line in enumerate(("IT LOOKED LIKE AN", "ILLNESS THAT CAUSED", "CONSTANT FATIGUE")):
+        cv2.putText(image, line, (120, 220 + 70 * i), cv2.FONT_HERSHEY_DUPLEX, 1.4, (0, 0, 0), 3)
+    for i, line in enumerate(("BUT WHEN ITS VICTIMS", "BEGAN FALLING INTO", "AN ENDLESS SLUMBER")):
+        cv2.putText(image, line, (470, 680 + 70 * i), cv2.FONT_HERSHEY_DUPLEX, 1.4, (0, 0, 0), 3)
+    boxes = KiuyhaTextDetector("unused", session=_WholeSession((40, 100, 1240, 1000))).text_boxes(image)
+    boxes.sort(key=lambda b: b.y1)
+    assert len(boxes) == 2
+    assert boxes[0].x2 <= 760 and boxes[0].y2 <= 560, "the first caption stays in its own box"
+    assert boxes[1].x1 >= 380 and boxes[1].y1 >= 520, "the second caption stays in its own box"
+    for box in boxes:
+        assert box.mask.shape == (box.y2 - box.y1, box.x2 - box.x1) and box.mask.any()
