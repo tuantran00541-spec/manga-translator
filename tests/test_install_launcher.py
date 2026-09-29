@@ -140,6 +140,7 @@ def test_every_runtime_installer_outcome_gets_a_clear_answer(code, outcome, monk
 
     monkeypatch.setattr(vc_runtime.urllib.request, "urlretrieve", lambda url, path: Path(path).write_bytes(b"x"))
     monkeypatch.setattr(vc_runtime.subprocess, "run", lambda args: _Ran(code))
+    monkeypatch.setattr(vc_runtime, "signed_by_microsoft", lambda path: True)
     monkeypatch.setattr(vc_runtime, "problems", lambda: [])
     if code in vc_runtime.OK_CODES:
         assert outcome in vc_runtime.install()
@@ -153,6 +154,7 @@ def test_a_runtime_that_is_still_missing_after_installing_is_reported(monkeypatc
 
     monkeypatch.setattr(vc_runtime.urllib.request, "urlretrieve", lambda url, path: Path(path).write_bytes(b"x"))
     monkeypatch.setattr(vc_runtime.subprocess, "run", lambda args: _Ran(0))
+    monkeypatch.setattr(vc_runtime, "signed_by_microsoft", lambda path: True)
     monkeypatch.setattr(vc_runtime, "problems", lambda: ["msvcp140.dll (thiếu)"])
     with pytest.raises(RuntimeError, match="Khởi động lại máy"):
         vc_runtime.install()
@@ -262,3 +264,39 @@ def test_messages_survive_a_windows_cp1252_pipe(monkeypatch):
     print("Đang tải bản mới")
     pipe.flush()
     assert raw.getvalue() == b"?ang t?i b?n m?i\n"
+
+
+def test_an_unsigned_runtime_installer_is_never_run(monkeypatch):
+    from app import vc_runtime
+
+    ran = []
+    monkeypatch.setattr(vc_runtime.urllib.request, "urlretrieve", lambda url, path: Path(path).write_bytes(b"x"))
+    monkeypatch.setattr(vc_runtime, "signed_by_microsoft", lambda path: False)
+    monkeypatch.setattr(vc_runtime.subprocess, "run", lambda args: ran.append(args) or _Ran(0))
+    with pytest.raises(RuntimeError, match="chữ ký"):
+        vc_runtime.install()
+    assert ran == []
+
+
+@pytest.mark.parametrize("output, code, ok", [
+    ("Valid|CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US", 0, True),
+    ("Valid|CN=Evil Corp, O=Evil Corp", 0, False),
+    ("HashMismatch|CN=Microsoft Corporation, O=Microsoft Corporation", 0, False),
+    ("NotSigned|", 0, False),
+    ("", 1, False),
+])
+def test_only_a_valid_microsoft_signature_passes(output, code, ok, monkeypatch):
+    from app import vc_runtime
+
+    class Result:
+        stdout, returncode = output, code
+
+    seen = {}
+    monkeypatch.setattr(vc_runtime.subprocess, "run", lambda args, **kw: seen.update(kw) or Result())
+    assert vc_runtime.signed_by_microsoft(Path("C:/t/vc.exe")) is ok
+    assert seen["env"]["MANGA_VC_FILE"] == str(Path("C:/t/vc.exe")), "the path is passed as data, not as script"
+
+
+def test_downloads_refuse_anything_but_https(tmp_path):
+    with pytest.raises(ValueError):
+        install.download("http://example.invalid/m.onnx", tmp_path / "m.onnx", None)

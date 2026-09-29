@@ -65,6 +65,8 @@ async function setWorkflowCheckpoint(stage, pageIndex) {
   try {
     const resp = await fetch("/api/workflow_checkpoint", {
       method: "POST",
+      // keepalive lets the save finish when the page is being left or reloaded.
+      keepalive: true,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chapter_id: chapterId,
@@ -94,9 +96,13 @@ async function setWorkflowCheckpoint(stage, pageIndex) {
       _lastCheckpointStage = null;
       _lastCheckpointPage = null;
     }
-    console.error("Workflow checkpoint save failed:", err);
+    if (!_pageLeaving) console.error("Workflow checkpoint save failed:", err);
   }
 }
+// A request cut off by leaving the page is not an error worth reporting.
+let _pageLeaving = false;
+window.addEventListener("pagehide", () => { _pageLeaving = true; });
+window.addEventListener("pageshow", () => { _pageLeaving = false; });
 window.setWorkflowCheckpoint = setWorkflowCheckpoint;
 
 function appendText(parent, tag, className, text) {

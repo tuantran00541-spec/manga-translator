@@ -66,6 +66,8 @@ def download(url: str, path: Path, expected: str | None, attempts: int = 4) -> N
     """Fetch ``url`` to ``path`` unless a file is there, resuming broken downloads and refusing a wrong hash."""
     if path.is_file():
         return
+    if not url.startswith("https://"):
+        raise ValueError(f"only https downloads are allowed: {url}")
     part = path.with_name(path.name + ".part")
     print(f"    {url}", flush=True)
     for attempt in range(1, attempts + 1):

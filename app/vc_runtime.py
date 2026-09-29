@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import shutil
 import subprocess
 import tempfile
 import urllib.request
@@ -58,17 +59,37 @@ def problems(folder: Path | None = None, version_of=file_version) -> list[str]:
     return found
 
 
+SIGNER = "O=Microsoft Corporation"
+# Reads the file's Authenticode signature; the path comes in through the environment, never inside the command.
+_SIGNATURE_PS = ("$s = Get-AuthenticodeSignature -LiteralPath $env:MANGA_VC_FILE; "
+                 "Write-Output ('{0}|{1}' -f $s.Status, $s.SignerCertificate.Subject)")
+
+
+def signed_by_microsoft(path: Path) -> bool:
+    """True only for a file with a valid Authenticode signature from Microsoft Corporation."""
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", _SIGNATURE_PS],
+        capture_output=True, text=True, env={**os.environ, "MANGA_VC_FILE": str(path)},
+    )
+    status, _, subject = result.stdout.strip().partition("|")
+    return result.returncode == 0 and status == "Valid" and SIGNER in subject
+
+
 def install() -> str:
-    """Download and run the official installer; returns a note for the user, raises RuntimeError on failure."""
-    target = Path(tempfile.gettempdir()) / "vc_redist.x64.exe"
+    """Download, verify and run the official installer; returns a note for the user, raises RuntimeError on failure."""
+    folder = Path(tempfile.mkdtemp(prefix="manga-vc-"))  # unpredictable, so nothing can be planted in its place
+    target = folder / "vc_redist.x64.exe"
     try:
-        urllib.request.urlretrieve(REDIST_URL, target)
-    except OSError as exc:
-        raise RuntimeError(f"Không tải được Visual C++ Runtime ({exc}). Tải tay tại {REDIST_URL}, cài rồi chạy lại.") from exc
-    try:
+        try:
+            urllib.request.urlretrieve(REDIST_URL, target)  # a fixed https URL
+        except OSError as exc:
+            raise RuntimeError(f"Không tải được Visual C++ Runtime ({exc}). Tải tay tại {REDIST_URL}, cài rồi chạy lại.") from exc
+        if not signed_by_microsoft(target):
+            raise RuntimeError("Bộ cài Visual C++ tải về không có chữ ký hợp lệ của Microsoft nên không chạy. "
+                               f"Tải tay tại {REDIST_URL}.")
         code = subprocess.run([str(target), "/install", "/passive", "/norestart"]).returncode
     finally:
-        target.unlink(missing_ok=True)
+        shutil.rmtree(folder, ignore_errors=True)
     if code == CANCELLED:
         raise RuntimeError("Bạn đã từ chối quyền admin. Chạy lại và bấm Yes, hoặc tự cài từ " + REDIST_URL)
     if code not in OK_CODES:
