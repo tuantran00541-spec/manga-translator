@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import functools
 import json
 import re
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 
 from fastapi import HTTPException
@@ -51,6 +53,8 @@ RETRY_ROUNDS = 3
 RENDER_RESTORE_ATTEMPTS = 3
 RENDER_FAILED_OBJECT = re.compile(r"\(vùng ([\w-]+)\)")
 POLL_SECONDS = 1.0
+# A.I calls wait on the network, so they get their own threads instead of queueing behind re-inpaints.
+_AI_CALLS = ThreadPoolExecutor(max_workers=16, thread_name_prefix="ai-mode-call")
 MAX_RETAINED_JOBS = 16
 MAX_REPORT_ITEMS = 50
 
@@ -97,6 +101,11 @@ def _detail(exc: Exception) -> str:
     return str(exc) or type(exc).__name__
 
 
+async def _ai_call(fn, *args):
+    """Run a blocking A.I call on the A.I thread pool."""
+    return await asyncio.get_running_loop().run_in_executor(_AI_CALLS, functools.partial(fn, *args))
+
+
 def _append(items: list, value) -> None:
     if len(items) < MAX_REPORT_ITEMS:
         items.append(value)
@@ -121,6 +130,9 @@ class AIModeRunner:
         })
         self._memory = None
         self._glossary_task: asyncio.Task | None = None
+        self._review_queue: asyncio.Queue | None = None
+        self._review_task: asyncio.Task | None = None
+        self._review_spill: dict[int, dict[str, list]] = {}
         self._slice_total: int | None = None
 
     # -- bookkeeping ---------------------------------------------------------
@@ -128,8 +140,8 @@ class AIModeRunner:
         if self.job.cancel_requested:
             raise AIModeCancelled()
 
-    def _progress(self, done: int, total: int, detail: str | None = None) -> None:
-        state = self.job.stages[self.job.stage]
+    def _progress(self, done: int, total: int, detail: str | None = None, stage: str | None = None) -> None:
+        state = self.job.stages[stage or self.job.stage]
         state["done"], state["total"] = int(done), int(total)
         if detail is not None:
             state["detail"] = detail
@@ -178,14 +190,15 @@ class AIModeRunner:
         active = [index for index, page in enumerate(pages) if not page.get("skipped")]
         batches = [active[i:i + SCAN_BATCH_SIZE] for i in range(0, len(active), SCAN_BATCH_SIZE)]
         scans = []
-        async def scan_images(batch: list[int]) -> None:
+        def scan_call(batch: list[int]):
             images = [
                 (index, read_image(validate_managed_path(pages[index]["original"], RAW_DIR / chapter_id)))
                 for index in batch
             ]
-            found, cost = await asyncio.to_thread(
-                scan_slices, self.provider, self.settings.model, self.api_key, images,
-            )
+            return scan_slices(self.provider, self.settings.model, self.api_key, images)
+
+        async def scan_images(batch: list[int]) -> None:
+            found, cost = await _ai_call(scan_call, batch)
             self._add_cost(cost)
             scans.extend(found)
 
@@ -273,16 +286,29 @@ class AIModeRunner:
             self.job.chapter_id, page_indices=indices, workers=self.settings.workers,
         )
         job_id = snapshot["job_id"]
-        while True:
-            snapshot = chapter_processing_jobs.snapshot(job_id)
-            self._progress(snapshot["completed"], snapshot["total"])
-            if snapshot["status"] in {"completed", "failed"}:
-                break
-            await asyncio.sleep(POLL_SECONDS)
-        if snapshot["status"] == "failed":
-            errors = "; ".join(str(item.get("message")) for item in snapshot.get("errors") or [])
-            raise AIModeFailed(f"Clean thất bại: {errors or 'lỗi không rõ'}")
-        self._check_cancel()
+        # Checkpoint 3 starts on each slice as soon as it is clean, so its A.I calls overlap the cleanup.
+        self._start_review(len(indices))
+        wanted, fed = set(indices), 0
+        try:
+            while True:
+                snapshot = chapter_processing_jobs.snapshot(job_id)
+                self._progress(snapshot["completed"], snapshot["total"])
+                done = snapshot.get("done_indices") or []
+                for page_index in done[fed:]:
+                    if page_index in wanted:
+                        self._review_queue.put_nowait(page_index)
+                fed = len(done)
+                if snapshot["status"] in {"completed", "failed"}:
+                    break
+                await asyncio.sleep(POLL_SECONDS)
+            if snapshot["status"] == "failed":
+                errors = "; ".join(str(item.get("message")) for item in snapshot.get("errors") or [])
+                raise AIModeFailed(f"Clean thất bại: {errors or 'lỗi không rõ'}")
+            self._check_cancel()
+        except BaseException:
+            self._review_task.cancel()
+            raise
+        self._review_queue.put_nowait(None)
 
     async def _read_glossary(self, indices: list[int]) -> dict:
         """Names, terms and forms of address for the whole chapter; empty when the read fails."""
@@ -292,16 +318,18 @@ class AIModeRunner:
         pages = self._manifest().get("pages", [])
         gate = asyncio.Semaphore(SCAN_CONCURRENCY)
 
+        def read_batch(batch: list[int]):
+            images = [(index, read_image(validate_managed_path(pages[index]["original"], RAW_DIR / self.job.chapter_id)))
+                      for index in batch]
+            return read_glossary(self.provider, self.settings.model, self.api_key,
+                                 _language_name(self.settings.target_lang), self.settings.target_lang, images)
+
         async def read(batch: list[int]) -> dict:
             async with gate:
                 if self.job.cancel_requested:
                     return {}
                 try:
-                    images = [(index, read_image(validate_managed_path(pages[index]["original"], RAW_DIR / self.job.chapter_id)))
-                              for index in batch]
-                    data, cost = await asyncio.to_thread(
-                        read_glossary, self.provider, self.settings.model, self.api_key,
-                        _language_name(self.settings.target_lang), self.settings.target_lang, images)
+                    data, cost = await _ai_call(read_batch, batch)
                 except (RuntimeError, ValueError, OSError) as exc:
                     _append(self.report["translate_errors"], f"Bảng thuật ngữ lát {batch[0] + 1}: {_detail(exc)[:150]}")
                     return {}
@@ -355,16 +383,30 @@ class AIModeRunner:
         return [(int(b["x1"]), int(b["y1"]), int(b["x2"]), int(b["y2"])) for b in boxes
                 if isinstance(b, dict) and not b.get("removed") and all(k in b for k in ("x1", "y1", "x2", "y2"))]
 
-    async def review(self) -> None:
-        """Checkpoint 3: the model compares each raw and clean slice; the system applies what it reports."""
+    def _start_review(self, total: int) -> None:
+        """Start checkpoint 3 as a queue: each slice put on it is checked; None ends it."""
+        self._review_queue = asyncio.Queue()
+        self._review_spill = {}
+        self._review_task = asyncio.create_task(self._review_stream(total))
+
+    async def _review_stream(self, total: int) -> None:
         from app.dependencies import pipeline
 
         chapter_id = self.job.chapter_id
-        indices = self._active_pages()
         gate = asyncio.Semaphore(REVIEW_CONCURRENCY)
         finished = 0
+        spill = self._review_spill  # fixes crossing a slice cut, for the neighbouring slice
 
-        spill: dict[int, dict[str, list]] = {}  # fixes crossing a slice cut, for the neighbouring slice
+        def check(page_index: int):
+            """Ask the model about one slice and keep what applies to it; manifest reads stay off the event loop."""
+            original, clean = self._images(page_index, "clean", PROCESSED_DIR)
+            found, cost = review_clean(self.provider, self.settings.model, self.api_key, page_index, original, clean)
+            found = settle_clean_review(found, self._page_boxes(page_index))
+            crossing: dict[int, dict[str, list]] = {}
+            found = replace(found, missed=self._in_core(page_index, found.missed, crossing, "missed"),
+                            residue=self._in_core(page_index, found.residue, crossing, "residue"),
+                            restore=self._in_core(page_index, found.restore))
+            return found, cost, crossing
 
         async def review_one(page_index: int) -> None:
             nonlocal finished
@@ -374,14 +416,11 @@ class AIModeRunner:
                     remaining = self._remaining_budget()
                     if self.job.cancel_requested or (remaining is not None and remaining < 0.001):
                         return
-                    original, clean = await asyncio.to_thread(self._images, page_index, "clean", PROCESSED_DIR)
-                    found, cost = await asyncio.to_thread(
-                        review_clean, self.provider, self.settings.model, self.api_key, page_index, original, clean)
+                    found, cost, crossing = await _ai_call(check, page_index)
                     self._add_cost(cost)
-                found = settle_clean_review(found, self._page_boxes(page_index))
-                found = replace(found, missed=self._in_core(page_index, found.missed, spill, "missed"),
-                                residue=self._in_core(page_index, found.residue, spill, "residue"),
-                                restore=self._in_core(page_index, found.restore))
+                for other, kinds in crossing.items():
+                    for kind, boxes in kinds.items():
+                        spill.setdefault(other, {}).setdefault(kind, []).extend(boxes)
                 if found.restore or found.missed or found.residue:
                     await asyncio.to_thread(
                         pipeline.apply_review_fixes, chapter_id, page_index,
@@ -395,11 +434,32 @@ class AIModeRunner:
                 _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
             finally:
                 finished += 1
-                self._progress(finished, len(indices))
+                self._progress(finished, total, stage="review")
 
-        self._progress(0, len(indices))
-        await asyncio.gather(*(review_one(page_index) for page_index in indices))
-        for page_index, fixes in spill.items():
+        self._progress(0, total, stage="review")
+        tasks = []
+        try:
+            while (page_index := await self._review_queue.get()) is not None:
+                tasks.append(asyncio.create_task(review_one(page_index)))
+            await asyncio.gather(*tasks)
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            raise
+
+    async def review(self) -> None:
+        """Checkpoint 3: the model compares each raw and clean slice; the system applies what it reports."""
+        from app.dependencies import pipeline
+
+        chapter_id = self.job.chapter_id
+        indices = self._active_pages()
+        if self._review_task is None:  # the cleanup did not feed it, so every slice is checked now
+            self._start_review(len(indices))
+            for page_index in indices:
+                self._review_queue.put_nowait(page_index)
+            self._review_queue.put_nowait(None)
+        await self._review_task
+        for page_index, fixes in self._review_spill.items():
             # The neighbour may already hold that text as its own box.
             existing = self._page_boxes(page_index)
             missed = [box for box in fixes.get("missed", []) if not _covered(box, existing)]

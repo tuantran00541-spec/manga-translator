@@ -304,6 +304,54 @@ def test_review_stage_applies_each_slice_in_one_pass_without_duplicating_boxes(m
     assert (runner.report["kept_regions"], runner.report["missed_added"], runner.report["repainted_regions"]) == (1, 1, 2)
 
 
+def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
+    import app.routers.chapters as chapters_router
+    from app.ai_mode.checkpoints import CleanReview
+
+    runner = _runner(monkeypatch, "clean", {"pages": [{}, {}, {}]})
+    runner.job.stages["review"] = {"done": 0, "total": 0, "detail": ""}
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1, 2])
+    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.zeros((10, 10, 3)), np.zeros((10, 10, 3))))
+
+    async def no_glossary(indices):
+        return {}
+
+    monkeypatch.setattr(runner, "_read_glossary", no_glossary)
+    monkeypatch.setattr(ai_job, "POLL_SECONDS", 0)
+    # Slice 2 is clean first; the cleanup of 0 and 1 only goes on once slice 2 has been reviewed.
+    state = {"done": [2], "status": "running", "polls": 0}
+    reviewed_while_cleaning = []
+
+    class Jobs:
+        def start(self, chapter_id, page_indices, workers):
+            return {"job_id": "clean"}
+
+        def snapshot(self, job_id):
+            state["polls"] += 1
+            assert state["polls"] < 100_000, "slice 2 was never reviewed during the cleanup"
+            if any(index == 2 for index, _ in reviewed_while_cleaning):
+                state["done"], state["status"] = [2, 0, 1], "completed"
+            return {"status": state["status"], "completed": len(state["done"]), "total": 3,
+                    "done_indices": list(state["done"]), "errors": []}
+
+    def review_clean(provider, model, key, index, a, b):
+        reviewed_while_cleaning.append((index, state["status"] == "running"))
+        return CleanReview(index), None
+
+    monkeypatch.setattr(chapters_router, "chapter_processing_jobs", Jobs())
+    monkeypatch.setattr(ai_job, "review_clean", review_clean)
+
+    async def scenario():
+        await runner.clean()
+        runner.job.stage = "review"
+        await runner.review()
+
+    asyncio.run(scenario())
+    assert sorted(index for index, _ in reviewed_while_cleaning) == [0, 1, 2], "every slice is reviewed once"
+    assert (2, True) in reviewed_while_cleaning, "review overlaps the cleanup"
+    assert runner.job.stages["review"]["done"] == 3
+
+
 def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch):
     from app.dependencies import pipeline
 

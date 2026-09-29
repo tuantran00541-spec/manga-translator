@@ -26,6 +26,7 @@ class ChapterProcessingJob:
     workers: int
     status: str = "pending"
     completed: int = 0
+    done_indices: list[int] = field(default_factory=list)
     current_batch: list[int] = field(default_factory=list)
     errors: list[dict] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
@@ -131,6 +132,7 @@ class ChapterProcessingJobManager:
                     if index in completed_indices:
                         return
                     completed_indices.add(index)
+                    job.done_indices.append(index)
                     job.completed = min(len(completed_indices), total)
                     job.updated_at = time.time()
 
@@ -207,6 +209,8 @@ class ChapterProcessingJobManager:
             "total": total,
             "completed": min(job.completed, total),
             "remaining": max(0, total - job.completed),
+            # Pages in the order they finished, so a caller can start on each one at once.
+            "done_indices": list(job.done_indices),
             "current_batch": list(job.current_batch),
             "errors": list(job.errors),
             "created_at": job.created_at,
