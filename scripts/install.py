@@ -339,4 +339,12 @@ def main(argv: list[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except subprocess.CalledProcessError as exc:
+        # The failing tool has already printed why; a Python traceback on top only hides it.
+        name = Path(str(exc.cmd[0])).name if exc.cmd else "?"
+        sys.exit(f"\nBước vừa rồi bị lỗi ({name}, mã {exc.returncode}). Chạy lại lệnh cài; "
+                 "nếu vẫn lỗi, gửi đoạn chữ phía trên để được hỗ trợ.")
+    except KeyboardInterrupt:
+        sys.exit("\nĐã dừng. Chạy lại lệnh cài để tiếp tục từ chỗ dở.")
