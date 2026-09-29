@@ -206,18 +206,25 @@ The image path accepts up to **100,000,000 decoded pixels** per image.
 
 ### Install
 
+Install once:
+
+- **Windows:** double-click `install.bat` (or run it in cmd).
+- **Linux / macOS:** `./install.sh`
+
+It makes a private Python environment in `.venv`, installs the dependencies and Chromium, downloads the LaMa model, builds `ctd_seg.onnx`, and adds a `manga` command. The first run takes a while (a few GB of packages); model files already in `models/` are kept.
+
+Then open any **new** cmd or terminal window:
+
 ~~~bash
-git clone https://github.com/tuantran00541-spec/manga-translator.git
-cd manga-translator
+manga          # starts the app and opens it in the browser (or just opens it if it is already running)
+manga update   # pulls the latest version and installs what changed
+~~~
 
+Manual install, if you prefer:
+
+~~~bash
 python -m venv .venv
-
-# Linux / macOS
-source .venv/bin/activate
-
-# Windows PowerShell
-.\.venv\Scripts\Activate.ps1
-
+# Linux / macOS: source .venv/bin/activate    Windows: .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 playwright install chromium
 ~~~
@@ -246,7 +253,8 @@ and checks the ONNX boxes against the original model. See
 ### Run
 
 ~~~bash
-python run.py
+manga             # after the installer
+python run.py     # from an activated environment
 ~~~
 
 Open:
