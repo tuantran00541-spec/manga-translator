@@ -7,7 +7,7 @@ import pytest
 from ctd_fake import InkModel
 
 from app.detector import ctd_mask
-from app.detector.kiuyha_detector import KiuyhaTextDetector
+from app.detector.kiuyha_detector import KiuyhaTextDetector, _split_blocks, _text_box
 
 
 @pytest.fixture(autouse=True)
@@ -239,3 +239,18 @@ def test_two_captions_in_a_staircase_of_boxes_become_two_texts():
     assert boxes[1].x1 >= 380 and boxes[1].y1 >= 520, "the second caption stays in its own box"
     for box in boxes:
         assert box.mask.shape == (box.y2 - box.y1, box.x2 - box.x1) and box.mask.any()
+
+
+def test_split_texts_keep_plain_int_coordinates():
+    # Shadow Slave 1: a gap under two lines put the numpy mid-gap row into the box, which JSON cannot save.
+    letters = np.zeros((200, 300), bool)
+    for top in (10, 40):
+        letters[top:top + 20, 10:150] = True
+    for top in (92, 122):
+        letters[top:top + 20, 140:290] = True
+    box = _text_box(5, 7, 305, 207, 0.9, letters.copy(), "kiuyha", letters)
+    pieces = _split_blocks(box)
+    assert len(pieces) == 2
+    for piece in pieces:
+        assert all(type(v) is int for v in (piece.x1, piece.y1, piece.x2, piece.y2)), "coordinates stay JSON-safe"
+

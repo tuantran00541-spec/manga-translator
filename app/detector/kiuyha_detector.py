@@ -147,7 +147,7 @@ def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
     pieces = []
     for (top, bottom), band_top, band_bottom in zip(blocks, cuts, cuts[1:]):
         cols = np.flatnonzero(letters[top:bottom].any(axis=0))
-        y1, y2 = max(band_top, int(top) - reach), min(band_bottom, int(bottom) + reach)
+        y1, y2 = max(int(band_top), int(top) - reach), min(int(band_bottom), int(bottom) + reach)
         x1, x2 = max(0, int(cols[0]) - reach), min(letters.shape[1], int(cols[-1]) + 1 + reach)
         pieces.append(_text_box(box.x1 + x1, box.y1 + y1, box.x1 + x2, box.y1 + y2, box.confidence,
                                 np.ascontiguousarray(box.mask[y1:y2, x1:x2]), box.source_model, letters[y1:y2, x1:x2]))
