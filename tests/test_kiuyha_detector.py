@@ -254,3 +254,25 @@ def test_split_texts_keep_plain_int_coordinates():
     for piece in pieces:
         assert all(type(v) is int for v in (piece.x1, piece.y1, piece.x2, piece.y2)), "coordinates stay JSON-safe"
 
+
+
+def test_a_stray_mark_by_a_bubble_text_stays_in_its_box():
+    # Shadow Slave 1, slice 111: a scrap of the bubble edge beside the text became a text of its own with nothing to read.
+    letters = np.zeros((300, 400), bool)
+    letters[5:25, 330:380] = True
+    for top in (80, 110, 140):
+        letters[top:top + 20, 40:360] = True
+    letters[230:250, 50:110] = True
+    box = _text_box(0, 0, 400, 300, 0.9, letters.copy(), "kiuyha", letters)
+    assert len(_split_blocks(box)) == 1
+
+
+def test_drawn_letters_under_a_text_are_not_a_second_text():
+    # Shadow Slave 1, slice 69: strokes of a drawn sound effect were cut out as texts and erased.
+    letters = np.zeros((400, 400), bool)
+    for top in (10, 40, 70):
+        letters[top:top + 20, 20:320] = True
+    for top in (170, 280):
+        letters[top:top + 70, 150:400] = True
+    box = _text_box(0, 0, 400, 400, 0.9, letters.copy(), "kiuyha", letters)
+    assert len(_split_blocks(box)) == 1

@@ -27,6 +27,7 @@ from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD
 from app.region_policy import subtract_regions_from_mask
 
+STROKE_BOX_MAX_SHARE = 0.4  # a found box grown past this share of the slice has run into the art
 
 _TEXT_OBJECT_STYLE_KEYS = {
     "color", "font", "fontSize", "bold",
@@ -87,7 +88,9 @@ def _stroke_box(image: np.ndarray, rect: tuple[int, int, int, int]) -> dict:
     from app.image_io import encode_mask
 
     grown, mask = letter_mask(image, rect)
-    if not mask.any():
+    # Growing over most of the slice means the letters ran into glowing art; keep the asked rectangle then.
+    too_big = (grown[2] - grown[0]) * (grown[3] - grown[1]) > STROKE_BOX_MAX_SHARE * image.shape[0] * image.shape[1]
+    if too_big or not mask.any():
         grown, mask = rect, None
     return {"id": new_box_id(), "origin": "manual", "x1": int(grown[0]), "y1": int(grown[1]),
             "x2": int(grown[2]), "y2": int(grown[3]), "confidence": 1.0, "manual": True,

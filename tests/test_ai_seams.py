@@ -257,3 +257,16 @@ def test_the_lettering_area_is_the_extent_the_erase_mask_covers():
     set_letter_bounds(page)
     assert page["text_objects"][0]["letter_bounds"] == {"x1": 337, "y1": 867, "x2": 1201, "y2": 1087}
     assert "letter_bounds" not in page["text_objects"][1], "a hand-drawn object letters its whole region"
+
+
+def test_a_found_box_grown_over_most_of_the_slice_keeps_its_own_rectangle(monkeypatch):
+    # Shadow Slave 1, slice 69: a found box grew over glowing art to the whole slice, and its caption was lettered there.
+    import numpy as np
+
+    from app.detector import kiuyha_detector
+    from app.pipeline_editing import _stroke_box
+
+    monkeypatch.setattr(kiuyha_detector, "letter_mask",
+                        lambda image, rect: ((0, 0, 600, 400), np.ones((400, 600), bool)))
+    box = _stroke_box(np.zeros((400, 600, 3), np.uint8), (150, 150, 450, 260))
+    assert (box["x1"], box["y1"], box["x2"], box["y2"]) == (150, 150, 450, 260) and box["mask"] is None

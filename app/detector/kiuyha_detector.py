@@ -95,10 +95,10 @@ def _join_grown(boxes: list[BubbleBox]) -> list[BubbleBox]:
 
 
 BLOCK_GAP = 1.5  # an empty band this many line heights tall separates two texts, not two lines of one
-
-
 BLOCK_OFFSET = 0.15  # two texts' centres this far apart, as a share of the wider one, are not one centred block
 BLOCK_SPACING = 3.0  # a gap this many times the widest line gap inside both texts parts them
+BLOCK_MIN_WIDTH = 0.4  # a group narrower than this share of the other is a stray mark (bubble edge, SFX chip), not a text
+BLOCK_LINE_SPREAD = 2.0  # a row this many times taller than the usual line is a mark, not a line of text
 
 
 def _separate(mask: np.ndarray, upper: list, lower: list) -> bool:
@@ -107,11 +107,16 @@ def _separate(mask: np.ndarray, upper: list, lower: list) -> bool:
         cols = np.flatnonzero(mask[group[0][0]:group[-1][1]].any(axis=0))
         return float(cols[0]), float(cols[-1] + 1)
 
+    # Only two real texts part: each of two lines or more, neither a sliver beside the other.
+    if len(upper) < 2 or len(lower) < 2:
+        return False
     (a1, a2), (b1, b2) = extent(upper), extent(lower)
+    if min(a2 - a1, b2 - b1) < BLOCK_MIN_WIDTH * max(a2 - a1, b2 - b1):
+        return False
     if abs((a1 + a2) - (b1 + b2)) / 2 > BLOCK_OFFSET * max(a2 - a1, b2 - b1):
         return True
     inner = [nxt[0] - line[1] for group in (upper, lower) for line, nxt in zip(group, group[1:])]
-    return len(upper) > 1 and len(lower) > 1 and lower[0][0] - upper[-1][1] >= BLOCK_SPACING * max(inner)
+    return lower[0][0] - upper[-1][1] >= BLOCK_SPACING * max(inner)
 
 
 def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
@@ -121,10 +126,14 @@ def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
         return [box]
     rows = letters.any(axis=1)
     edges = np.flatnonzero(np.diff(np.concatenate(([0], rows.astype(np.int8), [0]))))
-    lines = list(zip(edges[::2], edges[1::2]))
+    lines = [(int(start), int(end)) for start, end in zip(edges[::2], edges[1::2])]
     if len(lines) < 2:
         return [box]
     height = float(np.median([end - start for start, end in lines]))
+    # Rows far taller than a line are marks (a bubble edge, a drawn letter), not text; they never part texts.
+    lines = [(start, end) for start, end in lines if end - start <= BLOCK_LINE_SPREAD * height]
+    if len(lines) < 2:
+        return [box]
     groups = [[lines[0]]]
     for line in lines[1:]:
         if line[0] - groups[-1][-1][1] >= BLOCK_GAP * height:
