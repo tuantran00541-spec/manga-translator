@@ -305,9 +305,9 @@ The settings UI can discover provider models through /models, select exact model
 
 Custom provider endpoints must use public HTTPS URLs. Credentials are never accepted inside the API URL.
 
-### Plans (experimental, off by default)
+### Manga Cloud (experimental, off by default)
 
-With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code. A.I mode then runs through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. Plans count chapters, not money; the gateway enforces the quota and stops only a job that spends far more than a chapter ($0.75 on Free, $2 on paid plans, where a long chapter costs about $0.25). The app hides locked features and falls back to Free when the gateway is unreachable.
+Every feature, A.I mode included, is free with your own A.I key. Manga Cloud is for people without one: with `MANGA_TIERS=1` the app offers a Manga Cloud provider served by the gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code, top up a prepaid balance, and each A.I call of a chapter is charged at its real cost plus a 5% fee (`GATEWAY_FEE_PERCENT`). A long webtoon chapter costs about $0.30, so a chapter needs about $0.32 of balance to start. Payment-provider fees are added to what the user pays, so the balance always gets the full top-up. The gateway stops a chapter at what the balance can pay for, and at $2 whatever the balance.
 
 A.I mode runs a chapter through four checkpoints, each with its own prompt:
 
@@ -324,11 +324,12 @@ The gateway lives in `gateway/` and runs with `python -m gateway`. [docs/DEPLOY.
 | --- | --- |
 | A.I upstream | `GATEWAY_UPSTREAM_BASE`, `GATEWAY_UPSTREAM_KEY`, `GATEWAY_UPSTREAM_MODEL`, `GATEWAY_PRICE_INPUT_PER_M`, `GATEWAY_PRICE_OUTPUT_PER_M` |
 | Login email | `GATEWAY_RESEND_API_KEY`, `GATEWAY_MAIL_FROM`, `GATEWAY_DEV_LOGIN=1` (shows the code instead of mailing it, local testing only) |
-| payOS (VietQR) | `GATEWAY_PAYOS_CLIENT_ID`, `GATEWAY_PAYOS_API_KEY`, `GATEWAY_PAYOS_CHECKSUM_KEY`, `GATEWAY_PRICE_PLUS_VND`, `GATEWAY_PRICE_PRO_VND`; webhook `/v1/billing/payos/webhook` |
-| Lemon Squeezy (cards) | `GATEWAY_LS_API_KEY`, `GATEWAY_LS_STORE_ID`, `GATEWAY_LS_VARIANT_PLUS`, `GATEWAY_LS_VARIANT_PRO`, `GATEWAY_LS_WEBHOOK_SECRET`, `GATEWAY_PRICE_PLUS_USD`, `GATEWAY_PRICE_PRO_USD`; webhook `/v1/billing/lemonsqueezy/webhook` |
+| Wallet | `GATEWAY_FEE_PERCENT` (5), `GATEWAY_CHAPTER_ESTIMATE_USD` (0.30), `GATEWAY_VND_PER_USD` (26000), `GATEWAY_TOPUPS_VND`, `GATEWAY_TOPUPS_USD` |
+| payOS (VietQR) | `GATEWAY_PAYOS_CLIENT_ID`, `GATEWAY_PAYOS_API_KEY`, `GATEWAY_PAYOS_CHECKSUM_KEY`, `GATEWAY_PAYOS_FEE_PERCENT` (0); webhook `/v1/billing/payos/webhook` |
+| Lemon Squeezy (cards) | `GATEWAY_LS_API_KEY`, `GATEWAY_LS_STORE_ID`, `GATEWAY_LS_VARIANT`, `GATEWAY_LS_WEBHOOK_SECRET`, `GATEWAY_LS_FEE_PERCENT` (5), `GATEWAY_LS_FEE_FIXED_USD` (0.50); webhook `/v1/billing/lemonsqueezy/webhook` |
 | Other | `GATEWAY_DB`, `GATEWAY_ADMIN_KEY`, `GATEWAY_RETURN_URL`, `GATEWAY_HOST`, `GATEWAY_PORT`, `GATEWAY_TRUSTED_PROXIES` |
 
-Signed-in users can see their payments, sign out on every device and delete their account from the A.I mode panel. A payOS payment adds 30 days of the plan, stacked on top of time already paid. A Lemon Squeezy subscription follows its webhooks, and a cancelled subscription keeps the plan until the paid period ends. Screenshots of the flow are on the `audit-evidence` branch under `audit-results/tiers/`.
+Signed-in users see their balance and every top-up and chapter charge, sign out on every device and delete their account from the A.I mode panel. A payOS top-up is credited once when its webhook reports the exact amount. A Lemon Squeezy top-up is a one-time order at a custom price on one product variant; its refund takes the credit back.
 
 ## Runtime settings
 

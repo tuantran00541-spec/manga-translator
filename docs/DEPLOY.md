@@ -1,6 +1,6 @@
 # Deploying the Manga Cloud gateway
 
-The app runs on each user's machine. Only the gateway in `gateway/` is hosted. It handles email login, plans, payments and the A.I calls of A.I mode. It is small: no models, no GPU, about 100 MB of RAM.
+The app runs on each user's machine. Only the gateway in `gateway/` is hosted. It handles email login, the prepaid balance, top-ups and the A.I calls of A.I mode. It is small: no models, no GPU, about 100 MB of RAM.
 
 ## What you need
 
@@ -26,7 +26,9 @@ Then, in the payment dashboards, set the webhooks:
 | Provider | Webhook URL |
 | --- | --- |
 | payOS | `https://cloud.example.com/v1/billing/payos/webhook` |
-| Lemon Squeezy | `https://cloud.example.com/v1/billing/lemonsqueezy/webhook` (subscription events, signing secret = `GATEWAY_LS_WEBHOOK_SECRET`) |
+| Lemon Squeezy | `https://cloud.example.com/v1/billing/lemonsqueezy/webhook` (`order_created` and `order_refunded`, signing secret = `GATEWAY_LS_WEBHOOK_SECRET`) |
+
+In Lemon Squeezy, make one product with one variant (for example "Manga Cloud credit") and put its id in `GATEWAY_LS_VARIANT`; each checkout sets its own price.
 
 Users point their app at the gateway with `MANGA_TIERS=1` and `MANGA_CLOUD_URL=https://cloud.example.com/v1`.
 
@@ -34,23 +36,26 @@ Users point their app at the gateway with `MANGA_TIERS=1` and `MANGA_CLOUD_URL=h
 
 | Limit | Value |
 | --- | --- |
-| Chapters of A.I mode per month | Free 3, Plus 30, Pro 100 |
-| Most one chapter may spend | Free $0.75, paid $2 (a long webtoon chapter costs about $0.25) |
+| Price of A.I | Real upstream cost + `GATEWAY_FEE_PERCENT` (5%), charged per call from the prepaid balance |
+| To start a chapter | A balance of one typical chapter, about $0.32 |
+| Most one chapter may spend | What the balance pays for, and at most $2 (a long webtoon chapter costs about $0.30) |
 | A.I calls per chapter | 1000 (a long chapter makes about 280) |
 | Login codes | 1 a minute and 10 a day per email; 30 a day per network address |
 | New accounts | 3 a day per network address |
 | Request body | 32 MB, at most 24 inline images, only chat fields the app uses |
 
-A deleted account keeps a hash of its email and its usage, so deleting it and signing up again does not reset the free quota. The email address itself is gone.
+A deleted account keeps a hash of its email with its balance and history, so signing in again with the same email gets the balance back. The email address itself is gone.
+
+Balances are money owed to users: `/v1/admin/stats` shows them as `balances_owed_usd`, next to the A.I cost, what chapters were charged, and the margin.
 
 ## Operating it
 
 ```bash
-# Look up a user, see totals, change a plan by hand.
+# Look up a user, see totals, credit or debit a balance by hand (with a reason).
 curl -H "X-Admin-Key: $KEY" "https://cloud.example.com/v1/admin/accounts?email=user@example.com"
 curl -H "X-Admin-Key: $KEY" https://cloud.example.com/v1/admin/stats
 curl -H "X-Admin-Key: $KEY" -H 'Content-Type: application/json' \
-     -d '{"plan": "plus", "days": 30}' https://cloud.example.com/v1/admin/accounts/<account_id>/plan
+     -d '{"amount_usd": 1.5, "note": "support #12"}' https://cloud.example.com/v1/admin/accounts/<account_id>/credit
 
 # Back up the database while the gateway runs (daily from cron is enough).
 docker compose exec gateway python -m gateway backup /data/backup-$(date +%F).sqlite

@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 
 from gateway.billing import Billing, BillingConfig, BillingError, billing_from_env
 from gateway.mailer import MailUnavailable, Mailer, mailer_from_env
-from gateway.plans import PLANS, get_plan
 from gateway.store import InvalidToken, LoginRejected, QuotaExceeded, Store
 
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,63}$")
@@ -168,14 +167,14 @@ class VerifyRequest(BaseModel):
     code: str = Field(min_length=6, max_length=6, pattern="^[0-9]{6}$")
 
 
-class PlanRequest(BaseModel):
-    plan: str
-    days: int | None = Field(default=None, ge=1, le=3660)
+class CreditRequest(BaseModel):
+    amount_usd: float = Field(ge=-1000, le=1000)
+    note: str = Field(min_length=1, max_length=200)
 
 
 class CheckoutRequest(BaseModel):
-    plan: str
     provider: str = Field(pattern="^(payos|lemonsqueezy)$")
+    amount: float = Field(gt=0, le=100_000_000)
 
 
 class FinishRequest(BaseModel):
@@ -281,29 +280,22 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             raise HTTPException(403, "Admin key required")
 
     def entitlements(row) -> dict:
-        plan = get_plan(row["plan"])
-        usage = store.usage(row["id"])
+        chapter = payments.chapter_price_usd()
         return {
             "account_id": row["id"],
             "email": row["email"],
-            "plan": plan.id,
-            "plan_label": plan.label,
-            "plan_expires_at": row.get("plan_expires_at"),
-            "manage_url": row.get("manage_url") if plan.id != "free" else None,
-            "features": sorted(plan.features),
-            "quota": {
-                "period": usage["period"],
-                "limit": plan.chapters_per_month,
-                "used": usage["used"],
-                "remaining": max(0, plan.chapters_per_month - usage["used"]),
-                "cost_usd": usage["cost_usd"],
-            },
+            "balance_usd": row["balance_usd"],
+            "available_usd": row["available_usd"],
+            "fee_percent": round(store.fee_rate * 100, 2),
+            "chapter_estimate_usd": chapter,
+            "chapters_left": int(max(0.0, row["available_usd"]) // chapter) if chapter > 0 else None,
+            "usage_30d": store.usage(row["id"], store.now() - 30 * 86400),
             "limits": {"model": upstream.model},
         }
 
     @app.get("/health")
     def health() -> dict:
-        return {"ok": True, "plans": sorted(PLANS)}
+        return {"ok": True}
 
     @app.post("/v1/auth/start")
     def login_start(req: EmailRequest, request: Request) -> dict:
@@ -342,21 +334,24 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
     def my_payments(row=Depends(account)) -> dict:
         return {"payments": store.payments(row["id"])}
 
+    @app.get("/v1/me/ledger")
+    def my_ledger(row=Depends(account)) -> dict:
+        return {"ledger": store.ledger(row["id"])}
+
     @app.delete("/v1/me")
     def delete_me(row=Depends(account)):
-        if row["plan"] != "free" and row.get("manage_url"):
-            return _error(409, "subscription_active", "Hãy huỷ gói đang gia hạn tự động trước khi xoá tài khoản")
+        # The balance is kept under a hash of the email and returns if the same email signs in again.
         store.delete_account(row["id"])
         return {"ok": True}
 
-    @app.get("/v1/billing/plans")
-    def billing_plans() -> dict:
-        return payments.config.public()
+    @app.get("/v1/billing/topups")
+    def billing_topups() -> dict:
+        return payments.public()
 
     @app.post("/v1/billing/checkout")
     def checkout(req: CheckoutRequest, row=Depends(account)) -> dict:
         try:
-            return payments.checkout(row, req.plan, req.provider)
+            return payments.checkout(row, req.provider, req.amount)
         except BillingError as exc:
             raise HTTPException(exc.status, exc.message) from exc
 
@@ -381,12 +376,13 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
 
     @app.post("/v1/jobs")
     def reserve(row=Depends(account)):
+        chapter = payments.chapter_price_usd()
         try:
-            job_id, token, cap = store.reserve_job(row["id"])
+            job_id, token, cap = store.reserve_job(row["id"], chapter)
         except QuotaExceeded:
-            plan = get_plan(row["plan"])
-            return _error(402, "quota_exceeded",
-                          f"Gói {plan.label} đã dùng hết {plan.chapters_per_month} chương A.I mode tháng này")
+            return _error(402, "insufficient_balance",
+                          f"Số dư ${row['available_usd']:.2f} chưa đủ cho một chương (khoảng ${chapter:.2f}); "
+                          "hãy nạp thêm hoặc dùng key A.I của bạn")
         return {"job_id": job_id, "job_token": token, "cost_cap_usd": cap, "model": upstream.model,
                 "entitlements": entitlements(row)}
 
@@ -425,6 +421,8 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         except QuotaExceeded as exc:
             if str(exc) == "requests":
                 return _error(402, "request_cap", "This chapter reached its A.I request cap")
+            if str(exc) == "balance":
+                return _error(402, "insufficient_balance", "Số dư Manga Cloud đã hết; hãy nạp thêm")
             return _error(402, "cost_cap", "This chapter reached its A.I cost cap")
         trace: dict = {}
         started = time.perf_counter()
@@ -474,7 +472,8 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             row = store.account_by_email(_email(email))
         except KeyError as exc:
             raise HTTPException(404, "Account not found") from exc
-        return {**entitlements(row), "created_at": row["created_at"], "payments": store.payments(row["id"])}
+        return {**entitlements(row), "created_at": row["created_at"], "payments": store.payments(row["id"]),
+                "ledger": store.ledger(row["id"])}
 
     @app.get("/v1/admin/stats", dependencies=[Depends(admin)])
     def admin_stats() -> dict:
@@ -485,16 +484,13 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         account_id, token = store.create_account(_email(req.email))
         return {"account_id": account_id, "token": token}
 
-    @app.post("/v1/admin/accounts/{account_id}/plan", dependencies=[Depends(admin)])
-    def set_plan(account_id: str, req: PlanRequest) -> dict:
-        expires = store.now() + req.days * 86400 if req.days else None
+    @app.post("/v1/admin/accounts/{account_id}/credit", dependencies=[Depends(admin)])
+    def admin_credit(account_id: str, req: CreditRequest) -> dict:
         try:
-            store.set_plan(account_id, req.plan, expires)
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
+            balance = store.adjust(account_id, req.amount_usd, req.note)
         except KeyError as exc:
             raise HTTPException(404, "Account not found") from exc
-        return {"account_id": account_id, "plan": req.plan, "plan_expires_at": expires}
+        return {"account_id": account_id, "balance_usd": balance}
 
     return app
 
@@ -502,5 +498,6 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
 def app_from_env() -> FastAPI:
     db_path = Path(os.getenv("GATEWAY_DB", "gateway-data/gateway.sqlite"))
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    return create_app(Store(db_path), upstream_from_env(), os.getenv("GATEWAY_ADMIN_KEY", ""),
+    fee_rate = float(os.getenv("GATEWAY_FEE_PERCENT", "5")) / 100
+    return create_app(Store(db_path, fee_rate=fee_rate), upstream_from_env(), os.getenv("GATEWAY_ADMIN_KEY", ""),
                       mailer=mailer_from_env(), billing=billing_from_env())

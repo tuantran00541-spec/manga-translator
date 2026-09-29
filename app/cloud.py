@@ -11,7 +11,6 @@ from app.ai_providers import CLOUD_PROVIDER_ID, AIProvider
 from app.logging_config import logger
 from app.secret_store import SecretStoreUnavailable, get_cloud_token
 
-ALL_FEATURES = ("visual_qc", "byok", "custom_providers")
 ENTITLEMENT_TTL_SECONDS = 30
 TIMEOUT = (5, 15)
 
@@ -79,10 +78,10 @@ def invalidate() -> None:
 
 def entitlements(*, fresh: bool = False) -> dict:
     if not tiers_enabled():
-        return {"tiers": False, "signed_in": False, "plan": "unlimited", "features": list(ALL_FEATURES)}
+        return {"tiers": False, "signed_in": False}
     token = _token()
     if not token:
-        return {"tiers": True, "signed_in": False, "plan": "free", "features": [], "quota": None}
+        return {"tiers": True, "signed_in": False}
     with _cache_lock:
         cached = _cache.get(token)
         if cached and not fresh and time.monotonic() - cached[0] < ENTITLEMENT_TTL_SECONDS:
@@ -90,24 +89,15 @@ def entitlements(*, fresh: bool = False) -> dict:
     try:
         response = _call("GET", "/me", token)
     except requests.RequestException:
-        return {"tiers": True, "signed_in": True, "offline": True, "plan": "free", "features": [], "quota": None}
+        return {"tiers": True, "signed_in": True, "offline": True}
     if response.status_code == 401:
-        return {"tiers": True, "signed_in": False, "invalid_token": True, "plan": "free", "features": [], "quota": None}
+        return {"tiers": True, "signed_in": False, "invalid_token": True}
     if not response.ok:
-        return {"tiers": True, "signed_in": True, "offline": True, "plan": "free", "features": [], "quota": None,
-                "detail": _message(response)}
+        return {"tiers": True, "signed_in": True, "offline": True, "detail": _message(response)}
     data = {"tiers": True, "signed_in": True, **response.json()}
     with _cache_lock:
         _cache[token] = (time.monotonic(), data)
     return data
-
-
-def require_feature(feature: str) -> None:
-    if not tiers_enabled():
-        return
-    data = entitlements()
-    if feature not in (data.get("features") or []):
-        raise HTTPException(402, f"Tính năng này cần gói cao hơn (gói hiện tại: {data.get('plan_label') or data.get('plan')})")
 
 
 def reserve_job() -> dict:
@@ -174,8 +164,8 @@ def _signed_in(method: str, path: str) -> dict:
     return _public(method, path, token=token)
 
 
-def payments() -> dict:
-    return _signed_in("GET", "/me/payments")
+def ledger() -> dict:
+    return _signed_in("GET", "/me/ledger")
 
 
 def logout_all() -> None:
@@ -188,12 +178,12 @@ def delete_account() -> None:
     invalidate()
 
 
-def billing_plans() -> dict:
-    return _public("GET", "/billing/plans")
+def billing_topups() -> dict:
+    return _public("GET", "/billing/topups")
 
 
-def checkout(plan: str, provider: str) -> dict:
+def checkout(provider: str, amount: float) -> dict:
     token = _token()
     if not token:
         raise HTTPException(401, "Chưa đăng nhập Manga Cloud")
-    return _public("POST", "/billing/checkout", {"plan": plan, "provider": provider}, token=token)
+    return _public("POST", "/billing/checkout", {"provider": provider, "amount": amount}, token=token)
