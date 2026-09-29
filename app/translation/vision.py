@@ -180,21 +180,24 @@ def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[V
 
 
 MARK_COLOR = (0, 0, 230)  # BGR red
+ELSEWHERE_COLOR = (128, 128, 128)  # text lettered by the neighbouring slice
+ELSEWHERE_LABEL = "X"
 
 
-def mark_objects(image, objects: list[dict]):
-    """A copy of the slice with each object's box outlined and labelled with its id."""
+def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
+    """A copy of the slice with each object's box outlined and labelled with its id; grey X boxes are lettered elsewhere."""
     marked = image.copy()
     width = marked.shape[1]
     thickness = max(2, width // 400)
     scale = max(0.6, width / 1000)
-    for obj in objects:
-        x1, y1, x2, y2 = (int(v) for v in obj["bbox_xyxy"])
-        cv2.rectangle(marked, (x1, y1), (x2, y2), MARK_COLOR, thickness)
-        label = str(obj["id"])
+    boxes = [(obj["bbox_xyxy"], str(obj["id"]), MARK_COLOR) for obj in objects]
+    boxes += [(box, ELSEWHERE_LABEL, ELSEWHERE_COLOR) for box in elsewhere]
+    for box, label, color in boxes:
+        x1, y1, x2, y2 = (int(v) for v in box)
+        cv2.rectangle(marked, (x1, y1), (x2, y2), color, thickness)
         (tw, th), base = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
         ty = max(th + base, y1)
-        cv2.rectangle(marked, (x1, ty - th - base), (x1 + tw + 4, ty), MARK_COLOR, -1)
+        cv2.rectangle(marked, (x1, ty - th - base), (x1 + tw + 4, ty), color, -1)
         cv2.putText(marked, label, (x1 + 2, ty - base), cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), thickness)
     return marked
 
@@ -209,6 +212,7 @@ class VisionPageTranslator:
         self, original_path: Path, cleaned_path: Path, items: list[dict],
         *, api_key: str, source_lang: str, target_lang: str,
         memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
+        elsewhere: list | tuple = (),
     ) -> VisionTranslationResult:
         if not api_key.strip():
             raise ValueError(f"{self.provider.label} API key is not configured")
@@ -235,12 +239,16 @@ class VisionPageTranslator:
              f"{json.dumps(memory.snapshot(), ensure_ascii=False, separators=(',', ':'))}\n\n"
              if memory is not None else "")
             + f"{where}Translate these text objects from {source_name}.\n"
-            + json.dumps({"image_width": w, "image_height": h, "objects": objects},
+            + json.dumps({"image_width": w, "image_height": h, "objects": objects,
+                          **({"lettered_elsewhere": [list(map(int, box)) for box in elsewhere]} if elsewhere else {})},
                          ensure_ascii=False, separators=(",", ":"))
+            + ("\nlettered_elsewhere boxes (grey X in IMAGE 2) hold text the neighbouring slice translates: "
+               "never translate it, and never fold its words or meaning into any object's translation."
+               if elsewhere else "")
             + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above. '
             + "Write every translated_text in normal sentence case, never in all capitals."
         )
-        original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(mark_objects(cleaned, objects))
+        original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(mark_objects(cleaned, objects, elsewhere))
         ids = set(real)
         max_tokens = min(4096, max(1200, 160 * len(items) + 700))
         if self.provider.protocol == "gemini":

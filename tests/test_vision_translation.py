@@ -395,3 +395,32 @@ def test_glossary_vote_drops_a_misread_name_and_fixes_one_form_of_address():
     assert glossary["address"] == [{"from": "disciples", "to": "master", "self": "bọn con", "other": "sư phụ"}]
     assert glossary["terms"] == [{"source": "qi refining", "target": "Luyện Khí"}]
     assert ChapterMemory("", glossary).snapshot()["glossary"] == glossary
+
+
+def test_text_lettered_by_the_next_slice_is_shown_but_kept_out_of_every_translation(tmp_path, monkeypatch):
+    import base64
+
+    from app.translation.vision import ELSEWHERE_COLOR
+
+    original, clean = tmp_path / "o.png", tmp_path / "c.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "white").save(clean)
+    sent = []
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"translations":[{"id":"1","translated_text":"Chào"}]}'}}],
+                    "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: sent.append(kwargs["json"]) or Response())
+    VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, [{"id": "top", "text": "", "region": [20, 20, 200, 120]}], api_key="k",
+        source_lang="en", target_lang="vi", elsewhere=[[20, 400, 380, 560]])
+    parts = sent[0]["messages"][1]["content"]
+    prompt = next(part["text"] for part in parts if part["type"] == "text" and "objects" in part["text"])
+    assert '"lettered_elsewhere":[[20,400,380,560]]' in prompt and "never fold its words" in prompt
+    marked = cv2.imdecode(np.frombuffer(base64.b64decode(parts[-1]["image_url"]["url"].split(",", 1)[1]), np.uint8),
+                          cv2.IMREAD_COLOR)
+    assert np.abs(marked[480, 20].astype(int) - ELSEWHERE_COLOR).max() < 40, "the grey box is drawn on IMAGE 2"

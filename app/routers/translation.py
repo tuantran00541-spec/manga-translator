@@ -426,11 +426,13 @@ async def translate_page_in_context(
             candidates = _vision_candidates(page, force=req.force)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
+        elsewhere: list[list[int]] = []
         if skip_seam_mirrors:
             from app.ai_mode.seams import seam_mirror_ids
 
             # The slice that owns a text crossing the cut translates it; this one gets a copy.
             mirrors = seam_mirror_ids(manifest, req.page_index)
+            elsewhere = [candidate["region"] for candidate in candidates if candidate["id"] in mirrors]
             candidates = [candidate for candidate in candidates if candidate["id"] not in mirrors]
         if len(candidates) > 100:
             raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
@@ -467,7 +469,7 @@ async def translate_page_in_context(
         translated = await run_in_threadpool(
             translator.translate_page, original_path, clean_path, candidates,
             api_key=api_key, source_lang=req.source_lang, target_lang=req.target_lang,
-            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total,
+            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total, elsewhere=elsewhere,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
