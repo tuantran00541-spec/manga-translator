@@ -311,7 +311,7 @@ def test_a_request_may_ask_for_more_thinking_and_gets_room_for_it(world, monkeyp
     job = _job(client)
     sent = []
 
-    def send(self, payload, trace=None):
+    def send(self, payload, trace=None, models=None):
         sent.append(payload)
         return 200, {"choices": [{"message": {"content": "{}"}}], "usage": {}}
 
@@ -325,7 +325,7 @@ def test_a_request_may_ask_for_more_thinking_and_gets_room_for_it(world, monkeyp
 
 def test_the_default_thinking_level_also_gets_room(tmp_path, monkeypatch):
     sent = []
-    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None: sent.append(payload) or (200, {"usage": {}}))
+    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None, models=None: sent.append(payload) or (200, {"usage": {}}))
     store = Store(tmp_path / "gw.sqlite")
     client = TestClient(create_app(store, Upstream("http://127.0.0.1:9", "", "m", 0, 0, reasoning_effort="low"), ADMIN,
                                    mailer=Mailer(api_key="", sender="", dev_mode=True)))
@@ -390,7 +390,7 @@ def test_a_database_from_the_plan_version_is_refused(tmp_path):
 
 def test_the_gateway_forwards_one_answer_and_frees_what_it_held(tmp_path, monkeypatch):
     sent = []
-    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None: sent.append(payload) or (
+    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None, models=None: sent.append(payload) or (
         200, {"usage": {"prompt_tokens": 1000, "completion_tokens": 100}}))
     store = Store(tmp_path / "gw.sqlite")
     client = TestClient(create_app(store, Upstream("http://127.0.0.1:9", "", "m", 1.0, 1.0), ADMIN,
@@ -437,7 +437,7 @@ def test_one_network_can_make_only_a_few_new_accounts_a_day(world, monkeypatch):
 def test_only_known_fields_and_inline_images_reach_the_upstream(world, monkeypatch):
     client, _store, _clock, _fake = world
     sent = []
-    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None: sent.append(payload) or (200, {"usage": {}}))
+    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None, models=None: sent.append(payload) or (200, {"usage": {}}))
     job = _job(client)
     image = {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AA=="}}
     ok = {"messages": [{"role": "user", "content": [{"type": "text", "text": "x"}, image]}],
@@ -453,7 +453,7 @@ def test_only_known_fields_and_inline_images_reach_the_upstream(world, monkeypat
 
 def test_oversized_bodies_and_runaway_request_counts_are_refused(world, monkeypatch):
     client, _store, _clock, _fake = world
-    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None: (200, {"usage": {}}))
+    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None, models=None: (200, {"usage": {}}))
     job = _job(client)
     body = {"messages": [{"role": "user", "content": "x"}]}
     monkeypatch.setattr("gateway.app.MAX_BODY_BYTES", 10)

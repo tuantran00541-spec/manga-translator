@@ -7,7 +7,7 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import requests
@@ -32,6 +32,26 @@ ROLES = frozenset({"system", "user", "assistant"})
 REASONING_BUDGETS = {"none": 0, "minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}
 
 
+STAGES = frozenset({"scan", "glossary", "review", "translate"})  # A.I mode checkpoints a client may name
+
+
+@dataclass(frozen=True)
+class Route:
+    """One upstream model and its prices in USD per million tokens."""
+    model: str
+    input_usd_per_m: float
+    output_usd_per_m: float
+    cached_usd_per_m: float | None = None
+
+    def cost(self, usage: dict) -> float:
+        prompt = max(0, int(usage.get("prompt_tokens") or 0))
+        completion = max(0, int(usage.get("completion_tokens") or 0))
+        details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
+        cached = min(prompt, max(0, int(details.get("cached_tokens") or 0))) if self.cached_usd_per_m is not None else 0
+        return ((prompt - cached) * self.input_usd_per_m + cached * (self.cached_usd_per_m or 0.0)
+                + completion * self.output_usd_per_m) / 1_000_000
+
+
 @dataclass(frozen=True)
 class Upstream:
     base: str
@@ -45,21 +65,42 @@ class Upstream:
     # Extra attempts after a dropped connection, a timeout, 429 or 5xx.
     retries: int = 2
     retry_wait_s: float = 2.0
+    stages: dict = field(default_factory=dict)  # checkpoint name -> Route that answers it
+    fallbacks: tuple = ()  # Routes tried, in order, when a model is overloaded or failing
 
-    def cost(self, usage: dict) -> float:
-        prompt = max(0, int(usage.get("prompt_tokens") or 0))
-        completion = max(0, int(usage.get("completion_tokens") or 0))
-        details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
-        cached = min(prompt, max(0, int(details.get("cached_tokens") or 0))) if self.cached_usd_per_m is not None else 0
-        return ((prompt - cached) * self.input_usd_per_m + cached * (self.cached_usd_per_m or 0.0)
-                + completion * self.output_usd_per_m) / 1_000_000
+    @property
+    def default(self) -> Route:
+        return Route(self.model, self.input_usd_per_m, self.output_usd_per_m, self.cached_usd_per_m)
 
-    def send(self, payload: dict, trace: dict | None = None) -> tuple[int, dict]:
-        """POST upstream, retrying transient failures; ``trace`` records attempts."""
+    def route(self, stage: str | None) -> Route:
+        return self.stages.get(stage) or self.default
+
+    def chain(self, stage: str | None) -> list[Route]:
+        """The stage's model, then each fallback that is a different model."""
+        first = self.route(stage)
+        return [first] + [route for route in self.fallbacks if route.model != first.model]
+
+    def priced(self, model: str | None) -> Route:
+        for route in (self.default, *self.stages.values(), *self.fallbacks):
+            if route.model == model:
+                return route
+        return self.default
+
+    def cost(self, usage: dict, model: str | None = None) -> float:
+        return self.priced(model).cost(usage)
+
+    def send(self, payload: dict, trace: dict | None = None, models: list[str] | None = None) -> tuple[int, dict]:
+        """POST upstream, retrying transient failures on the next model in ``models``; ``trace`` records attempts."""
+        models = models or [payload.get("model")]
         for attempt in range(self.retries + 1):
             last = attempt == self.retries
+            # An overloaded model is not waited on while another one can answer.
+            if models[min(attempt, len(models) - 1)] is not None:
+                payload = {**payload, "model": models[min(attempt, len(models) - 1)]}
             if trace is not None:
                 trace["attempts"] = attempt + 1
+                if payload.get("model") is not None:
+                    trace["model"] = payload["model"]
             try:
                 response = requests.post(
                     f"{self.base.rstrip('/')}/chat/completions",
@@ -73,12 +114,14 @@ class Upstream:
                     trace.setdefault("statuses", []).append(type(exc).__name__)
                 if last:
                     raise
-                time.sleep(self.retry_wait_s * 2 ** attempt)
+                if attempt + 1 >= len(models):
+                    time.sleep(self.retry_wait_s * 2 ** attempt)
                 continue
             if trace is not None:
                 trace.setdefault("statuses", []).append(response.status_code)
             if response.status_code in RETRY_STATUSES and not last:
-                time.sleep(min(RETRY_AFTER_MAX_S, _retry_after(response) or self.retry_wait_s * 2 ** attempt))
+                if attempt + 1 >= len(models):
+                    time.sleep(min(RETRY_AFTER_MAX_S, _retry_after(response) or self.retry_wait_s * 2 ** attempt))
                 continue
             break
         try:
@@ -118,7 +161,7 @@ def _request_shape(payload: dict) -> dict:
 IMAGE_TOKENS_HELD = 3000  # held per image before the upstream reports the real count
 
 
-def _held_usd(upstream: Upstream, payload: dict, max_tokens: int) -> float:
+def _held_usd(upstream: Route, payload: dict, max_tokens: int) -> float:
     """Most a request is expected to cost: its text and images in, its whole token budget out."""
     chars, images = 0, 0
     for message in payload.get("messages") or []:
@@ -143,6 +186,22 @@ def _trace_line(path: str, entry: dict) -> None:
         pass
 
 
+def _routes_from_env(name: str) -> list[tuple[str | None, Route]]:
+    """Routes from a JSON list of {"stage"?, "model", "price": [input, output, cached?]} in an env var."""
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    routes = []
+    for item in json.loads(raw):
+        price = [float(v) for v in item.get("price") or []] + [0.0, 0.0]
+        stage = item.get("stage")
+        if stage is not None and stage not in STAGES:
+            raise ValueError(f"{name}: unknown stage {stage!r}")
+        routes.append((stage, Route(str(item["model"]), price[0], price[1],
+                                    price[2] if len(item.get("price") or []) > 2 else None)))
+    return routes
+
+
 def upstream_from_env() -> Upstream:
     return Upstream(
         base=os.getenv("GATEWAY_UPSTREAM_BASE", "https://api.deepseek.com"),
@@ -155,6 +214,8 @@ def upstream_from_env() -> Upstream:
         cached_usd_per_m=(float(os.environ["GATEWAY_PRICE_CACHED_PER_M"])
                           if os.getenv("GATEWAY_PRICE_CACHED_PER_M", "").strip() else None),
         retries=max(0, int(os.getenv("GATEWAY_UPSTREAM_RETRIES", "2") or 0)),
+        stages={stage: route for stage, route in _routes_from_env("GATEWAY_STAGE_MODELS")},
+        fallbacks=tuple(route for _stage, route in _routes_from_env("GATEWAY_FALLBACK_MODELS")),
     )
 
 
@@ -391,15 +452,17 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         return store.finish_job(row["id"], req.outcome)
 
     @app.post("/v1/chat/completions")
-    async def chat(payload: dict, row=Depends(job)):
+    async def chat(payload: dict, row=Depends(job), x_mt_stage: str | None = Header(default=None)):
         if payload.get("stream"):
             return _error(400, "stream_unsupported", "Streaming is not supported")
         problem = _messages_problem(payload.get("messages"))
         if problem:
             return _error(400, "bad_request", problem)
-        # One answer per request from the gateway's model; anything else the client sent is dropped.
+        # One answer per request from the model the gateway picks for the checkpoint; anything else is dropped.
+        stage = x_mt_stage if x_mt_stage in STAGES else None
+        chain = upstream.chain(stage)
         forwarded = {key: payload[key] for key in FORWARDED_FIELDS if key in payload}
-        forwarded["model"] = upstream.model
+        forwarded["model"] = chain[0].model
         try:
             requested = int(payload.get("max_tokens") or MAX_OUTPUT_TOKENS)
         except (TypeError, ValueError):
@@ -415,7 +478,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             forwarded["reasoning_effort"] = upstream.reasoning_effort
             extra = max(extra, REASONING_BUDGETS.get(upstream.reasoning_effort, 0))
         forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS)) + extra
-        held = _held_usd(upstream, forwarded, forwarded["max_tokens"])
+        held = max(_held_usd(route, forwarded, forwarded["max_tokens"]) for route in chain)
         try:
             store.begin_request(row["id"], held)
         except QuotaExceeded as exc:
@@ -427,7 +490,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         trace: dict = {}
         started = time.perf_counter()
         try:
-            status, body = await run_in_threadpool(upstream.send, forwarded, trace)
+            status, body = await run_in_threadpool(upstream.send, forwarded, trace, [route.model for route in chain])
         except requests.RequestException:
             status, body = 0, {}
         except BaseException:
@@ -442,7 +505,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             choices = body.get("choices") if isinstance(body.get("choices"), list) else []
             _trace_line(trace_path, {
                 "t": round(time.time(), 3), "ms": round((time.perf_counter() - started) * 1000),
-                "status": status, **trace, **_request_shape(payload),
+                "status": status, "stage": stage, **trace, **_request_shape(payload),
                 "request_kb": round(len(json.dumps(payload)) / 1024, 1), "max_tokens": forwarded["max_tokens"],
                 "prompt_tokens": int(usage.get("prompt_tokens") or 0),
                 "cached_tokens": int(prompt_details.get("cached_tokens") or 0),
@@ -451,7 +514,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
                 "finish_reason": (choices[0].get("finish_reason") if choices and isinstance(choices[0], dict) else None),
             })
         total = store.add_cost(
-            row["id"], upstream.cost(usage),
+            row["id"], upstream.cost(usage, trace.get("model")),
             int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0), released_usd=held,
         )
         if status == 0:
