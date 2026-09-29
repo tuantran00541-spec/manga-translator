@@ -30,10 +30,10 @@ def test_scan_marks_only_confident_credit_slices_and_maps_logo_boxes():
     sizes = {0: (800, 2000), 1: (800, 2000), 2: (800, 2000), 3: (800, 1000)}
     data = {"slices": [
         {"slice": 0, "is_credit": False, "credit_confidence": 0.1,
-         "logos": [{"box_2d": [100, 250, 200, 750], "confidence": 0.9}]},
+         "logos": [{"x1": 250, "y1": 100, "x2": 750, "y2": 200, "confidence": 0.9}]},
         {"slice": 1, "is_credit": True, "credit_confidence": 0.5, "logos": []},
         {"slice": 2, "is_credit": True, "credit_confidence": 0.95,
-         "logos": [{"box_2d": [0, 0, 100, 100], "confidence": 0.9}]},
+         "logos": [{"x1": 0, "y1": 0, "x2": 100, "y2": 100, "confidence": 0.9}]},
         {"slice": 99, "is_credit": True, "credit_confidence": 1.0, "logos": []},
     ]}
     scans = {scan.page_index: scan for scan in parse_scan(data, sizes)}
@@ -47,11 +47,11 @@ def test_scan_marks_only_confident_credit_slices_and_maps_logo_boxes():
 
 def test_scan_rejects_low_confidence_huge_and_malformed_logo_boxes():
     data = {"slices": [{"slice": 0, "is_credit": False, "credit_confidence": 0, "logos": [
-        {"box_2d": [100, 100, 300, 300], "confidence": 0.3},
-        {"box_2d": [0, 0, 900, 1000], "confidence": 0.99},
-        {"box_2d": [300, 300, 100, 100], "confidence": 0.99},
-        {"box_2d": ["a", 0, 1, 1], "confidence": 0.99},
-        {"box_2d": [500, 500, 501, 501], "confidence": 0.99},
+        {"x1": 100, "y1": 100, "x2": 300, "y2": 300, "confidence": 0.3},
+        {"x1": 0, "y1": 0, "x2": 1000, "y2": 900, "confidence": 0.99},
+        {"x1": 300, "y1": 300, "x2": 100, "y2": 100, "confidence": 0.99},
+        {"x1": 0, "y1": "a", "x2": 1, "y2": 1, "confidence": 0.99},
+        {"x1": 500, "y1": 500, "x2": 501, "y2": 501, "confidence": 0.99},
     ]}]}
     assert parse_scan(data, {0: (800, 1600)})[0].logos == ()
 
@@ -261,7 +261,7 @@ def test_scan_parse_requires_a_confident_textless_answer():
         {"slice": 0, "is_credit": False, "credit_confidence": 0, "no_text": True, "no_text_confidence": 0.9, "logos": []},
         {"slice": 1, "is_credit": False, "credit_confidence": 0, "no_text": True, "no_text_confidence": 0.7, "logos": []},
         {"slice": 2, "is_credit": False, "credit_confidence": 0, "no_text": True, "no_text_confidence": 0.95,
-         "logos": [{"box_2d": [100, 100, 300, 500], "confidence": 0.9}]},
+         "logos": [{"x1": 100, "y1": 100, "x2": 500, "y2": 300, "confidence": 0.9}]},
     ]}, sizes)
     assert [scan.no_text for scan in scans] == [True, False, False], "a slice with a logo has lettering"
 
