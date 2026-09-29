@@ -1,0 +1,136 @@
+name: Installer
+
+# Runs the real one-line install on fresh machines: a new shell finds `manga`, the heavy
+# libraries load, the app starts with every model, and `manga update` keeps the models.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - install.ps1
+      - install.sh
+      - install.bat
+      - scripts/install.py
+      - run.py
+      - requirements.txt
+      - .github/workflows/installer.yml
+
+concurrency:
+  group: installer-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        accented_user_folder: [false, true]
+    env:
+      MANGA_REF: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: One-line install (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          if ('${{ matrix.accented_user_folder }}' -eq 'true') {
+            # A user folder with accents, as many Vietnamese Windows accounts have.
+            $name = 'Nguy' + [char]0x1EC5 + 'n V' + [char]0x0103 + 'n'
+            $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "$name\AppData\Local"
+            New-Item -ItemType Directory -Force $env:LOCALAPPDATA | Out-Null
+            # Written without a BOM: PowerShell 5.1's utf8 adds one, which would corrupt the variable name.
+            [IO.File]::AppendAllText($env:GITHUB_ENV, "LOCALAPPDATA=$env:LOCALAPPDATA`n", (New-Object Text.UTF8Encoding $false))
+          }
+          Get-Content -Raw install.ps1 | Invoke-Expression
+
+      - name: A new shell finds manga and the libraries load
+        shell: powershell
+        run: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + $env:Path
+          $shim = (Get-Command manga).Source
+          Write-Host "manga -> $shim"; Get-Content $shim
+          manga --version
+          if ($LASTEXITCODE -ne 0) { throw 'manga --version failed' }
+          $info = Get-Content -Raw (Join-Path (Split-Path (Split-Path $shim)) 'app\.manga-install.json') | ConvertFrom-Json
+          $python = Join-Path (Split-Path (Split-Path $shim)) 'app\.venv\Scripts\python.exe'
+          & $python -c "import torch, paddle, onnxruntime, cv2, paddleocr, manga_ocr; print('torch', torch.__version__, 'ort', onnxruntime.__version__, onnxruntime.get_available_providers())"
+          if ($LASTEXITCODE -ne 0) { throw 'a library failed to load' }
+
+      - name: The app starts with every model
+        shell: powershell
+        run: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + $env:Path
+          $env:BROWSER = 'none'
+          Start-Process -FilePath cmd.exe -ArgumentList '/c', 'manga > manga.log 2>&1' -WindowStyle Hidden
+          $health = $null
+          for ($i = 0; $i -lt 90 -and -not $health; $i++) {
+            Start-Sleep 2
+            try { $health = Invoke-RestMethod http://127.0.0.1:8000/health } catch { }
+          }
+          Get-Content manga.log -Tail 30
+          if (-not $health) { throw 'the app did not start' }
+          if ($health.models_missing.Count -ne 0) { throw "models missing: $($health.models_missing)" }
+          $owner = (Get-NetTCPConnection -LocalPort 8000 -State Listen).OwningProcess
+          Stop-Process -Id $owner -Force
+
+      - name: manga update keeps the models
+        shell: powershell
+        run: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + $env:Path
+          $models = Join-Path (Split-Path (Split-Path (Get-Command manga).Source)) 'app\models'
+          $before = (Get-Item (Join-Path $models 'lama-manga-dynamic.onnx')).LastWriteTimeUtc
+          manga update
+          if ($LASTEXITCODE -ne 0) { throw 'manga update failed' }
+          $after = (Get-Item (Join-Path $models 'lama-manga-dynamic.onnx')).LastWriteTimeUtc
+          if ($before -ne $after) { throw 'update downloaded the model again' }
+          Get-ChildItem $models
+
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      MANGA_REF: ${{ github.ref_name }}
+      BROWSER: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: One-line install
+        run: sh < install.sh
+
+      - name: The start-up file puts manga on PATH and the libraries load
+        run: |
+          grep -h "manga-translator" ~/.profile ~/.bashrc ~/.bash_profile ~/.zshrc 2>/dev/null
+          export PATH="$HOME/.local/bin:$PATH"
+          cat "$(command -v manga)"
+          manga --version
+          python="$HOME/.local/share/manga-translator/app/.venv/bin/python"
+          "$python" -c "import torch, paddle, onnxruntime, cv2, paddleocr, manga_ocr; print('torch', torch.__version__, 'ort', onnxruntime.__version__)"
+
+      - name: The app starts with every model
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          manga > manga.log 2>&1 &
+          for i in $(seq 1 90); do
+            curl -sf http://127.0.0.1:8000/health > health.json && break
+            sleep 2
+          done
+          tail -30 manga.log
+          python3 -c "import json; h = json.load(open('health.json')); assert h['models_missing'] == [], h; print(h['status'])"
+          kill %1
+
+      - name: manga update keeps the models
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          model="$HOME/.local/share/manga-translator/app/models/lama-manga-dynamic.onnx"
+          before=$(ls -l --time-style=full-iso "$model" 2>/dev/null || ls -lT "$model")
+          manga update
+          after=$(ls -l --time-style=full-iso "$model" 2>/dev/null || ls -lT "$model")
+          [ "$before" = "$after" ] || { echo "update downloaded the model again"; exit 1; }

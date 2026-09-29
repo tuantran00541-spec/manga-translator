@@ -206,21 +206,38 @@ The image path accepts up to **100,000,000 decoded pixels** per image.
 
 ### Install
 
-Install once:
+One command, nothing else to install first (it brings its own Python 3.12):
 
-- **Windows:** double-click `install.bat` (or run it in cmd).
-- **Linux / macOS:** `./install.sh`
-
-It makes a private Python environment in `.venv`, installs the dependencies and Chromium, downloads the LaMa model, builds `ctd_seg.onnx`, and adds a `manga` command. The first run takes a while (a few GB of packages); model files already in `models/` are kept.
-
-Then open any **new** cmd or terminal window:
-
-~~~bash
-manga          # starts the app and opens it in the browser (or just opens it if it is already running)
-manga update   # pulls the latest version and installs what changed
+~~~powershell
+# Windows: paste into PowerShell or cmd
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/main/install.ps1 | iex"
 ~~~
 
-Manual install, if you prefer:
+~~~bash
+# Linux / macOS
+curl -LsSf https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/main/install.sh | sh
+~~~
+
+Then, in any **new** cmd or terminal window:
+
+~~~bash
+manga           # starts the app and opens it in the browser (or just opens it if it already runs)
+manga update    # gets the latest version; models, chapters and settings stay
+manga --version
+~~~
+
+What the installer does, in one folder (`%LOCALAPPDATA%\manga-translator` on Windows, `~/.local/share/manga-translator` elsewhere):
+
+- downloads [uv](https://github.com/astral-sh/uv) (pinned, hash checked), which fetches Python 3.12 and installs the dependencies with CPU-only PyTorch;
+- on Windows, installs the Microsoft Visual C++ runtime if it is missing (torch and PaddleOCR need it; Windows asks for admin once);
+- downloads the LaMa model (hash checked, resumes broken downloads) and builds `ctd_seg.onnx`;
+- adds a `manga` command to the user PATH. The first install downloads a few GB and needs about 8 GB free.
+
+A Windows user folder with accents (for example `C:\Users\Nguyễn`) breaks PaddleOCR, so the installer then uses `C:\ProgramData\manga-translator` instead. From a clone, `install.bat` / `./install.sh` install that clone in place instead of downloading.
+
+To uninstall, delete that folder and the `manga` command (`%LOCALAPPDATA%\manga-translator\bin` on Windows, `~/.local/bin/manga` elsewhere), then remove its line from the user Path or shell start-up file.
+
+Manual install, if you prefer (Python 3.10–3.12):
 
 ~~~bash
 python -m venv .venv
