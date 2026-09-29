@@ -7,14 +7,14 @@
  },
  "status": "completed",
  "error": null,
- "wall_s": 971.4,
+ "wall_s": 1166.5,
  "stages": [
   {
    "key": "download",
    "status": "done",
    "done": 1,
    "total": 1,
-   "elapsed_s": 13.7,
+   "elapsed_s": 16.0,
    "detail": "135 lát"
   },
   {
@@ -22,39 +22,39 @@
    "status": "done",
    "done": 135,
    "total": 135,
-   "elapsed_s": 84.8,
-   "detail": "1 lát credit, 11 lát không chữ, 7 logo"
+   "elapsed_s": 83.5,
+   "detail": "1 lát credit, 12 lát không chữ, 7 logo"
   },
   {
    "key": "clean",
    "status": "done",
-   "done": 123,
-   "total": 123,
-   "elapsed_s": 564.5,
+   "done": 122,
+   "total": 122,
+   "elapsed_s": 643.4,
    "detail": ""
   },
   {
    "key": "review",
    "status": "done",
-   "done": 123,
-   "total": 123,
-   "elapsed_s": 46.1,
-   "detail": "Xoá thêm 7 vùng sót, repaint 31, giữ nguyên 0"
+   "done": 122,
+   "total": 122,
+   "elapsed_s": 57.6,
+   "detail": "Xoá thêm 4 vùng sót, repaint 26, giữ nguyên 0"
   },
   {
    "key": "translate",
    "status": "done",
-   "done": 123,
-   "total": 123,
-   "elapsed_s": 224.8,
-   "detail": "Dịch 118 vùng"
+   "done": 122,
+   "total": 122,
+   "elapsed_s": 321.0,
+   "detail": "Dịch 112 vùng"
   },
   {
    "key": "render",
    "status": "done",
-   "done": 123,
-   "total": 123,
-   "elapsed_s": 33.7,
+   "done": 122,
+   "total": 122,
+   "elapsed_s": 40.5,
    "detail": ""
   },
   {
@@ -73,39 +73,36 @@
   "credit_rejected": [],
   "logo_regions": 7,
   "scan_errors": [],
-  "repainted_regions": 31,
+  "repainted_regions": 26,
   "repaint_pages": [
    1,
    2,
+   5,
    6,
    15,
    16,
-   20,
    19,
-   24,
    27,
    23,
-   35,
    33,
+   35,
    31,
    45,
    47,
    59,
-   56,
    69,
    86,
-   109,
+   104,
    108,
-   115,
    127,
    132,
    134
   ],
   "qc_flagged": 0,
   "qc_errors": [],
-  "translated": 118,
-  "unreadable": 24,
-  "review_flags": 3,
+  "translated": 112,
+  "unreadable": 26,
+  "review_flags": 1,
   "translate_errors": [],
   "render_errors": [],
   "editorial_blockers": 0,
@@ -118,6 +115,7 @@
    12,
    17,
    34,
+   36,
    46,
    64,
    80,
@@ -126,22 +124,24 @@
   ],
   "textless_rejected": [],
   "kept_regions": 0,
-  "missed_added": 7,
-  "retried_pages": [],
+  "missed_added": 4,
+  "retried_pages": [
+   62
+  ],
   "restored_regions": 0,
-  "sfx_kept": 23,
+  "sfx_kept": 24,
   "review_list": [],
   "glossary": {
    "names": [
     {
      "source": "Nightmare Spell",
-     "target": "Chú thuật Ác Mộng",
-     "note": "Chú thuật mà chàng trai tự nhận mình là vật chủ"
+     "target": "Thần Chú Ác Mộng",
+     "note": "Tên phép thuật gây ra dấu ấn"
     },
     {
      "source": "SHADOW SLAVE",
-     "target": "Bóng Nô Lệ",
-     "note": "Tên bộ truyện"
+     "target": "Nô Lệ Bóng Tối",
+     "note": "Tên tác phẩm"
     },
     {
      "source": "GUILTYTHREE",
@@ -159,9 +159,14 @@
      "note": "Tên thật của chàng trai"
     },
     {
-     "source": "DARE TO DREAM",
+     "source": "Dare to Dream",
      "target": "Dám Mơ Ước",
-     "note": "Cụm khẩu hiệu được trích dẫn"
+     "note": "Tiêu đề chương"
+    },
+    {
+     "source": "WEBNOVEL",
+     "target": "nền tảng tiểu thuyết mạng",
+     "note": "Nền tảng đăng truyện"
     },
     {
      "source": "AETHON",
@@ -171,7 +176,7 @@
     {
      "source": "TARO NAKAGAWA",
      "target": "TARO NAKAGAWA",
-     "note": "Trưởng xưởng phim"
+     "note": "Trưởng phòng thu âm"
     },
     {
      "source": "IL HWAN",
@@ -185,103 +190,95 @@
     },
     {
      "source": "MOOVAN STUDIO",
-     "target": "MOOVAN STUDIO",
-     "note": "Xưởng tô màu"
+     "target": "Xưởng phim MOOVAN",
+     "note": "Đơn vị tô màu"
+    },
+    {
+     "source": "POLICE",
+     "target": "Cảnh sát",
+     "note": "Biển hiệu trên tòa nhà"
     },
     {
      "source": "NORTHERN QUADRANT SIEGE CAPITAL, PRECINCT 7",
-     "target": "Thủ đô Chiến Thành Bắc Tứ Phân Khu, Phân khu 7",
-     "note": "Địa điểm và phân khu nơi có đồn cảnh sát"
+     "target": "Thủ đô Pháo Đài Bắc Tứ Phân Khu, Đồn Cảnh sát số 7",
+     "note": "Địa điểm và khu vực đồn cảnh sát"
     },
     {
-     "source": "Dream Realm",
-     "target": "Cảnh Giới Mộng",
-     "note": "Cõi được nhắc đến trong lời dẫn"
+     "source": "NORTHERN QHADRANT SIEGE CAPITAL",
+     "target": "Thủ đô Chiến khu Tứ Phương Bắc",
+     "note": "Địa danh; dòng chữ ghi trên bảng"
     },
     {
-     "source": "Northern Qhadrant Siege Capital",
-     "target": "Thủ Đô Phòng Tuyến Tứ Phương Bắc",
-     "note": "Địa danh; nguồn viết “Qhadrant”"
-    },
-    {
-     "source": "Precinct 7",
-     "target": "Phân Khu 7",
-     "note": "Khu vực trong thành phố"
-    },
-    {
-     "source": "Emergency Containment Vault",
-     "target": "Hầm Cách Ly Khẩn Cấp",
-     "note": "Cơ sở an ninh"
-    },
-    {
-     "source": "The Flame Endures",
+     "source": "THE FLAME ENDURES",
      "target": "Ngọn Lửa Bất Diệt",
      "note": "Khẩu hiệu trên biển quảng cáo"
     },
     {
-     "source": "Sunny",
-     "target": "Sunny",
-     "note": "Biệt danh của Sunless"
+     "source": "PRECINCT 7",
+     "target": "Khu vực 7",
+     "note": "Địa điểm; dòng chữ ghi trên bảng"
     },
     {
-     "source": "Aetion Books",
-     "target": "Sách Aetion",
+     "source": "EMERGENCY CONTAINMENT VAULT",
+     "target": "Hầm Giam Giữ Khẩn Cấp",
+     "note": "Cơ sở giam giữ; dòng chữ ghi trên bảng"
+    },
+    {
+     "source": "Sunny",
+     "target": "Sunny",
+     "note": "Tên gọi mọi người dùng cho Sunless"
+    },
+    {
+     "source": "Aethon Books",
+     "target": "Sách Aethon",
      "note": "Đơn vị xuất bản"
     },
     {
-     "source": "Asurascans.com",
-     "target": "Trang Truyện Quét Asura",
-     "note": "Trang web đọc truyện"
+     "source": "ASURASCANS.COM",
+     "target": "ASURASCANS.COM",
+     "note": "Trang web quảng bá"
     }
    ],
    "terms": [
-    {
-     "source": "nightmare",
-     "target": "ác mộng"
-    },
     {
      "source": "awakened",
      "target": "người thức tỉnh"
     },
     {
-     "source": "nightmare spell",
-     "target": "Phép thuật Ác Mộng"
+     "source": "nightmare",
+     "target": "ác mộng"
     },
     {
-     "source": "nightmare creatures",
-     "target": "sinh vật ác mộng"
+     "source": "nightmare spell",
+     "target": "Chú thuật Ác Mộng"
+    },
+    {
+     "source": "miraculous powers",
+     "target": "năng lực kỳ diệu"
     },
     {
      "source": "monsters",
      "target": "quái vật"
     },
     {
-     "source": "spell",
-     "target": "ma pháp"
+     "source": "dream realm",
+     "target": "Cõi Mộng"
     },
     {
-     "source": "illusions",
-     "target": "ảo ảnh"
+     "source": "spell",
+     "target": "phép thuật"
     },
     {
      "source": "aspect",
-     "target": "thiên phú"
+     "target": "khía cạnh"
     },
     {
-     "source": "trial",
-     "target": "khảo nghiệm"
+     "source": "aspirant",
+     "target": "Ứng Viên"
     },
     {
-     "source": "rewards",
-     "target": "phần thưởng"
-    },
-    {
-     "source": "powers",
-     "target": "năng lực"
-    },
-    {
-     "source": "episode 1",
-     "target": "Tập 1"
+     "source": "episode",
+     "target": "Tập"
     },
     {
      "source": "real coffee",
@@ -300,12 +297,12 @@
      "target": "đồn cảnh sát"
     },
     {
-     "source": "precinct",
-     "target": "phân khu"
+     "source": "stagger",
+     "target": "lảo đảo"
     },
     {
-     "source": "third special directive",
-     "target": "mệnh lệnh đặc biệt thứ ba"
+     "source": "the third special directive",
+     "target": "Chỉ thị Đặc biệt thứ ba"
     },
     {
      "source": "carrier",
@@ -316,12 +313,20 @@
      "target": "Báo động Đen"
     },
     {
+     "source": "lobby",
+     "target": "sảnh"
+    },
+    {
      "source": "marked",
      "target": "bị đánh dấu"
     },
     {
+     "source": "nightmare creatures",
+     "target": "Sinh vật ác mộng"
+    },
+    {
      "source": "endless slumber",
-     "target": "giấc ngủ triền miên"
+     "target": "giấc ngủ bất tận"
     },
     {
      "source": "resource wars",
@@ -336,20 +341,8 @@
      "target": "quân đội các nước"
     },
     {
-     "source": "despair",
-     "target": "tuyệt vọng"
-    },
-    {
-     "source": "chaos",
-     "target": "hỗn loạn"
-    },
-    {
-     "source": "miraculous powers",
-     "target": "năng lực kỳ diệu"
-    },
-    {
-     "source": "the awakened",
-     "target": "Người Thức Tỉnh"
+     "source": "trials",
+     "target": "thử thách"
     },
     {
      "source": "new world order",
@@ -357,138 +350,140 @@
     },
     {
      "source": "infected",
-     "target": "nhiễm bệnh"
+     "target": "bị lây nhiễm"
     },
     {
-     "source": "skills needed for survival and combat",
-     "target": "kỹ năng sinh tồn và chiến đấu"
+     "source": "survival",
+     "target": "sinh tồn"
     },
     {
-     "source": "special training",
-     "target": "huấn luyện đặc biệt"
+     "source": "combat",
+     "target": "chiến đấu"
     },
     {
      "source": "powerful awakened families",
-     "target": "các gia tộc người thức tỉnh hùng mạnh"
+     "target": "các gia tộc thức tỉnh hùng mạnh"
     },
     {
-     "source": "enormous sums of money",
-     "target": "khoản tiền khổng lồ"
-    },
-    {
-     "source": "inherited magical memories",
-     "target": "ký ức ma pháp kế thừa"
+     "source": "magical memories",
+     "target": "ký ức ma thuật"
     },
     {
      "source": "echoes",
-     "target": "tiếng vọng"
+     "target": "tàn ảnh"
     },
     {
-     "source": "slim rat",
-     "target": "con chuột gầy nhom"
+     "source": "first nightmare",
+     "target": "Ác Mộng đầu tiên"
     },
     {
-     "source": "death sentence",
-     "target": "án tử"
+     "source": "magic powers",
+     "target": "năng lực ma thuật"
     },
     {
-     "source": "dream realm",
-     "target": "Cõi Mộng"
+     "source": "illusions",
+     "target": "ảo ảnh"
+    },
+    {
+     "source": "attributes",
+     "target": "chỉ số"
+    },
+    {
+     "source": "combat-oriented aspect",
+     "target": "khía cạnh thiên về chiến đấu"
+    },
+    {
+     "source": "swordsman",
+     "target": "kiếm sĩ"
+    },
+    {
+     "source": "archer",
+     "target": "cung thủ"
     }
    ],
    "address": [
     {
      "from": "Người đàn ông tóc bạc",
-     "to": "chàng trai tóc đen",
-     "self": "ta",
-     "other": "nhóc"
-    },
-    {
-     "from": "Nhân vật nam chính (độc thoại)",
-     "to": "Bản thân",
-     "self": "tôi"
-    },
-    {
-     "from": "Người lính",
-     "to": "Chàng trai",
-     "self": "tôi",
-     "other": "cậu"
-    },
-    {
-     "from": "Chàng trai",
-     "to": "Người lính",
-     "self": "tôi",
-     "other": "ngài"
-    },
-    {
-     "from": "Người đàn ông tóc sáng",
-     "to": "Sunless",
-     "self": "tôi",
-     "other": "cậu"
-    },
-    {
-     "from": "Sunless",
-     "to": "Người đàn ông tóc sáng",
-     "self": "tôi",
-     "other": "ông"
-    },
-    {
-     "from": "Người đàn ông tóc bạc",
-     "to": "người đàn ông tóc đen",
-     "self": "tôi",
-     "other": "cậu"
-    },
-    {
-     "from": "Người đàn ông tóc đen",
-     "to": "người đàn ông tóc bạc",
-     "self": "tôi",
-     "other": "anh"
-    },
-    {
-     "from": "Người đàn ông tóc sáng màu",
      "to": "Chàng trai tóc đen",
      "self": "tôi",
      "other": "cậu"
     },
     {
      "from": "Chàng trai tóc đen",
-     "to": "Người đàn ông tóc sáng màu",
+     "to": "Người đàn ông tóc bạc",
      "self": "tôi",
      "other": "anh"
     },
     {
-     "from": "Người đàn ông tóc bạc",
-     "to": "chàng trai tóc sẫm",
+     "from": "người đàn ông mặc giáp",
+     "to": "chàng trai tóc đen",
      "self": "tôi",
      "other": "cậu"
     },
     {
-     "from": "Chàng trai tóc sẫm",
+     "from": "chàng trai tóc đen",
+     "to": "người đàn ông mặc giáp",
+     "self": "tôi",
+     "other": "anh"
+    },
+    {
+     "from": "Người phát thanh",
+     "to": "Mọi người trong sảnh",
+     "self": "tôi",
+     "other": "mọi người"
+    },
+    {
+     "from": "Người đàn ông đang thẩm vấn",
+     "to": "cậu bé",
+     "self": "tôi",
+     "other": "nhóc"
+    },
+    {
+     "from": "người đàn ông tóc bạc",
+     "to": "Sunny",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "Sunny",
      "to": "người đàn ông tóc bạc",
      "self": "tôi",
-     "other": "ông"
+     "other": "anh"
+    },
+    {
+     "from": "người đàn ông tóc bạc",
+     "to": "người tóc đen",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "Người hướng dẫn (chưa rõ danh tính)",
+     "to": "nhân vật nam tóc đen",
+     "self": "tôi",
+     "other": "bạn"
+    },
+    {
+     "from": "người đàn ông tóc bạc",
+     "to": "Sunless",
+     "self": "tôi",
+     "other": "Sunless"
     },
     {
      "from": "Người đàn ông",
-     "to": "Sunless",
-     "self": "tôi",
-     "other": "cậu"
+     "to": "các Ứng Viên",
+     "self": "chúng tôi",
+     "other": "các người"
     },
     {
-     "from": "Nhóm của người đàn ông",
-     "to": "Sunless",
-     "self": "bọn tôi",
-     "other": "cậu"
-    },
-    {
-     "from": "Sunless",
-     "to": "Người đàn ông",
+     "from": "Ứng Viên",
+     "to": "người đàn ông",
      "self": "tôi",
      "other": "anh"
     }
    ]
   },
-  "lines_joined": 7,
+  "logos_freed": 4,
+  "lines_joined": 6,
   "overlaps_dropped": 0,
   "seam_copies": 20,
   "characters": [],
@@ -497,10 +492,10 @@
  "gateway_job": {
   "status": "completed",
   "requests": 281,
-  "prompt_tokens": 2337702,
-  "completion_tokens": 60099,
-  "cost_usd": 0.25488918000000005,
-  "charged_micros": 267642
+  "prompt_tokens": 2335831,
+  "completion_tokens": 56977,
+  "cost_usd": 0.251285202,
+  "charged_micros": 263847
  },
  "transport": {
   "scan": {
@@ -509,80 +504,80 @@
    "retried": 0,
    "truncated": 0,
    "latency_s": {
-    "p50": 5.0,
-    "p90": 7.0,
-    "max": 22.8,
-    "sum": 185.7
+    "p50": 5.8,
+    "p90": 8.6,
+    "max": 10.4,
+    "sum": 206.5
    },
-   "span_s": 84.3,
+   "span_s": 83.0,
    "images": 135,
-   "request_kb_avg": 624.0,
-   "prompt_tokens": 169791,
+   "request_kb_avg": 624.1,
+   "prompt_tokens": 170811,
    "cached_tokens": 0,
-   "completion_tokens": 9073,
-   "reasoning_tokens": 2328
+   "completion_tokens": 9548,
+   "reasoning_tokens": 2807
   },
   "other": {
-   "requests": 144,
+   "requests": 143,
    "failed": 0,
    "retried": 0,
    "truncated": 0,
    "latency_s": {
-    "p50": 4.8,
-    "p90": 7.8,
-    "max": 12.5,
-    "sum": 761.4
+    "p50": 5.8,
+    "p90": 9.3,
+    "max": 15.3,
+    "sum": 902.5
    },
-   "span_s": 574.7,
-   "images": 369,
-   "request_kb_avg": 732.7,
-   "prompt_tokens": 1029582,
+   "span_s": 648.8,
+   "images": 366,
+   "request_kb_avg": 730.8,
+   "prompt_tokens": 1019251,
    "cached_tokens": 0,
-   "completion_tokens": 27566,
-   "reasoning_tokens": 21068
+   "completion_tokens": 25805,
+   "reasoning_tokens": 19725
   },
   "translate": {
-   "requests": 103,
+   "requests": 104,
    "failed": 0,
-   "retried": 0,
+   "retried": 3,
    "truncated": 0,
    "latency_s": {
-    "p50": 4.7,
-    "p90": 6.6,
-    "max": 10.2,
-    "sum": 510.0
+    "p50": 5.9,
+    "p90": 11.9,
+    "max": 46.2,
+    "sum": 790.3
    },
-   "span_s": 222.7,
-   "images": 309,
-   "request_kb_avg": 751.8,
-   "prompt_tokens": 1138329,
-   "cached_tokens": 234090,
-   "completion_tokens": 23460,
-   "reasoning_tokens": 13664
+   "span_s": 317.9,
+   "images": 312,
+   "request_kb_avg": 751.9,
+   "prompt_tokens": 1145769,
+   "cached_tokens": 252804,
+   "completion_tokens": 21624,
+   "reasoning_tokens": 12018
   }
  },
  "zip_pages": 43,
  "slices": 135,
- "slices_active": 123,
+ "slices_active": 122,
  "clean_ms": {
-  "auto_inpaint": 583720,
-  "auto_inpaint.lama_model_ms": 372545,
+  "auto_inpaint": 626742,
+  "auto_inpaint.lama_model_ms": 382915,
   "auto_inpaint.ort_global_lock_wait_ms": 0,
   "auto_inpaint.session_lock_wait_ms": 0,
-  "detect": 383211,
+  "detect": 466796,
   "manual_inpaint": 0,
   "manual_inpaint.lama_model_ms": 0,
   "manual_inpaint.ort_global_lock_wait_ms": 0,
   "manual_inpaint.session_lock_wait_ms": 0,
-  "read": 22463,
-  "total": 1009636,
-  "write": 20001
+  "read": 15340,
+  "total": 1128270,
+  "write": 19263
  },
- "pairs": 123,
+ "pairs": 122,
  "lines": [
   {
    "slice": 2,
-   "id": "text_46676780c0ae4735",
+   "id": "text_c492d15e87134454",
    "source": "",
    "translation": "Dám Mơ Ước",
    "role": "title",
@@ -605,9 +600,9 @@
   },
   {
    "slice": 3,
-   "id": "text_989597a9dc6b4f16",
+   "id": "text_c934470a12f1476f",
    "source": "",
-   "translation": "Người ta từng nói thế...",
+   "translation": "Đó là điều họ từng nói...",
    "role": "free_text",
    "font": "emphasis.anton",
    "review": false,
@@ -617,8 +612,8 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Người ta từng nói",
-    "thế..."
+    "Đó là điều họ từng",
+    "nói..."
    ],
    "box_w": 1600,
    "box_h": 655,
@@ -629,9 +624,9 @@
   },
   {
    "slice": 4,
-   "id": "text_1e3ed11f923c4727",
+   "id": "text_46b52a7204734bd4",
    "source": "",
-   "translation": "Người ta từng nói thế...",
+   "translation": "Đó là điều họ từng nói...",
    "role": "free_text",
    "font": "emphasis.anton",
    "review": false,
@@ -641,8 +636,8 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Người ta từng nói",
-    "thế..."
+    "Đó là điều họ từng",
+    "nói..."
    ],
    "box_w": 1600,
    "box_h": 655,
@@ -653,17 +648,7 @@
   },
   {
    "slice": 5,
-   "id": "text_217074169dba4e02",
-   "source": "",
-   "translation": "",
-   "role": null,
-   "font": "default",
-   "review": false,
-   "page_width": 1600
-  },
-  {
-   "slice": 5,
-   "id": "text_04e3c4e5b7344fa4",
+   "id": "text_758fbfa2e4884446",
    "source": "",
    "translation": "Trước khi ác mộng của chúng ta thành hiện thực.",
    "role": "title",
@@ -688,17 +673,7 @@
   },
   {
    "slice": 6,
-   "id": "text_00a64b89d4b34993",
-   "source": "",
-   "translation": "",
-   "role": null,
-   "font": "default",
-   "review": false,
-   "page_width": 1600
-  },
-  {
-   "slice": 6,
-   "id": "text_d06f7287889e4550",
+   "id": "text_39f516e995ac4263",
    "source": "",
    "translation": "Trước khi ác mộng của chúng ta thành hiện thực.",
    "role": "title",
@@ -723,9 +698,9 @@
   },
   {
    "slice": 7,
-   "id": "text_f84a97e888014667",
+   "id": "text_12eefbe48dd64338",
    "source": "",
-   "translation": "Truyện gốc: GUILTYTHREE,\nđăng trên Webnovel\n\nSản xuất: AETHON\nChuyển thể: LAUREL PURSUIT\n\nTrưởng xưởng phim: TARO NAKAGAWA\nGiám sát sản xuất: IL HWAN\nVẽ: JS | Tô màu: MOOVAN STUDIO",
+   "translation": "Truyện gốc của GUILTYTHREE,\nđăng trên nền tảng tiểu thuyết mạng\n\nSản xuất bởi AETHON\nChuyển thể bởi LAUREL PURSUIT\n\nTrưởng phòng thu âm: TARO NAKAGAWA\nGiám sát sản xuất: IL HWAN\nMỹ thuật: JS | Tô màu: Xưởng phim MOOVAN",
    "role": "free_text",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -735,15 +710,15 @@
    "size_source": "fit",
    "lines": 9,
    "wrapped": [
-    "Truyện gốc: GUILTYTHREE,",
-    "đăng trên Webnovel",
+    "Truyện gốc của GUILTYTHREE,",
+    "đăng trên nền tảng tiểu thuyết mạng",
     "",
-    "Sản xuất: AETHON",
-    "Chuyển thể: LAUREL PURSUIT",
+    "Sản xuất bởi AETHON",
+    "Chuyển thể bởi LAUREL PURSUIT",
     "",
-    "Trưởng xưởng phim: TARO NAKAGAWA",
+    "Trưởng phòng thu âm: TARO NAKAGAWA",
     "Giám sát sản xuất: IL HWAN",
-    "Vẽ: JS | Tô màu: MOOVAN STUDIO"
+    "Mỹ thuật: JS | Tô màu: Xưởng phim MOOVAN"
    ],
    "box_w": 965,
    "box_h": 554,
@@ -753,8 +728,32 @@
    "split_word": false
   },
   {
+   "slice": 7,
+   "id": "text_05f4d66665e44366",
+   "source": "",
+   "translation": "Mơ ước",
+   "role": "free_text",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 1600,
+   "font_px": 48,
+   "font_px_at_800": 24.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Mơ",
+    "ước"
+   ],
+   "box_w": 142,
+   "box_h": 242,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
    "slice": 8,
-   "id": "text_9b972d78adf2455d",
+   "id": "text_01310aaaa91d403d",
    "source": "",
    "translation": "Tập 1",
    "role": "title",
@@ -777,7 +776,7 @@
   },
   {
    "slice": 12,
-   "id": "text_839d320068e446cc",
+   "id": "text_f24b6fbff1d14b7b",
    "source": "",
    "translation": "Cà phê thật.",
    "role": "free_text",
@@ -800,24 +799,25 @@
   },
   {
    "slice": 14,
-   "id": "text_58b3c002d6284a2c",
+   "id": "text_e3b9c97753d44f80",
    "source": "",
-   "translation": "Không phải thứ đồ tổng hợp rẻ tiền tôi thường uống ở Khu ổ chuột.",
-   "role": "narration",
-   "font": "emphasis.anton",
+   "translation": "Không phải thứ đồ tổng hợp rẻ tiền mình vẫn hay uống ở Khu ổ chuột.",
+   "role": "thought",
+   "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 161,
-   "font_px_at_800": 80.5,
+   "font_px": 200,
+   "font_px_at_800": 100.0,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 4,
    "wrapped": [
-    "Không phải thứ đồ tổng",
-    "hợp rẻ tiền tôi thường",
-    "uống ở Khu ổ chuột."
+    "Không phải thứ đồ",
+    "tổng hợp rẻ tiền",
+    "mình vẫn hay uống",
+    "ở Khu ổ chuột."
    ],
-   "box_w": 1600,
-   "box_h": 1662,
+   "box_w": 1558,
+   "box_h": 1108,
    "fits": true,
    "missing_glyphs": false,
    "source_cap_px": 120,
@@ -825,24 +825,25 @@
   },
   {
    "slice": 15,
-   "id": "text_102b43d3b40043fa",
+   "id": "text_c914695b38664ae6",
    "source": "",
-   "translation": "Không phải thứ đồ tổng hợp rẻ tiền tôi thường uống ở Khu ổ chuột.",
-   "role": "narration",
-   "font": "emphasis.anton",
+   "translation": "Không phải thứ đồ tổng hợp rẻ tiền mình vẫn hay uống ở Khu ổ chuột.",
+   "role": "thought",
+   "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 161,
-   "font_px_at_800": 80.5,
+   "font_px": 200,
+   "font_px_at_800": 100.0,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 4,
    "wrapped": [
-    "Không phải thứ đồ tổng",
-    "hợp rẻ tiền tôi thường",
-    "uống ở Khu ổ chuột."
+    "Không phải thứ đồ",
+    "tổng hợp rẻ tiền",
+    "mình vẫn hay uống",
+    "ở Khu ổ chuột."
    ],
-   "box_w": 1600,
-   "box_h": 1662,
+   "box_w": 1558,
+   "box_h": 1108,
    "fits": true,
    "missing_glyphs": false,
    "source_cap_px": 120,
@@ -850,9 +851,9 @@
   },
   {
    "slice": 16,
-   "id": "text_a1dc8c4f05f24001",
+   "id": "text_dabbcddc13314be7",
    "source": "",
-   "translation": "Vì đã phải đánh đổi tất cả những gì còn lại...",
+   "translation": "Vì ta đã phải đánh đổi tất cả những gì còn lại...",
    "role": "narration",
    "font": "emphasis.anton",
    "review": false,
@@ -862,8 +863,8 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Vì đã phải đánh đổi tất cả",
-    "những gì còn lại..."
+    "Vì ta đã phải đánh đổi tất",
+    "cả những gì còn lại..."
    ],
    "box_w": 1594,
    "box_h": 534,
@@ -874,9 +875,9 @@
   },
   {
    "slice": 17,
-   "id": "text_7b440e193570474a",
+   "id": "text_cacdbf640cf244b9",
    "source": "",
-   "translation": "Tốt nhất là phải đáng công.",
+   "translation": "Tốt nhất là đáng công.",
    "role": "thought",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -884,11 +885,10 @@
    "font_px": 200,
    "font_px_at_800": 100.0,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
     "Tốt nhất là",
-    "phải đáng",
-    "công."
+    "đáng công."
    ],
    "box_w": 1227,
    "box_h": 721,
@@ -899,19 +899,19 @@
   },
   {
    "slice": 19,
-   "id": "text_dd34f474233548fc",
+   "id": "text_89d5508d448144ef",
    "source": "",
-   "translation": "Cuối cùng thì, cuộc đời tôi\ncũng sắp đi đến hồi kết.",
-   "role": "free_text",
+   "translation": "Rốt cuộc, cuộc đời tôi\ncũng sắp đi đến hồi kết.",
+   "role": "narration",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
-   "font_px": 137,
-   "font_px_at_800": 68.5,
+   "font_px": 149,
+   "font_px_at_800": 74.5,
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Cuối cùng thì, cuộc đời tôi",
+    "Rốt cuộc, cuộc đời tôi",
     "cũng sắp đi đến hồi kết."
    ],
    "box_w": 1446,
@@ -923,7 +923,7 @@
   },
   {
    "slice": 20,
-   "id": "text_c40d971e809c4cbf",
+   "id": "text_f8d5a87ae19c4b6b",
    "source": "",
    "translation": "",
    "role": null,
@@ -933,7 +933,7 @@
   },
   {
    "slice": 21,
-   "id": "text_0b74c1c17f774fc6",
+   "id": "text_f13b99623fc4428c",
    "source": "",
    "translation": "",
    "role": null,
@@ -943,9 +943,9 @@
   },
   {
    "slice": 22,
-   "id": "text_ec3fc4a0289f4d93",
+   "id": "text_c5568daeef2d4d74",
    "source": "",
-   "translation": "Chết tiệt!\nĐắng quá.",
+   "translation": "Khỉ thật!\nĐắng quá đi mất.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -953,10 +953,11 @@
    "font_px": 139,
    "font_px_at_800": 69.5,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 3,
    "wrapped": [
-    "Chết tiệt!",
-    "Đắng quá."
+    "Khỉ thật!",
+    "Đắng quá đi",
+    "mất."
    ],
    "box_w": 952,
    "box_h": 549,
@@ -967,7 +968,7 @@
   },
   {
    "slice": 22,
-   "id": "text_7b1e1463d9c34c1a",
+   "id": "text_401fe04c44d040ae",
    "source": "",
    "translation": "",
    "role": null,
@@ -977,9 +978,9 @@
   },
   {
    "slice": 23,
-   "id": "text_3a107ee416b84b89",
+   "id": "text_43cf8bdc9d154d94",
    "source": "",
-   "translation": "Đáng lẽ tôi nên mua\nmột miếng thịt thật.",
+   "translation": "Đáng lẽ mình nên mua thịt thật thì hơn.",
    "role": "thought",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -989,8 +990,8 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Đáng lẽ tôi nên mua",
-    "một miếng thịt thật."
+    "Đáng lẽ mình nên mua",
+    "thịt thật thì hơn."
    ],
    "box_w": 1087,
    "box_h": 642,
@@ -1001,7 +1002,7 @@
   },
   {
    "slice": 23,
-   "id": "text_66581575991a4e07",
+   "id": "text_fe2b2f6acf5b49b0",
    "source": "",
    "translation": "...",
    "role": "thought",
@@ -1024,9 +1025,9 @@
   },
   {
    "slice": 24,
-   "id": "text_37e18dabd9c34b0e",
+   "id": "text_dec91f7eecd14add",
    "source": "",
-   "translation": "Ừm... ít ra cũng giúp tôi tỉnh táo.",
+   "translation": "Thôi... ít ra cũng giúp mình tỉnh táo.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1036,8 +1037,8 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Ừm... ít ra cũng giúp",
-    "tôi tỉnh táo."
+    "Thôi... ít ra cũng",
+    "giúp mình tỉnh táo."
    ],
    "box_w": 1054,
    "box_h": 535,
@@ -1048,7 +1049,7 @@
   },
   {
    "slice": 24,
-   "id": "text_961dbdc32351441f",
+   "id": "text_746c3639daaa4c84",
    "source": "",
    "translation": "",
    "role": null,
@@ -1058,7 +1059,7 @@
   },
   {
    "slice": 24,
-   "id": "text_61430fcbde564ca4",
+   "id": "text_d9849c11fcde40e0",
    "source": "",
    "translation": "",
    "role": null,
@@ -1068,7 +1069,7 @@
   },
   {
    "slice": 24,
-   "id": "text_63b3209ed9a54e1d",
+   "id": "text_b35c4270f8ce4605",
    "source": "",
    "translation": "",
    "role": null,
@@ -1078,7 +1079,7 @@
   },
   {
    "slice": 25,
-   "id": "text_5c91d16146094b58",
+   "id": "text_205c1a6ea66f40a6",
    "source": "",
    "translation": "",
    "role": null,
@@ -1088,31 +1089,31 @@
   },
   {
    "slice": 27,
-   "id": "text_dda6c72a889e4b25",
+   "id": "text_6a0fa8519b7946ef",
    "source": "",
-   "translation": "Du hành\nvũ trụ",
+   "translation": "Du hành vũ trụ",
    "role": "free_text",
-   "font": "dialogue.mac-dinh-3",
+   "font": "emphasis.anton",
    "review": true,
    "page_width": 1600,
-   "font_px": 83,
-   "font_px_at_800": 41.5,
+   "font_px": 105,
+   "font_px_at_800": 52.5,
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
     "Du hành",
     "vũ trụ"
    ],
-   "box_w": 296,
-   "box_h": 490,
+   "box_w": 352,
+   "box_h": 524,
    "fits": true,
    "missing_glyphs": false,
-   "source_cap_px": 46,
+   "source_cap_px": 245,
    "split_word": false
   },
   {
    "slice": 28,
-   "id": "text_32bb4fadd67546f4",
+   "id": "text_611345a099884323",
    "source": "",
    "translation": "",
    "role": null,
@@ -1122,7 +1123,7 @@
   },
   {
    "slice": 29,
-   "id": "text_ded877fe33164d8f",
+   "id": "text_15b34dbf61a54c1c",
    "source": "",
    "translation": "",
    "role": null,
@@ -1132,7 +1133,7 @@
   },
   {
    "slice": 29,
-   "id": "text_ac1d94f9dcf342ed",
+   "id": "text_cb50ba5e8ae642b7",
    "source": "",
    "translation": "",
    "role": null,
@@ -1142,19 +1143,19 @@
   },
   {
    "slice": 30,
-   "id": "text_2eeb5a251d8d4fe6",
+   "id": "text_df3c2e4df22646ce",
    "source": "",
-   "translation": "Tôi vẫn còn buồn ngủ...",
-   "role": "thought",
+   "translation": "Mình vẫn buồn ngủ...",
+   "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 143,
-   "font_px_at_800": 71.5,
+   "font_px": 151,
+   "font_px_at_800": 75.5,
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Tôi vẫn còn",
+    "Mình vẫn",
     "buồn ngủ..."
    ],
    "box_w": 642,
@@ -1166,20 +1167,20 @@
   },
   {
    "slice": 30,
-   "id": "text_08c22842d37141fe",
+   "id": "text_b30fb49ee4c24a17",
    "source": "",
-   "translation": "Chậc. Đắt cắt cổ.",
+   "translation": "Chậc. Đúng là bị chém.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 140,
-   "font_px_at_800": 70.0,
+   "font_px": 130,
+   "font_px_at_800": 65.0,
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Chậc. Đắt",
-    "cắt cổ."
+    "Chậc. Đúng",
+    "là bị chém."
    ],
    "box_w": 629,
    "box_h": 374,
@@ -1190,7 +1191,7 @@
   },
   {
    "slice": 30,
-   "id": "text_65e7134849d14d9b",
+   "id": "text_ab4e9701cff94b25",
    "source": "",
    "translation": "",
    "role": null,
@@ -1200,7 +1201,7 @@
   },
   {
    "slice": 31,
-   "id": "text_f46ffc3b664e4c1c",
+   "id": "text_8c73d870e84b4875",
    "source": "",
    "translation": "",
    "role": null,
@@ -1210,10 +1211,10 @@
   },
   {
    "slice": 31,
-   "id": "text_6862f2ff8d1b4a12",
+   "id": "text_54a6aad1c7404bc0",
    "source": "",
    "translation": "Chỉ...",
-   "role": "thought",
+   "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
@@ -1232,81 +1233,8 @@
    "split_word": false
   },
   {
-   "slice": 31,
-   "id": "text_f57289f7484f4d96",
-   "source": "",
-   "translation": "Tương lai tốt đẹp hơn",
-   "role": "free_text",
-   "font": "emphasis.anton",
-   "review": false,
-   "page_width": 1600,
-   "font_px": 48,
-   "font_px_at_800": 24.0,
-   "size_source": "fit",
-   "lines": 3,
-   "wrapped": [
-    "Tương lai",
-    "tốt đẹp",
-    "hơn"
-   ],
-   "box_w": 210,
-   "box_h": 295,
-   "fits": true,
-   "missing_glyphs": false,
-   "source_cap_px": null,
-   "split_word": false
-  },
-  {
-   "slice": 31,
-   "id": "text_2a5a1b3346794228",
-   "source": "",
-   "translation": "Lao động công ích",
-   "role": "free_text",
-   "font": "dialogue.mac-dinh-3",
-   "review": false,
-   "page_width": 1600,
-   "font_px": 40,
-   "font_px_at_800": 20.0,
-   "size_source": "fit",
-   "lines": 2,
-   "wrapped": [
-    "Lao động",
-    "công ích"
-   ],
-   "box_w": 157,
-   "box_h": 123,
-   "fits": true,
-   "missing_glyphs": false,
-   "source_cap_px": 29,
-   "split_word": false
-  },
-  {
-   "slice": 31,
-   "id": "text_c0dbc934576b45d1",
-   "source": "",
-   "translation": "Cảnh giác",
-   "role": "free_text",
-   "font": "dialogue.mac-dinh-3",
-   "review": false,
-   "page_width": 1600,
-   "font_px": 145,
-   "font_px_at_800": 72.5,
-   "size_source": "fit",
-   "lines": 2,
-   "wrapped": [
-    "Cảnh",
-    "giác"
-   ],
-   "box_w": 304,
-   "box_h": 435,
-   "fits": true,
-   "missing_glyphs": false,
-   "source_cap_px": 129,
-   "split_word": false
-  },
-  {
    "slice": 32,
-   "id": "text_2c01c6e614cd4292",
+   "id": "text_f4292cbd3fff44cf",
    "source": "",
    "translation": "",
    "role": null,
@@ -1316,7 +1244,7 @@
   },
   {
    "slice": 32,
-   "id": "text_6d7486ab93604e3a",
+   "id": "text_c5ab30a68708429c",
    "source": "",
    "translation": "",
    "role": null,
@@ -1326,7 +1254,7 @@
   },
   {
    "slice": 32,
-   "id": "text_f10446b419364e3e",
+   "id": "text_357747f46a644d64",
    "source": "",
    "translation": "",
    "role": null,
@@ -1336,9 +1264,9 @@
   },
   {
    "slice": 33,
-   "id": "text_f2e67f9eda0741e0",
+   "id": "text_8ae9522dc1df4257",
    "source": "",
-   "translation": "Tới được\nđồn cảnh sát...",
+   "translation": "Đến được\nđồn cảnh sát...",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1348,7 +1276,7 @@
    "size_source": "fit",
    "lines": 3,
    "wrapped": [
-    "Tới được",
+    "Đến được",
     "đồn cảnh",
     "sát..."
    ],
@@ -1361,20 +1289,21 @@
   },
   {
    "slice": 34,
-   "id": "text_348733f206154483",
+   "id": "text_7d248b772f5d48df",
    "source": "",
-   "translation": "... Chỉ cần cố trụ thêm thôi.",
-   "role": "dialogue",
+   "translation": "... Mình chỉ cần cố gắng cầm cự thôi.",
+   "role": "thought",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 156,
-   "font_px_at_800": 78.0,
+   "font_px": 124,
+   "font_px_at_800": 62.0,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 3,
    "wrapped": [
-    "... Chỉ cần cố",
-    "trụ thêm thôi."
+    "... Mình chỉ cần",
+    "cố gắng cầm cự",
+    "thôi."
    ],
    "box_w": 918,
    "box_h": 420,
@@ -1385,7 +1314,7 @@
   },
   {
    "slice": 34,
-   "id": "text_58ba1863ee1c43a0",
+   "id": "text_802fd33d1bf84eea",
    "source": "",
    "translation": "",
    "role": null,
@@ -1395,21 +1324,20 @@
   },
   {
    "slice": 36,
-   "id": "text_3980a2349e5d4cce",
+   "id": "text_661490bb068b475e",
    "source": "",
-   "translation": "Thủ Đô Phòng Tuyến Tứ Phương Bắc,\nPhân Khu 7",
+   "translation": "Thủ đô Pháo Đài Bắc Tứ Phân Khu,\nĐồn Cảnh sát số 7",
    "role": "title",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
-   "font_px": 76,
-   "font_px_at_800": 38.0,
+   "font_px": 77,
+   "font_px_at_800": 38.5,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
-    "Thủ Đô Phòng Tuyến Tứ Phương",
-    "Bắc,",
-    "Phân Khu 7"
+    "Thủ đô Pháo Đài Bắc Tứ Phân Khu,",
+    "Đồn Cảnh sát số 7"
    ],
    "box_w": 1061,
    "box_h": 432,
@@ -1420,7 +1348,7 @@
   },
   {
    "slice": 36,
-   "id": "text_8483771927904df2",
+   "id": "text_deb4e225e9244fd2",
    "source": "",
    "translation": "CA",
    "role": "free_text",
@@ -1443,19 +1371,32 @@
   },
   {
    "slice": 38,
-   "id": "text_b636956439994e74",
+   "id": "text_232e9cd662b54f1d",
    "source": "",
-   "translation": "",
-   "role": null,
-   "font": "default",
+   "translation": "...",
+   "role": "thought",
+   "font": "dialogue.mac-dinh-3",
    "review": false,
-   "page_width": 1600
+   "page_width": 1600,
+   "font_px": 143,
+   "font_px_at_800": 71.5,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "..."
+   ],
+   "box_w": 371,
+   "box_h": 348,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 79,
+   "split_word": false
   },
   {
    "slice": 39,
-   "id": "text_c0a7bcd740fb47cd",
+   "id": "text_8f2f37f2241f4f72",
    "source": "",
-   "translation": "Lạc đường à, nhóc?",
+   "translation": "Lạc đường à,\nnhóc?",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1477,10 +1418,10 @@
   },
   {
    "slice": 39,
-   "id": "text_ebc18a6545d94fbe",
+   "id": "text_c59f561278944431",
    "source": "",
    "translation": "...",
-   "role": "dialogue",
+   "role": "thought",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
@@ -1500,9 +1441,9 @@
   },
   {
    "slice": 40,
-   "id": "text_9396260fa3cb4ce7",
+   "id": "text_85464461024744ab",
    "source": "",
-   "translation": "Theo yêu cầu của mệnh lệnh đặc biệt thứ ba...",
+   "translation": "Theo yêu cầu của\nChỉ thị Đặc biệt thứ ba...",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1513,8 +1454,8 @@
    "lines": 3,
    "wrapped": [
     "Theo yêu cầu của",
-    "mệnh lệnh đặc",
-    "biệt thứ ba..."
+    "Chỉ thị Đặc biệt",
+    "thứ ba..."
    ],
    "box_w": 994,
    "box_h": 534,
@@ -1525,9 +1466,9 @@
   },
   {
    "slice": 41,
-   "id": "text_2a8221b0802745b8",
+   "id": "text_60a628fee5674df4",
    "source": "",
-   "translation": "Theo yêu cầu của mệnh lệnh đặc biệt thứ ba...",
+   "translation": "Theo yêu cầu của\nChỉ thị Đặc biệt thứ ba...",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1538,8 +1479,8 @@
    "lines": 3,
    "wrapped": [
     "Theo yêu cầu của",
-    "mệnh lệnh đặc",
-    "biệt thứ ba..."
+    "Chỉ thị Đặc biệt",
+    "thứ ba..."
    ],
    "box_w": 994,
    "box_h": 534,
@@ -1550,9 +1491,9 @@
   },
   {
    "slice": 42,
-   "id": "text_812ef6175d334006",
+   "id": "text_24b29dc528cb4afa",
    "source": "",
-   "translation": "Tôi đến đây để đầu thú,\nvới tư cách vật chủ của\nChú thuật Ác Mộng.",
+   "translation": "Tôi đến đây để đầu thú,\nvới tư cách vật chủ của\nThần Chú Ác Mộng.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1565,7 +1506,7 @@
     "Tôi đến đây để đầu",
     "thú,",
     "với tư cách vật chủ của",
-    "Chú thuật Ác Mộng."
+    "Thần Chú Ác Mộng."
    ],
    "box_w": 1289,
    "box_h": 720,
@@ -1576,9 +1517,9 @@
   },
   {
    "slice": 43,
-   "id": "text_2855a4764c6942da",
+   "id": "text_e578ab7571264e93",
    "source": "",
-   "translation": "Gì cơ?!",
+   "translation": "Cái gì?",
    "role": "shout",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1588,7 +1529,7 @@
    "size_source": "fit",
    "lines": 1,
    "wrapped": [
-    "Gì cơ?!"
+    "Cái gì?"
    ],
    "box_w": 553,
    "box_h": 241,
@@ -1599,7 +1540,7 @@
   },
   {
    "slice": 44,
-   "id": "text_a69712b8e05d495c",
+   "id": "text_8402e35538944ed8",
    "source": "",
    "translation": "",
    "role": null,
@@ -1609,9 +1550,9 @@
   },
   {
    "slice": 44,
-   "id": "text_d2fd1425b5f842ea",
+   "id": "text_022d06dbae05430b",
    "source": "",
-   "translation": "Gì cơ?!",
+   "translation": "Cái gì?",
    "role": "shout",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1621,7 +1562,7 @@
    "size_source": "fit",
    "lines": 1,
    "wrapped": [
-    "Gì cơ?!"
+    "Cái gì?"
    ],
    "box_w": 553,
    "box_h": 241,
@@ -1632,9 +1573,9 @@
   },
   {
    "slice": 45,
-   "id": "text_6c984063e8df44e1",
+   "id": "text_649fe0e276ae4d44",
    "source": "",
-   "translation": "Chú ý! Báo động Đen tại sảnh!",
+   "translation": "Chú ý!\nBáo động Đen tại sảnh!",
    "role": "shout",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1642,10 +1583,11 @@
    "font_px": 117,
    "font_px_at_800": 58.5,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 3,
    "wrapped": [
-    "Chú ý! Báo động",
-    "Đen tại sảnh!"
+    "Chú ý!",
+    "Báo động Đen tại",
+    "sảnh!"
    ],
    "box_w": 911,
    "box_h": 457,
@@ -1656,9 +1598,9 @@
   },
   {
    "slice": 45,
-   "id": "text_cf4bbddf6946456f",
+   "id": "text_da4aad9f3337437a",
    "source": "",
-   "translation": "Tôi nhắc lại!\nBáo động Đen!",
+   "translation": "Nhắc lại!\nBáo động Đen!",
    "role": "shout",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1668,7 +1610,7 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Tôi nhắc lại!",
+    "Nhắc lại!",
     "Báo động Đen!"
    ],
    "box_w": 1123,
@@ -1680,7 +1622,7 @@
   },
   {
    "slice": 46,
-   "id": "text_a58d3cf2b25e4ee4",
+   "id": "text_b55a5234b3694e19",
    "source": "",
    "translation": "",
    "role": null,
@@ -1690,9 +1632,9 @@
   },
   {
    "slice": 46,
-   "id": "text_f6c930c2bbe0491c",
+   "id": "text_3259e31220a5413d",
    "source": "",
-   "translation": "Tôi đã bị đánh dấu...",
+   "translation": "Tôi đã bị\nđánh dấu...",
    "role": "free_text",
    "font": "emphasis.anton",
    "review": false,
@@ -1702,10 +1644,10 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Tôi đã bị đánh",
-    "dấu..."
+    "Tôi đã bị",
+    "đánh dấu..."
    ],
-   "box_w": 1234,
+   "box_w": 1239,
    "box_h": 643,
    "fits": true,
    "missing_glyphs": false,
@@ -1714,7 +1656,7 @@
   },
   {
    "slice": 48,
-   "id": "text_e4fe0e03baa44059",
+   "id": "text_21596b5501c54935",
    "source": "",
    "translation": "",
    "role": null,
@@ -1724,9 +1666,9 @@
   },
   {
    "slice": 48,
-   "id": "text_019281a08c284e62",
+   "id": "text_9b16e6877f924d15",
    "source": "",
-   "translation": "Bởi Chú thuật Ác Mộng",
+   "translation": "Do Thần Chú Ác Mộng",
    "role": "title",
    "font": "emphasis.anton",
    "review": false,
@@ -1736,8 +1678,8 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Bởi Chú thuật",
-    "Ác Mộng"
+    "Do Thần Chú Ác",
+    "Mộng"
    ],
    "box_w": 1280,
    "box_h": 962,
@@ -1748,7 +1690,7 @@
   },
   {
    "slice": 48,
-   "id": "text_0211ec8bb98c419c",
+   "id": "text_2509a7e6d288471b",
    "source": "",
    "translation": "",
    "role": null,
@@ -1758,9 +1700,9 @@
   },
   {
    "slice": 50,
-   "id": "text_b27596d455f24348",
+   "id": "text_2417cfee07714788",
    "source": "",
-   "translation": "Nó xuất hiện lần đầu\ncách đây vài thập kỷ.",
+   "translation": "Nó xuất hiện lần đầu\nhàng chục năm trước.",
    "role": "narration",
    "font": "emphasis.anton",
    "review": false,
@@ -1771,7 +1713,7 @@
    "lines": 2,
    "wrapped": [
     "Nó xuất hiện lần đầu",
-    "cách đây vài thập kỷ."
+    "hàng chục năm trước."
    ],
    "box_w": 834,
    "box_h": 288,
@@ -1782,9 +1724,36 @@
   },
   {
    "slice": 51,
-   "id": "text_5129e39efe264cd5",
+   "id": "text_712945f8ac964eac",
    "source": "",
-   "translation": "Khi ấy, Trái Đất vừa bắt đầu hồi phục sau hàng loạt thảm họa thiên nhiên tàn khốc và những cuộc chiến tranh tài nguyên tiếp sau.",
+   "translation": "Tưởng như đó là một căn bệnh gây mệt mỏi và buồn ngủ triền miên.\nNhưng khi nạn nhân bắt đầu chìm vào giấc ngủ bất tận,\ncả thế giới mới chú ý.",
+   "role": "narration",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1600,
+   "font_px": 103,
+   "font_px_at_800": 51.5,
+   "size_source": "fit",
+   "lines": 5,
+   "wrapped": [
+    "Tưởng như đó là một căn bệnh gây",
+    "mệt mỏi và buồn ngủ triền miên.",
+    "Nhưng khi nạn nhân bắt đầu chìm vào",
+    "giấc ngủ bất tận,",
+    "cả thế giới mới chú ý."
+   ],
+   "box_w": 1599,
+   "box_h": 1115,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 57,
+   "split_word": false
+  },
+  {
+   "slice": 51,
+   "id": "text_57e011d8bb1d4351",
+   "source": "",
+   "translation": "Khi ấy, hành tinh vừa bắt đầu hồi phục sau hàng loạt\nthảm họa thiên nhiên tàn khốc và những cuộc chiến\ntranh giành tài nguyên tiếp sau đó.",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1792,12 +1761,13 @@
    "font_px": 98,
    "font_px_at_800": 49.0,
    "size_source": "fit",
-   "lines": 4,
+   "lines": 5,
    "wrapped": [
-    "Khi ấy, Trái Đất vừa bắt đầu hồi",
-    "phục sau hàng loạt thảm họa thiên",
-    "nhiên tàn khốc và những cuộc",
-    "chiến tranh tài nguyên tiếp sau."
+    "Khi ấy, hành tinh vừa bắt đầu hồi",
+    "phục sau hàng loạt",
+    "thảm họa thiên nhiên tàn khốc và",
+    "những cuộc chiến",
+    "tranh giành tài nguyên tiếp sau đó."
    ],
    "box_w": 1394,
    "box_h": 800,
@@ -1807,60 +1777,10 @@
    "split_word": false
   },
   {
-   "slice": 51,
-   "id": "text_79406895e2f440e7",
-   "source": "",
-   "translation": "Nhưng khi các nạn nhân bắt đầu chìm vào giấc ngủ triền miên, cả thế giới mới chú ý.",
-   "role": "narration",
-   "font": "dialogue.mac-dinh-3",
-   "review": false,
-   "page_width": 1600,
-   "font_px": 102,
-   "font_px_at_800": 51.0,
-   "size_source": "fit",
-   "lines": 3,
-   "wrapped": [
-    "Nhưng khi các nạn nhân bắt",
-    "đầu chìm vào giấc ngủ triền",
-    "miên, cả thế giới mới chú ý."
-   ],
-   "box_w": 1158,
-   "box_h": 688,
-   "fits": true,
-   "missing_glyphs": false,
-   "source_cap_px": 56,
-   "split_word": false
-  },
-  {
-   "slice": 51,
-   "id": "text_fbeb23133c844134",
-   "source": "",
-   "translation": "Ban đầu, căn bệnh này chỉ gây mệt mỏi triền miên và buồn ngủ.",
-   "role": "narration",
-   "font": "dialogue.mac-dinh-3",
-   "review": false,
-   "page_width": 1600,
-   "font_px": 105,
-   "font_px_at_800": 52.5,
-   "size_source": "fit",
-   "lines": 3,
-   "wrapped": [
-    "Ban đầu, căn bệnh này chỉ",
-    "gây mệt mỏi triền miên và",
-    "buồn ngủ."
-   ],
-   "box_w": 1173,
-   "box_h": 583,
-   "fits": true,
-   "missing_glyphs": false,
-   "source_cap_px": 58,
-   "split_word": false
-  },
-  {
    "slice": 52,
-   "id": "text_ea73356fff4e45f7",
+   "id": "text_27251746b91f47e8",
    "source": "",
-   "translation": "Cuối cùng, hiện tượng này được gọi là Chú thuật Ác Mộng. Nó đâu chỉ là một căn bệnh thông thường.",
+   "translation": "Cuối cùng, hiện tượng này được gọi là Thần Chú Ác Mộng,\nvà nó chẳng phải căn bệnh tầm thường.",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1871,8 +1791,8 @@
    "lines": 4,
    "wrapped": [
     "Cuối cùng, hiện tượng này được",
-    "gọi là Chú thuật Ác Mộng. Nó",
-    "đâu chỉ là một căn bệnh thông",
+    "gọi là Thần Chú Ác Mộng,",
+    "và nó chẳng phải căn bệnh tầm",
     "thường."
    ],
    "box_w": 1349,
@@ -1884,34 +1804,36 @@
   },
   {
    "slice": 52,
-   "id": "text_8d8f99e78ed3454d",
+   "id": "text_4482a952add444b4",
    "source": "",
-   "translation": "Nhưng khi các nạn nhân bắt đầu chìm vào giấc ngủ triền miên, cả thế giới mới chú ý.",
+   "translation": "Tưởng như đó là một căn bệnh gây mệt mỏi và buồn ngủ triền miên.\nNhưng khi nạn nhân bắt đầu chìm vào giấc ngủ bất tận,\ncả thế giới mới chú ý.",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 102,
-   "font_px_at_800": 51.0,
+   "font_px": 103,
+   "font_px_at_800": 51.5,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 5,
    "wrapped": [
-    "Nhưng khi các nạn nhân bắt",
-    "đầu chìm vào giấc ngủ triền",
-    "miên, cả thế giới mới chú ý."
+    "Tưởng như đó là một căn bệnh gây",
+    "mệt mỏi và buồn ngủ triền miên.",
+    "Nhưng khi nạn nhân bắt đầu chìm vào",
+    "giấc ngủ bất tận,",
+    "cả thế giới mới chú ý."
    ],
-   "box_w": 1158,
-   "box_h": 688,
+   "box_w": 1599,
+   "box_h": 1115,
    "fits": true,
    "missing_glyphs": false,
-   "source_cap_px": 56,
+   "source_cap_px": 57,
    "split_word": false
   },
   {
    "slice": 53,
-   "id": "text_e63ee25d4eee4c99",
+   "id": "text_a643c1768fe6463b",
    "source": "",
-   "translation": "Cuối cùng, hiện tượng này được gọi là Chú thuật Ác Mộng. Nó đâu chỉ là một căn bệnh thông thường.",
+   "translation": "Cuối cùng, hiện tượng này được gọi là Thần Chú Ác Mộng,\nvà nó chẳng phải căn bệnh tầm thường.",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1922,8 +1844,8 @@
    "lines": 4,
    "wrapped": [
     "Cuối cùng, hiện tượng này được",
-    "gọi là Chú thuật Ác Mộng. Nó",
-    "đâu chỉ là một căn bệnh thông",
+    "gọi là Thần Chú Ác Mộng,",
+    "và nó chẳng phải căn bệnh tầm",
     "thường."
    ],
    "box_w": 1349,
@@ -1935,9 +1857,9 @@
   },
   {
    "slice": 53,
-   "id": "text_e4c923fffeca4fb6",
+   "id": "text_79edab76c61a4e5f",
    "source": "",
-   "translation": "Đó là một dạng ma pháp...\nHay một lời nguyền.",
+   "translation": "Đó là một dạng ma thuật... hoặc lời nguyền.",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -1948,8 +1870,8 @@
    "lines": 3,
    "wrapped": [
     "Đó là một dạng ma",
-    "pháp...",
-    "Hay một lời nguyền."
+    "thuật... hoặc lời",
+    "nguyền."
    ],
    "box_w": 1154,
    "box_h": 554,
@@ -1960,21 +1882,20 @@
   },
   {
    "slice": 54,
-   "id": "text_debd5a3120c14043",
+   "id": "text_08677de1bc4d4323",
    "source": "",
-   "translation": "Những người chết trong giấc ngủ\nđều biến thành quái vật.",
-   "role": "free_text",
+   "translation": "Những kẻ chết trong giấc ngủ\nđều hóa thành quái vật.",
+   "role": "narration",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
    "font_px": 93,
    "font_px_at_800": 46.5,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
-    "Những người chết trong giấc",
-    "ngủ",
-    "đều biến thành quái vật."
+    "Những kẻ chết trong giấc ngủ",
+    "đều hóa thành quái vật."
    ],
    "box_w": 1240,
    "box_h": 690,
@@ -1985,10 +1906,10 @@
   },
   {
    "slice": 56,
-   "id": "text_c7cef57841a246dd",
+   "id": "text_c3ae85abb75b4c0c",
    "source": "",
    "translation": "Sinh vật ác mộng.",
-   "role": "title",
+   "role": "narration",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
@@ -2008,7 +1929,7 @@
   },
   {
    "slice": 57,
-   "id": "text_f78dbed3427940ed",
+   "id": "text_5095c633ce1a4d30",
    "source": "",
    "translation": "",
    "role": null,
@@ -2018,20 +1939,22 @@
   },
   {
    "slice": 57,
-   "id": "text_81e210560f2c4dc0",
+   "id": "text_442ddc459d3442f1",
    "source": "",
    "translation": "Những sinh vật này bắt đầu\nsăn lùng con người bừa bãi.",
    "role": "narration",
-   "font": "emphasis.anton",
+   "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 87,
-   "font_px_at_800": 43.5,
+   "font_px": 118,
+   "font_px_at_800": 59.0,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 4,
    "wrapped": [
-    "Những sinh vật này bắt đầu",
-    "săn lùng con người bừa bãi."
+    "Những sinh vật này",
+    "bắt đầu",
+    "săn lùng con người bừa",
+    "bãi."
    ],
    "box_w": 1065,
    "box_h": 595,
@@ -2042,20 +1965,22 @@
   },
   {
    "slice": 58,
-   "id": "text_da749cd7a39844d2",
+   "id": "text_60361c52beeb4514",
    "source": "",
    "translation": "Những sinh vật này bắt đầu\nsăn lùng con người bừa bãi.",
    "role": "narration",
-   "font": "emphasis.anton",
+   "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 87,
-   "font_px_at_800": 43.5,
+   "font_px": 118,
+   "font_px_at_800": 59.0,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 4,
    "wrapped": [
-    "Những sinh vật này bắt đầu",
-    "săn lùng con người bừa bãi."
+    "Những sinh vật này",
+    "bắt đầu",
+    "săn lùng con người bừa",
+    "bãi."
    ],
    "box_w": 1065,
    "box_h": 595,
@@ -2066,21 +1991,20 @@
   },
   {
    "slice": 60,
-   "id": "text_ddaff94bc7bb4c15",
+   "id": "text_74522af40d614242",
    "source": "",
-   "translation": "Quân đội các nước nhanh chóng bị áp đảo.",
+   "translation": "Quân đội các nước\nnhanh chóng bị áp đảo.",
    "role": "narration",
-   "font": "dialogue.mac-dinh-3",
+   "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
-   "font_px": 127,
-   "font_px_at_800": 63.5,
+   "font_px": 93,
+   "font_px_at_800": 46.5,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
     "Quân đội các nước",
-    "nhanh chóng bị áp",
-    "đảo."
+    "nhanh chóng bị áp đảo."
    ],
    "box_w": 1115,
    "box_h": 517,
@@ -2091,21 +2015,21 @@
   },
   {
    "slice": 62,
-   "id": "text_11ceb8fa11db423a",
+   "id": "text_24a56f86141b4f39",
    "source": "",
-   "translation": "Chẳng bao lâu sau,\nthế giới chìm trong\n tuyệt vọng và hỗn loạn.",
+   "translation": "Chẳng bao lâu sau,\nthế giới bị nhấn chìm\ntrong tuyệt vọng và hỗn loạn.",
    "role": "narration",
-   "font": "dialogue.mac-dinh-3",
+   "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
-   "font_px": 136,
-   "font_px_at_800": 68.0,
+   "font_px": 100,
+   "font_px_at_800": 50.0,
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
     "Chẳng bao lâu sau,",
-    "thế giới chìm trong",
-    "tuyệt vọng và hỗn",
+    "thế giới bị nhấn chìm",
+    "trong tuyệt vọng và hỗn",
     "loạn."
    ],
    "box_w": 1169,
@@ -2117,7 +2041,7 @@
   },
   {
    "slice": 63,
-   "id": "text_db3849b7465841d4",
+   "id": "text_0ff5321eb41a408e",
    "source": "",
    "translation": "Và rồi...",
    "role": "title",
@@ -2140,9 +2064,9 @@
   },
   {
    "slice": 64,
-   "id": "text_e50c91b7e04d4fdf",
+   "id": "text_d4523374b8714de9",
    "source": "",
-   "translation": "...những người đã chìm vào giấc ngủ bắt đầu tỉnh lại.",
+   "translation": "... những người chìm vào giấc ngủ bắt đầu tỉnh lại.",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2152,7 +2076,7 @@
    "size_source": "fit",
    "lines": 3,
    "wrapped": [
-    "...những người đã chìm",
+    "... những người chìm",
     "vào giấc ngủ bắt đầu",
     "tỉnh lại."
    ],
@@ -2165,9 +2089,9 @@
   },
   {
    "slice": 66,
-   "id": "text_9738b42ade504578",
+   "id": "text_49fc5bab24064968",
    "source": "",
-   "translation": "Họ đã sống sót qua\ncơn ác mộng đầu tiên...",
+   "translation": "Họ đã sống sót qua\nÁc Mộng đầu tiên...",
    "role": "narration",
    "font": "emphasis.anton",
    "review": false,
@@ -2178,7 +2102,7 @@
    "lines": 2,
    "wrapped": [
     "Họ đã sống sót qua",
-    "cơn ác mộng đầu tiên..."
+    "Ác Mộng đầu tiên..."
    ],
    "box_w": 1247,
    "box_h": 506,
@@ -2189,10 +2113,10 @@
   },
   {
    "slice": 67,
-   "id": "text_51a6d8aabb4d4586",
+   "id": "text_f17efd08dc954114",
    "source": "",
-   "translation": "...và đã trở thành\nNgười Thức Tỉnh.",
-   "role": "free_text",
+   "translation": "... và đã trở thành người thức tỉnh.",
+   "role": "narration",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
@@ -2201,8 +2125,8 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "...và đã trở thành",
-    "Người Thức Tỉnh."
+    "... và đã trở thành người",
+    "thức tỉnh."
    ],
    "box_w": 1214,
    "box_h": 404,
@@ -2213,10 +2137,10 @@
   },
   {
    "slice": 68,
-   "id": "text_f270353a877b4b07",
+   "id": "text_d4f3f824f2b542ba",
    "source": "",
-   "translation": "...và đã trở thành\nNgười Thức Tỉnh.",
-   "role": "free_text",
+   "translation": "... và đã trở thành người thức tỉnh.",
+   "role": "narration",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
@@ -2225,8 +2149,8 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "...và đã trở thành",
-    "Người Thức Tỉnh."
+    "... và đã trở thành người",
+    "thức tỉnh."
    ],
    "box_w": 1214,
    "box_h": 404,
@@ -2237,7 +2161,7 @@
   },
   {
    "slice": 69,
-   "id": "text_4dcf672d73714dfc",
+   "id": "text_4f05425d38ad421e",
    "source": "",
    "translation": "",
    "role": null,
@@ -2247,25 +2171,24 @@
   },
   {
    "slice": 70,
-   "id": "text_c01185425d484c9c",
+   "id": "text_e05bac4bb726407d",
    "source": "",
-   "translation": "Với năng lực kỳ diệu có được\nsau khi vượt qua các khảo nghiệm\ntrong ác mộng...",
+   "translation": "Với năng lực kỳ diệu có được sau khi vượt qua thử thách\ntrong Ác Mộng...",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 109,
-   "font_px_at_800": 54.5,
+   "font_px": 114,
+   "font_px_at_800": 57.0,
    "size_source": "fit",
-   "lines": 5,
+   "lines": 4,
    "wrapped": [
     "Với năng lực kỳ diệu có",
-    "được",
-    "sau khi vượt qua các khảo",
-    "nghiệm",
-    "trong ác mộng..."
+    "được sau khi vượt qua thử",
+    "thách",
+    "trong Ác Mộng..."
    ],
-   "box_w": 1171,
+   "box_w": 1229,
    "box_h": 614,
    "fits": true,
    "missing_glyphs": false,
@@ -2274,9 +2197,9 @@
   },
   {
    "slice": 72,
-   "id": "text_9e6945da9463497f",
+   "id": "text_4368eb845fa04e70",
    "source": "",
-   "translation": "...Họ đã đẩy lùi quái vật\nvà khôi phục được chút bình yên.",
+   "translation": "...họ đã đẩy lùi quái vật,\nđem lại chút bình yên.",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2284,11 +2207,10 @@
    "font_px": 114,
    "font_px_at_800": 57.0,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
-    "...Họ đã đẩy lùi quái vật",
-    "và khôi phục được chút bình",
-    "yên."
+    "...họ đã đẩy lùi quái vật,",
+    "đem lại chút bình yên."
    ],
    "box_w": 1414,
    "box_h": 589,
@@ -2299,9 +2221,9 @@
   },
   {
    "slice": 73,
-   "id": "text_76d59f687ccd4b92",
+   "id": "text_41d3e81e7c6941c9",
    "source": "",
-   "translation": "...Họ đã đẩy lùi quái vật\nvà khôi phục được chút bình yên.",
+   "translation": "...họ đã đẩy lùi quái vật,\nđem lại chút bình yên.",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2309,11 +2231,10 @@
    "font_px": 114,
    "font_px_at_800": 57.0,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
-    "...Họ đã đẩy lùi quái vật",
-    "và khôi phục được chút bình",
-    "yên."
+    "...họ đã đẩy lùi quái vật,",
+    "đem lại chút bình yên."
    ],
    "box_w": 1414,
    "box_h": 589,
@@ -2324,10 +2245,10 @@
   },
   {
    "slice": 74,
-   "id": "text_160da0f1228c4911",
+   "id": "text_d27457b5de1c4e1b",
    "source": "",
-   "translation": "Rồi dần dà, Người Thức Tỉnh trở thành niềm hy vọng của nhân loại.",
-   "role": "free_text",
+   "translation": "Dần dà, những người thức tỉnh trở thành hy vọng của nhân loại.",
+   "role": "narration",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
@@ -2336,8 +2257,8 @@
    "size_source": "fit",
    "lines": 3,
    "wrapped": [
-    "Rồi dần dà, Người Thức Tỉnh",
-    "trở thành niềm hy vọng của",
+    "Dần dà, những người thức",
+    "tỉnh trở thành hy vọng của",
     "nhân loại."
    ],
    "box_w": 1039,
@@ -2349,20 +2270,21 @@
   },
   {
    "slice": 75,
-   "id": "text_29915dd6125c4481",
+   "id": "text_90057573527b44e8",
    "source": "",
    "translation": "Và một trật tự thế giới mới bắt đầu hình thành.",
    "role": "narration",
-   "font": "emphasis.anton",
+   "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 95,
-   "font_px_at_800": 47.5,
+   "font_px": 129,
+   "font_px_at_800": 64.5,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 3,
    "wrapped": [
-    "Và một trật tự thế giới mới",
-    "bắt đầu hình thành."
+    "Và một trật tự thế",
+    "giới mới bắt đầu hình",
+    "thành."
    ],
    "box_w": 1129,
    "box_h": 524,
@@ -2373,9 +2295,9 @@
   },
   {
    "slice": 76,
-   "id": "text_d2d2ec79e5e44928",
+   "id": "text_020b4451486341aa",
    "source": "",
-   "translation": "Các trường học bắt đầu dạy\nkỹ năng sinh tồn và chiến đấu.",
+   "translation": "Các trường học bắt đầu dạy\nnhững kỹ năng cần thiết để\nsinh tồn và chiến đấu.",
    "role": "narration",
    "font": "emphasis.anton",
    "review": false,
@@ -2383,10 +2305,11 @@
    "font_px": 89,
    "font_px_at_800": 44.5,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 3,
    "wrapped": [
     "Các trường học bắt đầu dạy",
-    "kỹ năng sinh tồn và chiến đấu."
+    "những kỹ năng cần thiết để",
+    "sinh tồn và chiến đấu."
    ],
    "box_w": 1208,
    "box_h": 788,
@@ -2397,9 +2320,9 @@
   },
   {
    "slice": 76,
-   "id": "text_0e6982485a264228",
+   "id": "text_5a574b61e35e4353",
    "source": "",
-   "translation": "Để đề phòng\ntrường hợp học sinh\nbị nhiễm bệnh,",
+   "translation": "Để đề phòng trường hợp học sinh bị lây nhiễm,",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2407,11 +2330,10 @@
    "font_px": 121,
    "font_px_at_800": 60.5,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
-    "Để đề phòng",
-    "trường hợp học sinh",
-    "bị nhiễm bệnh,"
+    "Để đề phòng trường hợp",
+    "học sinh bị lây nhiễm,"
    ],
    "box_w": 1288,
    "box_h": 654,
@@ -2422,9 +2344,9 @@
   },
   {
    "slice": 77,
-   "id": "text_0ad39345f7dc4586",
+   "id": "text_e77147a8b90442f3",
    "source": "",
-   "translation": "Các trường học bắt đầu dạy\nkỹ năng sinh tồn và chiến đấu.",
+   "translation": "Các trường học bắt đầu dạy\nnhững kỹ năng cần thiết để\nsinh tồn và chiến đấu.",
    "role": "narration",
    "font": "emphasis.anton",
    "review": false,
@@ -2432,10 +2354,11 @@
    "font_px": 89,
    "font_px_at_800": 44.5,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 3,
    "wrapped": [
     "Các trường học bắt đầu dạy",
-    "kỹ năng sinh tồn và chiến đấu."
+    "những kỹ năng cần thiết để",
+    "sinh tồn và chiến đấu."
    ],
    "box_w": 1208,
    "box_h": 788,
@@ -2446,21 +2369,22 @@
   },
   {
    "slice": 78,
-   "id": "text_6d68257f8e1e4132",
+   "id": "text_52ead998ae5448f1",
    "source": "",
-   "translation": "Ngay cả những người giàu có cũng bỏ ra\nkhoản tiền khổng lồ...",
+   "translation": "Ngay cả giới nhà giàu cũng bỏ ra\nnhững khoản tiền khổng lồ...",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 121,
-   "font_px_at_800": 60.5,
+   "font_px": 109,
+   "font_px_at_800": 54.5,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 4,
    "wrapped": [
-    "Ngay cả những người",
-    "giàu có cũng bỏ ra",
-    "khoản tiền khổng lồ..."
+    "Ngay cả giới nhà giàu",
+    "cũng bỏ ra",
+    "những khoản tiền khổng",
+    "lồ..."
    ],
    "box_w": 1112,
    "box_h": 495,
@@ -2471,21 +2395,22 @@
   },
   {
    "slice": 79,
-   "id": "text_f4069c97fb1c47a0",
+   "id": "text_ba6fecd091aa4c3b",
    "source": "",
-   "translation": "Vì vậy, con cái họ được huấn luyện đặc biệt để trở thành Người Thức Tỉnh.",
-   "role": "narration",
+   "translation": "Vì thế, con cái họ\nđược huấn luyện đặc biệt\nđể trở thành\nngười thức tỉnh.",
+   "role": "free_text",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
    "font_px": 89,
    "font_px_at_800": 44.5,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 4,
    "wrapped": [
-    "Vì vậy, con cái họ được huấn",
-    "luyện đặc biệt để trở thành",
-    "Người Thức Tỉnh."
+    "Vì thế, con cái họ",
+    "được huấn luyện đặc biệt",
+    "để trở thành",
+    "người thức tỉnh."
    ],
    "box_w": 1037,
    "box_h": 801,
@@ -2496,22 +2421,22 @@
   },
   {
    "slice": 80,
-   "id": "text_9b4be3c1887a48ef",
+   "id": "text_294f51a6c1154e4f",
    "source": "",
-   "translation": "Hơn nữa, con cái sinh ra trong các gia tộc người thức tỉnh hùng mạnh...",
-   "role": "narration",
-   "font": "dialogue.mac-dinh-3",
+   "translation": "Hơn nữa, con cái sinh ra trong\ncác gia tộc thức tỉnh hùng mạnh...",
+   "role": "free_text",
+   "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
-   "font_px": 121,
-   "font_px_at_800": 60.5,
+   "font_px": 89,
+   "font_px_at_800": 44.5,
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "Hơn nữa, con cái",
-    "sinh ra trong các",
-    "gia tộc người thức",
-    "tỉnh hùng mạnh..."
+    "Hơn nữa, con cái sinh ra",
+    "trong",
+    "các gia tộc thức tỉnh hùng",
+    "mạnh..."
    ],
    "box_w": 959,
    "box_h": 810,
@@ -2522,9 +2447,9 @@
   },
   {
    "slice": 82,
-   "id": "text_db84dc98237648c1",
+   "id": "text_e6067ba84ebf4239",
    "source": "",
-   "translation": "Có thể sở hữu ký ức ma pháp kế thừa hoặc tiếng vọng ngay lần đầu đặt chân đến Cảnh Giới Mộng.",
+   "translation": "Có thể sử dụng những ký ức ma thuật thừa kế hoặc tàn ảnh ngay trong lần đầu đặt chân đến Cõi Mộng.",
    "role": "narration",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2534,10 +2459,10 @@
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "Có thể sở hữu ký ức ma pháp",
-    "kế thừa hoặc tiếng vọng ngay",
-    "lần đầu đặt chân đến Cảnh",
-    "Giới Mộng."
+    "Có thể sử dụng những ký ức",
+    "ma thuật thừa kế hoặc tàn",
+    "ảnh ngay trong lần đầu đặt",
+    "chân đến Cõi Mộng."
    ],
    "box_w": 1302,
    "box_h": 738,
@@ -2548,7 +2473,7 @@
   },
   {
    "slice": 83,
-   "id": "text_929d2a8d2d5943cc",
+   "id": "text_a3c6ea4c6e234cef",
    "source": "",
    "translation": "Nhưng...",
    "role": "narration",
@@ -2571,21 +2496,21 @@
   },
   {
    "slice": 84,
-   "id": "text_ba50d8025e7c4736",
+   "id": "text_5b046301078248de",
    "source": "",
-   "translation": "Chuyện đó chẳng liên quan gì đến\nmột con chuột gầy nhom như tôi.",
+   "translation": "Chuyện đó chẳng liên quan gì đến một tên chuột cống như tôi.",
    "role": "free_text",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
-   "font_px": 87,
-   "font_px_at_800": 43.5,
+   "font_px": 96,
+   "font_px_at_800": 48.0,
    "size_source": "fit",
    "lines": 3,
    "wrapped": [
     "Chuyện đó chẳng liên quan gì",
-    "đến",
-    "một con chuột gầy nhom như tôi."
+    "đến một tên chuột cống như",
+    "tôi."
    ],
    "box_w": 1179,
    "box_h": 537,
@@ -2596,9 +2521,9 @@
   },
   {
    "slice": 85,
-   "id": "text_637b0519326f43be",
+   "id": "text_856509ee77604b15",
    "source": "",
-   "translation": "Với tôi, được Phép thuật Ác Mộng chọn\nchẳng khác nào án tử.",
+   "translation": "Với tôi, được phép thuật chọn lựa\nchẳng khác nào nhận án tử.",
    "role": "thought",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2606,11 +2531,12 @@
    "font_px": 129,
    "font_px_at_800": 64.5,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 4,
    "wrapped": [
-    "Với tôi, được Phép thuật",
-    "Ác Mộng chọn",
-    "chẳng khác nào án tử."
+    "Với tôi, được phép thuật",
+    "chọn lựa",
+    "chẳng khác nào nhận án",
+    "tử."
    ],
    "box_w": 1378,
    "box_h": 687,
@@ -2621,9 +2547,9 @@
   },
   {
    "slice": 87,
-   "id": "text_d169dfc862ec4e6b",
+   "id": "text_4b4374a19c63401f",
    "source": "",
-   "translation": "Thủ Đô Phòng Tuyến Tứ Phương Bắc",
+   "translation": "Thủ đô Chiến khu\nTứ Phương Bắc",
    "role": "title",
    "font": "emphasis.anton",
    "review": false,
@@ -2633,8 +2559,8 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Thủ Đô Phòng Tuyến Tứ",
-    "Phương Bắc"
+    "Thủ đô Chiến khu",
+    "Tứ Phương Bắc"
    ],
    "box_w": 1088,
    "box_h": 510,
@@ -2645,15 +2571,15 @@
   },
   {
    "slice": 87,
-   "id": "text_7affdd05076f46f2",
+   "id": "text_eddf48c0501c41cf",
    "source": "",
    "translation": "Ngọn Lửa Bất Diệt",
    "role": "free_text",
-   "font": "emphasis.anton",
+   "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 32,
-   "font_px_at_800": 16.0,
+   "font_px": 43,
+   "font_px_at_800": 21.5,
    "size_source": "fit",
    "lines": 1,
    "wrapped": [
@@ -2668,7 +2594,7 @@
   },
   {
    "slice": 87,
-   "id": "text_fd3518ad240f4308",
+   "id": "text_86c145312bec4adc",
    "source": "",
    "translation": "",
    "role": null,
@@ -2678,45 +2604,33 @@
   },
   {
    "slice": 87,
-   "id": "text_84f5cdc97f114982",
+   "id": "text_9a1bfae299594b78",
    "source": "",
-   "translation": "Mừng",
-   "role": "free_text",
-   "font": "dialogue.mac-dinh-3",
-   "review": true,
-   "page_width": 1600,
-   "font_px": 178,
-   "font_px_at_800": 89.0,
-   "size_source": "fit",
-   "lines": 1,
-   "wrapped": [
-    "Mừng"
-   ],
-   "box_w": 374,
-   "box_h": 294,
-   "fits": true,
-   "missing_glyphs": false,
-   "source_cap_px": 179,
-   "split_word": false
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false,
+   "page_width": 1600
   },
   {
    "slice": 87,
-   "id": "text_7791a7fbb2e949d5",
+   "id": "text_747bcfe9841b4dba",
    "source": "",
-   "translation": "Lửa",
+   "translation": "Chào mừng",
    "role": "free_text",
    "font": "dialogue.mac-dinh-3",
-   "review": true,
+   "review": false,
    "page_width": 1600,
    "font_px": 129,
    "font_px_at_800": 64.5,
    "size_source": "fit",
-   "lines": 1,
+   "lines": 2,
    "wrapped": [
-    "Lửa"
+    "Chào",
+    "mừng"
    ],
-   "box_w": 178,
-   "box_h": 207,
+   "box_w": 374,
+   "box_h": 407,
    "fits": true,
    "missing_glyphs": false,
    "source_cap_px": 71,
@@ -2724,19 +2638,20 @@
   },
   {
    "slice": 88,
-   "id": "text_cacb73e17eab4805",
+   "id": "text_a0cc4dea05d34d0d",
    "source": "",
-   "translation": "Hầm Cách Ly Khẩn Cấp",
-   "role": "title",
+   "translation": "Hầm Giam Giữ Khẩn Cấp",
+   "role": "free_text",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
    "font_px": 104,
    "font_px_at_800": 52.0,
    "size_source": "fit",
-   "lines": 1,
+   "lines": 2,
    "wrapped": [
-    "Hầm Cách Ly Khẩn Cấp"
+    "Hầm Giam Giữ Khẩn",
+    "Cấp"
    ],
    "box_w": 984,
    "box_h": 555,
@@ -2747,10 +2662,10 @@
   },
   {
    "slice": 88,
-   "id": "text_b8c01d7fb1df44d3",
+   "id": "text_f46af604a34a4f41",
    "source": "",
-   "translation": "Phân Khu 7",
-   "role": "title",
+   "translation": "Khu vực 7",
+   "role": "free_text",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
@@ -2759,7 +2674,7 @@
    "size_source": "fit",
    "lines": 1,
    "wrapped": [
-    "Phân Khu 7"
+    "Khu vực 7"
    ],
    "box_w": 796,
    "box_h": 222,
@@ -2770,9 +2685,9 @@
   },
   {
    "slice": 89,
-   "id": "text_8ad874babfcc4ef9",
+   "id": "text_ca1af7f54ec7462d",
    "source": "",
-   "translation": "Cậu tên gì, nhóc?",
+   "translation": "Nhóc tên gì?",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2780,10 +2695,9 @@
    "font_px": 134,
    "font_px_at_800": 67.0,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 1,
    "wrapped": [
-    "Cậu tên gì,",
-    "nhóc?"
+    "Nhóc tên gì?"
    ],
    "box_w": 727,
    "box_h": 373,
@@ -2794,9 +2708,9 @@
   },
   {
    "slice": 90,
-   "id": "text_7f939de3f9b94a36",
+   "id": "text_0c3bf435f770453a",
    "source": "",
-   "translation": "Sunless...\nnhưng mọi người gọi tôi là Sunny.",
+   "translation": "Sunless... nhưng mọi người gọi tôi là Sunny.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2806,9 +2720,9 @@
    "size_source": "fit",
    "lines": 3,
    "wrapped": [
-    "Sunless...",
-    "nhưng mọi người",
-    "gọi tôi là Sunny."
+    "Sunless... nhưng",
+    "mọi người gọi tôi",
+    "là Sunny."
    ],
    "box_w": 971,
    "box_h": 524,
@@ -2819,9 +2733,9 @@
   },
   {
    "slice": 91,
-   "id": "text_57ca9cef18024014",
+   "id": "text_8d212fb1c9ff4f4a",
    "source": "",
-   "translation": "Sunless? Tên lạ thật.",
+   "translation": "Sunless? Cái tên lạ thật.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2831,8 +2745,8 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Sunless? Tên lạ",
-    "thật."
+    "Sunless? Cái tên",
+    "lạ thật."
    ],
    "box_w": 1088,
    "box_h": 579,
@@ -2843,9 +2757,9 @@
   },
   {
    "slice": 91,
-   "id": "text_6680d952624346de",
+   "id": "text_839ecb7d164a4091",
    "source": "",
-   "translation": "Tôi sinh ra\ntrong một lần nhật thực.",
+   "translation": "Tôi sinh ra trong một lần\nnhật thực.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2868,7 +2782,7 @@
   },
   {
    "slice": 92,
-   "id": "text_4931bfd9a1064044",
+   "id": "text_37081d83cec64303",
    "source": "",
    "translation": "Mẹ tôi có tâm hồn thi sĩ,\nanh biết đấy.",
    "role": "dialogue",
@@ -2893,9 +2807,9 @@
   },
   {
    "slice": 92,
-   "id": "text_7dd5dbb016ca4fca",
+   "id": "text_03aa8c009bfc400d",
    "source": "",
-   "translation": "Tôi sinh ra\ntrong một lần nhật thực.",
+   "translation": "Tôi sinh ra trong một lần\nnhật thực.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2918,9 +2832,9 @@
   },
   {
    "slice": 93,
-   "id": "text_10b857b2edea426d",
+   "id": "text_c1d79746bf7f426c",
    "source": "",
-   "translation": "Cậu có muốn chúng tôi liên lạc với gia đình không?",
+   "translation": "Cậu có muốn chúng tôi\nliên lạc với gia đình không?",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -2931,9 +2845,9 @@
    "lines": 4,
    "wrapped": [
     "Cậu có muốn",
-    "chúng tôi liên lạc",
-    "với gia đình",
-    "không?"
+    "chúng tôi",
+    "liên lạc với gia",
+    "đình không?"
    ],
    "box_w": 944,
    "box_h": 573,
@@ -2944,7 +2858,7 @@
   },
   {
    "slice": 93,
-   "id": "text_464dabe811ae446c",
+   "id": "text_c75ce047f5db4fec",
    "source": "",
    "translation": "Tôi chẳng có ai để liên lạc cả.",
    "role": "dialogue",
@@ -2968,7 +2882,7 @@
   },
   {
    "slice": 93,
-   "id": "text_bd7c55298cf64865",
+   "id": "text_3e89b4b9fc504353",
    "source": "",
    "translation": "Đừng bận tâm.",
    "role": "dialogue",
@@ -2992,9 +2906,9 @@
   },
   {
    "slice": 94,
-   "id": "text_001b11feda754a22",
+   "id": "text_9a239ae3c7a34cd1",
    "source": "",
-   "translation": "Ờ...\nChắc không lâu nữa.",
+   "translation": "Ờm...\nchắc không lâu nữa.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3004,8 +2918,8 @@
    "size_source": "fit",
    "lines": 3,
    "wrapped": [
-    "Ờ...",
-    "Chắc không",
+    "Ờm...",
+    "chắc không",
     "lâu nữa."
    ],
    "box_w": 771,
@@ -3017,9 +2931,9 @@
   },
   {
    "slice": 94,
-   "id": "text_290363bd5f354a51",
+   "id": "text_56a156124228452a",
    "source": "",
-   "translation": "Cậu còn thức được\nbao lâu nữa?",
+   "translation": "Được rồi, Sunny.\nCậu còn thức được bao lâu nữa?",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3029,12 +2943,12 @@
    "size_source": "fit",
    "lines": 3,
    "wrapped": [
-    "Cậu còn thức",
-    "được",
-    "bao lâu nữa?"
+    "Được rồi, Sunny.",
+    "Cậu còn thức được bao",
+    "lâu nữa?"
    ],
-   "box_w": 853,
-   "box_h": 499,
+   "box_w": 1208,
+   "box_h": 715,
    "fits": true,
    "missing_glyphs": false,
    "source_cap_px": 67,
@@ -3042,31 +2956,7 @@
   },
   {
    "slice": 94,
-   "id": "text_4828b04ad4884f70",
-   "source": "",
-   "translation": "Được rồi,\nSunny.",
-   "role": "dialogue",
-   "font": "dialogue.mac-dinh-3",
-   "review": false,
-   "page_width": 1600,
-   "font_px": 142,
-   "font_px_at_800": 71.0,
-   "size_source": "fit",
-   "lines": 2,
-   "wrapped": [
-    "Được rồi,",
-    "Sunny."
-   ],
-   "box_w": 551,
-   "box_h": 392,
-   "fits": true,
-   "missing_glyphs": false,
-   "source_cap_px": 78,
-   "split_word": false
-  },
-  {
-   "slice": 94,
-   "id": "text_9258afa8c91d4d80",
+   "id": "text_b42b8c94af494dc2",
    "source": "",
    "translation": "",
    "role": null,
@@ -3076,9 +2966,9 @@
   },
   {
    "slice": 95,
-   "id": "text_ab6b773873e24bfc",
+   "id": "text_4ac6590f595443d4",
    "source": "",
-   "translation": "Nghe cho kỹ,\ncố mà theo kịp.",
+   "translation": "Nghe cho kỹ,\nrồi cố mà theo kịp.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3086,10 +2976,11 @@
    "font_px": 149,
    "font_px_at_800": 74.5,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 3,
    "wrapped": [
     "Nghe cho kỹ,",
-    "cố mà theo kịp."
+    "rồi cố mà theo",
+    "kịp."
    ],
    "box_w": 1084,
    "box_h": 576,
@@ -3100,9 +2991,9 @@
   },
   {
    "slice": 95,
-   "id": "text_df06ee81c85e45a1",
+   "id": "text_f7ea7b353e6f4b20",
    "source": "",
-   "translation": "Vậy thì bỏ qua màn chào hỏi nhé.",
+   "translation": "Vậy khỏi khách sáo.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3110,11 +3001,10 @@
    "font_px": 134,
    "font_px_at_800": 67.0,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
-    "Vậy thì bỏ qua",
-    "màn chào hỏi",
-    "nhé."
+    "Vậy khỏi khách",
+    "sáo."
    ],
    "box_w": 824,
    "box_h": 540,
@@ -3125,9 +3015,9 @@
   },
   {
    "slice": 96,
-   "id": "text_04e52c32700542ef",
+   "id": "text_b98b77ba08114ff3",
    "source": "",
-   "translation": "Cậu thật sự biết được\nbao nhiêu về Chú thuật Ác Mộng?",
+   "translation": "Cậu thực sự biết được bao nhiêu\nvề Thần Chú Ác Mộng?",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3137,10 +3027,10 @@
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "Cậu thật sự biết",
-    "được",
-    "bao nhiêu về Chú",
-    "thuật Ác Mộng?"
+    "Cậu thực sự biết",
+    "được bao nhiêu",
+    "về Thần Chú Ác",
+    "Mộng?"
    ],
    "box_w": 1223,
    "box_h": 738,
@@ -3151,9 +3041,9 @@
   },
   {
    "slice": 96,
-   "id": "text_35669c3428104384",
+   "id": "text_35da4acd837d4f80",
    "source": "",
-   "translation": "Nghe cho kỹ,\ncố mà theo kịp.",
+   "translation": "Nghe cho kỹ,\nrồi cố mà theo kịp.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3161,10 +3051,11 @@
    "font_px": 149,
    "font_px_at_800": 74.5,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 3,
    "wrapped": [
     "Nghe cho kỹ,",
-    "cố mà theo kịp."
+    "rồi cố mà theo",
+    "kịp."
    ],
    "box_w": 1084,
    "box_h": 576,
@@ -3175,20 +3066,19 @@
   },
   {
    "slice": 97,
-   "id": "text_008df948e9634583",
+   "id": "text_f75c80c81c10452f",
    "source": "",
-   "translation": "Chỉ cần vào Cảnh Giới Mộng,\ngiết vài con quái vật...",
-   "role": "thought",
+   "translation": "Cứ vào Cõi Mộng,\ngiết vài con quái vật...",
+   "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
    "font_px": 142,
    "font_px_at_800": 71.0,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
-    "Chỉ cần vào Cảnh Giới",
-    "Mộng,",
+    "Cứ vào Cõi Mộng,",
     "giết vài con quái vật..."
    ],
    "box_w": 1293,
@@ -3200,7 +3090,7 @@
   },
   {
    "slice": 99,
-   "id": "text_d84a3c5f9c8b4b7a",
+   "id": "text_843e6ab022aa4c68",
    "source": "",
    "translation": "... Hoàn thành Ác Mộng đầu tiên...",
    "role": "dialogue",
@@ -3224,7 +3114,7 @@
   },
   {
    "slice": 99,
-   "id": "text_ca3583566164404f",
+   "id": "text_f74fd86a4eaa475c",
    "source": "",
    "translation": "",
    "role": null,
@@ -3234,9 +3124,9 @@
   },
   {
    "slice": 100,
-   "id": "text_c026c4839d33436c",
+   "id": "text_4706cae41f754b98",
    "source": "",
-   "translation": "... Rồi nhận được năng lực kỳ diệu,\ntrở thành người thức tỉnh, đúng không?",
+   "translation": "... rồi có năng lực ma thuật,\ntrở thành người thức tỉnh, đúng không?",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3246,8 +3136,8 @@
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "... Rồi nhận được năng",
-    "lực kỳ diệu,",
+    "... rồi có năng lực ma",
+    "thuật,",
     "trở thành người thức",
     "tỉnh, đúng không?"
    ],
@@ -3260,9 +3150,9 @@
   },
   {
    "slice": 101,
-   "id": "text_03460650abd24400",
+   "id": "text_accda6cb3f124dd7",
    "source": "",
-   "translation": "Vậy là cậu cũng biết những điều cơ bản,\nít nhất là thế.",
+   "translation": "Vậy là cậu cũng biết những điều cơ bản,\ní là thế.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3275,7 +3165,7 @@
     "Vậy là cậu cũng",
     "biết những điều",
     "cơ bản,",
-    "ít nhất là thế."
+    "í là thế."
    ],
    "box_w": 827,
    "box_h": 541,
@@ -3286,7 +3176,7 @@
   },
   {
    "slice": 101,
-   "id": "text_d41c03d513c04271",
+   "id": "text_e0348d96359445f3",
    "source": "",
    "translation": "Nhưng nghe cho kỹ.",
    "role": "dialogue",
@@ -3310,9 +3200,9 @@
   },
   {
    "slice": 103,
-   "id": "text_cfcb14d6bbf3419f",
+   "id": "text_7f185806d0fb471c",
    "source": "",
-   "translation": "Trong Ác Mộng đầu tiên,\nchắc chắn cậu sẽ gặp quái vật,\nnhưng cũng sẽ gặp cả con người.",
+   "translation": "Trong Ác Mộng đầu tiên,\nchắc chắn cậu sẽ gặp quái vật,\nnhưng cũng sẽ gặp con người.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3325,8 +3215,8 @@
     "Trong Ác Mộng đầu tiên,",
     "chắc chắn cậu sẽ gặp",
     "quái vật,",
-    "nhưng cũng sẽ gặp cả",
-    "con người."
+    "nhưng cũng sẽ gặp con",
+    "người."
    ],
    "box_w": 1377,
    "box_h": 921,
@@ -3337,7 +3227,7 @@
   },
   {
    "slice": 103,
-   "id": "text_23b9c5a215be44db",
+   "id": "text_fa97980757a543a4",
    "source": "",
    "translation": "Chúng không có thật.",
    "role": "dialogue",
@@ -3361,7 +3251,7 @@
   },
   {
    "slice": 104,
-   "id": "text_399d8c720d42429f",
+   "id": "text_f2a6b248f72847d7",
    "source": "",
    "translation": "Chúng không có thật.",
    "role": "dialogue",
@@ -3385,7 +3275,7 @@
   },
   {
    "slice": 105,
-   "id": "text_4ec997d44c7a496c",
+   "id": "text_fad894a083dd4237",
    "source": "",
    "translation": "Nhớ nhé: chúng chỉ là ảo ảnh\nđược tạo ra để thử thách cậu.",
    "role": "dialogue",
@@ -3411,7 +3301,7 @@
   },
   {
    "slice": 105,
-   "id": "text_20997023f6694831",
+   "id": "text_bb14f82d35c64027",
    "source": "",
    "translation": "Sao anh biết?",
    "role": "dialogue",
@@ -3434,9 +3324,9 @@
   },
   {
    "slice": 106,
-   "id": "text_3ccd5c4239ef40fc",
+   "id": "text_39d5770973944e61",
    "source": "",
-   "translation": "Vậy thì tự giúp mình đi,\ncứ xem chúng là ảo ảnh thôi.",
+   "translation": "Vậy thì tự giúp mình đi,\ncứ xem chúng như ảo ảnh.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3447,8 +3337,8 @@
    "lines": 3,
    "wrapped": [
     "Vậy thì tự giúp mình đi,",
-    "cứ xem chúng là ảo ảnh",
-    "thôi."
+    "cứ xem chúng như ảo",
+    "ảnh."
    ],
    "box_w": 1300,
    "box_h": 689,
@@ -3459,22 +3349,22 @@
   },
   {
    "slice": 106,
-   "id": "text_469035b5e92643ba",
+   "id": "text_e41fce8c4dd54117",
    "source": "",
-   "translation": "Có lẽ cậu phải giết chúng, nhóc.\nCứ coi chúng là ảo ảnh.",
+   "translation": "Có khi cậu phải giết chúng đấy, nhóc.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 115,
-   "font_px_at_800": 57.5,
+   "font_px": 137,
+   "font_px_at_800": 68.5,
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "Có lẽ cậu phải",
-    "giết chúng, nhóc.",
-    "Cứ coi chúng là",
-    "ảo ảnh."
+    "Có khi cậu",
+    "phải giết",
+    "chúng đấy,",
+    "nhóc."
    ],
    "box_w": 826,
    "box_h": 612,
@@ -3485,9 +3375,9 @@
   },
   {
    "slice": 107,
-   "id": "text_7d368471276f4587",
+   "id": "text_719783677c944400",
    "source": "",
-   "translation": "Vậy thì tự giúp mình đi,\ncứ xem chúng là ảo ảnh thôi.",
+   "translation": "Vậy thì tự giúp mình đi,\ncứ xem chúng như ảo ảnh.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3498,8 +3388,8 @@
    "lines": 3,
    "wrapped": [
     "Vậy thì tự giúp mình đi,",
-    "cứ xem chúng là ảo ảnh",
-    "thôi."
+    "cứ xem chúng như ảo",
+    "ảnh."
    ],
    "box_w": 1300,
    "box_h": 689,
@@ -3510,10 +3400,10 @@
   },
   {
    "slice": 107,
-   "id": "text_1a5eae47f2994c42",
+   "id": "text_eb5e0261710a40a4",
    "source": "",
    "translation": "...",
-   "role": "dialogue",
+   "role": "thought",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
@@ -3533,9 +3423,9 @@
   },
   {
    "slice": 108,
-   "id": "text_85ce01460e514257",
+   "id": "text_e11f803e17be421e",
    "source": "",
-   "translation": "Ngay khi bước vào\nÁc Mộng,",
+   "translation": "Ngay khi bước vào Ác Mộng,",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3543,13 +3433,12 @@
    "font_px": 148,
    "font_px_at_800": 74.0,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
-    "Ngay khi bước",
-    "vào",
+    "Ngay khi bước vào",
     "Ác Mộng,"
    ],
-   "box_w": 1023,
+   "box_w": 1064,
    "box_h": 531,
    "fits": true,
    "missing_glyphs": false,
@@ -3558,7 +3447,7 @@
   },
   {
    "slice": 109,
-   "id": "text_b13fedd10e3f4071",
+   "id": "text_1829146570e6423c",
    "source": "",
    "translation": "",
    "role": null,
@@ -3568,9 +3457,9 @@
   },
   {
    "slice": 109,
-   "id": "text_dfcb46051eb7471d",
+   "id": "text_026ea2ae7710460c",
    "source": "",
-   "translation": "Ngay khi bước vào\nÁc Mộng,",
+   "translation": "Ngay khi bước vào Ác Mộng,",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3578,13 +3467,12 @@
    "font_px": 148,
    "font_px_at_800": 74.0,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 2,
    "wrapped": [
-    "Ngay khi bước",
-    "vào",
+    "Ngay khi bước vào",
     "Ác Mộng,"
    ],
-   "box_w": 1023,
+   "box_w": 1064,
    "box_h": 531,
    "fits": true,
    "missing_glyphs": false,
@@ -3593,21 +3481,21 @@
   },
   {
    "slice": 110,
-   "id": "text_e52392009a874b02",
+   "id": "text_d6e6f5817dd54dd3",
    "source": "",
-   "translation": "Kiểm tra thuộc tính\nvà thiên phú của cậu.",
+   "translation": "Kiểm tra chỉ số\nvà khía cạnh của cậu.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 129,
-   "font_px_at_800": 64.5,
+   "font_px": 161,
+   "font_px_at_800": 80.5,
    "size_source": "fit",
    "lines": 3,
    "wrapped": [
-    "Kiểm tra thuộc tính",
-    "và thiên phú của",
-    "cậu."
+    "Kiểm tra chỉ số",
+    "và khía cạnh",
+    "của cậu."
    ],
    "box_w": 1038,
    "box_h": 561,
@@ -3618,9 +3506,9 @@
   },
   {
    "slice": 111,
-   "id": "text_586aa09bae624a27",
+   "id": "text_21ffd9157a194492",
    "source": "",
-   "translation": "Nếu cậu có thiên phú thiên về chiến đấu,\nnhư kiếm sĩ hay cung thủ,",
+   "translation": "Nếu cậu có khía cạnh thiên về chiến đấu,\nnhư kiếm sĩ hay cung thủ,",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3630,12 +3518,12 @@
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "Nếu cậu có thiên phú",
+    "Nếu cậu có khía cạnh",
     "thiên về chiến đấu,",
     "như kiếm sĩ hay cung",
     "thủ,"
    ],
-   "box_w": 1218,
+   "box_w": 1240,
    "box_h": 713,
    "fits": true,
    "missing_glyphs": false,
@@ -3644,9 +3532,9 @@
   },
   {
    "slice": 112,
-   "id": "text_288209af6e0d4bd8",
+   "id": "text_9a2cb7a376434bf1",
    "source": "",
-   "translation": "Nếu cậu có thiên phú thiên về chiến đấu,\nnhư kiếm sĩ hay cung thủ,",
+   "translation": "Nếu cậu có khía cạnh thiên về chiến đấu,\nnhư kiếm sĩ hay cung thủ,",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3656,12 +3544,12 @@
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "Nếu cậu có thiên phú",
+    "Nếu cậu có khía cạnh",
     "thiên về chiến đấu,",
     "như kiếm sĩ hay cung",
     "thủ,"
    ],
-   "box_w": 1218,
+   "box_w": 1240,
    "box_h": 713,
    "fits": true,
    "missing_glyphs": false,
@@ -3670,7 +3558,7 @@
   },
   {
    "slice": 112,
-   "id": "text_ac7bb00f94a7498a",
+   "id": "text_192a488c27ed4b79",
    "source": "",
    "translation": "Mọi chuyện sẽ dễ dàng hơn nhiều với cậu.",
    "role": "dialogue",
@@ -3695,9 +3583,9 @@
   },
   {
    "slice": 113,
-   "id": "text_049221a5b2d440cd",
+   "id": "text_6189524d4df64e07",
    "source": "",
-   "translation": "Nhưng dù thiên phú của cậu\nkhông liên quan đến chiến đấu,\ncũng đừng tuyệt vọng.",
+   "translation": "Nhưng dù khía cạnh của cậu\nkhông liên quan đến chiến đấu,\ncũng đừng tuyệt vọng.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3707,7 +3595,7 @@
    "size_source": "fit",
    "lines": 5,
    "wrapped": [
-    "Nhưng dù thiên phú của",
+    "Nhưng dù khía cạnh của",
     "cậu",
     "không liên quan đến",
     "chiến đấu,",
@@ -3722,53 +3610,27 @@
   },
   {
    "slice": 114,
-   "id": "text_03ea7cee08114a7e",
+   "id": "text_6e043ef69ec445e2",
    "source": "",
-   "translation": "Gật...",
-   "role": "sfx",
-   "font": "dialogue.mac-dinh-3",
+   "translation": "",
+   "role": null,
+   "font": "default",
    "review": false,
-   "page_width": 1600,
-   "font_px": 185,
-   "font_px_at_800": 92.5,
-   "size_source": "fit",
-   "lines": 1,
-   "wrapped": [
-    "Gật..."
-   ],
-   "box_w": 406,
-   "box_h": 390,
-   "fits": true,
-   "missing_glyphs": false,
-   "source_cap_px": 203,
-   "split_word": false
+   "page_width": 1600
   },
   {
    "slice": 114,
-   "id": "text_2c9a6f18073b41f0",
+   "id": "text_036dd0f977ce467f",
    "source": "",
-   "translation": "Gật...",
-   "role": "sfx",
-   "font": "dialogue.mac-dinh-3",
+   "translation": "",
+   "role": null,
+   "font": "default",
    "review": false,
-   "page_width": 1600,
-   "font_px": 152,
-   "font_px_at_800": 76.0,
-   "size_source": "fit",
-   "lines": 1,
-   "wrapped": [
-    "Gật..."
-   ],
-   "box_w": 334,
-   "box_h": 319,
-   "fits": true,
-   "missing_glyphs": false,
-   "source_cap_px": 137,
-   "split_word": false
+   "page_width": 1600
   },
   {
    "slice": 114,
-   "id": "text_a1f32d3e53d44ad6",
+   "id": "text_35981f0fc7c942df",
    "source": "",
    "translation": "Ừ.",
    "role": "dialogue",
@@ -3791,22 +3653,21 @@
   },
   {
    "slice": 115,
-   "id": "text_15daa2fcc169412f",
+   "id": "text_cf68bbf5acc64308",
    "source": "",
-   "translation": "Thiên phú của cậu\nđúng là chẳng có cái nào\nvô dụng thật.",
-   "role": "thought",
+   "translation": "Thật sự chẳng có khía cạnh nào vô dụng cả.",
+   "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 117,
-   "font_px_at_800": 58.5,
+   "font_px": 134,
+   "font_px_at_800": 67.0,
    "size_source": "fit",
-   "lines": 4,
+   "lines": 3,
    "wrapped": [
-    "Thiên phú của cậu",
-    "đúng là chẳng có",
-    "cái nào",
-    "vô dụng thật."
+    "Thật sự chẳng có",
+    "khía cạnh nào vô",
+    "dụng cả."
    ],
    "box_w": 995,
    "box_h": 531,
@@ -3817,9 +3678,9 @@
   },
   {
    "slice": 116,
-   "id": "text_fbffbf4d34954a95",
+   "id": "text_a834bfc929734e52",
    "source": "",
-   "translation": "Vậy cứ làm mọi cách có thể\nđể sống sót.",
+   "translation": "Vậy thì cứ dùng hết sức mình\nđể sống sót.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3829,12 +3690,12 @@
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "Vậy cứ làm",
-    "mọi cách có",
-    "thể",
+    "Vậy thì cứ",
+    "dùng hết sức",
+    "mình",
     "để sống sót."
    ],
-   "box_w": 1063,
+   "box_w": 1118,
    "box_h": 975,
    "fits": true,
    "missing_glyphs": false,
@@ -3843,21 +3704,22 @@
   },
   {
    "slice": 116,
-   "id": "text_6d2b9e8489cb47df",
+   "id": "text_ad67e7b860854707",
    "source": "",
-   "translation": "Dù sao, Phép thuật Ác Mộng tạo ra khảo nghiệm,\nchứ không phải án tử.",
+   "translation": "Dù sao, phép thuật tạo ra thử thách,\nchứ đâu phải để hành quyết.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 120,
-   "font_px_at_800": 60.0,
+   "font_px": 119,
+   "font_px_at_800": 59.5,
    "size_source": "fit",
-   "lines": 3,
+   "lines": 4,
    "wrapped": [
-    "Dù sao, Phép thuật Ác",
-    "Mộng tạo ra khảo nghiệm,",
-    "chứ không phải án tử."
+    "Dù sao, phép thuật tạo ra",
+    "thử thách,",
+    "chứ đâu phải để hành",
+    "quyết."
    ],
    "box_w": 1246,
    "box_h": 540,
@@ -3868,9 +3730,9 @@
   },
   {
    "slice": 117,
-   "id": "text_8c6280022de64601",
+   "id": "text_a6001c6776f34841",
    "source": "",
-   "translation": "Vậy cứ làm mọi cách có thể\nđể sống sót.",
+   "translation": "Vậy thì cứ dùng hết sức mình\nđể sống sót.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3880,12 +3742,12 @@
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "Vậy cứ làm",
-    "mọi cách có",
-    "thể",
+    "Vậy thì cứ",
+    "dùng hết sức",
+    "mình",
     "để sống sót."
    ],
-   "box_w": 1063,
+   "box_w": 1118,
    "box_h": 975,
    "fits": true,
    "missing_glyphs": false,
@@ -3894,9 +3756,9 @@
   },
   {
    "slice": 118,
-   "id": "text_39c0f645e046413b",
+   "id": "text_ea1b18ccad8a4095",
    "source": "",
-   "translation": "Những gì cậu làm trong khảo nghiệm\nsẽ quyết định phần thưởng và năng lực\nđang chờ cậu nếu thành công.",
+   "translation": "Những gì các người làm\ntrong thử thách sẽ quyết định\nphần thưởng và năng lực\nchờ đợi các người,\nnếu thành công.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3906,14 +3768,14 @@
    "size_source": "fit",
    "lines": 6,
    "wrapped": [
-    "Những gì cậu làm trong",
-    "khảo nghiệm",
-    "sẽ quyết định phần",
-    "thưởng và năng lực",
-    "đang chờ cậu nếu thành",
-    "công."
+    "Những gì các người làm",
+    "trong thử thách sẽ",
+    "quyết định",
+    "phần thưởng và năng lực",
+    "chờ đợi các người,",
+    "nếu thành công."
    ],
-   "box_w": 1325,
+   "box_w": 1337,
    "box_h": 1100,
    "fits": true,
    "missing_glyphs": false,
@@ -3922,9 +3784,9 @@
   },
   {
    "slice": 119,
-   "id": "text_36c74fc4d8b24869",
+   "id": "text_d80139ff08694441",
    "source": "",
-   "translation": "Những gì cậu làm trong khảo nghiệm\nsẽ quyết định phần thưởng và năng lực\nđang chờ cậu nếu thành công.",
+   "translation": "Những gì các người làm\ntrong thử thách sẽ quyết định\nphần thưởng và năng lực\nchờ đợi các người,\nnếu thành công.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3934,14 +3796,14 @@
    "size_source": "fit",
    "lines": 6,
    "wrapped": [
-    "Những gì cậu làm trong",
-    "khảo nghiệm",
-    "sẽ quyết định phần",
-    "thưởng và năng lực",
-    "đang chờ cậu nếu thành",
-    "công."
+    "Những gì các người làm",
+    "trong thử thách sẽ",
+    "quyết định",
+    "phần thưởng và năng lực",
+    "chờ đợi các người,",
+    "nếu thành công."
    ],
-   "box_w": 1325,
+   "box_w": 1337,
    "box_h": 1100,
    "fits": true,
    "missing_glyphs": false,
@@ -3950,7 +3812,7 @@
   },
   {
    "slice": 120,
-   "id": "text_502b6e1ce3314e03",
+   "id": "text_1a06468a1fbf47bc",
    "source": "",
    "translation": "Nhưng nếu cậu chết...",
    "role": "dialogue",
@@ -3974,9 +3836,9 @@
   },
   {
    "slice": 121,
-   "id": "text_2c8f01dc975546f0",
+   "id": "text_6300f34a528c41e9",
    "source": "",
-   "translation": "... rồi cậu sẽ trở thành cánh cổng\nđể quái vật xuất hiện\nở thế giới thực.",
+   "translation": "... cậu sẽ trở thành cánh cổng để quái vật tràn vào thế giới thực.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -3986,10 +3848,10 @@
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "... rồi cậu sẽ trở",
-    "thành cánh cổng",
-    "để quái vật xuất hiện",
-    "ở thế giới thực."
+    "... cậu sẽ trở thành",
+    "cánh cổng để quái",
+    "vật tràn vào thế giới",
+    "thực."
    ],
    "box_w": 1190,
    "box_h": 702,
@@ -4000,7 +3862,7 @@
   },
   {
    "slice": 121,
-   "id": "text_61369c2b59774937",
+   "id": "text_0a9eadfc429d484b",
    "source": "",
    "translation": "Nhưng nếu cậu chết...",
    "role": "dialogue",
@@ -4024,9 +3886,9 @@
   },
   {
    "slice": 122,
-   "id": "text_c11fedb8390d43af",
+   "id": "text_9bafccd1158c45b1",
    "source": "",
-   "translation": "... rồi cậu sẽ trở thành cánh cổng\nđể quái vật xuất hiện\nở thế giới thực.",
+   "translation": "... cậu sẽ trở thành cánh cổng để quái vật tràn vào thế giới thực.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -4036,10 +3898,10 @@
    "size_source": "fit",
    "lines": 4,
    "wrapped": [
-    "... rồi cậu sẽ trở",
-    "thành cánh cổng",
-    "để quái vật xuất hiện",
-    "ở thế giới thực."
+    "... cậu sẽ trở thành",
+    "cánh cổng để quái",
+    "vật tràn vào thế giới",
+    "thực."
    ],
    "box_w": 1190,
    "box_h": 702,
@@ -4050,9 +3912,9 @@
   },
   {
    "slice": 123,
-   "id": "text_c5d89edfe4a5439c",
+   "id": "text_63e1755c01e94eb6",
    "source": "",
-   "translation": "Nếu chuyện đó xảy ra,\nthì tôi và đồng đội\nsẽ phải xử lý.",
+   "translation": "Nếu chuyện đó xảy ra,\ntôi và đồng nghiệp sẽ phải xử lý.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -4064,7 +3926,7 @@
    "wrapped": [
     "Nếu chuyện đó xảy",
     "ra,",
-    "thì tôi và đồng đội",
+    "tôi và đồng nghiệp",
     "sẽ phải xử lý."
    ],
    "box_w": 1203,
@@ -4076,7 +3938,7 @@
   },
   {
    "slice": 124,
-   "id": "text_5bdb29d9b9914b28",
+   "id": "text_c3a90bac5cd44b45",
    "source": "",
    "translation": "Vậy...",
    "role": "dialogue",
@@ -4099,9 +3961,9 @@
   },
   {
    "slice": 125,
-   "id": "text_968159a78b9245c4",
+   "id": "text_017aae4b32a9458f",
    "source": "",
-   "translation": "Làm ơn đừng\nchết, Sunless.",
+   "translation": "Xin đừng\nchết, Sunless.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -4111,7 +3973,7 @@
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "Làm ơn đừng",
+    "Xin đừng",
     "chết, Sunless."
    ],
    "box_w": 917,
@@ -4123,20 +3985,21 @@
   },
   {
    "slice": 126,
-   "id": "text_9c92723ee56440bd",
+   "id": "text_c63669021d9e48f6",
    "source": "",
-   "translation": "Ít nhất thì...\nđừng chết ngay.",
-   "role": "dialogue",
+   "translation": "Hoặc ít nhất...\nđừng chết ngay lập tức.",
+   "role": "shout",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
    "font_px": 186,
    "font_px_at_800": 93.0,
    "size_source": "fit",
-   "lines": 2,
+   "lines": 3,
    "wrapped": [
-    "Ít nhất thì...",
-    "đừng chết ngay."
+    "Hoặc ít nhất...",
+    "đừng chết ngay",
+    "lập tức."
    ],
    "box_w": 1294,
    "box_h": 716,
@@ -4147,9 +4010,9 @@
   },
   {
    "slice": 127,
-   "id": "text_20dcdf7885614dde",
+   "id": "text_8e853714ce544d8c",
    "source": "",
-   "translation": "Người thức tỉnh gần nhất\nphải vài tiếng nữa\nmới tới.",
+   "translation": "Người thức tỉnh gần nhất sẽ mất vài tiếng mới đến đây.",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
@@ -4157,12 +4020,11 @@
    "font_px": 170,
    "font_px_at_800": 85.0,
    "size_source": "fit",
-   "lines": 4,
+   "lines": 3,
    "wrapped": [
     "Người thức tỉnh gần",
-    "nhất",
-    "phải vài tiếng nữa",
-    "mới tới."
+    "nhất sẽ mất vài",
+    "tiếng mới đến đây."
    ],
    "box_w": 1426,
    "box_h": 1063,
@@ -4173,23 +4035,24 @@
   },
   {
    "slice": 128,
-   "id": "text_39aec9f0ea554968",
+   "id": "text_dcc8506855b64bdc",
    "source": "",
-   "translation": "Vậy nên bọn tôi sẽ rất cảm kích\nnếu cậu không bắt bọn tôi\ntự chiến đấu với thứ đó...",
+   "translation": "Vậy nên chúng tôi sẽ rất cảm kích\nnếu cậu đừng bắt chúng tôi\ntự mình chiến đấu với thứ đó...",
    "role": "dialogue",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 126,
-   "font_px_at_800": 63.0,
+   "font_px": 124,
+   "font_px_at_800": 62.0,
    "size_source": "fit",
-   "lines": 5,
+   "lines": 6,
    "wrapped": [
-    "Vậy nên bọn tôi sẽ rất",
+    "Vậy nên chúng tôi sẽ rất",
     "cảm kích",
-    "nếu cậu không bắt bọn",
+    "nếu cậu đừng bắt chúng",
     "tôi",
-    "tự chiến đấu với thứ đó..."
+    "tự mình chiến đấu với thứ",
+    "đó..."
    ],
    "box_w": 1308,
    "box_h": 835,
@@ -4200,19 +4063,19 @@
   },
   {
    "slice": 129,
-   "id": "text_cc30b3411a4340a7",
+   "id": "text_8ff9bd26eb2140cc",
    "source": "",
-   "translation": "C-cái gì?!",
+   "translation": "C-cái gì cơ?",
    "role": "shout",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
-   "font_px": 162,
-   "font_px_at_800": 81.0,
+   "font_px": 128,
+   "font_px_at_800": 64.0,
    "size_source": "fit",
    "lines": 1,
    "wrapped": [
-    "C-cái gì?!"
+    "C-cái gì cơ?"
    ],
    "box_w": 653,
    "box_h": 230,
@@ -4223,7 +4086,7 @@
   },
   {
    "slice": 133,
-   "id": "text_14aad0e3893847cc",
+   "id": "text_afb57ee18d2441d3",
    "source": "",
    "translation": "",
    "role": null,
@@ -4233,10 +4096,10 @@
   },
   {
    "slice": 133,
-   "id": "text_e5d310dd747e4afa",
+   "id": "text_8663fbc659924663",
    "source": "",
-   "translation": "Kẻ dự tuyển!\nChào mừng đến với\nChú thuật Ác Mộng.",
-   "role": "system_ui",
+   "translation": "Ứng Viên!\nChào mừng đến với\nThần Chú Ác Mộng.",
+   "role": "free_text",
    "font": "dialogue.mac-dinh-3",
    "review": false,
    "page_width": 1600,
@@ -4245,9 +4108,9 @@
    "size_source": "fit",
    "lines": 3,
    "wrapped": [
-    "Kẻ dự tuyển!",
+    "Ứng Viên!",
     "Chào mừng đến với",
-    "Chú thuật Ác Mộng."
+    "Thần Chú Ác Mộng."
    ],
    "box_w": 954,
    "box_h": 543,
@@ -4258,7 +4121,7 @@
   },
   {
    "slice": 135,
-   "id": "text_58a315657d58433c",
+   "id": "text_eb6836b9f55d4ae9",
    "source": "",
    "translation": "",
    "role": null,
@@ -4268,39 +4131,39 @@
   },
   {
    "slice": 135,
-   "id": "text_f3635f5b4bed42ee",
+   "id": "text_42e3bc0dd4374d55",
    "source": "",
-   "translation": "LAUREL PURSUIT × AETHON BOOKS\nTruyện gốc: GUILTYTHREE",
+   "translation": "LAUREL PURSUIT × Sách Aethon\nNguyên tác: GUILTYTHREE",
    "role": "free_text",
    "font": "emphasis.anton",
    "review": false,
    "page_width": 1600,
-   "font_px": 82,
-   "font_px_at_800": 41.0,
+   "font_px": 47,
+   "font_px_at_800": 23.5,
    "size_source": "fit",
    "lines": 2,
    "wrapped": [
-    "LAUREL PURSUIT × AETHON BOOKS",
-    "Truyện gốc: GUILTYTHREE"
+    "LAUREL PURSUIT × Sách Aethon",
+    "Nguyên tác: GUILTYTHREE"
    ],
-   "box_w": 1003,
-   "box_h": 403,
+   "box_w": 869,
+   "box_h": 269,
    "fits": true,
    "missing_glyphs": false,
-   "source_cap_px": 79,
+   "source_cap_px": 35,
    "split_word": false
   },
   {
    "slice": 135,
-   "id": "text_a970dacb2d9a422b",
+   "id": "text_9d7488c4e050485e",
    "source": "",
    "translation": "Truyện mạng",
    "role": "title",
-   "font": "emphasis.anton",
+   "font": "emphasis.bungee",
    "review": false,
    "page_width": 1600,
-   "font_px": 95,
-   "font_px_at_800": 47.5,
+   "font_px": 88,
+   "font_px_at_800": 44.0,
    "size_source": "fit",
    "lines": 1,
    "wrapped": [
@@ -4315,34 +4178,31 @@
   }
  ],
  "readability": {
-  "rendered": 139,
+  "rendered": 133,
   "font_px_at_800": {
-   "min": 16.0,
-   "p10": 44.0,
+   "min": 21.5,
+   "p10": 44.5,
    "median": 67.0,
    "max": 100.0
   },
   "under_16px": 0,
-  "under_20px": 1,
+  "under_20px": 0,
   "split_word": 0,
   "does_not_fit": 0,
   "missing_glyphs": 1,
   "size_from_ocr": 0,
   "by_role": {
    "dialogue": [
-    43.0,
-    45.0,
     57.0,
-    57.5,
     59.5,
-    60.0,
+    59.5,
     60.5,
     60.5,
+    62.0,
     62.5,
-    63.0,
     63.5,
     64.0,
-    64.5,
+    65.0,
     65.5,
     65.5,
     66.5,
@@ -4359,9 +4219,10 @@
     67.0,
     67.0,
     67.0,
+    67.0,
+    68.5,
     69.5,
     69.5,
-    70.0,
     71.0,
     71.0,
     71.0,
@@ -4375,109 +4236,101 @@
     74.5,
     74.5,
     74.5,
+    75.5,
     77.0,
     77.0,
     77.5,
-    78.0,
     78.5,
     79.0,
+    80.5,
     80.5,
     81.0,
     81.5,
     85.0,
     85.0,
-    93.0,
     94.5,
     94.5,
+    100.0,
     100.0,
     100.0,
     100.0
    ],
    "free_text": [
-    16.0,
-    20.0,
+    21.5,
+    23.5,
     24.0,
     26.0,
-    41.0,
-    41.5,
-    43.5,
-    44.0,
-    46.5,
-    53.5,
-    53.5,
+    44.5,
+    44.5,
+    48.0,
+    52.0,
+    52.5,
+    56.5,
+    57.0,
     64.5,
-    68.5,
-    72.5,
     76.5,
     87.5,
     88.0,
-    89.0,
     89.0,
     89.0
    ],
    "narration": [
     36.0,
-    43.5,
-    43.5,
+    44.0,
     44.5,
     44.5,
-    44.5,
-    47.5,
+    46.5,
+    46.5,
     49.0,
+    50.0,
     50.5,
-    51.0,
-    51.0,
     51.5,
     51.5,
-    52.5,
+    51.5,
+    51.5,
+    53.5,
+    53.5,
     54.5,
     54.5,
     57.0,
     57.0,
+    57.0,
+    59.0,
+    59.0,
     60.5,
-    60.5,
-    60.5,
-    63.5,
+    62.5,
+    64.5,
     65.5,
     68.0,
     68.0,
-    68.0,
     72.0,
-    80.5,
-    80.5
-   ],
-   "sfx": [
-    76.0,
-    92.5
+    74.5
    ],
    "shout": [
     58.5,
-    81.0,
+    64.0,
     87.0,
+    93.0,
     96.0,
     96.0
    ],
-   "system_ui": [
-    57.0
-   ],
    "thought": [
     43.0,
-    58.5,
+    43.0,
+    45.0,
     60.5,
+    62.0,
     64.5,
-    71.0,
     71.5,
+    100.0,
     100.0,
     100.0
    ],
    "title": [
-    38.0,
+    38.5,
+    44.0,
     47.5,
-    47.5,
-    52.0,
-    56.5,
     59.5,
-    62.5,
     73.0,
     78.5,
     78.5,
@@ -4487,12 +4340,12 @@
   }
  },
  "per_chapter": {
-  "prompt_tokens": 2337702,
-  "completion_tokens": 60099,
-  "cost_usd": 0.25489
+  "prompt_tokens": 2335831,
+  "completion_tokens": 56977,
+  "cost_usd": 0.25129
  },
  "per_slice": {
-  "prompt_tokens": 19006,
-  "completion_tokens": 489
+  "prompt_tokens": 19146,
+  "completion_tokens": 467
  }
 }

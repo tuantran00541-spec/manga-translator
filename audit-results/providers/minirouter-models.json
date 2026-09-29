@@ -64,19 +64,21 @@
   }
  },
  {
+  "id": "spacexai/grok-4.20-non-reasoning",
+  "name": "Grok 4.20 Non-Reasoning",
+  "pricing": {
+   "input_cache_read": "0.00000021",
+   "input": "0.0000013125",
+   "output": "0.000002625",
+   "web_search": "5.25"
+  }
+ },
+ {
   "id": "alibaba/qwen3-vl-235b-a22b-instruct",
   "name": "Qwen3 VL 235B A22B Instruct",
   "pricing": {
    "input": "0.00000042",
    "output": "0.00000168"
-  }
- },
- {
-  "id": "alibaba/qwen-3-30b",
-  "name": "Qwen3-30B-A3B",
-  "pricing": {
-   "input": "0.000000126",
-   "output": "0.000000525"
   }
  },
  {
@@ -90,13 +92,28 @@
   }
  },
  {
-  "id": "spacexai/grok-4.20-non-reasoning",
-  "name": "Grok 4.20 Non-Reasoning",
+  "id": "alibaba/qwen-3-30b",
+  "name": "Qwen3-30B-A3B",
   "pricing": {
-   "input_cache_read": "0.00000021",
-   "input": "0.0000013125",
-   "output": "0.000002625",
-   "web_search": "5.25"
+   "input": "0.000000126",
+   "output": "0.000000525"
+  }
+ },
+ {
+  "id": "openai/gpt-oss-safeguard-20b",
+  "name": "GPT OSS Safeguard 20B",
+  "pricing": {
+   "input": "0.0000000735",
+   "output": "0.00000021"
+  }
+ },
+ {
+  "id": "stepfun/step-3.5-flash",
+  "name": "StepFun 3.5 Flash",
+  "pricing": {
+   "input_cache_read": "0.000000021",
+   "input": "0.0000000945",
+   "output": "0.000000315"
   }
  },
  {
@@ -365,15 +382,6 @@
   }
  },
  {
-  "id": "zai/glm-5.3",
-  "name": "GLM 5.3",
-  "pricing": {
-   "input_cache_read": "0.000000147",
-   "input": "0.00000147",
-   "output": "0.00000462"
-  }
- },
- {
   "id": "google/gemini-3.6-flash",
   "name": "Gemini 3.6 Flash",
   "pricing": {
@@ -381,6 +389,15 @@
    "input": "0.0000007875",
    "output": "0.0000039375",
    "web_search": "14.7"
+  }
+ },
+ {
+  "id": "zai/glm-5.3",
+  "name": "GLM 5.3",
+  "pricing": {
+   "input_cache_read": "0.000000147",
+   "input": "0.00000147",
+   "output": "0.00000462"
   }
  },
  {
@@ -674,14 +691,6 @@
   }
  },
  {
-  "id": "nvidia/nemotron-nano-12b-v2-vl",
-  "name": "Nvidia Nemotron Nano 12B V2 VL",
-  "pricing": {
-   "input": "0.00000021",
-   "output": "0.00000063"
-  }
- },
- {
   "id": "zai/glm-4.7-flashx",
   "name": "GLM 4.7 FlashX",
   "pricing": {
@@ -722,6 +731,14 @@
    "input_cache_read": "0.00000000441",
    "input": "0.00000002205",
    "output": "0.00000006615"
+  }
+ },
+ {
+  "id": "nvidia/nemotron-nano-12b-v2-vl",
+  "name": "Nvidia Nemotron Nano 12B V2 VL",
+  "pricing": {
+   "input": "0.00000021",
+   "output": "0.00000063"
   }
  },
  {
@@ -835,15 +852,6 @@
   }
  },
  {
-  "id": "zai/glm-4.5",
-  "name": "GLM 4.5",
-  "pricing": {
-   "input_cache_read": "0.0000001155",
-   "input": "0.00000063",
-   "output": "0.00000231"
-  }
- },
- {
   "id": "anthropic/claude-haiku-4.5",
   "name": "Claude Haiku 4.5",
   "pricing": {
@@ -872,12 +880,12 @@
   }
  },
  {
-  "id": "zai/glm-5.3-fast",
-  "name": "GLM 5.3 Fast",
+  "id": "zai/glm-4.5",
+  "name": "GLM 4.5",
   "pricing": {
-   "input_cache_read": "0.0000002205",
-   "input": "0.000002205",
-   "output": "0.00000693"
+   "input_cache_read": "0.0000001155",
+   "input": "0.00000063",
+   "output": "0.00000231"
   }
  },
  {
@@ -888,6 +896,15 @@
    "input": "0.000000315",
    "output": "0.000002625",
    "web_search": "14.7"
+  }
+ },
+ {
+  "id": "zai/glm-5.3-fast",
+  "name": "GLM 5.3 Fast",
+  "pricing": {
+   "input_cache_read": "0.0000002205",
+   "input": "0.000002205",
+   "output": "0.00000693"
   }
  },
  {
@@ -1294,16 +1311,6 @@
   }
  },
  {
-  "id": "openai/gpt-5",
-  "name": "GPT-5",
-  "pricing": {
-   "input_cache_read": "0.00000013125",
-   "input": "0.0000013125",
-   "output": "0.0000105",
-   "web_search": "10.5"
-  }
- },
- {
   "id": "zai/glm-4.5v",
   "name": "GLM 4.5V",
   "pricing": {
@@ -1347,6 +1354,16 @@
    "input_cache_read": "0.00000013125",
    "input": "0.0000002625",
    "output": "0.00000105",
+   "web_search": "10.5"
+  }
+ },
+ {
+  "id": "openai/gpt-5",
+  "name": "GPT-5",
+  "pricing": {
+   "input_cache_read": "0.00000013125",
+   "input": "0.0000013125",
+   "output": "0.0000105",
    "web_search": "10.5"
   }
  },
@@ -1441,16 +1458,6 @@
   }
  },
  {
-  "id": "openai/gpt-5-fast",
-  "name": "GPT-5 (Fast)",
-  "pricing": {
-   "input_cache_read": "0.0000002625",
-   "input": "0.000002625",
-   "output": "0.000021",
-   "web_search": "10.5"
-  }
- },
- {
   "id": "openai/gpt-5-mini-fast",
   "name": "GPT-5 mini (Fast)",
   "pricing": {
@@ -1480,6 +1487,16 @@
   }
  },
  {
+  "id": "openai/gpt-5-fast",
+  "name": "GPT-5 (Fast)",
+  "pricing": {
+   "input_cache_read": "0.0000002625",
+   "input": "0.000002625",
+   "output": "0.000021",
+   "web_search": "10.5"
+  }
+ },
+ {
   "id": "openai/gpt-5.1-codex-mini",
   "name": "GPT 5.1 Codex Mini",
   "pricing": {
@@ -1496,15 +1513,6 @@
    "input_cache_read": "0.000000105",
    "input": "0.0000004725",
    "output": "0.00000126"
-  }
- },
- {
-  "id": "meta/muse-spark-1.3-contributor",
-  "name": "Muse Spark 1.3 Contributor",
-  "pricing": {
-   "input_cache_read": "0.0000000021",
-   "input": "0.000000105",
-   "output": "0.00000021"
   }
  },
  {
@@ -1530,6 +1538,15 @@
   "pricing": {
    "input": "0.000000756",
    "output": "0.000000756"
+  }
+ },
+ {
+  "id": "meta/muse-spark-1.3-contributor",
+  "name": "Muse Spark 1.3 Contributor",
+  "pricing": {
+   "input_cache_read": "0.0000000021",
+   "input": "0.000000105",
+   "output": "0.00000021"
   }
  },
  {
@@ -1568,26 +1585,6 @@
   }
  },
  {
-  "id": "openai/gpt-5.3-codex-fast",
-  "name": "GPT 5.3 Codex (Fast)",
-  "pricing": {
-   "input_cache_read": "0.0000003675",
-   "input": "0.000003675",
-   "output": "0.0000294",
-   "web_search": "10.5"
-  }
- },
- {
-  "id": "openai/gpt-5.4-fast",
-  "name": "GPT 5.4 (Fast)",
-  "pricing": {
-   "input_cache_read": "0.000000525",
-   "input": "0.00000525",
-   "output": "0.0000315",
-   "web_search": "10.5"
-  }
- },
- {
   "id": "openai/gpt-5-nano",
   "name": "GPT-5 nano",
   "pricing": {
@@ -1598,11 +1595,31 @@
   }
  },
  {
+  "id": "openai/gpt-5.3-codex-fast",
+  "name": "GPT 5.3 Codex (Fast)",
+  "pricing": {
+   "input_cache_read": "0.0000003675",
+   "input": "0.000003675",
+   "output": "0.0000294",
+   "web_search": "10.5"
+  }
+ },
+ {
   "id": "openai/gpt-5-pro",
   "name": "GPT-5 pro",
   "pricing": {
    "input": "0.00001575",
    "output": "0.000126",
+   "web_search": "10.5"
+  }
+ },
+ {
+  "id": "openai/gpt-5.4-fast",
+  "name": "GPT 5.4 (Fast)",
+  "pricing": {
+   "input_cache_read": "0.000000525",
+   "input": "0.00000525",
+   "output": "0.0000315",
    "web_search": "10.5"
   }
  },
@@ -1826,14 +1843,6 @@
   }
  },
  {
-  "id": "openai/gpt-oss-safeguard-20b",
-  "name": "GPT OSS Safeguard 20B",
-  "pricing": {
-   "input": "0.0000000735",
-   "output": "0.00000021"
-  }
- },
- {
   "id": "openai/gpt-5.6-luna-fast",
   "name": "GPT 5.6 Luna (Fast)",
   "pricing": {
@@ -1872,15 +1881,6 @@
   "pricing": {
    "input": "0.0000001575",
    "output": "0.00000063"
-  }
- },
- {
-  "id": "stepfun/step-3.5-flash",
-  "name": "StepFun 3.5 Flash",
-  "pricing": {
-   "input_cache_read": "0.000000021",
-   "input": "0.0000000945",
-   "output": "0.000000315"
   }
  },
  {
@@ -2024,15 +2024,6 @@
   }
  },
  {
-  "id": "sakana/namazu",
-  "name": "Sakana Namazu",
-  "pricing": {
-   "input_cache_read": "0.0000001575",
-   "input": "0.0000009975",
-   "output": "0.0000042"
-  }
- },
- {
   "id": "deepseek/deepseek-v4-pro",
   "name": "DeepSeek V4 Pro",
   "pricing": {
@@ -2069,13 +2060,12 @@
   }
  },
  {
-  "id": "openai/o4-mini-fast",
-  "name": "o4-mini (Fast)",
+  "id": "sakana/namazu",
+  "name": "Sakana Namazu",
   "pricing": {
-   "input_cache_read": "0.000000525",
-   "input": "0.0000021",
-   "output": "0.0000084",
-   "web_search": "10.5"
+   "input_cache_read": "0.0000001575",
+   "input": "0.0000009975",
+   "output": "0.0000042"
   }
  },
  {
@@ -2115,6 +2105,16 @@
   }
  },
  {
+  "id": "openai/o4-mini-fast",
+  "name": "o4-mini (Fast)",
+  "pricing": {
+   "input_cache_read": "0.000000525",
+   "input": "0.0000021",
+   "output": "0.0000084",
+   "web_search": "10.5"
+  }
+ },
+ {
   "id": "openai/o4-mini",
   "name": "o4-mini",
   "pricing": {
@@ -2122,14 +2122,6 @@
    "input": "0.000001155",
    "output": "0.00000462",
    "web_search": "10.5"
-  }
- },
- {
-  "id": "meta/llama-4-scout",
-  "name": "Llama 4 Scout 17B Instruct",
-  "pricing": {
-   "input": "0.0000001785",
-   "output": "0.000000693"
   }
  },
  {
@@ -2144,50 +2136,20 @@
   }
  },
  {
+  "id": "meta/llama-4-scout",
+  "name": "Llama 4 Scout 17B Instruct",
+  "pricing": {
+   "input": "0.0000001785",
+   "output": "0.000000693"
+  }
+ },
+ {
   "id": "poolside/laguna-s-2.1",
   "name": "Laguna S 2.1",
   "pricing": {
    "input_cache_read": "0.0000000105",
    "input": "0.000000105",
    "output": "0.00000021"
-  }
- },
- {
-  "id": "stepfun/step-3.7-flash",
-  "name": "Step 3.7 Flash",
-  "pricing": {
-   "input_cache_read": "0.000000042",
-   "input": "0.00000021",
-   "output": "0.0000012075"
-  }
- },
- {
-  "id": "spacexai/grok-4.1-fast-reasoning",
-  "name": "Grok 4.1 Fast Reasoning",
-  "pricing": {
-   "input_cache_read": "0.0000000525",
-   "input": "0.00000021",
-   "output": "0.000000525"
-  }
- },
- {
-  "id": "spacexai/grok-4.5",
-  "name": "Grok 4.5",
-  "pricing": {
-   "input_cache_read": "0.000000315",
-   "input": "0.0000021",
-   "output": "0.0000063",
-   "web_search": "5.25"
-  }
- },
- {
-  "id": "spacexai/grok-4.6",
-  "name": "Grok 4.6",
-  "pricing": {
-   "input_cache_read": "0.000000525",
-   "input": "0.0000021",
-   "output": "0.0000063",
-   "web_search": "5.25"
   }
  },
  {
@@ -2201,6 +2163,34 @@
   }
  },
  {
+  "id": "spacexai/grok-4.1-fast-reasoning",
+  "name": "Grok 4.1 Fast Reasoning",
+  "pricing": {
+   "input_cache_read": "0.0000000525",
+   "input": "0.00000021",
+   "output": "0.000000525"
+  }
+ },
+ {
+  "id": "spacexai/grok-4.6",
+  "name": "Grok 4.6",
+  "pricing": {
+   "input_cache_read": "0.000000525",
+   "input": "0.0000021",
+   "output": "0.0000063",
+   "web_search": "5.25"
+  }
+ },
+ {
+  "id": "stepfun/step-3.7-flash",
+  "name": "Step 3.7 Flash",
+  "pricing": {
+   "input_cache_read": "0.000000042",
+   "input": "0.00000021",
+   "output": "0.0000012075"
+  }
+ },
+ {
   "id": "spacexai/grok-4.20-reasoning-beta",
   "name": "Grok 4.20 Beta Reasoning",
   "pricing": {
@@ -2208,6 +2198,25 @@
    "input": "0.0000013125",
    "output": "0.000002625",
    "web_search": "5.25"
+  }
+ },
+ {
+  "id": "spacexai/grok-4.5",
+  "name": "Grok 4.5",
+  "pricing": {
+   "input_cache_read": "0.000000315",
+   "input": "0.0000021",
+   "output": "0.0000063",
+   "web_search": "5.25"
+  }
+ },
+ {
+  "id": "moonshotai/kimi-k2.7-code",
+  "name": "Kimi K2.7 Code",
+  "pricing": {
+   "input_cache_read": "0.0000001995",
+   "input": "0.0000009975",
+   "output": "0.0000042"
   }
  },
  {
@@ -2248,24 +2257,6 @@
   }
  },
  {
-  "id": "moonshotai/kimi-k2.7-code",
-  "name": "Kimi K2.7 Code",
-  "pricing": {
-   "input_cache_read": "0.0000001995",
-   "input": "0.0000009975",
-   "output": "0.0000042"
-  }
- },
- {
-  "id": "spacexai/grok-4.1-fast-non-reasoning",
-  "name": "Grok 4.1 Fast Non-Reasoning",
-  "pricing": {
-   "input_cache_read": "0.0000000525",
-   "input": "0.00000021",
-   "output": "0.000000525"
-  }
- },
- {
   "id": "openai/gpt-5.5",
   "name": "GPT 5.5",
   "pricing": {
@@ -2285,8 +2276,17 @@
   }
  },
  {
-  "id": "spacexai/grok-4.20-reasoning",
-  "name": "Grok 4.20 Reasoning",
+  "id": "spacexai/grok-4.1-fast-non-reasoning",
+  "name": "Grok 4.1 Fast Non-Reasoning",
+  "pricing": {
+   "input_cache_read": "0.0000000525",
+   "input": "0.00000021",
+   "output": "0.000000525"
+  }
+ },
+ {
+  "id": "spacexai/grok-4.20-non-reasoning-beta",
+  "name": "Grok 4.20 Beta Non-Reasoning",
   "pricing": {
    "input_cache_read": "0.00000021",
    "input": "0.0000013125",
@@ -2349,31 +2349,13 @@
   }
  },
  {
-  "id": "spacexai/grok-4.20-non-reasoning-beta",
-  "name": "Grok 4.20 Beta Non-Reasoning",
+  "id": "spacexai/grok-4.20-reasoning",
+  "name": "Grok 4.20 Reasoning",
   "pricing": {
    "input_cache_read": "0.00000021",
    "input": "0.0000013125",
    "output": "0.000002625",
    "web_search": "5.25"
-  }
- },
- {
-  "id": "zai/glm-5.3-flash",
-  "name": "GLM 5.3 Flash",
-  "pricing": {
-   "input_cache_read": "0.0000000315",
-   "input": "0.0000001575",
-   "output": "0.000000525"
-  }
- },
- {
-  "id": "zai/glm-5.3-flashx",
-  "name": "GLM 5.3 FlashX",
-  "pricing": {
-   "input_cache_read": "0.00000007875",
-   "input": "0.0000003885",
-   "output": "0.0000013125"
   }
  },
  {
@@ -2400,6 +2382,24 @@
   "pricing": {
    "input": "0.00000063",
    "output": "0.00000231"
+  }
+ },
+ {
+  "id": "zai/glm-5.3-flash",
+  "name": "GLM 5.3 Flash",
+  "pricing": {
+   "input_cache_read": "0.0000000315",
+   "input": "0.0000001575",
+   "output": "0.000000525"
+  }
+ },
+ {
+  "id": "zai/glm-5.3-flashx",
+  "name": "GLM 5.3 FlashX",
+  "pricing": {
+   "input_cache_read": "0.00000007875",
+   "input": "0.0000003885",
+   "output": "0.0000013125"
   }
  },
  {
