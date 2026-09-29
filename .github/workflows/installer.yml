@@ -93,7 +93,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            shell: bash
+          - os: macos-latest
+            shell: zsh
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
@@ -102,17 +106,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: One-line install
-        run: sh < install.sh
-
-      - name: The start-up file puts manga on PATH and the libraries load
+      - name: One-line install, as a user whose PATH lacks ~/.local/bin
         run: |
-          grep -h "manga-translator" ~/.profile ~/.bashrc ~/.bash_profile ~/.zshrc 2>/dev/null
-          export PATH="$HOME/.local/bin:$PATH"
-          cat "$(command -v manga)"
-          manga --version
+          # The runner already has ~/.local/bin on PATH; a fresh user usually does not.
+          export PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vx "$HOME/.local/bin" | paste -sd: -)"
+          SHELL="$(command -v ${{ matrix.shell }})" sh < install.sh
+
+      - name: A new terminal finds manga and the libraries load
+        run: |
+          # A clean login shell of the user's kind: only its start-up files can put manga on PATH.
+          env -i HOME="$HOME" TERM=dumb PATH=/usr/bin:/bin "$(command -v ${{ matrix.shell }})" -lic 'command -v manga && manga --version'
           python="$HOME/.local/share/manga-translator/app/.venv/bin/python"
           "$python" -c "import torch, paddle, onnxruntime, cv2, paddleocr, manga_ocr; print('torch', torch.__version__, 'ort', onnxruntime.__version__)"
+          ls -la "$HOME/.local/share/manga-translator/app/models"
 
       - name: The app starts with every model
         run: |

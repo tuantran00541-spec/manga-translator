@@ -1,6 +1,7 @@
 """Build models/ctd_seg.onnx: the released comic-text-detector made fast, any-size and mask-only."""
 from __future__ import annotations
 
+import os
 import sys
 
 import numpy as np
@@ -47,7 +48,8 @@ def swap(module: nn.Module) -> nn.Module:
 
 
 def main(src: str, dst: str) -> None:
-    model = swap(onnx2torch.convert(src).eval())
+    # A loaded model is shape-inferred in memory; from a path onnx2torch reopens an open temp file, which Windows refuses.
+    model = swap(onnx2torch.convert(onnx.load(src)).eval())
     x = torch.rand(1, 3, 1024, 1024)
     torch.onnx.export(model, x, dst + ".full", input_names=["images"], output_names=["blk", "seg", "det"], opset_version=17,
                       dynamic_axes={"images": {2: "h", 3: "w"}, "seg": {2: "h", 3: "w"}, "det": {2: "h", 3: "w"}, "blk": {1: "n"}},
@@ -61,6 +63,7 @@ def main(src: str, dst: str) -> None:
     utils.extract_model(dst + ".full", dst, ["images"], ["seg"])
     ref = ort.InferenceSession(src, providers=["CPUExecutionProvider"]).run(["seg"], {"images": x.numpy()})[0]
     new = ort.InferenceSession(dst, providers=["CPUExecutionProvider"]).run(None, {"images": x.numpy()})[0]
+    os.remove(dst + ".full")
     print("max seg difference", float(np.abs(ref - new).max()))
 
 

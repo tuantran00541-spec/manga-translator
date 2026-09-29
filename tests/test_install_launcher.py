@@ -119,18 +119,21 @@ def test_missing_visual_cpp_runtime_files_are_found(tmp_path):
     assert install.missing_vc_runtime(tmp_path) == ["vcruntime140_1.dll", "vcomp140.dll"]
 
 
-def test_the_shell_start_up_file_gets_the_path_line_once(tmp_path, monkeypatch):
+def test_a_new_mac_account_without_zshrc_gets_one(tmp_path, monkeypatch):
     monkeypatch.setenv("SHELL", "/bin/zsh")
-    (tmp_path / ".zshrc").write_text("alias ll='ls -l'")
+    (tmp_path / ".profile").write_text("umask 022")
     folder = tmp_path / ".local" / "bin"
-    assert install.add_to_shell_path(folder, tmp_path) == [tmp_path / ".zshrc"]
-    assert install.add_to_shell_path(folder, tmp_path) == []
-    assert (tmp_path / ".zshrc").read_text().splitlines()[-1] == f'export PATH="{folder}:$PATH"  # manga-translator'
+    assert install.add_to_shell_path(folder, tmp_path) == [tmp_path / ".zshrc", tmp_path / ".profile"]
+    assert install.add_to_shell_path(folder, tmp_path) == [], "added once"
+    assert (tmp_path / ".zshrc").read_text() == f'export PATH="{folder}:$PATH"  # manga-translator\n'
+    assert (tmp_path / ".profile").read_text().splitlines() == ["umask 022", f'export PATH="{folder}:$PATH"  # manga-translator']
+
+
+def test_fish_gets_its_own_syntax(tmp_path, monkeypatch):
     monkeypatch.setenv("SHELL", "/usr/bin/fish")
-    (tmp_path / ".config" / "fish").mkdir(parents=True)
-    (tmp_path / ".config" / "fish" / "config.fish").write_text("")
+    folder = tmp_path / ".local" / "bin"
     install.add_to_shell_path(folder, tmp_path)
-    assert f"fish_add_path {folder}" in (tmp_path / ".config" / "fish" / "config.fish").read_text()
+    assert (tmp_path / ".config" / "fish" / "config.fish").read_text() == f"fish_add_path {folder}  # manga-translator\n"
 
 
 def test_a_command_is_written_to_the_user_bin(tmp_path, monkeypatch):

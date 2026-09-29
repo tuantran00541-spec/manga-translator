@@ -262,14 +262,17 @@ def add_to_user_path_windows(folder: Path) -> None:
 
 
 RC_LINE = 'export PATH="{folder}:$PATH"  # manga-translator'
+# The file each shell reads in a new terminal; created when missing (a new Mac account has no ~/.zshrc).
+PRIMARY_RC = {"zsh": ".zshrc", "fish": ".config/fish/config.fish",
+              "bash": ".bash_profile" if sys.platform == "darwin" else ".bashrc"}
 
 
 def add_to_shell_path(folder: Path, home: Path | None = None) -> list[Path]:
-    """Add ``folder`` to PATH in the shell start-up files that exist (or ~/.profile), once."""
+    """Add ``folder`` to PATH once, in the user's shell start-up file and in ~/.profile when it exists."""
     home = home or Path.home()
-    shell = os.path.basename(os.environ.get("SHELL", ""))
-    candidates = {"zsh": [".zshrc"], "bash": [".bashrc", ".bash_profile"], "fish": [".config/fish/config.fish"]}.get(shell, [])
-    files = [home / name for name in candidates + [".profile"] if (home / name).is_file()] or [home / ".profile"]
+    primary = PRIMARY_RC.get(os.path.basename(os.environ.get("SHELL", "")), ".profile")
+    files = [home / primary] + [home / name for name in (".bashrc", ".bash_profile", ".zshrc", ".profile")
+                                if name != primary and (home / name).is_file()]
     changed = []
     for rc in files:
         line = f"fish_add_path {folder}  # manga-translator" if rc.name == "config.fish" else RC_LINE.format(folder=folder)
