@@ -260,7 +260,7 @@ Place these files in models/:
 `kiuyha_text_1280.onnx` (10 MB) is in the repository; the LaMa files are too
 large for Git and must be downloaded. Build `ctd_seg.onnx` from the released
 [comictextdetector.pt.onnx](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3)
-with `python scripts/export_ctd_onnx.py comictextdetector.pt.onnx models/ctd_seg.onnx`
+by saving it as `.cache/comictextdetector.pt.onnx` and running `python scripts/export_ctd_onnx.py`
 (needs `torch`, `onnx` and `onnx2torch` once; the app itself only needs onnxruntime). The **Kiuyha ONNX export** workflow
 re-exports
 [Kiuyha/Manga-Bubble-YOLO](https://huggingface.co/Kiuyha/Manga-Bubble-YOLO)

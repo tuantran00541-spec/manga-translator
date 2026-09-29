@@ -212,7 +212,7 @@ def build_ctd(target: Path, uv: str | None) -> None:
         torch_index = [] if sys.platform == "darwin" else ["--index-url", TORCH_CPU_INDEX]
         run(python, "-m", "pip", "install", "-q", TORCH, *torch_index)
         run(python, "-m", "pip", "install", "-q", *packages)
-    run(python, target / "scripts" / "export_ctd_onnx.py", raw, model)
+    run(python, target / "scripts" / "export_ctd_onnx.py")
     shutil.rmtree(cache / "ctd-build", ignore_errors=True)
     raw.unlink(missing_ok=True)
 
