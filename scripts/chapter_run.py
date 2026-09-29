@@ -24,6 +24,32 @@ def text_mask(shape: tuple[int, int], boxes) -> np.ndarray:
     return mask
 
 
+def stage_seconds(manifest: dict) -> dict:
+    """Seconds each processing stage took, summed over the slices, with the shared seam pass and the run's wall time."""
+    totals: dict[str, float] = {}
+
+    def add(name: str, value) -> None:
+        if isinstance(value, (int, float)):
+            totals[name] = totals.get(name, 0.0) + value
+
+    for page in manifest.get("pages", []):
+        metrics = page.get("processing_metrics") or {}
+        for name, value in (metrics.get("timing_ms") or {}).items():
+            add(f"{name}_ms", value)
+        detector, inpaint = metrics.get("detector") or {}, metrics.get("auto_inpaint") or {}
+        add("text_model_ms", detector.get("text_model_ms"))
+        add("second_pass_boxes", detector.get("second_pass_boxes"))
+        for name in ("lama_model_ms", "lama_model_runs", "session_lock_wait_ms", "ort_global_lock_wait_ms"):
+            add(name, inpaint.get(name))
+    run = manifest.get("last_processing_run") or {}
+    for name, value in (run.get("shared_seam") or {}).items():
+        add(f"seam_{name}", value)
+    add("wall_ms", run.get("wall_ms"))
+    add("workers", run.get("workers"))
+    return {(name[:-3] + "_s" if name.endswith("_ms") else name):
+            (round(value / 1000.0, 1) if name.endswith("_ms") else value) for name, value in totals.items()}
+
+
 def pair(original: np.ndarray, clean: np.ndarray, box, path: Path) -> None:
     x1, y1, x2, y2 = box
     tiles = []
@@ -94,6 +120,7 @@ def main() -> int:
         "url": args.url, "slices": len(pages),
         "download_s": round(download_s, 1), "process_s": round(process_s, 1),
         "per_slice_s": round(process_s / max(1, len(pages)), 2),
+        "time_s": stage_seconds(load_manifest_raw(args.chapter_id)),
         "blocks": blocks, "blocks_left": left, "left": lefts,
     }
     (args.out / "report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
