@@ -24,6 +24,17 @@ def text_mask(shape: tuple[int, int], boxes) -> np.ndarray:
     return mask
 
 
+def cpu_model() -> str:
+    """The runner's CPU, as float results of the models can differ between CPU types."""
+    try:
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return "unknown"
+
+
 def stage_seconds(manifest: dict) -> dict:
     """Seconds each processing stage took, summed over the slices, with the shared seam pass and the run's wall time."""
     totals: dict[str, float] = {}
@@ -118,7 +129,7 @@ def main() -> int:
         cv2.imwrite(str(args.out / f"sample-{rank}-slice{number:03d}.jpg"), side, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
     report = {
-        "url": args.url, "slices": len(pages),
+        "url": args.url, "slices": len(pages), "cpu": cpu_model(),
         "download_s": round(download_s, 1), "process_s": round(process_s, 1),
         "per_slice_s": round(process_s / max(1, len(pages)), 2),
         "time_s": stage_seconds(load_manifest_raw(args.chapter_id)),
