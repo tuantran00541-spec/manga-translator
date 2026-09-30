@@ -279,7 +279,7 @@ class OpenAICompatibleRegionQC:
         prompt += (
             "\n\nReturn JSON only. The top-level JSON object must be "
             '{"regions":[{"region_id":"...","status":"pass|flagged|ambiguous","issues":[]}]}. '
-            "Every issue must include issue_type, confidence, box_2d, reason, and recommended_action."
+            "Every issue must include issue_type, confidence, x1, y1, x2, y2, reason, and recommended_action."
         )
         payload = {
             "model": self.model,

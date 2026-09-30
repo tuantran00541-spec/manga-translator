@@ -12,7 +12,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from app.ai_mode.vision_json import BOX_KEYS, BOX_RULE, request_vision_json, scaled_box
+from app.ai_mode.vision_json import request_vision_json
+from app.box_format import BOX_KEYS, BOX_RULE, scaled_box
 
 # Only confident answers change the chapter; everything else stays as is.
 CREDIT_MIN_CONFIDENCE = 0.75

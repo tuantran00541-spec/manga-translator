@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
+from app.box_format import scaled_box
 from app.visual_qc.regions import QCRegion
 
 _ALLOWED_ISSUE_TYPES = {
@@ -32,25 +33,14 @@ class RegionBatchDecision:
     issues: tuple[RegionBatchIssue, ...]
 
 
-def _map_relative_box(box_2d: object, region: QCRegion) -> tuple[int, int, int, int] | None:
-    if not isinstance(box_2d, (list, tuple)) or len(box_2d) != 4:
-        return None
-    try:
-        values = [float(v) for v in box_2d]
-    except (TypeError, ValueError):
-        return None
-    if not all(math.isfinite(v) for v in values):
-        return None
-    ymin, xmin, ymax, xmax = [max(0.0, min(1000.0, v)) for v in values]
-    if ymax <= ymin or xmax <= xmin:
-        return None
+def _map_relative_box(raw_issue: dict, region: QCRegion) -> tuple[int, int, int, int] | None:
+    """Page pixels of an issue's named 0-1000 box inside its region's crop."""
     rx1, ry1, rx2, ry2 = region.bbox
-    rw = max(1, rx2 - rx1)
-    rh = max(1, ry2 - ry1)
-    x1 = int(round(rx1 + xmin / 1000.0 * rw))
-    y1 = int(round(ry1 + ymin / 1000.0 * rh))
-    x2 = int(round(rx1 + xmax / 1000.0 * rw))
-    y2 = int(round(ry1 + ymax / 1000.0 * rh))
+    scaled = scaled_box(raw_issue, max(1, rx2 - rx1), max(1, ry2 - ry1))
+    if scaled is None:
+        return None
+    x1, y1, x2, y2 = (int(round(v)) for v in scaled)
+    x1, y1, x2, y2 = rx1 + x1, ry1 + y1, rx1 + x2, ry1 + y2
     x1 = max(rx1, min(rx2 - 1, x1))
     y1 = max(ry1, min(ry2 - 1, y1))
     x2 = max(x1 + 1, min(rx2, x2))
@@ -70,7 +60,7 @@ def _parse_issue(raw_issue: object, region: QCRegion) -> RegionBatchIssue | None
         return None
     if not math.isfinite(confidence):
         return None
-    bbox = _map_relative_box(raw_issue.get("box_2d"), region)
+    bbox = _map_relative_box(raw_issue, region)
     if bbox is None:
         return None
     action = str(raw_issue.get("recommended_action") or "review")

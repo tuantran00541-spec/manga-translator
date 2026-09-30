@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.ai_mode.vision_json import BOX_RULE, request_vision_json, scaled_box
+from app.ai_mode.vision_json import request_vision_json
+from app.box_format import BOX_RULE, scaled_box
 
 MIN_CONFIDENCE = 0.6
 RESTORE_CONFIDENCE = 0.8  # a wrong restore leaves source text on the page
