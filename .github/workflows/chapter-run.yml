@@ -10,6 +10,9 @@ on:
       chapter_url:
         description: "Chapter to clean"
         required: false
+      save_slices:
+        description: "Slice numbers to save whole, comma separated"
+        required: false
 
 permissions:
   contents: write
@@ -67,7 +70,7 @@ jobs:
           test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha_text_1280.onnx
 
       - name: Process the whole chapter
-        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run
+        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run --save-slices "${{ github.event.inputs.save_slices }}"
 
       - name: Save evidence to audit-evidence
         if: always()

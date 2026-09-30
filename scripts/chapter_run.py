@@ -80,6 +80,7 @@ def main() -> int:
     parser.add_argument("url")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--chapter-id", default="c1a90001")
+    parser.add_argument("--save-slices", default="", help="comma-separated slice numbers to save whole, original and clean")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
@@ -122,6 +123,11 @@ def main() -> int:
                 lefts.append({"slice": number, "box": box, "px": int(block.sum())})
                 pair(before, after, box, args.out / f"left-{len(lefts):02d}.jpg")
 
+    wanted = {int(n) for n in args.save_slices.split(",") if n.strip()}
+    for number, page in enumerate(load_manifest_raw(args.chapter_id)["pages"]):
+        if number in wanted and page.get("clean"):
+            for key in ("original", "clean"):
+                cv2.imwrite(str(args.out / f"slice{number:03d}-{key}.png"), read_image(Path(page[key])))
     for rank, (_, number, page, y0, y1) in enumerate(sorted(per_slice, key=lambda s: -s[0])[:8], 1):
         before, after = (read_image(Path(page[key]))[y0:y1] for key in ("original", "clean"))
         side = np.concatenate([before, np.full((before.shape[0], 12, 3), 255, np.uint8), after], axis=1)
