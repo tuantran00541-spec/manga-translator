@@ -44,7 +44,10 @@ from app.parameters import (
     SMART_FILL_MIDTONE_MAX,
     SMART_FILL_MIDTONE_MIN,
     SMART_FILL_MIDTONE_STD_MAX,
+    SMART_FILL_RING_AGREE,
+    SMART_FILL_RING_NEAR_PX,
     SMART_FILL_RING_PIXELS_MIN,
+    SMART_FILL_RING_TOLERANCE,
     SMART_FILL_SURFACE_MIN_RANGE,
     SMART_FILL_SURFACE_RESIDUAL_MAX,
     SMART_FILL_SURFACE_SEED_TOL,
@@ -550,6 +553,38 @@ class Inpainter:
         return None
 
     @staticmethod
+    def _ring_fill_color(crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray | None:
+        """Median colour of a hole whose nearest pixels all agree and that no drawn line enters, else None."""
+        hole = local_mask > 127
+        if crop.ndim != 3 or not hole.any():
+            return None
+        hole_u8 = hole.astype(np.uint8)
+
+        def band(px: int) -> np.ndarray:
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * px + 1, 2 * px + 1))
+            return cv2.dilate(hole_u8, kernel) > 0
+
+        grown = band(SMART_FILL_CLEAN_RING_MARGIN)
+        ring = grown & ~hole
+        if int(np.count_nonzero(ring)) < SMART_FILL_RING_PIXELS_MIN:
+            return None
+        lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB).astype(np.float32)
+        diff = lab - np.median(lab[ring], axis=0)
+        off = ring & (np.einsum("...k,...k->...", diff, diff) > SMART_FILL_RING_TOLERANCE ** 2)
+        near = band(SMART_FILL_RING_NEAR_PX) & ~hole
+        if np.count_nonzero(near & off) > (1.0 - SMART_FILL_RING_AGREE) * np.count_nonzero(near):
+            return None
+        # An off-colour run from the ring's outer edge to the hole is a line the fill would cut.
+        touching = cv2.dilate(hole_u8, np.ones((3, 3), np.uint8)) > 0
+        outer = grown & ~(cv2.erode(grown.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0)
+        count, parts = cv2.connectedComponents(off.astype(np.uint8))
+        for label in range(1, count):
+            part = parts == label
+            if (part & touching).any() and (part & outer).any():
+                return None
+        return np.median(crop[ring & ~off], axis=0).astype(np.uint8)
+
+    @staticmethod
     def _quadratic_design(
         xs: np.ndarray,
         ys: np.ndarray,
@@ -623,6 +658,9 @@ class Inpainter:
             return image
 
         fill_color = None if force_lama else self._smart_fill_color(crop, local_mask)
+        if fill_color is None and not force_lama:
+            # A hole ringed by one colour of any shade (dark caption boxes fall between the rules above) needs no LaMa.
+            fill_color = self._ring_fill_color(crop, local_mask)
         if fill_color is not None:
             self._metric_add("smart_fill_regions")
             filled = crop.copy()

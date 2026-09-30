@@ -103,3 +103,28 @@ def test_lama_output_rounds_to_nearest_instead_of_truncating():
     values = rng.uniform(0, 255, (1, 3, 64, 64))
     decoded = decode_lama_output(values / 255.0, NormalizedContract).astype(np.float64)
     assert abs(float((decoded - values[0].transpose(1, 2, 0)).mean())) < 0.05
+
+
+def _caption_box(line: bool = False, texture: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    # The World After the End 254: dark green caption boxes a few pixels from their pale border.
+    image = np.full((240, 400, 3), 225, np.uint8)
+    image[40:200, 40:360] = (40, 58, 30)
+    if texture:
+        image[40:200, 40:360] = np.random.default_rng(3).integers(0, 255, (160, 320, 3), dtype=np.uint8)
+    if line:
+        image[118:122, 40:360] = (230, 230, 230)
+    mask = np.zeros((240, 400), np.uint8)
+    mask[60:180, 60:340] = 255
+    return image, mask
+
+
+def test_a_dark_caption_box_is_filled_flat():
+    image, mask = _caption_box()
+    out, metrics = _paint(image, mask)
+    assert metrics.get("smart_fill_regions") == 1
+    assert np.abs(out[70:170, 70:330].astype(int) - (40, 58, 30)).max() <= 1
+
+
+def test_a_line_through_the_hole_or_a_textured_ring_goes_to_lama():
+    for image, mask in (_caption_box(line=True), _caption_box(texture=True)):
+        assert Inpainter._ring_fill_color(image, mask) is None
