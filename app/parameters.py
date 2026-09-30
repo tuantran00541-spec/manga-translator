@@ -158,10 +158,6 @@ SLICE_FALLBACK_TOLERANCE_RATIO = 0.08
 
 INPAINT_SIZE = 512
 DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM = 512  # the fill is as good at this long side and several times cheaper
-# Smoother art round a hole fills as well on a smaller canvas: (edge strength up to, long side), else the full side.
-DYNAMIC_LAMA_CANVAS_TIERS = ((22.0, 256), (45.0, 384))
-DYNAMIC_LAMA_SHARP_EDGE = 200.0  # an edge this strong beside the hole (a bubble outline, a thin line) keeps the full canvas
-DYNAMIC_LAMA_SHARP_SHARE = 0.003  # share of such edge pixels round the hole that already blurs on a smaller canvas
 DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS = 512 * 512
 DYNAMIC_LAMA_TILE = 1024
 DYNAMIC_LAMA_TILE_OVERLAP = 192
@@ -169,7 +165,7 @@ INPAINT_NATIVE_TILE_ENABLED = False
 INPAINT_NATIVE_TILE_EDGE_DENSITY_MIN = 0.055
 INPAINT_NATIVE_TILE_MASK_AREA_MIN = 256
 INPAINT_CLUSTER_PADDING = 35
-INPAINT_CROP_PADDING = 32  # context round a cluster; 32 fills as well as 96 on real art at a third of the cost
+INPAINT_CROP_PADDING = 48  # context round a cluster; 32-48 fill as well as 96 on real art and cost half
 INPAINT_CLUSTER_MAX_DIM = 600
 INPAINT_CLUSTER_SPLIT_COUNT = 3
 INPAINT_CLUSTER_SPLIT_HEIGHT_FACTOR = 4.0
