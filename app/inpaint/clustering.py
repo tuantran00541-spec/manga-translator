@@ -8,7 +8,6 @@ from app.parameters import (
     INPAINT_CLUSTER_PADDING,
     INPAINT_CLUSTER_SPLIT_COUNT,
     INPAINT_CLUSTER_SPLIT_HEIGHT_FACTOR,
-    INPAINT_CROP_LONG_ASPECT_THRESHOLD,
     INPAINT_CROP_PADDING,
     MANUAL_CROP_PADDING,
 )
@@ -174,42 +173,10 @@ def compute_manual_crop_region(x1: int, y1: int, x2: int, y2: int, img_w: int, i
 
 
 def compute_crop_region(x1: int, y1: int, x2: int, y2: int, img_w: int, img_h: int) -> tuple:
-    x1 -= INPAINT_CROP_PADDING
-    y1 -= INPAINT_CROP_PADDING
-    x2 += INPAINT_CROP_PADDING
-    y2 += INPAINT_CROP_PADDING
-
-    box_w = x2 - x1
-    box_h = y2 - y1
-
-    aspect = max(box_w / max(1, box_h), box_h / max(1, box_w))
-    if aspect > INPAINT_CROP_LONG_ASPECT_THRESHOLD:
-        x1 = max(0, x1)
-        y1 = max(0, y1)
-        x2 = min(img_w, x2)
-        y2 = min(img_h, y2)
-        return int(x1), int(y1), int(x2), int(y2)
-
-    side = max(box_w, box_h)
-    cx = (x1 + x2) / 2
-    cy = (y1 + y2) / 2
-
-    x1 = cx - side / 2
-    x2 = cx + side / 2
-    y1 = cy - side / 2
-    y2 = cy + side / 2
-
-    if x1 < 0:
-        x2 = min(img_w, x2 - x1)
-        x1 = 0
-    if y1 < 0:
-        y2 = min(img_h, y2 - y1)
-        y1 = 0
-    if x2 > img_w:
-        x1 = max(0, x1 - (x2 - img_w))
-        x2 = img_w
-    if y2 > img_h:
-        y1 = max(0, y1 - (y2 - img_h))
-        y2 = img_h
-
-    return int(x1), int(y1), int(x2), int(y2)
+    """The cluster with its context margin, cut to the image; the dynamic model needs no square."""
+    return (
+        int(max(0, x1 - INPAINT_CROP_PADDING)),
+        int(max(0, y1 - INPAINT_CROP_PADDING)),
+        int(min(img_w, x2 + INPAINT_CROP_PADDING)),
+        int(min(img_h, y2 + INPAINT_CROP_PADDING)),
+    )
