@@ -201,6 +201,11 @@ SMART_FILL_SURFACE_RESIDUAL_MAX = 3.0
 SMART_FILL_SURFACE_MIN_RANGE = 1.5
 SMART_FILL_RING_NEAR_PX = 3  # pixels right round a hole that must share one colour for a flat fill
 SMART_FILL_RING_AGREE = 0.98  # share of those pixels within the tolerance of the ring's median colour
+FLAT_COPY_MIN_SHARE = 0.8  # share of a LaMa hole flat colours must cover before only the rest goes to LaMa
+FLAT_COPY_CALM_STD = 1.5  # lightness spread, in a 9 px window, of ring pixels counted as flat colour
+FLAT_COPY_TOLERANCE = 4.0  # Lab distance within which a pixel belongs to a flat colour
+FLAT_COPY_PALETTE_SHARE = 0.08  # share of the calm ring a colour needs to join the palette
+FLAT_COPY_SEAM_PX = 6  # pixels round a seam between two flat colours left to LaMa
 SMART_FILL_RING_TOLERANCE = 12.0  # Lab distance from the ring's median colour that still counts as the same colour
 FIXED_LAMA_SESSION_MAX_RUNS = 4
 
