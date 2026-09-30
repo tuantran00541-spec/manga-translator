@@ -101,3 +101,16 @@ def test_letters_the_box_cuts_are_erased_up_to_the_end_of_the_line():
     assert (full & line).sum() >= 0.98 * line.sum(), "the whole caption is erased, dots included"
     assert not (full & ink)[340:, 1440:].any(), "a separate text farther away is not taken"
     assert box[2] < 1440, "the box grows over the cut letters only"
+
+
+def test_one_image_always_gives_one_mask():
+    # The World After the End 254: a second call on the same crop grew a different mask, so LaMa painted it differently.
+    ctd_mask._session = InkModel(light_above=225)
+    rng = np.random.default_rng(7)
+    patches = rng.integers(20, 120, (8, 20, 3)).astype(np.uint8)
+    image = cv2.resize(patches, (1000, 400), interpolation=cv2.INTER_NEAREST)
+    image = np.clip(image + rng.normal(0, 14, image.shape), 0, 255).astype(np.uint8)
+    cv2.putText(image, "DARE TO DREAM", (80, 240), cv2.FONT_HERSHEY_DUPLEX, 3.0, (200, 190, 60), 22)
+    cv2.putText(image, "DARE TO DREAM", (80, 240), cv2.FONT_HERSHEY_DUPLEX, 3.0, (255, 240, 170), 8)
+    masks = [ctd_mask.letter_mask(image, (70, 150, 900, 270))[1] for _ in range(4)]
+    assert all(np.array_equal(masks[0], mask) for mask in masks[1:])

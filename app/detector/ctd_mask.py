@@ -20,6 +20,7 @@ RING = 6  # width of the band past the crop where the background colours are rea
 LEFT_SHARE = 0.004  # share of an erased block the model may still read before it gets another pass
 REACH_ROUNDS = 3  # times a box grows toward letters its edge still cuts
 CHAIN = 0.6  # widest gap, in letter heights, between letters of one text
+KMEANS_SEED = 1234  # fixed seed for the background colour clusters, so one image always gives one mask
 
 _session = None
 _lock = threading.Lock()
@@ -65,6 +66,8 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
         return seed
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
     bg = bg.astype(np.float32)
+    # k-means++ draws from OpenCV's per-thread RNG; without a fixed seed the mask depended on earlier calls.
+    cv2.setRNGSeed(KMEANS_SEED)
     _, _, centers = cv2.kmeans(bg, min(4, len(bg)), None,
                                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0), 2, cv2.KMEANS_PP_CENTERS)
 
