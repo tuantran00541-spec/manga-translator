@@ -50,3 +50,16 @@ def test_a_wrapped_line_leaves_no_word_alone():
     assert len(lines) == len(_wrap_text(draw, text, font, width)), "as many lines, so the size still fits"
     assert all(len(line.split()) > 1 for line in lines)
     assert all(draw.textbbox((0, 0), line, font=font)[2] <= width for line in lines)
+
+
+def test_a_vietnamese_word_is_not_split_across_lines():
+    # Shadow Slave 1: "ĐƯỢC HUẤN / LUYỆN ĐẶC BIỆT" split "huấn luyện" between two lines.
+    from PIL import ImageDraw
+    from app.config import DEFAULT_FONT
+    from app.render.text_renderer import _wrap_text, get_font_object
+    draw, font = ImageDraw.Draw(Image.new("RGB", (10, 10))), get_font_object(str(DEFAULT_FONT), 40)
+    text = "ĐƯỢC HUẤN LUYỆN ĐẶC BIỆT"
+    width = draw.textbbox((0, 0), "ĐƯỢC HUẤN LUYỆN ĐẶC", font=font)[2] + 4
+    lines = _wrap_text(draw, text, font, width, balance=True)
+    assert len(lines) == len(_wrap_text(draw, text, font, width)), "as many lines, so the size still fits"
+    assert any("HUẤN LUYỆN" in line for line in lines) and any("ĐẶC BIỆT" in line for line in lines), lines
