@@ -108,6 +108,7 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
 
 
 SPECK = 0.35  # letters shorter than this share of the text size (dots, accents, noise) never lead growth
+SPECK_HOPS = 3  # specks past the letter a run of specks may reach, so '....' stays whole
 
 
 def _parts(seed: np.ndarray):
@@ -135,8 +136,17 @@ def _chained(seed: np.ndarray, inside: np.ndarray) -> np.ndarray:
         grown[0] = False
         # Specks join the text beside them but never lead it further.
         if (grown & big == keep & big).all():
-            return np.isin(labels, np.nonzero(grown)[0])
+            break
         keep = grown
+    # A run of specks, like the dots of '...', joins a few steps past the letter it follows.
+    for _ in range(SPECK_HOPS):
+        near = cv2.dilate(np.isin(labels, np.nonzero(grown & ~big)[0]).astype(np.uint8), kernel) > 0
+        found = np.unique(labels[near & seed])
+        found = found[~big[found] & ~grown[found] & (found > 0)]
+        if not len(found):
+            break
+        grown[found] = True
+    return np.isin(labels, np.nonzero(grown)[0])
 
 
 def _cut(seed: np.ndarray) -> tuple[bool, bool, bool, bool]:
