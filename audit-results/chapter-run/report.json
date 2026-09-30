@@ -1,0 +1,33 @@
+{
+ "url": "https://asurascans.com/comics/the-world-after-the-end-3ec3b16f/chapter/254",
+ "slices": 68,
+ "cpu": "AMD EPYC 7763 64-Core Processor",
+ "download_s": 5.4,
+ "process_s": 419.6,
+ "per_slice_s": 6.17,
+ "time_s": {
+  "read_s": 3.7,
+  "detect_s": 219.6,
+  "auto_inpaint_s": 603.4,
+  "manual_inpaint_s": 0.0,
+  "write_s": 6.2,
+  "total_s": 832.9,
+  "text_model_s": 219.6,
+  "second_pass_boxes": 3.0,
+  "lama_model_s": 492.8,
+  "lama_model_runs": 81.0,
+  "lama_regions": 81.0,
+  "smart_fill_regions": 65.0,
+  "session_lock_wait_s": 0.0,
+  "ort_global_lock_wait_s": 0.0,
+  "seam_attempts": 1.0,
+  "seam_failures": 0.0,
+  "seam_wall_s": 2.0,
+  "seam_text_model_s": 2.0,
+  "wall_s": 419.5,
+  "workers": 2.0
+ },
+ "blocks": 167,
+ "blocks_left": 0,
+ "left": []
+}
