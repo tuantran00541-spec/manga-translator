@@ -24,8 +24,8 @@ GLOSSARY_PROMPT = (
     "(Hán Việt where the genre uses it), never left in the source language.\n"
     "- terms: recurring titles, ranks, realms and genre terms, each with the one {target} term to use every time.\n"
     "- address: for each speaker and listener (a group such as \"disciples\" counts as one speaker), how the "
-    "speaker refers to themselves (self) and to the listener (other) in {target}, chosen from their relationship "
-    "and rank; each pair keeps one form.\n"
+    "speaker refers to themselves (self) and to the listener (other) in {target}, chosen from what the images show "
+    "of both people (apparent age, gender, rank) and how they relate; each pair keeps one form.\n"
     "{language}"
     "Return JSON only: "
     '{{"names":[{{"source":"","target":"","note":"who or what"}}],"terms":[{{"source":"","target":""}}],'
