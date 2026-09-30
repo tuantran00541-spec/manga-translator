@@ -1,0 +1,203 @@
+{
+ "chapters": [
+  "hero-cannot-rest",
+  "shadow-slave",
+  "weapon-replicator"
+ ],
+ "slices": 360,
+ "voters": {
+  "ctd": "ballons-ctd",
+  "comic-translate": "comic-translate",
+  "ours": "ours"
+ },
+ "regions": 640,
+ "detectors": {
+  "ballons-ctd": {
+   "family": "ctd",
+   "status": "ok",
+   "seconds": 1017.8,
+   "found": 487,
+   "judged": 537,
+   "hit": 432,
+   "solo": 32,
+   "recall_vs_others": 0.804
+  },
+  "comic-translate-fp32": {
+   "family": "comic-translate",
+   "status": "ok",
+   "seconds": 495.6,
+   "found": 567,
+   "judged": 446,
+   "hit": 437,
+   "solo": 6,
+   "recall_vs_others": 0.98
+  },
+  "comic-translate": {
+   "family": "comic-translate",
+   "status": "ok",
+   "seconds": 146.1,
+   "found": 555,
+   "judged": 446,
+   "hit": 432,
+   "solo": 9,
+   "recall_vs_others": 0.969
+  },
+  "kiuyha-pt:weights/yolo26n.pt": {
+   "family": "ours",
+   "status": "ok",
+   "seconds": 54.0,
+   "found": 530,
+   "judged": 441,
+   "hit": 418,
+   "solo": 20,
+   "recall_vs_others": 0.948
+  },
+  "kiuyha-pt:weights/yolo26s.pt": {
+   "family": "ours",
+   "status": "ok",
+   "seconds": 146.0,
+   "found": 532,
+   "judged": 441,
+   "hit": 427,
+   "solo": 12,
+   "recall_vs_others": 0.968
+  },
+  "koharu": {
+   "family": "koharu",
+   "status": "error: no koharu output",
+   "seconds": 0.0,
+   "found": 0,
+   "judged": 0,
+   "hit": 0,
+   "solo": 0,
+   "recall_vs_others": null
+  },
+  "ours": {
+   "family": "ours",
+   "status": "ok",
+   "seconds": 674.0,
+   "found": 590,
+   "judged": 441,
+   "hit": 432,
+   "solo": 39,
+   "recall_vs_others": 0.98
+  }
+ },
+ "by_chapter": {
+  "hero-cannot-rest": {
+   "ballons-ctd": {
+    "found": 170,
+    "judged": 182,
+    "hit": 150
+   },
+   "comic-translate-fp32": {
+    "found": 195,
+    "judged": 155,
+    "hit": 153
+   },
+   "comic-translate": {
+    "found": 188,
+    "judged": 155,
+    "hit": 150
+   },
+   "kiuyha-pt:weights/yolo26n.pt": {
+    "found": 184,
+    "judged": 153,
+    "hit": 150
+   },
+   "kiuyha-pt:weights/yolo26s.pt": {
+    "found": 185,
+    "judged": 153,
+    "hit": 151
+   },
+   "koharu": {
+    "found": 0,
+    "judged": 190,
+    "hit": 0
+   },
+   "ours": {
+    "found": 194,
+    "judged": 153,
+    "hit": 150
+   }
+  },
+  "shadow-slave": {
+   "ballons-ctd": {
+    "found": 148,
+    "judged": 155,
+    "hit": 136
+   },
+   "comic-translate-fp32": {
+    "found": 162,
+    "judged": 142,
+    "hit": 137
+   },
+   "comic-translate": {
+    "found": 159,
+    "judged": 142,
+    "hit": 136
+   },
+   "kiuyha-pt:weights/yolo26n.pt": {
+    "found": 164,
+    "judged": 137,
+    "hit": 131
+   },
+   "kiuyha-pt:weights/yolo26s.pt": {
+    "found": 155,
+    "judged": 137,
+    "hit": 132
+   },
+   "koharu": {
+    "found": 0,
+    "judged": 162,
+    "hit": 0
+   },
+   "ours": {
+    "found": 176,
+    "judged": 137,
+    "hit": 136
+   }
+  },
+  "weapon-replicator": {
+   "ballons-ctd": {
+    "found": 169,
+    "judged": 200,
+    "hit": 146
+   },
+   "comic-translate-fp32": {
+    "found": 210,
+    "judged": 149,
+    "hit": 147
+   },
+   "comic-translate": {
+    "found": 208,
+    "judged": 149,
+    "hit": 146
+   },
+   "kiuyha-pt:weights/yolo26n.pt": {
+    "found": 182,
+    "judged": 151,
+    "hit": 137
+   },
+   "kiuyha-pt:weights/yolo26s.pt": {
+    "found": 192,
+    "judged": 151,
+    "hit": 144
+   },
+   "koharu": {
+    "found": 0,
+    "judged": 208,
+    "hit": 0
+   },
+   "ours": {
+    "found": 220,
+    "judged": 151,
+    "hit": 146
+   }
+  }
+ },
+ "missed-by-ours_count": 50,
+ "only-ctd_count": 32,
+ "only-comic-translate_count": 9,
+ "only-ours_count": 39
+}
