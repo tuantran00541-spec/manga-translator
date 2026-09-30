@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from app.ai_mode.vision_json import request_vision_json
+from app.ai_mode.vision_json import BOX_KEYS, BOX_RULE, request_vision_json, scaled_box
 
 # Only confident answers change the chapter; everything else stays as is.
 CREDIT_MIN_CONFIDENCE = 0.75
@@ -43,10 +43,10 @@ SCAN_SCHEMA = {
                         "items": {
                             "type": "object",
                             "properties": {
-                                "box_2d": {"type": "array", "items": {"type": "number"}},
+                                **{key: {"type": "number"} for key in BOX_KEYS},
                                 "confidence": {"type": "number"},
                             },
-                            "required": ["box_2d", "confidence"],
+                            "required": [*BOX_KEYS, "confidence"],
                         },
                     },
                     "reason": {"type": "string"},
@@ -73,10 +73,10 @@ SCAN_PROMPT = (
     "untouched. Never box speech bubbles, captions, narration, sound effects or plain text, and never "
     "box scanlator or uploader watermarks, site names or URLs ('Read at <site>', group logos): those "
     "are erased, not kept.\n"
-    "Boxes are [ymin, xmin, ymax, xmax] normalised to 0-1000 inside that slice's image. "
-    "Confidences are 0-1. Return JSON only: "
+    + BOX_RULE.replace("the image", "that slice's image")
+    + "Confidences are 0-1. Return JSON only: "
     '{"slices":[{"slice":<number>,"is_credit":false,"credit_confidence":0.0,"no_text":false,"no_text_confidence":0.0,'
-    '"logos":[{"box_2d":[0,0,0,0],"confidence":0.0}],"reason":"short"}]}'
+    '"logos":[{"x1":0,"y1":0,"x2":0,"y2":0,"confidence":0.0}],"reason":"short"}]}'
 )
 
 
@@ -101,17 +101,10 @@ def _confidence(value) -> float:
 def _logo_box(raw, width: int, height: int) -> tuple[int, int, int, int] | None:
     if not isinstance(raw, dict) or _confidence(raw.get("confidence")) < LOGO_MIN_CONFIDENCE:
         return None
-    box = raw.get("box_2d")
-    if not isinstance(box, (list, tuple)) or len(box) != 4:
+    scaled = scaled_box(raw, width, height)
+    if scaled is None:
         return None
-    try:
-        ymin, xmin, ymax, xmax = (max(0.0, min(1000.0, float(v))) for v in box)
-    except (TypeError, ValueError):
-        return None
-    if not all(math.isfinite(v) for v in (ymin, xmin, ymax, xmax)) or ymax <= ymin or xmax <= xmin:
-        return None
-    x1, x2 = xmin / 1000.0 * width, xmax / 1000.0 * width
-    y1, y2 = ymin / 1000.0 * height, ymax / 1000.0 * height
+    x1, y1, x2, y2 = scaled
     # Size limits apply to what the model saw, before the safety margin.
     if x2 - x1 < LOGO_MIN_SIDE_PX or y2 - y1 < LOGO_MIN_SIDE_PX:
         return None

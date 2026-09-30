@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.ai_mode.vision_json import request_vision_json
+from app.ai_mode.vision_json import BOX_RULE, request_vision_json, scaled_box
 
 MIN_CONFIDENCE = 0.6
 RESTORE_CONFIDENCE = 0.8  # a wrong restore leaves source text on the page
@@ -17,7 +17,7 @@ MARGIN_PX = 6
 MAX_BOXES = 12
 CLEAN_REVIEW_EFFORT = "low"
 
-_BOX = '{"box_2d":[ymin,xmin,ymax,xmax],"confidence":0.0}'
+_BOX = '{"x1":0,"y1":0,"x2":0,"y2":0,"confidence":0.0}'
 
 CLEAN_REVIEW_PROMPT = (
     "You are the last check of an automatic manga/manhwa text cleanup. IMAGE 1 is the ORIGINAL slice, IMAGE 2 is "
@@ -34,7 +34,8 @@ CLEAN_REVIEW_PROMPT = (
     "logo. The original pixels will be put back and nothing there is translated, so never list words a reader "
     "reads, whatever the font, size or colour: captions, narration, titles and stylised lettering are story text.\n"
     "Sound effects drawn as part of the art are not reported. "
-    "Boxes are [ymin, xmin, ymax, xmax] normalised to 0-1000 on the slice, tight around the problem. "
+    + BOX_RULE
+    + "Keep each box tight around the problem. "
     "Leave a list empty when nothing applies; a clean slice returns three empty lists. Return JSON only: "
     f'{{"missed":[{_BOX}],"residue":[{_BOX}],"restore":[{_BOX}]}}'
 )
@@ -48,7 +49,7 @@ class CleanReview:
 
 
 def _box(raw, width: int, height: int, *, min_confidence: float = MIN_CONFIDENCE) -> tuple[int, int, int, int] | None:
-    """Pixel box from a 0-1000 ``box_2d``, or None when unsure, tiny or implausibly large."""
+    """Pixel box from a named 0-1000 box, or None when unsure, tiny or implausibly large."""
     if not isinstance(raw, dict):
         return None
     try:
@@ -56,16 +57,10 @@ def _box(raw, width: int, height: int, *, min_confidence: float = MIN_CONFIDENCE
             return None
     except (TypeError, ValueError):
         return None
-    box = raw.get("box_2d")
-    if not isinstance(box, (list, tuple)) or len(box) != 4:
+    scaled = scaled_box(raw, width, height)
+    if scaled is None:
         return None
-    try:
-        ymin, xmin, ymax, xmax = (max(0.0, min(1000.0, float(v))) for v in box)
-    except (TypeError, ValueError):
-        return None
-    if not all(math.isfinite(v) for v in (ymin, xmin, ymax, xmax)) or ymax <= ymin or xmax <= xmin:
-        return None
-    x1, x2, y1, y2 = xmin * width / 1000, xmax * width / 1000, ymin * height / 1000, ymax * height / 1000
+    x1, y1, x2, y2 = scaled
     if x2 - x1 < MIN_SIDE_PX or y2 - y1 < MIN_SIDE_PX or (x2 - x1) * (y2 - y1) > MAX_AREA_RATIO * width * height:
         return None
     return (max(0, math.floor(x1) - MARGIN_PX), max(0, math.floor(y1) - MARGIN_PX),

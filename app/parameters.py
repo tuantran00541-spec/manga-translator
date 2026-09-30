@@ -200,6 +200,9 @@ SMART_FILL_MIDTONE_MAX = 205.0
 SMART_FILL_SURFACE_SEED_TOL = 24.0
 SMART_FILL_SURFACE_RESIDUAL_MAX = 3.0
 SMART_FILL_SURFACE_MIN_RANGE = 1.5
+SMART_FILL_RING_NEAR_PX = 3  # pixels right round a hole that must share one colour for a flat fill
+SMART_FILL_RING_AGREE = 0.98  # share of those pixels within the tolerance of the ring's median colour
+SMART_FILL_RING_TOLERANCE = 12.0  # Lab distance from the ring's median colour that still counts as the same colour
 FIXED_LAMA_SESSION_MAX_RUNS = 4
 
 MANIFEST_LOCK_TIMEOUT_SECONDS = 30.0
