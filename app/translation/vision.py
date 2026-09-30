@@ -238,7 +238,7 @@ class VisionPageTranslator:
         system = system_prompt(_language_name(target_lang), target_lang)
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
-            (f"CHAPTER MEMORY (read-only context from earlier slices; never copy it into your answer): "
+            (f"CHAPTER MEMORY (context from earlier slices; never copy it into the answer): "
              f"{json.dumps(memory.snapshot(), ensure_ascii=False, separators=(',', ':'))}\n\n"
              if memory is not None else "")
             + f"{where}Translate these text objects from {source_name}.\n"
@@ -248,8 +248,8 @@ class VisionPageTranslator:
             + ("\nlettered_elsewhere boxes (grey X in IMAGE 2) hold text the neighbouring slice translates: "
                "never translate it, and never fold its words or meaning into any object's translation."
                if elsewhere else "")
-            + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above. '
-            + "Write every translated_text in normal sentence case, never in all capitals."
+            + '\n\nAnswer with one JSON object that starts with {"translations":[ and holds every id above. '
+            + "Write translated_text in sentence case, never in all capitals, even when the source is."
         )
         original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(mark_objects(cleaned, objects, elsewhere))
         ids = set(real)
