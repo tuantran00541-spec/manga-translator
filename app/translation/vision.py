@@ -238,7 +238,7 @@ class VisionPageTranslator:
         system = system_prompt(_language_name(target_lang), target_lang)
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
-            (f"CHAPTER MEMORY (read-only context from earlier slices; never copy it into your answer): "
+            (f"CHAPTER MEMORY (context from earlier slices, not to be copied into the answer): "
              f"{json.dumps(memory.snapshot(), ensure_ascii=False, separators=(',', ':'))}\n\n"
              if memory is not None else "")
             + f"{where}Translate these text objects from {source_name}.\n"
@@ -248,8 +248,8 @@ class VisionPageTranslator:
             + ("\nlettered_elsewhere boxes (grey X in IMAGE 2) hold text the neighbouring slice translates: "
                "never translate it, and never fold its words or meaning into any object's translation."
                if elsewhere else "")
-            + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above. '
-            + "Write every translated_text in normal sentence case, never in all capitals."
+            + '\n\nTranslate every object above and answer with one JSON object that starts with {"translations":[. '
+            + "Write translated_text in sentence case, even when the source is in capitals."
         )
         original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(mark_objects(cleaned, objects, elsewhere))
         ids = set(real)
@@ -307,11 +307,11 @@ class VisionPageTranslator:
                 # The specimen comes first so the cached prefix covers it.
                 {"type": "text", "text": FONT_SAMPLES_LABEL},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{font_specimen_b64()}"}},
-                {"type": "text", "text": prompt},
                 {"type": "text", "text": "IMAGE 1: ORIGINAL"},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{original}"}},
                 {"type": "text", "text": "IMAGE 2: CLEAN"},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{cleaned}"}},
+                {"type": "text", "text": prompt},  # the ask goes last, after the images it refers to
             ]}],
             "response_format": {"type": "json_object"},
             "max_tokens": max_tokens,
@@ -355,11 +355,11 @@ class VisionPageTranslator:
                 {"type": "text", "text": system},
                 {"type": "text", "text": FONT_SAMPLES_LABEL},
                 {"type": "image", "data": font_specimen_b64(), "mime_type": "image/jpeg"},
-                {"type": "text", "text": prompt},
                 {"type": "text", "text": "IMAGE 1: ORIGINAL"},
                 {"type": "image", "data": original, "mime_type": "image/jpeg"},
                 {"type": "text", "text": "IMAGE 2: CLEAN"},
                 {"type": "image", "data": cleaned, "mime_type": "image/jpeg"},
+                {"type": "text", "text": prompt},
             ],
             "response_format": {"type": "text", "mime_type": "application/json", "schema": _TRANSLATIONS_SCHEMA},
             "generation_config": {"thinking_level": "low", "max_output_tokens": max_tokens},

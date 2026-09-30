@@ -21,23 +21,22 @@ CLEAN_REVIEW_EFFORT = "low"
 _BOX = '{"x1":0,"y1":0,"x2":0,"y2":0,"confidence":0.0}'
 
 CLEAN_REVIEW_PROMPT = (
-    "You are the last check of an automatic manga/manhwa text cleanup. IMAGE 1 is the ORIGINAL slice, IMAGE 2 is "
-    "the same slice after the text was erased (CLEAN). Inspect IMAGE 2 slowly, top to bottom and edge to edge: "
-    "inside and around every bubble, caption box, dark area, gradient, panel border, screen and the art itself, "
-    "and compare each spot with IMAGE 1.\n"
-    "HARD RULE: any words left in CLEAN that read as a sentence or phrase someone says or narrates (dialogue, "
-    "thoughts, narration, captions, system messages, comments on a screen, titles), in any language, even partly "
-    "readable or half erased, must be reported. Never let such text through.\n"
-    "- missed: that kind of text still readable in CLEAN. It will be erased and translated.\n"
-    "- residue: fragments of erased letters, ghost outlines, smears or blotches, and leftover scanlator "
-    "watermarks or credits. They will be erased; nothing is translated.\n"
-    "- restore: artwork CLEAN damaged that has no words in it: ornaments, patterns, drawn objects, the series "
-    "logo. The original pixels will be put back and nothing there is translated, so never list words a reader "
-    "reads, whatever the font, size or colour: captions, narration, titles and stylised lettering are story text.\n"
-    "Sound effects drawn as part of the art are not reported. "
+    "You do the final check of an automatic manga text cleanup. IMAGE 1 is the ORIGINAL slice; IMAGE 2 is the "
+    "same slice after the text was erased (CLEAN). Scan CLEAN top to bottom and edge to edge, inside and around "
+    "every bubble, caption box, dark area, gradient, panel border, screen and the art, and compare each spot "
+    "with IMAGE 1. Report three kinds of problem:\n"
+    "- missed: readable text left in CLEAN that someone says, thinks or narrates (dialogue, narration, captions, "
+    "system messages, comments on a screen, titles), in any language, even when only partly erased. It will be "
+    "erased and translated, so report every such line.\n"
+    "- residue: fragments of erased letters, ghost outlines, smears, blotches and leftover scanlator watermarks "
+    "or credits. They will be erased; nothing is translated.\n"
+    "- restore: artwork CLEAN damaged that holds no words: ornaments, patterns, drawn objects, the series logo. "
+    "The original pixels are put back untranslated, so list only artwork, never text a reader reads, whatever its "
+    "font, size or colour.\n"
+    "Leave sound effects drawn into the art unreported. "
     + BOX_RULE
     + "Keep each box tight around the problem. "
-    "Leave a list empty when nothing applies; a clean slice returns three empty lists. Return JSON only: "
+    "A list with nothing to report stays empty; a clean slice returns three empty lists. Return JSON only: "
     f'{{"missed":[{_BOX}],"residue":[{_BOX}],"restore":[{_BOX}]}}'
 )
 

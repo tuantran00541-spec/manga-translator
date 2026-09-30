@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -474,11 +475,48 @@ def _greedy_lines(draw, words: list[str], font, width: int) -> list[str]:
     return lines
 
 
+_VI_WORDS = Path(__file__).with_name("vi_words.txt")  # pyvi's word list (MIT, vi_words.LICENSE.txt), 2-4 syllables
+_SYLLABLE = re.compile(r"(\W*)(\w+)(\W*)")
+
+
+@lru_cache(maxsize=1)
+def _vi_words() -> frozenset[str]:
+    """Vietnamese words of two to four syllables, lower case."""
+    try:
+        return frozenset(line for line in _VI_WORDS.read_text(encoding="utf-8").splitlines() if line)
+    except OSError:
+        return frozenset()
+
+
+def _word_units(words: list[str]) -> list[str]:
+    """Syllables joined into the longest known Vietnamese words, so a word such as "huấn luyện" stays on one line."""
+    known, units, i = _vi_words(), [], 0
+    while i < len(words):
+        for n in (4, 3, 2, 1):
+            part = words[i:i + n]
+            if len(part) < n:
+                continue
+            if n == 1:
+                break
+            parsed = [_SYLLABLE.fullmatch(word) for word in part]
+            # Punctuation may open the first syllable and close the last, never sit inside the word.
+            if all(parsed) and all(not m.group(1) for m in parsed[1:]) and all(not m.group(3) for m in parsed[:-1]) \
+                    and " ".join(m.group(2) for m in parsed).lower() in known:
+                break
+        units.append(" ".join(words[i:i + n]))
+        i += n
+    return units
+
+
 def _balanced_lines(draw, words: list[str], font, box_w: int) -> list[str]:
     """As few lines as fit ``box_w``, made as even as those lines allow, so no word is left alone on the last."""
     lines = _greedy_lines(draw, words, font, box_w)
     if len(lines) < 2:
         return lines
+    units = _word_units(words)
+    if len(units) < len(words) and all(draw.textbbox((0, 0), unit, font=font)[2] <= box_w for unit in units) \
+            and len(_greedy_lines(draw, units, font, box_w)) == len(lines):
+        words = units  # the same number of lines with no word split, so the size still fits
     lo = max(draw.textbbox((0, 0), word, font=font)[2] for word in words)
     hi = box_w
     while lo < hi:

@@ -44,7 +44,7 @@ CREDIT_MAX_SHARE = 0.25
 CREDIT_MAX_ABSOLUTE = 3
 # More than this share of textless slices means the scan misread the chapter.
 TEXTLESS_MAX_SHARE = 0.5
-REVIEW_CONCURRENCY = 8  # checkpoints 3 and 5 have no reading-order dependency
+REVIEW_CONCURRENCY = 8  # review (checkpoint 3) has no reading-order dependency
 TRANSLATE_CONCURRENCY = 3
 # Objects per retry request, and retry batches without progress before restoring the original.
 RETRY_BATCH = 4

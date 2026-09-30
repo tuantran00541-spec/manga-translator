@@ -42,10 +42,9 @@ def load_font_guides() -> tuple[FontGuide, ...]:
 
 
 def font_guide_prompt() -> str:
-    """One line per curated font for the translation prompt."""
+    """One line per curated font for the translation prompt; FONT SAMPLES shows how each looks."""
     return "\n".join(
-        f'- {guide.id}{" (base font)" if guide.default else ""}: {guide.look} Use for {guide.use} '
-        f'Avoid {guide.avoid} Example: "{guide.example}"'
+        f'- {guide.id}{" (base font)" if guide.default else ""}: {guide.use} Avoid {guide.avoid}'
         for guide in load_font_guides()
     )
 

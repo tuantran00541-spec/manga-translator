@@ -60,20 +60,17 @@ SCAN_SCHEMA = {
 }
 
 SCAN_PROMPT = (
-    "You are preparing manga/manhwa/webtoon slices for automatic translation. "
-    "Each image below is one vertical slice of a chapter, labelled with its slice number. "
-    "For EVERY slice decide:\n"
-    "1. is_credit: true only when the WHOLE slice is non-story material added by the "
-    "uploader or scanlation group: credit/staff pages, recruitment ads, Discord/Patreon/"
-    "donation promotions, 'read at <site>' banners, end-of-chapter notices. A story slice "
-    "with a small watermark is NOT a credit slice. Blank or near-blank slices are NOT credit.\n"
-    "2. no_text: true only when the slice holds no lettering at all: no speech bubble, "
-    "caption, narration, system window, sign or sound effect, just artwork, gutter or blank space.\n"
-    "3. logos: boxes around the SERIES TITLE LOGO (stylised title artwork, usually near the "
-    "start of the chapter) and publisher/studio logos drawn as artwork. These are kept "
-    "untouched. Never box speech bubbles, captions, narration, sound effects or plain text, and never "
-    "box scanlator or uploader watermarks, site names or URLs ('Read at <site>', group logos): those "
-    "are erased, not kept.\n"
+    "You prepare manga, manhwa and webtoon slices for automatic translation. Each image is one vertical slice of "
+    "a chapter, labelled with its slice number. For every slice decide:\n"
+    "1. is_credit: true only when the whole slice is material the uploader or scanlation group added: credit or "
+    "staff pages, recruitment ads, Discord, Patreon or donation promotions, 'read at <site>' banners, "
+    "end-of-chapter notices. A story slice with a small watermark is not a credit slice, nor is a blank one.\n"
+    "2. no_text: true only when the slice has no lettering at all (no bubble, caption, narration, system window, "
+    "sign or sound effect), only artwork, gutter or blank space.\n"
+    "3. logos: boxes around the series title logo (stylised title artwork, usually near the start of the chapter) "
+    "and publisher or studio logos drawn as artwork; these are kept untouched. Box only such artwork: bubbles, "
+    "captions, narration, sound effects, plain text, scanlator watermarks, group logos, site names and URLs are "
+    "erased, so leave them out.\n"
     + BOX_RULE.replace("the image", "that slice's image")
     + "Confidences are 0-1. Return JSON only: "
     '{"slices":[{"slice":<number>,"is_credit":false,"credit_confidence":0.0,"no_text":false,"no_text_confidence":0.0,'

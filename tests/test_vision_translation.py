@@ -72,8 +72,8 @@ def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeyp
     payload = sent[0][1]["json"]
     system = payload["messages"][0]
     assert system["role"] == "system"
-    assert "localization editor" in system["content"] and "VIETNAMESE" in system["content"]
-    assert "- emphasis.anton:" in system["content"] and "Example:" in system["content"], "curated fonts come with notes"
+    assert "<task>" in system["content"] and "<vietnamese>" in system["content"]
+    assert "- emphasis.anton:" in system["content"] and "Avoid" in system["content"], "curated fonts come with notes"
     assert "dialogue.inter" not in system["content"], "only curated fonts are offered"
     assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}, "no pick: base font"
     content = payload["messages"][1]["content"]
@@ -82,7 +82,7 @@ def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeyp
     assert content[0]["text"].startswith("FONT SAMPLES"), "the fixed specimen leads so it is cached"
     assert all(item["image_url"]["url"].startswith("data:image/jpeg;base64,") for item in images)
     assert images[1]["image_url"]["url"] != images[2]["image_url"]["url"]
-    prompt = content[2]["text"]
+    prompt = content[-1]["text"]
     assert '"id":"1"' in prompt and "text_1" not in prompt
     assert '"bbox_xyxy":[10,20,50,40]' in prompt
     assert "fontSize" not in prompt and "strokeColor" not in prompt
@@ -227,7 +227,7 @@ def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_
             return {"choices": [{"message": {"content": self.content}}], "usage": {}}
 
     def post(url, **kwargs):
-        prompts.append(kwargs["json"]["messages"][1]["content"][2]["text"])
+        prompts.append(kwargs["json"]["messages"][1]["content"][-1]["text"])
         return Response(next(answers))
 
     monkeypatch.setattr("app.translation.vision.requests.post", post)
@@ -467,6 +467,6 @@ def test_text_lettered_by_the_next_slice_is_shown_but_kept_out_of_every_translat
     parts = sent[0]["messages"][1]["content"]
     prompt = next(part["text"] for part in parts if part["type"] == "text" and "objects" in part["text"])
     assert '"lettered_elsewhere":[[20,400,380,560]]' in prompt and "never fold its words" in prompt
-    marked = cv2.imdecode(np.frombuffer(base64.b64decode(parts[-1]["image_url"]["url"].split(",", 1)[1]), np.uint8),
+    marked = cv2.imdecode(np.frombuffer(base64.b64decode(parts[-2]["image_url"]["url"].split(",", 1)[1]), np.uint8),
                           cv2.IMREAD_COLOR)
     assert np.abs(marked[480, 20].astype(int) - ELSEWHERE_COLOR).max() < 40, "the grey box is drawn on IMAGE 2"

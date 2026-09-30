@@ -16,16 +16,16 @@ SIMILAR = 0.8  # two spellings this close are one name misread
 MISREAD_VOTES = 2  # a spelling read at least this many times as often as a close one wins
 
 GLOSSARY_PROMPT = (
-    "You prepare the glossary for translating one manga/manhwa chapter into {target}. The images are "
-    "consecutive slices in reading order. Read every bubble, caption and narration carefully, letter by letter.\n"
+    "You build the glossary for translating one manga/manhwa chapter into {target}. The images are consecutive "
+    "slices in reading order. Read every bubble, caption and narration letter by letter.\n"
     "- names: every person, clan, sect, place, item and technique name, spelled exactly as the source letters it "
-    "(check each occurrence; never guess a spelling). \"target\" is how it is written in {target}: only people's "
-    "names keep the source spelling; places, organisations, spells, techniques, titles and signs are translated "
-    "into natural {target} (Hán Việt where the genre uses it), never left in English.\n"
-    "- terms: recurring titles, ranks, realms and genre terms with the {target} term to use every time.\n"
+    "(check each occurrence rather than guess). \"target\" is its {target} form: people's names keep the source "
+    "spelling; places, organisations, spells, techniques, titles and signs are translated into natural {target} "
+    "(Hán Việt where the genre uses it), never left in the source language.\n"
+    "- terms: recurring titles, ranks, realms and genre terms, each with the one {target} term to use every time.\n"
     "- address: for each speaker and listener (a group such as \"disciples\" counts as one speaker), how the "
-    "speaker refers to himself (self) and to the listener (other) in {target}, chosen from their relationship "
-    "and rank. A group speaking to its master keeps one form, never switching between forms.\n"
+    "speaker refers to themselves (self) and to the listener (other) in {target}, chosen from what the images show "
+    "of both people (apparent age, gender, rank) and how they relate; each pair keeps one form.\n"
     "{language}"
     "Return JSON only: "
     '{{"names":[{{"source":"","target":"","note":"who or what"}}],"terms":[{{"source":"","target":""}}],'
