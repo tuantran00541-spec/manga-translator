@@ -54,3 +54,12 @@ def test_smooth_art_round_a_hole_is_painted_on_a_smaller_canvas():
     busy = np.random.default_rng(1).integers(0, 255, (300, 400, 3), dtype=np.uint8)
     assert Inpainter._canvas_side(smooth, mask) == 256
     assert Inpainter._canvas_side(busy, mask) == 512
+
+
+def test_a_thin_sharp_line_beside_the_hole_keeps_the_full_canvas():
+    # A black panel with a thin white bar beside "ARGGHH!!" smeared grey on a 256 canvas.
+    mask = np.zeros((300, 400), np.uint8)
+    mask[120:180, 100:300] = 255
+    dark = np.zeros((300, 400, 3), np.uint8)
+    dark[112:116, 20:380] = 255
+    assert Inpainter._canvas_side(dark, mask) == 512

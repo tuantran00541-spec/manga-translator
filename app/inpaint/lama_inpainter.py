@@ -15,6 +15,8 @@ from app.ort_utils import make_session
 from app.parameters import (
     DYNAMIC_LAMA_CANVAS_TIERS,
     DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM,
+    DYNAMIC_LAMA_SHARP_EDGE,
+    DYNAMIC_LAMA_SHARP_SHARE,
     DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS,
     DYNAMIC_LAMA_TILE,
     DYNAMIC_LAMA_TILE_OVERLAP,
@@ -763,14 +765,17 @@ class Inpainter:
 
     @staticmethod
     def _canvas_side(crop: np.ndarray, local_mask: np.ndarray) -> int:
-        """Long side LaMa paints this crop at: smaller where the art round the hole is smooth."""
+        """Long side LaMa paints this crop at: smaller where the art round the hole is smooth and has no sharp line."""
         hole = local_mask > 127
         near = (cv2.dilate(hole.astype(np.uint8), np.ones((25, 25), np.uint8)) > 0) & ~hole
         if not near.any():
             return DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY).astype(np.float32) if crop.ndim == 3 else crop.astype(np.float32)
-        edges = np.hypot(cv2.Sobel(gray, cv2.CV_32F, 1, 0), cv2.Sobel(gray, cv2.CV_32F, 0, 1))
-        strength = float(edges[near].mean())
+        edges = np.hypot(cv2.Sobel(gray, cv2.CV_32F, 1, 0), cv2.Sobel(gray, cv2.CV_32F, 0, 1))[near]
+        # A thin line or outline beside the hole would blur on a smaller canvas, however smooth the rest.
+        if float((edges > DYNAMIC_LAMA_SHARP_EDGE).mean()) > DYNAMIC_LAMA_SHARP_SHARE:
+            return DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
+        strength = float(edges.mean())
         return next((side for limit, side in DYNAMIC_LAMA_CANVAS_TIERS if strength <= limit), DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM)
 
     def _lama_fill_single_dynamic(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:

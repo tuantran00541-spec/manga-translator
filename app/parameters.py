@@ -160,6 +160,8 @@ INPAINT_SIZE = 512
 DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM = 512  # the fill is as good at this long side and several times cheaper
 # Smoother art round a hole fills as well on a smaller canvas: (edge strength up to, long side), else the full side.
 DYNAMIC_LAMA_CANVAS_TIERS = ((22.0, 256), (45.0, 384))
+DYNAMIC_LAMA_SHARP_EDGE = 200.0  # an edge this strong beside the hole (a bubble outline, a thin line) keeps the full canvas
+DYNAMIC_LAMA_SHARP_SHARE = 0.003  # share of such edge pixels round the hole that already blurs on a smaller canvas
 DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS = 512 * 512
 DYNAMIC_LAMA_TILE = 1024
 DYNAMIC_LAMA_TILE_OVERLAP = 192
