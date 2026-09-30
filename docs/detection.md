@@ -15,13 +15,19 @@
    so a white stroke round the letters goes too) and then, pixel by pixel,
    into smooth pixels unlike the colours round the box: glow and shadow.
    Growth that runs off the box or keeps going is art touching the letters
-   and is dropped.
+   and is dropped. A run of dots such as "..." stays with the text it follows,
+   and a box holding two separate captions becomes two texts.
 3. After inpainting, the same model looks inside every erased block; a block
    where it still reads letters gets one more pass with a fresh mask.
    Kiuyha does not run again.
 
 LaMa fills each crop in one pass at a 512 px long side: on labelled art the
-fill error is the same as at full size and the model runs 2–3× faster.
+fill error is the same as at full size and the model runs 2–3× faster. A hole
+ringed by one colour, of any shade, is filled flat instead of by LaMa.
+
+One image always gives one mask: the background colours are clustered with
+k-means++, whose random draws are seeded, so a page cleaned twice gives the same
+pixels (checked on two runner CPUs).
 
 ## The CTD model
 
@@ -39,17 +45,25 @@ pixel.
 
 ## Evidence
 
-Flow bench, real chapters, both cleaners on the same GitHub runner, results
-on the `audit-evidence` branch:
+Whole real chapters through the app on a 4-core GitHub runner, two page
+workers, results on the `audit-evidence` branch:
+
+| Chapter | Slices | Text blocks | Time | Text left |
+| --- | --- | --- | --- | --- |
+| The World After the End 254 (webtoon) | 68 | 167 | 418 s | none |
+| Youngest Scion of the Mages 137 (webtoon) | 52 | 145 | 332 s | none |
+
+The first chapter took 418 s and 446 s on two different runner CPUs, and the
+sampled slices matched pixel for pixel. A.I mode on Shadow Slave ch.1 (135
+slices) leaves no text blocking the export.
+
+When the masks replaced the hand-tuned rules, both cleaners ran on the same
+runner (flow bench):
 
 | Chapter | Pages | Old rules | CTD masks | Story text left |
 | --- | --- | --- | --- | --- |
 | The Hero Cannot Rest 1 (webtoon) | 36 | 763 s | 562 s | none; the old rules missed a glowing title |
 | Oneshot on MangaDex (manga, coloured characters) | 39 | 301 s | 382 s | none in either |
-
-The app itself on Shadow Slave ch.1 (135 slices): 451 s and one block with
-leftover (the edge of the series logo), against 403–934 s and five blocks for
-the old rules over five runs.
 
 On labelled synthetic tiles, the CTD mask inside Kiuyha boxes erases 73.7 %
 of what has to go at 73.1 % precision, against 65.4 % at 43.1 % for the old

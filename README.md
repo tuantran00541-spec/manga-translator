@@ -3,15 +3,13 @@
 [![Release Gate](https://github.com/tuantran00541-spec/manga-translator/actions/workflows/release-gate.yml/badge.svg)](https://github.com/tuantran00541-spec/manga-translator/actions/workflows/release-gate.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![CPU First](https://img.shields.io/badge/runtime-CPU--first-222222)](#cpu-first)
+[![CPU First](https://img.shields.io/badge/runtime-CPU--first-222222)](#cpu-first-design)
 
-**A local-first manga, manhwa, manhua, and webtoon translation & lettering studio.**
+**Translate a manga, manhwa or webtoon chapter on your own computer, with no GPU.**
 
-Detect text, clean artwork, OCR, translate, typeset, review, render, and export complete chapters — while keeping the editor in control of the final result.
+Give it a chapter URL or a folder of images. It erases the original lettering, translates it and letters the translation back, and leaves every step open to the editor: nothing becomes the final chapter until you say so.
 
 **Import → Slice → Detect → Clean → Review → OCR → Translate → Letter → Render → Export**
-
-### What the cleanup does
 
 <p align="center">
   <img src="docs/images/demo-raw.jpg" alt="Original test page with a glowing caption, a speech bubble and outlined narration" width="32%">
@@ -19,35 +17,53 @@ Detect text, clean artwork, OCR, translate, typeset, review, render, and export 
   <img src="docs/images/demo-clean.jpg" alt="The page after cleanup" width="32%">
 </p>
 
-<p align="center"><sub>An original test page (drawn for this README, not taken from any series) through the app: RAW → erase mask → CLEAN. The glowing caption, the speech bubble and the white-outlined narration are gone; the bubble outline, stars, moon and tower stay.</sub></p>
-
-### Measured on real chapters
-
-Same GitHub runner, whole chapters, both cleaners side by side (evidence on the `audit-evidence` branch):
-
-| | Old hand-tuned masks | Current masks |
-| --- | --- | --- |
-| Webtoon, 36 pages, 243 text blocks | 763 s, missed a glowing title | **562 s (26 % faster)**, no story text left |
-| Manga oneshot, 39 pages, 158 blocks | 301 s, clean | 382 s, clean |
-| Shadow Slave ch.1 in the app, 135 slices | 403–934 s, 5 blocks with text left | **451 s, 1** (the edge of the series logo) |
-| Labelled synthetic text: erased / precision | 65.4 % / 43.1 % | **73.7 % / 73.1 %** |
-
-- **Glow, outlines and shadows go with the letters**, while the bubble outline and the art stay.
-- **Stylised sound effects are mostly left as art**: the letter model reads story lettering, not drawn SFX.
-- **The mask model runs about 40× faster than the released one** with identical output (see [docs/detection.md](docs/detection.md)).
-- **A restore brush** puts back any area the cleanup took by mistake, and the page keeps it through later repaints.
+<p align="center"><sub>An original test page (drawn for this README, not taken from any series): RAW → erase mask → CLEAN. The glowing caption, the speech bubble and the white-outlined narration are gone; the bubble outline, stars, moon and tower stay.</sub></p>
 
 > **Automation proposes. Editorial state decides. Published artifacts must match the current state.**
 
-## Why this project exists
+## What it does well
 
-Most automated manga translators treat a page as something to transform once.
+### It erases text without wrecking the art
 
-This project treats a chapter as an **editable production workspace**.
+Cleanup runs on a mask of the letters themselves, not on detector rectangles. A comic-text-detector mask head reads the letters; the app adds a thin outline round every letter, then grows into the glow and shadow round it. Art that touches the letters stays.
 
-Detection, cleanup, OCR, translation, typography, and AI assistance are all allowed to make mistakes. The editor can inspect, correct, reject, repaint, resize, retranslate, or restyle those results before anything becomes the published chapter artifact.
+Two whole webtoon chapters on a 4-core GitHub runner, real models, 2 page workers (evidence on the `audit-evidence` branch):
 
-The application is local-first and CPU-oriented. Local ONNX models provide the core detection and inpainting pipeline; OCR and external AI providers are optional layers around that local workflow.
+| Chapter | Slices | Text blocks | Time | Text left |
+| --- | --- | --- | --- | --- |
+| The World After the End, ch. 254 | 68 | 167 | 418 s | **0** |
+| Youngest Scion of the Mages, ch. 137 | 52 | 145 | 332 s | **0** |
+
+Times move with the runner's CPU: the first chapter took 418 s and 446 s on two different CPU models.
+
+On labelled synthetic text, the mask erases 73.7 % of what has to go at 73.1 % precision; the hand-tuned rules it replaced managed 65.4 % at 43.1 %.
+
+### The same image always gives the same result
+
+A page cleaned twice gives the same pixels, on any CPU: the sampled slices of a whole chapter came out pixel-identical on two different CPU models. The one source of run-to-run drift, a random seed in the background-colour clustering, is fixed.
+
+### It is fast where it matters
+
+- A 2.4 M-parameter detector finds the text of a slice in one pass (the slice goes in as two halves side by side), on the OpenVINO runtime when available.
+- The letter-mask model runs about 40× faster than the released one with identical masks.
+- LaMa fills each region in one downscaled pass (512 px long side), and only where a fill is needed: a hole ringed by one colour, of any shade, is filled flat with no model run.
+
+### The whole chapter runs on a laptop
+
+Everything on the cleanup path is a small ONNX model on the CPU. Nothing needs a GPU or a cloud account; OCR and AI translation are optional layers around that.
+
+## Two ways to work
+
+**By hand.** Import a chapter and clean it, then correct, OCR, translate and letter it in the browser workbench. Every step can be redone.
+
+**A.I mode.** Paste a chapter URL with an AI key (or use Manga Cloud). Four checkpoints run the chapter, and the lettered result opens in the same editor:
+
+1. **Scan** the raw slices: skip credit and textless slices, keep series logos untouched.
+2. **Clean** the text (Kiuyha + LaMa).
+3. **Review** each raw and clean slice pair: erase missed text, repaint leftovers, restore art erased by mistake.
+4. **Translate** each slice from its raw and clean image and pick fonts; the app letters the text.
+
+On Shadow Slave ch. 1 (135 slices) A.I mode took 18 minutes and about **$0.25** of model calls: 109 texts translated, 0 blockers left at export, 14 textless slices and 1 credit slice skipped, the series logo kept.
 
 ## The workflow
 
@@ -66,147 +82,82 @@ The application is local-first and CPU-oriented. Local ONNX models provide the c
 
 ## Features
 
-### 📥 Import
+### Import and slicing
 
-- PNG, JPEG, WEBP and BMP
-- ZIP and CBZ chapters
-- Chapter URLs through HTTP and Playwright
-- Relative URLs, srcset, common lazy-load attributes, and scroll-based discovery
-- Site-specific downloader adapters where a stable fast path is useful
+- PNG, JPEG, WEBP and BMP; ZIP and CBZ chapters
+- Chapter URLs through HTTP and Playwright: relative URLs, srcset, lazy-load attributes and scroll-based discovery, with site adapters where a fast path is stable
 - Bounded downloads and upload validation
+- Long pages are cut in low-content bands, never at a fixed height. Source-page identity and stitch ownership are recorded, so the chapter is rebuilt with no duplicated or missing pixels.
 
-### ✂️ Smart webtoon slicing
+### Detection
 
-Long pages are split into CPU-friendly slices without blindly cutting at a fixed height.
-
-The slicer prefers low-content and safe bands, preserves source-page and slice identity, and records stitch ownership so a webtoon page can be reconstructed without duplicated or missing pixels.
-
-### 🔎 Detection
-
-The Kiuyha ONNX text detector (`models/kiuyha_text_1280.onnx`) finds text blocks on each slice in one coarse pass plus near-native bands. Each block then gets an erase mask:
+The Kiuyha ONNX text detector (`models/kiuyha_text_1280.onnx`) finds the text blocks of a slice. Each block gets an erase mask:
 
 - letters read by the mask head of comic-text-detector (`models/ctd_seg.onnx`), at full and half size
 - a thin outline round every letter, even one the same colour as the background
 - glow and shadow: smooth pixels unlike the colours round the block, grown out from the letters
 - art touching the letters stays: growth that runs off the block is dropped
+- a box holding two separate captions becomes two texts
 - text across a slice seam is detected once on a strip over the cut and joins the block it belongs to
 
-Detection records retain source/model provenance and review state.
+Detection records keep their source model and review state. [docs/detection.md](docs/detection.md) explains how and why.
 
-### 🧹 Artwork-safe cleanup
-
-Cleanup is driven by **verified pixel masks**, not detector rectangles.
-
-The pipeline supports:
+### Artwork-safe cleanup
 
 - LaMa inpainting with a zeroed hole, and nearby text not erased yet hidden from its context
-- one downscaled LaMa pass per region (512 px long side: the same fill, several times cheaper)
-- leftover passes only for blocks where the letter model still reads text
+- leftover passes only where the letter model still reads text after cleanup
+- flat fill instead of LaMa where a hole is ringed by one colour
 - dynamic and fixed LaMa backends, with tiling for the fixed 512 model
-- safe flat-fill shortcuts
-- manual repaint
-- a restore brush that puts the original page back where the cleanup went too far
-- mask reset
-- preserve/skip regions
-- page-coordinate mask remapping
+- manual repaint, mask reset, and preserve/skip regions
+- a restore brush that puts the original page back where the cleanup went too far; the page keeps it through later repaints
 
-Uncertain detections, watermarks, and review-only regions are not silently promoted to destructive cleanup.
+Uncertain detections, watermarks and review-only regions are not silently promoted to destructive cleanup.
 
-### 👁️ OCR
-
-Hybrid chapter OCR uses:
+### OCR
 
 - **MangaOCR** for Japanese
-- **PP-OCRv6 / PaddleOCR** for Chinese, Korean, and English
+- **PP-OCRv6 / PaddleOCR** for Chinese, Korean and English
 
-OCR is chapter-aware, revision-safe, and can preserve source visual metadata such as lettering color, position, and size hints for downstream typesetting.
+OCR is chapter-aware and revision-safe, and keeps the source lettering's colour, position and size as hints for typesetting.
 
-### 🌐 Translation
+### Translation
 
-Two complementary modes are available.
+**Text translation.** Batch existing text objects through configured OpenAI-compatible providers, with stable IDs, stale-write protection and budget controls where pricing is known.
 
-**Text translation**
+**Vision translation.** Send the **ORIGINAL** and **CLEAN** versions of a slice together with the existing text-object IDs and their regions. The model translates only objects that already exist; geometry, placement, colour and size stay editor-owned.
 
-Batch existing text objects through configured OpenAI-compatible providers with stable IDs, stale-write protection, and provider-specific budget controls where pricing is known.
+### Lettering and fonts
 
-**Vision translation**
+The browser workbench edits translated text, font, size, weight, stroke, background, alignment, region geometry and manual text objects in one Review workspace.
 
-Send the **ORIGINAL** and **CLEAN** versions of the same slice together with existing text-object IDs and stored regions.
+The renderer bundles **71 comic fonts** (69 under OFL-1.1, 40 covering Vietnamese) across dialogue, emphasis, thought, narration, skill, SFX, horror and romance. Fonts are matched to the original lettering by a deterministic CPU comparison of the source crops, and user and AI font choices are validated against the installed catalog rather than accepted as file paths. Wrapped lines are balanced so a line never leaves one word alone. See [docs/comic-fonts.md](docs/comic-fonts.md).
 
-The model translates only the objects that already exist. Geometry, placement, color, and size remain editor-owned state rather than model-generated replacements.
+### AI providers
 
-### ✍️ Lettering
+Built in: Google Gemini, DeepSeek, OpenAI, OpenRouter and Experiential Labs. The settings layer also registers custom **OpenAI-compatible** providers on validated HTTPS API bases. Each provider advertises its capabilities separately, so one registry serves model discovery, translation and Visual QC.
 
-The browser workbench provides region-centric editing for:
+### Visual QC
 
-- translated text
-- font and size
-- weight
-- stroke
-- background
-- alignment
-- text-region geometry
-- manual text objects
+Visual QC is an inspection layer, not the editor of record: region-aware chapter inspection with revision-aware caching, bounded concurrency, cancel and retry, per-provider results, and browser-tested navigation of findings. Models return each box as four named corners (`x1, y1, x2, y2`, normalised to 0–1000), which no model reads on the wrong axis.
 
-The current UI is a unified Review workspace rather than a collection of legacy editor screens.
+### Revision-safe render and export
 
-### 🔤 Automatic comic-font matching
-
-The renderer includes a native catalog of **66 bundled OFL-1.1 comic fonts** across dialogue, emphasis, thought, narration, skill, SFX, horror, and romance categories.
-
-Automatic font matching runs by default using deterministic CPU-side visual comparison of original lettering crops.
-
-User and AI font choices are validated against the installed catalog instead of accepting arbitrary filesystem paths.
-
-### 🧠 AI providers
-
-Built-in providers currently include:
-
-- Google Gemini
-- DeepSeek
-- OpenAI
-- OpenRouter
-- Experiential Labs
-
-The settings layer can also register custom **OpenAI-compatible** providers with validated HTTPS API bases.
-
-Providers advertise capabilities independently, allowing the same registry to power model discovery, translation, and Visual QC without hard-wiring the UI to one vendor.
-
-### 🔍 Visual QC
-
-Visual QC is an inspection layer, not the editor of record.
-
-The system supports region-aware chapter inspection, revision-aware caching, bounded concurrency, cancel/retry flows, provider-isolated results, and browser-tested navigation of QC findings.
-
-### 📦 Revision-safe render and export
-
-Rendered pages and chapter exports are tied to canonical editorial state.
-
-If an editor changes relevant content while expensive rendering or export work is running, stale artifacts are rejected instead of becoming the current published result.
-
-Long webtoon slices are stitched back into their source-page structure during chapter export.
-
-## Evidence
-
-Every quality claim above comes from a bench run on real chapters, saved on the
-`audit-evidence` branch with a side-by-side image per text block. The demo page
-at the top (`docs/images/demo-*.jpg`) is an original drawing made for this
-README; no series artwork is kept in the repository.
+Rendered pages and chapter exports are tied to the canonical editorial state. If the editor changes relevant content while a render or export runs, the stale artifact is rejected instead of becoming the published result. Long webtoon slices are stitched back into their source pages on export.
 
 ## Quick start
 
 ### Requirements
 
-- Python 3.12
-- CPU-capable machine
-- Chromium for Playwright URL ingestion and browser regression checks
-- Additional RAM is useful for OCR and very large pages
+- Python 3.12 (the installer brings its own)
+- A CPU-capable machine, with about 8 GB free for the first install
+- Chromium for Playwright URL ingestion and browser checks
+- More RAM helps OCR and very large pages
 
 The image path accepts up to **100,000,000 decoded pixels** per image.
 
 ### Install
 
-One command, nothing else to install first (it brings its own Python 3.12):
+One command, nothing else to install first:
 
 ~~~powershell
 # Windows: paste into PowerShell or cmd
@@ -226,18 +177,18 @@ manga update    # gets the latest version; models, chapters and settings stay
 manga --version
 ~~~
 
-What the installer does, in one folder (`%LOCALAPPDATA%\manga-translator` on Windows, `~/.local/share/manga-translator` elsewhere):
+The installer works in one folder (`%LOCALAPPDATA%\manga-translator` on Windows, `~/.local/share/manga-translator` elsewhere):
 
 - downloads [uv](https://github.com/astral-sh/uv) (pinned, hash checked), which fetches Python 3.12 and installs the dependencies with CPU-only PyTorch;
-- on Windows, installs the Microsoft Visual C++ runtime when it is missing or older than 14.40 (torch, onnxruntime and PaddleOCR need it; Windows asks for admin once). `manga` checks it again at every start, so a runtime removed later is put back instead of failing with WinError 126;
+- on Windows, installs the Microsoft Visual C++ runtime when it is missing or older than 14.40 (torch, onnxruntime and PaddleOCR need it; Windows asks for admin once). `manga` checks it at every start, so a runtime removed later is put back instead of failing with WinError 126;
 - downloads the LaMa model (hash checked, resumes broken downloads) and builds `ctd_seg.onnx`;
-- adds a `manga` command to the user PATH. The first install downloads a few GB and needs about 8 GB free.
+- adds a `manga` command to the user PATH.
 
-A Windows user folder with accents (for example `C:\Users\Nguyễn`) breaks PaddleOCR, so the installer then uses `C:\ProgramData\manga-translator` instead. From a clone, `install.bat` / `./install.sh` install that clone in place instead of downloading.
+A Windows user folder with accents (for example `C:\Users\Nguyễn`) breaks PaddleOCR, so the installer then uses `C:\ProgramData\manga-translator`. From a clone, `install.bat` / `./install.sh` install that clone in place.
 
 To uninstall, delete that folder and the `manga` command (`%LOCALAPPDATA%\manga-translator\bin` on Windows, `~/.local/bin/manga` elsewhere), then remove its line from the user Path or shell start-up file.
 
-Manual install, if you prefer (Python 3.10–3.12):
+Manual install (Python 3.10–3.12):
 
 ~~~bash
 python -m venv .venv
@@ -248,24 +199,16 @@ playwright install chromium
 
 ### Models
 
-Place these files in models/:
+Place these files in `models/`:
 
 | File | Purpose |
 | --- | --- |
-| kiuyha_text_1280.onnx | Text detection: Kiuyha/Manga-Bubble-YOLO boxes |
-| ctd_seg.onnx | Letter masks: comic-text-detector, exported fast and mask-only |
-| lama-manga-dynamic.onnx | Preferred inpainting backend |
-| lama.onnx | Fixed-resolution fallback |
+| `kiuyha_text_1280.onnx` | Text detection: Kiuyha/Manga-Bubble-YOLO boxes (in the repository) |
+| `ctd_seg.onnx` | Letter masks: comic-text-detector, exported fast and mask-only |
+| `lama-manga-dynamic.onnx` | Preferred inpainting backend |
+| `lama.onnx` | Fixed-resolution fallback |
 
-`kiuyha_text_1280.onnx` (10 MB) is in the repository; the LaMa files are too
-large for Git and must be downloaded. Build `ctd_seg.onnx` from the released
-[comictextdetector.pt.onnx](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3)
-by saving it as `.cache/comictextdetector.pt.onnx` and running `python scripts/export_ctd_onnx.py`
-(needs `torch`, `onnx` and `onnx2torch` once; the app itself only needs onnxruntime). The **Kiuyha ONNX export** workflow
-re-exports
-[Kiuyha/Manga-Bubble-YOLO](https://huggingface.co/Kiuyha/Manga-Bubble-YOLO)
-and checks the ONNX boxes against the original model. See
-[docs/detection.md](docs/detection.md) for how detection works and why.
+The LaMa files are too large for Git and must be downloaded. Build `ctd_seg.onnx` from the released [comictextdetector.pt.onnx](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3): save it as `.cache/comictextdetector.pt.onnx` and run `python scripts/export_ctd_onnx.py` (needs `torch`, `onnx` and `onnx2torch` once; the app itself only needs onnxruntime). The **Kiuyha ONNX export** workflow re-exports [Kiuyha/Manga-Bubble-YOLO](https://huggingface.co/Kiuyha/Manga-Bubble-YOLO) and checks the ONNX boxes against the original model.
 
 ### Run
 
@@ -274,11 +217,7 @@ manga             # after the installer
 python run.py     # from an activated environment
 ~~~
 
-Open:
-
-~~~text
-http://127.0.0.1:8000
-~~~
+Open `http://127.0.0.1:8000`.
 
 ### Docker
 
@@ -286,11 +225,11 @@ http://127.0.0.1:8000
 docker compose up --build
 ~~~
 
-The Docker image expects model files through the mounted ./models directory.
+The image expects the model files through the mounted `./models` directory.
 
 ## AI setup
 
-Provider keys are configured independently in the settings UI or through environment variables:
+Provider keys are set in the settings UI or through environment variables:
 
 ~~~text
 GEMINI_API_KEY
@@ -301,24 +240,13 @@ OPENROUTER_API_KEY
 EXPLABS_API_KEY
 ~~~
 
-The settings UI can discover provider models through /models, select exact model IDs, and register custom OpenAI-compatible providers.
-
-Custom provider endpoints must use public HTTPS URLs. Credentials are never accepted inside the API URL.
+The settings UI discovers a provider's models through `/models`, selects exact model IDs, and registers custom OpenAI-compatible providers. Custom endpoints must be public HTTPS URLs, and credentials are never accepted inside the API URL.
 
 ### Manga Cloud (experimental, off by default)
 
-Every feature, A.I mode included, is free with your own A.I key. Manga Cloud is for people without one: with `MANGA_TIERS=1` the app offers a Manga Cloud provider served by the gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code, top up a prepaid balance, and each A.I call of a chapter is charged at its real cost plus a 5% fee (`GATEWAY_FEE_PERCENT`). A long webtoon chapter costs about $0.30, so a chapter needs about $0.32 of balance to start. Payment-provider fees are added to what the user pays, so the balance always gets the full top-up. The gateway stops a chapter at what the balance can pay for, and at $2 whatever the balance.
+Every feature, A.I mode included, is free with your own A.I key. Manga Cloud is for people without one: with `MANGA_TIERS=1` the app offers a Manga Cloud provider served by the gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code and top up a prepaid balance. Each A.I call of a chapter is charged at its real cost plus a 5 % fee (`GATEWAY_FEE_PERCENT`). A long webtoon chapter costs about $0.30, so a chapter needs about $0.32 of balance to start. Payment-provider fees are added to what the user pays, so the balance always gets the full top-up. The gateway stops a chapter at what the balance can pay for, and at $2 whatever the balance.
 
-A.I mode runs a chapter through four checkpoints, each with its own prompt:
-
-1. Scan the raw slices: skip credit and textless slices, keep series logos untouched.
-2. Clean the text (Kiuyha + LaMa).
-3. Compare each raw and clean slice: erase missed text, repaint leftovers, restore art erased by mistake.
-4. Translate each slice from its raw and clean image and pick fonts; the app letters the text.
-
-The lettered chapter then opens in the editor, where it can be fixed by hand and exported.
-
-The gateway lives in `gateway/` and runs with `python -m gateway`. [docs/DEPLOY.md](docs/DEPLOY.md) puts it online behind Caddy with HTTPS, and lists its limits and admin commands:
+The gateway lives in `gateway/` and runs with `python -m gateway`. [docs/DEPLOY.md](docs/DEPLOY.md) puts it online behind Caddy with HTTPS and lists its limits and admin commands.
 
 | Area | Variables |
 | --- | --- |
@@ -329,7 +257,7 @@ The gateway lives in `gateway/` and runs with `python -m gateway`. [docs/DEPLOY.
 | Lemon Squeezy (cards) | `GATEWAY_LS_API_KEY`, `GATEWAY_LS_STORE_ID`, `GATEWAY_LS_VARIANT`, `GATEWAY_LS_WEBHOOK_SECRET`, `GATEWAY_LS_FEE_PERCENT` (5), `GATEWAY_LS_FEE_FIXED_USD` (0.50); webhook `/v1/billing/lemonsqueezy/webhook` |
 | Other | `GATEWAY_DB`, `GATEWAY_ADMIN_KEY`, `GATEWAY_RETURN_URL`, `GATEWAY_HOST`, `GATEWAY_PORT`, `GATEWAY_TRUSTED_PROXIES` |
 
-Signed-in users see their balance and every top-up and chapter charge, sign out on every device and delete their account from the A.I mode panel. A payOS top-up is credited once when its webhook reports the exact amount. A Lemon Squeezy top-up is a one-time order at a custom price on one product variant; its refund takes the credit back.
+Signed-in users see their balance and every top-up and chapter charge, and can sign out on every device or delete their account from the A.I mode panel. A payOS top-up is credited once, when its webhook reports the exact amount. A Lemon Squeezy top-up is a one-time order at a custom price on one product variant; a refund takes the credit back.
 
 ## Runtime settings
 
@@ -345,42 +273,30 @@ Detection, inpainting, OCR and rendering thresholds are fixed constants in `app/
 
 ## CPU-first design
 
-The supported baseline is CPU execution.
+The supported baseline is CPU execution, tuned for bounded desktop-class workloads instead of a GPU:
 
-The runtime has been optimized around bounded desktop-class workloads instead of assuming a GPU:
-
-- bounded page concurrency
+- two page workers by default, small enough that heavy inference kernels do not fight for the same memory bandwidth
 - conservative ONNX Runtime threading
-- OpenVINO on supported x86-64 Windows/Linux systems
-- standard ONNX Runtime elsewhere
+- OpenVINO for the text detector on x86-64 Windows and Linux; standard ONNX Runtime elsewhere and for the letter mask and LaMa, whose input sizes vary
 - decoded-page caching for repeated OCR work
-- bounded downloads and transient retries
+- bounded downloads with transient retries
 - short manifest lock windows
-- deterministic browser/runtime checks
-
-The default production processing schedule is intentionally small enough to avoid multiplying heavy inference kernels until the machine becomes memory- or bandwidth-bound.
-
-GPU acceleration is not required for the core workflow.
 
 ## Safety by design
 
-Safety is part of the processing model, not just deployment hardening.
-
-The application protects:
+Safety is part of the processing model, not only of deployment. The app protects:
 
 - remote URL imports against SSRF and unsafe address ranges
 - managed files against path escape
 - uploads and archives against oversized payloads
 - decoded images against excessive pixel counts
 - browser requests against unsafe remote targets
-- custom AI endpoints against invalid/untrusted URLs
-- rendered/exported artifacts against stale editor state
+- custom AI endpoints against invalid or untrusted URLs
+- rendered and exported artifacts against stale editor state
 
-Network-exposed deployments still need normal firewall and authentication controls.
+A deployment that faces the network still needs normal firewall and authentication controls.
 
 ## Architecture
-
-At a high level:
 
 ~~~text
                     Browser Workbench
@@ -407,91 +323,71 @@ For implementation details see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Documentation
 
-The README is intentionally product-focused. Deeper engineering material lives in docs/.
-
 - [Architecture](docs/ARCHITECTURE.md)
-- [Security history](docs/SECURITY_HISTORY.md)
 - [Text detection](docs/detection.md)
 - [Comic font library](docs/comic-fonts.md)
+- [Deploying the gateway](docs/DEPLOY.md)
 - [UI guidelines](docs/UI_GUIDELINES.md)
+- [Security history](docs/SECURITY_HISTORY.md)
 
 ## Development
 
-Install test dependencies:
-
 ~~~bash
 python -m pip install -r requirements-test.txt
-~~~
-
-Useful commands:
-
-~~~bash
-make test
-make test-browser
+make test            # regression tests
+make test-browser    # browser and runtime checks
 make health
-make release-check
+make release-check   # the full release gate
 make docker-up
 ~~~
 
-The maintained release path covers source compilation, regression tests, browser/runtime checks, OCR and provider contracts, mask authority, geometry/revision safety, long-image behavior, and the connected product flow:
+The release path covers source compilation, regression tests, browser and runtime checks, OCR and provider contracts, mask authority, geometry and revision safety, long-image behaviour, and the connected product flow: **processed page → OCR/text object → translation → render → chapter ZIP**. Production ONNX binaries are not in Git, so model-dependent checks run separately.
 
-**processed page → OCR/text object → translation → render → chapter ZIP**
-
-Model-dependent validation remains a separate local artifact gate because production ONNX binaries are not stored in Git.
-
-To clean a whole real chapter with the real models and see speed and text left behind, run the **Chapter run** workflow from the Actions tab; results go to the `audit-evidence` branch.
+To clean a whole real chapter with the real models and see the speed and the text left behind, run the **Chapter run** workflow from the Actions tab. To run A.I mode on a chapter and get every page image and its cost, run **A.I cost**. Both save their results to the `audit-evidence` branch, with a side-by-side image per text block.
 
 ## Project layout
 
 ~~~text
 app/
-  detector/       text detection (Kiuyha) and masks
+  detector/       text detection (Kiuyha) and letter masks
   downloader/     HTTP, Playwright, adapters and slicing
-  inpaint/        LaMa and mask geometry safety
+  inpaint/        LaMa, flat fill and mask geometry safety
   ocr/            MangaOCR + PP-OCRv6
   translation/    text and two-image vision translation
+  ai_mode/        the four A.I checkpoints
   render/         typography, font catalog and matching
   visual_qc/      visual inspection and provider orchestration
   routers/        FastAPI API surface
   static/         browser workbench
   pipeline*.py    chapter processing and runtime coordination
-  manifest_utils.py
-  editorial_gate.py
-  security.py
-
+gateway/          Manga Cloud: accounts, wallet, metered A.I upstream
 tests/            correctness and release regressions
 models/           local model artifacts
 data/             runtime chapter data
-docs/             maintained engineering documentation
-scripts/          release, browser and sanity tooling
+docs/             engineering documentation
+scripts/          release, browser and benchmark tooling
 ~~~
 
 ## Current limitations
 
-This project is designed to accelerate chapter production, not eliminate every form of professional redraw and lettering work.
+The project speeds up chapter production; it does not replace professional redraw and lettering.
 
-Manual intervention is still expected for:
+- **Stylised sound effects are mostly left as art**: the letter model reads story lettering, not drawn SFX, and Korean SFX and props text can stay in a machine-only run.
+- **A glowing title can leave a faint smear** where the glow was erased.
+- **Text painted into the art** (signs, screens) may be translated as plain text and lettered over it.
+- **Vietnamese compound words** can split across two lines.
+- **Watermarks and site banners** are only partly erased.
+- On large manga pages with heavy black art, the cleanup can take a stroke of art that the detector boxed as text; the restore brush puts it back.
+- Perspective or warped lettering, curved text, hand-drawn SFX recreation, ambiguous OCR, heavily protected reader sites and typography that needs artistic judgment still need a person.
 
-- difficult artwork reconstruction
-- perspective or heavily warped lettering
-- curved/path text
-- complex hand-drawn SFX recreation
-- ambiguous OCR
-- heavily protected reader sites
-- typography requiring artistic judgment
+The strongest use is a **reviewable production workstation with automation**, not a black-box batch converter.
 
-The strongest use case is a **reviewable production workstation with automation**, not a black-box batch converter.
+## Philosophy
 
-## Project philosophy
-
-The repository has evolved through security hardening, end-to-end product closure, detector/inpaint safety work, hybrid OCR, CPU throughput work, a unified Review workspace, revision-safe rendering/export, Visual QC, native font matching, configurable AI providers, and vision translation.
-
-Those features all reinforce the same rule:
+Detection, cleanup, OCR, translation, typography and AI help are all allowed to make mistakes. The editor can inspect, correct, reject, repaint, resize, retranslate or restyle any of them before anything becomes the published chapter.
 
 > **The page belongs to the editor.**
 
-Automation can detect it, clean it, read it, translate it, suggest a font, or inspect it — but the current editorial state remains authoritative until the final artifact is published.
-
 ## License
 
-See the repository license and bundled asset metadata for software and font licensing details.
+See the repository license and the bundled asset metadata for software and font licensing.

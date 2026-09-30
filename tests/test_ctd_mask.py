@@ -117,6 +117,21 @@ def test_every_dot_of_a_wide_ellipsis_stays_with_its_text():
     assert all(kept[70:80, x:x + 10].all() for x in (212, 240, 268)), "all three dots stay"
     assert not kept[70:80, 380:390].any(), "a speck far from the text does not"
 
+def test_flecks_and_outline_scraps_beside_a_run_of_dots_do_not_join_it():
+    # 392 real text crops: a 1-4 px fleck or a bubble-outline scrap chained to the last dot grew a bite out of the outline.
+    seed = np.zeros((120, 400), bool)
+    for x in range(40, 200, 32):
+        seed[30:80, x:x + 24] = True
+    for x in (212, 240):
+        seed[70:80, x:x + 10] = True  # the dots
+    seed[72:74, 268:270] = True  # a 2 px fleck one step on
+    seed[50:80, 262:266] = True  # a thin outline scrap
+    inside = np.zeros_like(seed)
+    inside[:, :205] = True
+    kept = ctd_mask._chained(seed, inside)
+    assert kept[70:80, 212:222].all() and kept[70:80, 240:250].all(), "the dots stay"
+    assert not kept[72:74, 268:270].any() and not kept[50:80, 262:266].any(), "the fleck and the scrap do not"
+
 def test_one_image_always_gives_one_mask():
     # The World After the End 254: a second call on the same crop grew a different mask, so LaMa painted it differently.
     ctd_mask._session = InkModel(light_above=225)

@@ -777,8 +777,9 @@ class Inpainter:
             crop_resized = crop
             mask_resized = local_mask
 
-        canvas_h = max(8, ((new_h + 7) // 8) * 8)
-        canvas_w = max(8, ((new_w + 7) // 8) * 8)
+        # The dynamic model fails on a width that is an odd multiple of 8, so both sides round up to 16.
+        canvas_h = max(16, ((new_h + 15) // 16) * 16)
+        canvas_w = max(16, ((new_w + 15) // 16) * 16)
         pad_y = (canvas_h - new_h) // 2
         pad_x = (canvas_w - new_w) // 2
         pad_bottom = canvas_h - new_h - pad_y

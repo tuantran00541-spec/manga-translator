@@ -109,6 +109,7 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
 
 SPECK = 0.35  # letters shorter than this share of the text size (dots, accents, noise) never lead growth
 SPECK_HOPS = 3  # specks past the letter a run of specks may reach, so '....' stays whole
+DOT = 0.15  # a dot of a run of dots is at least this share of the text size on both sides, round and filled
 
 
 def _parts(seed: np.ndarray):
@@ -138,11 +139,15 @@ def _chained(seed: np.ndarray, inside: np.ndarray) -> np.ndarray:
         if (grown & big == keep & big).all():
             break
         keep = grown
-    # A run of specks, like the dots of '...', joins a few steps past the letter it follows.
+    # A run of dots, like '...', joins a few steps past the letter it follows; flecks and outline scraps do not.
+    stats = cv2.connectedComponentsWithStats(seed.astype(np.uint8))[2]
+    width, height, area = (stats[:, column] for column in (cv2.CC_STAT_WIDTH, cv2.CC_STAT_HEIGHT, cv2.CC_STAT_AREA))
+    short = np.minimum(width, height)
+    dot = (short >= max(3, DOT * size)) & (np.maximum(width, height) <= 2 * short) & (area >= 0.5 * width * height)
     for _ in range(SPECK_HOPS):
         near = cv2.dilate(np.isin(labels, np.nonzero(grown & ~big)[0]).astype(np.uint8), kernel) > 0
         found = np.unique(labels[near & seed])
-        found = found[~big[found] & ~grown[found] & (found > 0)]
+        found = found[~big[found] & ~grown[found] & (found > 0) & dot[found]]
         if not len(found):
             break
         grown[found] = True

@@ -1,6 +1,6 @@
 # Comic font library
 
-The native renderer ships a catalog of 70 fonts under `app/static/fonts/`.
+The native renderer ships a catalog of 71 fonts under `app/static/fonts/`.
 Each family is grouped by intended comic role:
 
 - `dialogue/` — readable speech balloons and Vietnamese-friendly sans faces
