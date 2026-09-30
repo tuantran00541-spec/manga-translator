@@ -13,12 +13,6 @@ from app.logging_config import logger
 from app.model_contracts import decode_lama_output, validate_lama_session
 from app.ort_utils import make_session
 from app.parameters import (
-    INPAINT_CROP_PADDING,
-    FLAT_COPY_CALM_STD,
-    FLAT_COPY_MIN_SHARE,
-    FLAT_COPY_PALETTE_SHARE,
-    FLAT_COPY_SEAM_PX,
-    FLAT_COPY_TOLERANCE,
     DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM,
     DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS,
     DYNAMIC_LAMA_TILE,
@@ -644,60 +638,6 @@ class Inpainter:
             return None
         return np.clip(np.rint(surface), 0, 255).astype(np.uint8)
 
-    @staticmethod
-    def _flat_copy(crop: np.ndarray, hole: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
-        """The ring's flat colours copied across the hole where both sides of a row or column agree, and what is left."""
-        if crop.ndim != 3 or not hole.any():
-            return None
-        known = ~hole
-        lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB).astype(np.float32)
-        light, weight = lab[..., 0], known.astype(np.float32)
-        count = cv2.boxFilter(weight, -1, (9, 9), normalize=False)
-        mean = cv2.boxFilter(light * weight, -1, (9, 9), normalize=False) / np.maximum(count, 1)
-        square = cv2.boxFilter(light * light * weight, -1, (9, 9), normalize=False) / np.maximum(count, 1)
-        calm = known & (np.sqrt(np.maximum(square - mean * mean, 0)) <= FLAT_COPY_CALM_STD) & (count >= 20)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
-        ring = calm & (cv2.dilate(hole.astype(np.uint8), kernel) > 0)
-        if int(ring.sum()) < 30:
-            return None
-        bins, index, sizes = np.unique(np.round(lab[ring] / 6).astype(np.int32), axis=0,
-                                       return_inverse=True, return_counts=True)
-        index = index.ravel()
-        palette = np.array([lab[ring][index == i].mean(axis=0)
-                            for i in np.nonzero(sizes >= FLAT_COPY_PALETTE_SHARE * ring.sum())[0]])
-        if not len(palette):
-            return None
-        # Label every calm pixel with its palette colour, -1 when it matches none.
-        dist = np.linalg.norm(lab[..., None, :] - palette, axis=-1)
-        label = np.where(calm & (dist.min(axis=-1) <= FLAT_COPY_TOLERANCE), dist.argmin(axis=-1), -1)
-        h, w = hole.shape
-        agree = np.full((h, w), -1)
-        for axis in (1, 0):
-            lab_t, known_t = (label, known) if axis == 1 else (label.T, known.T)
-            pos = np.broadcast_to(np.arange(lab_t.shape[1]), lab_t.shape)
-            left = np.maximum.accumulate(np.where(known_t, pos, -1), axis=1)
-            right = np.minimum.accumulate(np.where(known_t, pos, lab_t.shape[1])[:, ::-1], axis=1)[:, ::-1]
-            rows = np.arange(lab_t.shape[0])[:, None]
-            ok = (left >= 0) & (right < lab_t.shape[1])
-            a = np.where(ok, lab_t[rows, np.clip(left, 0, None)], -1)
-            b = np.where(ok, lab_t[rows, np.clip(right, None, lab_t.shape[1] - 1)], -2)
-            both = np.where(a == b, a, -1)
-            both = both if axis == 1 else both.T
-            agree = np.where(agree >= 0, agree, both)
-        agree = np.where(hole, agree, -1)
-        seam = np.zeros_like(hole)
-        seam[:, 1:] |= (agree[:, 1:] >= 0) & (agree[:, :-1] >= 0) & (agree[:, 1:] != agree[:, :-1])
-        seam[1:, :] |= (agree[1:, :] >= 0) & (agree[:-1, :] >= 0) & (agree[1:, :] != agree[:-1, :])
-        rest = hole & (agree < 0)
-        if seam.any():
-            grow = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * FLAT_COPY_SEAM_PX + 1,) * 2)
-            rest |= (cv2.dilate(seam.astype(np.uint8), grow) > 0) & hole
-        colours = cv2.cvtColor(np.clip(palette[None], 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)[0]
-        filled = crop.copy()
-        copy = hole & ~rest
-        filled[copy] = colours[agree[copy]]
-        return filled, rest
-
     def _smart_paint_region(
         self,
         image: np.ndarray,
@@ -732,30 +672,6 @@ class Inpainter:
                 filled[mask_bool] = fill_color
             image[cy1:cy2, cx1:cx2] = filled
             return image
-
-        fill_mask = local_mask if hole is None else hole
-        split = None if force_lama or feather else self._flat_copy(crop, fill_mask > 127)
-        if split is not None:
-            filled, rest = split
-            wanted = fill_mask > 127
-            if 1.0 - rest.sum() / wanted.sum() >= FLAT_COPY_MIN_SHARE:
-                # Flat colour is copied; LaMa only fills what is left, on a crop round it.
-                self._metric_add("flat_copy_regions")
-                own = local_mask > 127
-                done = own & ~rest
-                crop[done] = filled[done]
-                if not (own & rest).any():
-                    return image
-                ys, xs = np.nonzero(rest)
-                pad = INPAINT_CROP_PADDING
-                y1, x1 = max(0, int(ys.min()) - pad), max(0, int(xs.min()) - pad)
-                y2, x2 = min(crop_h, int(ys.max()) + 1 + pad), min(crop_w, int(xs.max()) + 1 + pad)
-                sub_box = (cx1 + x1, cy1 + y1, cx1 + x2, cy1 + y2)
-                sub_own = ((own & rest)[y1:y2, x1:x2]).astype(np.uint8) * 255
-                sub_hole = ((rest | (wanted & ~own))[y1:y2, x1:x2]).astype(np.uint8) * 255
-                self._metric_add("lama_regions")
-                return self._lama_fill(image, image[sub_box[1]:sub_box[3], sub_box[0]:sub_box[2]], sub_own,
-                                       sub_box, hole=sub_hole)
 
         self._metric_add("lama_regions")
         return self._lama_fill(image, crop, local_mask, crop_box, feather=feather, hole=hole)
