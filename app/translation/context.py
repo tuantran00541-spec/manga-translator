@@ -20,41 +20,46 @@ LOCKED_CONTAINERS = CONTAINERS - {"free"}  # text on the art varies; every drawn
 EMPHASIS_ROLES = frozenset({"shout", "dark_threat", "sfx"})  # a shout in a plain bubble keeps its own font
 
 _TASK = """
-TASK
-You are a comic localization editor translating into {target}. IMAGE 1 is the raw slice; IMAGE 2 is the same slice cleaned, where the translation will be lettered, with each text object's box outlined in red and labelled with its id. For each box, read the text IMAGE 1 shows there, translate it into {target} as naturally as a native reader would say it, pick the font whose FONT SAMPLES row looks closest to the raw lettering, and keep it short enough to letter at the raw size.
+<task>
+You are a comic localization editor translating into {target}. IMAGE 1 is the raw slice. IMAGE 2 is the same slice cleaned, with each text box outlined in red and labelled with its id; the translation is lettered there. For each box: read the text IMAGE 1 shows inside it, translate it into {target} the way a native reader would say it, pick the font whose FONT SAMPLES row looks closest to the raw lettering, and keep it short enough to letter at the raw size.
+</task>
 
-RULES
-- source_text is an OCR hint, often wrong: trust IMAGE 1. max_chars is how many characters fit at the raw size, a hard ceiling. If a line cannot fit, shorten it; if it still cannot, set "review": true. If the raw text is too small to read at its size, set "enlarge": true.
-- Read the scene: who speaks to whom, their relationship, emotion and the lines around it. Each character keeps one voice; translate the meaning, never the source sentence structure, and add nothing the source does not say.
-- CHAPTER MEMORY is settled context: use its GLOSSARY names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
-- Keep the source punctuation ("...", "?!", "!!"); no memes or jokes the source does not make.
-- Scanlator credits, watermarks and URLs get an empty translated_text, and so does a sound effect drawn into the art (role "sfx"). A sound effect lettered as plain text gets a short onomatopoeia.
-- Font: dialogue.mac-dinh-3 is the base font and always letters dialogue, thought and whisper. A chapter uses at most 3 fonts: prefer fonts_in_use, and each container kind keeps the font in container_fonts. When unsure, use the base font.
-- Break lines with "\\n" at phrase boundaries; never leave a lone word on a line or split a name or word.
-- role: dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text or sfx. container: bubble, spiky, box, screen, or free (lettered on the art). Add "color" (#rrggbb) only for a distinct colour such as red or glowing titles.
+<rules>
+- Trust IMAGE 1 over source_text, which is an OCR hint and often wrong.
+- Stay within max_chars: it is what fits at the raw size, and longer text is lettered smaller. If a line still cannot fit, set "review": true. Set "enlarge": true when the raw text is too small to read.
+- Read the scene (speaker, listener, relationship, emotion, the lines around it) and translate the meaning. Give each character one consistent voice and add nothing the source does not say.
+- Treat CHAPTER MEMORY as settled and use its glossary names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
+- Keep the source punctuation ("...", "?!", "!!") and tone; make jokes only where the source does.
+- Leave translated_text empty for scanlator credits, watermarks, URLs and sound effects drawn into the art (role "sfx"). A sound effect lettered as plain text gets a short onomatopoeia.
+- Fonts: dialogue, thought and whisper use the base font dialogue.mac-dinh-3. A chapter uses at most 3 fonts, so reuse fonts_in_use and the container_fonts already set; when unsure, use the base font.
+- Break lines with "\\n" between phrases, with at least two words on each line and every name and word kept whole.
+- role is one of dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text, sfx. container is one of bubble, spiky, box, screen, free (lettered on the art). Add "color" (#rrggbb) only for a distinct colour such as a red or glowing title.
+</rules>
 """.strip()
 
 _VIETNAMESE = """
-VIETNAMESE
-- Choose pronouns from the relationship, never "tôi/bạn" by reflex: tôi/anh/chị/em, ta/ngươi, tao/mày, mình/cậu, thần/bệ hạ, thuộc hạ/ngài. Keep a pair until the story changes the relationship, and report the change in "address".
-- Rewrite translationese such as "Điều mà tôi muốn nói là…" or "Đó là lý do tại sao…" into natural speech.
-- Cut what speech drops: a subject the scene makes clear, "thì", "là", "mà", "một cách", "những", "các", and "đã/đang/sẽ" when the time is clear. Prefer the short word: "vì" over "bởi vì", "nếu" over "trong trường hợp", "giờ" over "bây giờ thì".
-- Genre terms: cultivation uses sư phụ, sư huynh, đạo hữu, bổn tọa and Hán Việt realm names; game and system stories keep Level, Skill, Stat, Dungeon and use "Hệ thống", "hồi quy", "thức tỉnh"; military ranks become Vietnamese ranks.
+<vietnamese>
+- Choose pronouns from the relationship, not tôi/bạn by default: tôi/anh/chị/em, ta/ngươi, tao/mày, mình/cậu, thần/bệ hạ, thuộc hạ/ngài. Keep a pair until the relationship changes, and report the change in "address".
+- Write natural speech: drop translationese ("Điều mà tôi muốn nói là…"), a subject the scene makes clear and filler (thì, là, mà, một cách, những, các, đã/đang/sẽ when the time is clear); prefer the short word (vì, nếu, giờ).
+- Genre terms: cultivation uses sư phụ, sư huynh, đạo hữu, bổn tọa and Hán Việt realms; game stories keep Level, Skill, Stat, Dungeon with Hệ thống, hồi quy, thức tỉnh; military ranks become Vietnamese ranks.
+</vietnamese>
 """.strip()
 
 _OUTPUT = """
-Answer with JSON only:
+<output>
+JSON only:
 {{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","container":"<container>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
- "font_choices":{{"<id>":"<font_id from FONTS>"}},
+ "font_choices":{{"<id>":"<font_id>"}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, age, relationship>"}}],
  "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to themselves>","other":"<how A addresses B>"}}]}}
-Return every id exactly once, with a font_choices entry for each. In "characters" and "address" list only what is new or changed in this slice.
+Every id appears once in translations and in font_choices. characters and address hold only what is new or changed in this slice.
+</output>
 """.strip()
 
 
 def system_prompt(target_name: str, target_lang: str) -> str:
-    parts = [_TASK.format(target=target_name), "FONTS\n" + font_guide_prompt()]
+    parts = [_TASK.format(target=target_name), "<fonts>\n" + font_guide_prompt() + "\n</fonts>"]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE)
     parts.append(_OUTPUT.format())
