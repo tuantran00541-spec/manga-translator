@@ -14,9 +14,12 @@ def scaled_box(raw, width: int, height: int) -> tuple[float, float, float, float
     if not isinstance(raw, dict):
         return None
     try:
-        x1, y1, x2, y2 = (max(0.0, min(1000.0, float(raw[key]))) for key in BOX_KEYS)
+        corners = [float(raw[key]) for key in BOX_KEYS]
     except (KeyError, TypeError, ValueError):
         return None
-    if not all(math.isfinite(v) for v in (x1, y1, x2, y2)) or x2 <= x1 or y2 <= y1:
+    if not all(math.isfinite(v) for v in corners):
+        return None
+    x1, y1, x2, y2 = (max(0.0, min(1000.0, v)) for v in corners)
+    if x2 <= x1 or y2 <= y1:
         return None
     return x1 * width / 1000, y1 * height / 1000, x2 * width / 1000, y2 * height / 1000
