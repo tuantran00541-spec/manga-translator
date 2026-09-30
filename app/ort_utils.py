@@ -94,8 +94,8 @@ def _env_flag(name: str, default: bool) -> bool:
 
 
 def _is_detector_model(model_path) -> bool:
-    name = Path(model_path).name.lower()
-    return "bubble" in name or "text_segmenter" in name
+    """The text detector: a fixed 1280 px input, so OpenVINO compiles it once (the mask and LaMa inputs vary)."""
+    return "kiuyha" in Path(model_path).name.lower()
 
 
 def _openvino_selected(model_path) -> bool:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -54,18 +53,6 @@ def _pages(archive_path: Path, out: Path, max_width: int = 800) -> int:
             if ok:
                 (pages / f"{index:03d}.jpg").write_bytes(buf.tobytes())
         return len(names)
-
-
-def _full_slices(pages: list, out: Path, numbers: set[int]) -> None:
-    """Save the original and cleaned image of the given slices at full size."""
-    folder = out / "full"
-    for number in sorted(numbers):
-        page = pages[number - 1] if 0 < number <= len(pages) else {}
-        for kind in ("original", "clean"):
-            source = Path(page.get(kind) or "")
-            if source.is_file():
-                folder.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, folder / f"{number:03d}_{kind}{source.suffix}")
 
 
 def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
@@ -228,7 +215,6 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--balance", type=float, default=5.0, help="USD credited to the test account")
     parser.add_argument("--timeout-min", type=float, default=60)
-    parser.add_argument("--full-slices", default="", help="comma-separated slice numbers saved at full size")
     args = parser.parse_args()
     out = args.out.resolve()
     if not out.is_relative_to(ROOT):
@@ -316,7 +302,6 @@ def main() -> int:
             report["pairs"] = _pairs(str(chapter_id), pages, out)
         except Exception as exc:  # noqa: BLE001 - the pairs are a review aid, never a reason to lose the report
             report["pairs_error"] = repr(exc)[:300]
-        _full_slices(pages, out, {int(n) for n in args.full_slices.split(",") if n.strip().isdigit()})
         (out / "objects.json").write_text(json.dumps(_objects(pages), ensure_ascii=False), encoding="utf-8")
         report["lines"] = []
         for index, page in enumerate(pages):
