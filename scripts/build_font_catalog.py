@@ -69,7 +69,7 @@ def main() -> int:
         for error in errors:
             print(f"ERROR: {error}")
         return 1
-    print(f"validated {len(json.loads(catalog_path.read_text())['records'])} fonts")
+    print(f"validated {len(json.loads(catalog_path.read_text(encoding='utf-8'))['records'])} fonts")
     return 0
 
 

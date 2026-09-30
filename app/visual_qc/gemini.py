@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 import requests
 
+from app.box_format import BOX_KEYS, scaled_box
 from app.security import MAX_IMAGE_PIXELS
 from app.visual_qc.gemini_interactions import (
     DEFAULT_CONNECT_TIMEOUT_SECONDS,
@@ -56,13 +57,13 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                     },
                     "confidence": {"type": "number"},
                     "label": {"type": "string"},
-                    "box_2d": {"type": "array", "items": {"type": "integer"}},
+                    **{key: {"type": "number"} for key in BOX_KEYS},
                     "mask": {
                         "type": "array",
                         "items": {"type": "array", "items": {"type": "integer"}},
                     },
                 },
-                "required": ["issue_type", "confidence", "label", "box_2d", "mask"],
+                "required": ["issue_type", "confidence", "label", *BOX_KEYS, "mask"],
             },
         }
     },
@@ -85,7 +86,7 @@ Prioritize:
 Do NOT flag normal character line art, screentones, speed lines, borders, decorative patterns, or legitimate artwork merely because they resemble text.
 Be conservative. If unsure, omit the issue.
 For every issue return:
-- box_2d as [ymin, xmin, ymax, xmax], normalized to 0..1000 over the whole CLEANED image;
+- the box as x1,y1 (top-left) and x2,y2 (bottom-right), normalized to 0..1000 over the whole CLEANED image, x across the width and y down the height;
 - mask as a polygon of [x, y] points normalized to 0..1000 INSIDE that box, tightly covering only pixels that should be repainted;
 - confidence from 0.0 to 1.0.
 Return an empty issues array when the page looks clean.
@@ -195,20 +196,13 @@ def _parse_issues(parsed: dict, width: int, height: int) -> list[VisualQCIssue]:
             continue
         try:
             confidence_raw = float(raw.get("confidence", 0.0))
-            box = [float(v) for v in raw.get("box_2d", [])]
         except (TypeError, ValueError):
             continue
-        if not math.isfinite(confidence_raw) or len(box) != 4 or not all(math.isfinite(v) for v in box):
+        scaled = scaled_box(raw, width, height)
+        if not math.isfinite(confidence_raw) or scaled is None:
             continue
         confidence = max(0.0, min(1.0, confidence_raw))
-        ymin, xmin, ymax, xmax = [max(0.0, min(1000.0, v)) for v in box]
-        if ymax <= ymin or xmax <= xmin:
-            continue
-
-        x1 = int(round(xmin / 1000.0 * width))
-        y1 = int(round(ymin / 1000.0 * height))
-        x2 = int(round(xmax / 1000.0 * width))
-        y2 = int(round(ymax / 1000.0 * height))
+        x1, y1, x2, y2 = (int(round(v)) for v in scaled)
         x1 = max(0, min(width - 1, x1))
         y1 = max(0, min(height - 1, y1))
         x2 = max(x1 + 1, min(width, x2))

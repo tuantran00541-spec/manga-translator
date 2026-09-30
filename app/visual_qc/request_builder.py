@@ -5,6 +5,7 @@ from typing import Any
 
 import cv2
 
+from app.box_format import BOX_KEYS
 from app.visual_qc.contact_sheet import ContactSheet
 
 _ALLOWED_MODES = {"global-clean", "region-clean", "region-pair"}
@@ -26,11 +27,11 @@ _REGION_RESPONSE_SCHEMA: dict[str, Any] = {
                             "properties": {
                                 "issue_type": {"type": "string", "enum": ["residual_text", "partial_erase", "smear", "over_erased_art", "suspicious_fill", "unknown"]},
                                 "confidence": {"type": "number"},
-                                "box_2d": {"type": "array", "items": {"type": "integer"}},
+                                **{key: {"type": "number"} for key in BOX_KEYS},
                                 "reason": {"type": "string"},
                                 "recommended_action": {"type": "string", "enum": ["repaint", "review", "review_original", "deep_qc", "none"]},
                             },
-                            "required": ["issue_type", "confidence", "box_2d", "reason", "recommended_action"],
+                            "required": ["issue_type", "confidence", *BOX_KEYS, "reason", "recommended_action"],
                         },
                     },
                 },
@@ -56,7 +57,7 @@ You are a visual quality-control inspector for comic/manga/manhua/webtoon text r
 The image is a contact sheet. Inspect every labeled region exactly once.
 Expected region IDs: {ids}.
 Return one structured entry for each known region_id and never invent IDs.
-For each issue, box_2d is [ymin, xmin, ymax, xmax] normalized 0..1000 RELATIVE TO THAT REGION'S CLEAN crop, not the whole contact sheet.
+For each issue, x1,y1 (top-left) and x2,y2 (bottom-right) are its box corners, normalized 0..1000 RELATIVE TO THAT REGION'S CLEAN crop, not the whole contact sheet; x runs across the width and y down the height.
 Use status pass when the region is clean, flagged when a real issue exists, and ambiguous when the available evidence is insufficient.
 Be conservative: do not flag legitimate line art, screentones, borders, speed lines, decorative patterns, or intentional colored/stylized artwork.
 """.strip()
