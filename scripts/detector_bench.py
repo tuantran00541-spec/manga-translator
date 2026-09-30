@@ -16,7 +16,6 @@ CHAPTERS = {
     "shadow-slave": "https://asurascans.com/comics/shadow-slave-05c7df14/chapter/1",
     "hero-cannot-rest": "https://asurascans.com/comics/the-hero-cannot-rest-3ec3b16f/chapter/1",
     "weapon-replicator": "https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1",
-    "mangadex": "https://mangadex.org/chapter/ef7c4c66-97da-460a-9409-2231a950c877/1",
 }
 # One vote per project; the other entries are variants reported alongside.
 FAMILIES = {"ours": "ours", "comic-translate": "comic-translate", "ballons-ctd": "ctd", "koharu": "koharu"}

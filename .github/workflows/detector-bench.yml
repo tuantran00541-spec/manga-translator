@@ -46,7 +46,9 @@ jobs:
             models/*.onnx
             models/.e2e-provenance.json
           key: processing-profile-models-b224548-v1
-      - run: test -f models/kiuyha_text_1280.onnx
+      - name: Build the CTD mask model
+        uses: ./.github/actions/build-ctd
+      - run: test -f models/kiuyha_text_1280.onnx && test -f models/ctd_seg.onnx
       - name: Download the chapters and slice them
         run: python scripts/detector_bench.py slices --out bench/slices
       - name: Our detector
