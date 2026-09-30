@@ -290,7 +290,7 @@ def render_text_in_box(
     if target_size is not None:
         actual_size = target_size
         font = get_font_object(font_path_str, actual_size)
-        lines = _wrap_text(draw, text, font, box_w)
+        lines = _wrap_text(draw, text, font, box_w, balance=True)
     else:
         # Size limits are set for an 800 px wide page and grow with wider pages.
         scale = max(1.0, image.size[0] / REFERENCE_PAGE_WIDTH)
@@ -358,6 +358,8 @@ def render_text_in_box(
             if actual_size < min_source_share * matching_font_px(font_path_str, int(source_cap_px)):
                 raise ValueError("Translation fits only well below the source letter size")
         font = get_font_object(font_path_str, actual_size)
+        # The same number of lines, evened out so no word is left alone.
+        lines = _wrap_text(draw, text, font, box_w, balance=True)
 
     shape = str(shape or "").lower()
     if shape not in ("rectangle", "ellipse"):
@@ -457,7 +459,39 @@ def _fit_text(
     return best_size, best_lines, fits
 
 
-def _wrap_text(draw, text: str, font, box_w: int) -> list[str]:
+def _greedy_lines(draw, words: list[str], font, width: int) -> list[str]:
+    """Words filled into lines no wider than ``width``."""
+    lines, current = [], ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if not current or draw.textbbox((0, 0), candidate, font=font)[2] <= width:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _balanced_lines(draw, words: list[str], font, box_w: int) -> list[str]:
+    """As few lines as fit ``box_w``, made as even as those lines allow, so no word is left alone on the last."""
+    lines = _greedy_lines(draw, words, font, box_w)
+    if len(lines) < 2:
+        return lines
+    lo = max(draw.textbbox((0, 0), word, font=font)[2] for word in words)
+    hi = box_w
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if len(_greedy_lines(draw, words, font, mid)) <= len(lines):
+            hi = mid
+        else:
+            lo = mid + 1
+    return _greedy_lines(draw, words, font, hi)
+
+
+def _wrap_text(draw, text: str, font, box_w: int, *, balance: bool = False) -> list[str]:
+    """Lines of ``text`` no wider than ``box_w``; ``balance`` evens each wrapped line at the size finally drawn."""
     raw_lines = text.splitlines()
     all_wrapped = []
     for raw_line in raw_lines:
@@ -465,6 +499,9 @@ def _wrap_text(draw, text: str, font, box_w: int) -> list[str]:
             all_wrapped.append("")
             continue
         words = raw_line.split()
+        if balance and all(draw.textbbox((0, 0), word, font=font)[2] <= box_w for word in words):
+            all_wrapped.extend(_balanced_lines(draw, words, font, box_w))
+            continue
         current = ""
         for word in words:
             if draw.textbbox((0, 0), word, font=font)[2] > box_w:

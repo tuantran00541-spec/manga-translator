@@ -35,3 +35,18 @@ def test_a_box_that_shrinks_a_short_caption_well_below_the_source_size_gives_way
         render_text_in_box(page.copy(), text, (500, 400, 1100, 470), min_source_share=0.85, **style)
     render_text_in_box(page.copy(), text, (500, 400, 1100, 470), **style)  # the last box always letters
     render_text_in_box(page.copy(), text, (400, 330, 1200, 540), min_source_share=0.85, **style)
+
+
+def test_a_wrapped_line_leaves_no_word_alone():
+    # Shadow Slave 1, slice 70: "Với năng lực kỳ diệu có được" wrapped as "... CÓ" over a lone "ĐƯỢC".
+    from PIL import ImageDraw
+    from app.config import DEFAULT_FONT
+    from app.render.text_renderer import _wrap_text, get_font_object
+    draw, font = ImageDraw.Draw(Image.new("RGB", (10, 10))), get_font_object(str(DEFAULT_FONT), 40)
+    text = "VỚI NĂNG LỰC KỲ DIỆU CÓ ĐƯỢC\nSAU KHI VƯỢT QUA THỬ THÁCH"
+    width = draw.textbbox((0, 0), "VỚI NĂNG LỰC KỲ DIỆU CÓ", font=font)[2] + 4
+    assert _wrap_text(draw, text, font, width)[1] == "ĐƯỢC", "the greedy fill the size search uses"
+    lines = _wrap_text(draw, text, font, width, balance=True)
+    assert len(lines) == len(_wrap_text(draw, text, font, width)), "as many lines, so the size still fits"
+    assert all(len(line.split()) > 1 for line in lines)
+    assert all(draw.textbbox((0, 0), line, font=font)[2] <= width for line in lines)

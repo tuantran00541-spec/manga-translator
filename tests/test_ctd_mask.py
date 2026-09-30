@@ -103,6 +103,20 @@ def test_letters_the_box_cuts_are_erased_up_to_the_end_of_the_line():
     assert box[2] < 1440, "the box grows over the cut letters only"
 
 
+def test_every_dot_of_a_wide_ellipsis_stays_with_its_text():
+    # Shadow Slave 1, slice 70 cleaned from its core: the crop held all of "...", yet only the dot beside the E was kept.
+    seed = np.zeros((120, 400), bool)
+    for x in range(40, 200, 32):
+        seed[30:80, x:x + 24] = True  # letters the first box holds
+    for x in (212, 240, 268):
+        seed[70:80, x:x + 10] = True  # dots 18 px apart, the last two past the reach of the letters
+    seed[70:80, 380:390] = True  # a stray speck far from the text
+    inside = np.zeros_like(seed)
+    inside[:, :205] = True
+    kept = ctd_mask._chained(seed, inside)
+    assert all(kept[70:80, x:x + 10].all() for x in (212, 240, 268)), "all three dots stay"
+    assert not kept[70:80, 380:390].any(), "a speck far from the text does not"
+
 def test_one_image_always_gives_one_mask():
     # The World After the End 254: a second call on the same crop grew a different mask, so LaMa painted it differently.
     ctd_mask._session = InkModel(light_above=225)
