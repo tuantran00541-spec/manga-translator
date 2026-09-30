@@ -72,7 +72,7 @@ def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeyp
     payload = sent[0][1]["json"]
     system = payload["messages"][0]
     assert system["role"] == "system"
-    assert "localization editor" in system["content"] and "VIETNAMESE" in system["content"]
+    assert "TASK" in system["content"] and "VIETNAMESE" in system["content"]
     assert "- emphasis.anton:" in system["content"] and "Example:" in system["content"], "curated fonts come with notes"
     assert "dialogue.inter" not in system["content"], "only curated fonts are offered"
     assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}, "no pick: base font"

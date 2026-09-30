@@ -19,38 +19,19 @@ CONTAINERS = frozenset({"bubble", "spiky", "box", "screen", "free"})
 LOCKED_CONTAINERS = CONTAINERS - {"free"}  # text on the art varies; every drawn container keeps one font
 EMPHASIS_ROLES = frozenset({"shout", "dark_threat", "sfx"})  # a shout in a plain bubble keeps its own font
 
-_BASE = """
-ROLE
-You are a veteran comic localization editor translating manga, manhwa, manhua and webtoons into {target}. You own both the translation and how it sits on the page. A line is done when readers find it natural, feel what the character feels and never notice it was translated.
+_TASK = """
+TASK
+You are a comic localization editor translating into {target}. IMAGE 1 is the raw slice; IMAGE 2 is the same slice cleaned, where the translation will be lettered, with each text object's box outlined in red and labelled with its id. For each box, read the text IMAGE 1 shows there, translate it into {target} as naturally as a native reader would say it, pick the font whose FONT SAMPLES row looks closest to the raw lettering, and keep it short enough to letter at the raw size.
 
-TRANSLATION
-- Read the scene first: who speaks to whom, their relationship and rank, the emotion and intent, the lines before and after. Choose the meaning that fits the scene.
-- Each character keeps one voice for the whole chapter (cold: short and firm; powerful: weighty; close friends: casual). Never flatten everyone into the same neutral prose.
-- Translate the meaning, not the source sentence structure. If a line reads like a translation, rewrite it.
-- Keep it as short as the source line: say it the way a person says it aloud, drop what the scene already shows, and never explain, pad, split one sentence into two or add what the source does not say. Keep lore, relationships, threats, hesitation, sarcasm, implication and names.
-- max_chars is a hard ceiling, not a target. If a line cannot fit, rewrite it shorter; if it still cannot, set "review": true.
-- Names and terms: use the GLOSSARY exactly. People's names keep their source spelling; places, organisations, spells, techniques, titles, captions and signs are translated, never left in the source language. Use the same form every time, and tell a descriptive phrase from an organisation's name.
-- Punctuation carries the acting: keep "...", "-", "—", "?!" and "!!" as the source has them; never add "..." to a blunt speaker.
-- No memes, slang or jokes the source does not make.
-- Scanlator credits, watermarks and URLs get an empty translated_text.
-- A sound effect drawn into the art (large stylised letters, often Korean, Japanese or Chinese) stays art: role "sfx" and an empty translated_text; its original pixels are put back. Only a sound effect lettered as plain text gets a short onomatopoeia.
-
-LETTERING
-- role: dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text or sfx.
-- container: "bubble" (round or oval balloon), "spiky" (jagged shout balloon), "box" (rectangular caption or dialogue box), "screen" (system window, phone or UI panel) or "free" (lettered on the art, no container).
-- Font: dialogue.mac-dinh-3 is the base font; dialogue, thought and whisper always use it. A chapter uses at most 3 fonts, and each container kind keeps the font it first got (container_fonts in CHAPTER MEMORY); only shouts and threats may differ from their bubble or box. Use emphasis.bangers only for real shouts. Pick another font from FONTS only when IMAGE 1 letters the text in a clearly different style (a bold caption on the art, a screen, a skill name, a sound effect) that matches the FONT SAMPLES image, and prefer one already in fonts_in_use. When unsure, use the base font.
-- Line breaks: insert "\\n" at phrase boundaries; an oval bubble reads short, long, short. Never leave a lone word or punctuation mark on a line, and never split a name, a number from its unit, or a word.
-- Size: the translation is lettered where the source was, at about the source size, so a large source line stays a strong, short line. When free text or a caption would be too small to read (tiny notes, several captions in one box), set "enlarge": true and it is lettered bigger.
-- color (#rrggbb): the renderer measures the source colour. Add it only when IMAGE 1 uses a distinct colour the measurement could miss (red or glowing titles, coloured skill names, gradients).
-""".strip()
-
-_INPUT_IMAGES = """
-INPUT
-One vertical slice per request, in reading order.
-- IMAGE 1 is the ORIGINAL: read the text from it.
-- IMAGE 2 is the same slice with the text erased; each object's box is outlined in red and labelled with its id. An object's text is what IMAGE 1 shows inside its box, never text from elsewhere.
-- Each object has an id, source_text (an OCR hint, often empty or wrong), bbox_xyxy in image pixels and usually max_chars: how many characters, spaces included, fit where the source was lettered at about the source size.
-- CHAPTER MEMORY holds the GLOSSARY (names, terms and forms of address fixed for the chapter; never respell a name), story notes, the character sheet, the forms of address already fixed and the last lines. Treat it as settled unless the slice clearly contradicts it.
+RULES
+- source_text is an OCR hint, often wrong: trust IMAGE 1. max_chars is how many characters fit at the raw size, a hard ceiling. If a line cannot fit, shorten it; if it still cannot, set "review": true. If the raw text is too small to read at its size, set "enlarge": true.
+- Read the scene: who speaks to whom, their relationship, emotion and the lines around it. Each character keeps one voice; translate the meaning, never the source sentence structure, and add nothing the source does not say.
+- CHAPTER MEMORY is settled context: use its GLOSSARY names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
+- Keep the source punctuation ("...", "?!", "!!"); no memes or jokes the source does not make.
+- Scanlator credits, watermarks and URLs get an empty translated_text, and so does a sound effect drawn into the art (role "sfx"). A sound effect lettered as plain text gets a short onomatopoeia.
+- Font: dialogue.mac-dinh-3 is the base font and always letters dialogue, thought and whisper. A chapter uses at most 3 fonts: prefer fonts_in_use, and each container kind keeps the font in container_fonts. When unsure, use the base font.
+- Break lines with "\\n" at phrase boundaries; never leave a lone word on a line or split a name or word.
+- role: dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text or sfx. container: bubble, spiky, box, screen, or free (lettered on the art). Add "color" (#rrggbb) only for a distinct colour such as red or glowing titles.
 """.strip()
 
 _VIETNAMESE = """
@@ -72,14 +53,8 @@ Return every id exactly once, with a font_choices entry for each. In "characters
 """.strip()
 
 
-def _with_input(target_name: str, block: str) -> str:
-    base = _BASE.format(target=target_name)
-    head, rest = base.split("\n\nTRANSLATION\n", 1)
-    return f"{head}\n\n{block}\n\nTRANSLATION\n{rest}"
-
-
 def system_prompt(target_name: str, target_lang: str) -> str:
-    parts = [_with_input(target_name, _INPUT_IMAGES), "FONTS\n" + font_guide_prompt()]
+    parts = [_TASK.format(target=target_name), "FONTS\n" + font_guide_prompt()]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE)
     parts.append(_OUTPUT.format())
