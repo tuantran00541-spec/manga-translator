@@ -1,64 +1,54 @@
 {
- "url": "https://asurascans.com/comics/shadow-slave-05c7df14/chapter/1",
- "slices": 135,
+ "url": "https://asurascans.com/comics/solo-swordmaster-3ec3b16f/chapter/1",
+ "slices": 140,
  "cpu": "AMD EPYC 7763 64-Core Processor",
- "download_s": 17.4,
- "process_s": 577.0,
- "per_slice_s": 4.27,
+ "download_s": 12.2,
+ "process_s": 440.2,
+ "per_slice_s": 3.14,
  "time_s": {
-  "read_s": 15.7,
-  "detect_s": 487.2,
-  "auto_inpaint_s": 457.6,
+  "read_s": 7.7,
+  "detect_s": 372.7,
+  "auto_inpaint_s": 456.4,
   "manual_inpaint_s": 0.0,
-  "write_s": 21.9,
-  "total_s": 982.7,
-  "text_model_s": 487.2,
-  "second_pass_boxes": 3.0,
-  "lama_model_s": 208.1,
-  "lama_model_runs": 58.0,
-  "lama_regions": 58.0,
-  "smart_fill_regions": 106.0,
+  "write_s": 13.0,
+  "total_s": 850.1,
+  "text_model_s": 372.6,
+  "second_pass_boxes": 6.0,
+  "lama_model_s": 304.4,
+  "lama_model_runs": 96.0,
+  "lama_regions": 96.0,
+  "smart_fill_regions": 85.0,
   "session_lock_wait_s": 0.0,
   "ort_global_lock_wait_s": 0.0,
-  "seam_attempts": 49.0,
+  "seam_attempts": 12.0,
   "seam_failures": 0.0,
-  "seam_wall_s": 80.5,
-  "seam_text_model_s": 76.9,
-  "wall_s": 576.8,
+  "seam_wall_s": 12.6,
+  "seam_text_model_s": 11.9,
+  "wall_s": 440.0,
   "workers": 2.0
  },
- "blocks": 395,
- "blocks_left": 3,
+ "blocks": 224,
+ "blocks_left": 2,
  "left": [
   {
-   "slice": 43,
+   "slice": 54,
    "box": [
-    360,
-    1574,
-    475,
-    1812
+    275,
+    561,
+    511,
+    684
    ],
-   "px": 1770
+   "px": 4795
   },
   {
-   "slice": 43,
+   "slice": 54,
    "box": [
-    501,
-    1722,
-    597,
-    1814
+    406,
+    1597,
+    748,
+    1767
    ],
-   "px": 157
-  },
-  {
-   "slice": 47,
-   "box": [
-    729,
-    2095,
-    833,
-    2225
-   ],
-   "px": 1105
+   "px": 14229
   }
  ]
 }
