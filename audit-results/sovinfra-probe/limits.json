@@ -1,0 +1,236 @@
+[
+ {
+  "test": "count-1",
+  "images": 1,
+  "kb": 82,
+  "status": 200,
+  "s": 2.8,
+  "reply": "1",
+  "reasoning": "",
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 326,
+   "total_tokens": 328,
+   "completion_tokens": 2,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "multimodal_tokens": {
+     "image": 300
+    }
+   }
+  }
+ },
+ {
+  "test": "count-2",
+  "images": 2,
+  "kb": 164,
+  "status": 200,
+  "s": 1.1,
+  "reply": "2",
+  "reasoning": "",
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 628,
+   "total_tokens": 630,
+   "completion_tokens": 2,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "multimodal_tokens": {
+     "image": 600
+    }
+   }
+  }
+ },
+ {
+  "test": "count-3",
+  "images": 3,
+  "kb": 246,
+  "status": 422,
+  "s": 1.3,
+  "error": "{\"error\":{\"message\":\"The inference request was rejected as invalid.\",\"type\":\"invalid_request_error\",\"code\":\"upstream_invalid_request\"}}"
+ },
+ {
+  "test": "count-4",
+  "images": 4,
+  "kb": 328,
+  "status": 422,
+  "s": 1.3,
+  "error": "{\"error\":{\"message\":\"The inference request was rejected as invalid.\",\"type\":\"invalid_request_error\",\"code\":\"upstream_invalid_request\"}}"
+ },
+ {
+  "test": "count-6",
+  "images": 6,
+  "kb": 492,
+  "status": 422,
+  "s": 1.5,
+  "error": "{\"error\":{\"message\":\"The inference request was rejected as invalid.\",\"type\":\"invalid_request_error\",\"code\":\"upstream_invalid_request\"}}"
+ },
+ {
+  "test": "one-big",
+  "images": 1,
+  "kb": 483,
+  "status": 200,
+  "s": 2.8,
+  "reply": "CÀ PHÊ THẬT.\nKHÔNG PHẢI THỨ\nĐỒ TỔNG HỢP\nRẺ TIỀN TÔI VẪN\nTHƯỜNG KIẾM ĐƯỢC\nỞ KHU Ổ CHUỘT.",
+  "reasoning": "",
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 2774,
+   "total_tokens": 2827,
+   "completion_tokens": 53,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "multimodal_tokens": {
+     "image": 2752
+    }
+   }
+  }
+ },
+ {
+  "test": "two-big",
+  "images": 2,
+  "kb": 965,
+  "status": 200,
+  "s": 3.2,
+  "reply": "CÀ PHÊ THẬT.\nKHÔNG PHẢI THỨ ĐỒ TỔNG HỢP RẺ TIỀN TÔI VẪN THƯỜNG KIẾM ĐƯỢC Ở KHU Ổ CHUỘT.",
+  "reasoning": "",
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 5529,
+   "total_tokens": 5578,
+   "completion_tokens": 49,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "multimodal_tokens": {
+     "image": 5504
+    }
+   }
+  }
+ },
+ {
+  "test": "json-plain",
+  "images": 1,
+  "kb": 210,
+  "status": 200,
+  "s": 2.1,
+  "reply": "{\"lines\": [\"CÀ PHÊ THẬT.\", \"KHÔNG PHẢI THỨ\", \"ĐỒ TỔNG HỢP\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 1283,
+   "total_tokens": 1312,
+   "completion_tokens": 29,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "multimodal_tokens": {
+     "image": 1250
+    }
+   }
+  }
+ },
+ {
+  "test": "json-mode",
+  "images": 1,
+  "kb": 210,
+  "status": 200,
+  "s": 1.7,
+  "reply": "{\"lines\": [\"CÀ PHÊ THẬT.\", \"KHÔNG PHẢI THỨ\", \"ĐỒ TỔNG HỢP\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 1283,
+   "total_tokens": 1312,
+   "completion_tokens": 29,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "multimodal_tokens": {
+     "image": 1250
+    }
+   }
+  }
+ },
+ {
+  "test": "no-think-kwargs",
+  "images": 1,
+  "kb": 210,
+  "status": 200,
+  "s": 1.7,
+  "reply": "{\"lines\": [\"CÀ PHÊ THẬT.\", \"KHÔNG PHẢI THỨ\", \"ĐỒ TỔNG HỢP\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 1283,
+   "total_tokens": 1312,
+   "completion_tokens": 29,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "multimodal_tokens": {
+     "image": 1250
+    }
+   }
+  }
+ },
+ {
+  "test": "no-think-tag",
+  "images": 1,
+  "kb": 210,
+  "status": 200,
+  "s": 1.6,
+  "reply": "{\"lines\": [\"CÀ PHÊ THẬT.\", \"KHÔNG PHẢI THỨ\", \"ĐỒ TỔNG HỢP\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 1287,
+   "total_tokens": 1316,
+   "completion_tokens": 29,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "multimodal_tokens": {
+     "image": 1250
+    }
+   }
+  }
+ },
+ {
+  "test": "effort-none",
+  "images": 1,
+  "kb": 210,
+  "status": 200,
+  "s": 1.6,
+  "reply": "{\"lines\": [\"CÀ PHÊ THẬT.\", \"KHÔNG PHẢI THỨ\", \"ĐỒ TỔNG HỢP\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 1283,
+   "total_tokens": 1312,
+   "completion_tokens": 29,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "multimodal_tokens": {
+     "image": 1250
+    }
+   }
+  }
+ },
+ {
+  "test": "effort-low",
+  "images": 1,
+  "kb": 210,
+  "status": 200,
+  "s": 1.9,
+  "reply": "\n\n{\"lines\":[\"CÀ PHÊ THẬT.\", \"KHÔNG PHẢI THỨ\", \"ĐỒ TỔNG HỢP\"]}",
+  "reasoning": "The user wants the text extracted from the image. I see two text blocks in Vietnamese. The top one reads \"CÀ PHÊ THẬT.\" and the bottom one reads \"KHÔNG PHẢI THỨ ĐỒ TỔNG HỢP\". I need to provide these e",
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 1311,
+   "total_tokens": 1405,
+   "completion_tokens": 94,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "multimodal_tokens": {
+     "image": 1250
+    }
+   }
+  }
+ }
+]
