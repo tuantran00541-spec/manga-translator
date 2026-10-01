@@ -380,6 +380,7 @@ The project speeds up chapter production; it does not replace professional redra
 - **Vietnamese compound words** can split across two lines.
 - **Watermarks and site banners** are only partly erased.
 - On large manga pages with heavy black art, the cleanup can take a stroke of art that the detector boxed as text; the restore brush puts it back.
+- **Western comic pages are not the target**: the tool is tuned for webtoons. Small balloons that hug their text can be erased whole, and the text of balloons standing close together is joined into one block, so its translation runs over the art.
 - Perspective or warped lettering, curved text, hand-drawn SFX recreation, ambiguous OCR, heavily protected reader sites and typography that needs artistic judgment still need a person.
 
 The strongest use is a **reviewable production workstation with automation**, not a black-box batch converter.
