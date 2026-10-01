@@ -291,7 +291,7 @@ def test_review_stage_applies_each_slice_in_one_pass_without_duplicating_boxes(m
     reviews = {0: CleanReview(0, missed=((1, 2, 30, 40), (105, 105, 195, 150)), residue=((5, 5, 20, 20),),
                               restore=((300, 300, 400, 400), (0, 0, 50, 50))),
                1: CleanReview(1)}
-    monkeypatch.setattr(ai_job, "review_clean", lambda provider, model, key, index, a, b: (reviews[index], None))
+    monkeypatch.setattr(ai_job, "review_clean", lambda provider, model, key, index, a, b, **_: (reviews[index], None))
     calls = []
     monkeypatch.setattr(pipeline, "apply_review_fixes",
                         lambda chapter, index, **fixes: calls.append((index, fixes)), raising=False)
@@ -320,7 +320,7 @@ def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeyp
     monkeypatch.setattr(ai_job, "get_manifest_lock", lambda chapter_id: contextlib.nullcontext())
     monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: stored)
     monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, manifest: None)
-    monkeypatch.setattr(ai_job, "review_clean", lambda provider, model, key, index, a, b: (
+    monkeypatch.setattr(ai_job, "review_clean", lambda provider, model, key, index, a, b, **_: (
         CleanReview(0, residue=((330, 2830, 740, 3100),)), None))
     seen = []
     monkeypatch.setattr(pipeline, "apply_review_fixes",
@@ -361,7 +361,7 @@ def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
             return {"status": state["status"], "completed": len(state["done"]), "total": 3,
                     "done_indices": list(state["done"]), "errors": []}
 
-    def review_clean(provider, model, key, index, a, b):
+    def review_clean(provider, model, key, index, a, b, **_):
         reviewed_while_cleaning.append((index, state["status"] == "running"))
         return CleanReview(index), None
 

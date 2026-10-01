@@ -1,9 +1,10 @@
-"""Checkpoint 3 (raw vs clean review): prompt and parsing."""
+"""Checkpoint 3 (review of the cleaned slice): prompt and parsing."""
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 
+import cv2
 import numpy as np
 
 from app.ai_mode.vision_json import request_vision_json
@@ -21,24 +22,32 @@ CLEAN_REVIEW_EFFORT = "low"
 _BOX = '{"x1":0,"y1":0,"x2":0,"y2":0,"confidence":0.0}'
 
 CLEAN_REVIEW_PROMPT = (
-    "You do the final check of an automatic manga text cleanup. IMAGE 1 is the ORIGINAL slice; IMAGE 2 is the "
-    "same slice after the text was erased (CLEAN). Scan CLEAN top to bottom and edge to edge, inside and around "
-    "every bubble, caption box, dark area, gradient, panel border, screen and the art, and compare each spot "
-    "with IMAGE 1. Report three kinds of problem:\n"
-    "- missed: readable text left in CLEAN that someone says, thinks or narrates (dialogue, narration, captions, "
-    "system messages, comments on a screen, titles), in any language, even when only partly erased. It will be "
-    "erased and translated, so report every such line.\n"
-    "- residue: fragments of erased letters, ghost outlines, smears, blotches and leftover scanlator watermarks "
-    "or credits. They will be erased; nothing is translated.\n"
-    "- restore: artwork CLEAN damaged that holds no words: ornaments, patterns, drawn objects, the series logo. "
-    "The original pixels are put back untranslated, so list only artwork, never text a reader reads, whatever its "
-    "font, size or colour.\n"
-    "Leave sound effects drawn into the art unreported. "
+    "You do the final check of an automatic manga text cleanup. The image is one slice after its text was "
+    "erased; each green box marks a place where text was erased. Scan it top to bottom and edge to edge, inside "
+    "and around every bubble, caption box, dark area, gradient, panel border, screen and the art. Report two kinds "
+    "of problem:\n"
+    "- missed: readable text that someone says, thinks or narrates (dialogue, narration, captions, system "
+    "messages, comments on a screen, titles), in any language and anywhere on the slice, even when only partly "
+    "erased. It will be erased and translated, so report every such line.\n"
+    "- residue: fragments of erased letters, ghost outlines, smears and blotches in or touching a green box, and "
+    "leftover scanlator watermarks or credits anywhere. They will be erased; nothing is translated.\n"
+    "Leave sound effects drawn into the art and the art itself unreported. "
     + BOX_RULE
     + "Keep each box tight around the problem. "
-    "A list with nothing to report stays empty; a clean slice returns three empty lists. Return JSON only: "
-    f'{{"missed":[{_BOX}],"residue":[{_BOX}],"restore":[{_BOX}]}}'
+    "A list with nothing to report stays empty; a clean slice returns two empty lists. Return JSON only: "
+    f'{{"missed":[{_BOX}],"residue":[{_BOX}]}}'
 )
+ERASED_COLOR = (0, 170, 0)  # BGR green
+
+
+def mark_erased(clean: np.ndarray, boxes) -> np.ndarray:
+    """The clean slice with a thin green outline round each place where text was erased."""
+    marked = clean.copy()
+    thickness = max(2, clean.shape[1] // 500)
+    for x1, y1, x2, y2 in boxes:
+        cv2.rectangle(marked, (int(x1), int(y1)), (int(x2), int(y2)), ERASED_COLOR, thickness)
+    return marked
+
 
 @dataclass(frozen=True)
 class CleanReview:
@@ -106,11 +115,11 @@ def parse_clean_review(data: dict, page_index: int, width: int, height: int) -> 
 
 
 def review_clean(provider, model: str, api_key: str, page_index: int,
-                 original: np.ndarray, clean: np.ndarray) -> tuple[CleanReview, float | None]:
-    """Checkpoint 3: one request with the raw and the cleaned slice."""
+                 original: np.ndarray, clean: np.ndarray, boxes=()) -> tuple[CleanReview, float | None]:
+    """Checkpoint 3: one request with the cleaned slice and its erased places outlined (the raw slice never led to a restore)."""
     # This check thinks (low effort) so it looks at every part of the slice.
     result = request_vision_json(provider, model, api_key, CLEAN_REVIEW_PROMPT,
-                                 [("IMAGE 1: ORIGINAL", original), ("IMAGE 2: CLEAN", clean)], max_tokens=1200,
+                                 [("CLEAN SLICE", mark_erased(clean, boxes))], max_tokens=1200,
                                  reasoning_effort=CLEAN_REVIEW_EFFORT, stage="review")
     height, width = original.shape[:2]
     return parse_clean_review(result.data, page_index, width, height), result.estimated_cost_usd

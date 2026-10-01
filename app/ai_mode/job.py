@@ -410,7 +410,8 @@ class AIModeRunner:
         def check(page_index: int):
             """Ask the model about one slice and keep what applies to it; manifest reads stay off the event loop."""
             original, clean = self._images(page_index, "clean", PROCESSED_DIR)
-            found, cost = review_clean(self.provider, self.settings.model, self.api_key, page_index, original, clean)
+            found, cost = review_clean(self.provider, self.settings.model, self.api_key, page_index, original, clean,
+                                       boxes=self._page_boxes(page_index))
             found = settle_clean_review(found, self._page_boxes(page_index))
             crossing: dict[int, dict[str, list]] = {}
             found = replace(found, missed=self._in_core(page_index, found.missed, crossing, "missed"),
