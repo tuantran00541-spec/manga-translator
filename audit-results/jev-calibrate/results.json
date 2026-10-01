@@ -1,0 +1,602 @@
+{
+ "summary": {
+  "good": {
+   "natural": [
+    2.13,
+    2.65,
+    2.67,
+    2.68,
+    2.69,
+    2.74,
+    2.84,
+    2.85,
+    2.86,
+    2.89
+   ],
+   "clear": [
+    1.94,
+    1.98,
+    1.98,
+    1.98,
+    1.99,
+    1.99,
+    1.99,
+    1.99,
+    1.99,
+    2
+   ],
+   "faithful": [
+    1.91,
+    1.93,
+    1.93,
+    1.94,
+    1.96,
+    1.96,
+    1.97,
+    1.98,
+    1.99,
+    2
+   ],
+   "flagged": 0
+  },
+  "stiff": {
+   "natural": [
+    1.06,
+    1.2,
+    1.44,
+    1.45,
+    1.48,
+    1.7,
+    1.8,
+    1.97,
+    1.99,
+    2.43
+   ],
+   "clear": [
+    0.96,
+    1.17,
+    1.52,
+    1.54,
+    1.62,
+    1.84,
+    1.94,
+    1.99,
+    1.99,
+    2
+   ],
+   "faithful": [
+    1.16,
+    1.17,
+    1.63,
+    1.72,
+    1.84,
+    1.87,
+    1.96,
+    1.98,
+    1.98,
+    1.99
+   ],
+   "flagged": 5
+  },
+  "wrong": {
+   "natural": [
+    1.52,
+    1.61,
+    2.07,
+    2.1,
+    2.19,
+    2.25,
+    2.35,
+    2.42,
+    2.48,
+    2.71
+   ],
+   "clear": [
+    0.96,
+    1.14,
+    1.41,
+    1.5,
+    1.64,
+    1.64,
+    1.67,
+    1.73,
+    1.8,
+    1.84
+   ],
+   "faithful": [
+    0.01,
+    0.02,
+    0.02,
+    0.03,
+    0.03,
+    0.03,
+    0.11,
+    0.12,
+    0.27,
+    0.38
+   ],
+   "flagged": 10
+  },
+  "garbled": {
+   "natural": [
+    0.46,
+    0.57,
+    0.58,
+    0.81,
+    0.96,
+    1.16,
+    1.19,
+    1.42,
+    1.58,
+    2.2
+   ],
+   "clear": [
+    0.44,
+    0.45,
+    0.62,
+    0.82,
+    0.91,
+    1.11,
+    1.16,
+    1.31,
+    1.64,
+    1.82
+   ],
+   "faithful": [
+    0.7,
+    0.85,
+    1,
+    1.15,
+    1.2,
+    1.21,
+    1.26,
+    1.47,
+    1.72,
+    1.86
+   ],
+   "flagged": 9
+  }
+ },
+ "rows": [
+  {
+   "source": "Get out of here, now!",
+   "kind": "good",
+   "text": "Cút khỏi đây ngay!",
+   "scores": {
+    "natural": 2.89,
+    "clear": 1.99,
+    "faithful": 1.98
+   },
+   "status": 200
+  },
+  {
+   "source": "Get out of here, now!",
+   "kind": "stiff",
+   "text": "Hãy đi ra khỏi nơi này ở ngay bây giờ!",
+   "scores": {
+    "natural": 2.43,
+    "clear": 2,
+    "faithful": 1.99
+   },
+   "status": 200
+  },
+  {
+   "source": "Get out of here, now!",
+   "kind": "wrong",
+   "text": "Vào đây ngay!",
+   "scores": {
+    "natural": 2.42,
+    "clear": 1.5,
+    "faithful": 0.01
+   },
+   "status": 200
+  },
+  {
+   "source": "Get out of here, now!",
+   "kind": "garbled",
+   "text": "Ngay ra đây khỏi, cút đi nó!",
+   "scores": {
+    "natural": 1.58,
+    "clear": 1.64,
+    "faithful": 1.47
+   },
+   "status": 200
+  },
+  {
+   "source": "I won't let you die.",
+   "kind": "good",
+   "text": "Tôi sẽ không để cậu chết đâu.",
+   "scores": {
+    "natural": 2.74,
+    "clear": 1.99,
+    "faithful": 1.91
+   },
+   "status": 200
+  },
+  {
+   "source": "I won't let you die.",
+   "kind": "stiff",
+   "text": "Tôi sẽ không cho phép bạn để chết.",
+   "scores": {
+    "natural": 1.48,
+    "clear": 1.62,
+    "faithful": 1.72
+   },
+   "status": 200
+  },
+  {
+   "source": "I won't let you die.",
+   "kind": "wrong",
+   "text": "Tôi sẽ để cậu chết.",
+   "scores": {
+    "natural": 2.07,
+    "clear": 1.8,
+    "faithful": 0.03
+   },
+   "status": 200
+  },
+  {
+   "source": "I won't let you die.",
+   "kind": "garbled",
+   "text": "Chết không để tôi cậu sẽ.",
+   "scores": {
+    "natural": 0.46,
+    "clear": 0.45,
+    "faithful": 0.7
+   },
+   "status": 200
+  },
+  {
+   "source": "What the hell is going on here?!",
+   "kind": "good",
+   "text": "Chuyện quái gì đang xảy ra vậy?!",
+   "scores": {
+    "natural": 2.84,
+    "clear": 1.99,
+    "faithful": 1.94
+   },
+   "status": 200
+  },
+  {
+   "source": "What the hell is going on here?!",
+   "kind": "stiff",
+   "text": "Cái địa ngục gì đang đi tiếp ở đây?!",
+   "scores": {
+    "natural": 1.45,
+    "clear": 1.17,
+    "faithful": 1.17
+   },
+   "status": 200
+  },
+  {
+   "source": "What the hell is going on here?!",
+   "kind": "wrong",
+   "text": "Ở đây yên bình quá nhỉ?!",
+   "scores": {
+    "natural": 2.25,
+    "clear": 1.41,
+    "faithful": 0.12
+   },
+   "status": 200
+  },
+  {
+   "source": "What the hell is going on here?!",
+   "kind": "garbled",
+   "text": "Đang quái ra sao gì đây vậy chuyện?!",
+   "scores": {
+    "natural": 1.42,
+    "clear": 1.31,
+    "faithful": 1.72
+   },
+   "status": 200
+  },
+  {
+   "source": "You're stronger than you look.",
+   "kind": "good",
+   "text": "Cậu mạnh hơn vẻ ngoài đấy.",
+   "scores": {
+    "natural": 2.65,
+    "clear": 1.98,
+    "faithful": 1.96
+   },
+   "status": 200
+  },
+  {
+   "source": "You're stronger than you look.",
+   "kind": "stiff",
+   "text": "Bạn là mạnh hơn so với bạn nhìn.",
+   "scores": {
+    "natural": 1.2,
+    "clear": 1.54,
+    "faithful": 1.84
+   },
+   "status": 200
+  },
+  {
+   "source": "You're stronger than you look.",
+   "kind": "wrong",
+   "text": "Cậu yếu hơn tôi nghĩ.",
+   "scores": {
+    "natural": 2.48,
+    "clear": 1.84,
+    "faithful": 0.02
+   },
+   "status": 200
+  },
+  {
+   "source": "You're stronger than you look.",
+   "kind": "garbled",
+   "text": "Mạnh vẻ cậu ngoài hơn đấy trông.",
+   "scores": {
+    "natural": 0.96,
+    "clear": 0.91,
+    "faithful": 1.26
+   },
+   "status": 200
+  },
+  {
+   "source": "Don't worry. I'll handle it.",
+   "kind": "good",
+   "text": "Đừng lo. Để tôi lo.",
+   "scores": {
+    "natural": 2.68,
+    "clear": 1.99,
+    "faithful": 1.99
+   },
+   "status": 200
+  },
+  {
+   "source": "Don't worry. I'll handle it.",
+   "kind": "stiff",
+   "text": "Không lo lắng. Tôi sẽ xử lý nó.",
+   "scores": {
+    "natural": 1.99,
+    "clear": 1.99,
+    "faithful": 1.98
+   },
+   "status": 200
+  },
+  {
+   "source": "Don't worry. I'll handle it.",
+   "kind": "wrong",
+   "text": "Lo đi. Tôi mặc kệ đấy.",
+   "scores": {
+    "natural": 1.52,
+    "clear": 0.96,
+    "faithful": 0.27
+   },
+   "status": 200
+  },
+  {
+   "source": "Don't worry. I'll handle it.",
+   "kind": "garbled",
+   "text": "Lo đừng. Tôi để nó xử.",
+   "scores": {
+    "natural": 1.16,
+    "clear": 1.16,
+    "faithful": 1.2
+   },
+   "status": 200
+  },
+  {
+   "source": "Thanks to you, we survived.",
+   "kind": "good",
+   "text": "Nhờ có cậu mà bọn tôi mới sống sót.",
+   "scores": {
+    "natural": 2.67,
+    "clear": 1.98,
+    "faithful": 1.96
+   },
+   "status": 200
+  },
+  {
+   "source": "Thanks to you, we survived.",
+   "kind": "stiff",
+   "text": "Cảm ơn đến bạn, chúng tôi đã sống sót.",
+   "scores": {
+    "natural": 1.8,
+    "clear": 1.94,
+    "faithful": 1.96
+   },
+   "status": 200
+  },
+  {
+   "source": "Thanks to you, we survived.",
+   "kind": "wrong",
+   "text": "Vì cậu mà bọn tôi suýt chết.",
+   "scores": {
+    "natural": 2.19,
+    "clear": 1.67,
+    "faithful": 0.11
+   },
+   "status": 200
+  },
+  {
+   "source": "Thanks to you, we survived.",
+   "kind": "garbled",
+   "text": "Sống nhờ sót cậu tôi bọn mà.",
+   "scores": {
+    "natural": 0.81,
+    "clear": 0.82,
+    "faithful": 1
+   },
+   "status": 200
+  },
+  {
+   "source": "It's been a long time, old friend.",
+   "kind": "good",
+   "text": "Lâu rồi không gặp, bạn cũ.",
+   "scores": {
+    "natural": 2.69,
+    "clear": 1.99,
+    "faithful": 1.93
+   },
+   "status": 200
+  },
+  {
+   "source": "It's been a long time, old friend.",
+   "kind": "stiff",
+   "text": "Nó đã là một thời gian dài, người bạn già.",
+   "scores": {
+    "natural": 1.7,
+    "clear": 1.84,
+    "faithful": 1.87
+   },
+   "status": 200
+  },
+  {
+   "source": "It's been a long time, old friend.",
+   "kind": "wrong",
+   "text": "Mới gặp hôm qua mà, người lạ.",
+   "scores": {
+    "natural": 2.35,
+    "clear": 1.73,
+    "faithful": 0.03
+   },
+   "status": 200
+  },
+  {
+   "source": "It's been a long time, old friend.",
+   "kind": "garbled",
+   "text": "Gặp lâu bạn rồi không cũ.",
+   "scores": {
+    "natural": 1.19,
+    "clear": 1.11,
+    "faithful": 1.15
+   },
+   "status": 200
+  },
+  {
+   "source": "The gate will open at midnight.",
+   "kind": "good",
+   "text": "Cổng sẽ mở lúc nửa đêm.",
+   "scores": {
+    "natural": 2.86,
+    "clear": 2,
+    "faithful": 2
+   },
+   "status": 200
+  },
+  {
+   "source": "The gate will open at midnight.",
+   "kind": "stiff",
+   "text": "Cái cổng sẽ được mở ra tại thời điểm nửa đêm.",
+   "scores": {
+    "natural": 1.97,
+    "clear": 1.99,
+    "faithful": 1.98
+   },
+   "status": 200
+  },
+  {
+   "source": "The gate will open at midnight.",
+   "kind": "wrong",
+   "text": "Cổng sẽ đóng lúc bình minh.",
+   "scores": {
+    "natural": 2.71,
+    "clear": 1.64,
+    "faithful": 0.03
+   },
+   "status": 200
+  },
+  {
+   "source": "The gate will open at midnight.",
+   "kind": "garbled",
+   "text": "Nửa mở cổng sẽ đêm lúc.",
+   "scores": {
+    "natural": 0.57,
+    "clear": 0.44,
+    "faithful": 0.85
+   },
+   "status": 200
+  },
+  {
+   "source": "Are you out of your mind?!",
+   "kind": "good",
+   "text": "Cậu điên rồi à?!",
+   "scores": {
+    "natural": 2.85,
+    "clear": 1.98,
+    "faithful": 1.97
+   },
+   "status": 200
+  },
+  {
+   "source": "Are you out of your mind?!",
+   "kind": "stiff",
+   "text": "Bạn có ở bên ngoài tâm trí của bạn không?!",
+   "scores": {
+    "natural": 1.06,
+    "clear": 0.96,
+    "faithful": 1.16
+   },
+   "status": 200
+  },
+  {
+   "source": "Are you out of your mind?!",
+   "kind": "wrong",
+   "text": "Cậu thông minh thật đấy?!",
+   "scores": {
+    "natural": 1.61,
+    "clear": 1.14,
+    "faithful": 0.38
+   },
+   "status": 200
+  },
+  {
+   "source": "Are you out of your mind?!",
+   "kind": "garbled",
+   "text": "Rồi điên à cậu à?!",
+   "scores": {
+    "natural": 2.2,
+    "clear": 1.82,
+    "faithful": 1.86
+   },
+   "status": 200
+  },
+  {
+   "source": "I'll never forgive you for this.",
+   "kind": "good",
+   "text": "Tôi sẽ không bao giờ tha thứ cho ngươi chuyện này.",
+   "scores": {
+    "natural": 2.13,
+    "clear": 1.94,
+    "faithful": 1.93
+   },
+   "status": 200
+  },
+  {
+   "source": "I'll never forgive you for this.",
+   "kind": "stiff",
+   "text": "Tôi sẽ không bao giờ tha thứ bạn cho cái này.",
+   "scores": {
+    "natural": 1.44,
+    "clear": 1.52,
+    "faithful": 1.63
+   },
+   "status": 200
+  },
+  {
+   "source": "I'll never forgive you for this.",
+   "kind": "wrong",
+   "text": "Tôi tha thứ cho ngươi rồi.",
+   "scores": {
+    "natural": 2.1,
+    "clear": 1.64,
+    "faithful": 0.02
+   },
+   "status": 200
+  },
+  {
+   "source": "I'll never forgive you for this.",
+   "kind": "garbled",
+   "text": "Tha bao giờ không ngươi tôi này chuyện.",
+   "scores": {
+    "natural": 0.58,
+    "clear": 0.62,
+    "faithful": 1.21
+   },
+   "status": 200
+  }
+ ]
+}
