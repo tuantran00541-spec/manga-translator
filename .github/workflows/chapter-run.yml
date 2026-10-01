@@ -10,18 +10,12 @@ on:
       chapter_url:
         description: "Chapter to clean"
         required: false
-      save_slices:
-        description: "Slice numbers to save whole, comma separated"
-        required: false
-      lama_model:
-        description: "Inpaint model: manga (default) or biglama (one-off comparison)"
-        required: false
 
 permissions:
   contents: write
 
 concurrency:
-  group: chapter-run-${{ github.ref }}-${{ github.event.inputs.chapter_url }}-${{ github.event.inputs.lama_model }}
+  group: chapter-run-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -67,37 +61,13 @@ jobs:
       - name: Build the CTD mask model
         uses: ./.github/actions/build-ctd
 
-      - name: Swap in Big-LaMa
-        if: github.event.inputs.lama_model == 'biglama'
-        run: |
-          curl -sSL -o models/lama-manga-dynamic.onnx https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx
-          echo "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6  models/lama-manga-dynamic.onnx" | sha256sum -c
-          python -m pip install --only-binary :all: onnx==1.17.0
-          # Carve's file is fixed at 512 px with 0..255 output; the app wants any size and 0..1.
-          python - <<'PY'
-          import numpy as np, onnx
-          from onnx import helper, numpy_helper
-          path = "models/lama-manga-dynamic.onnx"
-          m = onnx.load(path)
-          for v in m.graph.input:
-              v.type.tensor_type.shape.dim[2].dim_param = "height"
-              v.type.tensor_type.shape.dim[3].dim_param = "width"
-          for n in m.graph.node:
-              n.output[:] = ["raw255" if o == "output" else o for o in n.output]
-          m.graph.initializer.append(numpy_helper.from_array(np.array(255.0, np.float32), "k255"))
-          m.graph.node.append(helper.make_node("Div", ["raw255", "k255"], ["inpainted"]))
-          m.graph.output[0].name = "inpainted"
-          onnx.save(m, path)
-          PY
-          echo "22923b852e34fa326a5afb9ef8df1beed29eedcc0b671f10f84235d98c916931  models/lama-manga-dynamic.onnx" | sha256sum -c
-
       - name: Check the models are there
         run: |
           ls -la models
           test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha_text_1280.onnx
 
       - name: Process the whole chapter
-        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run --save-slices "${{ github.event.inputs.save_slices }}"
+        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run
 
       - name: Save evidence to audit-evidence
         if: always()
