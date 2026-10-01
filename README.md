@@ -12,12 +12,12 @@ Give it a chapter URL or a folder of images. It erases the original lettering, t
 **Import → Slice → Detect → Clean → Review → OCR → Translate → Letter → Render → Export**
 
 <p align="center">
-  <img src="docs/images/demo-raw.jpg" alt="Original test page with a glowing caption, a speech bubble and outlined narration" width="32%">
-  <img src="docs/images/demo-mask.jpg" alt="The erase mask the app builds, in green" width="32%">
-  <img src="docs/images/demo-clean.jpg" alt="The page after cleanup" width="32%">
+  <img src="docs/images/demo-raw.jpg" alt="Original English page with two speech balloons" width="32%">
+  <img src="docs/images/demo-clean.jpg" alt="The same page after cleanup, balloons empty" width="32%">
+  <img src="docs/images/demo-translated.jpg" alt="The page translated to Vietnamese by A.I mode" width="32%">
 </p>
 
-<p align="center"><sub>An original test page (drawn for this README, not taken from any series): RAW → erase mask → CLEAN. The glowing caption, the speech bubble and the white-outlined narration are gone; the bubble outline, stars, moon and tower stay.</sub></p>
+<p align="center"><sub>RAW → CLEAN → translated to Vietnamese by A.I mode, cropped from page 3 of <a href="https://www.peppercarrot.com/en/webcomic/ep38_The-Healer.html">Pepper&amp;Carrot episode 38, “The Healer”</a> by David Revoy, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. The lettering was erased and the translation lettered by this app.</sub></p>
 
 > **Automation proposes. Editorial state decides. Published artifacts must match the current state.**
 

@@ -12,6 +12,7 @@ from app.downloader.generic_js import GenericJsAdapter
 from app.downloader.http import read_response_limited, safe_get
 from app.downloader.image_urls import best_srcset_candidate, resolve_image_candidate
 from app.parameters import (
+    DOWNLOAD_JS_MIN_IMAGE_WIDTH,
     DOWNLOAD_STATIC_MIN_DECLARED_WIDTH,
     REMOTE_CONNECT_TIMEOUT_SECONDS,
 )
@@ -106,4 +107,18 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
         reason = "; ".join(str(item)[:200] for item in failures)
         raise ValueError("Không tìm thấy ảnh chương hợp lệ từ URL này" + (f" ({reason})" if reason else ""))
 
-    return STATIC_ADAPTER.download_urls(selected, output_dir, referer=chapter_url)
+    # Vector logos and icons are never comic pages, and a wide site logo passes the browser's width bar.
+    selected = [url for url in selected if not url.lower().split("?")[0].endswith(".svg")] or selected
+    paths = STATIC_ADAPTER.download_urls(selected, output_dir, referer=chapter_url)
+    # Static HTML gives no rendered sizes, so thumbnails and logos are dropped by the browser path's width bar.
+    pages = [path for path in paths if _image_width(path) >= DOWNLOAD_JS_MIN_IMAGE_WIDTH]
+    for path in set(paths) - set(pages):
+        path.unlink(missing_ok=True)
+    return pages or paths
+
+
+def _image_width(path: Path) -> int:
+    from PIL import Image
+
+    with Image.open(path) as image:
+        return image.width
