@@ -19,76 +19,76 @@
   ]
  },
  "text": {
-  "objects": 142,
-  "translated": 142,
-  "untranslated": 0,
-  "needs_review": 5,
+  "objects": 136,
+  "translated": 135,
+  "untranslated": 1,
+  "needs_review": 2,
   "kept_original": 0
  },
  "spend": {
-  "cost_usd": 0.25331,
-  "requests": 405,
-  "prompt_tokens": 2377610,
-  "images": 798,
-  "wall_s": 1127.1,
+  "cost_usd": 0.21755,
+  "requests": 381,
+  "prompt_tokens": 2021002,
+  "images": 678,
+  "wall_s": 1042.8,
   "by_stage": {
    "scan": {
     "requests": 34,
     "images": 135,
     "prompt_tokens": 179980,
-    "completion_tokens": 13147
+    "completion_tokens": 13407
    },
    "glossary": {
     "requests": 20,
     "images": 120,
     "prompt_tokens": 321885,
-    "completion_tokens": 6663
+    "completion_tokens": 6642
    },
    "review": {
     "requests": 120,
-    "images": 240,
-    "prompt_tokens": 731826,
-    "completion_tokens": 26215
+    "images": 120,
+    "prompt_tokens": 380733,
+    "completion_tokens": 25597
    },
    "translate": {
     "requests": 101,
     "images": 303,
-    "prompt_tokens": 1067770,
-    "completion_tokens": 29207
+    "prompt_tokens": 1077996,
+    "completion_tokens": 29099
    },
    "judge": {
-    "requests": 126,
+    "requests": 103,
     "images": 0,
-    "prompt_tokens": 66082,
+    "prompt_tokens": 53210,
     "completion_tokens": 0
    },
    "polish": {
-    "requests": 4,
+    "requests": 3,
     "images": 0,
-    "prompt_tokens": 10067,
-    "completion_tokens": 1684
+    "prompt_tokens": 7198,
+    "completion_tokens": 671
    }
   },
   "stage_s": {
-   "download": 13.5,
-   "scan": 48.8,
-   "clean": 648.0,
-   "review": 11.9,
-   "translate": 289.4,
-   "polish": 64.6,
-   "render": 49.4,
+   "download": 13.4,
+   "scan": 59.1,
+   "clean": 640.4,
+   "review": 8.4,
+   "translate": 230.5,
+   "polish": 36.6,
+   "render": 50.4,
    "finish": 0.2
   }
  },
  "polish": {
-  "judged": 85,
-  "flagged": 15,
-  "rewritten": 10,
-  "still_flagged": 11
+  "judged": 86,
+  "flagged": 9,
+  "rewritten": 4,
+  "still_flagged": 6
  },
  "fit": {
   "does_not_fit": 0,
-  "under_20px": 0,
+  "under_20px": 1,
   "split_word": 0,
   "missing_glyphs": 1
  }
