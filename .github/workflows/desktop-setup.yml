@@ -7,6 +7,8 @@ on:
   release:
     types: [published]
   push:
+    # Tags are built by their release, not here.
+    branches: ['**']
     paths:
       - installer/**
       - install.ps1
@@ -16,7 +18,7 @@ on:
       - .github/workflows/desktop-setup.yml
 
 concurrency:
-  group: desktop-setup-${{ github.ref }}
+  group: desktop-setup-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
