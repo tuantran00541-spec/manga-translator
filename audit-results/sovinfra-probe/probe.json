@@ -1,0 +1,41 @@
+{
+ "models": {
+  "status": 401,
+  "body": "{\"error\":{\"message\":\"Invalid API key.\",\"type\":\"authentication_error\",\"code\":\"invalid_api_key\"}}"
+ },
+ "tests": [
+  {
+   "test": "hello",
+   "model": "qwen3.8-27b",
+   "image": [
+    96,
+    160
+   ],
+   "status": 401,
+   "s": 0.5,
+   "error": "{\"error\":{\"message\":\"Invalid API key.\",\"type\":\"authentication_error\",\"code\":\"invalid_api_key\"}}"
+  },
+  {
+   "test": "page",
+   "model": "qwen3.8-27b",
+   "image": [
+    1600,
+    800
+   ],
+   "status": 401,
+   "s": 1.0,
+   "error": "{\"error\":{\"message\":\"Invalid API key.\",\"type\":\"authentication_error\",\"code\":\"invalid_api_key\"}}"
+  },
+  {
+   "test": "page-again",
+   "model": "qwen3.8-27b",
+   "image": [
+    1600,
+    800
+   ],
+   "status": 401,
+   "s": 1.1,
+   "error": "{\"error\":{\"message\":\"Invalid API key.\",\"type\":\"authentication_error\",\"code\":\"invalid_api_key\"}}"
+  }
+ ]
+}
