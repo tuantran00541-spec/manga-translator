@@ -423,7 +423,9 @@ def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     total_h = line_height * len(lines)
     max_line_w = max(draw.textbbox((0, 0), line, font=font)[2] for line in lines)
-    return total_h <= box_h and max_line_w <= box_w, lines
+    # A word broken across lines ("Khôn/g...") does not fit; a smaller size is tried first.
+    whole = [word for line in lines for word in line.split()] == text.split()
+    return whole and total_h <= box_h and max_line_w <= box_w, lines
 
 
 def _fit_text(

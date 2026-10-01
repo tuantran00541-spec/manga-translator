@@ -202,7 +202,10 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
     boxes = [(obj["bbox_xyxy"], str(obj["id"]), MARK_COLOR) for obj in objects]
     boxes += [(box, ELSEWHERE_LABEL, ELSEWHERE_COLOR) for box in elsewhere]
     for box, label, color in boxes:
+        # Outlined just outside the box, so the line never covers the letters the model reads.
+        pad = 2 * thickness
         x1, y1, x2, y2 = (int(v) for v in box)
+        x1, y1, x2, y2 = x1 - pad, y1 - pad, x2 + pad, y2 + pad
         cv2.rectangle(marked, (x1, y1), (x2, y2), color, thickness)
         (tw, th), base = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
         ty = max(th + base, y1)

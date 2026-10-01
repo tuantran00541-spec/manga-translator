@@ -468,7 +468,8 @@ def test_text_lettered_by_the_next_slice_is_shown_but_kept_out_of_every_translat
     assert '"lettered_elsewhere":[[20,400,380,560]]' in prompt and "never fold its words" in prompt
     marked = cv2.imdecode(np.frombuffer(base64.b64decode(parts[-2]["image_url"]["url"].split(",", 1)[1]), np.uint8),
                           cv2.IMREAD_COLOR)
-    assert np.abs(marked[480, 20].astype(int) - ELSEWHERE_COLOR).max() < 40, "the grey box is drawn on the slice"
+    assert np.abs(marked[480, 16].astype(int) - ELSEWHERE_COLOR).max() < 40, "the grey box is drawn on the slice"
+    assert marked[480, 22].min() > 200, "outlined just outside the box, never over its letters"
 
 
 def test_lines_outside_every_box_come_back_as_pixel_boxes(tmp_path, monkeypatch):

@@ -63,3 +63,15 @@ def test_a_vietnamese_word_is_not_split_across_lines():
     lines = _wrap_text(draw, text, font, width, balance=True)
     assert len(lines) == len(_wrap_text(draw, text, font, width)), "as many lines, so the size still fits"
     assert any("HUẤN LUYỆN" in line for line in lines) and any("ĐẶC BIỆT" in line for line in lines), lines
+
+
+def test_a_narrow_box_shrinks_the_letters_before_it_breaks_a_word():
+    # Shadow Slave 1, slice 114: "Không..." in a narrow box was lettered "Khôn / g...".
+    from PIL import ImageDraw
+
+    from app.config import DEFAULT_FONT
+    from app.render.text_renderer import _fit_text
+
+    draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    size, lines, fits = _fit_text(draw, "Không...", 120, 400, str(DEFAULT_FONT), maximum_size=120)
+    assert lines == ["Không..."] and fits, f"kept whole at {size}px"
