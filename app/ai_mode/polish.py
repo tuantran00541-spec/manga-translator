@@ -34,8 +34,7 @@ QUESTIONS = {
         "criteria": ["says something else", "drops or adds part of the meaning", "keeps the meaning"],
     },
 }
-# A line under one of these is sent back. On 40 hand-labelled lines they flag no good line and 9 of 10
-# word-for-word, 10 of 10 wrong-meaning and 9 of 10 garbled ones; good lines scored at least 2.13, 1.94 and 1.91.
+# A line under one is sent back; on 40 labelled lines these flag no good line and 28 of 30 bad ones.
 LIMITS = {"natural": 2.0, "clear": 1.8, "faithful": 1.5}
 PROBLEMS = {
     "natural": "it sounds unnatural or word-for-word in Vietnamese",
