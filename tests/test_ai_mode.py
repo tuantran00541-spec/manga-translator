@@ -286,7 +286,7 @@ def test_review_sends_crops_on_sheets_and_erases_the_flagged_ones_again(monkeypa
     box_a, box_b = {"x1": 100, "y1": 100, "x2": 200, "y2": 160}, {"x1": 10, "y1": 300, "x2": 90, "y2": 340}
     runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [box_a, box_b]}, {"boxes": [box_a]}]})
     monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
-    monkeypatch.setattr(runner, "_images", lambda index, key, root: (None, np.full((600, 400, 3), 255, np.uint8)))
+    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.full((600, 400, 3), 255, np.uint8),) * 2)
     sheets = []
 
     def review_sheet(provider, model, key, sheet, crops):
@@ -314,7 +314,7 @@ def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeyp
     runner = _runner(monkeypatch, "review", stored)
     runner._scan_logos[0] = [watermark]
     monkeypatch.setattr(runner, "_active_pages", lambda: [0])
-    monkeypatch.setattr(runner, "_images", lambda index, key, root: (None, np.full((3200, 900, 3), 255, np.uint8)))
+    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.full((3200, 900, 3), 255, np.uint8),) * 2)
     monkeypatch.setattr(ai_job, "get_manifest_lock", lambda chapter_id: contextlib.nullcontext())
     monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: stored)
     monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, manifest: None)
@@ -357,7 +357,7 @@ def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
             return {"status": state["status"], "completed": len(state["done"]), "total": 3,
                     "done_indices": list(state["done"]), "errors": []}
 
-    def crops_for(index, clean, boxes):
+    def crops_for(index, original, clean, boxes):
         reviewed_while_cleaning.append((index, state["status"] == "running"))
         return []
 

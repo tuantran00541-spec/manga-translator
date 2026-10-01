@@ -43,13 +43,14 @@ PROBLEMS = {
 }
 
 REWRITE_PROMPT = (
-    "You edit a Vietnamese comic translation. Each item has the SOURCE line, the current TRANSLATION, the lines "
-    "before and after it, and what a reviewer found wrong. Rewrite each TRANSLATION so it keeps exactly what the "
-    "source says and reads as natural Vietnamese a reader of this comic expects. Keep the names, terms and forms of "
-    "address in CHAPTER MEMORY, the source punctuation (every \"...\", \"?!\", \"!!\" and \"—\"), sentence case, "
-    "line breaks (\\n between phrases, as many lines as the current translation), and stay within max_chars when "
-    "it is given. If the reviewer is wrong and the translation is already right, "
-    "return it unchanged. JSON only: {\"rewrites\":[{\"id\":\"<id>\",\"text\":\"<the rewritten line>\"}]}"
+    "INPUT: lines of a Vietnamese comic translation. Each item has the SOURCE line, the current TRANSLATION, "
+    "the lines before and after it, and the problem a reviewer found.\n"
+    "TASK: rewrite each TRANSLATION so it says exactly what SOURCE says, as natural Vietnamese a reader of this "
+    "comic expects.\n"
+    "KEEP: the names, terms and forms of address in CHAPTER MEMORY; the source punctuation (every \"...\", "
+    "\"?!\", \"!!\" and \"—\"); sentence case; the line breaks (\\n between phrases, as many lines as the current "
+    "translation); max_chars when given. If the reviewer is wrong, return the translation unchanged.\n"
+    'ANSWER with JSON only: {"rewrites":[{"id":"<id>","text":"<the rewritten line>"}]}'
 )
 
 

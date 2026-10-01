@@ -1,4 +1,4 @@
-"""Checkpoint 3: crops round every erased place, packed onto a few sheets, checked for residue."""
+"""Checkpoint 3: raw | clean crop pairs round every erased place, packed onto a few sheets, checked for residue."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,11 +20,14 @@ GAP_PX = 8
 CLEAN_REVIEW_EFFORT = "low"
 
 CLEAN_REVIEW_PROMPT = (
-    "You do the final check of an automatic manga text cleanup. The image is a sheet of crops; each crop shows "
-    "one place on a slice where text was erased, with its id in the black tag above it. For each crop decide "
-    "whether fragments of the erased letters, ghost outlines, smears or blotches are left. Clean backgrounds, "
-    "drawn art, balloon outlines, sound effects and text on a sign that was never erased are not residue. "
-    'Return JSON only: {"residue":["<id>"]} with the ids that need another erase, or an empty list.'
+    "IMAGE: a sheet of crop pairs from a manga chapter. In each pair LEFT is the raw crop with its text and RIGHT "
+    "is the same place after the text was erased; the pair's id is in the black tag above it.\n"
+    "QUESTION: compared with LEFT, does RIGHT still show any of the erased text: letter fragments, ghost outlines, "
+    "smears or blotches?\n"
+    "Text that looks the same in LEFT and RIGHT was kept on purpose; clean background, art and balloon outlines "
+    "are not residue.\n"
+    'ANSWER with JSON only: {"residue":["<id>"]} listing the ids whose RIGHT must be erased again, [] when all '
+    "are clean."
 )
 
 
@@ -36,8 +39,8 @@ class Crop:
     image: np.ndarray
 
 
-def crops_for(page_index: int, clean: np.ndarray, boxes) -> list[Crop]:
-    """One crop of the clean slice round each erased box."""
+def crops_for(page_index: int, original: np.ndarray, clean: np.ndarray, boxes) -> list[Crop]:
+    """One raw | clean pair round each erased box."""
     h, w = clean.shape[:2]
     out = []
     for n, (x1, y1, x2, y2) in enumerate(boxes):
@@ -45,7 +48,8 @@ def crops_for(page_index: int, clean: np.ndarray, boxes) -> list[Crop]:
         cx2, cy2 = min(w, x2 + CROP_PAD_PX), min(h, y2 + CROP_PAD_PX)
         if cx2 - cx1 < MIN_SIDE_PX or cy2 - cy1 < MIN_SIDE_PX:
             continue
-        crop = clean[cy1:cy2, cx1:cx2]
+        before, after = original[cy1:cy2, cx1:cx2], clean[cy1:cy2, cx1:cx2]
+        crop = np.hstack([before, np.full((before.shape[0], GAP_PX, 3), 255, np.uint8), after])
         scale = min(1.0, MAX_CROP_SIDE / max(crop.shape[:2]))
         if scale < 1.0:
             crop = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)

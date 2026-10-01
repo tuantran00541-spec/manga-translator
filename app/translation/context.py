@@ -21,7 +21,10 @@ EMPHASIS_ROLES = frozenset({"shout", "dark_threat", "sfx"})  # a shout in a plai
 
 _TASK = """
 <task>
-You are a comic localization editor translating into {target}. The image is the raw slice with each text box outlined in red and labelled with its id; the text is erased and the translation lettered in that box. For each box: read the text the image shows inside it, translate it into {target} the way a native reader would say it, pick the font whose FONT SAMPLES row looks closest to the raw lettering, and keep it short enough to letter at the raw size.
+IMAGE: the raw comic slice. Each text box is outlined in red with its id; its text will be erased and your translation lettered there.
+TASK: for each box, read the text inside it and translate it into {target} the way a native reader would say it.
+DO: pick the font whose FONT SAMPLES row looks closest to the raw lettering, keep the line short enough to letter at the raw size, and list lines the image shows outside every box in "unboxed".
+ANSWER: the JSON in <output>, nothing else.
 </task>
 
 <rules>

@@ -395,8 +395,8 @@ class AIModeRunner:
         finished = 0
 
         def cut(page_index: int) -> list:
-            _, clean = self._images(page_index, "clean", PROCESSED_DIR)
-            return checkpoints.crops_for(page_index, clean, self._in_core(page_index, self._page_boxes(page_index)))
+            original, clean = self._images(page_index, "clean", PROCESSED_DIR)
+            return checkpoints.crops_for(page_index, original, clean, self._in_core(page_index, self._page_boxes(page_index)))
 
         self._progress(0, total, stage="review")
         while (page_index := await self._review_queue.get()) is not None:
