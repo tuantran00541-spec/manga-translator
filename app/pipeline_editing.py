@@ -82,6 +82,18 @@ def _paint_residue(mask: np.ndarray, clean: np.ndarray | None, rect: tuple[int, 
     mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
 
 
+COVERED_SHARE = 0.3  # of the smaller box; a new box sharing this much with an old one holds the same text
+
+
+def _box_overlap(a: dict, b: dict) -> float:
+    """Shared area over the smaller box's area."""
+    ix = min(a["x2"], b["x2"]) - max(a["x1"], b["x1"])
+    iy = min(a["y2"], b["y2"]) - max(a["y1"], b["y1"])
+    if ix <= 0 or iy <= 0:
+        return 0.0
+    return ix * iy / max(1, min((a["x2"] - a["x1"]) * (a["y2"] - a["y1"]), (b["x2"] - b["x1"]) * (b["y2"] - b["y1"])))
+
+
 def _stroke_box(image: np.ndarray, rect: tuple[int, int, int, int]) -> dict:
     """A manual box masked by the letters inside it; a rectangle only when no letters stand out."""
     from app.detector.kiuyha_detector import letter_mask
@@ -345,6 +357,7 @@ class PipelineEditingMixin:
         preserve: list[tuple[int, int, int, int]] = (),
         boxes: list[tuple[int, int, int, int]] = (),
         repaint: list[tuple[int, int, int, int]] = (),
+        skip_covered: bool = False,
     ) -> dict:
         """Add preserve regions, manual boxes and repaint areas with one re-inpaint of the page."""
         processed_dir = PROCESSED_DIR / chapter_id
@@ -374,6 +387,10 @@ class PipelineEditingMixin:
 
             added_preserve = [dict(zip(("x1", "y1", "x2", "y2"), r)) for r in map(clip, preserve) if r]
             new_boxes = [_stroke_box(image, r) for r in map(clip, boxes) if r]
+            if skip_covered:
+                # A box that grew over the letters of a box already there would letter that text twice.
+                active = [b for b in boxes_snapshot if not b.get("removed")]
+                new_boxes = [b for b in new_boxes if not any(_box_overlap(b, other) >= COVERED_SHARE for other in active)]
             preserve_regions = old_preserve + added_preserve
             boxes_snapshot.extend(copy.deepcopy(new_boxes))
 

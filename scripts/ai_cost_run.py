@@ -107,7 +107,8 @@ def _objects(pages: list) -> list[dict]:
                    "overlap_context_only": bool(box.get("overlap_context_only")), "removed": bool(box.get("removed"))}
                   for box in page.get("boxes") or [] if isinstance(box, dict)],
         "objects": [{"id": obj.get("id"), "region": obj.get("region"), "source_boxes": obj.get("source_boxes"),
-                     "translation": obj.get("translation"),
+                     "translation": obj.get("translation"), "role": obj.get("typography_role"),
+                     "container": obj.get("container"), "font": obj.get("font_ai_id"),
                      "seam_owner": obj.get("seam_owner"), "overlap_dropped": obj.get("overlap_dropped"),
                      "source_missing": obj.get("source_missing")}
                     for obj in page.get("text_objects") or [] if isinstance(obj, dict)],
@@ -170,13 +171,6 @@ def _slice_width(chapter_id: str, index: int) -> int:
     return 800
 
 
-TRANSPORT_STAGES = (
-    ("You are preparing manga", "scan"),
-    ("You check an automatic manga", "review"),
-    ("ROLE You are a veteran comic localization", "translate"),
-)
-
-
 def _transport(path: Path) -> dict:
     """Per stage: requests, latency, payload size, tokens and retries from the gateway trace."""
     if not path.is_file():
@@ -184,9 +178,7 @@ def _transport(path: Path) -> dict:
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     stages: dict[str, list[dict]] = {}
     for row in rows:
-        head = str(row.get("prompt_head") or "")
-        stage = next((name for prefix, name in TRANSPORT_STAGES if head.startswith(prefix)), "other")
-        stages.setdefault(stage, []).append(row)
+        stages.setdefault(str(row.get("stage") or "other"), []).append(row)
     summary = {}
     for stage, items in stages.items():
         ms = sorted(int(r.get("ms") or 0) for r in items)
@@ -209,12 +201,33 @@ def _transport(path: Path) -> dict:
     return summary
 
 
+def _scorecard(pages: list, report: dict, out: Path) -> dict:
+    """Score the chapter and save each place the cleanup left text or a ghost, original beside clean."""
+    from scripts.scorecard import score_chapter
+    from app.config import KIUYHA_TEXT_MODEL
+    from app.detector.kiuyha_detector import KiuyhaTextDetector
+
+    card = score_chapter(pages, KiuyhaTextDetector(KIUYHA_TEXT_MODEL), report)
+    folder = out / "leftovers"
+    folder.mkdir(parents=True, exist_ok=True)
+    for number, item in enumerate(card["clean"]["items"], start=1):
+        page = pages[item["slice"] - 1]
+        x1, y1, x2, y2 = item["box"]
+        crops = [cv2.imread(str(page[key]))[max(0, y1 - 40):y2 + 40, max(0, x1 - 40):x2 + 40] for key in ("original", "clean")]
+        side = np.hstack([crops[0], np.full((crops[0].shape[0], 8, 3), 128, np.uint8), crops[1]])
+        cv2.imwrite(str(folder / f"{number:02d}-slice{item['slice']:03d}-{item['kind']}.jpg"), side,
+                    [cv2.IMWRITE_JPEG_QUALITY, 85])
+    (out / "scorecard.json").write_text(json.dumps(card, ensure_ascii=False, indent=1), encoding="utf-8")
+    return card
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("url")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--balance", type=float, default=5.0, help="USD credited to the test account")
     parser.add_argument("--timeout-min", type=float, default=60)
+    parser.add_argument("--polish", action="store_true", help="let the Jev judge grade and send back weak lines")
     args = parser.parse_args()
     out = args.out.resolve()
     if not out.is_relative_to(ROOT):
@@ -243,7 +256,7 @@ def main() -> int:
         _wait(f"{APP}/health", app)
 
         started = time.perf_counter()
-        response = requests.post(f"{APP}/api/ai_mode/start", json={"url": args.url, "provider": "manga-cloud"}, timeout=60)
+        response = requests.post(f"{APP}/api/ai_mode/start", json={"url": args.url, "provider": "manga-cloud", "polish": args.polish}, timeout=60)
         if not response.ok:
             raise SystemExit(f"start failed: {response.status_code} {response.text[:400]}")
         job = response.json()
@@ -262,6 +275,10 @@ def main() -> int:
             conn.row_factory = sqlite3.Row
             rows = [dict(r) for r in conn.execute(
                 "SELECT status, requests, prompt_tokens, completion_tokens, cost_usd, charged_micros FROM jobs")]
+        exported = None
+        if job["status"] == "completed" and job.get("chapter_id"):
+            # Exported the way a user would, from the editor's export, while the app is still up.
+            exported = requests.get(f"{APP}/api/export/{job['chapter_id']}.zip", timeout=600)
     finally:
         for proc in (app, gateway):
             if proc is not None:
@@ -273,6 +290,10 @@ def main() -> int:
         "model": os.environ.get("GATEWAY_UPSTREAM_MODEL"),
         "price_usd_per_m": {"input": float(os.environ.get("GATEWAY_PRICE_INPUT_PER_M", "0")),
                             "output": float(os.environ.get("GATEWAY_PRICE_OUTPUT_PER_M", "0"))},
+        "polish": args.polish,
+        # Run times are only comparable on the same CPU type.
+        "cpu": next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines()
+                     if line.startswith("model name")), "unknown") if Path("/proc/cpuinfo").is_file() else "unknown",
         "status": job["status"],
         "error": job.get("error"),
         "wall_s": round(wall, 1),
@@ -282,16 +303,14 @@ def main() -> int:
         "transport": _transport(trace),
     }
     chapter_id = job.get("chapter_id")
-    if job["status"] == "completed" and chapter_id:
-        # The chapter is exported the way a user would, from the editor's export.
-        response = requests.get(f"{APP}/api/export/{chapter_id}.zip", timeout=600)
-        if response.ok:
+    if exported is not None:
+        if exported.ok:
             archive = out / "chapter.zip"
-            archive.write_bytes(response.content)
+            archive.write_bytes(exported.content)
             report["zip_pages"] = _pages(archive, out)
             archive.unlink()
         else:
-            report["export_error"] = f"HTTP {response.status_code}: {response.text[:300]}"
+            report["export_error"] = f"HTTP {exported.status_code}: {exported.text[:300]}"
     manifest_path = ROOT / "data" / "processed" / str(chapter_id) / "manifest.json"
     if chapter_id and manifest_path.is_file():
         pages = json.loads(manifest_path.read_text(encoding="utf-8")).get("pages", [])
@@ -312,7 +331,7 @@ def main() -> int:
                 if not isinstance(obj, dict):
                     continue
                 report["lines"].append({
-                    "slice": index + 1, "id": obj.get("id"), "source": obj.get("ocr_text") or obj.get("text") or "",
+                    "slice": index + 1, "id": obj.get("id"), "source": obj.get("source_read") or obj.get("ocr_text") or obj.get("text") or "",
                     "translation": obj.get("translation") or "",
                     "role": obj.get("typography_role"), "container": obj.get("container"),
                     "font": obj.get("font_ai_id") or (obj.get("style") or {}).get("font"),
@@ -346,8 +365,10 @@ def main() -> int:
             "prompt_tokens": round(usage["prompt_tokens"] / slices),
             "completion_tokens": round(usage["completion_tokens"] / slices),
         }
+    if chapter_id and manifest_path.is_file():
+        report["scorecard"] = _scorecard(pages, report, out)
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(json.dumps({k: report.get(k) for k in ("status", "error", "wall_s", "gateway_job", "transport", "per_chapter", "per_slice", "readability")},
+    print(json.dumps({k: report.get(k) for k in ("status", "error", "wall_s", "gateway_job", "transport", "per_chapter", "per_slice", "readability", "scorecard")},
                      ensure_ascii=False, indent=1))
     return 0 if job["status"] == "completed" else 1
 

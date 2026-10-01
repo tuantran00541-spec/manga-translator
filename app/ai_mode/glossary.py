@@ -16,18 +16,17 @@ SIMILAR = 0.8  # two spellings this close are one name misread
 MISREAD_VOTES = 2  # a spelling read at least this many times as often as a close one wins
 
 GLOSSARY_PROMPT = (
-    "You build the glossary for translating one manga/manhwa chapter into {target}. The images are consecutive "
-    "slices in reading order. Read every bubble, caption and narration letter by letter.\n"
-    "- names: every person, clan, sect, place, item and technique name, spelled exactly as the source letters it "
-    "(check each occurrence rather than guess). \"target\" is its {target} form: people's names keep the source "
-    "spelling; places, organisations, spells, techniques, titles and signs are translated into natural {target} "
-    "(Hán Việt where the genre uses it), never left in the source language.\n"
-    "- terms: recurring titles, ranks, realms and genre terms, each with the one {target} term to use every time.\n"
-    "- address: for each speaker and listener (a group such as \"disciples\" counts as one speaker), how the "
-    "speaker refers to themselves (self) and to the listener (other) in {target}, chosen from what the images show "
-    "of both people (apparent age, gender, rank) and how they relate; each pair keeps one form.\n"
+    "IMAGES: consecutive slices of one manga or manhwa chapter in reading order, labelled SLICE <number>.\n"
+    "QUESTION: which names, terms and forms of address must every slice translate into {target} the same way?\n"
+    "- names: every person, clan, sect, place, item and technique name, spelled exactly as the letters show "
+    "(check each occurrence). \"target\" is its {target} form: people keep the source spelling; places, "
+    "organisations, spells, techniques, titles and signs are translated (Hán Việt where the genre uses it).\n"
+    "- terms: recurring titles, ranks, realms and genre terms, each with the one {target} term to use.\n"
+    "- address: for each speaker and listener (a group such as \"disciples\" is one speaker), how the speaker "
+    "refers to themselves (self) and to the listener (other), chosen from what the images show of both (apparent "
+    "age, gender, rank) and how they relate; one form per pair.\n"
     "{language}"
-    "Return JSON only: "
+    "ANSWER with JSON only: "
     '{{"names":[{{"source":"","target":"","note":"who or what"}}],"terms":[{{"source":"","target":""}}],'
     '"address":[{{"from":"","to":"","self":"","other":""}}]}}'
 )
@@ -93,8 +92,10 @@ def merge_glossaries(parts: list[dict]) -> dict:
     return {
         "names": [{"source": _winner(names[key]["spelling"]), "target": _winner(names[key]["target"]),
                    **({"note": names[key]["note"]} if names[key]["note"] else {})} for key in ranked[:MAX_NAMES]],
+        # A term that is also a name ("hero" and "Hero") keeps the name's one translation.
         "terms": [{"source": source, "target": _winner(counter)}
-                  for source, counter in sorted(terms.items(), key=lambda item: -sum(item[1].values()))[:MAX_TERMS]],
+                  for source, counter in sorted(terms.items(), key=lambda item: -sum(item[1].values()))
+                  if source not in names or source in misread][:MAX_TERMS],
         "address": [
             {"from": _winner(slot["from"]), "to": _winner(slot["to"]),
              **{key: _winner(slot[key]) for key in ("self", "other") if slot[key]}}

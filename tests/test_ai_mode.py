@@ -132,7 +132,7 @@ def _run_manager(fail_at=None, cancel=False):
 
 def test_manager_runs_every_stage_in_order():
     snapshot = _run_manager()
-    assert RecordingRunner.calls == ["download", "scan", "clean", "review", "translate", "render", "finish"]
+    assert RecordingRunner.calls == ["download", "scan", "clean", "review", "translate", "polish", "render", "finish"]
     assert snapshot["status"] == "completed"
     assert all(stage["status"] == "done" for stage in snapshot["stages"])
     assert snapshot["chapter_id"] == CHAPTER
@@ -173,6 +173,7 @@ def _scan_stage(monkeypatch, scans, pages=8):
 
     manifest = {"pages": [{"original": f"p{i}.png", "preserve_regions": []} for i in range(pages)]}
     skipped, preserved = [], {}
+    monkeypatch.setattr(ai_job, "SCAN_BATCH_SIZE", 4)  # the batching logic, whatever the provider limit
     monkeypatch.setattr(ai_job, "validate_managed_path", lambda value, root: value)
     monkeypatch.setattr(ai_job, "read_image", lambda path: np.zeros((100, 80, 3), np.uint8))
     monkeypatch.setattr(ai_job, "scan_slices", lambda provider, model, key, images: (
@@ -280,52 +281,48 @@ def _runner(monkeypatch, stage, manifest):
     return runner
 
 
-def test_review_stage_applies_each_slice_in_one_pass_without_duplicating_boxes(monkeypatch):
-    from app.ai_mode.checkpoints import CleanReview
-    from app.dependencies import pipeline
+def test_review_sends_crops_on_sheets_and_erases_the_flagged_ones_again(monkeypatch):
+    from app.ai_mode import checkpoints
 
-    existing = {"x1": 100, "y1": 100, "x2": 200, "y2": 160}
-    runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [existing]}, {}]})
+    box_a, box_b = {"x1": 100, "y1": 100, "x2": 200, "y2": 160}, {"x1": 10, "y1": 300, "x2": 90, "y2": 340}
+    runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [box_a, box_b]}, {"boxes": [box_a]}]})
     monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
-    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.zeros((10, 10, 3)), np.zeros((10, 10, 3))))
-    reviews = {0: CleanReview(0, missed=((1, 2, 30, 40), (105, 105, 195, 150)), residue=((5, 5, 20, 20),),
-                              restore=((300, 300, 400, 400), (0, 0, 50, 50))),
-               1: CleanReview(1)}
-    monkeypatch.setattr(ai_job, "review_clean", lambda provider, model, key, index, a, b: (reviews[index], None))
-    calls = []
-    monkeypatch.setattr(pipeline, "apply_review_fixes",
-                        lambda chapter, index, **fixes: calls.append((index, fixes)), raising=False)
+    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.full((600, 400, 3), 255, np.uint8),) * 2)
+    sheets = []
+
+    def review_sheet(provider, model, key, sheet, crops):
+        sheets.append([crop.id for crop in crops])
+        return [crop for crop in crops if crop.id in {"1.2", "2.1"}], None
+
+    monkeypatch.setattr(checkpoints, "review_sheet", review_sheet)
+    fixed = []
+    monkeypatch.setattr(ai_job, "pipeline_fix", lambda chapter, index, rects: fixed.append((index, rects)))
     asyncio.run(runner.review())
-    assert calls == [(0, {
-        "preserve": [(300, 300, 400, 400)],
-        "boxes": [(1, 2, 30, 40)],
-        "repaint": [(5, 5, 20, 20), (105, 105, 195, 150)],
-    })], "missed text over an existing box is re-erased, and a restore over an erase is dropped"
-    assert (runner.report["kept_regions"], runner.report["missed_added"], runner.report["repainted_regions"]) == (1, 1, 2)
+    assert [sorted(ids) for ids in sheets] == [["1.1", "1.2", "2.1"]], "three small crops share one sheet"
+    assert fixed == [(0, [(10, 300, 90, 340)]), (1, [(100, 100, 200, 160)])]
+    assert runner.report["repainted_regions"] == 2 and runner.report["review_crops"] == 3
 
 
 def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeypatch):
     import contextlib
 
-    from app.ai_mode.checkpoints import CleanReview
-    from app.dependencies import pipeline
+    from app.ai_mode import checkpoints
 
     # Shadow Slave 1, slice 135: the scan boxed the "Read at ASURASCANS.COM" watermark as a logo.
     watermark, kept = (323, 2825, 752, 3107), {"x1": 10, "y1": 10, "x2": 200, "y2": 100}
-    stored = {"pages": [{"preserve_regions": [dict(zip(("x1", "y1", "x2", "y2"), watermark)), kept]}]}
+    stored = {"pages": [{"preserve_regions": [dict(zip(("x1", "y1", "x2", "y2"), watermark)), kept],
+                         "boxes": [{"x1": 330, "y1": 2830, "x2": 740, "y2": 3100}]}]}
     runner = _runner(monkeypatch, "review", stored)
     runner._scan_logos[0] = [watermark]
     monkeypatch.setattr(runner, "_active_pages", lambda: [0])
-    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.zeros((10, 10, 3)), np.zeros((10, 10, 3))))
+    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.full((3200, 900, 3), 255, np.uint8),) * 2)
     monkeypatch.setattr(ai_job, "get_manifest_lock", lambda chapter_id: contextlib.nullcontext())
     monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: stored)
     monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, manifest: None)
-    monkeypatch.setattr(ai_job, "review_clean", lambda provider, model, key, index, a, b: (
-        CleanReview(0, residue=((330, 2830, 740, 3100),)), None))
+    monkeypatch.setattr(checkpoints, "review_sheet", lambda provider, model, key, sheet, crops: (crops, None))
     seen = []
-    monkeypatch.setattr(pipeline, "apply_review_fixes",
-                        lambda chapter, index, **fixes: seen.append(list(stored["pages"][0]["preserve_regions"])),
-                        raising=False)
+    monkeypatch.setattr(ai_job, "pipeline_fix",
+                        lambda chapter, index, rects: seen.append(list(stored["pages"][0]["preserve_regions"])))
     asyncio.run(runner.review())
     assert seen == [[kept]], "the watermark is no longer protected when the repaint runs; other regions stay"
     assert runner.report["logos_freed"] == 1
@@ -333,7 +330,7 @@ def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeyp
 
 def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
     import app.routers.chapters as chapters_router
-    from app.ai_mode.checkpoints import CleanReview
+    from app.ai_mode import checkpoints
 
     runner = _runner(monkeypatch, "clean", {"pages": [{}, {}, {}]})
     runner.job.stages["review"] = {"done": 0, "total": 0, "detail": ""}
@@ -361,12 +358,12 @@ def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
             return {"status": state["status"], "completed": len(state["done"]), "total": 3,
                     "done_indices": list(state["done"]), "errors": []}
 
-    def review_clean(provider, model, key, index, a, b):
+    def crops_for(index, original, clean, boxes):
         reviewed_while_cleaning.append((index, state["status"] == "running"))
-        return CleanReview(index), None
+        return []
 
     monkeypatch.setattr(chapters_router, "chapter_processing_jobs", Jobs())
-    monkeypatch.setattr(ai_job, "review_clean", review_clean)
+    monkeypatch.setattr(checkpoints, "crops_for", crops_for)
 
     async def scenario():
         await runner.clean()
@@ -374,8 +371,8 @@ def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
         await runner.review()
 
     asyncio.run(scenario())
-    assert sorted(index for index, _ in reviewed_while_cleaning) == [0, 1, 2], "every slice is reviewed once"
-    assert (2, True) in reviewed_while_cleaning, "review overlaps the cleanup"
+    assert sorted(index for index, _ in reviewed_while_cleaning) == [0, 1, 2], "every slice is cropped once"
+    assert (2, True) in reviewed_while_cleaning, "cropping overlaps the cleanup"
     assert runner.job.stages["review"]["done"] == 3
 
 
@@ -440,6 +437,7 @@ def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypat
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
     monkeypatch.setattr(runner, "_active_pages", lambda: [0])
     monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+    monkeypatch.setattr(runner, "_settle_blanks", lambda: 0)
     asyncio.run(runner.render())
 
     assert len(calls) == 2, "the slice is rendered again once the object is restored"
@@ -604,10 +602,44 @@ def test_retry_keeps_going_on_a_long_slice_while_batches_make_progress(monkeypat
     assert runner.report["review_list"] == [] and runner.report["restored_regions"] == 0
 
 
-def test_checkpoint_three_never_restores_over_a_detected_text_box():
-    from app.ai_mode.checkpoints import CleanReview, settle_clean_review
+def test_a_line_the_translator_sees_outside_every_box_is_boxed_erased_and_translated(monkeypatch):
+    from app.dependencies import pipeline
 
-    caption = (0, 170, 1500, 550)
-    art = (100, 900, 400, 1200)
-    settled = settle_clean_review(CleanReview(3, (), (), ((100, 150, 1500, 560), art)), [caption])
-    assert settled.restore == (art,), "the caption stays erased; damaged art away from text is restored"
+    existing = {"x1": 100, "y1": 100, "x2": 200, "y2": 160}
+    manifest = {"pages": [{"width": 400, "height": 600, "boxes": [existing], "text_objects": [{"id": "old"}]}]}
+    added, retried = [], []
+
+    def fixes(chapter, index, boxes=(), skip_covered=False):
+        assert skip_covered, "a box that grows over existing letters is not added"
+        added.append(list(boxes))
+        manifest["pages"][0]["text_objects"].append({"id": "new"})
+
+    monkeypatch.setattr(pipeline, "apply_review_fixes", fixes, raising=False)
+    runner = _runner(monkeypatch, "translate", manifest)
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+
+    async def retry(page_index, source_lang, only):
+        retried.append((page_index, only))
+
+    monkeypatch.setattr(runner, "_retry_untranslated", retry)
+    asyncio.run(runner._add_unboxed(0, [[105, 105, 195, 155], [20, 300, 180, 360], [0, 0, 3, 3]], "en"))
+    assert added == [[(14, 294, 186, 366)]], "a box over existing text and a speck are dropped; the line gets a margin"
+    assert retried == [(0, {"new"})] and runner.report["missed_added"] == 1
+
+
+def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
+    region = {"x1": 0, "y1": 0, "x2": 50, "y2": 20}
+    manifest = {"pages": [
+        {"text_objects": [{"id": "said", "translation": "Chào", "region": region},
+                          {"id": "credit", "translation": "", "region": region},
+                          {"id": "gone", "translation": "", "source_missing": True, "region": region}]},
+        {"skipped": True, "text_objects": [{"id": "skip", "translation": "", "region": region}]},
+    ]}
+    saved = []
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter: manifest)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter, data: saved.append(chapter))
+    runner = _runner(monkeypatch, "render", manifest)
+    assert runner._settle_blanks() == 1 and saved == [CHAPTER]
+    objects = manifest["pages"][0]["text_objects"]
+    assert objects[1]["editorial_disposition"] == "non_story" and objects[1]["editorial_reviewed"] is True
+    assert "editorial_disposition" not in objects[0] and "editorial_disposition" not in objects[2]

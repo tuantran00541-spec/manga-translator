@@ -32,7 +32,9 @@ ROLES = frozenset({"system", "user", "assistant"})
 REASONING_BUDGETS = {"none": 0, "minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}
 
 
-STAGES = frozenset({"scan", "glossary", "review", "translate"})  # A.I mode checkpoints a client may name
+STAGES = frozenset({"scan", "glossary", "review", "translate", "polish"})  # A.I mode checkpoints a client may name
+MAX_JUDGE_STATE_CHARS = 8000  # one translated line with its neighbours and notes
+MAX_JUDGE_QUESTIONS = 8
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,8 @@ class Route:
     output_usd_per_m: float
     cached_usd_per_m: float | None = None
     reasoning_effort: str | None = None  # this model's thinking level, whatever the request asked
+    base: str | None = None  # another provider's API base for this model; None uses the upstream's
+    api_key: str = field(default="", repr=False)  # that provider's key, read from the env var the route names
 
     def cost(self, usage: dict) -> float:
         prompt = max(0, int(usage.get("prompt_tokens") or 0))
@@ -69,6 +73,10 @@ class Upstream:
     # Step name -> Routes tried in order; a later one answers when an earlier one is overloaded or failing.
     stages: dict = field(default_factory=dict)
     fallbacks: tuple = ()  # the same for requests that name no step
+    judge_model: str = ""  # a decision model that grades translated lines; empty turns /v1/evaluate off
+    judge_usd_per_m: float = 0.0  # its price per million input tokens; its answers are free
+    auth: str = "bearer"  # "api-key" sends the key in an api-key header, as Azure OpenAI keys go
+    max_tokens_field: str = "max_tokens"  # newer OpenAI and Azure models take max_completion_tokens instead
 
     @property
     def default(self) -> Route:
@@ -87,28 +95,38 @@ class Upstream:
     def cost(self, usage: dict, model: str | None = None) -> float:
         return self.priced(model).cost(usage)
 
-    def send(self, payload: dict, trace: dict | None = None, models: list | None = None) -> tuple[int, dict]:
+    def send(self, payload: dict, trace: dict | None = None, models: list | None = None,
+             path: str = "chat/completions") -> tuple[int, dict]:
         """POST upstream, retrying transient failures on the next model (a name or Route) in ``models``; ``trace`` records attempts."""
         models = models or [payload.get("model")]
         for attempt in range(self.retries + 1):
             last = attempt == self.retries
             # An overloaded model is not waited on while another one can answer.
             route = models[min(attempt, len(models) - 1)]
+            base, api_key = self.base, self.api_key
             if isinstance(route, Route):
                 payload = {**payload, "model": route.model}
                 if route.reasoning_effort:
                     payload["reasoning_effort"] = route.reasoning_effort
+                if route.base:
+                    base, api_key = route.base, route.api_key
             elif route is not None:
                 payload = {**payload, "model": route}
             if trace is not None:
                 trace["attempts"] = attempt + 1
                 if payload.get("model") is not None:
                     trace["model"] = payload["model"]
+            sent = payload
+            if path == "chat/completions" and self.max_tokens_field != "max_tokens" and "max_tokens" in payload:
+                sent = {k: v for k, v in payload.items() if k != "max_tokens"}
+                sent[self.max_tokens_field] = payload["max_tokens"]
+            key = ({"api-key": api_key} if self.auth == "api-key" and base == self.base
+                   else {"Authorization": f"Bearer {api_key}"})
             try:
                 response = requests.post(
-                    f"{self.base.rstrip('/')}/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-                    json=payload,
+                    f"{base.rstrip('/')}/{path}",
+                    headers={**key, "Content-Type": "application/json"},
+                    json=sent,
                     timeout=(10, 300),
                     allow_redirects=False,
                 )
@@ -122,7 +140,10 @@ class Upstream:
                 continue
             if trace is not None:
                 trace.setdefault("statuses", []).append(response.status_code)
-            if response.status_code in RETRY_STATUSES and not last:
+            # Another provider refusing the request (a dead key, a limit it has) hands it to the next model.
+            refused = (400 <= response.status_code < 500 and isinstance(route, Route) and route.base is not None
+                       and attempt + 1 < len(models))
+            if (response.status_code in RETRY_STATUSES or refused) and not last:
                 if attempt + 1 >= len(models):
                     time.sleep(min(RETRY_AFTER_MAX_S, _retry_after(response) or self.retry_wait_s * 2 ** attempt))
                 continue
@@ -190,7 +211,7 @@ def _trace_line(path: str, entry: dict) -> None:
 
 
 def _routes_from_env(name: str) -> list[tuple[str | None, Route]]:
-    """Routes from a JSON list of {"stage"?, "model", "price": [input, output, cached?], "effort"?} in an env var."""
+    """Routes from a JSON list of {"stage"?, "model", "price": [input, output, cached?], "effort"?, "base"?, "key_env"?}."""
     raw = os.getenv(name, "").strip()
     if not raw:
         return []
@@ -202,8 +223,17 @@ def _routes_from_env(name: str) -> list[tuple[str | None, Route]]:
             raise ValueError(f"{name}: unknown stage {stage!r}")
         if effort is not None and effort not in REASONING_BUDGETS:
             raise ValueError(f"{name}: unknown effort {effort!r}")
+        base, key = item.get("base"), ""
+        if base is not None:
+            # A route on another provider names the env var holding its key, so no key sits in the JSON.
+            if not str(base).startswith("https://"):
+                raise ValueError(f"{name}: base must be https, got {base!r}")
+            key = os.getenv(str(item.get("key_env") or ""), "").strip()
+            if not key:
+                raise ValueError(f"{name}: {item.get('model')!r} names base {base!r} but key_env holds no key")
         routes.append((stage, Route(str(item["model"]), price[0], price[1],
-                                    price[2] if len(item.get("price") or []) > 2 else None, effort)))
+                                    price[2] if len(item.get("price") or []) > 2 else None, effort,
+                                    str(base) if base is not None else None, key)))
     return routes
 
 
@@ -230,6 +260,10 @@ def upstream_from_env() -> Upstream:
         retries=max(0, int(os.getenv("GATEWAY_UPSTREAM_RETRIES", "2") or 0)),
         stages=_stage_chains(_routes_from_env("GATEWAY_STAGE_MODELS")),
         fallbacks=tuple(route for _stage, route in _routes_from_env("GATEWAY_FALLBACK_MODELS")),
+        judge_model=os.getenv("GATEWAY_JUDGE_MODEL", "").strip(),
+        judge_usd_per_m=float(os.getenv("GATEWAY_JUDGE_PRICE_PER_M", "0") or 0),
+        auth="api-key" if os.getenv("GATEWAY_UPSTREAM_AUTH", "").strip().lower() == "api-key" else "bearer",
+        max_tokens_field=os.getenv("GATEWAY_UPSTREAM_MAX_TOKENS_FIELD", "").strip() or "max_tokens",
     )
 
 
@@ -540,6 +574,44 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
                 message = message.replace(upstream.api_key, "***")
             return _error(status if status in (400, 429) else 502, "upstream_error",
                           f"Upstream HTTP {status}" + (f": {message}" if message else ""))
+        body.setdefault("usage", {})["gateway_job_cost_usd"] = round(total, 6)
+        return body
+
+    @app.post("/v1/evaluate")
+    async def evaluate(payload: dict, row=Depends(job)):
+        if not upstream.judge_model:
+            return _error(404, "judge_unavailable", "No judge model is configured")
+        state, questions = payload.get("state"), payload.get("questions")
+        if (not isinstance(state, str) or not state.strip() or len(state) > MAX_JUDGE_STATE_CHARS
+                or not isinstance(questions, dict) or not 0 < len(questions) <= MAX_JUDGE_QUESTIONS):
+            return _error(400, "bad_request", "A judge request is one state string and up to 8 questions")
+        forwarded = {"model": upstream.judge_model, "state": state, "questions": questions}
+        held = len(json.dumps(forwarded)) / 4 * upstream.judge_usd_per_m / 1_000_000
+        try:
+            store.begin_request(row["id"], held)
+        except QuotaExceeded:
+            return _error(402, "cost_cap", "This chapter reached its A.I cost cap")
+        started = time.perf_counter()
+        try:
+            status, body = await run_in_threadpool(upstream.send, forwarded, None, None, "evaluate")
+        except requests.RequestException:
+            status, body = 0, {}
+        except BaseException:
+            store.add_cost(row["id"], 0.0, released_usd=held)
+            raise
+        usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+        # Routers name the input count differently; a missing count is estimated from the request size.
+        tokens = next((int(usage[key]) for key in ("inputTokens", "input_tokens", "prompt_tokens")
+                       if isinstance(usage.get(key), (int, float))), round(len(json.dumps(forwarded)) / 4))
+        total = store.add_cost(row["id"], tokens * upstream.judge_usd_per_m / 1_000_000, tokens, 0, released_usd=held)
+        if trace_path:
+            _trace_line(trace_path, {"t": round(time.time(), 3), "ms": round((time.perf_counter() - started) * 1000),
+                                     "status": status, "stage": "judge", "model": upstream.judge_model,
+                                     "images": 0, "prompt_tokens": tokens, "completion_tokens": 0})
+        if status == 0:
+            return _error(502, "upstream_unreachable", "A.I upstream is unreachable")
+        if status >= 400:
+            return _error(status if status in (400, 429) else 502, "upstream_error", f"Judge HTTP {status}")
         body.setdefault("usage", {})["gateway_job_cost_usd"] = round(total, 6)
         return body
 

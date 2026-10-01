@@ -9,10 +9,11 @@ import cv2
 import requests
 
 from app.ai_mode.vision_json import stage_headers
+from app.box_format import scaled_box
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
-from app.render.font_guide import BASE_FONT_ROLES, DEFAULT_LETTERING_FONT, font_specimen_b64, lettering_font
+from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
 from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
@@ -28,17 +29,18 @@ _TRANSLATIONS_SCHEMA = {
     "properties": {
         "translations": {"type": "array", "items": {
             "type": "object",
-            "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"},
+            "properties": {"id": {"type": "string"}, "source": {"type": "string"}, "translated_text": {"type": "string"},
                            "role": {"type": "string"}, "container": {"type": "string"}},
             "required": ["id", "translated_text"],
         }},
-        "font_choices": {"type": "object"},
         "speakers": {"type": "object"},
         "characters": {"type": "array", "items": {
             "type": "object",
             "properties": {"name": {"type": "string"}, "note": {"type": "string"}},
             "required": ["name"],
         }},
+        "unboxed": {"type": "array", "items": {"type": "object", "properties": {
+            k: {"type": "number"} for k in ("x1", "y1", "x2", "y2")}}},
         "address": {"type": "array", "items": {
             "type": "object",
             "properties": {k: {"type": "string"} for k in ("from", "to", "self", "other")},
@@ -63,6 +65,9 @@ class VisionTranslationResult:
     enlarge_ids: frozenset[str] = frozenset()
     colors: dict[str, str] = field(default_factory=dict)
     containers: dict[str, str] = field(default_factory=dict)
+    sources: dict[str, str] = field(default_factory=dict)  # the source text the model read in each box
+    speakers: dict[str, str] = field(default_factory=dict)  # who says each box's line, or "narration"
+    unboxed: tuple[tuple[int, int, int, int], ...] = ()  # pixel boxes of lines the model saw outside every box
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -118,13 +123,8 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
     translations = parse_vision_translation(source, expected_ids, allow_missing=True)
     if isinstance(data, dict) and isinstance(data.get("translations"), dict):
         data["translations"] = [{"id": str(k), "translated_text": v} for k, v in data["translations"].items()]
-    picks = data.get("font_choices") if isinstance(data, dict) and isinstance(data.get("font_choices"), dict) else {}
-    # Only curated fonts; anything else falls back to the base font.
-    choices = {}
-    for item_id in translations:
-        pick = picks.get(item_id)
-        pick = pick.get("font_id") if isinstance(pick, dict) else pick
-        choices[item_id] = {"font_id": lettering_font(pick), "font_mode": "ai"}
+    # The font follows each text's role and container once those are read; until then the base font.
+    choices = {item_id: {"font_id": DEFAULT_LETTERING_FONT, "font_mode": "ai"} for item_id in translations}
     return translations, choices, data if isinstance(data, dict) else {}
 
 
@@ -136,9 +136,8 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
             {**entry, "id": back(entry.get("id"))} if isinstance(entry, dict) else entry
             for entry in data["translations"]
         ]
-    for key in ("speakers", "font_choices"):
-        if isinstance(data.get(key), dict):
-            data[key] = {back(k): v for k, v in data[key].items()}
+    if isinstance(data.get("speakers"), dict):
+        data["speakers"] = {back(k): v for k, v in data["speakers"].items()}
     return replace(
         result,
         translations={back(k): v for k, v in result.translations.items()},
@@ -146,8 +145,8 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
     ), data
 
 
+MAX_UNBOXED = 8  # lines outside every box one slice may report
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
-FONT_SAMPLES_LABEL = "FONT SAMPLES: each row is a font_id in red and a sample line lettered in that font."
 
 # Chinese, Japanese and Korean letters never belong in a Vietnamese translation.
 _FOREIGN_SCRIPT = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]")
@@ -196,7 +195,10 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
     boxes = [(obj["bbox_xyxy"], str(obj["id"]), MARK_COLOR) for obj in objects]
     boxes += [(box, ELSEWHERE_LABEL, ELSEWHERE_COLOR) for box in elsewhere]
     for box, label, color in boxes:
+        # Outlined just outside the box, so the line never covers the letters the model reads.
+        pad = 2 * thickness
         x1, y1, x2, y2 = (int(v) for v in box)
+        x1, y1, x2, y2 = x1 - pad, y1 - pad, x2 + pad, y2 + pad
         cv2.rectangle(marked, (x1, y1), (x2, y2), color, thickness)
         (tw, th), base = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
         ty = max(th + base, y1)
@@ -235,34 +237,35 @@ class VisionPageTranslator:
             if str(source_lang or "").lower() in {"", "auto"}
             else _language_name(source_lang)
         )
-        system = system_prompt(_language_name(target_lang), target_lang)
+        system = system_prompt(_language_name(target_lang), target_lang, memory.settled() if memory is not None else None)
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
             (f"CHAPTER MEMORY (context from earlier slices, not to be copied into the answer): "
-             f"{json.dumps(memory.snapshot(), ensure_ascii=False, separators=(',', ':'))}\n\n"
+             f"{json.dumps(memory.snapshot(settled=False), ensure_ascii=False, separators=(',', ':'))}\n\n"
              if memory is not None else "")
             + f"{where}Translate these text objects from {source_name}.\n"
             + json.dumps({"image_width": w, "image_height": h, "objects": objects,
                           **({"lettered_elsewhere": [list(map(int, box)) for box in elsewhere]} if elsewhere else {})},
                          ensure_ascii=False, separators=(",", ":"))
-            + ("\nlettered_elsewhere boxes (grey X in IMAGE 2) hold text the neighbouring slice translates: "
+            + ("\nlettered_elsewhere boxes (grey X in the image) hold text the neighbouring slice translates: "
                "never translate it, and never fold its words or meaning into any object's translation."
                if elsewhere else "")
             + '\n\nTranslate every object above and answer with one JSON object that starts with {"translations":[. '
             + "Write translated_text in sentence case, even when the source is in capitals."
         )
-        original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(mark_objects(cleaned, objects, elsewhere))
+        # One image: the boxes are drawn on the raw slice, whose text the model reads.
+        marked_b64 = _encode_for_gemini(mark_objects(original, objects, elsewhere))
         ids = set(real)
         max_tokens = min(4096, max(1200, 160 * len(items) + 700))
         if self.provider.protocol == "gemini":
-            result, data = self._gemini(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
+            result, data = self._gemini(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         else:
-            result, data = self._openai(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
+            result, data = self._openai(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         result, data = _unalias(result, data, real)
         ids = set(real.values())
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
             result, data = _drop_foreign_script(result, data)
-        roles, containers, review, answered, enlarge, colors = {}, {}, set(), set(), set(), {}
+        roles, containers, review, answered, enlarge, colors, sources = {}, {}, set(), set(), set(), {}, {}
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
                 continue
@@ -277,25 +280,26 @@ class VisionPageTranslator:
                 review.add(str(entry["id"]))
             if entry.get("enlarge") is True:
                 enlarge.add(str(entry["id"]))
+            if isinstance(entry.get("source"), str) and entry["source"].strip():
+                sources[str(entry["id"])] = " ".join(entry["source"].split())[:1000]
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
-        # Bubble speech always takes the base font; display fonts are for shouts, captions and art.
-        fonts = {key: (dict(value, font_id=DEFAULT_LETTERING_FONT) if roles.get(key) in BASE_FONT_ROLES else value)
-                 for key, value in (result.font_choices or {}).items()}
+        fonts = {key: {"font_id": font_for(roles.get(key), containers.get(key), target_lang), "font_mode": "ai"}
+                 for key in (result.font_choices or {})}
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
-            # Every bubble, box or screen of one kind letters in the font that kind first got; blank lines set nothing.
-            fonts = {
-                key: {"font_id": memory.container_font(containers.get(key), roles.get(key), fonts[key]["font_id"])
-                      if result.translations.get(key) else DEFAULT_LETTERING_FONT, "font_mode": "ai"}
-                for key in (str(item["id"]) for item in items) if key in fonts
-            }
+        speakers = {str(k): " ".join(str(v).split())[:80] for k, v in (data.get("speakers") or {}).items()
+                    if str(k) in ids and isinstance(v, str) and v.strip()} if isinstance(data.get("speakers"), dict) else {}
+        unboxed = tuple(
+            (int(box[0]), int(box[1]), int(box[2]) + 1, int(box[3]) + 1)
+            for raw in (data.get("unboxed") or [])[:MAX_UNBOXED] if (box := scaled_box(raw, w, h)) is not None
+        )
         return replace(
-            result, font_choices=fonts, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
-            enlarge_ids=frozenset(enlarge), colors=colors, containers=containers,
+            result, font_choices=fonts, roles=roles, unboxed=unboxed, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
+            enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources, speakers=speakers,
         )
 
-    def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
+    def _openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
         url = str(self.provider.chat_url or "")
         if not url:
             raise ValueError("Provider does not have chat completions")
@@ -304,13 +308,8 @@ class VisionPageTranslator:
         payload = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": [
-                # The specimen comes first so the cached prefix covers it.
-                {"type": "text", "text": FONT_SAMPLES_LABEL},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{font_specimen_b64()}"}},
-                {"type": "text", "text": "IMAGE 1: ORIGINAL"},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{original}"}},
-                {"type": "text", "text": "IMAGE 2: CLEAN"},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{cleaned}"}},
+                {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{marked}"}},
                 {"type": "text", "text": prompt},  # the ask goes last, after the images it refers to
             ]}],
             "response_format": {"type": "json_object"},
@@ -348,17 +347,13 @@ class VisionPageTranslator:
         cost = _usage_cost_usd(usage) if self.provider.tracks_cost else None
         return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
 
-    def _gemini(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
+    def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens):
         payload = {
             "model": self.model, "store": False,
             "input": [
                 {"type": "text", "text": system},
-                {"type": "text", "text": FONT_SAMPLES_LABEL},
-                {"type": "image", "data": font_specimen_b64(), "mime_type": "image/jpeg"},
-                {"type": "text", "text": "IMAGE 1: ORIGINAL"},
-                {"type": "image", "data": original, "mime_type": "image/jpeg"},
-                {"type": "text", "text": "IMAGE 2: CLEAN"},
-                {"type": "image", "data": cleaned, "mime_type": "image/jpeg"},
+                {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
+                {"type": "image", "data": marked, "mime_type": "image/jpeg"},
                 {"type": "text", "text": prompt},
             ],
             "response_format": {"type": "text", "mime_type": "application/json", "schema": _TRANSLATIONS_SCHEMA},

@@ -71,8 +71,9 @@ FIXED_LAMA_CONCURRENT_INFERENCE = _env_bool(
 PIPELINE_DEFAULT_WORKERS = _env_int(
     "MANGA_PIPELINE_DEFAULT_WORKERS", 2, minimum=1, maximum=32
 )
+# Each slicing thread holds about 200 MB on a 12,000 px page.
 PIPELINE_SLICE_WORKER_LIMIT = _env_int(
-    "MANGA_PIPELINE_SLICE_WORKER_LIMIT", 8, minimum=1, maximum=64
+    "MANGA_PIPELINE_SLICE_WORKER_LIMIT", 4, minimum=1, maximum=64
 )
 DOWNLOAD_WORKER_LIMIT = _env_int(
     "MANGA_DOWNLOAD_WORKERS", 4, minimum=1, maximum=8

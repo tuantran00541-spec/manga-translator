@@ -522,6 +522,12 @@ async def translate_page_in_context(
                 obj["source_cap_px"] = candidate["source_cap_px"]
             obj["translation_model"] = translated.model
             obj["translation_input_text"] = candidate["text"]
+            source_read = getattr(translated, "sources", {}).get(candidate["id"])
+            if source_read:
+                obj["source_read"] = source_read
+            speaker = getattr(translated, "speakers", {}).get(candidate["id"])
+            if speaker:
+                obj["speaker"] = speaker
             obj["auto_translation"] = value
             _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(candidate["id"]))
             role = getattr(translated, "roles", {}).get(candidate["id"])
@@ -579,6 +585,7 @@ async def translate_page_in_context(
         "missing_ids": sorted(getattr(translated, "missing_ids", ())),
         "blank_ids": blank_ids,
         "art_regions": art_regions,
+        "unboxed": [list(box) for box in getattr(translated, "unboxed", ())],
         "remaining": max(0, total_candidates - len(candidates)),
     }
     return result

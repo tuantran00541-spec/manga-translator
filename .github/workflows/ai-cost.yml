@@ -7,29 +7,69 @@ on:
   workflow_dispatch:
     inputs:
       chapter_url:
-        description: "Chapter URL to translate through the Manga Cloud gateway"
+        description: "Chapter URLs to translate through the Manga Cloud gateway, separated by spaces; each runs on its own runner"
         required: true
+      label:
+        description: "Name of this run; evidence goes to audit-results/ai-cost/<label>/<chapter>"
+        required: false
+        default: run
       model:
         description: "Upstream model for this run instead of the one in .github/ai-cost.txt"
         required: false
       price:
         description: "USD per million tokens for that model: input output [cached]"
         required: false
+      polish:
+        description: "Advanced: the Jev judge grades every translated line and weak ones are rewritten"
+        type: boolean
+        default: false
       stage_models:
         description: 'Models per checkpoint, in fallback order: [{"stage":"review","model":"...","price":[in,out],"effort":"none"}]'
         required: false
-        # Shadow Slave 1 runs 5-7: muse without thinking scans and reviews, luna reads names and translates.
-        default: '[{"stage":"scan","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"scan","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"review","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"review","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"glossary","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"glossary","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"translate","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"translate","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"}]'
+        # Free sovinfra qwen3.8-27b scans and checks residue (two images a request, no thinking); muse, whose
+        # glossary is far cleaner than qwen's, reads names and terms; luna translates.
+        default: '[{"stage":"scan","model":"qwen3.8-27b","base":"https://api.sovinfra.ai/v1","key_env":"GATEWAY_SOVINFRA_KEY","price":[0,0],"effort":"none"},{"stage":"scan","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"review","model":"qwen3.8-27b","base":"https://api.sovinfra.ai/v1","key_env":"GATEWAY_SOVINFRA_KEY","price":[0,0],"effort":"none"},{"stage":"review","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"translate","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"translate","model":"xiaomi/mimo-v2.6-flash","price":[0.147,0.294,0.00294]}]'
 
 permissions:
   contents: write
 
 concurrency:
-  group: ai-cost-${{ github.ref }}
+  group: ai-cost-${{ github.ref }}-${{ github.event.inputs.label || 'push' }}
   cancel-in-progress: true
 
 jobs:
+  chapters:
+    runs-on: ubuntu-22.04
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/ai-cost.txt
+          sparse-checkout-cone-mode: false
+
+      - id: list
+        env:
+          INPUT_URL: ${{ github.event.inputs.chapter_url }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re
+          urls = (os.environ.get("INPUT_URL") or open(".github/ai-cost.txt").readline()).split()
+          rows = []
+          for url in urls:
+              parts = [part for part in url.split("?")[0].split("/") if part]
+              name = re.sub(r"-[0-9a-f]{8}$", "", parts[-3] if len(parts) >= 3 else "chapter")
+              rows.append({"url": url, "slug": f"{name}-{parts[-1]}"})
+          print("list=" + json.dumps(rows))
+          PY
+
   cost:
+    needs: chapters
+    name: cost (${{ matrix.slug }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.chapters.outputs.list) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -124,6 +164,11 @@ jobs:
             echo "GATEWAY_UPSTREAM_REASONING_EFFORT=$(conf effort)"
             echo "GATEWAY_PRICE_CACHED_PER_M=$price_cached"
             echo "GATEWAY_STAGE_MODELS=$(printf '%s' "$INPUT_STAGES" | tr -d '\n')"
+            # minirouter serves the Jev judge; its answers are free and input costs this much per million tokens.
+            if [ "${provider:-sovinfra}" = minirouter ]; then
+              echo "GATEWAY_JUDGE_MODEL=typesafe-ai/jev"
+              echo "GATEWAY_JUDGE_PRICE_PER_M=0.0462"
+            fi
           } >> "$GITHUB_ENV"
 
       - name: Check the provider secret
@@ -153,6 +198,7 @@ jobs:
         env:
           SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
+          GATEWAY_SOVINFRA_KEY: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
         run: |
           KEY="${!PROVIDER_SECRET}" python - <<'PY'
           import base64, json, os, sys, time, cv2, numpy as np, requests
@@ -161,18 +207,20 @@ jobs:
           data = base64.b64encode(cv2.imencode(".jpg", image)[1].tobytes()).decode()
           # Every model a checkpoint may reach must read images and take the thinking level the app asks for.
           stages = json.loads(os.environ.get("GATEWAY_STAGE_MODELS") or "[]")
-          models = {os.environ["GATEWAY_UPSTREAM_MODEL"]: os.environ.get("GATEWAY_UPSTREAM_REASONING_EFFORT") or "low"}
+          main = (os.environ["GATEWAY_UPSTREAM_BASE"], os.environ["KEY"])
+          models = {os.environ["GATEWAY_UPSTREAM_MODEL"]: (os.environ.get("GATEWAY_UPSTREAM_REASONING_EFFORT") or "low", *main)}
           for item in stages:
-              models.setdefault(item["model"], item.get("effort") or "low")
+              where = (item["base"], os.environ.get(item.get("key_env") or "", "")) if item.get("base") else main
+              models.setdefault(item["model"], (item.get("effort") or "low", *where))
           failed = False
-          for model, effort in models.items():
+          for model, (effort, base, key) in models.items():
               body = {"model": model, "max_tokens": 2000, "reasoning_effort": effort, "messages": [{"role": "user", "content": [
                   {"type": "text", "text": "What word is written in this image? Answer with the word only."},
                   {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}]}]}
               started = time.time()
               response = requests.post(
-                  os.environ["GATEWAY_UPSTREAM_BASE"].rstrip("/") + "/chat/completions",
-                  headers={"Authorization": "Bearer " + os.environ["KEY"]}, json=body, timeout=(10, 120))
+                  base.rstrip("/") + "/chat/completions",
+                  headers={"Authorization": "Bearer " + key}, json=body, timeout=(10, 120))
               reply, usage = "", {}
               if response.ok:
                   reply = ((response.json().get("choices") or [{}])[0].get("message") or {}).get("content") or ""
@@ -190,12 +238,15 @@ jobs:
         env:
           SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
-          INPUT_URL: ${{ github.event.inputs.chapter_url }}
+          # A stage route with "base" and "key_env": "GATEWAY_SOVINFRA_KEY" runs on sovinfra's free tokens.
+          GATEWAY_SOVINFRA_KEY: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          CHAPTER_URL: ${{ matrix.url }}
+          OUT: audit-results/ai-cost/${{ github.event.inputs.label || 'push' }}/${{ matrix.slug }}
+          INPUT_POLISH: ${{ github.event.inputs.polish }}
         run: |
           export GATEWAY_UPSTREAM_KEY="${!PROVIDER_SECRET}"
-          url="${INPUT_URL:-$(head -n1 .github/ai-cost.txt | tr -d '\r')}"
-          rm -rf audit-results/ai-cost
-          python scripts/ai_cost_run.py "$url" --out audit-results/ai-cost
+          rm -rf "audit-results/ai-cost"
+          python scripts/ai_cost_run.py "$CHAPTER_URL" --out "$OUT" $( [ "$INPUT_POLISH" = true ] && echo --polish )
 
       - name: Logs
         if: always()
@@ -207,5 +258,5 @@ jobs:
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/ai-cost audit-results/providers
-          message: "audit: A.I cost (run ${{ github.run_id }})"
+          paths: audit-results/ai-cost/${{ github.event.inputs.label || 'push' }}/${{ matrix.slug }} audit-results/providers
+          message: "audit: A.I cost ${{ github.event.inputs.label || 'push' }} ${{ matrix.slug }} (run ${{ github.run_id }})"

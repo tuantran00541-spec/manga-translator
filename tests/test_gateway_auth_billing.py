@@ -11,7 +11,7 @@ import requests
 import uvicorn
 from fastapi import FastAPI, Header
 
-from gateway.app import Upstream, create_app
+from gateway.app import Route, Upstream, _routes_from_env, create_app
 from gateway.billing import BillingConfig, lemonsqueezy_signature, payos_data_signature, payos_request_signature
 from gateway.mailer import Mailer
 from gateway.store import QuotaExceeded, Store
@@ -519,3 +519,91 @@ def test_housekeeping_closes_stale_jobs_and_drops_old_sessions(world, tmp_path):
     assert store.purge()["sessions"] == 1
     store.backup(tmp_path / "copy.sqlite")
     assert Store(tmp_path / "copy.sqlite").stats()["accounts"] == 1
+
+
+def test_judge_requests_go_to_evaluate_and_bill_input_only(tmp_path, monkeypatch):
+    sent = []
+
+    def send(self, payload, trace=None, models=None, path="chat/completions"):
+        sent.append((path, payload))
+        return 200, {"answers": {"natural": {"type": "score", "score": 2.6}}, "usage": {"inputTokens": 1_000_000}}
+
+    monkeypatch.setattr(Upstream, "send", send)
+    upstream = Upstream("http://127.0.0.1:9", "", "m", 0, 0, judge_model="typesafe-ai/jev", judge_usd_per_m=0.0462)
+    client = TestClient(create_app(Store(tmp_path / "gw.sqlite"), upstream, ADMIN,
+                                   mailer=Mailer(api_key="", sender="", dev_mode=True)))
+    job = _job(client)
+    question = {"natural": {"type": "score", "instructions": "x", "criteria": ["bad", "good"]}}
+    body = client.post("/v1/evaluate", headers=job, json={"state": "s", "questions": question, "model": "other"}).json()
+    assert sent == [("evaluate", {"model": "typesafe-ai/jev", "state": "s", "questions": question})]
+    assert body["usage"]["gateway_job_cost_usd"] == 0.0462, "a million input tokens at the judge price"
+    assert client.post("/v1/evaluate", headers=job, json={"state": 1, "questions": question}).status_code == 400
+    bare = TestClient(create_app(Store(tmp_path / "bare.sqlite"), Upstream("http://127.0.0.1:9", "", "m", 0, 0), ADMIN,
+                                 mailer=Mailer(api_key="", sender="", dev_mode=True)))
+    assert bare.post("/v1/evaluate", headers=_job(bare), json={"state": "s", "questions": question}).status_code == 404
+
+
+def test_an_azure_upstream_gets_its_key_header_and_token_field():
+    seen = []
+    app = FastAPI()
+
+    @app.post("/openai/v1/chat/completions")
+    def chat(payload: dict, api_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+        seen.append((api_key, authorization, payload))
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {}}
+
+    base, server = _serve(app)
+    upstream = Upstream(f"{base}/openai/v1", "azure-key", "my-deployment", 0, 0, auth="api-key",
+                        max_tokens_field="max_completion_tokens")
+    status, _body = upstream.send({"model": "my-deployment", "messages": [], "max_tokens": 900})
+    assert status == 200
+    server.should_exit = True
+    assert seen == [("azure-key", None, {"model": "my-deployment", "messages": [], "max_completion_tokens": 900})]
+
+
+def test_a_stage_route_on_another_provider_goes_to_its_base_with_its_own_key(monkeypatch):
+    seen = []
+    app = FastAPI()
+
+    @app.post("/{provider}/chat/completions")
+    def chat(provider: str, payload: dict, authorization: str | None = Header(default=None)):
+        seen.append((provider, authorization, payload["model"]))
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {}}
+
+    base, server = _serve(app)
+    upstream = Upstream(f"{base}/main", "main-key", "luna", 0, 0)
+    free = Route("qwen3.8-27b", 0, 0, base=f"{base}/free", api_key="free-key")
+    assert upstream.send({"model": "x", "messages": []}, models=[free])[0] == 200
+    assert upstream.send({"model": "x", "messages": []})[0] == 200
+    server.should_exit = True
+    assert seen == [("free", "Bearer free-key", "qwen3.8-27b"), ("main", "Bearer main-key", "x")]
+    assert "free-key" not in repr(free)
+
+    monkeypatch.setenv("FREE_KEY", "k")
+    monkeypatch.setenv("ROUTES", json.dumps([{"stage": "scan", "model": "q", "base": "https://free.example/v1",
+                                              "key_env": "FREE_KEY", "price": [0, 0]}]))
+    assert _routes_from_env("ROUTES")[0][1].api_key == "k"
+    monkeypatch.setenv("ROUTES", json.dumps([{"stage": "scan", "model": "q", "base": "https://free.example/v1",
+                                              "key_env": "NOT_SET"}]))
+    with pytest.raises(ValueError):
+        _routes_from_env("ROUTES")
+
+
+def test_a_dead_key_on_another_provider_falls_back_to_the_next_model():
+    seen = []
+    app = FastAPI()
+
+    @app.post("/{provider}/chat/completions")
+    def chat(provider: str, payload: dict):
+        seen.append(provider)
+        if provider == "free":
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": {"message": "Invalid API key."}}, status_code=401)
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {}}
+
+    base, server = _serve(app)
+    upstream = Upstream(f"{base}/main", "main-key", "luna", 0, 0, retry_wait_s=0)
+    status, _body = upstream.send({"model": "x", "messages": []},
+                                  models=[Route("q", 0, 0, base=f"{base}/free", api_key="dead"), Route("luna", 0, 0)])
+    server.should_exit = True
+    assert (status, seen) == (200, ["free", "main"])

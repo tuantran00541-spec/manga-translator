@@ -60,19 +60,17 @@ SCAN_SCHEMA = {
 }
 
 SCAN_PROMPT = (
-    "You prepare manga, manhwa and webtoon slices for automatic translation. Each image is one vertical slice of "
-    "a chapter, labelled with its slice number. For every slice decide:\n"
-    "1. is_credit: true only when the whole slice is material the uploader or scanlation group added: credit or "
-    "staff pages, recruitment ads, Discord, Patreon or donation promotions, 'read at <site>' banners, "
-    "end-of-chapter notices. A story slice with a small watermark is not a credit slice, nor is a blank one.\n"
-    "2. no_text: true only when the slice has no lettering at all (no bubble, caption, narration, system window, "
-    "sign or sound effect), only artwork, gutter or blank space.\n"
-    "3. logos: boxes around the series title logo (stylised title artwork, usually near the start of the chapter) "
-    "and publisher or studio logos drawn as artwork; these are kept untouched. Box only such artwork: bubbles, "
-    "captions, narration, sound effects, plain text, scanlator watermarks, group logos, site names and URLs are "
-    "erased, so leave them out.\n"
+    "IMAGES: each image is one slice of a manga, manhwa or webtoon chapter, labelled SLICE <number>.\n"
+    "QUESTION: for each slice, is it a credit slice, does it have no lettering at all, and where are logos drawn "
+    "as artwork?\n"
+    "- is_credit: true only when the whole slice was added by the uploader or scanlation group (credits, staff "
+    "list, recruitment, Discord or Patreon ads, 'read at <site>' banners, end notices). A story slice with a small "
+    "watermark is not one, nor is a blank slice.\n"
+    "- no_text: true only when the slice has no lettering at all, not even a sound effect.\n"
+    "- logos: boxes round the series title logo or a publisher or studio logo drawn as artwork; they are kept. "
+    "Never box bubbles, captions, sound effects, plain text, watermarks, group logos or site names.\n"
     + BOX_RULE.replace("the image", "that slice's image")
-    + "Confidences are 0-1. Return JSON only: "
+    + "Confidences are 0-1.\nANSWER with JSON only: "
     '{"slices":[{"slice":<number>,"is_credit":false,"credit_confidence":0.0,"no_text":false,"no_text_confidence":0.0,'
     '"logos":[{"x1":0,"y1":0,"x2":0,"y2":0,"confidence":0.0}],"reason":"short"}]}'
 )
