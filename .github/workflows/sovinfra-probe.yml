@@ -1,0 +1,75 @@
+name: Sovinfra probe
+
+# One-off: sovinfra qwen3.8-27b limits (images per request, request size) and how to turn its thinking off.
+on:
+  push:
+    branches: [claude/friendly-hypatia-xi865r]
+    paths: [.github/workflows/sovinfra-probe.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe
+        env:
+          KEY: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+        run: |
+          python -m pip install -q requests==2.32.3 opencv-python-headless==4.10.0.84 numpy==1.26.4
+          git fetch -q origin audit-evidence
+          git show origin/audit-evidence:audit-results/ai-cost/pages/003.jpg > /tmp/page.jpg
+          mkdir -p audit-results/sovinfra-probe
+          python - <<'PY'
+          import base64, json, os, time, cv2, numpy as np, requests
+          base, head = "https://api.sovinfra.ai/v1", {"Authorization": "Bearer " + os.environ["KEY"]}
+          page = cv2.imread("/tmp/page.jpg")
+
+          def b64(image, quality=92):
+              return base64.b64encode(cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality])[1].tobytes()).decode()
+
+          def ask(name, images, text, **extra):
+              content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64(i)}} for i in images]
+              body = {"model": "qwen3.8-27b", "max_tokens": 1500, "messages": [{"role": "user", "content": content + [{"type": "text", "text": text}]}], **extra}
+              kb = len(json.dumps(body)) / 1024
+              started = time.time()
+              r = requests.post(base + "/chat/completions", headers=head, json=body, timeout=(10, 240))
+              row = {"test": name, "images": len(images), "kb": round(kb), "status": r.status_code, "s": round(time.time() - started, 1)}
+              if r.ok:
+                  data = r.json()
+                  msg = (data.get("choices") or [{}])[0].get("message") or {}
+                  row.update(reply=(msg.get("content") or "")[:600], reasoning=(msg.get("reasoning_content") or msg.get("reasoning") or "")[:200],
+                             finish=(data.get("choices") or [{}])[0].get("finish_reason"), usage=data.get("usage"))
+              else:
+                  row["error"] = r.text[:800]
+              print(json.dumps(row, ensure_ascii=False)[:1600], flush=True)
+              return row
+
+          small = cv2.resize(page[:1600], (400, 800))
+          crop = page[:1600]
+          rows = []
+          for n in (1, 2, 3, 4, 6):
+              rows.append(ask(f"count-{n}", [small] * n, "How many images are there? Answer with the number only."))
+          big = cv2.resize(page[:2048], (1365, 2048))
+          rows.append(ask("one-big", [big], "Transcribe the text in this image."))
+          rows.append(ask("two-big", [big, big], "Transcribe the text in the first image."))
+          q = 'Read every line of text in the image. Answer with JSON only: {"lines":["..."]}'
+          rows.append(ask("json-plain", [crop], q))
+          rows.append(ask("json-mode", [crop], q, response_format={"type": "json_object"}))
+          rows.append(ask("no-think-kwargs", [crop], q, chat_template_kwargs={"enable_thinking": False}))
+          rows.append(ask("no-think-tag", [crop], q + " /no_think"))
+          rows.append(ask("effort-none", [crop], q, reasoning_effort="none"))
+          rows.append(ask("effort-low", [crop], q, reasoning_effort="low"))
+          json.dump(rows, open("audit-results/sovinfra-probe/limits.json", "w"), ensure_ascii=False, indent=1)
+          PY
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/sovinfra-probe
+          message: "audit: sovinfra limits probe (run ${{ github.run_id }})"
