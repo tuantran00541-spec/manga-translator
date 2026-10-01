@@ -7,99 +7,106 @@
  },
  "polish": false,
  "cpu": "AMD EPYC 7763 64-Core Processor",
- "status": "failed",
- "error": "Invalid or unreadable image",
- "wall_s": 5.1,
+ "status": "completed",
+ "error": null,
+ "wall_s": 180.8,
  "stages": [
   {
    "key": "download",
-   "status": "failed",
-   "done": 0,
+   "status": "done",
+   "done": 1,
    "total": 1,
-   "elapsed_s": 4.8,
-   "detail": "Đang tải ảnh từ nguồn"
+   "elapsed_s": 5.5,
+   "detail": "10 lát"
   },
   {
    "key": "scan",
-   "status": "pending",
-   "done": 0,
-   "total": 0,
-   "elapsed_s": null,
-   "detail": ""
+   "status": "done",
+   "done": 10,
+   "total": 10,
+   "elapsed_s": 14.7,
+   "detail": "1 lát credit, 0 lát không chữ, 1 logo"
   },
   {
    "key": "clean",
-   "status": "pending",
-   "done": 0,
-   "total": 0,
-   "elapsed_s": null,
+   "status": "done",
+   "done": 9,
+   "total": 9,
+   "elapsed_s": 67.1,
    "detail": ""
   },
   {
    "key": "review",
-   "status": "pending",
-   "done": 0,
-   "total": 0,
-   "elapsed_s": null,
-   "detail": ""
+   "status": "done",
+   "done": 9,
+   "total": 9,
+   "elapsed_s": 46.4,
+   "detail": "3 tờ crop, repaint 6"
   },
   {
    "key": "translate",
-   "status": "pending",
-   "done": 0,
-   "total": 0,
-   "elapsed_s": null,
-   "detail": ""
+   "status": "done",
+   "done": 9,
+   "total": 9,
+   "elapsed_s": 44.8,
+   "detail": "Dịch 43 vùng"
   },
   {
    "key": "polish",
-   "status": "pending",
+   "status": "done",
    "done": 0,
    "total": 0,
-   "elapsed_s": null,
-   "detail": ""
+   "elapsed_s": 0.0,
+   "detail": "Tắt"
   },
   {
    "key": "render",
-   "status": "pending",
-   "done": 0,
-   "total": 0,
-   "elapsed_s": null,
+   "status": "done",
+   "done": 9,
+   "total": 9,
+   "elapsed_s": 1.3,
    "detail": ""
   },
   {
    "key": "finish",
-   "status": "pending",
-   "done": 0,
-   "total": 0,
-   "elapsed_s": null,
-   "detail": ""
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 0.0,
+   "detail": "Xong"
   }
  ],
  "report": {
-  "credit_pages": [],
+  "credit_pages": [
+   9
+  ],
   "credit_rejected": [],
-  "logo_regions": 0,
+  "logo_regions": 1,
   "scan_errors": [],
-  "repainted_regions": 0,
-  "repaint_pages": [],
+  "repainted_regions": 6,
+  "repaint_pages": [
+   2,
+   5,
+   6,
+   8
+  ],
   "qc_flagged": 0,
   "qc_errors": [],
-  "translated": 0,
-  "unreadable": 0,
+  "translated": 43,
+  "unreadable": 3,
   "review_flags": 0,
   "translate_errors": [],
   "render_errors": [],
   "editorial_blockers": 0,
   "blocker_samples": [],
-  "source_lang": null,
+  "source_lang": "auto",
   "textless_pages": [],
   "textless_rejected": [],
   "kept_regions": 0,
   "missed_added": 0,
   "retried_pages": [],
   "restored_regions": 0,
-  "sfx_kept": 0,
+  "sfx_kept": 3,
   "review_list": [],
   "unboxed_pages": [],
   "polish": {
@@ -109,15 +116,1623 @@
    "still_flagged": 0,
    "errors": [],
    "samples": []
-  }
+  },
+  "glossary": {
+   "names": [
+    {
+     "source": "Chaosah",
+     "target": "Chaosah",
+     "note": "clan/place - origin of witch lineage"
+    },
+    {
+     "source": "Pepper",
+     "target": "Pepper",
+     "note": "title character / protagonist"
+    },
+    {
+     "source": "Carrot",
+     "target": "Carrot",
+     "note": "title character"
+    },
+    {
+     "source": "Brasic",
+     "target": "Brasic",
+     "note": "injured orange-haired adventurer"
+    },
+    {
+     "source": "Peph'Ra",
+     "target": "Peph'Ra",
+     "note": "person - alias assumed by the blue-hooded girl as Great Heal"
+    },
+    {
+     "source": "Vinya",
+     "target": "Vinya",
+     "note": "person - injured ally mentioned by swordsman"
+    },
+    {
+     "source": "Phoenix Tears",
+     "target": "Nước Mắt Phượng Hoàng",
+     "note": "item - consumable healing potion/item carried in vials"
+    }
+   ],
+   "terms": [
+    {
+     "source": "healer",
+     "target": "Trị Liệu Sư"
+    },
+    {
+     "source": "adventurers",
+     "target": "mạo hiểm giả"
+    },
+    {
+     "source": "great healer",
+     "target": "Đại Trị Liệu Sư"
+    },
+    {
+     "source": "witch",
+     "target": "phù thủy"
+    },
+    {
+     "source": "chaosah witch",
+     "target": "phù thủy Chaosah"
+    },
+    {
+     "source": "monster",
+     "target": "quái vật"
+    },
+    {
+     "source": "beast",
+     "target": "ma thú"
+    }
+   ],
+   "address": [
+    {
+     "from": "green-haired adventurer",
+     "to": "white beast adventurer",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "white beast adventurer",
+     "to": "green-haired adventurer",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "green-haired adventurer",
+     "to": "Brasic",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "white beast adventurer",
+     "to": "Brasic",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "green-haired adventurer",
+     "to": "Healer",
+     "self": "tôi",
+     "other": "Trị Liệu Sư"
+    },
+    {
+     "from": "injured man",
+     "to": "Healer",
+     "self": "tôi",
+     "other": "Trị Liệu Sư"
+    },
+    {
+     "from": "witch",
+     "to": "Healer girl",
+     "self": "ta",
+     "other": "ngươi"
+    },
+    {
+     "from": "Peph'Ra",
+     "to": "witch with hat",
+     "self": "tôi",
+     "other": "ngươi"
+    },
+    {
+     "from": "witch with hat",
+     "to": "Peph'Ra",
+     "self": "ta",
+     "other": "ngươi"
+    },
+    {
+     "from": "swordsman",
+     "to": "Peph'Ra",
+     "self": "tôi",
+     "other": "Trị Liệu Sư"
+    },
+    {
+     "from": "Swordsman",
+     "to": "Healer",
+     "self": "tôi",
+     "other": "Trị Liệu Sư"
+    },
+    {
+     "from": "Swordsman",
+     "to": "monster",
+     "self": "ta",
+     "other": "quái vật"
+    },
+    {
+     "from": "đồng đội",
+     "to": "healer",
+     "self": "bọn ta",
+     "other": "cô"
+    }
+   ]
+  },
+  "review_sheets": 3,
+  "review_crops": 48,
+  "lines_joined": 2,
+  "overlaps_dropped": 0,
+  "seam_copies": 0,
+  "characters": [
+   {
+    "name": "witch",
+    "note": "Người phụ nữ lớn tuổi đội mũ phù thủy, đang nói với cô gái trị liệu."
+   },
+   {
+    "name": "Healer girl",
+    "note": "Cô gái trẻ đội áo choàng xanh, bị người phụ nữ đội mũ gọi đến."
+   },
+   {
+    "name": "green-haired adventurer",
+    "note": "Mạo hiểm giả trẻ tóc xanh, đang tranh phần."
+   },
+   {
+    "name": "white beast adventurer",
+    "note": "Mạo hiểm giả trẻ có đặc điểm thú màu trắng, đang tranh phần."
+   },
+   {
+    "name": "swordsman",
+    "note": "Adult man; fellow adventurer speaking to the healer."
+   },
+   {
+    "name": "Brasic",
+    "note": "Mạo hiểm giả nam tóc cam, đang chiến đấu và gọi Trị Liệu Sư."
+   }
+  ],
+  "address": [
+   {
+    "from": "witch",
+    "to": "Healer girl",
+    "self": "ta",
+    "other": "ngươi"
+   },
+   {
+    "from": "swordsman",
+    "to": "Peph'Ra",
+    "self": "tôi",
+    "other": "Trị Liệu Sư"
+   }
+  ],
+  "blanks_settled": 0
  },
  "gateway_job": {
-  "status": "failed",
-  "requests": 0,
-  "prompt_tokens": 0,
-  "completion_tokens": 0,
-  "cost_usd": 0.0,
-  "charged_micros": 0
+  "status": "completed",
+  "requests": 22,
+  "prompt_tokens": 82745,
+  "completion_tokens": 11743,
+  "cost_usd": 0.009713039699999999,
+  "charged_micros": 10200
  },
- "transport": {}
+ "transport": {
+  "scan": {
+   "requests": 5,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 8.3,
+    "p90": 9.8,
+    "max": 9.8,
+    "sum": 39.4
+   },
+   "span_s": 14.6,
+   "images": 10,
+   "request_kb_avg": 681.7,
+   "prompt_tokens": 12002,
+   "cached_tokens": 0,
+   "completion_tokens": 718,
+   "reasoning_tokens": 0
+  },
+  "glossary": {
+   "requests": 5,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 13.3,
+    "p90": 21.4,
+    "max": 21.4,
+    "sum": 71.9
+   },
+   "span_s": 21.5,
+   "images": 9,
+   "request_kb_avg": 920.7,
+   "prompt_tokens": 22245,
+   "cached_tokens": 227,
+   "completion_tokens": 3753,
+   "reasoning_tokens": 2950
+  },
+  "review": {
+   "requests": 3,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 5.5,
+    "p90": 5.6,
+    "max": 5.6,
+    "sum": 16.6
+   },
+   "span_s": 5.6,
+   "images": 3,
+   "request_kb_avg": 884.6,
+   "prompt_tokens": 9156,
+   "cached_tokens": 0,
+   "completion_tokens": 51,
+   "reasoning_tokens": 0
+  },
+  "translate": {
+   "requests": 9,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 11.2,
+    "p90": 18.6,
+    "max": 18.6,
+    "sum": 110.2
+   },
+   "span_s": 42.2,
+   "images": 9,
+   "request_kb_avg": 542.9,
+   "prompt_tokens": 39342,
+   "cached_tokens": 13856,
+   "completion_tokens": 7221,
+   "reasoning_tokens": 3682
+  }
+ },
+ "zip_pages": 10,
+ "slices": 10,
+ "slices_active": 9,
+ "clean_ms": {
+  "auto_inpaint": 90562,
+  "auto_inpaint.lama_model_ms": 80333,
+  "auto_inpaint.ort_global_lock_wait_ms": 0,
+  "auto_inpaint.session_lock_wait_ms": 0,
+  "detect": 35326,
+  "manual_inpaint": 0,
+  "manual_inpaint.lama_model_ms": 0,
+  "manual_inpaint.ort_global_lock_wait_ms": 0,
+  "manual_inpaint.session_lock_wait_ms": 0,
+  "read": 522,
+  "total": 127323,
+  "write": 909
+ },
+ "pairs": 9,
+ "lines": [
+  {
+   "slice": 1,
+   "id": "text_fe07544243824190",
+   "source": "Episode 38: The Healer",
+   "translation": "Tập 38: Trị Liệu Sư",
+   "role": "title",
+   "container": "box",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 32,
+   "font_px_at_800": 21.3,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Tập 38: Trị Liệu Sư"
+   ],
+   "box_w": 443,
+   "box_h": 104,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 24,
+   "split_word": false
+  },
+  {
+   "slice": 2,
+   "id": "text_e80e0db6f62441e1",
+   "source": "Brasic? Brasic! Damn! I didn’t notice that you were so badly hurt!",
+   "translation": "Brasic? Brasic!\nChết tiệt! Tôi không nhận ra\ncậu bị thương nặng thế!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 41,
+   "font_px_at_800": 27.3,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Brasic? Brasic!",
+    "Chết tiệt! Tôi không nhận",
+    "ra",
+    "cậu bị thương nặng thế!"
+   ],
+   "box_w": 458,
+   "box_h": 206,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 181,
+   "split_word": false
+  },
+  {
+   "slice": 2,
+   "id": "text_a2ea82f3ab344a5d",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 1200
+  },
+  {
+   "slice": 2,
+   "id": "text_d0144ffd03484a61",
+   "source": "Healer! We need your help, FAST!",
+   "translation": "Trị Liệu Sư! Mau giúp bọn tôi!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 12,
+   "font_px_at_800": 8.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Trị Liệu Sư! Mau giúp bọn tôi!"
+   ],
+   "box_w": 268,
+   "box_h": 211,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 7,
+   "split_word": false
+  },
+  {
+   "slice": 2,
+   "id": "text_ca34aa71274b4ce0",
+   "source": "Finally... We managed to finish off this one! Yes, it was difficult. Now we understand why so many adventurers were stuck there. How is Brasic?",
+   "translation": "Cuối cùng...\nBọn tôi cũng hạ được con này!\nỪ, đúng là khó thật.\nGiờ tôi hiểu vì sao nhiều mạo hiểm giả\nmắc kẹt ở đó rồi.\nBrasic thế nào?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 39,
+   "font_px_at_800": 26.0,
+   "size_source": "fit",
+   "lines": 8,
+   "wrapped": [
+    "Cuối cùng...",
+    "Bọn tôi cũng hạ",
+    "được con này!",
+    "Ừ, đúng là khó thật.",
+    "Giờ tôi hiểu vì sao",
+    "nhiều mạo hiểm giả",
+    "mắc kẹt ở đó rồi.",
+    "Brasic thế nào?"
+   ],
+   "box_w": 334,
+   "box_h": 436,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 22,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_55ee8bb03c1a4c47",
+   "source": "Every time it's the same miracle.",
+   "translation": "Lần nào cũng kỳ diệu như vậy.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 18,
+   "font_px_at_800": 12.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Lần nào cũng kỳ diệu như vậy."
+   ],
+   "box_w": 236,
+   "box_h": 126,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 10,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_25041eadecf84968",
+   "source": "My wounds are gone.",
+   "translation": "Vết thương của tôi biến mất rồi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 25,
+   "font_px_at_800": 16.7,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Vết thương của tôi",
+    "biến mất rồi."
+   ],
+   "box_w": 219,
+   "box_h": 126,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 14,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_7c28a210425d4b60",
+   "source": "Step aside...",
+   "translation": "Tránh ra...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 12,
+   "font_px_at_800": 8.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Tránh ra..."
+   ],
+   "box_w": 179,
+   "box_h": 85,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 5,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_4d9e339cdd9345d5",
+   "source": "Your talent is incredible, Healer!",
+   "translation": "Tài năng của cô thật đáng kinh ngạc, Trị Liệu Sư!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 12,
+   "font_px_at_800": 8.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Tài năng của cô thật đáng kinh ngạc,",
+    "Trị Liệu Sư!"
+   ],
+   "box_w": 197,
+   "box_h": 158,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 6,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_c711d09dd15043df",
+   "source": "Let's not delay. The treasure is waiting for us! Hear hear! Thanks to her, we're invincible! Let's go find the next monster!",
+   "translation": "Đừng chần chừ nữa. Kho báu đang chờ chúng ta!\nĐúng vậy!\nNhờ cô ấy, chúng ta bất bại!\nĐi tìm quái vật tiếp theo thôi!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 19,
+   "font_px_at_800": 12.7,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Đừng chần chừ nữa. Kho báu đang chờ chúng ta!",
+    "Đúng vậy!",
+    "Nhờ cô ấy, chúng ta bất bại!",
+    "Đi tìm quái vật tiếp theo thôi!"
+   ],
+   "box_w": 426,
+   "box_h": 312,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 11,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_13123cb8b8e7401b",
+   "source": "Ding",
+   "translation": "Keng",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 48,
+   "font_px_at_800": 32.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Keng"
+   ],
+   "box_w": 153,
+   "box_h": 132,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 4,
+   "id": "text_7a49c52bb8aa4b08",
+   "source": "What do you think you're doing? We've been looking for you for months.",
+   "translation": "Cô đang làm gì vậy?\nBọn tôi tìm cô suốt mấy tháng nay rồi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 25,
+   "font_px_at_800": 16.7,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Cô đang làm gì vậy?",
+    "Bọn tôi tìm cô suốt mấy",
+    "tháng nay rồi."
+   ],
+   "box_w": 247,
+   "box_h": 249,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 14,
+   "split_word": false
+  },
+  {
+   "slice": 4,
+   "id": "text_3ea9994c77234e6e",
+   "source": "?",
+   "translation": "?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 48,
+   "font_px_at_800": 32.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "?"
+   ],
+   "box_w": 95,
+   "box_h": 103,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 4,
+   "id": "text_e038f21acced4c3d",
+   "source": "No, me! Me!",
+   "translation": "Không, tôi! Tôi!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 35,
+   "font_px_at_800": 23.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Không,",
+    "tôi! Tôi!"
+   ],
+   "box_w": 136,
+   "box_h": 110,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 4,
+   "id": "text_1675251854c243fa",
+   "source": "Dibs!",
+   "translation": "Để tôi!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 40,
+   "font_px_at_800": 26.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Để tôi!"
+   ],
+   "box_w": 111,
+   "box_h": 81,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_b858587ae7244b8c",
+   "source": "I’m sick of being hunted, sick of being laughed at, and above all, I’m sick of not being able to find work after studying for so long! Healer! Don’t stray too far! Vinya took a nasty blow.",
+   "translation": "Tôi chán bị săn đuổi, chán bị cười nhạo, và trên hết, tôi chán học hành bao năm mà vẫn không tìm được việc!\nTrị Liệu Sư! Đừng đi xa quá! Vinya bị đánh mạnh lắm.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 44,
+   "font_px_at_800": 29.3,
+   "size_source": "fit",
+   "lines": 6,
+   "wrapped": [
+    "Tôi chán bị săn đuổi, chán bị",
+    "cười nhạo, và trên hết, tôi",
+    "chán học hành bao năm mà",
+    "vẫn không tìm được việc!",
+    "Trị Liệu Sư! Đừng đi xa quá!",
+    "Vinya bị đánh mạnh lắm."
+   ],
+   "box_w": 507,
+   "box_h": 344,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 271,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_6ef5de22548b44ea",
+   "source": "Isn’t it obvious? I decided to give it all up and change my career. From now on, I am the Great Healer Peph’Ra, as you can see.",
+   "translation": "Còn gì rõ ràng hơn nữa? Tôi quyết định từ bỏ tất cả và đổi nghề.\nTừ giờ trở đi, tôi là Đại Trị Liệu Sư Peph’Ra, như mọi người thấy đấy.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 35,
+   "font_px_at_800": 23.3,
+   "size_source": "fit",
+   "lines": 6,
+   "wrapped": [
+    "Còn gì rõ ràng hơn nữa? Tôi",
+    "quyết định từ bỏ tất cả và đổi",
+    "nghề.",
+    "Từ giờ trở đi, tôi là Đại Trị Liệu",
+    "Sư Peph’Ra, như mọi người thấy",
+    "đấy."
+   ],
+   "box_w": 450,
+   "box_h": 260,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 196,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_1fb6c092236d4c80",
+   "source": "At least here I’m needed and appreciated for my skills!",
+   "translation": "Ít ra ở đây, tôi được cần đến và trân trọng tài năng!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 12,
+   "font_px_at_800": 8.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ít ra ở đây, tôi được cần đến và trân trọng tài",
+    "năng!"
+   ],
+   "box_w": 247,
+   "box_h": 199,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 6,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_3776f93edf1c4686",
+   "source": "“But why”, you might ask?!",
+   "translation": "“Nhưng tại sao,” bạn có thể hỏi?!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 12,
+   "font_px_at_800": 8.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "“Nhưng tại sao,” bạn có thể hỏi?!"
+   ],
+   "box_w": 215,
+   "box_h": 128,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 6,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_f08b5aab80e64124",
+   "source": "It’s simple! I HAVE HAD IT!",
+   "translation": "Đơn giản thôi! Tôi chịu hết nổi rồi!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 18,
+   "font_px_at_800": 12.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Đơn giản thôi! Tôi chịu hết nổi",
+    "rồi!"
+   ],
+   "box_w": 211,
+   "box_h": 195,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 12,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_aedebc0495e646a4",
+   "source": "...",
+   "translation": "...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 48,
+   "font_px_at_800": 32.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "..."
+   ],
+   "box_w": 104,
+   "box_h": 85,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_49a665ed3f6d452d",
+   "source": "And above all: you are not a healer. They’ll notice, sooner or later, when you’ve run out of that incredible amount of Phoenix Tears you’re carrying around, pretending you have new powers.",
+   "translation": "Và trên hết,\nngươi không phải Trị Liệu Sư.\nSớm muộn gì họ cũng nhận ra\nngươi đã dùng hết đống Nước Mắt Phượng Hoàng mang theo,\ngiả vờ như mình có năng lực mới.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 12,
+   "font_px_at_800": 8.0,
+   "size_source": "fit",
+   "lines": 5,
+   "wrapped": [
+    "Và trên hết,",
+    "ngươi không phải Trị Liệu Sư.",
+    "Sớm muộn gì họ cũng nhận ra",
+    "ngươi đã dùng hết đống Nước Mắt Phượng Hoàng mang theo,",
+    "giả vờ như mình có năng lực mới."
+   ],
+   "box_w": 431,
+   "box_h": 330,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 6,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_c6b95e4f842f44ea",
+   "source": "Wha...? How did you...",
+   "translation": "Hả...? Sao ngươi...",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 63,
+   "font_px_at_800": 42.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Hả...? Sao",
+    "ngươi..."
+   ],
+   "box_w": 237,
+   "box_h": 222,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 179,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_6a48595b47e94f12",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 1200
+  },
+  {
+   "slice": 6,
+   "id": "text_5e3563180e854aaf",
+   "source": "Anything else?",
+   "translation": "Còn gì nữa không?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 32,
+   "font_px_at_800": 21.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Còn gì nữa",
+    "không?"
+   ],
+   "box_w": 189,
+   "box_h": 90,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_447d57c1c78a415b",
+   "source": "That's it.",
+   "translation": "Chỉ vậy thôi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 30,
+   "font_px_at_800": 20.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chỉ vậy",
+    "thôi."
+   ],
+   "box_w": 144,
+   "box_h": 86,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_41450232b5db4571",
+   "source": "Tsk!",
+   "translation": "Chậc!",
+   "role": "sfx",
+   "container": "bubble",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 35,
+   "font_px_at_800": 23.3,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Chậc!"
+   ],
+   "box_w": 119,
+   "box_h": 92,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_1ef5fde27a534e77",
+   "source": "...guess.",
+   "translation": "...đoán xem.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 19,
+   "font_px_at_800": 12.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "...đoán xem."
+   ],
+   "box_w": 148,
+   "box_h": 85,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 11,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_6117c620efc3467a",
+   "source": "Yes. Having your name on a wanted poster is normal for a Chaosah witch. It’s even the sign of a good reputation. Ignore the nay-sayers and what-have-you, and create your own career if nobody gives you one.",
+   "translation": "Đúng vậy.\nPhù thủy Chaosah bị truy nã\nlà chuyện thường tình.\nThậm chí còn là dấu hiệu\ncho thấy danh tiếng tốt.\nKệ mấy kẻ gièm pha,\ntự tạo dựng sự nghiệp\nnếu chẳng ai trao cho ngươi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 12,
+   "font_px_at_800": 8.0,
+   "size_source": "fit",
+   "lines": 8,
+   "wrapped": [
+    "Đúng vậy.",
+    "Phù thủy Chaosah bị truy nã",
+    "là chuyện thường tình.",
+    "Thậm chí còn là dấu hiệu",
+    "cho thấy danh tiếng tốt.",
+    "Kệ mấy kẻ gièm pha,",
+    "tự tạo dựng sự nghiệp",
+    "nếu chẳng ai trao cho ngươi."
+   ],
+   "box_w": 371,
+   "box_h": 395,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 6,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_1e9181cb8bb94725",
+   "source": "Grrr!!! Well, if I need more I'll go get more! Because THIS WORKS! Unlike all of your twisted Chaosah stuff.",
+   "translation": "Gừ!!! Nếu cần thêm thì ta đi lấy thêm! Vì cách này hiệu quả! Khác hẳn mấy thứ Chaosah méo mó của ngươi.",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 49,
+   "font_px_at_800": 32.7,
+   "size_source": "fit",
+   "lines": 6,
+   "wrapped": [
+    "Gừ!!! Nếu cần thêm",
+    "thì ta đi lấy thêm! Vì",
+    "cách này hiệu quả!",
+    "Khác hẳn mấy thứ",
+    "Chaosah méo mó",
+    "của ngươi."
+   ],
+   "box_w": 371,
+   "box_h": 409,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 319,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_8487b381cba94016",
+   "source": "Grrr...!",
+   "translation": "Gừ...!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 48,
+   "font_px_at_800": 32.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Gừ...!"
+   ],
+   "box_w": 163,
+   "box_h": 104,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_c13fcba4bd5e4e42",
+   "source": "eeeeeeee",
+   "translation": "Eeeeeee",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 98,
+   "font_px_at_800": 65.3,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Eeeeeee"
+   ],
+   "box_w": 560,
+   "box_h": 408,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 56,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_97ac6d8bd7ba4d53",
+   "source": "Greeeeeeee",
+   "translation": "Gừừừừừừ",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 103,
+   "font_px_at_800": 68.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Gừừừừừừ"
+   ],
+   "box_w": 563,
+   "box_h": 348,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 65,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_e0362a09b98d433b",
+   "source": "Watch out! The monster is shape-shifting!",
+   "translation": "Coi chừng! Quái vật đang biến hình!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 12,
+   "font_px_at_800": 8.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Coi chừng! Quái vật đang biến hình!"
+   ],
+   "box_w": 287,
+   "box_h": 216,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 7,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_8353a2d7d7184464",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 1200
+  },
+  {
+   "slice": 8,
+   "id": "text_c6248a9ea8d9406c",
+   "source": "Healer?",
+   "translation": "Trị Liệu Sư?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 30,
+   "font_px_at_800": 20.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Trị Liệu",
+    "Sư?"
+   ],
+   "box_w": 138,
+   "box_h": 85,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_e604471b95c34da4",
+   "source": "Oh my, what a ruckus!",
+   "translation": "Ôi trời, ồn ào quá!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 44,
+   "font_px_at_800": 29.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ôi trời, ồn",
+    "ào quá!"
+   ],
+   "box_w": 191,
+   "box_h": 117,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_ca528bb549814336",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 1200
+  },
+  {
+   "slice": 8,
+   "id": "text_e68279a6d70246af",
+   "source": "Cover me. I'm going to silence it for good! You hear that, monster?! Keep an eye on me just in case, Healer...",
+   "translation": "Yểm trợ tôi. Tôi sẽ cho nó im hẳn!\nNghe thấy chưa, quái vật?!\nTrị Liệu Sư, để mắt đến tôi nhé,\nphòng khi có chuyện...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 35,
+   "font_px_at_800": 23.3,
+   "size_source": "fit",
+   "lines": 8,
+   "wrapped": [
+    "Yểm trợ tôi. Tôi sẽ",
+    "cho nó im hẳn!",
+    "Nghe thấy chưa,",
+    "quái vật?!",
+    "Trị Liệu Sư, để mắt",
+    "đến tôi nhé,",
+    "phòng khi có",
+    "chuyện..."
+   ],
+   "box_w": 299,
+   "box_h": 344,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 170,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_228ac2d0d9ac4dee",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 1200
+  },
+  {
+   "slice": 9,
+   "id": "text_b869a1041c96438e",
+   "source": "Rho ho ho! Look at that! I think the beast's cry was too much for our healer's constitution.",
+   "translation": "Ha ha ha! Nhìn kìa! Tiếng kêu của con ma thú chắc làm Trị Liệu Sư nhà ta chịu không nổi rồi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 12,
+   "font_px_at_800": 8.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ha ha ha! Nhìn kìa! Tiếng kêu của con ma thú chắc làm Trị Liệu Sư nhà ta chịu",
+    "không nổi rồi."
+   ],
+   "box_w": 405,
+   "box_h": 199,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 6,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_4c122fe7adfb4ad9",
+   "source": "Bwa ha ha!; HAHA HA HA! Not only that, but it's all blue!; HAHA HA HA!",
+   "translation": "Ha ha ha!; Ha ha ha! Không chỉ vậy, nó còn xanh lè nữa!; Ha ha ha!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 47,
+   "font_px_at_800": 31.3,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Ha ha ha!; Ha ha ha! Không chỉ",
+    "vậy, nó còn xanh lè nữa!; Ha ha",
+    "ha!"
+   ],
+   "box_w": 621,
+   "box_h": 175,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 118,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_bcc6a5fb93f94961",
+   "source": "Hey!",
+   "translation": "Này!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 48,
+   "font_px_at_800": 32.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Này!"
+   ],
+   "box_w": 124,
+   "box_h": 96,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_c103cd7d162343ce",
+   "source": "Welcome back.",
+   "translation": "Mừng cô trở về.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 12,
+   "font_px_at_800": 8.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Mừng cô trở về."
+   ],
+   "box_w": 199,
+   "box_h": 90,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 6,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_686073ac29774a67",
+   "source": "And you think it can heal, too? Ugh, gross! HAHA HA HA! BWA HA HA!",
+   "translation": "Cậu còn nghĩ nó chữa được nữa à?; Eo, ghê quá! Ha ha ha!; Ha ha ha!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 43,
+   "font_px_at_800": 28.7,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Cậu còn nghĩ nó",
+    "chữa được nữa à?;",
+    "Eo, ghê quá! Ha ha",
+    "ha!; Ha ha ha!"
+   ],
+   "box_w": 335,
+   "box_h": 263,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 140,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_a57848e982a34073",
+   "source": "Wait! We were just joking! Healer!",
+   "translation": "Khoan đã! Bọn tôi chỉ đùa thôi! Trị Liệu Sư!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 33,
+   "font_px_at_800": 22.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Khoan đã! Bọn",
+    "tôi chỉ đùa",
+    "thôi! Trị Liệu",
+    "Sư!"
+   ],
+   "box_w": 195,
+   "box_h": 197,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 23,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_aaa4826e4edd486d",
+   "source": "OOPS! No, no, no!",
+   "translation": "Ối! Không, không, không!",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 37,
+   "font_px_at_800": 24.7,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Ối! Không,",
+    "không,",
+    "không!"
+   ],
+   "box_w": 149,
+   "box_h": 171,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 111,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_acfd14de39df4276",
+   "source": "...",
+   "translation": "...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 1200,
+   "font_px": 48,
+   "font_px_at_800": 32.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "..."
+   ],
+   "box_w": 106,
+   "box_h": 81,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  }
+ ],
+ "readability": {
+  "rendered": 43,
+  "font_px_at_800": {
+   "min": 8.0,
+   "p10": 8.0,
+   "median": 23.3,
+   "max": 68.7
+  },
+  "under_16px": 14,
+  "under_20px": 16,
+  "split_word": 0,
+  "does_not_fit": 0,
+  "missing_glyphs": 0,
+  "size_from_ocr": 0,
+  "by_role": {
+   "dialogue": [
+    8.0,
+    8.0,
+    8.0,
+    8.0,
+    8.0,
+    8.0,
+    8.0,
+    8.0,
+    12.0,
+    12.7,
+    12.7,
+    16.7,
+    16.7,
+    20.0,
+    20.0,
+    21.3,
+    23.3,
+    23.3,
+    24.7,
+    26.0,
+    27.3,
+    28.7,
+    29.3,
+    29.3,
+    31.3,
+    32.0,
+    32.0,
+    32.0,
+    42.0
+   ],
+   "sfx": [
+    23.3,
+    32.0,
+    65.3,
+    68.7
+   ],
+   "shout": [
+    8.0,
+    8.0,
+    12.0,
+    22.0,
+    23.3,
+    26.7,
+    32.0,
+    32.0,
+    32.7
+   ],
+   "title": [
+    21.3
+   ]
+  }
+ },
+ "per_chapter": {
+  "prompt_tokens": 82745,
+  "completion_tokens": 11743,
+  "cost_usd": 0.00971
+ },
+ "per_slice": {
+  "prompt_tokens": 9194,
+  "completion_tokens": 1305
+ },
+ "scorecard": {
+  "clean": {
+   "slices": 9,
+   "text_left": 0,
+   "ghosts": 1,
+   "items": [
+    {
+     "slice": 3,
+     "kind": "ghost",
+     "box": [
+      915,
+      1162,
+      1092,
+      1293
+     ],
+     "px": 226,
+     "share": 0.032
+    }
+   ]
+  },
+  "text": {
+   "objects": 43,
+   "translated": 43,
+   "untranslated": 0,
+   "needs_review": 0,
+   "kept_original": 0
+  },
+  "spend": {
+   "cost_usd": 0.00971,
+   "requests": 22,
+   "prompt_tokens": 82745,
+   "images": 31,
+   "wall_s": 180.8,
+   "by_stage": {
+    "scan": {
+     "requests": 5,
+     "images": 10,
+     "prompt_tokens": 12002,
+     "completion_tokens": 718
+    },
+    "glossary": {
+     "requests": 5,
+     "images": 9,
+     "prompt_tokens": 22245,
+     "completion_tokens": 3753
+    },
+    "review": {
+     "requests": 3,
+     "images": 3,
+     "prompt_tokens": 9156,
+     "completion_tokens": 51
+    },
+    "translate": {
+     "requests": 9,
+     "images": 9,
+     "prompt_tokens": 39342,
+     "completion_tokens": 7221
+    }
+   },
+   "stage_s": {
+    "download": 5.5,
+    "scan": 14.7,
+    "clean": 67.1,
+    "review": 46.4,
+    "translate": 44.8,
+    "polish": 0.0,
+    "render": 1.3,
+    "finish": 0.0
+   }
+  },
+  "polish": {
+   "judged": 0,
+   "flagged": 0,
+   "rewritten": 0,
+   "still_flagged": 0
+  },
+  "fit": {
+   "does_not_fit": 0,
+   "under_20px": 16,
+   "split_word": 0,
+   "missing_glyphs": 0
+  }
+ }
 }
