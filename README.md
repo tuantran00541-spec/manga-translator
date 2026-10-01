@@ -171,10 +171,11 @@ powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/tua
 curl -LsSf https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/main/install.sh | sh
 ~~~
 
-Then, in any **new** cmd or terminal window:
+On Windows, double-click the **Manga Translator** icon the installer puts on the desktop and in the Start menu: the app opens in its own window, with no console. Elsewhere, or from any **new** cmd or terminal window:
 
 ~~~bash
 manga           # starts the app and opens it in the browser (or just opens it if it already runs)
+manga --window  # the same in its own window (Windows and macOS)
 manga update    # gets the latest version; models, chapters and settings stay
 manga --version
 ~~~
@@ -184,11 +185,11 @@ The installer works in one folder (`%LOCALAPPDATA%\manga-translator` on Windows,
 - downloads [uv](https://github.com/astral-sh/uv) (pinned, hash checked), which fetches Python 3.12 and installs the dependencies with CPU-only PyTorch;
 - on Windows, installs the Microsoft Visual C++ runtime when it is missing or older than 14.40 (torch, onnxruntime and PaddleOCR need it; Windows asks for admin once). `manga` checks it at every start, so a runtime removed later is put back instead of failing with WinError 126;
 - downloads the LaMa model (hash checked, resumes broken downloads) and builds `ctd_seg.onnx`;
-- adds a `manga` command to the user PATH.
+- adds a `manga` command to the user PATH and, on Windows, the desktop and Start menu icons.
 
 A Windows user folder with accents (for example `C:\Users\Nguyễn`) breaks PaddleOCR, so the installer then uses `C:\ProgramData\manga-translator`. From a clone, `install.bat` / `./install.sh` install that clone in place.
 
-To uninstall, delete that folder and the `manga` command (`%LOCALAPPDATA%\manga-translator\bin` on Windows, `~/.local/bin/manga` elsewhere), then remove its line from the user Path or shell start-up file.
+To uninstall, delete that folder, the icons and the `manga` command (`%LOCALAPPDATA%\manga-translator\bin` on Windows, `~/.local/bin/manga` elsewhere), then remove its line from the user Path or shell start-up file.
 
 Manual install (Python 3.10–3.12):
 

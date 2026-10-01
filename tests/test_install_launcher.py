@@ -300,3 +300,46 @@ def test_only_a_valid_microsoft_signature_passes(output, code, ok, monkeypatch):
 def test_downloads_refuse_anything_but_https(tmp_path):
     with pytest.raises(ValueError):
         install.download("http://example.invalid/m.onnx", tmp_path / "m.onnx", None)
+
+
+def test_the_desktop_icon_opens_the_app_window_and_quotes_odd_paths():
+    from pathlib import PureWindowsPath
+
+    script = install.shortcut_script(PureWindowsPath(r"C:\Users\Tuấn\.venv\Scripts\pythonw.exe"),
+                                     PureWindowsPath(r"C:\Users\O'Neil\app\run.py"), PureWindowsPath(r"C:\a\favicon.ico"))
+    assert "'C:\\Users\\Tuấn\\.venv\\Scripts\\pythonw.exe'" in script
+    assert "$link.Arguments = '\"C:\\Users\\O''Neil\\app\\run.py\" --window'" in script
+    assert "GetFolderPath('Desktop')" in script and "GetFolderPath('Programs')" in script
+
+
+def test_the_app_window_shows_a_loading_page_then_the_app(monkeypatch):
+    import types
+
+    calls = []
+
+    class Window:
+        def load_url(self, url):
+            calls.append(("load", url))
+
+    fake = types.SimpleNamespace(
+        settings={},
+        create_window=lambda title, url=None, html=None, **kw: calls.append(("create", url, bool(html))) or Window(),
+        start=lambda func=None: func and func(),
+    )
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    assert run._show_window("http://127.0.0.1:8000", on_ready=lambda: calls.append(("ready",)))
+    assert calls == [("create", None, True), ("ready",), ("load", "http://127.0.0.1:8000")]
+    assert fake.settings == {"ALLOW_DOWNLOADS": True, "OPEN_EXTERNAL_LINKS_IN_BROWSER": True}
+
+
+def test_without_a_window_toolkit_the_app_falls_back_to_the_browser(monkeypatch):
+    import types
+
+    def no_gui(func=None):
+        raise RuntimeError("no GTK or Qt")
+
+    monkeypatch.setitem(sys.modules, "webview", types.SimpleNamespace(
+        settings={}, create_window=lambda *a, **kw: object(), start=no_gui))
+    assert run._show_window("http://127.0.0.1:8000") is False
+    monkeypatch.setitem(sys.modules, "webview", None)  # not installed at all
+    assert run._show_window("http://127.0.0.1:8000") is False
