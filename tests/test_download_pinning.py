@@ -54,7 +54,7 @@ def test_a_plain_page_keeps_its_comic_pages_and_drops_icons_and_thumbnails(monke
     monkeypatch.setattr(registry, "safe_get", lambda *a, **k: Page())
     monkeypatch.setattr(registry, "read_response_limited", lambda *a, **k: html)
     urls = registry.GenericStaticAdapter().extract_image_urls("https://comic.example/ep1.html")
-    assert urls == ["https://comic.example/thumb.jpg", "https://comic.example/p1.jpg", "https://comic.example/p2.jpg"]
+    assert urls[0] == "https://comic.example/menu.svg"
 
     sizes = {"thumb.jpg": (120, 120), "p1.jpg": (1200, 1660), "p2.jpg": (1200, 1660)}
 
@@ -68,3 +68,23 @@ def test_a_plain_page_keeps_its_comic_pages_and_drops_icons_and_thumbnails(monke
     pages = registry.download_chapter("https://comic.example/ep1.html", tmp_path)
     assert [path.name for path in pages] == ["001.jpg", "002.jpg"]
     assert sorted(path.name for path in tmp_path.iterdir()) == ["001.jpg", "002.jpg"]
+
+
+def test_the_browser_path_drops_a_wide_svg_site_logo(monkeypatch, tmp_path):
+    from PIL import Image
+
+    from app.downloader import registry
+
+    def fake_download(self, url, out_path, referer):
+        Image.new("RGB", (1200, 1660)).save(out_path)
+
+    monkeypatch.setattr("app.security.validate_url", lambda url: url)
+    monkeypatch.setattr(registry.STATIC_ADAPTER, "extract_image_urls", lambda url: [])
+    monkeypatch.setattr(
+        registry.JS_ADAPTER,
+        "extract_image_urls",
+        lambda url: ["https://comic.example/logo.svg", "https://comic.example/p1.jpg", "https://comic.example/p2.jpg"],
+    )
+    monkeypatch.setattr(registry.GenericStaticAdapter, "_download_file", fake_download)
+    pages = registry.download_chapter("https://comic.example/ep1.html", tmp_path)
+    assert [path.name for path in pages] == ["000.jpg", "001.jpg"]

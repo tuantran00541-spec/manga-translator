@@ -56,8 +56,7 @@ class GenericStaticAdapter(BaseAdapter):
                 img.get("data-lazy"),
                 img.get("src"),
             )
-            # Vector icons (menus, flags, stars) are never comic pages.
-            if url and not url.lower().split("?")[0].endswith(".svg"):
+            if url:
                 urls.append(url)
         return self._dedupe(urls)
 
@@ -108,6 +107,8 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
         reason = "; ".join(str(item)[:200] for item in failures)
         raise ValueError("Không tìm thấy ảnh chương hợp lệ từ URL này" + (f" ({reason})" if reason else ""))
 
+    # Vector logos and icons are never comic pages, and a wide site logo passes the browser's width bar.
+    selected = [url for url in selected if not url.lower().split("?")[0].endswith(".svg")] or selected
     paths = STATIC_ADAPTER.download_urls(selected, output_dir, referer=chapter_url)
     # Static HTML gives no rendered sizes, so thumbnails and logos are dropped by the browser path's width bar.
     pages = [path for path in paths if _image_width(path) >= DOWNLOAD_JS_MIN_IMAGE_WIDTH]
