@@ -45,6 +45,8 @@ class Route:
     output_usd_per_m: float
     cached_usd_per_m: float | None = None
     reasoning_effort: str | None = None  # this model's thinking level, whatever the request asked
+    base: str | None = None  # another provider's API base for this model; None uses the upstream's
+    api_key: str = field(default="", repr=False)  # that provider's key, read from the env var the route names
 
     def cost(self, usage: dict) -> float:
         prompt = max(0, int(usage.get("prompt_tokens") or 0))
@@ -101,10 +103,13 @@ class Upstream:
             last = attempt == self.retries
             # An overloaded model is not waited on while another one can answer.
             route = models[min(attempt, len(models) - 1)]
+            base, api_key = self.base, self.api_key
             if isinstance(route, Route):
                 payload = {**payload, "model": route.model}
                 if route.reasoning_effort:
                     payload["reasoning_effort"] = route.reasoning_effort
+                if route.base:
+                    base, api_key = route.base, route.api_key
             elif route is not None:
                 payload = {**payload, "model": route}
             if trace is not None:
@@ -115,10 +120,11 @@ class Upstream:
             if path == "chat/completions" and self.max_tokens_field != "max_tokens" and "max_tokens" in payload:
                 sent = {k: v for k, v in payload.items() if k != "max_tokens"}
                 sent[self.max_tokens_field] = payload["max_tokens"]
-            key = {"api-key": self.api_key} if self.auth == "api-key" else {"Authorization": f"Bearer {self.api_key}"}
+            key = ({"api-key": api_key} if self.auth == "api-key" and base == self.base
+                   else {"Authorization": f"Bearer {api_key}"})
             try:
                 response = requests.post(
-                    f"{self.base.rstrip('/')}/{path}",
+                    f"{base.rstrip('/')}/{path}",
                     headers={**key, "Content-Type": "application/json"},
                     json=sent,
                     timeout=(10, 300),
@@ -202,7 +208,7 @@ def _trace_line(path: str, entry: dict) -> None:
 
 
 def _routes_from_env(name: str) -> list[tuple[str | None, Route]]:
-    """Routes from a JSON list of {"stage"?, "model", "price": [input, output, cached?], "effort"?} in an env var."""
+    """Routes from a JSON list of {"stage"?, "model", "price": [input, output, cached?], "effort"?, "base"?, "key_env"?}."""
     raw = os.getenv(name, "").strip()
     if not raw:
         return []
@@ -214,8 +220,17 @@ def _routes_from_env(name: str) -> list[tuple[str | None, Route]]:
             raise ValueError(f"{name}: unknown stage {stage!r}")
         if effort is not None and effort not in REASONING_BUDGETS:
             raise ValueError(f"{name}: unknown effort {effort!r}")
+        base, key = item.get("base"), ""
+        if base is not None:
+            # A route on another provider names the env var holding its key, so no key sits in the JSON.
+            if not str(base).startswith("https://"):
+                raise ValueError(f"{name}: base must be https, got {base!r}")
+            key = os.getenv(str(item.get("key_env") or ""), "").strip()
+            if not key:
+                raise ValueError(f"{name}: {item.get('model')!r} names base {base!r} but key_env holds no key")
         routes.append((stage, Route(str(item["model"]), price[0], price[1],
-                                    price[2] if len(item.get("price") or []) > 2 else None, effort)))
+                                    price[2] if len(item.get("price") or []) > 2 else None, effort,
+                                    str(base) if base is not None else None, key)))
     return routes
 
 

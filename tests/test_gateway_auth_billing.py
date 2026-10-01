@@ -11,7 +11,7 @@ import requests
 import uvicorn
 from fastapi import FastAPI, Header
 
-from gateway.app import Upstream, create_app
+from gateway.app import Route, Upstream, _routes_from_env, create_app
 from gateway.billing import BillingConfig, lemonsqueezy_signature, payos_data_signature, payos_request_signature
 from gateway.mailer import Mailer
 from gateway.store import QuotaExceeded, Store
@@ -559,3 +559,31 @@ def test_an_azure_upstream_gets_its_key_header_and_token_field():
     assert status == 200
     server.should_exit = True
     assert seen == [("azure-key", None, {"model": "my-deployment", "messages": [], "max_completion_tokens": 900})]
+
+
+def test_a_stage_route_on_another_provider_goes_to_its_base_with_its_own_key(monkeypatch):
+    seen = []
+    app = FastAPI()
+
+    @app.post("/{provider}/chat/completions")
+    def chat(provider: str, payload: dict, authorization: str | None = Header(default=None)):
+        seen.append((provider, authorization, payload["model"]))
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {}}
+
+    base, server = _serve(app)
+    upstream = Upstream(f"{base}/main", "main-key", "luna", 0, 0)
+    free = Route("qwen3.8-27b", 0, 0, base=f"{base}/free", api_key="free-key")
+    assert upstream.send({"model": "x", "messages": []}, models=[free])[0] == 200
+    assert upstream.send({"model": "x", "messages": []})[0] == 200
+    server.should_exit = True
+    assert seen == [("free", "Bearer free-key", "qwen3.8-27b"), ("main", "Bearer main-key", "x")]
+    assert "free-key" not in repr(free)
+
+    monkeypatch.setenv("FREE_KEY", "k")
+    monkeypatch.setenv("ROUTES", json.dumps([{"stage": "scan", "model": "q", "base": "https://free.example/v1",
+                                              "key_env": "FREE_KEY", "price": [0, 0]}]))
+    assert _routes_from_env("ROUTES")[0][1].api_key == "k"
+    monkeypatch.setenv("ROUTES", json.dumps([{"stage": "scan", "model": "q", "base": "https://free.example/v1",
+                                              "key_env": "NOT_SET"}]))
+    with pytest.raises(ValueError):
+        _routes_from_env("ROUTES")
