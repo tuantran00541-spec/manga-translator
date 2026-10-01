@@ -4,7 +4,6 @@ import json
 import threading
 from collections import deque
 
-from app.render.font_guide import DEFAULT_LETTERING_FONT, MAX_CHAPTER_FONTS, font_guide_prompt
 
 MAX_NOTES_CHARS = 1500
 MAX_CHARACTERS = 40
@@ -17,14 +16,12 @@ TYPOGRAPHY_ROLES = frozenset({
     "system_ui", "skill_name", "title", "free_text", "sfx",
 })
 CONTAINERS = frozenset({"bubble", "spiky", "box", "screen", "free"})
-LOCKED_CONTAINERS = CONTAINERS - {"free"}  # text on the art varies; every drawn container keeps one font
-EMPHASIS_ROLES = frozenset({"shout", "dark_threat", "sfx"})  # a shout in a plain bubble keeps its own font
 
 _TASK = """
 <task>
 IMAGE: the raw comic slice. Each text box is outlined in red with its id; its text will be erased and your translation lettered there.
 TASK: for each box, read the text inside it and translate it into {target} the way a native reader would say it.
-DO: pick the font whose FONT SAMPLES row looks closest to the raw lettering, keep the line short enough to letter at the raw size, and list lines the image shows outside every box in "unboxed".
+DO: name each box's role and container (the lettering font follows them), keep the line short enough to letter at the raw size, and list lines the image shows outside every box in "unboxed".
 ANSWER: the JSON in <output>, nothing else.
 </task>
 
@@ -36,7 +33,6 @@ ANSWER: the JSON in <output>, nothing else.
 - Copy the source punctuation exactly: every "...", "?!", "!?", "!!" and "—" stays where the source has it, with both marks of "?!". Keep the tone; make jokes only where the source does.
 - List in "unboxed" every line someone says, thinks or narrates (dialogue, narration, captions, titles, system messages) that the image shows outside every red box; it is erased and translated next. Sound effects drawn into the art, signs that are only scenery and scanlator credits stay out. Boxes are on a 0-1000 grid of the image: "x1","y1" top-left and "x2","y2" bottom-right.
 - Leave translated_text empty for scanlator credits, watermarks, URLs and sound effects drawn into the art (role "sfx"). A sound effect lettered as plain text gets a short onomatopoeia.
-- Fonts: dialogue, thought and whisper use the base font dialogue.mac-dinh-3. A chapter uses at most 3 fonts, so reuse fonts_in_use and the container_fonts already set; when unsure, use the base font.
 - Break lines with "\\n" between phrases, with at least two words on each line and every name and word kept whole.
 - role is one of dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text, sfx. container is one of bubble, spiky, box, screen, free (lettered on the art). Add "color" (#rrggbb) only for a distinct colour such as a red or glowing title.
 </rules>
@@ -55,18 +51,17 @@ _OUTPUT = """
 <output>
 JSON only:
 {{"translations":[{{"id":"<id>","source":"<the text the image shows in the box>","translated_text":"<text, lines split with \\n>","role":"<role>","container":"<container>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
- "font_choices":{{"<id>":"<font_id>"}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, apparent age and gender, relationship>"}}],
  "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to themselves>","other":"<how A addresses B>"}}],
  "unboxed":[{{"x1":0,"y1":0,"x2":0,"y2":0}}]}}
-Every id appears once in translations and in font_choices. characters and address hold only what is new or changed in this slice; unboxed is empty when every line has a box.
+Every id appears once in translations. characters and address hold only what is new or changed in this slice; unboxed is empty when every line has a box.
 </output>
 """.strip()
 
 
 def system_prompt(target_name: str, target_lang: str, settled: dict | None = None) -> str:
-    parts = [_TASK.format(target=target_name), "<fonts>\n" + font_guide_prompt() + "\n</fonts>"]
+    parts = [_TASK.format(target=target_name)]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE)
     parts.append(_OUTPUT.format())
@@ -89,31 +84,7 @@ class ChapterMemory:
         self.characters: dict[str, str] = {}
         self.address: dict[tuple[str, str], dict[str, str]] = {}
         self.recent: deque[dict] = deque(maxlen=RECENT_LINES)
-        self.fonts: list[str] = [DEFAULT_LETTERING_FONT]
-        self.container_fonts: dict[str, str] = {}
         self._lock = threading.Lock()
-
-    def _admit(self, font_id: str) -> str:
-        if font_id in self.fonts:
-            return font_id
-        if len(self.fonts) < MAX_CHAPTER_FONTS:
-            self.fonts.append(font_id)
-            return font_id
-        return DEFAULT_LETTERING_FONT
-
-    def admit_font(self, font_id: str) -> str:
-        """The font to letter with: a font already in use, a new one within the chapter budget, else the base font."""
-        with self._lock:
-            return self._admit(font_id)
-
-    def container_font(self, container: str | None, role: str | None, font_id: str) -> str:
-        """The font a container kind was first lettered in, which it keeps for the chapter; else ``admit_font``."""
-        with self._lock:
-            if container not in LOCKED_CONTAINERS or (role in EMPHASIS_ROLES and container != "spiky"):
-                return self._admit(font_id)
-            if container not in self.container_fonts:
-                self.container_fonts[container] = self._admit(font_id)
-            return self.container_fonts[container]
 
     def settled(self) -> dict:
         """The glossary and story notes, fixed for the whole chapter."""
@@ -126,8 +97,6 @@ class ChapterMemory:
                 "characters": [{"name": name, "note": note} for name, note in self.characters.items()],
                 "address": [{"from": a, "to": b, **terms} for (a, b), terms in self.address.items()],
                 "recent_lines": list(self.recent),
-                "fonts_in_use": list(self.fonts),
-                "container_fonts": dict(self.container_fonts),
             }
 
     def update(self, slice_number: int, data: dict, translations: dict[str, str], order: list[str]) -> None:

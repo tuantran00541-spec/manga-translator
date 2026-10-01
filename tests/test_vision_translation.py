@@ -73,13 +73,12 @@ def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeyp
     system = payload["messages"][0]
     assert system["role"] == "system"
     assert "<task>" in system["content"] and "<vietnamese>" in system["content"]
-    assert "- emphasis.anton:" in system["content"] and "Avoid" in system["content"], "curated fonts come with notes"
-    assert "dialogue.inter" not in system["content"], "only curated fonts are offered"
-    assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}, "no pick: base font"
+    assert "font_choices" not in system["content"] and "emphasis.anton" not in system["content"], "fonts are not the model's"
+    assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}, "no role: base font"
     content = payload["messages"][1]["content"]
     images = [item for item in content if item.get("type") == "image_url"]
-    assert len(images) == 2, "font samples, then the raw slice with its boxes drawn on"
-    assert content[0]["text"].startswith("FONT SAMPLES"), "the fixed specimen leads so it is cached"
+    assert len(images) == 1, "only the raw slice with its boxes drawn on"
+    assert content[0]["text"] == "RAW SLICE WITH TEXT BOXES"
     assert all(item["image_url"]["url"].startswith("data:image/jpeg;base64,") for item in images)
     prompt = content[-1]["text"]
     assert '"id":"1"' in prompt and "text_1" not in prompt
@@ -333,17 +332,16 @@ def test_english_left_as_the_translation_is_treated_as_untranslated():
     assert not _untranslated_english("Level của ngươi là bao nhiêu?")
 
 
-def test_fonts_are_curated_and_a_chapter_letters_in_at_most_three():
-    from app.render.font_guide import lettering_font
-    from app.translation.context import ChapterMemory
+def test_the_font_follows_role_and_container_not_the_model():
+    from app.render.font_guide import font_for, lettering_font
 
     assert lettering_font("emphasis.anton") == "emphasis.anton"
     assert lettering_font("dialogue.inter") == lettering_font(None) == "dialogue.mac-dinh-3"
-    memory = ChapterMemory()
-    picks = ["emphasis.anton", "skill.kanit", "sfx.black-ops-one", "emphasis.anton", "dialogue.mac-dinh-3"]
-    assert [memory.admit_font(font) for font in picks] == [
-        "emphasis.anton", "skill.kanit", "dialogue.mac-dinh-3", "emphasis.anton", "dialogue.mac-dinh-3"]
-    assert memory.snapshot()["fonts_in_use"] == ["dialogue.mac-dinh-3", "emphasis.anton", "skill.kanit"]
+    assert font_for("dialogue", "bubble") == font_for("shout", "bubble") == "dialogue.mac-dinh-3"
+    assert font_for("narration", "box") == font_for("thought", "box") == "narration.mac-dinh-2"
+    assert font_for("narration", "free") == font_for("title", "free") == "emphasis.anton", "bold captions on the art"
+    assert font_for("shout", "spiky") == "emphasis.bangers" and font_for("system_ui", "bubble") == "skill.exo-2"
+    assert font_for(None, None) == "dialogue.mac-dinh-3"
     assert parse_vision_translation('{"translations":[{"id":"a","translated_text":"Thì…"}]}', {"a"}) == {"a": "Thì..."}
 
 
@@ -361,7 +359,7 @@ def test_sound_effect_left_as_art_returns_its_region_for_restoring(saved_chapter
     assert info["blank_ids"] == ["obj_1"] and info["art_regions"] == [region]
 
 
-def test_speech_roles_always_take_the_base_font(tmp_path, monkeypatch):
+def test_a_translated_page_letters_each_kind_of_text_in_its_one_font(tmp_path, monkeypatch):
     original, clean = tmp_path / "original.png", tmp_path / "clean.png"
     Image.new("RGB", (400, 600), "white").save(original)
     Image.new("RGB", (400, 600), "gray").save(clean)
@@ -371,55 +369,18 @@ def test_speech_roles_always_take_the_base_font(tmp_path, monkeypatch):
 
         def json(self):
             return {"choices": [{"message": {"content": json.dumps({
-                "translations": [{"id": "1", "translated_text": "Ừ", "role": "thought"},
-                                 {"id": "2", "translated_text": "Chạy!", "role": "shout"}],
-                "font_choices": {"1": "emphasis.bangers", "2": "emphasis.bangers"},
+                "translations": [{"id": "1", "translated_text": "Khi ấy", "role": "narration", "container": "free"},
+                                 {"id": "2", "translated_text": "Chạy!", "role": "shout", "container": "spiky"},
+                                 {"id": "3", "translated_text": "Ừ", "role": "dialogue", "container": "bubble"}],
+                "font_choices": {"1": "narration.lora", "2": "thought.itim", "3": "emphasis.anton"},
             })}}], "usage": {}}
 
     monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
-    items = [{"id": item_id, "text": "", "region": [1, 2, 30, 40]} for item_id in ("calm", "loud")]
+    items = [{"id": item_id, "text": "", "region": [1, 2, 30, 40]} for item_id in ("a", "b", "c")]
     result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
         original, clean, items, api_key="k", source_lang="en", target_lang="vi")
-    assert result.font_choices["calm"]["font_id"] == "dialogue.mac-dinh-3"
-    assert result.font_choices["loud"]["font_id"] == "emphasis.bangers"
-
-
-def test_a_container_kind_keeps_the_font_it_was_first_lettered_in(tmp_path, monkeypatch):
-    from app.translation.context import ChapterMemory
-
-    original, clean = tmp_path / "original.png", tmp_path / "clean.png"
-    Image.new("RGB", (400, 600), "white").save(original)
-    Image.new("RGB", (400, 600), "gray").save(clean)
-    replies = iter([
-        {"translations": [{"id": "1", "translated_text": "Khi ấy", "role": "narration", "container": "box"},
-                          {"id": "2", "translated_text": "Chạy!", "role": "shout", "container": "bubble"},
-                          {"id": "3", "translated_text": "Ừ", "role": "dialogue", "container": "bubble"}],
-         "font_choices": {"1": "narration.lora", "2": "emphasis.bangers", "3": "emphasis.anton"}},
-        {"translations": [{"id": "1", "translated_text": "Sau đó", "role": "narration", "container": "box"},
-                          {"id": "2", "translated_text": "Đi thôi", "role": "dialogue", "container": "box"},
-                          {"id": "3", "translated_text": "Này", "role": "dialogue", "container": "bubble"}],
-         "font_choices": {"1": "skill.kanit", "2": "dialogue.mac-dinh-3", "3": "thought.itim"}},
-    ])
-
-    class Response:
-        status_code, ok = 200, True
-
-        def json(self):
-            return {"choices": [{"message": {"content": json.dumps(next(replies))}}], "usage": {}}
-
-    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
-    memory = ChapterMemory()
-    translator = VisionPageTranslator(PROVIDERS["openai"], "vision-test")
-    items = [{"id": item_id, "text": "", "region": [1, 2, 30, 40]} for item_id in ("a", "b", "c")]
-    fonts = []
-    for number in (1, 2):
-        result = translator.translate_page(original, clean, items, api_key="k", source_lang="en",
-                                           target_lang="vi", memory=memory, slice_number=number, slice_total=2)
-        fonts.append({key: value["font_id"] for key, value in result.font_choices.items()})
-    # A shout in a plain bubble keeps its font and does not decide the bubble's.
-    assert fonts[0] == {"a": "narration.lora", "b": "emphasis.bangers", "c": "dialogue.mac-dinh-3"}
-    assert fonts[1] == {"a": "narration.lora", "b": "narration.lora", "c": "dialogue.mac-dinh-3"}
-    assert memory.snapshot()["container_fonts"] == {"box": "narration.lora", "bubble": "dialogue.mac-dinh-3"}
+    assert {key: value["font_id"] for key, value in result.font_choices.items()} == {
+        "a": "emphasis.anton", "b": "emphasis.bangers", "c": "dialogue.mac-dinh-3"}, "a model's font pick is ignored"
 
 
 def test_the_character_budget_is_where_the_source_letters_were():

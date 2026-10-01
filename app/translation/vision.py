@@ -13,7 +13,7 @@ from app.box_format import scaled_box
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
-from app.render.font_guide import BASE_FONT_ROLES, DEFAULT_LETTERING_FONT, font_specimen_b64, lettering_font
+from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
 from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
@@ -33,7 +33,6 @@ _TRANSLATIONS_SCHEMA = {
                            "role": {"type": "string"}, "container": {"type": "string"}},
             "required": ["id", "translated_text"],
         }},
-        "font_choices": {"type": "object"},
         "speakers": {"type": "object"},
         "characters": {"type": "array", "items": {
             "type": "object",
@@ -124,13 +123,8 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
     translations = parse_vision_translation(source, expected_ids, allow_missing=True)
     if isinstance(data, dict) and isinstance(data.get("translations"), dict):
         data["translations"] = [{"id": str(k), "translated_text": v} for k, v in data["translations"].items()]
-    picks = data.get("font_choices") if isinstance(data, dict) and isinstance(data.get("font_choices"), dict) else {}
-    # Only curated fonts; anything else falls back to the base font.
-    choices = {}
-    for item_id in translations:
-        pick = picks.get(item_id)
-        pick = pick.get("font_id") if isinstance(pick, dict) else pick
-        choices[item_id] = {"font_id": lettering_font(pick), "font_mode": "ai"}
+    # The font follows each text's role and container once those are read; until then the base font.
+    choices = {item_id: {"font_id": DEFAULT_LETTERING_FONT, "font_mode": "ai"} for item_id in translations}
     return translations, choices, data if isinstance(data, dict) else {}
 
 
@@ -142,9 +136,8 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
             {**entry, "id": back(entry.get("id"))} if isinstance(entry, dict) else entry
             for entry in data["translations"]
         ]
-    for key in ("speakers", "font_choices"):
-        if isinstance(data.get(key), dict):
-            data[key] = {back(k): v for k, v in data[key].items()}
+    if isinstance(data.get("speakers"), dict):
+        data["speakers"] = {back(k): v for k, v in data["speakers"].items()}
     return replace(
         result,
         translations={back(k): v for k, v in result.translations.items()},
@@ -154,7 +147,6 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
 
 MAX_UNBOXED = 8  # lines outside every box one slice may report
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
-FONT_SAMPLES_LABEL = "FONT SAMPLES: each row is a font_id in red and a sample line lettered in that font."
 
 # Chinese, Japanese and Korean letters never belong in a Vietnamese translation.
 _FOREIGN_SCRIPT = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]")
@@ -292,17 +284,10 @@ class VisionPageTranslator:
                 sources[str(entry["id"])] = " ".join(entry["source"].split())[:1000]
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
-        # Bubble speech always takes the base font; display fonts are for shouts, captions and art.
-        fonts = {key: (dict(value, font_id=DEFAULT_LETTERING_FONT) if roles.get(key) in BASE_FONT_ROLES else value)
-                 for key, value in (result.font_choices or {}).items()}
+        fonts = {key: {"font_id": font_for(roles.get(key), containers.get(key)), "font_mode": "ai"}
+                 for key in (result.font_choices or {})}
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
-            # Every bubble, box or screen of one kind letters in the font that kind first got; blank lines set nothing.
-            fonts = {
-                key: {"font_id": memory.container_font(containers.get(key), roles.get(key), fonts[key]["font_id"])
-                      if result.translations.get(key) else DEFAULT_LETTERING_FONT, "font_mode": "ai"}
-                for key in (str(item["id"]) for item in items) if key in fonts
-            }
         speakers = {str(k): " ".join(str(v).split())[:80] for k, v in (data.get("speakers") or {}).items()
                     if str(k) in ids and isinstance(v, str) and v.strip()} if isinstance(data.get("speakers"), dict) else {}
         unboxed = tuple(
@@ -323,9 +308,6 @@ class VisionPageTranslator:
         payload = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": [
-                # The specimen comes first so the cached prefix covers it.
-                {"type": "text", "text": FONT_SAMPLES_LABEL},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{font_specimen_b64()}"}},
                 {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{marked}"}},
                 {"type": "text", "text": prompt},  # the ask goes last, after the images it refers to
@@ -370,8 +352,6 @@ class VisionPageTranslator:
             "model": self.model, "store": False,
             "input": [
                 {"type": "text", "text": system},
-                {"type": "text", "text": FONT_SAMPLES_LABEL},
-                {"type": "image", "data": font_specimen_b64(), "mime_type": "image/jpeg"},
                 {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
                 {"type": "image", "data": marked, "mime_type": "image/jpeg"},
                 {"type": "text", "text": prompt},
