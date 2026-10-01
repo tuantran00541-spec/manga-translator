@@ -166,7 +166,7 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _check_vc_runtime() -> None:
-    """On Windows, fix a missing or old Visual C++ runtime before torch fails with a cryptic WinError 126."""
+    """On Windows, fix a missing or old Visual C++ runtime before onnxruntime or paddle fails with a cryptic WinError 126."""
     if os.name != "nt":
         return
     from app import vc_runtime

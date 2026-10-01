@@ -8,23 +8,24 @@ import cv2
 import numpy as np
 
 from app.config import CTD_MODEL
+from app.knobs import knob
 
-THRESHOLD = 0.3  # letter probability that counts as ink
+THRESHOLD = knob("mask.ink_threshold")
 SCALES = (1.0, 0.5)  # the half-size pass catches very large lettering
 STRIDE = 64  # the model's input sides must be multiples of this
-PAD_SHARE = 0.25  # room round a box, as a share of its height, for letters its edge cuts
-REACH = 1.0  # how far, in letter heights, outline and glow may spread from the letters
-OUTLINE = 0.12  # share of the reach every letter keeps as outline, even one matching the background
-EDGE = 60.0  # Lab lightness gradient above which a pixel is drawn art, not fading glow
-RING = 6  # width of the band past the crop where the background colours are read
-LEFT_SHARE = 0.004  # share of an erased block the model may still read before it gets another pass
-REACH_ROUNDS = 3  # times a box grows toward letters its edge still cuts
-CHAIN = 0.6  # widest gap, in letter heights, between letters of one text
+PAD_SHARE = knob("mask.pad_share")
+REACH = knob("mask.reach")
+OUTLINE = knob("mask.outline")
+EDGE = knob("mask.edge")
+RING = knob("mask.ring")
+LEFT_SHARE = knob("mask.left_share")
+REACH_ROUNDS = knob("mask.reach_rounds")
+CHAIN = knob("mask.chain")
 KMEANS_SEED = 1234  # fixed seed for the background colour clusters, so one image always gives one mask
-FRINGE = 0.25  # how far, in letter heights, a soft shadow may fade from the grown letters
-FRINGE_TOLERANCE = 5.0  # Lab distance within which a pixel is the flat background round the letters
-FRINGE_FLAT_SHARE = 0.6  # share of the band round the letters that must be that one background colour
-FRINGE_INK_SHARE = 0.8  # a shadow pixel stays this much lighter than the ink, so outlines never join
+FRINGE = knob("mask.fringe")
+FRINGE_TOLERANCE = knob("mask.fringe_tolerance")
+FRINGE_FLAT_SHARE = knob("mask.fringe_flat_share")
+FRINGE_INK_SHARE = knob("mask.fringe_ink_share")
 
 _session = None
 _lock = threading.Lock()
@@ -141,9 +142,9 @@ def _fringe(lab: np.ndarray, seed: np.ndarray, region: np.ndarray, reach: int) -
     return grown
 
 
-SPECK = 0.35  # letters shorter than this share of the text size (dots, accents, noise) never lead growth
-SPECK_HOPS = 3  # specks past the letter a run of specks may reach, so '....' stays whole
-DOT = 0.15  # a dot of a run of dots is at least this share of the text size on both sides, round and filled
+SPECK = knob("mask.speck")
+SPECK_HOPS = knob("mask.speck_hops")
+DOT = knob("mask.dot")
 
 
 def _parts(seed: np.ndarray):

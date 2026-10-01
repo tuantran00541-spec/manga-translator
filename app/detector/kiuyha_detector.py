@@ -11,18 +11,19 @@ import numpy as np
 
 from app.detector.boxes import BubbleBox
 from app.detector.ctd_mask import letter_mask, still_reads
+from app.knobs import knob
 from app.ort_utils import make_session
 
 LETTERBOX_VALUE = 114
 STRIDE = 32
-NMS_IOU = 0.7  # Ultralytics' default for this head
-BOX_PAD = 16  # Kiuyha's boxes can stop short of the last letter of a wide line
+NMS_IOU = knob("detect.nms_iou")
+BOX_PAD = knob("detect.box_pad")
 HALVES_GAP = 16
 HALVES_MIN_OVERLAP = 256
 BAND_OVERLAP = 0.25  # share of a detection band repeated in the next one
-EDGE_TOUCH = 3  # a box this close to an inner band edge was cut by it
-UNION_SHARE = 0.3  # boxes sharing this much of the smaller one are one text
-SAME_LINE = 0.7  # overlapping boxes sharing this much of the shorter height are pieces of one line
+EDGE_TOUCH = knob("detect.edge_touch")
+UNION_SHARE = knob("detect.union_share")
+SAME_LINE = knob("detect.same_line")
 
 
 def _text_box(x1, y1, x2, y2, score, mask, source_model, letters=None) -> BubbleBox:
@@ -94,11 +95,11 @@ def _join_grown(boxes: list[BubbleBox]) -> list[BubbleBox]:
     return joined
 
 
-BLOCK_GAP = 1.5  # an empty band this many line heights tall separates two texts, not two lines of one
-BLOCK_OFFSET = 0.15  # two texts' centres this far apart, as a share of the wider one, are not one centred block
-BLOCK_SPACING = 3.0  # a gap this many times the widest line gap inside both texts parts them
-BLOCK_MIN_WIDTH = 0.4  # a group narrower than this share of the other is a stray mark (bubble edge, SFX chip), not a text
-BLOCK_LINE_SPREAD = 2.0  # a row this many times taller than the usual line is a mark, not a line of text
+BLOCK_GAP = knob("detect.block_gap")
+BLOCK_OFFSET = knob("detect.block_offset")
+BLOCK_SPACING = knob("detect.block_spacing")
+BLOCK_MIN_WIDTH = knob("detect.block_min_width")
+BLOCK_LINE_SPREAD = knob("detect.block_line_spread")
 
 
 def _separate(mask: np.ndarray, upper: list, lower: list) -> bool:
@@ -187,7 +188,7 @@ def _rows(output: np.ndarray, conf_threshold: float) -> np.ndarray:
 
 
 class KiuyhaTextDetector:
-    def __init__(self, model_path, conf_threshold: float = 0.25, session=None):
+    def __init__(self, model_path, conf_threshold: float = knob("detect.confidence"), session=None):
         self.session = session if session is not None else make_session(model_path)
         inp = self.session.get_inputs()[0]
         self.input_name = inp.name

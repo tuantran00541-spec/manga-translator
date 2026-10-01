@@ -1,0 +1,116 @@
+name: Desktop setup
+
+# Builds MangaTranslator-Setup.exe, installs it silently on a fresh Windows, opens the app from its desktop icon,
+# then uninstalls it keeping the chapters. Publishing a GitHub release attaches the setup to it.
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    paths:
+      - installer/**
+      - install.ps1
+      - scripts/install.py
+      - run.py
+      - requirements.txt
+      - .github/workflows/desktop-setup.yml
+
+concurrency:
+  group: desktop-setup-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      # The tested install takes this branch's code; users' setups take main, as the setup has no ref of its own.
+      MANGA_REF: ${{ github.event_name == 'release' && 'main' || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the setup
+        shell: powershell
+        run: |
+          $version = (Select-String -Path run.py -Pattern '^VERSION = "(.+)"').Matches[0].Groups[1].Value
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc "/DAppVersion=$version" installer\MangaTranslator.iss
+          if ($LASTEXITCODE -ne 0) { throw 'the setup did not build' }
+          Get-Item dist\MangaTranslator-Setup.exe | Format-List Name, Length
+
+      - name: Install silently like a double-click would
+        shell: powershell
+        run: |
+          $run = Start-Process dist\MangaTranslator-Setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/LOG=setup.log' -Wait -PassThru
+          Get-Content setup.log -Tail 20
+          if ($run.ExitCode -ne 0) { throw "setup exited with $($run.ExitCode)" }
+          $link = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Manga Translator.lnk'
+          if (-not (Test-Path $link)) { throw 'no desktop icon after the setup' }
+
+      - name: How much the install takes on disk
+        shell: powershell
+        run: |
+          function Size($path) { if (Test-Path $path) { [math]::Round((Get-ChildItem $path -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum / 1MB) } else { 0 } }
+          $home_ = Join-Path $env:LOCALAPPDATA 'manga-translator'
+          $rows = [ordered]@{
+            'app (code + .venv + models)' = Size (Join-Path $home_ 'app')
+            '  .venv (libraries)' = Size (Join-Path $home_ 'app\.venv')
+            '  models' = Size (Join-Path $home_ 'app\models')
+            '  .cache (CTD source)' = Size (Join-Path $home_ 'app\.cache')
+            'python' = Size (Join-Path $home_ 'python')
+            'uv' = Size (Join-Path $home_ 'uv')
+            'uv download cache (removed)' = Size (Join-Path $home_ 'uv-cache')
+            'Playwright Chromium' = Size (Join-Path $env:LOCALAPPDATA 'ms-playwright')
+            'Hugging Face cache' = Size (Join-Path $env:USERPROFILE '.cache\huggingface')
+            'PaddleX models' = Size (Join-Path $env:USERPROFILE '.paddlex')
+          }
+          $rows.GetEnumerator() | ForEach-Object { '{0,-30} {1,7} MB' -f $_.Key, $_.Value }
+          & (Join-Path $home_ 'app\.venv\Scripts\python.exe') -c "import importlib.metadata as m, os; rows=sorted(((sum(os.path.getsize(d.locate_file(f)) for f in (d.files or []) if os.path.exists(d.locate_file(f))), d.metadata['Name']) for d in m.distributions()), reverse=True)[:12]; [print(f'{n:28} {s/2**20:7.0f} MB') for s, n in rows]"
+
+      - name: The desktop icon opens the app window
+        shell: powershell
+        run: |
+          $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Manga Translator.lnk'))
+          $app = Start-Process -FilePath $shortcut.TargetPath -ArgumentList $shortcut.Arguments -WorkingDirectory $shortcut.WorkingDirectory -PassThru
+          $health = $null
+          for ($i = 0; $i -lt 90 -and -not $health; $i++) {
+            Start-Sleep 2
+            try { $health = Invoke-RestMethod http://127.0.0.1:8000/health } catch { }
+          }
+          Start-Sleep 5
+          $views = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue)
+          Stop-Process -Id $app.Id -Force
+          if (-not $health) { throw 'the app did not start' }
+          if ($health.models_missing.Count -ne 0) { throw "models missing: $($health.models_missing)" }
+          if ($views.Count -eq 0) { throw 'no app window' }
+
+      - name: Uninstall keeps the chapters and removes the rest
+        shell: powershell
+        run: |
+          $home_ = Join-Path $env:LOCALAPPDATA 'manga-translator'
+          New-Item -ItemType Directory -Force (Join-Path $home_ 'app\data\raw\c0ffee01') | Out-Null
+          Set-Content (Join-Path $home_ 'app\data\raw\c0ffee01\page.txt') 'a translated chapter'
+          Start-Process (Join-Path $home_ 'setup\unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          # The uninstaller hands over to a copy of itself; wait for it to finish.
+          for ($i = 0; $i -lt 60 -and (Test-Path (Join-Path $home_ 'setup')); $i++) { Start-Sleep 2 }
+          Get-ChildItem $home_ -ErrorAction SilentlyContinue
+          if (Test-Path (Join-Path $home_ 'app')) { throw 'the app folder is still there' }
+          if (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Manga Translator.lnk')) { throw 'the icon is still there' }
+          if (-not (Test-Path (Join-Path $home_ 'chapters\raw\c0ffee01\page.txt'))) { throw 'the chapters were not kept' }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MangaTranslator-Setup
+          path: dist/MangaTranslator-Setup.exe
+
+      - name: Attach the setup to the release
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" dist/MangaTranslator-Setup.exe --clobber

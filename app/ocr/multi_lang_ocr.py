@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import threading
-
 import numpy as np
-from PIL import Image
 
 from app.env_utils import env_choice
 from app.ocr.paddle_v6 import OCRReadResult, PaddleV6OCR
-from app.ocr.quality import classify_ocr_quality
 from app.parameters import OCR_CENTERED_SINGLE_LINE_ASPECT
 
 
@@ -19,8 +15,6 @@ class MultiLangOCR:
             default="all",
             allowed={"all", "centered"},
         )
-        self._manga_ocr = None
-        self._manga_lock = threading.RLock()
 
     def read_probe(self, image: np.ndarray, lang: str) -> OCRReadResult:
         if (lang or "").strip().lower() in {"ja", "japan"}:
@@ -41,19 +35,6 @@ class MultiLangOCR:
             return OCRReadResult("", None, "none", "unknown", 0, "reject", "empty")
 
         normalized = (lang or "").strip().lower()
-        if normalized in {"ja", "japan"}:
-            text = self._read_manga_ocr(image)
-            quality = classify_ocr_quality(text, "ja", confidence=None)
-            return OCRReadResult(
-                text=text,
-                confidence=None,
-                model="manga-ocr",
-                orientation="unknown",
-                region_count=1 if text else 0,
-                quality=quality.status,
-                quality_reason=quality.reason,
-            )
-
         if normalized in {"en", "english"}:
             fast = None
             height, width = image.shape[:2]
@@ -73,12 +54,3 @@ class MultiLangOCR:
             lang,
             target_mode=effective_target_mode,
         )
-
-    def _read_manga_ocr(self, image: np.ndarray) -> str:
-        with self._manga_lock:
-            if self._manga_ocr is None:
-                from manga_ocr import MangaOcr
-
-                self._manga_ocr = MangaOcr()
-            pil_image = Image.fromarray(image)
-            return str(self._manga_ocr(pil_image) or "").strip()

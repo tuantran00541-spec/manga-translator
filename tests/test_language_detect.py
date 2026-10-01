@@ -137,14 +137,14 @@ def test_detect_manifest_language_reads_each_sample_with_both_recognisers(saved_
     assert all(shape[2] == 3 and shape[0] > 0 for shape, _ in reader.calls)
 
 
-def test_vertical_japanese_misread_as_kanji_is_rescued_by_manga_ocr(saved_chapter):
+def test_vertical_japanese_misread_as_kanji_is_rescued_by_the_japanese_read(saved_chapter):
     manifest = manifests.load_manifest_raw(saved_chapter)
     reader = _fake_reader("大口日本口", "", japanese="なにしてるの")
     detection = detect_manifest_language(saved_chapter, manifest, reader)
-    assert (detection.lang, detection.reason) == ("ja", "manga-ocr-kana")
+    assert (detection.lang, detection.reason) == ("ja", "japanese-kana")
 
 
-def test_chinese_stays_chinese_when_manga_ocr_finds_no_kana(saved_chapter):
+def test_chinese_stays_chinese_when_the_japanese_read_finds_no_kana(saved_chapter):
     manifest = manifests.load_manifest_raw(saved_chapter)
     reader = _fake_reader("你到底想干什么", "", japanese="你到底想干什么")
     assert detect_manifest_language(saved_chapter, manifest, reader).lang == "ch"

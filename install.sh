@@ -52,8 +52,10 @@ else
   TARGET="$MANGA_HOME/app"
 fi
 
-UV_PYTHON_INSTALL_DIR="$MANGA_HOME/python" UV_PYTHON_PREFERENCE=only-managed \
+# The download cache only speeds up a re-run, so it lives here and is removed after a good install.
+UV_PYTHON_INSTALL_DIR="$MANGA_HOME/python" UV_PYTHON_PREFERENCE=only-managed UV_CACHE_DIR="$MANGA_HOME/uv-cache" \
   MANGA_UV="$UV" MANGA_HOME="$MANGA_HOME" MANGA_REF="$REF" \
   "$UV" run --no-project --python 3.12 "$SOURCE/scripts/install.py" --target "$TARGET" \
   || fail "cài đặt chưa xong, xem lỗi ở trên rồi chạy lại lệnh cài"
+rm -rf "${MANGA_HOME:?}/uv-cache"
 say "Xong. Mở terminal mới và gõ:  manga"

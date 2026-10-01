@@ -54,6 +54,8 @@
     $settings = @{
         UV_PYTHON_INSTALL_DIR = (Join-Path $home_ 'python')
         UV_PYTHON_PREFERENCE = 'only-managed'
+        # The download cache only speeds up a re-run, so it lives here and is removed after a good install.
+        UV_CACHE_DIR = (Join-Path $home_ 'uv-cache')
         MANGA_UV = $uv
         MANGA_HOME = $home_
         MANGA_REF = $ref
@@ -67,6 +69,7 @@
     try {
         & $uv run --no-project --python 3.12 (Join-Path $source 'scripts\install.py') --target $target
         if ($LASTEXITCODE -ne 0) { throw 'Cai dat chua xong, xem loi o tren roi chay lai lenh cai.' }
+        Remove-Item -Recurse -Force (Join-Path $home_ 'uv-cache') -ErrorAction SilentlyContinue
     } finally {
         foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
         if ($work -and $work.StartsWith([IO.Path]::GetTempPath())) { Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue }

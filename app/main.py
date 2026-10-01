@@ -338,7 +338,6 @@ def _runtime_state() -> dict:
                 "dynamic_available": LAMA_DYNAMIC_MODEL.is_file(),
             },
             "ocr": {
-                "manga_ocr_loaded": getattr(ocr_runtime, "_manga_ocr", None) is not None,
                 "paddle_loaded": sorted(str(key) for key in paddle_pipelines.keys()),
             },
         },
