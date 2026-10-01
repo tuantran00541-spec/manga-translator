@@ -219,9 +219,12 @@ def test_ai_mode_runs_through_the_gateway_and_is_charged_for_one_chapter(stack, 
     _sign_in(stack, monkeypatch, balance=1.0)
     monkeypatch.setattr(ai_mode_router, "validate_url", lambda url: url)
     monkeypatch.setattr(ai_mode_router, "ai_mode_jobs", AIModeJobManager(runner_factory=CloudCallingRunner))
-    snapshot = _start(ai_mode_router.AIModeStartRequest(url="https://example.com/c/1", provider="manga-cloud"))
+    snapshot = _start(ai_mode_router.AIModeStartRequest(url="https://example.com/c/1", provider="manga-cloud",
+                                                        images_per_request=6))
     assert snapshot["status"] == "completed"
     assert stack.upstream_calls[-1]["model"] == "vision-upstream"
+    settings = ai_mode_router.ai_mode_jobs._jobs[snapshot["job_id"]].settings
+    assert settings.images_per_request == 2, "Manga Cloud's free reading model takes two images a request"
     usage = cloud.entitlements(fresh=True)["usage_30d"]
     assert usage == {"chapters": 1, "charged_usd": pytest.approx(CALL_COST * 1.05)}
     with stack.store._connect() as db:
@@ -246,7 +249,7 @@ def test_an_own_key_needs_no_balance(stack, monkeypatch):
 
     class OwnKeyRunner:
         def __init__(self, job, provider, api_key):
-            seen.update(provider=provider.id, key=api_key)
+            seen.update(provider=provider.id, key=api_key, images=job.settings.images_per_request)
 
         def __getattr__(self, _name):
             async def stage():
@@ -254,8 +257,9 @@ def test_an_own_key_needs_no_balance(stack, monkeypatch):
             return stage
 
     monkeypatch.setattr(ai_mode_router, "ai_mode_jobs", AIModeJobManager(runner_factory=OwnKeyRunner))
-    snapshot = _start(ai_mode_router.AIModeStartRequest(url="https://example.com/c/1", provider="deepseek"))
-    assert snapshot["status"] == "completed" and seen == {"provider": "deepseek", "key": "sk-own"}
+    snapshot = _start(ai_mode_router.AIModeStartRequest(url="https://example.com/c/1", provider="deepseek",
+                                                        images_per_request=5))
+    assert snapshot["status"] == "completed" and seen == {"provider": "deepseek", "key": "sk-own", "images": 5}
     with stack.store._connect() as db:
         assert db.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0, "no Manga Cloud job is opened"
 

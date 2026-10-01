@@ -283,6 +283,36 @@ def add_to_shell_path(folder: Path, home: Path | None = None) -> list[Path]:
     return changed
 
 
+def shortcut_script(pythonw: Path, entry: Path, icon: Path) -> str:
+    """PowerShell that puts a Manga Translator icon on the desktop and in the Start menu, opening the app window."""
+    def quoted(value) -> str:
+        return "'" + str(value).replace("'", "''") + "'"
+
+    return "\n".join([
+        "$shell = New-Object -ComObject WScript.Shell",
+        "foreach ($folder in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) {",
+        "  $link = $shell.CreateShortcut((Join-Path $folder 'Manga Translator.lnk'))",
+        f"  $link.TargetPath = {quoted(pythonw)}",
+        f"  $link.Arguments = {quoted(chr(34) + str(entry) + chr(34) + ' --window')}",
+        f"  $link.WorkingDirectory = {quoted(entry.parent)}",
+        f"  $link.IconLocation = {quoted(icon)}",
+        "  $link.Description = 'Manga Translator'",
+        "  $link.Save()",
+        "}",
+    ])
+
+
+def add_shortcuts_windows(python: Path, target: Path) -> None:
+    """Desktop and Start menu icons; the script goes as UTF-16 so a user name with accents survives."""
+    import base64
+
+    pythonw = python.with_name("pythonw.exe")
+    script = shortcut_script(pythonw if pythonw.is_file() else python, target / "run.py",
+                             target / "app" / "static" / "favicon.ico")
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], check=True)
+
+
 def install_command(python: Path, target: Path, home: Path) -> Path:
     entry = target / "run.py"
     if WINDOWS:
@@ -333,8 +363,17 @@ def main(argv: list[str] | None = None) -> None:
     say("Tạo lệnh `manga`")
     shim = install_command(python, target, home)
     print(f"    {shim}")
+    if WINDOWS:
+        say("Tạo biểu tượng Manga Translator trên desktop và Start menu")
+        try:
+            add_shortcuts_windows(python, target)
+        except (OSError, subprocess.CalledProcessError) as exc:
+            print(f"    Không tạo được biểu tượng ({exc}); vẫn mở app bằng lệnh `manga`.")
     write_marker(target, home, uv, done=True)
-    say("Xong. Mở một cửa sổ cmd/terminal MỚI và gõ:  manga")
+    if WINDOWS:
+        say("Xong. Bấm đúp biểu tượng Manga Translator trên desktop để mở app.")
+    else:
+        say("Xong. Mở một cửa sổ cmd/terminal MỚI và gõ:  manga")
     print("    `manga update` để cập nhật bản mới.")
 
 

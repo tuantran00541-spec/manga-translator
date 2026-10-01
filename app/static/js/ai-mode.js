@@ -53,6 +53,9 @@
     // The Jev judge runs behind the Manga Cloud gateway.
     const polishField = $("ai-mode-polish-field");
     if (polishField) polishField.hidden = !cloud;
+    // Manga Cloud picks its own reading model; the limit is for the user's own key.
+    const imagesField = $("ai-mode-images-field");
+    if (imagesField) imagesField.hidden = cloud;
   }
 
   function ensureCloudOption() {
@@ -287,6 +290,10 @@
       lines.push(`${r.restored_regions} vùng AI không dịch được, đã giữ ảnh gốc${pages.length ? ` (lát ${pages.join(", ")})` : ""}`);
     }
     if (r.repainted_regions) lines.push(`Repaint ${r.repainted_regions} vùng AI thấy còn sót ở ${r.repaint_pages?.length || 0} lát`);
+    if (r.residue_left?.length) {
+      const pages = [...new Set(r.residue_left.map((item) => item.page))].slice(0, 8);
+      lines.push(`${r.residue_left.length} vùng vẫn còn chữ sau 2 lần xóa, nên xem lại (lát ${pages.join(", ")})`);
+    }
     if (r.source_lang) lines.push(`Ngôn ngữ gốc: ${window.SOURCE_LANG_LABELS?.[r.source_lang] || r.source_lang}`);
     if (r.translated || r.unreadable) lines.push(`Dịch ${r.translated || 0} vùng chữ${r.unreadable ? `, ${r.unreadable} vùng AI không đọc được` : ""}`);
     const polish = r.polish || {};
@@ -384,6 +391,7 @@
       workers: typeof window.getWorkersSetting === "function" ? window.getWorkersSetting() : 2,
       story_notes: $("ai-mode-notes")?.value.trim() || "",
       polish: provider === CLOUD && Boolean($("ai-mode-polish")?.checked),
+      images_per_request: Math.min(8, Math.max(1, Math.round(Number($("ai-mode-images")?.value) || 2))),
     };
     setRunning(true);
     try {

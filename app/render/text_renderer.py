@@ -50,7 +50,10 @@ def _draws_char(font_path_str: str, char: str) -> bool:
 
 # Typographic punctuation many comic fonts lack, with the plain form they do have.
 _PUNCTUATION_FALLBACKS = {"\u2014": "-", "\u2013": "-", "\u2026": "...", "\u2022": "·", "\u00ab": '"', "\u00bb": '"',
-                          "\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'"}
+                          "\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'",
+                          # Brackets round names and skills in webtoons and CJK sources.
+                          "\u27e8": "<", "\u27e9": ">", "\u3008": "<", "\u3009": ">", "\u300a": "<", "\u300b": ">",
+                          "\u300c": '"', "\u300d": '"', "\u300e": '"', "\u300f": '"'}
 
 
 def _plain_punctuation(font_path, text: str) -> str:
@@ -59,6 +62,19 @@ def _plain_punctuation(font_path, text: str) -> str:
         _PUNCTUATION_FALLBACKS[char] if char in _PUNCTUATION_FALLBACKS and not _draws_char(font_path_str, char) else char
         for char in text
     )
+
+
+def drawable(font_path, text: str) -> tuple[Path, str]:
+    """The font and text that are actually drawn: punctuation the font lacks is replaced, else the default font."""
+    font_path = Path(font_path)
+    if font_draws_text(font_path, text):
+        return font_path, text
+    plain = _plain_punctuation(font_path, text)
+    if font_draws_text(font_path, plain):
+        return font_path, plain
+    if font_draws_text(DEFAULT_FONT, text):
+        return DEFAULT_FONT, text
+    return font_path, text
 
 
 def font_draws_text(font_path, text: str) -> bool:
@@ -247,13 +263,7 @@ def render_text_in_box(
         font_path = get_font_path(font_name)
     else:
         font_path = Path(font_path)
-    if not font_draws_text(font_path, text):
-        # Replace glyphs the font lacks; fall back to the default font for missing letters.
-        plain = _plain_punctuation(font_path, text)
-        if font_draws_text(font_path, plain):
-            text = plain
-        elif font_draws_text(DEFAULT_FONT, text):
-            font_path = DEFAULT_FONT
+    font_path, text = drawable(font_path, text)
 
     if fill is None or fill == "auto" or fill == "":
         text_color = auto_detect_text_color(image, box)

@@ -16,6 +16,13 @@ BASE_DIR = Path(__file__).resolve().parent
 REPO = "tuantran00541-spec/manga-translator"
 MARKER = BASE_DIR / ".manga-install.json"
 
+if sys.stdout is None or sys.stderr is None:
+    # Started from the desktop icon (pythonw) there is no console; the log goes to a file instead.
+    (BASE_DIR / "logs").mkdir(exist_ok=True)
+    _console = open(BASE_DIR / "logs" / "console.log", "a", encoding="utf-8", errors="replace", buffering=1)
+    sys.stdout = sys.stdout or _console
+    sys.stderr = sys.stderr or _console
+
 if os.name == "nt" and not str(Path.home()).isascii() and "PADDLE_PDX_CACHE_HOME" not in os.environ:
     # PaddleOCR cannot load its models from a user folder with accents.
     os.environ["PADDLE_PDX_CACHE_HOME"] = str(Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "manga-translator" / "paddlex")
@@ -136,20 +143,25 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="manga", description="Manga Translator")
     parser.add_argument("command", nargs="?", choices=["update"], help="update: get the latest version")
     parser.add_argument("--open", action="store_true", help="open the app in the browser once it is up")
+    parser.add_argument("--window", action="store_true", help="show the app in its own window instead of the browser")
     parser.add_argument("--version", action="version", version=f"Manga Translator {VERSION} ({BASE_DIR})")
     args = parser.parse_args(argv)
     if args.command == "update":
         _update()
         return
 
-    port = _pick_port() if args.open else PORT
+    port = _pick_port() if args.open or args.window else PORT
     if port is None:
         url = _url(_running_port() or PORT)
         logger.info(f"Manga Translator is already running at {url}")
-        webbrowser.open(url)
+        if not (args.window and _show_window(url)):
+            webbrowser.open(url)
         return
     if port != PORT:
         logger.warning(f"Port {PORT} is used by another program; using {port}")
+    if args.window:
+        _serve_in_window(port)
+        return
     _serve(port, args.open)
 
 
@@ -170,10 +182,60 @@ def _check_vc_runtime() -> None:
     print(note or "Đã cài xong Visual C++ Runtime.", flush=True)
 
 
-def _serve(port: int, open_browser: bool) -> None:
+LOADING_PAGE = """<!doctype html><meta charset="utf-8"><body style="margin:0;height:100vh;display:grid;place-items:center;
+font:16px system-ui,sans-serif;background:#fff;color:#111"><div style="text-align:center"><b style="font-size:20px">
+Manga Translator</b><p>Đang khởi động…</p></div></body>"""
+
+
+def _show_window(url: str, on_ready=None) -> bool:
+    """Show ``url`` in a native window until it is closed; False when this system cannot open one."""
+    try:
+        import webview
+    except ImportError:
+        return False
+    webview.settings["ALLOW_DOWNLOADS"] = True
+    webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
+    window = webview.create_window("Manga Translator", html=LOADING_PAGE if on_ready else None,
+                                   url=None if on_ready else url, width=1440, height=920, min_size=(960, 640))
+
+    def load_when_up():
+        on_ready()
+        window.load_url(url)
+
+    try:
+        webview.start(load_when_up if on_ready else None)
+    except Exception as exc:  # no GUI toolkit (a bare Linux box): the caller falls back to the browser
+        logger.warning(f"Cannot open the app window ({exc}); using the browser")
+        return False
+    return True
+
+
+def _serve_in_window(port: int) -> None:
+    """The server in the background and the app in its own window; closing the window stops the server."""
+    import uvicorn
+
+    _prepare()
+    url = _url(port)
+    server = uvicorn.Server(uvicorn.Config("app.main:app", host=HOST, port=port, workers=1, log_level="info"))
+    thread = threading.Thread(target=server.run, name="server", daemon=True)
+    thread.start()
+
+    def wait_until_up():
+        while thread.is_alive() and not _is_ours(url):
+            time.sleep(0.3)
+
+    if _show_window(url, on_ready=wait_until_up):
+        server.should_exit = True
+        thread.join(timeout=10)
+        return
+    threading.Thread(target=_open_when_up, args=(url,), daemon=True).start()
+    thread.join()
+
+
+def _prepare() -> None:
+    """Checks every start makes before the server runs."""
     _check_vc_runtime()
     import cv2
-    import uvicorn
 
     ensure_directories()
     cv2.setNumThreads(1)
@@ -190,6 +252,11 @@ def _serve(port: int, open_browser: bool) -> None:
     else:
         logger.info("All required ONNX models found in models/")
 
+
+def _serve(port: int, open_browser: bool) -> None:
+    import uvicorn
+
+    _prepare()
     logger.info(f"Starting Manga Translator on http://{HOST}:{port}")
     if HOST == "0.0.0.0":
         logger.warning(

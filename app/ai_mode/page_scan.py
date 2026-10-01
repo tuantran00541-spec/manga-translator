@@ -25,6 +25,9 @@ LOGO_MAX_AREA_RATIO = 0.5
 LOGO_MIN_SIDE_PX = 12
 LOGO_MARGIN_PX = 8
 SCAN_MAX_SIDE = 1280
+MAX_LINES = 40
+MAX_WHO = 60
+MAX_LINE = 300
 
 SCAN_SCHEMA = {
     "type": "object",
@@ -50,6 +53,14 @@ SCAN_SCHEMA = {
                             "required": [*BOX_KEYS, "confidence"],
                         },
                     },
+                    "lines": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"who": {"type": "string"}, "text": {"type": "string"}},
+                            "required": ["who", "text"],
+                        },
+                    },
                     "reason": {"type": "string"},
                 },
                 "required": ["slice", "is_credit", "credit_confidence", "logos"],
@@ -61,18 +72,21 @@ SCAN_SCHEMA = {
 
 SCAN_PROMPT = (
     "IMAGES: each image is one slice of a manga, manhwa or webtoon chapter, labelled SLICE <number>.\n"
-    "QUESTION: for each slice, is it a credit slice, does it have no lettering at all, and where are logos drawn "
-    "as artwork?\n"
+    "QUESTION: for each slice, is it a credit slice, does it have no lettering at all, where are logos drawn "
+    "as artwork, and what does its lettering say?\n"
     "- is_credit: true only when the whole slice was added by the uploader or scanlation group (credits, staff "
     "list, recruitment, Discord or Patreon ads, 'read at <site>' banners, end notices). A story slice with a small "
     "watermark is not one, nor is a blank slice.\n"
     "- no_text: true only when the slice has no lettering at all, not even a sound effect.\n"
     "- logos: boxes round the series title logo or a publisher or studio logo drawn as artwork; they are kept. "
     "Never box bubbles, captions, sound effects, plain text, watermarks, group logos or site names.\n"
+    "- lines: every bubble, caption and sign in reading order, sound effects left out. \"who\" is how the speaker "
+    "looks (\"old bearded man\", \"young woman in armour\") or narration or sign; \"text\" is exactly what is "
+    "written.\n"
     + BOX_RULE.replace("the image", "that slice's image")
     + "Confidences are 0-1.\nANSWER with JSON only: "
     '{"slices":[{"slice":<number>,"is_credit":false,"credit_confidence":0.0,"no_text":false,"no_text_confidence":0.0,'
-    '"logos":[{"x1":0,"y1":0,"x2":0,"y2":0,"confidence":0.0}],"reason":"short"}]}'
+    '"logos":[{"x1":0,"y1":0,"x2":0,"y2":0,"confidence":0.0}],"lines":[{"who":"","text":""}],"reason":"short"}]}'
 )
 
 
@@ -84,6 +98,7 @@ class SliceScan:
     logos: tuple[tuple[int, int, int, int], ...]
     reason: str = ""
     no_text: bool = False
+    lines: tuple[tuple[str, str], ...] = ()
 
 
 def _confidence(value) -> float:
@@ -92,6 +107,15 @@ def _confidence(value) -> float:
     except (TypeError, ValueError):
         return 0.0
     return max(0.0, min(1.0, number)) if math.isfinite(number) else 0.0
+
+
+def _lines(raw) -> tuple[tuple[str, str], ...]:
+    """The slice's lettering as (who, text) pairs, dropping empty and malformed lines."""
+    lines = []
+    for item in raw if isinstance(raw, list) else []:
+        if isinstance(item, dict) and (text := " ".join(str(item.get("text") or "").split())[:MAX_LINE]):
+            lines.append((" ".join(str(item.get("who") or "").split())[:MAX_WHO], text))
+    return tuple(lines[:MAX_LINES])
 
 
 def _logo_box(raw, width: int, height: int) -> tuple[int, int, int, int] | None:
@@ -150,6 +174,7 @@ def parse_scan(data: dict, sizes: dict[int, tuple[int, int]]) -> list[SliceScan]
             logos=() if is_credit else logos,
             reason=str(entry.get("reason") or "")[:200],
             no_text=no_text and not logos,
+            lines=_lines(entry.get("lines")),
         ))
     return scans
 
@@ -175,6 +200,6 @@ def scan_slices(
     images = [(f"SLICE {index}", _thumbnail(image)) for index, image in slices]
     result = request_vision_json(
         provider, model, api_key, SCAN_PROMPT, images,
-        schema=SCAN_SCHEMA, max_tokens=min(4096, 400 + 220 * len(slices)), stage="scan",
+        schema=SCAN_SCHEMA, max_tokens=min(6000, 400 + 900 * len(slices)), stage="scan",
     )
     return parse_scan(result.data, sizes), result.estimated_cost_usd

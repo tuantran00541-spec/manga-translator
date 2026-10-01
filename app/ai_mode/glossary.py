@@ -16,15 +16,15 @@ SIMILAR = 0.8  # two spellings this close are one name misread
 MISREAD_VOTES = 2  # a spelling read at least this many times as often as a close one wins
 
 GLOSSARY_PROMPT = (
-    "IMAGES: consecutive slices of one manga or manhwa chapter in reading order, labelled SLICE <number>.\n"
+    "{source}"
     "QUESTION: which names, terms and forms of address must every slice translate into {target} the same way?\n"
-    "- names: every person, clan, sect, place, item and technique name, spelled exactly as the letters show "
+    "- names: every person, clan, sect, place, item and technique name, spelled exactly as written "
     "(check each occurrence). \"target\" is its {target} form: people keep the source spelling; places, "
     "organisations, spells, techniques, titles and signs are translated (Hán Việt where the genre uses it).\n"
     "- terms: recurring titles, ranks, realms and genre terms, each with the one {target} term to use.\n"
     "- address: for each speaker and listener (a group such as \"disciples\" is one speaker), how the speaker "
-    "refers to themselves (self) and to the listener (other), chosen from what the images show of both (apparent "
-    "age, gender, rank) and how they relate; one form per pair.\n"
+    "refers to themselves (self) and to the listener (other), chosen from {basis} of both (apparent age, gender, "
+    "rank) and how they relate; one form per pair.\n"
     "{language}"
     "ANSWER with JSON only: "
     '{{"names":[{{"source":"","target":"","note":"who or what"}}],"terms":[{{"source":"","target":""}}],'
@@ -38,13 +38,37 @@ def _field(value) -> str:
     return " ".join(str(value or "").split())[:MAX_FIELD]
 
 
+_IMAGES = "IMAGES: consecutive slices of one manga or manhwa chapter in reading order, labelled SLICE <number>.\n"
+_TRANSCRIPT = ("TRANSCRIPT: the lettering of consecutive slices of one manga or manhwa chapter in reading order, "
+               "each line as [who] text, where who is how the speaker looks.\n{lines}\n")
+
+
+def _prompt(target_name: str, target_lang: str, source: str, basis: str) -> str:
+    language = _VIETNAMESE if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"} else ""
+    return GLOSSARY_PROMPT.format(source=source, target=target_name, language=language, basis=basis)
+
+
 def read_glossary(provider, model: str, api_key: str, target_name: str, target_lang: str,
                   slices: list[tuple[int, np.ndarray]]) -> tuple[dict, float | None]:
     """One request over a batch of original slices."""
-    language = _VIETNAMESE if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"} else ""
-    prompt = GLOSSARY_PROMPT.format(target=target_name, language=language)
+    prompt = _prompt(target_name, target_lang, _IMAGES, "what the images show")
     images = [(f"SLICE {index + 1}", image) for index, image in slices]
     result = request_vision_json(provider, model, api_key, prompt, images, max_tokens=3000, stage="glossary")
+    return result.data, result.estimated_cost_usd
+
+
+def transcript(lines: dict[int, tuple[tuple[str, str], ...]]) -> str:
+    """The lettering the scan read, slice by slice in order."""
+    return "\n".join(f"SLICE {index + 1}\n" + "\n".join(f"[{who or 'unknown'}] {text}" for who, text in rows)
+                     for index, rows in sorted(lines.items()) if rows)
+
+
+def read_glossary_text(provider, model: str, api_key: str, target_name: str, target_lang: str,
+                       lines: dict[int, tuple[tuple[str, str], ...]]) -> tuple[dict, float | None]:
+    """One text-only request over the scan's transcript of a run of slices."""
+    source = _TRANSCRIPT.replace("{lines}", transcript(lines))
+    prompt = _prompt(target_name, target_lang, source, "how the transcript describes the look")
+    result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=3000, stage="glossary")
     return result.data, result.estimated_cost_usd
 
 

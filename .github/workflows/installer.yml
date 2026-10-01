@@ -85,6 +85,31 @@ jobs:
           $owner = (Get-NetTCPConnection -LocalPort 8000 -State Listen).OwningProcess
           Stop-Process -Id $owner -Force
 
+      - name: The desktop icon opens the app in its own window
+        shell: powershell
+        run: |
+          $link = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Manga Translator.lnk'
+          if (-not (Test-Path $link)) { throw 'no desktop icon' }
+          $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($link)
+          Write-Host "$($shortcut.TargetPath) $($shortcut.Arguments)"
+          if ($shortcut.Arguments -notlike '*--window') { throw 'the icon does not open the app window' }
+          & (Join-Path (Split-Path $shortcut.TargetPath) 'python.exe') -c "import webview, clr; from importlib.metadata import version; print('pywebview', version('pywebview'))"
+          if ($LASTEXITCODE -ne 0) { throw 'pywebview failed to load' }
+          $env:BROWSER = 'none'
+          $app = Start-Process -FilePath $shortcut.TargetPath -ArgumentList $shortcut.Arguments -WorkingDirectory $shortcut.WorkingDirectory -PassThru
+          $health = $null
+          for ($i = 0; $i -lt 90 -and -not $health; $i++) {
+            Start-Sleep 2
+            try { $health = Invoke-RestMethod http://127.0.0.1:8000/health } catch { }
+          }
+          Start-Sleep 5
+          $views = @(Get-Process msedgewebview2 -ErrorAction SilentlyContinue)
+          Get-Content (Join-Path $shortcut.WorkingDirectory 'logs\console.log') -Tail 30 -ErrorAction SilentlyContinue
+          Stop-Process -Id $app.Id -Force
+          if (-not $health) { throw 'the app did not start from the icon' }
+          if ($views.Count -eq 0) { throw 'no WebView2 window was opened' }
+          Write-Host "WebView2 processes: $($views.Count)"
+
       - name: manga update keeps the models
         shell: powershell
         run: |
@@ -126,6 +151,7 @@ jobs:
           env -i HOME="$HOME" TERM=dumb PATH=/usr/bin:/bin "$(command -v ${{ matrix.shell }})" -lic 'command -v manga && manga --version'
           python="$HOME/.local/share/manga-translator/app/.venv/bin/python"
           "$python" -c "import torch, paddle, onnxruntime, cv2, paddleocr, manga_ocr; print('torch', torch.__version__, 'ort', onnxruntime.__version__)"
+          if [ "$(uname)" = Darwin ]; then "$python" -c "import webview; from importlib.metadata import version; print('pywebview', version('pywebview'))"; fi
           ls -la "$HOME/.local/share/manga-translator/app/models"
 
       - name: The app starts with every model

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import zipfile
 
 import cv2
@@ -54,6 +55,17 @@ def test_scan_rejects_low_confidence_huge_and_malformed_logo_boxes():
         {"x1": 500, "y1": 500, "x2": 501, "y2": 501, "confidence": 0.99},
     ]}]}
     assert parse_scan(data, {0: (800, 1600)})[0].logos == ()
+
+
+def test_scan_keeps_each_slices_lettering_as_who_and_text_lines():
+    data = {"slices": [{"slice": 0, "is_credit": False, "credit_confidence": 0, "logos": [], "lines": [
+        {"who": "old  bearded man", "text": "Who goes\nthere?"},
+        {"who": "", "text": "  "},
+        "not a line",
+        {"who": "narration", "text": "Long ago..."},
+    ]}]}
+    assert parse_scan(data, {0: (800, 1600)})[0].lines == (("old bearded man", "Who goes there?"),
+                                                           ("narration", "Long ago..."))
 
 
 def test_scan_sends_every_slice_as_a_labelled_image(monkeypatch):
@@ -173,7 +185,6 @@ def _scan_stage(monkeypatch, scans, pages=8):
 
     manifest = {"pages": [{"original": f"p{i}.png", "preserve_regions": []} for i in range(pages)]}
     skipped, preserved = [], {}
-    monkeypatch.setattr(ai_job, "SCAN_BATCH_SIZE", 4)  # the batching logic, whatever the provider limit
     monkeypatch.setattr(ai_job, "validate_managed_path", lambda value, root: value)
     monkeypatch.setattr(ai_job, "read_image", lambda path: np.zeros((100, 80, 3), np.uint8))
     monkeypatch.setattr(ai_job, "scan_slices", lambda provider, model, key, images: (
@@ -183,8 +194,9 @@ def _scan_stage(monkeypatch, scans, pages=8):
     monkeypatch.setattr(chapters, "_set_page_preserve_regions",
                         lambda chapter_id, index, regions: preserved.__setitem__(index, regions))
 
-    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="scan",
-                           stages={"scan": {"done": 0, "total": 0, "detail": ""}})
+    # Four slices a request: the batching logic, whatever the user's limit.
+    job = ai_job.AIModeJob(job_id="j", settings=replace(SETTINGS, images_per_request=4), chapter_id=CHAPTER,
+                           stage="scan", stages={"scan": {"done": 0, "total": 0, "detail": ""}})
     runner = AIModeRunner(job, PROVIDERS["deepseek"], "key")
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
     asyncio.run(runner.scan())
@@ -278,7 +290,36 @@ def _runner(monkeypatch, stage, manifest):
 
     monkeypatch.setattr(runner, "_sync_seams", no_seams)
     monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
+    # The letter model that checks repaints is stubbed: by default every repaint comes out clean.
+    monkeypatch.setattr(runner, "_still_reading", lambda page_index, rects: [])
     return runner
+
+
+def test_glossary_reads_the_scan_transcripts_and_only_unread_slices_as_images(monkeypatch):
+    from app.ai_mode import glossary
+
+    runner = _runner(monkeypatch, "clean", {"pages": [{"original": f"/raw/{i}.png"} for i in range(4)]})
+    runner._transcripts = {0: (("old man", "I am Sunny."),), 1: (), 3: (("girl", "Sunny!"),)}
+    text_reads, image_reads = [], []
+    monkeypatch.setattr(glossary, "read_glossary_text", lambda provider, model, key, target, lang, lines: (
+        text_reads.append(dict(lines)) or {"names": [{"source": "Sunny", "target": "Sunny"}]}, 0.001))
+    monkeypatch.setattr(glossary, "read_glossary", lambda provider, model, key, target, lang, images: (
+        image_reads.append([index for index, _ in images]) or {}, 0.002))
+    monkeypatch.setattr(ai_job, "validate_managed_path", lambda path, root: path)
+    monkeypatch.setattr(ai_job, "read_image", lambda path: np.zeros((10, 10, 3), np.uint8))
+
+    result = asyncio.run(runner._read_glossary([0, 1, 2, 3]))
+    assert text_reads == [{0: (("old man", "I am Sunny."),), 1: (), 3: (("girl", "Sunny!"),)}]
+    assert image_reads == [[2]], "only the slice the scan could not read is sent as an image"
+    assert result["names"] == [{"source": "Sunny", "target": "Sunny"}]
+    assert runner.report["glossary_text_slices"] == 3 and runner.report["glossary_image_slices"] == 1
+
+
+def test_glossary_transcript_lists_who_says_what_slice_by_slice():
+    from app.ai_mode.glossary import transcript
+
+    assert transcript({4: (("narration", "Long ago"),), 2: (), 1: (("", "Hm?"), ("boy", "Run!"))}) == (
+        "SLICE 2\n[unknown] Hm?\n[boy] Run!\nSLICE 5\n[narration] Long ago")
 
 
 def test_review_sends_crops_on_sheets_and_erases_the_flagged_ones_again(monkeypatch):
@@ -301,6 +342,25 @@ def test_review_sends_crops_on_sheets_and_erases_the_flagged_ones_again(monkeypa
     assert [sorted(ids) for ids in sheets] == [["1.1", "1.2", "2.1"]], "three small crops share one sheet"
     assert fixed == [(0, [(10, 300, 90, 340)]), (1, [(100, 100, 200, 160)])]
     assert runner.report["repainted_regions"] == 2 and runner.report["review_crops"] == 3
+
+
+def test_a_repaint_the_letter_model_still_reads_gets_one_more_pass_then_goes_to_the_reviewer(monkeypatch):
+    runner = _runner(monkeypatch, "review", {"pages": [{}, {}, {}]})
+    fixes, reads = [], {}
+    monkeypatch.setattr(ai_job, "pipeline_fix", lambda chapter, index, rects: fixes.append((index, list(rects))))
+
+    def still_reading(page_index, rects):
+        reads[page_index] = reads.get(page_index, 0) + 1
+        stubborn = (0, 0, 50, 50)  # only this one keeps its letters through both passes
+        if reads[page_index] == 1:
+            return list(rects)
+        return [rect for rect in rects if rect == stubborn]
+
+    monkeypatch.setattr(runner, "_still_reading", still_reading)
+    asyncio.run(runner._verify_repaint(2, [(0, 0, 50, 50), (60, 60, 90, 90)]))
+    assert fixes == [(2, [(0, 0, 50, 50), (60, 60, 90, 90)])], "the second pass erases what still reads"
+    assert runner.report["repaint_retried"] == 2
+    assert runner.report["residue_left"] == [{"page": 3, "rect": [0, 0, 50, 50]}]
 
 
 def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeypatch):

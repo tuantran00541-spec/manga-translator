@@ -77,3 +77,13 @@ def test_punctuation_the_font_lacks_is_drawn_in_plain_form_in_the_same_font():
     drawn = render_text_in_box(Image.new("RGB", (420, 90), "white"), text, box, font_path=narration)
     plain = render_text_in_box(Image.new("RGB", (420, 90), "white"), "tạo ra cả một thế giới -", box, font_path=narration)
     assert drawn.tobytes() == plain.tobytes()
+
+
+def test_name_brackets_the_comic_font_lacks_become_plain_angle_brackets():
+    from app.render.text_renderer import drawable, font_draws_text, get_font_path
+
+    # The World After the End 254: the translator kept the source's ⟨Illusion Tree⟩ brackets.
+    dialogue = get_font_path("dialogue.mac-dinh-3")
+    text = "Nhà cậu là ⟨Ảo Thụ⟩."
+    assert not font_draws_text(dialogue, text)
+    assert drawable(dialogue, text) == (dialogue, "Nhà cậu là <Ảo Thụ>.")

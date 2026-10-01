@@ -28,3 +28,5 @@ transformers==4.45.2
 torch==2.5.1
 
 keyring==25.6.0
+# The app window (WebView2 on Windows, WebKit on macOS); Linux keeps the browser.
+pywebview==6.2.1; platform_system == "Windows" or platform_system == "Darwin"
