@@ -111,7 +111,7 @@ def register_javascript_mime_type() -> None:
 
 
 register_javascript_mime_type()
-app = FastAPI(lifespan=lifespan, title="Manga Translator", version="0.2.0")
+app = FastAPI(lifespan=lifespan, title="Manga Translator", version="0.3.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
 
