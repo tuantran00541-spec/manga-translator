@@ -16,6 +16,7 @@ REWRITE_BATCH = 8
 MAX_STATE_CHARS = 2000
 MAX_SETTLED = 6  # address pairs or glossary entries shown with one line
 MIN_GAIN = 0.025  # a rewrite that gains less on the 0-1 scale is the judge's noise, not a better line
+MAX_LOSS = 0.15  # a rewrite may not lose more than this on natural or faithful to fix address or terms
 
 QUESTIONS = {
     "natural": {
@@ -111,8 +112,12 @@ def settled(line: Line, memory: dict | None) -> tuple[list[str], list[str]]:
     for entry in [*(glossary.get("address") or []), *(memory.get("address") or [])]:
         if isinstance(entry, dict) and line.speaker and _flat(entry.get("from")).lower() == line.speaker.lower():
             pairs[_flat(entry.get("to"))] = entry
-    address = [f"to {to}: self \"{entry.get('self', '?')}\", other \"{entry.get('other', '?')}\""
-               for to, entry in pairs.items()][:MAX_SETTLED]
+    # The listener of a line is unknown, so only what holds for every listener is settled: one self form, and
+    # the form for the other person when the speaker talks to just one.
+    selves = {_flat(entry.get("self")) for entry in pairs.values() if _flat(entry.get("self"))}
+    address = [f"self \"{selves.pop()}\""] if len(selves) == 1 else []
+    if len(pairs) == 1 and (other := _flat(next(iter(pairs.values())).get("other"))):
+        address.append(f"to {next(iter(pairs))}: \"{other}\"")
     source = _flat(line.source).lower()
     terms = [f"{_flat(entry.get('source'))} = {_flat(entry.get('target'))}"
              for entry in [*(glossary.get("names") or []), *(glossary.get("terms") or [])]
@@ -167,8 +172,9 @@ def problems(scores: dict[str, float]) -> list[str]:
 
 
 def better(new: dict[str, float], old: dict[str, float]) -> bool:
-    """True when the judge grades a rewrite clearly better than the line it replaces."""
-    return quality(new) >= quality(old) + MIN_GAIN
+    """True when the judge grades a rewrite clearly better overall and no less natural or faithful."""
+    kept = all(new.get(key, 0.0) >= old.get(key, 0.0) - MAX_LOSS for key in ("natural", "faithful"))
+    return kept and quality(new) >= quality(old) + MIN_GAIN
 
 
 def quality(scores: dict[str, float]) -> float:

@@ -91,8 +91,18 @@ def test_the_judge_sees_the_speakers_settled_address_and_the_glossary_terms_in_t
                           {"from": "Nephis", "to": "Sunny", "self": "tôi", "other": "cậu"}]}
     line = polish.Line(0, "a", "The Nightmare Spell took me, Nephis.", "Bùa chú bắt tôi rồi, Nephis.", speaker="Sunny")
     state = polish.line_state(line, memory=memory)
-    assert "SPEAKER: Sunny" in state and 'to Nephis: self "tôi", other "cô"' in state and "cậu" not in state
+    assert "SPEAKER: Sunny" in state and 'self "tôi"; to Nephis: "cô"' in state and "cậu" not in state
     assert "Nightmare Spell = Bùa Chú Ác Mộng" in state and "Sunny = Sunny" not in state
     assert "settled" in polish.questions(line, memory)
     assert "settled" not in polish.questions(polish.Line(0, "b", "Run!", "Chạy!"), memory)
     assert polish.problems({"natural": 3.0, "clear": 2.0, "faithful": 2.0, "settled": 0.4}) == [polish.PROBLEMS["settled"]]
+
+
+def test_address_shows_only_what_holds_for_any_listener_and_a_rewrite_keeps_its_voice():
+    memory = {"address": [{"from": "Hero", "to": "Goddess", "self": "ta", "other": "ngươi"},
+                          {"from": "Hero", "to": "Maid", "self": "tôi", "other": "cô"}]}
+    line = polish.Line(0, "a", "How did I pull that off?", "Sao mình làm được vậy?", speaker="Hero")
+    assert polish.settled(line, memory)[0] == [], "two self forms: the listener decides, so nothing is settled"
+    old = {"natural": 2.6, "clear": 1.87, "faithful": 1.85, "settled": 0.15}
+    assert not polish.better({"natural": 2.35, "clear": 1.87, "faithful": 1.86, "settled": 0.91}, old)
+    assert polish.better({"natural": 2.55, "clear": 1.87, "faithful": 1.86, "settled": 0.91}, old)
