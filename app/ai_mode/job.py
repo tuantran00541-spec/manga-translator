@@ -38,9 +38,10 @@ STAGES: tuple[tuple[str, str], ...] = (
     ("render", "Render"),
     ("finish", "Hoàn tất"),
 )
-SCAN_BATCH_SIZE = 4
-SCAN_CONCURRENCY = 3
-GLOSSARY_BATCH_SIZE = 6
+# Two images per request: the most sovinfra's free qwen3.8-27b accepts (three or more get 422).
+SCAN_BATCH_SIZE = 2
+SCAN_CONCURRENCY = 4
+GLOSSARY_BATCH_SIZE = 2
 # More "credit" slices than this is a misread of the chapter, not credits.
 CREDIT_MAX_SHARE = 0.25
 CREDIT_MAX_ABSOLUTE = 3

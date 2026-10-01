@@ -173,6 +173,7 @@ def _scan_stage(monkeypatch, scans, pages=8):
 
     manifest = {"pages": [{"original": f"p{i}.png", "preserve_regions": []} for i in range(pages)]}
     skipped, preserved = [], {}
+    monkeypatch.setattr(ai_job, "SCAN_BATCH_SIZE", 4)  # the batching logic, whatever the provider limit
     monkeypatch.setattr(ai_job, "validate_managed_path", lambda value, root: value)
     monkeypatch.setattr(ai_job, "read_image", lambda path: np.zeros((100, 80, 3), np.uint8))
     monkeypatch.setattr(ai_job, "scan_slices", lambda provider, model, key, images: (
