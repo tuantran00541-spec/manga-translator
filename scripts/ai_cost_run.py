@@ -274,6 +274,10 @@ def main() -> int:
             conn.row_factory = sqlite3.Row
             rows = [dict(r) for r in conn.execute(
                 "SELECT status, requests, prompt_tokens, completion_tokens, cost_usd, charged_micros FROM jobs")]
+        exported = None
+        if job["status"] == "completed" and job.get("chapter_id"):
+            # Exported the way a user would, from the editor's export, while the app is still up.
+            exported = requests.get(f"{APP}/api/export/{job['chapter_id']}.zip", timeout=600)
     finally:
         for proc in (app, gateway):
             if proc is not None:
@@ -298,16 +302,14 @@ def main() -> int:
         "transport": _transport(trace),
     }
     chapter_id = job.get("chapter_id")
-    if job["status"] == "completed" and chapter_id:
-        # The chapter is exported the way a user would, from the editor's export.
-        response = requests.get(f"{APP}/api/export/{chapter_id}.zip", timeout=600)
-        if response.ok:
+    if exported is not None:
+        if exported.ok:
             archive = out / "chapter.zip"
-            archive.write_bytes(response.content)
+            archive.write_bytes(exported.content)
             report["zip_pages"] = _pages(archive, out)
             archive.unlink()
         else:
-            report["export_error"] = f"HTTP {response.status_code}: {response.text[:300]}"
+            report["export_error"] = f"HTTP {exported.status_code}: {exported.text[:300]}"
     manifest_path = ROOT / "data" / "processed" / str(chapter_id) / "manifest.json"
     if chapter_id and manifest_path.is_file():
         pages = json.loads(manifest_path.read_text(encoding="utf-8")).get("pages", [])
