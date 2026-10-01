@@ -21,6 +21,10 @@ LEFT_SHARE = 0.004  # share of an erased block the model may still read before i
 REACH_ROUNDS = 3  # times a box grows toward letters its edge still cuts
 CHAIN = 0.6  # widest gap, in letter heights, between letters of one text
 KMEANS_SEED = 1234  # fixed seed for the background colour clusters, so one image always gives one mask
+FRINGE = 0.25  # how far, in letter heights, a soft shadow may fade from the grown letters
+FRINGE_TOLERANCE = 5.0  # Lab distance within which a pixel is the flat background round the letters
+FRINGE_FLAT_SHARE = 0.6  # share of the band round the letters that must be that one background colour
+FRINGE_INK_SHARE = 0.8  # a shadow pixel stays this much lighter than the ink, so outlines never join
 
 _session = None
 _lock = threading.Lock()
@@ -104,7 +108,32 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
         near = cv2.dilate(part.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
         if edge or (further & near).sum() > 0.3 * part.sum():
             region &= ~part
-    return region
+    return _fringe(lab, seed, region, reach)
+
+
+def _fringe(lab: np.ndarray, seed: np.ndarray, region: np.ndarray, reach: int) -> np.ndarray:
+    """A soft shadow fading from the letters into one flat background joins the mask, so LaMa never redraws it."""
+    width = max(3, int(reach * FRINGE))
+    band = (cv2.dilate(region.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4 * width + 1,) * 2)) > 0) & ~region
+    if band.sum() < 50 or not seed.any():
+        return region
+    # The background right round the letters, when most of that band is one flat colour.
+    bins, counts = np.unique(np.round(lab[band] / 4).astype(np.int32), axis=0, return_counts=True)
+    back = bins[counts.argmax()].astype(np.float32) * 4
+    to_back = np.linalg.norm(lab - back, axis=-1)
+    if (to_back[band] <= FRINGE_TOLERANCE).mean() < FRINGE_FLAT_SHARE:
+        return region
+    ink = float(np.median(to_back[seed]))
+    # Between background and ink, so neither the background nor ink-dark lines such as a balloon outline join.
+    shade = (to_back > FRINGE_TOLERANCE) & (to_back < FRINGE_INK_SHARE * ink)
+    near = cv2.distanceTransform((~region).astype(np.uint8), cv2.DIST_L2, 3) <= width
+    grown, k3 = region, np.ones((3, 3), np.uint8)
+    for _ in range(width):
+        nxt = grown | ((cv2.dilate(grown.astype(np.uint8), k3) > 0) & shade & near)
+        if (nxt == grown).all():
+            break
+        grown = nxt
+    return grown
 
 
 SPECK = 0.35  # letters shorter than this share of the text size (dots, accents, noise) never lead growth

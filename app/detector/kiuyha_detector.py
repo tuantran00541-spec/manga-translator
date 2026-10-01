@@ -152,6 +152,9 @@ def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
     # Each text takes the rows up to the middle of the gaps round it, and its own columns with a line of room.
     blocks = [(group[0][0], group[-1][1]) for group in merged]
     cuts = [0] + [(upper[1] + lower[0]) // 2 for upper, lower in zip(blocks, blocks[1:])] + [letters.shape[0]]
+    # A cut through letters (two lines touching, read as one tall mark) would leave half a line in neither box.
+    if rows[cuts[1:-1]].any():
+        return [box]
     reach = int(height)
     pieces = []
     for (top, bottom), band_top, band_bottom in zip(blocks, cuts, cuts[1:]):

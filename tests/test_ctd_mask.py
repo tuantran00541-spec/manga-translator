@@ -143,3 +143,22 @@ def test_one_image_always_gives_one_mask():
     cv2.putText(image, "DARE TO DREAM", (80, 240), cv2.FONT_HERSHEY_DUPLEX, 3.0, (255, 240, 170), 8)
     masks = [ctd_mask.letter_mask(image, (70, 150, 900, 270))[1] for _ in range(4)]
     assert all(np.array_equal(masks[0], mask) for mask in masks[1:])
+
+
+def test_a_soft_drop_shadow_on_a_flat_balloon_is_erased_but_the_outline_stays():
+    # Solo Swordmaster 1, slice 105: a grey blurred shadow the mask left behind came back as ghost letters.
+    image = np.full((420, 1000, 3), 255, np.uint8)
+    image[:60] = (230, 200, 150)  # sky past the balloon, which makes the ring many-coloured
+    cv2.rectangle(image, (60, 90), (940, 390), (20, 20, 20), 5)  # the balloon outline
+    shadow = np.zeros((420, 1000), np.uint8)
+    cv2.putText(shadow, "STOP!!", (250, 290), cv2.FONT_HERSHEY_DUPLEX, 3.5, 255, 14)
+    shadow = cv2.GaussianBlur(np.roll(shadow, (8, 8), (0, 1)), (0, 0), 4).astype(np.float32)[..., None] / 255
+    image = np.clip(image - shadow * 110, 0, 255).astype(np.uint8)
+    cv2.putText(image, "STOP!!", (250, 290), cv2.FONT_HERSHEY_DUPLEX, 3.5, (10, 10, 10), 14)
+    box, mask = ctd_mask.letter_mask(image, (230, 170, 800, 320))
+    full = _full(image, box, mask)
+    grey = (image.min(axis=2) < 235) & (image.min(axis=2) > 40)
+    grey[:100] = grey[380:] = False
+    grey[:, :100] = grey[:, 900:] = False
+    assert (full & grey).sum() >= 0.95 * grey.sum(), "the shadow goes with the letters"
+    assert not full[88:93, 60:940].any(), "the outline stays"

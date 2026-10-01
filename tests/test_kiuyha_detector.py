@@ -276,3 +276,15 @@ def test_drawn_letters_under_a_text_are_not_a_second_text():
         letters[top:top + 70, 150:400] = True
     box = _text_box(0, 0, 400, 400, 0.9, letters.copy(), "kiuyha", letters)
     assert len(_split_blocks(box)) == 1
+
+
+def test_two_touching_lines_are_never_cut_through():
+    # Solo Swordmaster 1, slice 87: 'CIVILIANS OVER THERE' touched the next line, read as one tall mark, and the
+    # split between the texts round it ran through it, so half the line was left on the page.
+    letters = np.zeros((420, 700), bool)
+    for top, bottom in ((98, 149), (154, 197), (318, 363)):
+        letters[top:bottom, 150:520] = True
+    letters[208:309, 100:600] = True
+    letters[311:312, 300:340] = True  # a speck under it
+    box = _text_box(0, 338, 700, 758, 0.9, letters.copy(), "kiuyha", letters)
+    assert len(_split_blocks(box)) == 1
