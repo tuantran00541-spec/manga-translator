@@ -147,16 +147,27 @@ def _find_cut_rows(
     return cuts
 
 
-def _get_row_scores(gray: np.ndarray) -> np.ndarray:
-    row_std = gray.std(axis=1).astype(np.float32)
+def _content(gray: np.ndarray) -> np.ndarray:
+    """255 where a pixel is further than the background distance from both white and black."""
+    return cv2.inRange(gray, SLICE_BACKGROUND_DISTANCE + 1, 254 - SLICE_BACKGROUND_DISTANCE)
 
-    white_diff = cv2.absdiff(gray, 255)
-    black_diff = cv2.absdiff(gray, 0)
-    non_bg_pixels = (
-        (white_diff > SLICE_BACKGROUND_DISTANCE)
-        & (black_diff > SLICE_BACKGROUND_DISTANCE)
-    )
-    content_count_per_row = non_bg_pixels.sum(axis=1).astype(np.float32)
+
+def _row_std(gray: np.ndarray, chunk: int = 1024) -> np.ndarray:
+    """Each row's standard deviation from exact integer sums, in row chunks so no float copy of the page is made."""
+    h, w = gray.shape
+    sums = np.empty(h, np.int64)
+    squares = np.empty(h, np.int64)
+    for top in range(0, h, chunk):
+        part = gray[top:top + chunk].astype(np.int32)
+        sums[top:top + chunk] = part.sum(axis=1)
+        squares[top:top + chunk] = (part * part).sum(axis=1)
+    return np.sqrt((w * squares - sums * sums) / float(w * w)).astype(np.float32)
+
+
+def _get_row_scores(gray: np.ndarray) -> np.ndarray:
+    row_std = _row_std(gray)
+
+    content_count_per_row = np.count_nonzero(_content(gray), axis=1).astype(np.float32)
 
     return row_std + content_count_per_row * SLICE_CONTENT_SCORE_WEIGHT
 
@@ -245,14 +256,7 @@ def _get_content_row_mask(gray: np.ndarray, h: int, w: int) -> np.ndarray:
         gray, SLICE_CONTENT_CANNY_LOW, SLICE_CONTENT_CANNY_HIGH
     )
 
-    white_diff = cv2.absdiff(gray, 255)
-    black_diff = cv2.absdiff(gray, 0)
-    content_binary = (
-        (white_diff > SLICE_BACKGROUND_DISTANCE)
-        & (black_diff > SLICE_BACKGROUND_DISTANCE)
-    ).astype(np.uint8) * 255
-
-    combined = cv2.bitwise_or(edges, content_binary)
+    combined = cv2.bitwise_or(edges, _content(gray))
 
     close_kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE,

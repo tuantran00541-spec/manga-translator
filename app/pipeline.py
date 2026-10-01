@@ -1,4 +1,5 @@
 import copy
+import os
 import threading
 import time
 from dataclasses import replace
@@ -119,73 +120,16 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
 
         raw_dir = RAW_DIR / chapter_id
         raw_dir.mkdir(parents=True, exist_ok=True)
-
-        extracted_files = []
-        total_extracted_bytes = 0
-        for filename, data in uploads:
-            if len(extracted_files) >= MAX_UPLOAD_FILES or total_extracted_bytes >= MAX_UPLOAD_TOTAL_BYTES:
-                if total_extracted_bytes >= MAX_UPLOAD_TOTAL_BYTES:
-                    logger.warning(f"Vượt quá giới hạn tổng dung lượng {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB")
-                else:
-                    logger.warning(f"Vượt quá giới hạn {MAX_UPLOAD_FILES} files")
-                break
-            is_zip = filename.lower().endswith((".zip", ".cbz"))
-            if not is_zip:
-                try:
-                    with zipfile.ZipFile(io.BytesIO(data)) as z:
-                        is_zip = True
-                except Exception:
-                    is_zip = False
-
-            if is_zip:
-                try:
-                    with zipfile.ZipFile(io.BytesIO(data)) as z:
-                        namelist = sorted(z.namelist(), key=natural_sort_key)
-                        for name in namelist:
-                            if len(extracted_files) >= MAX_UPLOAD_FILES:
-                                logger.warning(f"Đã đạt giới hạn {MAX_UPLOAD_FILES} ảnh từ ZIP")
-                                break
-                            if total_extracted_bytes >= MAX_UPLOAD_TOTAL_BYTES:
-                                logger.warning(f"Đã đạt giới hạn tổng dung lượng {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB từ ZIP")
-                                break
-                            if name.startswith("__MACOSX/") or name.startswith("."):
-                                continue
-                            if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
-                                continue
-                            info = z.getinfo(name)
-                            if info.file_size > MAX_UPLOAD_FILE_BYTES:
-                                logger.warning(
-                                    f"Skip {name}: giải nén vượt {MAX_UPLOAD_FILE_BYTES // (1024*1024)}MB"
-                                )
-                                continue
-                            if total_extracted_bytes + info.file_size > MAX_UPLOAD_TOTAL_BYTES:
-                                logger.warning(
-                                    f"Skip {name}: tổng dung lượng vượt {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB"
-                                )
-                                break
-                            safe_name = name.replace("\\", "/")
-                            clean_name = Path(safe_name).name
-                            if not clean_name:
-                                continue
-                            img_bytes = z.read(name)
-                            if len(img_bytes) > 0:
-                                extracted_files.append((clean_name, img_bytes, True))
-                                total_extracted_bytes += len(img_bytes)
-                except Exception as e:
-                    logger.warning(f"Failed to extract zip file {filename}: {e}")
-            else:
-                if total_extracted_bytes + len(data) > MAX_UPLOAD_TOTAL_BYTES:
-                    logger.warning(f"Skip {filename}: tổng dung lượng vượt {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB")
-                    break
-                extracted_files.append((filename, data, False))
-                total_extracted_bytes += len(data)
-
-        if not extracted_files:
-            raise ValueError("Không tìm thấy file ảnh hợp lệ nào trong dữ liệu tải lên")
-
-        raw_paths = []
         ext_map = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp", "BMP": ".bmp"}
-        for filename, data, from_zip in extracted_files[:MAX_UPLOAD_FILES]:
+        raw_paths: list[Path] = []
+        taken = 0
+        total_bytes = 0
+
+        def keep(filename: str, data: bytes, from_zip: bool) -> None:
+            """Write one checked image as the next raw page, so archive pages never pile up in memory."""
+            nonlocal taken, total_bytes
+            taken += 1
+            total_bytes += len(data)
             try:
                 fmt = validate_upload_image(data, filename)
             except HTTPException as exc:
@@ -193,10 +137,59 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     raise
                 # One broken image in an archive does not sink the other pages.
                 logger.warning("Skip {} in the archive: {}", filename, exc.detail)
-                continue
+                return
             out_path = raw_dir / f"{len(raw_paths):03d}{ext_map.get(fmt, '.png')}"
             out_path.write_bytes(data)
             raw_paths.append(out_path)
+
+        for filename, data in uploads:
+            if taken >= MAX_UPLOAD_FILES or total_bytes >= MAX_UPLOAD_TOTAL_BYTES:
+                if total_bytes >= MAX_UPLOAD_TOTAL_BYTES:
+                    logger.warning(f"Vượt quá giới hạn tổng dung lượng {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB")
+                else:
+                    logger.warning(f"Vượt quá giới hạn {MAX_UPLOAD_FILES} files")
+                break
+            is_zip = filename.lower().endswith((".zip", ".cbz")) or zipfile.is_zipfile(io.BytesIO(data))
+            if not is_zip:
+                if total_bytes + len(data) > MAX_UPLOAD_TOTAL_BYTES:
+                    logger.warning(f"Skip {filename}: tổng dung lượng vượt {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB")
+                    break
+                keep(filename, data, False)
+                continue
+            try:
+                with zipfile.ZipFile(io.BytesIO(data)) as z:
+                    for name in sorted(z.namelist(), key=natural_sort_key):
+                        if taken >= MAX_UPLOAD_FILES:
+                            logger.warning(f"Đã đạt giới hạn {MAX_UPLOAD_FILES} ảnh từ ZIP")
+                            break
+                        if total_bytes >= MAX_UPLOAD_TOTAL_BYTES:
+                            logger.warning(f"Đã đạt giới hạn tổng dung lượng {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB từ ZIP")
+                            break
+                        clean_name = Path(name.replace("\\", "/")).name
+                        # macOS adds __MACOSX folders and '._' resource files beside every page.
+                        if name.startswith("__MACOSX/") or not clean_name or clean_name.startswith("."):
+                            continue
+                        if not clean_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
+                            continue
+                        info = z.getinfo(name)
+                        if info.file_size > MAX_UPLOAD_FILE_BYTES:
+                            logger.warning(
+                                f"Skip {name}: giải nén vượt {MAX_UPLOAD_FILE_BYTES // (1024*1024)}MB"
+                            )
+                            continue
+                        if total_bytes + info.file_size > MAX_UPLOAD_TOTAL_BYTES:
+                            logger.warning(
+                                f"Skip {name}: tổng dung lượng vượt {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB"
+                            )
+                            break
+                        img_bytes = z.read(name)
+                        if img_bytes:
+                            keep(clean_name, img_bytes, True)
+            except Exception as e:
+                logger.warning(f"Failed to extract zip file {filename}: {e}")
+
+        if not taken:
+            raise ValueError("Không tìm thấy file ảnh hợp lệ nào trong dữ liệu tải lên")
         if not raw_paths:
             raise ValueError("Không có ảnh hợp lệ nào trong dữ liệu tải lên")
 
@@ -219,10 +212,11 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
 
         slice_results: dict[int, list] = {}
         if raw_paths:
+            # Slicing loads no model, so it uses the cores rather than the processing workers setting.
             max_workers = max(
                 1,
                 min(
-                    int(workers or PIPELINE_DEFAULT_WORKERS),
+                    max(int(workers or PIPELINE_DEFAULT_WORKERS), os.cpu_count() or 1),
                     PIPELINE_SLICE_WORKER_LIMIT,
                     len(raw_paths),
                 ),
