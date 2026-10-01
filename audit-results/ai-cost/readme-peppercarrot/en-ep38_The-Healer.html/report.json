@@ -1,0 +1,123 @@
+{
+ "url": "https://www.peppercarrot.com/en/webcomic/ep38_The-Healer.html",
+ "model": "openai/gpt-6-luna",
+ "price_usd_per_m": {
+  "input": 0.105,
+  "output": 0.525
+ },
+ "polish": false,
+ "cpu": "AMD EPYC 7763 64-Core Processor",
+ "status": "failed",
+ "error": "Invalid or unreadable image",
+ "wall_s": 5.1,
+ "stages": [
+  {
+   "key": "download",
+   "status": "failed",
+   "done": 0,
+   "total": 1,
+   "elapsed_s": 4.8,
+   "detail": "Đang tải ảnh từ nguồn"
+  },
+  {
+   "key": "scan",
+   "status": "pending",
+   "done": 0,
+   "total": 0,
+   "elapsed_s": null,
+   "detail": ""
+  },
+  {
+   "key": "clean",
+   "status": "pending",
+   "done": 0,
+   "total": 0,
+   "elapsed_s": null,
+   "detail": ""
+  },
+  {
+   "key": "review",
+   "status": "pending",
+   "done": 0,
+   "total": 0,
+   "elapsed_s": null,
+   "detail": ""
+  },
+  {
+   "key": "translate",
+   "status": "pending",
+   "done": 0,
+   "total": 0,
+   "elapsed_s": null,
+   "detail": ""
+  },
+  {
+   "key": "polish",
+   "status": "pending",
+   "done": 0,
+   "total": 0,
+   "elapsed_s": null,
+   "detail": ""
+  },
+  {
+   "key": "render",
+   "status": "pending",
+   "done": 0,
+   "total": 0,
+   "elapsed_s": null,
+   "detail": ""
+  },
+  {
+   "key": "finish",
+   "status": "pending",
+   "done": 0,
+   "total": 0,
+   "elapsed_s": null,
+   "detail": ""
+  }
+ ],
+ "report": {
+  "credit_pages": [],
+  "credit_rejected": [],
+  "logo_regions": 0,
+  "scan_errors": [],
+  "repainted_regions": 0,
+  "repaint_pages": [],
+  "qc_flagged": 0,
+  "qc_errors": [],
+  "translated": 0,
+  "unreadable": 0,
+  "review_flags": 0,
+  "translate_errors": [],
+  "render_errors": [],
+  "editorial_blockers": 0,
+  "blocker_samples": [],
+  "source_lang": null,
+  "textless_pages": [],
+  "textless_rejected": [],
+  "kept_regions": 0,
+  "missed_added": 0,
+  "retried_pages": [],
+  "restored_regions": 0,
+  "sfx_kept": 0,
+  "review_list": [],
+  "unboxed_pages": [],
+  "polish": {
+   "judged": 0,
+   "flagged": 0,
+   "rewritten": 0,
+   "still_flagged": 0,
+   "errors": [],
+   "samples": []
+  }
+ },
+ "gateway_job": {
+  "status": "failed",
+  "requests": 0,
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "cost_usd": 0.0,
+  "charged_micros": 0
+ },
+ "transport": {}
+}
