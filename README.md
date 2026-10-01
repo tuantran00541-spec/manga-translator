@@ -56,14 +56,16 @@ Everything on the cleanup path is a small ONNX model on the CPU. Nothing needs a
 
 **By hand.** Import a chapter and clean it, then correct, OCR, translate and letter it in the browser workbench. Every step can be redone.
 
-**A.I mode.** Paste a chapter URL with an AI key (or use Manga Cloud). Four checkpoints run the chapter, and the lettered result opens in the same editor:
+**A.I mode.** Paste a chapter URL with an AI key (or use Manga Cloud) and pick the target language: Vietnamese, English, Indonesian, Spanish, Portuguese, French or German. Four checkpoints run the chapter, and the lettered result opens in the same editor:
 
 1. **Scan** the raw slices: skip credit and textless slices, keep series logos untouched.
-2. **Clean** the text (Kiuyha + LaMa).
+2. **Clean** the text (Kiuyha + LaMa). Meanwhile the chapter's names and terms are read into a glossary.
 3. **Review** each raw and clean slice pair: erase missed text, repaint leftovers, restore art erased by mistake.
-4. **Translate** each slice from its raw and clean image and pick fonts; the app letters the text.
+4. **Translate** each slice from its raw image with the glossary, naming each text's role and container; the font follows them, so one kind of text always looks the same.
 
-On Shadow Slave ch. 1 (135 slices) A.I mode took 18 minutes and about **$0.25** of model calls: 109 texts translated, 0 blockers left at export, 14 textless slices and 1 credit slice skipped, the series logo kept.
+An optional **Jev** pass grades every translated line and rewrites the weak ones.
+
+Across five chapters of five series, A.I mode cost about **$0.07** of model calls per chapter.
 
 ## The workflow
 
@@ -76,7 +78,7 @@ On Shadow Slave ch. 1 (135 slices) A.I mode took 18 minutes and about **$0.25** 
 | **5. Review** | Unified canvas workspace and editorial corrections |
 | **6. OCR** | MangaOCR + PP-OCRv6 hybrid recognition |
 | **7. Translate** | Batch text translation or two-image vision translation |
-| **8. Letter** | Text objects, geometry, typography, font matching |
+| **8. Letter** | Text objects, geometry, typography, fonts by text role |
 | **9. Render** | Revision-safe page publication |
 | **10. Export** | Stitched chapter ZIP |
 
@@ -130,7 +132,7 @@ OCR is chapter-aware and revision-safe, and keeps the source lettering's colour,
 
 The browser workbench edits translated text, font, size, weight, stroke, background, alignment, region geometry and manual text objects in one Review workspace.
 
-The renderer bundles **71 comic fonts** (69 under OFL-1.1, 40 covering Vietnamese) across dialogue, emphasis, thought, narration, skill, SFX, horror and romance. Fonts are matched to the original lettering by a deterministic CPU comparison of the source crops, and user and AI font choices are validated against the installed catalog rather than accepted as file paths. Wrapped lines are balanced so a line never leaves one word alone. See [docs/comic-fonts.md](docs/comic-fonts.md).
+The renderer bundles **71 comic fonts** (69 under OFL-1.1, 40 covering Vietnamese) across dialogue, emphasis, thought, narration, skill, SFX, horror and romance. A.I mode letters each text in the font for its role and container (speech, narration, shouts, screens, SFX); every font choice is validated against the installed catalog rather than accepted as a file path. Wrapped lines are balanced so a line never leaves one word alone. See [docs/comic-fonts.md](docs/comic-fonts.md).
 
 ### AI providers
 
@@ -354,8 +356,8 @@ app/
   inpaint/        LaMa, flat fill and mask geometry safety
   ocr/            MangaOCR + PP-OCRv6
   translation/    text and two-image vision translation
-  ai_mode/        the four A.I checkpoints
-  render/         typography, font catalog and matching
+  ai_mode/        the A.I checkpoints, glossary and Jev pass
+  render/         typography, font catalog and lettering fonts
   visual_qc/      visual inspection and provider orchestration
   routers/        FastAPI API surface
   static/         browser workbench
