@@ -541,3 +541,21 @@ def test_judge_requests_go_to_evaluate_and_bill_input_only(tmp_path, monkeypatch
     bare = TestClient(create_app(Store(tmp_path / "bare.sqlite"), Upstream("http://127.0.0.1:9", "", "m", 0, 0), ADMIN,
                                  mailer=Mailer(api_key="", sender="", dev_mode=True)))
     assert bare.post("/v1/evaluate", headers=_job(bare), json={"state": "s", "questions": question}).status_code == 404
+
+
+def test_an_azure_upstream_gets_its_key_header_and_token_field():
+    seen = []
+    app = FastAPI()
+
+    @app.post("/openai/v1/chat/completions")
+    def chat(payload: dict, api_key: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+        seen.append((api_key, authorization, payload))
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {}}
+
+    base, server = _serve(app)
+    upstream = Upstream(f"{base}/openai/v1", "azure-key", "my-deployment", 0, 0, auth="api-key",
+                        max_tokens_field="max_completion_tokens")
+    status, _body = upstream.send({"model": "my-deployment", "messages": [], "max_tokens": 900})
+    assert status == 200
+    server.should_exit = True
+    assert seen == [("azure-key", None, {"model": "my-deployment", "messages": [], "max_completion_tokens": 900})]

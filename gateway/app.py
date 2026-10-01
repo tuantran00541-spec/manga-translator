@@ -73,6 +73,8 @@ class Upstream:
     fallbacks: tuple = ()  # the same for requests that name no step
     judge_model: str = ""  # a decision model that grades translated lines; empty turns /v1/evaluate off
     judge_usd_per_m: float = 0.0  # its price per million input tokens; its answers are free
+    auth: str = "bearer"  # "api-key" sends the key in an api-key header, as Azure OpenAI keys go
+    max_tokens_field: str = "max_tokens"  # newer OpenAI and Azure models take max_completion_tokens instead
 
     @property
     def default(self) -> Route:
@@ -109,11 +111,16 @@ class Upstream:
                 trace["attempts"] = attempt + 1
                 if payload.get("model") is not None:
                     trace["model"] = payload["model"]
+            sent = payload
+            if path == "chat/completions" and self.max_tokens_field != "max_tokens" and "max_tokens" in payload:
+                sent = {k: v for k, v in payload.items() if k != "max_tokens"}
+                sent[self.max_tokens_field] = payload["max_tokens"]
+            key = {"api-key": self.api_key} if self.auth == "api-key" else {"Authorization": f"Bearer {self.api_key}"}
             try:
                 response = requests.post(
                     f"{self.base.rstrip('/')}/{path}",
-                    headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-                    json=payload,
+                    headers={**key, "Content-Type": "application/json"},
+                    json=sent,
                     timeout=(10, 300),
                     allow_redirects=False,
                 )
@@ -237,6 +244,8 @@ def upstream_from_env() -> Upstream:
         fallbacks=tuple(route for _stage, route in _routes_from_env("GATEWAY_FALLBACK_MODELS")),
         judge_model=os.getenv("GATEWAY_JUDGE_MODEL", "").strip(),
         judge_usd_per_m=float(os.getenv("GATEWAY_JUDGE_PRICE_PER_M", "0") or 0),
+        auth="api-key" if os.getenv("GATEWAY_UPSTREAM_AUTH", "").strip().lower() == "api-key" else "bearer",
+        max_tokens_field=os.getenv("GATEWAY_UPSTREAM_MAX_TOKENS_FIELD", "").strip() or "max_tokens",
     )
 
 
