@@ -1,0 +1,5729 @@
+{
+ "url": "https://asurascans.com/comics/the-world-after-the-end-3ec3b16f/chapter/254",
+ "model": "openai/gpt-6-luna",
+ "price_usd_per_m": {
+  "input": 0.105,
+  "output": 0.525
+ },
+ "polish": true,
+ "cpu": "AMD EPYC 7763 64-Core Processor",
+ "status": "completed",
+ "error": null,
+ "wall_s": 961.5,
+ "stages": [
+  {
+   "key": "download",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 4.6,
+   "detail": "68 lát"
+  },
+  {
+   "key": "scan",
+   "status": "done",
+   "done": 68,
+   "total": 68,
+   "elapsed_s": 28.2,
+   "detail": "1 lát credit, 2 lát không chữ, 2 logo"
+  },
+  {
+   "key": "clean",
+   "status": "done",
+   "done": 65,
+   "total": 65,
+   "elapsed_s": 336.2,
+   "detail": ""
+  },
+  {
+   "key": "review",
+   "status": "done",
+   "done": 65,
+   "total": 65,
+   "elapsed_s": 121.2,
+   "detail": "12 tờ crop, repaint 18"
+  },
+  {
+   "key": "translate",
+   "status": "done",
+   "done": 65,
+   "total": 65,
+   "elapsed_s": 159.9,
+   "detail": "Dịch 135 vùng"
+  },
+  {
+   "key": "polish",
+   "status": "done",
+   "done": 110,
+   "total": 110,
+   "elapsed_s": 295.3,
+   "detail": "Chấm 110 câu, sửa 14"
+  },
+  {
+   "key": "render",
+   "status": "done",
+   "done": 65,
+   "total": 65,
+   "elapsed_s": 11.9,
+   "detail": ""
+  },
+  {
+   "key": "finish",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 0.1,
+   "detail": "Xong"
+  }
+ ],
+ "report": {
+  "credit_pages": [
+   0
+  ],
+  "credit_rejected": [],
+  "logo_regions": 2,
+  "scan_errors": [],
+  "repainted_regions": 18,
+  "repaint_pages": [
+   2,
+   4,
+   10,
+   17,
+   21,
+   23,
+   28,
+   29,
+   40,
+   42,
+   49,
+   51,
+   52,
+   53,
+   56,
+   63,
+   66
+  ],
+  "qc_flagged": 0,
+  "qc_errors": [],
+  "translated": 135,
+  "unreadable": 9,
+  "review_flags": 3,
+  "translate_errors": [],
+  "render_errors": [],
+  "editorial_blockers": 0,
+  "blocker_samples": [],
+  "source_lang": "en",
+  "textless_pages": [
+   44,
+   48
+  ],
+  "textless_rejected": [],
+  "kept_regions": 0,
+  "missed_added": 2,
+  "retried_pages": [
+   18,
+   56
+  ],
+  "restored_regions": 0,
+  "sfx_kept": 4,
+  "review_list": [],
+  "unboxed_pages": [
+   18,
+   56
+  ],
+  "polish": {
+   "judged": 110,
+   "flagged": 39,
+   "rewritten": 14,
+   "still_flagged": 29,
+   "errors": [],
+   "samples": [
+    {
+     "page": 2,
+     "source": "DO YOU HAVE ANY MEMORIES OF MIDDLE SCHOOL,",
+     "before": "Cậu có ký ức nào về\ntrường trung học cơ sở,",
+     "after": "Con có ký ức nào về\ntrường trung học cơ sở,",
+     "scores_before": {
+      "natural": 2.3,
+      "clear": 1.72,
+      "faithful": 1.73,
+      "settled": 1.64
+     },
+     "scores_after": {
+      "natural": 2.45,
+      "clear": 1.78,
+      "faithful": 1.79,
+      "settled": 1.83
+     }
+    },
+    {
+     "page": 8,
+     "source": "THE GAMES ARE OVER NOW.",
+     "before": "Trò chơi kết thúc rồi.",
+     "after": "Trò chơi kết thúc rồi, ngươi.",
+     "scores_before": {
+      "natural": 2.74,
+      "clear": 1.95,
+      "faithful": 1.91,
+      "settled": 0.56
+     },
+     "scores_after": {
+      "natural": 2.38,
+      "clear": 1.88,
+      "faithful": 1.73,
+      "settled": 1.47
+     }
+    },
+    {
+     "page": 14,
+     "source": "THAT FORTRESS HAD ALSO DEMANDED OF HIM:",
+     "before": "Thành trì ấy cũng từng yêu cầu anh:",
+     "after": "Thành trì ấy cũng từng đòi hỏi anh:",
+     "scores_before": {
+      "natural": 2.2,
+      "clear": 1.6,
+      "faithful": 1.58,
+      "settled": 1.65
+     },
+     "scores_after": {
+      "natural": 2.36,
+      "clear": 1.67,
+      "faithful": 1.9,
+      "settled": 1.74
+     }
+    },
+    {
+     "page": 23,
+     "source": "But regardless of whether that world",
+     "before": "Nhưng dù thế giới đó",
+     "after": "Nhưng bất kể thế giới đó...",
+     "scores_before": {
+      "natural": 2.03,
+      "clear": 1.38,
+      "faithful": 1.39
+     },
+     "scores_after": {
+      "natural": 2.35,
+      "clear": 1.39,
+      "faithful": 1.69
+     }
+    },
+    {
+     "page": 25,
+     "source": "JAEHWAN, YOU SAID THAT TOWER WOULD APPEAR IN TEN YEARS, RIGHT?",
+     "before": "Jaehwan, cậu nói Tháp sẽ xuất hiện sau mười năm, đúng không?",
+     "after": "Jaehwan, con nói Tháp sẽ xuất hiện sau mười năm, đúng không?",
+     "scores_before": {
+      "natural": 2.57,
+      "clear": 1.91,
+      "faithful": 1.9,
+      "settled": 0.96
+     },
+     "scores_after": {
+      "natural": 2.55,
+      "clear": 1.92,
+      "faithful": 1.93,
+      "settled": 1.86
+     }
+    },
+    {
+     "page": 35,
+     "source": "AND ALL THESE MEMORIES WERE JUST SOMETHING I CREATED...?",
+     "before": "Và tất cả những ký ức này chỉ là thứ mình tạo ra...?",
+     "after": "Và tất cả những ký ức này chỉ là thứ tôi tạo ra...?",
+     "scores_before": {
+      "natural": 2.41,
+      "clear": 1.88,
+      "faithful": 1.92,
+      "settled": 0.59
+     },
+     "scores_after": {
+      "natural": 2.5,
+      "clear": 1.9,
+      "faithful": 1.94,
+      "settled": 1.11
+     }
+    },
+    {
+     "page": 40,
+     "source": "SECOND, WHEN YOU WANT TO TALK ABOUT THE ILLUSION TREE, YOU MUST TALK TO THE DOCTOR.",
+     "before": "Thứ hai, nếu muốn nói về Cây Huyễn Ảo,\ncon phải nói chuyện với bác sĩ.",
+     "after": "Thứ hai, khi con muốn nói về Cây Huyễn Ảo,\ncon phải nói chuyện với bác sĩ.",
+     "scores_before": {
+      "natural": 2.32,
+      "clear": 1.74,
+      "faithful": 1.85,
+      "settled": 1.58
+     },
+     "scores_after": {
+      "natural": 2.43,
+      "clear": 1.79,
+      "faithful": 1.91,
+      "settled": 1.65
+     }
+    },
+    {
+     "page": 43,
+     "source": "HE WAS THROWN INTO ORDINARY COMPETITION.",
+     "before": "Cậu bị ném vào cuộc cạnh tranh\nbình thường.",
+     "after": "Cậu bị đẩy vào cuộc cạnh tranh\nthông thường.",
+     "scores_before": {
+      "natural": 1.81,
+      "clear": 1.84,
+      "faithful": 1.87
+     },
+     "scores_after": {
+      "natural": 2.09,
+      "clear": 1.89,
+      "faithful": 1.81
+     }
+    },
+    {
+     "page": 43,
+     "source": "AND READ BOOKS AS IF HE WERE COLLECTING SKILLS.",
+     "before": "Và đọc sách như thể đang\nthu thập Skill.",
+     "after": "Và đọc sách như thể đang\nthu thập kỹ năng.",
+     "scores_before": {
+      "natural": 1.99,
+      "clear": 1.58,
+      "faithful": 1.68
+     },
+     "scores_after": {
+      "natural": 2.37,
+      "clear": 1.85,
+      "faithful": 1.68
+     }
+    },
+    {
+     "page": 48,
+     "source": "AND SINCE THINKING ABOUT IT MADE IT IMPOSSIBLE TO STAY SANE,",
+     "before": "Và vì cứ nghĩ về chúng khiến cậu không thể giữ tỉnh táo,",
+     "after": "Và vì nghĩ về chuyện đó khiến cậu không thể giữ tỉnh táo,",
+     "scores_before": {
+      "natural": 2.32,
+      "clear": 1.71,
+      "faithful": 1.59
+     },
+     "scores_after": {
+      "natural": 2.38,
+      "clear": 1.8,
+      "faithful": 1.72
+     }
+    },
+    {
+     "page": 65,
+     "source": "BUT IF YOU WERE TO ASK IF JAEHWAN HAD NO FRIENDS, THAT WASN’T THE CASE EITHER.",
+     "before": "Nhưng nếu hỏi Jaehwan có bạn bè không,\nthì cũng không phải là không.",
+     "after": "Nhưng nếu hỏi Jaehwan có bạn bè không,\nthì cũng không phải là cậu chẳng có ai.",
+     "scores_before": {
+      "natural": 1.84,
+      "clear": 1.59,
+      "faithful": 1.84,
+      "settled": 1.63
+     },
+     "scores_after": {
+      "natural": 2.09,
+      "clear": 1.71,
+      "faithful": 1.81,
+      "settled": 1.63
+     }
+    },
+    {
+     "page": 11,
+     "source": "HE HIMSELF WAS THE EVIDENCE OF THAT TIME,",
+     "before": "Chính anh ấy là bằng chứng cho khoảng thời gian ấy,",
+     "after": "Chính anh ấy là bằng chứng cho thời đại đó,",
+     "scores_before": {
+      "natural": 2.07,
+      "clear": 1.63,
+      "faithful": 1.88
+     },
+     "scores_after": {
+      "natural": 2.27,
+      "clear": 1.8,
+      "faithful": 1.86
+     }
+    },
+    {
+     "page": 30,
+     "source": "WOULD THAT BE ENOUGH OF A REASON?",
+     "before": "Lý do đó đã đủ chưa?",
+     "after": "Theo cậu, lý do đó đã đủ chưa?",
+     "scores_before": {
+      "natural": 2.61,
+      "clear": 1.9,
+      "faithful": 1.9,
+      "settled": 0.62
+     },
+     "scores_after": {
+      "natural": 2.56,
+      "clear": 1.83,
+      "faithful": 1.88,
+      "settled": 1.28
+     }
+    },
+    {
+     "page": 59,
+     "source": "THE “AIR” OF THE (ILLUSION TREE).",
+     "before": "“Không khí” của Cây Huyễn Ảo.",
+     "after": "“Bầu không khí” của Cây Huyễn Ảo.",
+     "scores_before": {
+      "natural": 2.14,
+      "clear": 1.67,
+      "faithful": 1.87,
+      "settled": 1.56
+     },
+     "scores_after": {
+      "natural": 2.25,
+      "clear": 1.73,
+      "faithful": 1.84,
+      "settled": 1.66
+     }
+    }
+   ],
+   "scores": [
+    {
+     "page": 2,
+     "text": "Tôi muốn cậu kể cho tôi nghe\nkể cả ký ức nhỏ nhất.",
+     "scores": {
+      "natural": 2.05,
+      "clear": 1.89,
+      "faithful": 1.85,
+      "settled": 1.28
+     }
+    },
+    {
+     "page": 2,
+     "text": "Trường trung học phổ thông,\nhay cả đại học nữa?",
+     "scores": {
+      "natural": 2.47,
+      "clear": 1.82,
+      "faithful": 1.78,
+      "settled": 1.54
+     }
+    },
+    {
+     "page": 2,
+     "text": "Cậu có ký ức nào về\ntrường trung học cơ sở,",
+     "scores": {
+      "natural": 2.3,
+      "clear": 1.72,
+      "faithful": 1.73,
+      "settled": 1.64
+     }
+    },
+    {
+     "page": 4,
+     "text": "Jaehwan không thể nhớ rõ lịch sử mình đã trải qua.",
+     "scores": {
+      "natural": 2.3,
+      "clear": 1.85,
+      "faithful": 1.81,
+      "settled": 1.59
+     }
+    },
+    {
+     "page": 5,
+     "text": "Ký ức của anh ấy có lẽ đã tan vỡ.",
+     "scores": {
+      "natural": 2.43,
+      "clear": 1.96,
+      "faithful": 1.96
+     }
+    },
+    {
+     "page": 5,
+     "text": "Có thể là vì anh ấy đã sống quá lâu...",
+     "scores": {
+      "natural": 2.55,
+      "clear": 1.87,
+      "faithful": 1.98
+     }
+    },
+    {
+     "page": 5,
+     "text": "Hoặc vì ký ức tan vỡ khi các Hộ pháp giả bên trong anh ấy rời đi.",
+     "scores": {
+      "natural": 2.09,
+      "clear": 1.54,
+      "faithful": 1.71,
+      "settled": 1.51
+     }
+    },
+    {
+     "page": 6,
+     "text": "Nghe chẳng giống cậu thông minh mà tôi biết chút nào.",
+     "scores": {
+      "natural": 2.36,
+      "clear": 1.93,
+      "faithful": 1.91,
+      "settled": 1.58
+     }
+    },
+    {
+     "page": 6,
+     "text": "Cậu không nhớ à?",
+     "scores": {
+      "natural": 2.86,
+      "clear": 1.95,
+      "faithful": 1.95,
+      "settled": 1.53
+     }
+    },
+    {
+     "page": 7,
+     "text": "Còn cách nào khác để chứng minh ký ức của cậu không?",
+     "scores": {
+      "natural": 2.32,
+      "clear": 1.87,
+      "faithful": 1.89,
+      "settled": 1.38
+     }
+    },
+    {
+     "page": 7,
+     "text": "Tôi thật sự không nhớ, nhưng chắc chắn...",
+     "scores": {
+      "natural": 2.32,
+      "clear": 1.27,
+      "faithful": 1.55,
+      "settled": 0.67
+     }
+    },
+    {
+     "page": 8,
+     "text": "Ngươi không thể bảo vệ thế giới của mình,\ncũng chẳng thể chứng minh được gì.",
+     "scores": {
+      "natural": 2.37,
+      "clear": 1.91,
+      "faithful": 1.89,
+      "settled": 1.45
+     }
+    },
+    {
+     "page": 8,
+     "text": "Trò chơi kết thúc rồi.",
+     "scores": {
+      "natural": 2.74,
+      "clear": 1.95,
+      "faithful": 1.91,
+      "settled": 0.56
+     }
+    },
+    {
+     "page": 9,
+     "text": "Đó là điều ánh mắt bác sĩ muốn nói.",
+     "scores": {
+      "natural": 2.55,
+      "clear": 1.95,
+      "faithful": 1.96,
+      "settled": 1.68
+     }
+    },
+    {
+     "page": 10,
+     "text": "Người đã sống qua thời ấy\nđang ở ngay đây.",
+     "scores": {
+      "natural": 2.29,
+      "clear": 1.79,
+      "faithful": 1.86
+     }
+    },
+    {
+     "page": 10,
+     "text": "Jaehwan mười tuổi\nđầy oán giận và cay đắng.",
+     "scores": {
+      "natural": 2.15,
+      "clear": 1.94,
+      "faithful": 1.97,
+      "settled": 1.6
+     }
+    },
+    {
+     "page": 11,
+     "text": "Vậy rốt cuộc tại sao anh ấy lại phải chứng minh chuyện đó lần nữa?",
+     "scores": {
+      "natural": 2.57,
+      "clear": 1.73,
+      "faithful": 1.76
+     }
+    },
+    {
+     "page": 11,
+     "text": "Chính anh ấy là bằng chứng cho khoảng thời gian ấy,",
+     "scores": {
+      "natural": 2.12,
+      "clear": 1.62,
+      "faithful": 1.88
+     }
+    },
+    {
+     "page": 13,
+     "text": "Một bức tường khổng lồ\nchặn đường anh\nngay khi anh vừa\nThăng lên Hỗn Độn.",
+     "scores": {
+      "natural": 2.25,
+      "clear": 1.94,
+      "faithful": 1.93,
+      "settled": 1.68
+     }
+    },
+    {
+     "page": 13,
+     "text": "Ký ức về một\nThành trì nọ.",
+     "scores": {
+      "natural": 2.4,
+      "clear": 1.94,
+      "faithful": 1.82,
+      "settled": 1.65
+     }
+    },
+    {
+     "page": 13,
+     "text": "Bỗng nhiên, một ký ức\ntrong quá khứ chợt ùa về.",
+     "scores": {
+      "natural": 2.7,
+      "clear": 1.99,
+      "faithful": 1.91
+     }
+    },
+    {
+     "page": 14,
+     "text": "Thành trì ấy cũng từng yêu cầu anh:",
+     "scores": {
+      "natural": 2.2,
+      "clear": 1.6,
+      "faithful": 1.58,
+      "settled": 1.65
+     }
+    },
+    {
+     "page": 15,
+     "text": "Chứng minh ngươi là ai.",
+     "scores": {
+      "natural": 1.97,
+      "clear": 1.8,
+      "faithful": 1.89,
+      "settled": 1.35
+     }
+    },
+    {
+     "page": 17,
+     "text": "Chứng tỏ mình.",
+     "scores": {
+      "natural": 2.7,
+      "clear": 1.91,
+      "faithful": 1.92,
+      "settled": 0.88
+     }
+    },
+    {
+     "page": 20,
+     "text": "“Dù ta không chứng minh được,\nthế giới của ta vẫn tồn tại.”",
+     "scores": {
+      "natural": 2.13,
+      "clear": 1.75,
+      "faithful": 1.66,
+      "settled": 0.92
+     }
+    },
+    {
+     "page": 20,
+     "text": "Ý ngươi là vậy sao?",
+     "scores": {
+      "natural": 2.1,
+      "clear": 1.92,
+      "faithful": 1.95,
+      "settled": 1.67
+     }
+    },
+    {
+     "page": 20,
+     "text": "Chà, vậy thì...",
+     "scores": {
+      "natural": 2.81,
+      "clear": 1.63,
+      "faithful": 1.91,
+      "settled": 0.65
+     }
+    },
+    {
+     "page": 22,
+     "text": "Ta sẽ thừa nhận khả năng đó.",
+     "scores": {
+      "natural": 2.01,
+      "clear": 1.84,
+      "faithful": 1.89,
+      "settled": 1.25
+     }
+    },
+    {
+     "page": 23,
+     "text": "Anh ấy kinh ngạc. Vị bác sĩ này quả thật khác hẳn những bác sĩ bình thường.",
+     "scores": {
+      "natural": 2.65,
+      "clear": 1.99,
+      "faithful": 1.99,
+      "settled": 1.56
+     }
+    },
+    {
+     "page": 23,
+     "text": "Jaehwan thậm chí còn tự hỏi liệu đây có phải một dạng Cổng do [Cơn ác mộng đầu tiên] tạo ra không.",
+     "scores": {
+      "natural": 2.56,
+      "clear": 1.92,
+      "faithful": 1.95,
+      "settled": 1.81
+     }
+    },
+    {
+     "page": 23,
+     "text": "Nhưng dù thế giới đó",
+     "scores": {
+      "natural": 2.03,
+      "clear": 1.38,
+      "faithful": 1.39
+     }
+    },
+    {
+     "page": 24,
+     "text": "Những người ngươi yêu thương sẽ trở nên khốn khổ.",
+     "scores": {
+      "natural": 2.05,
+      "clear": 1.94,
+      "faithful": 1.94,
+      "settled": 1.4
+     }
+    },
+    {
+     "page": 24,
+     "text": "Có thật hay không, ngươi phải biết điều này.",
+     "scores": {
+      "natural": 2.04,
+      "clear": 1.8,
+      "faithful": 1.84,
+      "settled": 1.34
+     }
+    },
+    {
+     "page": 24,
+     "text": "Nếu ngươi cố bảo vệ thế giới của mình...",
+     "scores": {
+      "natural": 2.34,
+      "clear": 1.87,
+      "faithful": 1.88,
+      "settled": 1.48
+     }
+    },
+    {
+     "page": 25,
+     "text": "Jaehwan, cậu nói Tháp sẽ xuất hiện sau mười năm, đúng không?",
+     "scores": {
+      "natural": 2.57,
+      "clear": 1.91,
+      "faithful": 1.9,
+      "settled": 0.96
+     }
+    },
+    {
+     "page": 26,
+     "text": "Ngươi phải tiếp tục đến\ntrung tâm tư vấn của ta.",
+     "scores": {
+      "natural": 1.89,
+      "clear": 1.89,
+      "faithful": 1.91,
+      "settled": 1.74
+     }
+    },
+    {
+     "page": 26,
+     "text": "Hay thế này đi. Cho đến khi\nhết mười năm đó,",
+     "scores": {
+      "natural": 2.38,
+      "clear": 1.61,
+      "faithful": 1.85,
+      "settled": 0.53
+     }
+    },
+    {
+     "page": 27,
+     "text": "...nếu “Tháp Ác Mộng” xuất hiện như anh nói,",
+     "scores": {
+      "natural": 2.35,
+      "clear": 1.91,
+      "faithful": 1.86,
+      "settled": 1.18
+     }
+    },
+    {
+     "page": 27,
+     "text": "Nếu “Tháp Quỷ” thật sự xuất hiện\nsau mười năm nữa",
+     "scores": {
+      "natural": 2.45,
+      "clear": 1.84,
+      "faithful": 1.82,
+      "settled": 1.04
+     }
+    },
+    {
+     "page": 27,
+     "text": "Sao tôi phải làm vậy?",
+     "scores": {
+      "natural": 2.79,
+      "clear": 1.97,
+      "faithful": 1.97,
+      "settled": 0.68
+     }
+    },
+    {
+     "page": 27,
+     "text": "Tháp Ác Mộng.",
+     "scores": {
+      "natural": 2.68,
+      "clear": 1.97,
+      "faithful": 1.89,
+      "settled": 1.01
+     }
+    },
+    {
+     "page": 28,
+     "text": "Và ta sẽ làm bất cứ điều gì con bảo.",
+     "scores": {
+      "natural": 2.14,
+      "clear": 1.8,
+      "faithful": 1.82,
+      "settled": 1.51
+     }
+    },
+    {
+     "page": 28,
+     "text": "Ta sẽ tin lời con.",
+     "scores": {
+      "natural": 2.18,
+      "clear": 1.84,
+      "faithful": 1.87,
+      "settled": 1.65
+     }
+    },
+    {
+     "page": 29,
+     "text": "À, tất nhiên rồi. Mười năm tới tôi sẽ không thu phí tư vấn tâm lý.",
+     "scores": {
+      "natural": 2.5,
+      "clear": 1.89,
+      "faithful": 1.8,
+      "settled": 1.21
+     }
+    },
+    {
+     "page": 29,
+     "text": "Sao anh lại vì tôi mà làm đến mức đó?",
+     "scores": {
+      "natural": 2.5,
+      "clear": 1.88,
+      "faithful": 1.68,
+      "settled": 0.54
+     }
+    },
+    {
+     "page": 30,
+     "text": "Vì tôi không muốn thấy\nmột cậu bé bị hủy hoại tương lai.",
+     "scores": {
+      "natural": 2.58,
+      "clear": 1.98,
+      "faithful": 1.94,
+      "settled": 1.12
+     }
+    },
+    {
+     "page": 30,
+     "text": "Lý do đó đã đủ chưa?",
+     "scores": {
+      "natural": 2.54,
+      "clear": 1.91,
+      "faithful": 1.94,
+      "settled": 0.58
+     }
+    },
+    {
+     "page": 30,
+     "text": "Không, không đủ đâu.",
+     "scores": {
+      "natural": 2.57,
+      "clear": 1.58,
+      "faithful": 1.35,
+      "settled": 0.49
+     }
+    },
+    {
+     "page": 31,
+     "text": "Tuy nhiên, ta cũng có một điều kiện.",
+     "scores": {
+      "natural": 2.27,
+      "clear": 1.89,
+      "faithful": 1.91,
+      "settled": 1.23
+     }
+    },
+    {
+     "page": 31,
+     "text": "Đừng phớt lờ ta.",
+     "scores": {
+      "natural": 2.42,
+      "clear": 1.93,
+      "faithful": 1.93,
+      "settled": 1.24
+     }
+    },
+    {
+     "page": 32,
+     "text": "Nếu Tháp không xuất hiện trong mười năm nữa,",
+     "scores": {
+      "natural": 2.32,
+      "clear": 1.8,
+      "faithful": 1.91,
+      "settled": 1.25
+     }
+    },
+    {
+     "page": 32,
+     "text": "Ngươi cũng phải từ bỏ thế giới của mình.",
+     "scores": {
+      "natural": 2.42,
+      "clear": 1.89,
+      "faithful": 1.9,
+      "settled": 1.63
+     }
+    },
+    {
+     "page": 33,
+     "text": "Ngược lại, ánh mắt ấy như thể vô cùng lo lắng cho cậu.",
+     "scores": {
+      "natural": 2.65,
+      "clear": 1.97,
+      "faithful": 1.85
+     }
+    },
+    {
+     "page": 33,
+     "text": "Ánh mắt anh ta không hề có chút thù địch nào.",
+     "scores": {
+      "natural": 2.68,
+      "clear": 1.99,
+      "faithful": 1.96
+     }
+    },
+    {
+     "page": 34,
+     "text": "Nó chạm đến câu hỏi mà Jaehwan đã cố hết sức để né tránh.",
+     "scores": {
+      "natural": 2.48,
+      "clear": 1.92,
+      "faithful": 1.95,
+      "settled": 1.73
+     }
+    },
+    {
+     "page": 34,
+     "text": "Nhìn vào đôi mắt ấy, Jaehwan càng thêm bối rối.",
+     "scores": {
+      "natural": 2.83,
+      "clear": 1.99,
+      "faithful": 1.97,
+      "settled": 1.76
+     }
+    },
+    {
+     "page": 34,
+     "text": "Và sự bối rối ấy...",
+     "scores": {
+      "natural": 2.78,
+      "clear": 1.85,
+      "faithful": 1.94
+     }
+    },
+    {
+     "page": 35,
+     "text": "Và tất cả những ký ức này chỉ là thứ mình tạo ra...?",
+     "scores": {
+      "natural": 2.41,
+      "clear": 1.88,
+      "faithful": 1.92,
+      "settled": 0.59
+     }
+    },
+    {
+     "page": 35,
+     "text": "Nếu Cây Huyễn Ảo chưa từng tồn tại ngay từ đầu,",
+     "scores": {
+      "natural": 2.56,
+      "clear": 1.94,
+      "faithful": 1.72,
+      "settled": 1.35
+     }
+    },
+    {
+     "page": 36,
+     "text": "Nếu một “Thực tại” thật sự đã luôn tồn tại từ trước đến nay,",
+     "scores": {
+      "natural": 2.41,
+      "clear": 1.86,
+      "faithful": 1.82,
+      "settled": 1.61
+     }
+    },
+    {
+     "page": 36,
+     "text": "Và tôi chỉ đang bỏ chạy...?",
+     "scores": {
+      "natural": 2.61,
+      "clear": 1.81,
+      "faithful": 1.93,
+      "settled": 1.36
+     }
+    },
+    {
+     "page": 37,
+     "text": "Vậy giờ tôi sẽ ra sao?",
+     "scores": {
+      "natural": 2.71,
+      "clear": 1.94,
+      "faithful": 1.94,
+      "settled": 1.2
+     }
+    },
+    {
+     "page": 39,
+     "text": "Trước hết, trong mười năm tới,\nnếu có thể thì đừng kể với người khác\nvề “Thế giới của Jaehwan”.",
+     "scores": {
+      "natural": 2.45,
+      "clear": 1.96,
+      "faithful": 1.94,
+      "settled": 0.85
+     }
+    },
+    {
+     "page": 40,
+     "text": "Thứ hai, nếu muốn nói về Cây Huyễn Ảo,\ncon phải nói chuyện với bác sĩ.",
+     "scores": {
+      "natural": 2.32,
+      "clear": 1.74,
+      "faithful": 1.85,
+      "settled": 1.58
+     }
+    },
+    {
+     "page": 41,
+     "text": "Thứ ba, đến Trung tâm tư vấn đều đặn mỗi tuần một lần trong mười năm.",
+     "scores": {
+      "natural": 2.13,
+      "clear": 1.79,
+      "faithful": 1.92,
+      "settled": 1.57
+     }
+    },
+    {
+     "page": 42,
+     "text": "Chẳng mấy chốc, Jaehwan tốt nghiệp tiểu học và bước vào trường trung học cơ sở.",
+     "scores": {
+      "natural": 2.82,
+      "clear": 1.97,
+      "faithful": 1.96,
+      "settled": 1.73
+     }
+    },
+    {
+     "page": 42,
+     "text": "Thời gian trôi qua thật nhanh.",
+     "scores": {
+      "natural": 2.82,
+      "clear": 2.0,
+      "faithful": 1.97
+     }
+    },
+    {
+     "page": 43,
+     "text": "Cậu đi học như thể đang\nleo Tháp vậy,",
+     "scores": {
+      "natural": 2.28,
+      "clear": 1.72,
+      "faithful": 1.93,
+      "settled": 1.64
+     }
+    },
+    {
+     "page": 43,
+     "text": "Nâng điểm số như thể đang\nlên Level và tăng chỉ số,",
+     "scores": {
+      "natural": 2.43,
+      "clear": 1.92,
+      "faithful": 1.97
+     }
+    },
+    {
+     "page": 43,
+     "text": "Cậu bị ném vào cuộc cạnh tranh\nbình thường.",
+     "scores": {
+      "natural": 1.81,
+      "clear": 1.84,
+      "faithful": 1.87
+     }
+    },
+    {
+     "page": 43,
+     "text": "Và đọc sách như thể đang\nthu thập Skill.",
+     "scores": {
+      "natural": 1.99,
+      "clear": 1.58,
+      "faithful": 1.68
+     }
+    },
+    {
+     "page": 44,
+     "text": "Cậu ấy lớn lên bình thường như vậy.",
+     "scores": {
+      "natural": 2.33,
+      "clear": 1.83,
+      "faithful": 1.84
+     }
+    },
+    {
+     "page": 48,
+     "text": "Jaehwan cố sống hết mình mà không nhớ lại những ký ức ấy.",
+     "scores": {
+      "natural": 2.25,
+      "clear": 1.89,
+      "faithful": 1.76,
+      "settled": 1.64
+     }
+    },
+    {
+     "page": 48,
+     "text": "Và vì cứ nghĩ về chúng khiến cậu không thể giữ tỉnh táo,",
+     "scores": {
+      "natural": 2.32,
+      "clear": 1.71,
+      "faithful": 1.59
+     }
+    },
+    {
+     "page": 48,
+     "text": "Cậu quyết định cứ sống như vậy suốt mười năm.",
+     "scores": {
+      "natural": 2.64,
+      "clear": 1.78,
+      "faithful": 1.9
+     }
+    },
+    {
+     "page": 50,
+     "text": "Mẹ cậu ấy rất vui,",
+     "scores": {
+      "natural": 2.68,
+      "clear": 1.89,
+      "faithful": 1.91
+     }
+    },
+    {
+     "page": 51,
+     "text": "Và Jaehwan tìm thấy niềm an ủi trong điều đó.",
+     "scores": {
+      "natural": 2.78,
+      "clear": 1.87,
+      "faithful": 1.99,
+      "settled": 1.76
+     }
+    },
+    {
+     "page": 51,
+     "text": "Cậu thấy mình thật sự sống đúng nghĩa.",
+     "scores": {
+      "natural": 2.61,
+      "clear": 1.92,
+      "faithful": 1.85
+     }
+    },
+    {
+     "page": 52,
+     "text": "Một cảm giác căm ghét\nkỳ lạ dâng lên.",
+     "scores": {
+      "natural": 2.6,
+      "clear": 1.99,
+      "faithful": 1.97
+     }
+    },
+    {
+     "page": 52,
+     "text": "Nhưng đồng thời...",
+     "scores": {
+      "natural": 2.82,
+      "clear": 1.98,
+      "faithful": 1.97
+     }
+    },
+    {
+     "page": 53,
+     "text": "Cậu đến gặp bác sĩ, kể những câu chuyện dài\nvề Cây Huyễn Ảo.",
+     "scores": {
+      "natural": 2.42,
+      "clear": 1.88,
+      "faithful": 1.45,
+      "settled": 1.38
+     }
+    },
+    {
+     "page": 53,
+     "text": "Mười năm, dài như mười tỷ năm,\ncứ thế trôi qua.",
+     "scores": {
+      "natural": 2.56,
+      "clear": 1.97,
+      "faithful": 1.88
+     }
+    },
+    {
+     "page": 53,
+     "text": "Và khi nỗi căm ghét trở nên\nkhông thể chịu nổi,",
+     "scores": {
+      "natural": 2.65,
+      "clear": 1.96,
+      "faithful": 1.97
+     }
+    },
+    {
+     "page": 54,
+     "text": "Jaehwan đọc đủ loại sách\nvề khoa học và nhân văn\nmỗi khi có thời gian.",
+     "scores": {
+      "natural": 2.51,
+      "clear": 1.97,
+      "faithful": 1.86,
+      "settled": 1.71
+     }
+    },
+    {
+     "page": 54,
+     "text": "Để tìm cơ sở lý thuyết\ngiải thích tình cảnh\nmà cậu đang trải qua.",
+     "scores": {
+      "natural": 2.1,
+      "clear": 1.92,
+      "faithful": 1.93
+     }
+    },
+    {
+     "page": 55,
+     "text": "Đến một lúc nào đó, thay vì lại tìm kiếm một lý thuyết để giải thích Thực tại, Jaehwan...",
+     "scores": {
+      "natural": 2.22,
+      "clear": 1.71,
+      "faithful": 1.71,
+      "settled": 1.74
+     }
+    },
+    {
+     "page": 55,
+     "text": "Đương nhiên, đó là một thất bại.",
+     "scores": {
+      "natural": 2.62,
+      "clear": 1.99,
+      "faithful": 1.98
+     }
+    },
+    {
+     "page": 56,
+     "text": "Bắt đầu nuốt chửng những “câu chuyện” khác để quay lưng với thực tại của mình.",
+     "scores": {
+      "natural": 2.1,
+      "clear": 1.59,
+      "faithful": 1.9,
+      "settled": 1.58
+     }
+    },
+    {
+     "page": 57,
+     "text": "Tiểu thuyết kỳ ảo đầy rẫy\nquái vật và người sở hữu\nnăng lực.",
+     "scores": {
+      "natural": 2.47,
+      "clear": 1.93,
+      "faithful": 1.59
+     }
+    },
+    {
+     "page": 57,
+     "text": "Chuyển sinh và hồi quy.",
+     "scores": {
+      "natural": 2.45,
+      "clear": 1.7,
+      "faithful": 1.92
+     }
+    },
+    {
+     "page": 57,
+     "text": "Kiếm và phép thuật.",
+     "scores": {
+      "natural": 2.72,
+      "clear": 1.97,
+      "faithful": 1.92
+     }
+    },
+    {
+     "page": 58,
+     "text": "Jaehwan có cảm giác như mình đã trở về những ngày tháng xưa ở Cây Huyễn Ảo, nơi cậu từng sống.",
+     "scores": {
+      "natural": 2.63,
+      "clear": 1.94,
+      "faithful": 1.96,
+      "settled": 1.75
+     }
+    },
+    {
+     "page": 58,
+     "text": "Khi đọc những cuốn tiểu thuyết ấy,",
+     "scores": {
+      "natural": 2.73,
+      "clear": 1.82,
+      "faithful": 1.54
+     }
+    },
+    {
+     "page": 59,
+     "text": "“Cảm giác tồn tại” mà chỉ những kẻ chống lại thế giới mới có thể tận hưởng.",
+     "scores": {
+      "natural": 2.16,
+      "clear": 1.76,
+      "faithful": 1.91
+     }
+    },
+    {
+     "page": 59,
+     "text": "“Niềm say mê” từ những khoảnh khắc anh chiến đấu chống lại sự phi lý.",
+     "scores": {
+      "natural": 2.07,
+      "clear": 1.86,
+      "faithful": 1.83
+     }
+    },
+    {
+     "page": 59,
+     "text": "“Không khí” của Cây Huyễn Ảo.",
+     "scores": {
+      "natural": 2.18,
+      "clear": 1.68,
+      "faithful": 1.88,
+      "settled": 1.58
+     }
+    },
+    {
+     "page": 60,
+     "text": "Và nơi đó là thực tại duy nhất của cậu.",
+     "scores": {
+      "natural": 2.49,
+      "clear": 1.82,
+      "faithful": 1.82,
+      "settled": 1.49
+     }
+    },
+    {
+     "page": 60,
+     "text": "Nhà cậu là Cây Huyễn Ảo.",
+     "scores": {
+      "natural": 2.43,
+      "clear": 1.8,
+      "faithful": 1.89,
+      "settled": 1.68
+     }
+    },
+    {
+     "page": 62,
+     "text": "Mỗi khi trở về thực tại sau khi chìm đắm trong một cuốn tiểu thuyết,",
+     "scores": {
+      "natural": 2.56,
+      "clear": 1.87,
+      "faithful": 1.95,
+      "settled": 1.57
+     }
+    },
+    {
+     "page": 62,
+     "text": "cảm giác chẳng khác nào tỉnh dậy trên một đống rác.",
+     "scores": {
+      "natural": 2.62,
+      "clear": 1.99,
+      "faithful": 1.96
+     }
+    },
+    {
+     "page": 63,
+     "text": "Một thế giới không có Adapter\nhay Awakened.",
+     "scores": {
+      "natural": 2.34,
+      "clear": 1.65,
+      "faithful": 1.92,
+      "settled": 1.74
+     }
+    },
+    {
+     "page": 63,
+     "text": "Sao một thế giới như thế\nlại có thể tồn tại chứ?",
+     "scores": {
+      "natural": 2.66,
+      "clear": 1.92,
+      "faithful": 1.96,
+      "settled": 0.95
+     }
+    },
+    {
+     "page": 64,
+     "text": "cậu tìm đọc những tiểu thuyết thể loại khác,\nnhư bệnh nhân tìm thuốc giảm đau.",
+     "scores": {
+      "natural": 2.39,
+      "clear": 1.96,
+      "faithful": 1.83
+     }
+    },
+    {
+     "page": 64,
+     "text": "Vì thế, dù ở đâu, Jaehwan cũng luôn là kẻ ngoài cuộc,",
+     "scores": {
+      "natural": 2.81,
+      "clear": 1.98,
+      "faithful": 1.91,
+      "settled": 1.72
+     }
+    },
+    {
+     "page": 64,
+     "text": "Mỗi khi cảm thấy nỗi đau quặn thắt ấy,",
+     "scores": {
+      "natural": 2.55,
+      "clear": 1.82,
+      "faithful": 1.8
+     }
+    },
+    {
+     "page": 64,
+     "text": "u sầu, thường cô độc.",
+     "scores": {
+      "natural": 2.18,
+      "clear": 1.9,
+      "faithful": 1.93
+     }
+    },
+    {
+     "page": 64,
+     "text": "Nếu không, cậu chẳng chịu nổi.",
+     "scores": {
+      "natural": 2.28,
+      "clear": 1.71,
+      "faithful": 1.85
+     }
+    },
+    {
+     "page": 65,
+     "text": "Nhưng nếu hỏi Jaehwan có bạn bè không,\nthì cũng không phải là không.",
+     "scores": {
+      "natural": 1.84,
+      "clear": 1.59,
+      "faithful": 1.84,
+      "settled": 1.63
+     }
+    },
+    {
+     "page": 66,
+     "text": "Lần đầu gặp họ, cậu cứ ngỡ mình đang mơ.",
+     "scores": {
+      "natural": 2.81,
+      "clear": 1.95,
+      "faithful": 1.89
+     }
+    },
+    {
+     "page": 66,
+     "text": "Cậu thậm chí còn gọi tên họ mà không nhận ra.",
+     "scores": {
+      "natural": 2.56,
+      "clear": 1.89,
+      "faithful": 1.92
+     }
+    }
+   ]
+  },
+  "glossary": {
+   "names": [
+    {
+     "source": "Jaehwan",
+     "target": "Jaehwan",
+     "note": "person"
+    },
+    {
+     "source": "Illusion Tree",
+     "target": "Cây Huyễn Ảo",
+     "note": "Specific artifact/plant name"
+    },
+    {
+     "source": "Fortress",
+     "target": "Thành trì",
+     "note": "the specific fortress referenced in the memory"
+    },
+    {
+     "source": "THE WORLD AFTER THE END",
+     "target": "Hậu Thế Giới",
+     "note": "Manhwa title"
+    },
+    {
+     "source": "MIDDLE SCHOOL",
+     "target": "trường trung học cơ sở",
+     "note": "educational institution / place"
+    },
+    {
+     "source": "HIGH SCHOOL",
+     "target": "trường trung học phổ thông",
+     "note": "educational institution / place"
+    },
+    {
+     "source": "UNIVERSITY",
+     "target": "đại học",
+     "note": "educational institution / place"
+    },
+    {
+     "source": "doctor",
+     "target": "Bác sĩ",
+     "note": "person referenced"
+    },
+    {
+     "source": "Chaos",
+     "target": "Hỗn Độn",
+     "note": "the realm or state of ascension"
+    },
+    {
+     "source": "my world",
+     "target": "thế giới của ta",
+     "note": "concept/phrase used as a name in the dialogue"
+    },
+    {
+     "source": "[FIRST NIGHTMARE]",
+     "target": "[Cơn ác mộng đầu tiên]",
+     "note": "technique/entity, translated"
+    },
+    {
+     "source": "Tower",
+     "target": "Tháp",
+     "note": "location/object"
+    },
+    {
+     "source": "Devil's Tower",
+     "target": "Tháp Quỷ",
+     "note": "place name"
+    },
+    {
+     "source": "Tower of Nightmares",
+     "target": "Tháp Ác Mộng",
+     "note": "place name"
+    },
+    {
+     "source": "Counseling Center",
+     "target": "Trung tâm tư vấn",
+     "note": "organisation name"
+    },
+    {
+     "source": "Reality",
+     "target": "Thực tại",
+     "note": "Concept referenced in dialogue"
+    },
+    {
+     "source": "JAEHWAN'S WORLD",
+     "target": "Thế giới của Jaehwan",
+     "note": "concept/location"
+    },
+    {
+     "source": "HIGH SCHOOL DIVISION",
+     "target": "PHÒNG GIÁO DỤC TRUNG HỌC",
+     "note": "item label"
+    },
+    {
+     "source": "10TH GRADE MATH WORKBOOK",
+     "target": "SÁCH BÀI TẬP TOÁN LỚP 10",
+     "note": "item label"
+    },
+    {
+     "source": "ADAPTERS",
+     "target": "Adapter",
+     "note": "fictional item/entity type"
+    },
+    {
+     "source": "AWAKENED",
+     "target": "Awakened",
+     "note": "faction/person type"
+    },
+    {
+     "source": "Yoonhwan",
+     "target": "Yoonhwan",
+     "note": "person name (male)"
+    },
+    {
+     "source": "Seoyul",
+     "target": "Seoyul",
+     "note": "person name (female)"
+    },
+    {
+     "source": "AsuraScans",
+     "target": "AsuraScans",
+     "note": "scanlation group"
+    }
+   ],
+   "terms": [
+    {
+     "source": "doctor",
+     "target": "bác sĩ"
+    },
+    {
+     "source": "transcendents",
+     "target": "Hộ pháp giả"
+    },
+    {
+     "source": "proof",
+     "target": "By chứng"
+    },
+    {
+     "source": "ascended",
+     "target": "Thăng"
+    },
+    {
+     "source": "gateway",
+     "target": "Cổng"
+    },
+    {
+     "source": "physicians",
+     "target": "bác sĩ"
+    },
+    {
+     "source": "counseling",
+     "target": "tư vấn tâm lý"
+    },
+    {
+     "source": "counseling center",
+     "target": "trung tâm tư vấn"
+    },
+    {
+     "source": "player",
+     "target": "Cầu thủ"
+    }
+   ],
+   "address": [
+    {
+     "from": "man in suit",
+     "to": "young man",
+     "self": "tôi",
+     "other": "anh"
+    },
+    {
+     "from": "young man",
+     "to": "man in suit",
+     "self": "tôi",
+     "other": "anh"
+    },
+    {
+     "from": "Adult man (glasses)",
+     "to": "Boy",
+     "other": "cậu"
+    },
+    {
+     "from": "Boy",
+     "to": "Adult man (glasses)",
+     "self": "tôi",
+     "other": "ông"
+    },
+    {
+     "from": "man in white coat",
+     "to": "black-haired boy",
+     "self": "ta",
+     "other": "con"
+    },
+    {
+     "from": "black-haired boy",
+     "to": "man in white coat"
+    },
+    {
+     "from": "Jaehwan",
+     "to": "boy",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "boy",
+     "to": "Jaehwan",
+     "self": "tôi",
+     "other": "anh"
+    },
+    {
+     "from": "Man with glasses",
+     "to": "Young boy",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "Young boy",
+     "to": "Man with glasses",
+     "self": "tao",
+     "other": "mày"
+    },
+    {
+     "from": "man",
+     "to": "boy",
+     "self": "tôi",
+     "other": "em"
+    },
+    {
+     "from": "boy",
+     "to": "man",
+     "self": "tôi",
+     "other": "anh"
+    },
+    {
+     "from": "doctor",
+     "to": "boy",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "boy",
+     "to": "doctor"
+    },
+    {
+     "from": "Male character",
+     "to": "Yoonhwan and Seoyul",
+     "other": "Yoonhwan, Seoyul"
+    }
+   ]
+  },
+  "review_sheets": 12,
+  "review_crops": 143,
+  "logos_freed": 1,
+  "lines_joined": 1,
+  "overlaps_dropped": 0,
+  "seam_copies": 1,
+  "characters": [
+   {
+    "name": "man with glasses",
+    "note": "Adult male looming over the boy; appears to be addressing him ominously."
+   },
+   {
+    "name": "boy",
+    "note": "Young male, listener to the man with glasses."
+   },
+   {
+    "name": "woman",
+    "note": "Adult woman with long brown hair; speaking to the uniformed man."
+   },
+   {
+    "name": "doctor",
+    "note": "Adult male physician, addressing Jaehwan."
+   },
+   {
+    "name": "Jaehwan",
+    "note": "Young male; being addressed by the doctor."
+   }
+  ],
+  "address": [
+   {
+    "from": "man with glasses",
+    "to": "boy",
+    "self": "ta",
+    "other": "ngươi"
+   },
+   {
+    "from": "doctor",
+    "to": "Jaehwan",
+    "self": "ta",
+    "other": "con"
+   },
+   {
+    "from": "doctor",
+    "to": "boy",
+    "self": "tôi",
+    "other": "cậu"
+   },
+   {
+    "from": "boy",
+    "to": "doctor",
+    "self": "tôi",
+    "other": "ông"
+   }
+  ]
+ },
+ "gateway_job": {
+  "status": "completed",
+  "requests": 355,
+  "prompt_tokens": 763670,
+  "completion_tokens": 38978,
+  "cost_usd": 0.052365721800000035,
+  "charged_micros": 54992
+ },
+ "transport": {
+  "scan": {
+   "requests": 34,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 2.5,
+    "p90": 3.3,
+    "max": 4.5,
+    "sum": 89.9
+   },
+   "span_s": 28.0,
+   "images": 68,
+   "request_kb_avg": 296.8,
+   "prompt_tokens": 54050,
+   "cached_tokens": 0,
+   "completion_tokens": 4308,
+   "reasoning_tokens": 0
+  },
+  "glossary": {
+   "requests": 33,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 5.5,
+    "p90": 6.2,
+    "max": 6.8,
+    "sum": 175.6
+   },
+   "span_s": 48.5,
+   "images": 65,
+   "request_kb_avg": 537.5,
+   "prompt_tokens": 104854,
+   "cached_tokens": 0,
+   "completion_tokens": 3338,
+   "reasoning_tokens": 0
+  },
+  "review": {
+   "requests": 12,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 5.1,
+    "p90": 7.8,
+    "max": 7.8,
+    "sum": 59.3
+   },
+   "span_s": 9.6,
+   "images": 12,
+   "request_kb_avg": 671.1,
+   "prompt_tokens": 41027,
+   "cached_tokens": 0,
+   "completion_tokens": 170,
+   "reasoning_tokens": 0
+  },
+  "translate": {
+   "requests": 65,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 5.5,
+    "p90": 8.9,
+    "max": 14.8,
+    "sum": 390.5
+   },
+   "span_s": 155.8,
+   "images": 130,
+   "request_kb_avg": 486.8,
+   "prompt_tokens": 426777,
+   "cached_tokens": 171392,
+   "completion_tokens": 25569,
+   "reasoning_tokens": 13242
+  },
+  "judge": {
+   "requests": 202,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 5.8,
+    "p90": 12.2,
+    "max": 14.7,
+    "sum": 1355.0
+   },
+   "span_s": 295.1,
+   "images": 0,
+   "request_kb_avg": 0.0,
+   "prompt_tokens": 118884,
+   "cached_tokens": 0,
+   "completion_tokens": 0,
+   "reasoning_tokens": 0
+  },
+  "polish": {
+   "requests": 9,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 11.3,
+    "p90": 24.0,
+    "max": 24.0,
+    "sum": 106.6
+   },
+   "span_s": 194.0,
+   "images": 0,
+   "request_kb_avg": 9.8,
+   "prompt_tokens": 18078,
+   "cached_tokens": 0,
+   "completion_tokens": 5593,
+   "reasoning_tokens": 3224
+  }
+ },
+ "zip_pages": 18,
+ "slices": 68,
+ "slices_active": 65,
+ "clean_ms": {
+  "auto_inpaint": 428029,
+  "auto_inpaint.lama_model_ms": 336962,
+  "auto_inpaint.ort_global_lock_wait_ms": 0,
+  "auto_inpaint.session_lock_wait_ms": 0,
+  "detect": 225859,
+  "manual_inpaint": 0,
+  "manual_inpaint.lama_model_ms": 0,
+  "manual_inpaint.ort_global_lock_wait_ms": 0,
+  "manual_inpaint.session_lock_wait_ms": 0,
+  "read": 3884,
+  "total": 663931,
+  "write": 6099
+ },
+ "pairs": 65,
+ "lines": [
+  {
+   "slice": 2,
+   "id": "text_3512108c5d2e4611",
+   "source": "I’D LIKE YOU TO TELL ME EVEN THE SMALLEST MEMORY.",
+   "translation": "Tôi muốn cậu kể cho tôi nghe\nkể cả ký ức nhỏ nhất.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 81,
+   "font_px_at_800": 72.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Tôi muốn cậu kể",
+    "cho tôi nghe",
+    "kể cả ký ức nhỏ",
+    "nhất."
+   ],
+   "box_w": 603,
+   "box_h": 426,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 2,
+   "id": "text_f4b286b0ced54250",
+   "source": "HIGH SCHOOL, OR EVEN THE UNIVERSITY YOU ATTENDED?",
+   "translation": "Trường trung học phổ thông,\nhay cả đại học nữa?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 62,
+   "font_px_at_800": 55.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Trường trung học",
+    "phổ thông,",
+    "hay cả đại học nữa?"
+   ],
+   "box_w": 528,
+   "box_h": 264,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 2,
+   "id": "text_d0a97abf795e4668",
+   "source": "DO YOU HAVE ANY MEMORIES OF MIDDLE SCHOOL,",
+   "translation": "Con có ký ức nào về\ntrường trung học cơ sở,",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 60,
+   "font_px_at_800": 53.3,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Con có ký ức nào về",
+    "trường trung học",
+    "cơ sở,"
+   ],
+   "box_w": 488,
+   "box_h": 266,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_b6f1d6545e13478c",
+   "source": "REALLY REMEMBER.",
+   "translation": "nhớ rõ.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 142,
+   "font_px_at_800": 126.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "nhớ rõ."
+   ],
+   "box_w": 568,
+   "box_h": 338,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 78,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_65d397d1f3b6466f",
+   "source": "TH-THAT’S—",
+   "translation": "Đ-đó là—",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 74,
+   "font_px_at_800": 65.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Đ-đó là—"
+   ],
+   "box_w": 350,
+   "box_h": 139,
+   "fits": true,
+   "missing_glyphs": true,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_40946ed7e86942a6",
+   "source": "I DON’T...",
+   "translation": "Tôi không...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 62,
+   "font_px_at_800": 55.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Tôi không..."
+   ],
+   "box_w": 296,
+   "box_h": 134,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 4,
+   "id": "text_d498f199cd534f2a",
+   "source": "JAEHWAN COULD NOT PROPERLY RECALL THE HISTORY HE HAD LIVED THROUGH.",
+   "translation": "Jaehwan không thể nhớ rõ lịch sử mình đã trải qua.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Jaehwan không thể",
+    "nhớ rõ lịch sử mình đã",
+    "trải qua."
+   ],
+   "box_w": 623,
+   "box_h": 432,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_d03fd3996d75418b",
+   "source": "HIS MEMORIES MIGHT HAVE BEEN SHATTERED.",
+   "translation": "Ký ức của anh ấy có lẽ đã tan vỡ.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 88,
+   "font_px_at_800": 78.2,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ký ức của anh ấy",
+    "có lẽ đã tan vỡ."
+   ],
+   "box_w": 617,
+   "box_h": 402,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 55,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_fc16fc1eabfc4e0c",
+   "source": "IT COULD BE BECAUSE HE HAD LIVED TOO LONG...",
+   "translation": "Có thể là vì anh ấy đã sống quá lâu...",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Có thể là vì anh ấy",
+    "đã sống quá lâu..."
+   ],
+   "box_w": 486,
+   "box_h": 309,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 40,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_b87086bca0124bd4",
+   "source": "OR BECAUSE HIS MEMORIES SHATTERED AS THE TRANSCENDENTS WITHIN HIM DEPARTED.",
+   "translation": "Hoặc vì ký ức tan vỡ khi các Hộ pháp giả bên trong anh ấy rời đi.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 50,
+   "font_px_at_800": 44.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Hoặc vì ký ức tan vỡ khi các",
+    "Hộ pháp giả bên trong anh ấy",
+    "rời đi."
+   ],
+   "box_w": 552,
+   "box_h": 315,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_b9bed19a7d7c436c",
+   "source": "THAT DOESN'T SOUND LIKE THE CLEVER YOU I KNOW.",
+   "translation": "Nghe chẳng giống cậu thông minh mà tôi biết chút nào.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Nghe chẳng giống",
+    "cậu thông minh",
+    "mà tôi biết chút",
+    "nào."
+   ],
+   "box_w": 519,
+   "box_h": 373,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_02c2fd9cf9264abb",
+   "source": "YOU DON'T REMEMBER?",
+   "translation": "Cậu không nhớ à?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 77,
+   "font_px_at_800": 68.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Cậu không",
+    "nhớ à?"
+   ],
+   "box_w": 397,
+   "box_h": 219,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_51239dc43c9448a3",
+   "source": "IS THERE ANY OTHER WAY TO PROVE YOUR MEMORY?",
+   "translation": "Còn cách nào khác để chứng minh ký ức của cậu không?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 74,
+   "font_px_at_800": 65.8,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Còn cách nào",
+    "khác để chứng",
+    "minh ký ức của",
+    "cậu không?"
+   ],
+   "box_w": 536,
+   "box_h": 393,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_e7dbf62dd92f4447",
+   "source": "I REALLY DON’T, BUT I DEFINITELY...",
+   "translation": "Tôi thật sự không nhớ, nhưng chắc chắn...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 57,
+   "font_px_at_800": 50.7,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Tôi thật sự không nhớ,",
+    "nhưng chắc chắn..."
+   ],
+   "box_w": 529,
+   "box_h": 206,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_160783ef73a14679",
+   "source": "......",
+   "translation": "......",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 12,
+   "font_px_at_800": 10.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "......"
+   ],
+   "box_w": 189,
+   "box_h": 105,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 6,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_ec2d5f7c02484894",
+   "source": "YOU CANNOT PROTECT YOUR WORLD, AND YOU CANNOT PROVE ANYTHING.",
+   "translation": "Ngươi không thể bảo vệ thế giới của mình,\ncũng chẳng thể chứng minh được gì.",
+   "role": "dialogue",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Ngươi không thể bảo vệ thế",
+    "giới của mình,",
+    "cũng chẳng thể chứng minh",
+    "được gì."
+   ],
+   "box_w": 650,
+   "box_h": 432,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_f5aa1269fe5145c9",
+   "source": "THE GAMES ARE OVER NOW.",
+   "translation": "Trò chơi kết thúc rồi, ngươi.",
+   "role": "dialogue",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 68,
+   "font_px_at_800": 60.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Trò chơi kết",
+    "thúc rồi, ngươi."
+   ],
+   "box_w": 426,
+   "box_h": 237,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_122cfc50c7c64f82",
+   "source": "THAT WAS WHAT THE DOCTOR’S EYES WERE SAYING.",
+   "translation": "Đó là điều ánh mắt bác sĩ muốn nói.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Đó là điều ánh mắt",
+    "bác sĩ muốn nói."
+   ],
+   "box_w": 498,
+   "box_h": 315,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 10,
+   "id": "text_9196861938624580",
+   "source": "HE, WHO HAD LIVED THROUGH THAT TIME, WAS RIGHT HERE.",
+   "translation": "Người đã sống qua thời ấy\nđang ở ngay đây.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Người đã sống qua thời",
+    "ấy",
+    "đang ở ngay đây."
+   ],
+   "box_w": 527,
+   "box_h": 307,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 40,
+   "split_word": false
+  },
+  {
+   "slice": 10,
+   "id": "text_355d3230887c4e0f",
+   "source": "TEN-YEAR-OLD JAEHWAN WAS RESENTFUL AND BITTER.",
+   "translation": "Jaehwan mười tuổi\nđầy oán giận và cay đắng.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 54,
+   "font_px_at_800": 48.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Jaehwan mười tuổi",
+    "đầy oán giận và cay đắng."
+   ],
+   "box_w": 517,
+   "box_h": 266,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 11,
+   "id": "text_d82741396405428b",
+   "source": "SO WHY ON EARTH DID HE HAVE TO PROVE THAT TIME AGAIN?",
+   "translation": "Vậy rốt cuộc tại sao anh ấy lại phải chứng minh chuyện đó lần nữa?",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Vậy rốt cuộc tại sao anh",
+    "ấy lại phải chứng minh",
+    "chuyện đó lần nữa?"
+   ],
+   "box_w": 583,
+   "box_h": 327,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 11,
+   "id": "text_a780de8ef08c43ad",
+   "source": "HE HIMSELF WAS THE EVIDENCE OF THAT TIME,",
+   "translation": "Chính anh ấy là bằng chứng cho thời đại đó,",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chính anh ấy là bằng",
+    "chứng cho thời đại đó,"
+   ],
+   "box_w": 547,
+   "box_h": 345,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 12,
+   "id": "text_c17839be308c4b7f",
+   "source": "“PROOF”?",
+   "translation": "“Bằng chứng”?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "“Bằng chứng”?"
+   ],
+   "box_w": 427,
+   "box_h": 169,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 58,
+   "split_word": false
+  },
+  {
+   "slice": 12,
+   "id": "text_d242e269ebda4243",
+   "source": "멈칫",
+   "translation": "Khựng!",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 97,
+   "font_px_at_800": 86.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Khựng!"
+   ],
+   "box_w": 381,
+   "box_h": 391,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 122,
+   "split_word": false
+  },
+  {
+   "slice": 13,
+   "id": "text_13ea05b2ee754bac",
+   "source": "A MASSIVE WALL THAT BLOCKED HIS PATH WHEN HE HAD JUST ASCENDED TO CHAOS.",
+   "translation": "Một bức tường khổng lồ\nchặn đường anh\nngay khi anh vừa\nThăng lên Hỗn Độn.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Một bức tường khổng lồ",
+    "chặn đường anh",
+    "ngay khi anh vừa",
+    "Thăng lên Hỗn Độn."
+   ],
+   "box_w": 674,
+   "box_h": 429,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 13,
+   "id": "text_2200b29c70344295",
+   "source": "A MEMORY OF A CERTAIN FORTRESS.",
+   "translation": "Ký ức về một\nThành trì nọ.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 92,
+   "font_px_at_800": 81.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ký ức về một",
+    "Thành trì nọ."
+   ],
+   "box_w": 524,
+   "box_h": 409,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 57,
+   "split_word": false
+  },
+  {
+   "slice": 13,
+   "id": "text_9b155d62897f4e41",
+   "source": "SUDDENLY, A MEMORY FROM SOMETIME IN THE PAST SURFACED.",
+   "translation": "Bỗng nhiên, một ký ức\ntrong quá khứ chợt ùa về.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Bỗng nhiên, một ký ức",
+    "trong quá khứ chợt ùa về."
+   ],
+   "box_w": 540,
+   "box_h": 288,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 14,
+   "id": "text_7c4b5883eb3d42b5",
+   "source": "THAT FORTRESS HAD ALSO DEMANDED OF HIM:",
+   "translation": "Thành trì ấy cũng từng đòi hỏi anh:",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 70,
+   "font_px_at_800": 62.2,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Thành trì ấy cũng",
+    "từng đòi hỏi anh:"
+   ],
+   "box_w": 538,
+   "box_h": 318,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 14,
+   "id": "text_551ca0b3a1ae41e5",
+   "source": "PROVE YOURSELF.",
+   "translation": "Hãy chứng minh bản thân.",
+   "role": "free_text",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 89,
+   "font_px_at_800": 79.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Hãy chứng minh bản",
+    "thân."
+   ],
+   "box_w": 732,
+   "box_h": 212,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 84,
+   "split_word": false
+  },
+  {
+   "slice": 15,
+   "id": "text_c5612249cfdd4bc3",
+   "source": "PROVE WHO YOU ARE.",
+   "translation": "Chứng minh ngươi là ai.",
+   "role": "dialogue",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 89,
+   "font_px_at_800": 79.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chứng minh ngươi là",
+    "ai."
+   ],
+   "box_w": 772,
+   "box_h": 211,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 65,
+   "split_word": false
+  },
+  {
+   "slice": 15,
+   "id": "text_6b87ae830cfe4754",
+   "source": ".......",
+   "translation": ".......",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 18,
+   "font_px_at_800": 16.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "......."
+   ],
+   "box_w": 280,
+   "box_h": 152,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 10,
+   "split_word": false
+  },
+  {
+   "slice": 16,
+   "id": "text_d602cbe247c84ca9",
+   "source": "I WILL",
+   "translation": "Tôi sẽ",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 105,
+   "font_px_at_800": 93.3,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Tôi sẽ"
+   ],
+   "box_w": 313,
+   "box_h": 170,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 58,
+   "split_word": false
+  },
+  {
+   "slice": 16,
+   "id": "text_f55b9a0ca3234705",
+   "source": "NOT",
+   "translation": "không",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": true,
+   "page_width": 900,
+   "font_px": 113,
+   "font_px_at_800": 100.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "không"
+   ],
+   "box_w": 293,
+   "box_h": 198,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 78,
+   "split_word": false
+  },
+  {
+   "slice": 17,
+   "id": "text_3bf696700cef4191",
+   "source": "PROVE MYSELF.",
+   "translation": "Chứng tỏ mình.",
+   "role": "thought",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 172,
+   "font_px_at_800": 152.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chứng",
+    "tỏ mình."
+   ],
+   "box_w": 570,
+   "box_h": 476,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 113,
+   "split_word": false
+  },
+  {
+   "slice": 18,
+   "id": "text_16b318cd946542b7",
+   "source": "ART UNDEAD POTATO | ADAPTATION S-CYNAN | ORIGINAL SINGSHONG 254",
+   "translation": "254",
+   "role": "title",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 35,
+   "font_px_at_800": 31.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "254"
+   ],
+   "box_w": 783,
+   "box_h": 348,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 22,
+   "split_word": false
+  },
+  {
+   "slice": 18,
+   "id": "text_c21160f0b97d4f2c",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 18,
+   "id": "text_708ccb1031a64d59",
+   "source": "THE WORLD AFTER THE END",
+   "translation": "Hậu Thế Giới",
+   "role": "title",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": true,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Hậu Thế",
+    "Giới"
+   ],
+   "box_w": 696,
+   "box_h": 879,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 240,
+   "split_word": false
+  },
+  {
+   "slice": 19,
+   "id": "text_dde0c975fbe34aa4",
+   "source": ".......",
+   "translation": ".......",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 12,
+   "font_px_at_800": 10.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "......."
+   ],
+   "box_w": 183,
+   "box_h": 104,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 5,
+   "split_word": false
+  },
+  {
+   "slice": 20,
+   "id": "text_a94117f4a19a4ad8",
+   "source": "“Even if I don't prove it, my world still exists.”",
+   "translation": "“Dù ta không chứng minh được,\nthế giới của ta vẫn tồn tại.”",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "“Dù ta không chứng",
+    "minh được,",
+    "thế giới của ta vẫn",
+    "tồn tại.”"
+   ],
+   "box_w": 559,
+   "box_h": 375,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 20,
+   "id": "text_01d77f338ada4193",
+   "source": "Is that what you mean?",
+   "translation": "Ý ngươi là vậy sao?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ý ngươi là vậy",
+    "sao?"
+   ],
+   "box_w": 378,
+   "box_h": 194,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 20,
+   "id": "text_912cb1cf43df4108",
+   "source": "Well, now...",
+   "translation": "Chà, vậy thì...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chà, vậy",
+    "thì..."
+   ],
+   "box_w": 286,
+   "box_h": 224,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 21,
+   "id": "text_accd2ea920554c0b",
+   "source": "......?",
+   "translation": "......?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "......?"
+   ],
+   "box_w": 216,
+   "box_h": 138,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 32,
+   "split_word": false
+  },
+  {
+   "slice": 22,
+   "id": "text_18d0e58d57284c85",
+   "source": "I WILL ACKNOWLEDGE THAT POSSIBILITY.",
+   "translation": "Ta sẽ thừa nhận khả năng đó.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 77,
+   "font_px_at_800": 68.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ta sẽ thừa nhận",
+    "khả năng đó."
+   ],
+   "box_w": 620,
+   "box_h": 312,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 22,
+   "id": "text_6bae75cd190c4dc0",
+   "source": "I SEE.",
+   "translation": "Ra vậy.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 114,
+   "font_px_at_800": 101.3,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Ra vậy."
+   ],
+   "box_w": 317,
+   "box_h": 176,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 63,
+   "split_word": false
+  },
+  {
+   "slice": 23,
+   "id": "text_2f1661bcc1294c92",
+   "source": "He was surprised. This doctor was certainly different from ordinary physicians.",
+   "translation": "Anh ấy kinh ngạc. Vị bác sĩ này quả thật khác hẳn những bác sĩ bình thường.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Anh ấy kinh ngạc. Vị bác sĩ",
+    "này quả thật khác hẳn những",
+    "bác sĩ bình thường."
+   ],
+   "box_w": 591,
+   "box_h": 338,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 23,
+   "id": "text_abe02d8c85f04cc6",
+   "source": "Jaehwan even wondered if this was a sort of gateway created by the [FIRST NIGHTMARE].",
+   "translation": "Jaehwan thậm chí còn tự hỏi liệu đây có phải một dạng Cổng do [Cơn ác mộng đầu tiên] tạo ra không.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Jaehwan thậm chí còn tự hỏi liệu",
+    "đây có phải một dạng Cổng do [Cơn",
+    "ác mộng đầu tiên] tạo ra không."
+   ],
+   "box_w": 742,
+   "box_h": 393,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 23,
+   "id": "text_9f9f2840cda4401f",
+   "source": "But regardless of whether that world",
+   "translation": "Nhưng bất kể thế giới đó...",
+   "role": "narration",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 61,
+   "font_px_at_800": 54.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Nhưng bất kể thế giới đó..."
+   ],
+   "box_w": 664,
+   "box_h": 142,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 40,
+   "split_word": false
+  },
+  {
+   "slice": 24,
+   "id": "text_1c93e7b61a38486d",
+   "source": "THE PEOPLE YOU LOVE WILL BECOME MISERABLE.",
+   "translation": "Những người ngươi yêu thương sẽ trở nên khốn khổ.",
+   "role": "dark_threat",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 83,
+   "font_px_at_800": 73.8,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Những người ngươi",
+    "yêu thương sẽ trở",
+    "nên khốn khổ."
+   ],
+   "box_w": 613,
+   "box_h": 372,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 54,
+   "split_word": false
+  },
+  {
+   "slice": 24,
+   "id": "text_f22383a799544c5a",
+   "source": "IS REAL OR NOT, YOU MUST KNOW THIS.",
+   "translation": "Có thật hay không, ngươi phải biết điều này.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Có thật hay không,",
+    "ngươi phải biết điều này."
+   ],
+   "box_w": 614,
+   "box_h": 173,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 24,
+   "id": "text_3b3f942845014c5c",
+   "source": "IF YOU TRY TO PROTECT YOUR WORLD...",
+   "translation": "Nếu ngươi cố bảo vệ thế giới của mình...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nếu ngươi cố bảo",
+    "vệ thế giới của",
+    "mình..."
+   ],
+   "box_w": 468,
+   "box_h": 273,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 25,
+   "id": "text_24df40d551004ebc",
+   "source": "JAEHWAN, YOU SAID THAT TOWER WOULD APPEAR IN TEN YEARS, RIGHT?",
+   "translation": "Jaehwan, con nói Tháp sẽ xuất hiện sau mười năm, đúng không?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Jaehwan, con nói Tháp",
+    "sẽ xuất hiện sau mười",
+    "năm, đúng không?"
+   ],
+   "box_w": 614,
+   "box_h": 355,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 25,
+   "id": "text_99250658152642c9",
+   "source": "......",
+   "translation": "......",
+   "role": "thought",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 12,
+   "font_px_at_800": 10.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "......"
+   ],
+   "box_w": 183,
+   "box_h": 98,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 6,
+   "split_word": false
+  },
+  {
+   "slice": 25,
+   "id": "text_d3b04243bbc74a88",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 26,
+   "id": "text_83ab3cd0fdf64bc0",
+   "source": "YOU MUST CONTINUE TO COME TO THE COUNSELING CENTER I RUN.",
+   "translation": "Ngươi phải tiếp tục đến\ntrung tâm tư vấn của ta.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 74,
+   "font_px_at_800": 65.8,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Ngươi phải tiếp tục",
+    "đến",
+    "trung tâm tư vấn của",
+    "ta."
+   ],
+   "box_w": 665,
+   "box_h": 402,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_c1bd941769bd4099",
+   "source": "HOW ABOUT THIS? UNTIL THOSE TEN YEARS ARE UP,",
+   "translation": "Hay thế này đi. Cho đến khi\nhết mười năm đó,",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Hay thế này đi.",
+    "Cho đến khi",
+    "hết mười năm đó,"
+   ],
+   "box_w": 564,
+   "box_h": 295,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_76107e56e31040f7",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 27,
+   "id": "text_93e2941acb5f40d6",
+   "source": "...IF THE “TOWER OF NIGHTMARES” APPEARS AS YOU’VE SAID,",
+   "translation": "...nếu “Tháp Ác Mộng” xuất hiện như anh nói,",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "...nếu “Tháp Ác Mộng”",
+    "xuất hiện như anh nói,"
+   ],
+   "box_w": 600,
+   "box_h": 273,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 27,
+   "id": "text_473b5765f2954705",
+   "source": "IF THAT “DEVIL’S TOWER” REALLY APPEARS TEN YEARS FROM NOW",
+   "translation": "Nếu “Tháp Quỷ” thật sự xuất hiện\nsau mười năm nữa",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nếu “Tháp Quỷ” thật sự",
+    "xuất hiện",
+    "sau mười năm nữa"
+   ],
+   "box_w": 548,
+   "box_h": 307,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 27,
+   "id": "text_f117f3a83d4e45d0",
+   "source": "WHY SHOULD I DO THAT?",
+   "translation": "Sao tôi phải làm vậy?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 77,
+   "font_px_at_800": 68.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Sao tôi phải",
+    "làm vậy?"
+   ],
+   "box_w": 418,
+   "box_h": 218,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 27,
+   "id": "text_bacf24b7b09646a0",
+   "source": "TOWER OF NIGHTMARES.",
+   "translation": "Tháp Ác Mộng.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Tháp Ác",
+    "Mộng."
+   ],
+   "box_w": 392,
+   "box_h": 213,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 28,
+   "id": "text_ac771c2af32645de",
+   "source": "AND I WILL DO WHATEVER YOU TELL ME TO DO.",
+   "translation": "Và ta sẽ làm bất cứ điều gì con bảo.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 96,
+   "font_px_at_800": 85.3,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Và ta sẽ làm bất",
+    "cứ điều gì con",
+    "bảo."
+   ],
+   "box_w": 725,
+   "box_h": 386,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 53,
+   "split_word": false
+  },
+  {
+   "slice": 28,
+   "id": "text_ba74ab8433b34bfa",
+   "source": "I WILL BELIEVE YOUR WORDS.",
+   "translation": "Ta sẽ tin lời con.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 114,
+   "font_px_at_800": 101.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ta sẽ tin lời",
+    "con."
+   ],
+   "box_w": 664,
+   "box_h": 441,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 63,
+   "split_word": false
+  },
+  {
+   "slice": 29,
+   "id": "text_6a96823a0dd845a3",
+   "source": "Ah, of course, I won't charge any counseling fees for the next ten years.",
+   "translation": "À, tất nhiên rồi. Mười năm tới tôi sẽ không thu phí tư vấn tâm lý.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "À, tất nhiên rồi. Mười",
+    "năm tới tôi sẽ không",
+    "thu phí tư vấn tâm lý."
+   ],
+   "box_w": 597,
+   "box_h": 345,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 29,
+   "id": "text_3507e271a53b462d",
+   "source": "Why on earth would you go that far for me?",
+   "translation": "Sao anh lại vì tôi mà làm đến mức đó?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Sao anh lại vì tôi mà",
+    "làm đến mức đó?"
+   ],
+   "box_w": 524,
+   "box_h": 260,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 29,
+   "id": "text_5d8466bb5601441f",
+   "source": "...WHAT?",
+   "translation": "...Gì cơ?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 77,
+   "font_px_at_800": 68.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "...Gì cơ?"
+   ],
+   "box_w": 377,
+   "box_h": 219,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 30,
+   "id": "text_a7e20f592b4c4c8a",
+   "source": "BECAUSE I DON'T WANT TO SEE A YOUNG BOY'S FUTURE RUINED.",
+   "translation": "Vì tôi không muốn thấy\nmột cậu bé bị hủy hoại tương lai.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Vì tôi không muốn",
+    "thấy",
+    "một cậu bé bị hủy",
+    "hoại tương lai."
+   ],
+   "box_w": 455,
+   "box_h": 354,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 30,
+   "id": "text_333195456c854772",
+   "source": "WOULD THAT BE ENOUGH OF A REASON?",
+   "translation": "Theo cậu, lý do đó đã đủ chưa?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Theo cậu, lý do",
+    "đó đã đủ",
+    "chưa?"
+   ],
+   "box_w": 443,
+   "box_h": 241,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 30,
+   "id": "text_c6733de3413e49fc",
+   "source": "NO, IT WOULDN'T.",
+   "translation": "Không, không đủ đâu.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Không, không",
+    "đủ đâu."
+   ],
+   "box_w": 332,
+   "box_h": 205,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 31,
+   "id": "text_2d90edb91df944c2",
+   "source": "HOWEVER, I ALSO HAVE A CONDITION.",
+   "translation": "Tuy nhiên, ta cũng có một điều kiện.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tuy nhiên, ta",
+    "cũng có một",
+    "điều kiện."
+   ],
+   "box_w": 457,
+   "box_h": 296,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 40,
+   "split_word": false
+  },
+  {
+   "slice": 31,
+   "id": "text_cb34525b0e41496b",
+   "source": "DON'T IGNORE ME.",
+   "translation": "Đừng phớt lờ ta.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 80,
+   "font_px_at_800": 71.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Đừng phớt",
+    "lờ ta."
+   ],
+   "box_w": 397,
+   "box_h": 230,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 32,
+   "id": "text_b5f0d8ec79634199",
+   "source": "IF THAT TOWER DOES NOT APPEAR IN TEN YEARS,",
+   "translation": "Nếu Tháp không xuất hiện trong mười năm nữa,",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nếu Tháp không",
+    "xuất hiện trong",
+    "mười năm nữa,"
+   ],
+   "box_w": 539,
+   "box_h": 295,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 32,
+   "id": "text_8e1fe80ccfa54dd7",
+   "source": "YOU MUST ALSO GIVE UP ON YOUR WORLD.",
+   "translation": "Ngươi cũng phải từ bỏ thế giới của mình.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Ngươi cũng phải từ",
+    "bỏ thế giới của",
+    "mình."
+   ],
+   "box_w": 542,
+   "box_h": 294,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 33,
+   "id": "text_d58dbc1cf1bd48a8",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 33,
+   "id": "text_3ce8257d6c824bbb",
+   "source": "RATHER, IT WAS A GAZE THAT FELT DEEPLY CONCERNED FOR HIM.",
+   "translation": "Ngược lại, ánh mắt ấy như thể vô cùng lo lắng cho cậu.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 60,
+   "font_px_at_800": 53.3,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Ngược lại, ánh mắt ấy",
+    "như thể vô cùng lo lắng",
+    "cho cậu."
+   ],
+   "box_w": 579,
+   "box_h": 312,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 33,
+   "id": "text_c29e2ad0eb184abd",
+   "source": "HIS EYES SHOWED NO HOSTILITY WHATSOEVER.",
+   "translation": "Ánh mắt anh ta không hề có chút thù địch nào.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ánh mắt anh ta không",
+    "hề có chút thù địch nào."
+   ],
+   "box_w": 523,
+   "box_h": 288,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 34,
+   "id": "text_ec28c055554d4c13",
+   "source": "IT TOUCHED UPON A QUESTION THAT JAEHWAN HAD TRIED HIS BEST NOT TO FACE.",
+   "translation": "Nó chạm đến câu hỏi mà Jaehwan đã cố hết sức để né tránh.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nó chạm đến câu hỏi mà",
+    "Jaehwan đã cố hết sức để",
+    "né tránh."
+   ],
+   "box_w": 646,
+   "box_h": 408,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 34,
+   "id": "text_2c9189b477b445dc",
+   "source": "LOOKING INTO THOSE EYES, JAEHWAN’S CONFUSION GREW EVEN GREATER.",
+   "translation": "Nhìn vào đôi mắt ấy, Jaehwan càng thêm bối rối.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nhìn vào đôi mắt ấy,",
+    "Jaehwan càng thêm bối",
+    "rối."
+   ],
+   "box_w": 574,
+   "box_h": 385,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 34,
+   "id": "text_e6e36bc7e4274f54",
+   "source": "AND THAT CONFUSION...",
+   "translation": "Và sự bối rối ấy...",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Và sự bối rối",
+    "ấy..."
+   ],
+   "box_w": 397,
+   "box_h": 246,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 47,
+   "split_word": false
+  },
+  {
+   "slice": 35,
+   "id": "text_23c2801c24754290",
+   "source": "AND ALL THESE MEMORIES WERE JUST SOMETHING I CREATED...?",
+   "translation": "Và tất cả những ký ức này chỉ là thứ tôi tạo ra...?",
+   "role": "thought",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Và tất cả những ký",
+    "ức này chỉ là thứ tôi",
+    "tạo ra...?"
+   ],
+   "box_w": 615,
+   "box_h": 434,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 35,
+   "id": "text_97a9ebcb4513497d",
+   "source": "WHAT IF THE ILLUSION TREE NEVER EVEN EXISTED FROM THE START,",
+   "translation": "Nếu Cây Huyễn Ảo chưa từng tồn tại ngay từ đầu,",
+   "role": "thought",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Nếu Cây Huyễn Ảo chưa",
+    "từng tồn tại ngay từ đầu,"
+   ],
+   "box_w": 680,
+   "box_h": 337,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 35,
+   "id": "text_a6b56a6782774248",
+   "source": "",
+   "translation": "Nếu một “Thực tại” thật sự đã luôn tồn tại từ trước đến nay,",
+   "role": "thought",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 68,
+   "font_px_at_800": 60.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nếu một “Thực tại” thật",
+    "sự đã luôn tồn tại từ",
+    "trước đến nay,"
+   ],
+   "box_w": 733,
+   "box_h": 243,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 36,
+   "id": "text_b3ca9ba65abb4f5d",
+   "source": "WHAT IF A REAL “REALITY” HAD BEEN EXISTING ALL ALONG,",
+   "translation": "Nếu một “Thực tại” thật sự đã luôn tồn tại từ trước đến nay,",
+   "role": "thought",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 68,
+   "font_px_at_800": 60.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nếu một “Thực tại” thật",
+    "sự đã luôn tồn tại từ",
+    "trước đến nay,"
+   ],
+   "box_w": 733,
+   "box_h": 243,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 36,
+   "id": "text_0d2b99087cab4212",
+   "source": "AND I WAS SIMPLY RUNNING AWAY...?",
+   "translation": "Và tôi chỉ đang bỏ chạy...?",
+   "role": "thought",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 83,
+   "font_px_at_800": 73.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Và tôi chỉ đang",
+    "bỏ chạy...?"
+   ],
+   "box_w": 520,
+   "box_h": 243,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 37,
+   "id": "text_b5336a398f1f4b0f",
+   "source": "THEN, WHAT WILL HAPPEN TO ME NOW?",
+   "translation": "Vậy giờ tôi sẽ ra sao?",
+   "role": "thought",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 92,
+   "font_px_at_800": 81.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Vậy giờ tôi sẽ ra sao?"
+   ],
+   "box_w": 737,
+   "box_h": 308,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 64,
+   "split_word": false
+  },
+  {
+   "slice": 39,
+   "id": "text_7fd6701cee50495b",
+   "source": "FIRST, FOR THE NEXT TEN YEARS, DO NOT TALK ABOUT “JAEHWAN’S WORLD” TO OTHERS IF POSSIBLE.",
+   "translation": "Trước hết, trong mười năm tới,\nnếu có thể thì đừng kể với người khác\nvề “Thế giới của Jaehwan”.",
+   "role": "dialogue",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 52,
+   "font_px_at_800": 46.2,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Trước hết, trong mười năm tới,",
+    "nếu có thể thì đừng kể với người",
+    "khác",
+    "về “Thế giới của Jaehwan”."
+   ],
+   "box_w": 659,
+   "box_h": 360,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 39,
+   "id": "text_0f9567aca9f14864",
+   "source": "...FINE.",
+   "translation": "...Ừ.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 100,
+   "font_px_at_800": 88.9,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "...Ừ."
+   ],
+   "box_w": 323,
+   "box_h": 163,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 55,
+   "split_word": false
+  },
+  {
+   "slice": 40,
+   "id": "text_0a45668e38d84094",
+   "source": "SECOND, WHEN YOU WANT TO TALK ABOUT THE ILLUSION TREE, YOU MUST TALK TO THE DOCTOR.",
+   "translation": "Thứ hai, khi con muốn nói về Cây Huyễn Ảo,\ncon phải nói chuyện với bác sĩ.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Thứ hai, khi con muốn nói về",
+    "Cây Huyễn Ảo,",
+    "con phải nói chuyện với bác sĩ."
+   ],
+   "box_w": 715,
+   "box_h": 416,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 41,
+   "id": "text_7938307645624123",
+   "source": "THIRD, VISIT THE COUNSELING CENTER CONSISTENTLY ONCE A WEEK FOR TEN YEARS.",
+   "translation": "Thứ ba, đến Trung tâm tư vấn đều đặn mỗi tuần một lần trong mười năm.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Thứ ba, đến Trung tâm tư",
+    "vấn đều đặn mỗi tuần một",
+    "lần trong mười năm."
+   ],
+   "box_w": 624,
+   "box_h": 363,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 42,
+   "id": "text_c1f0e43115b64252",
+   "source": "BEFORE HE KNEW IT, JAEHWAN GRADUATED FROM ELEMENTARY SCHOOL AND ENTERED MIDDLE SCHOOL.",
+   "translation": "Chẳng mấy chốc, Jaehwan tốt nghiệp tiểu học và bước vào trường trung học cơ sở.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 62,
+   "font_px_at_800": 55.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Chẳng mấy chốc, Jaehwan",
+    "tốt nghiệp tiểu học và bước",
+    "vào trường trung học cơ sở."
+   ],
+   "box_w": 632,
+   "box_h": 385,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 42,
+   "id": "text_b891ca473f2f4d3f",
+   "source": "TIME PASSED QUICKLY.",
+   "translation": "Thời gian trôi qua thật nhanh.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Thời gian trôi",
+    "qua thật nhanh."
+   ],
+   "box_w": 424,
+   "box_h": 267,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 51,
+   "split_word": false
+  },
+  {
+   "slice": 43,
+   "id": "text_4e49e78b3b204faa",
+   "source": "HE ATTENDED CLASSES AS IF CLIMBING A TOWER,",
+   "translation": "Cậu đi học như thể đang\nleo Tháp vậy,",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 175,
+   "font_px_at_800": 155.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Cậu đi học",
+    "như thể đang",
+    "leo Tháp vậy,"
+   ],
+   "box_w": 865,
+   "box_h": 863,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 242,
+   "split_word": false
+  },
+  {
+   "slice": 43,
+   "id": "text_4228eb7677834458",
+   "source": "RAISED HIS GRADES AS IF HE WERE LEVELING UP AND BUILDING STATS,",
+   "translation": "Nâng điểm số như thể đang\nlên Level và tăng chỉ số,",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Nâng điểm số như thể đang",
+    "lên Level và tăng chỉ số,"
+   ],
+   "box_w": 595,
+   "box_h": 306,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 40,
+   "split_word": false
+  },
+  {
+   "slice": 43,
+   "id": "text_3429e33313114935",
+   "source": "HE WAS THROWN INTO ORDINARY COMPETITION.",
+   "translation": "Cậu bị đẩy vào cuộc cạnh tranh\nthông thường.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 68,
+   "font_px_at_800": 60.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Cậu bị đẩy vào cuộc",
+    "cạnh tranh",
+    "thông thường."
+   ],
+   "box_w": 505,
+   "box_h": 348,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 47,
+   "split_word": false
+  },
+  {
+   "slice": 43,
+   "id": "text_68fb245a68b449a1",
+   "source": "AND READ BOOKS AS IF HE WERE COLLECTING SKILLS.",
+   "translation": "Và đọc sách như thể đang\nthu thập kỹ năng.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 53,
+   "font_px_at_800": 47.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Và đọc sách như thể",
+    "đang",
+    "thu thập kỹ năng."
+   ],
+   "box_w": 465,
+   "box_h": 276,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 44,
+   "id": "text_f05491652f564c8f",
+   "source": "HE AGED NORMALLY LIKE THAT.",
+   "translation": "Cậu ấy lớn lên bình thường như vậy.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Cậu ấy lớn lên bình",
+    "thường như vậy."
+   ],
+   "box_w": 508,
+   "box_h": 240,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 44,
+   "id": "text_ad86fcf015f44abe",
+   "source": "HIGH SCHOOL DIVISION 10TH GRADE MATH WORKBOOK",
+   "translation": "Phòng giáo dục trung học\nSách bài tập toán lớp 10",
+   "role": "free_text",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": true,
+   "page_width": 900,
+   "font_px": 87,
+   "font_px_at_800": 77.3,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Phòng giáo dục trung",
+    "học",
+    "Sách bài tập toán lớp 10"
+   ],
+   "box_w": 768,
+   "box_h": 572,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 331,
+   "split_word": false
+  },
+  {
+   "slice": 46,
+   "id": "text_44b68fb1104d461b",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 46,
+   "id": "text_a6ace245dbe84c28",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 48,
+   "id": "text_1ef8788a8e2c441a",
+   "source": "JAEHWAN TRIED HIS BEST TO LIVE WITHOUT RECALLING THOSE MEMORIES.",
+   "translation": "Jaehwan cố sống hết mình mà không nhớ lại những ký ức ấy.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 70,
+   "font_px_at_800": 62.2,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Jaehwan cố sống hết",
+    "mình mà không nhớ lại",
+    "những ký ức ấy."
+   ],
+   "box_w": 649,
+   "box_h": 477,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 48,
+   "id": "text_89ee0d9303564992",
+   "source": "AND SINCE THINKING ABOUT IT MADE IT IMPOSSIBLE TO STAY SANE,",
+   "translation": "Và vì nghĩ về chuyện đó khiến cậu không thể giữ tỉnh táo,",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Và vì nghĩ về chuyện",
+    "đó khiến cậu không thể",
+    "giữ tỉnh táo,"
+   ],
+   "box_w": 614,
+   "box_h": 435,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 48,
+   "id": "text_5e3f48fa68504d9e",
+   "source": "HE DECIDED TO JUST LIVE LIKE THAT FOR TEN YEARS.",
+   "translation": "Cậu quyết định cứ sống như vậy suốt mười năm.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Cậu quyết định cứ sống",
+    "như vậy suốt mười năm."
+   ],
+   "box_w": 571,
+   "box_h": 321,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 50,
+   "id": "text_a278d6dee4ba47b9",
+   "source": "HIS MOTHER WAS HAPPY,",
+   "translation": "Mẹ cậu ấy rất vui,",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 82,
+   "font_px_at_800": 72.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Mẹ cậu ấy rất",
+    "vui,"
+   ],
+   "box_w": 446,
+   "box_h": 284,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 57,
+   "split_word": false
+  },
+  {
+   "slice": 50,
+   "id": "text_6ffdd5357dbf4be2",
+   "source": "Mathematics Section",
+   "translation": "Phần Toán học",
+   "role": "free_text",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 40,
+   "font_px_at_800": 35.6,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Phần Toán học"
+   ],
+   "box_w": 308,
+   "box_h": 144,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 22,
+   "split_word": false
+  },
+  {
+   "slice": 50,
+   "id": "text_76092d5a8e314ab3",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 50,
+   "id": "text_b8aebce181ce4b88",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 50,
+   "id": "text_2edcca9d7ed44855",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 51,
+   "id": "text_e565bcdfcdeb4ce1",
+   "source": "AND JAEHWAN FOUND COMFORT IN THAT.",
+   "translation": "Và Jaehwan tìm thấy niềm an ủi trong điều đó.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 79,
+   "font_px_at_800": 70.2,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Và Jaehwan tìm",
+    "thấy niềm an ủi",
+    "trong điều đó."
+   ],
+   "box_w": 565,
+   "box_h": 404,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 55,
+   "split_word": false
+  },
+  {
+   "slice": 51,
+   "id": "text_415f2ba3a88342f3",
+   "source": "HE FELT LIKE HE WAS ACTUALLY LIVING PROPERLY.",
+   "translation": "Cậu thấy mình thật sự sống đúng nghĩa.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Cậu thấy mình thật",
+    "sự sống đúng nghĩa."
+   ],
+   "box_w": 513,
+   "box_h": 342,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 52,
+   "id": "text_726fa8b49af1411d",
+   "source": "A STRANGE SENSE OF LOATHING WELLED UP.",
+   "translation": "Một cảm giác căm ghét\nkỳ lạ dâng lên.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 73,
+   "font_px_at_800": 64.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Một cảm giác căm ghét",
+    "kỳ lạ dâng lên."
+   ],
+   "box_w": 625,
+   "box_h": 379,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 52,
+   "split_word": false
+  },
+  {
+   "slice": 52,
+   "id": "text_accf3c1bb2e24421",
+   "source": "BUT AT THE SAME TIME...",
+   "translation": "Nhưng đồng thời...",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Nhưng đồng",
+    "thời..."
+   ],
+   "box_w": 362,
+   "box_h": 229,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 53,
+   "id": "text_2cec62678cdf4875",
+   "source": "HE WOULD VISIT THE DOCTOR AND TELL LONG STORIES ABOUT THE ILLUSION TREE.",
+   "translation": "Cậu đến gặp bác sĩ, kể những câu chuyện dài\nvề Cây Huyễn Ảo.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 66,
+   "font_px_at_800": 58.7,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Cậu đến gặp bác sĩ, kể",
+    "những câu chuyện dài",
+    "về Cây Huyễn Ảo."
+   ],
+   "box_w": 592,
+   "box_h": 409,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 53,
+   "id": "text_9e76f2b7a00e4f3d",
+   "source": "TEN YEARS, WHICH FELT LIKE TEN BILLION, FLOWED BY THAT WAY.",
+   "translation": "Mười năm, dài như mười tỷ năm,\ncứ thế trôi qua.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 53,
+   "font_px_at_800": 47.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Mười năm, dài như mười tỷ năm,",
+    "cứ thế trôi qua."
+   ],
+   "box_w": 633,
+   "box_h": 233,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 53,
+   "id": "text_6c5476acc76245af",
+   "source": "AND WHEN THE LOATHING BECAME UNBEARABLE,",
+   "translation": "Và khi nỗi căm ghét trở nên\nkhông thể chịu nổi,",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Và khi nỗi căm ghét",
+    "trở nên",
+    "không thể chịu nổi,"
+   ],
+   "box_w": 497,
+   "box_h": 326,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 54,
+   "id": "text_4460ea08aca04d5c",
+   "source": "JAEHWAN READ VARIOUS HUMANITIES AND SCIENCE BOOKS WHENEVER HE HAD THE TIME.",
+   "translation": "Jaehwan đọc đủ loại sách\nvề khoa học và nhân văn\nmỗi khi có thời gian.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 70,
+   "font_px_at_800": 62.2,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Jaehwan đọc đủ loại sách",
+    "về khoa học và nhân văn",
+    "mỗi khi có thời gian."
+   ],
+   "box_w": 681,
+   "box_h": 414,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 54,
+   "id": "text_2f1a534d03af410b",
+   "source": "TO FIND A THEORETICAL FOUNDATION TO EXPLAIN THE SITUATION HE WAS EXPERIENCING.",
+   "translation": "Để tìm cơ sở lý thuyết\ngiải thích tình cảnh\nmà cậu đang trải qua.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Để tìm cơ sở lý thuyết",
+    "giải thích tình cảnh",
+    "mà cậu đang trải qua."
+   ],
+   "box_w": 654,
+   "box_h": 414,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 54,
+   "id": "text_8659ab878ddc4167",
+   "source": "TO UNDERSTAND THE...",
+   "translation": "Để hiểu...",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": true,
+   "page_width": 900,
+   "font_px": 21,
+   "font_px_at_800": 18.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Để hiểu..."
+   ],
+   "box_w": 511,
+   "box_h": 45,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 55,
+   "id": "text_73171a8fc9954298",
+   "source": "FROM A CERTAIN POINT, INSTEAD OF LOOKING FOR A THEORY TO EXPLAIN REALITY AGAIN, JAEHWAN...",
+   "translation": "Đến một lúc nào đó, thay vì lại tìm kiếm một lý thuyết để giải thích Thực tại, Jaehwan...",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Đến một lúc nào đó, thay vì lại",
+    "tìm kiếm một lý thuyết để",
+    "giải thích Thực tại, Jaehwan..."
+   ],
+   "box_w": 624,
+   "box_h": 360,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 55,
+   "id": "text_85a8f230628743dc",
+   "source": "OF COURSE, IT WAS A FAILURE.",
+   "translation": "Đương nhiên, đó là một thất bại.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Đương nhiên, đó",
+    "là một thất bại."
+   ],
+   "box_w": 439,
+   "box_h": 235,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 56,
+   "id": "text_691081d233f044e5",
+   "source": "BEGAN TO DEVOUR OTHER “STORIES” TO TURN AWAY FROM HIS REALITY.",
+   "translation": "Bắt đầu nuốt chửng những “câu chuyện” khác để quay lưng với thực tại của mình.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Bắt đầu nuốt chửng",
+    "những “câu chuyện” khác",
+    "để quay lưng với thực tại",
+    "của mình."
+   ],
+   "box_w": 601,
+   "box_h": 434,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 56,
+   "id": "text_4ad20c5e3b454d3e",
+   "source": "THE PLAYER WHO REINCARNATED 999 MILLION TIMES",
+   "translation": "Người chơi chuyển sinh 999 triệu lần",
+   "role": "title",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 54,
+   "font_px_at_800": 48.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Người chơi",
+    "chuyển sinh",
+    "999 triệu lần"
+   ],
+   "box_w": 323,
+   "box_h": 204,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 57,
+   "id": "text_8e12bc25fa9c4c60",
+   "source": "GENRE NOVELS OVERFLOWING WITH VARIOUS MONSTERS AND ABILITY USERS.",
+   "translation": "Tiểu thuyết kỳ ảo đầy rẫy\nquái vật và người sở hữu\nnăng lực.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tiểu thuyết kỳ ảo đầy rẫy",
+    "quái vật và người sở hữu",
+    "năng lực."
+   ],
+   "box_w": 599,
+   "box_h": 391,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 40,
+   "split_word": false
+  },
+  {
+   "slice": 57,
+   "id": "text_4f99ded94ad44562",
+   "source": "REINCARNATION AND REGRESSION.",
+   "translation": "Chuyển sinh và hồi quy.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chuyển sinh và",
+    "hồi quy."
+   ],
+   "box_w": 478,
+   "box_h": 249,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 57,
+   "id": "text_b5441dc98d1e405c",
+   "source": "SWORDS AND MAGIC.",
+   "translation": "Kiếm và phép thuật.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 77,
+   "font_px_at_800": 68.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Kiếm và phép",
+    "thuật."
+   ],
+   "box_w": 419,
+   "box_h": 264,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 52,
+   "split_word": false
+  },
+  {
+   "slice": 58,
+   "id": "text_9bcb41dbc0da4809",
+   "source": "JAEHWAN FELT AS IF HE HAD RETURNED TO THE OLD DAYS OF THE <ILLUSION TREE> WHERE HE ONCE LIVED.",
+   "translation": "Jaehwan có cảm giác như mình đã trở về những ngày tháng xưa ở Cây Huyễn Ảo, nơi cậu từng sống.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 61,
+   "font_px_at_800": 54.2,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Jaehwan có cảm giác như mình",
+    "đã trở về những ngày tháng xưa",
+    "ở Cây Huyễn Ảo, nơi cậu từng",
+    "sống."
+   ],
+   "box_w": 751,
+   "box_h": 422,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 58,
+   "id": "text_2a89df65de1543d9",
+   "source": "WHEN HE WAS READING THOSE NOVELS,",
+   "translation": "Khi đọc những cuốn tiểu thuyết ấy,",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Khi đọc những cuốn",
+    "tiểu thuyết ấy,"
+   ],
+   "box_w": 459,
+   "box_h": 320,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 59,
+   "id": "text_034457b6f6464bae",
+   "source": "THE “SENSE OF EXISTENCE” THAT ONLY THOSE WHO OPPOSED THE WORLD COULD ENJOY.",
+   "translation": "“Cảm giác tồn tại” mà chỉ những kẻ chống lại thế giới mới có thể tận hưởng.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "“Cảm giác tồn tại” mà chỉ",
+    "những kẻ chống lại thế",
+    "giới mới có thể tận hưởng."
+   ],
+   "box_w": 580,
+   "box_h": 372,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 59,
+   "id": "text_381a0ab0316946e3",
+   "source": "THE “PASSION” FROM THE MOMENTS HE FOUGHT AGAINST ABSURDITY.",
+   "translation": "“Niềm say mê” từ những khoảnh khắc anh chiến đấu chống lại sự phi lý.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 54,
+   "font_px_at_800": 48.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "“Niềm say mê” từ những",
+    "khoảnh khắc anh chiến",
+    "đấu chống lại sự phi lý."
+   ],
+   "box_w": 501,
+   "box_h": 367,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 59,
+   "id": "text_cadc327c936a4588",
+   "source": "THE “AIR” OF THE (ILLUSION TREE).",
+   "translation": "“Bầu không khí” của Cây Huyễn Ảo.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "“Bầu không khí”",
+    "của Cây Huyễn Ảo."
+   ],
+   "box_w": 492,
+   "box_h": 240,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 60,
+   "id": "text_cbec10f9eb234a95",
+   "source": "AND THAT PLACE ALONE WAS HIS REALITY.",
+   "translation": "Và nơi đó là thực tại duy nhất của cậu.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Và nơi đó là thực tại",
+    "duy nhất của cậu."
+   ],
+   "box_w": 536,
+   "box_h": 356,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 60,
+   "id": "text_0ea91e62bba247d5",
+   "source": "HIS HOME WAS THE <ILLUSION TREE>.",
+   "translation": "Nhà cậu là Cây Huyễn Ảo.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Nhà cậu là Cây",
+    "Huyễn Ảo."
+   ],
+   "box_w": 509,
+   "box_h": 242,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 61,
+   "id": "text_edc84b75261d4ef8",
+   "source": "THE PLAYER WHO REINCARNATED 500 MILLION TIMES 12",
+   "translation": "Người chơi chuyển sinh 500 triệu lần 12",
+   "role": "title",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 93,
+   "font_px_at_800": 82.7,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Người chơi chuyển sinh",
+    "500 triệu lần 12"
+   ],
+   "box_w": 863,
+   "box_h": 337,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 51,
+   "split_word": false
+  },
+  {
+   "slice": 61,
+   "id": "text_9997413ec837477f",
+   "source": "턱",
+   "translation": "Cộp",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 142,
+   "font_px_at_800": 126.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Cộp"
+   ],
+   "box_w": 300,
+   "box_h": 499,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 165,
+   "split_word": false
+  },
+  {
+   "slice": 62,
+   "id": "text_a68d28e1776240e6",
+   "source": "WHENEVER HE RETURNED TO REALITY AFTER BEING IMMERSED IN A NOVEL,",
+   "translation": "Mỗi khi trở về thực tại sau khi chìm đắm trong một cuốn tiểu thuyết,",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Mỗi khi trở về thực tại",
+    "sau khi chìm đắm trong",
+    "một cuốn tiểu thuyết,"
+   ],
+   "box_w": 589,
+   "box_h": 396,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 62,
+   "id": "text_8136b9f9a5f34fad",
+   "source": "IT FELT LIKE WAKING UP ON TOP OF A PILE OF TRASH.",
+   "translation": "cảm giác chẳng khác nào tỉnh dậy trên một đống rác.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "cảm giác chẳng khác nào",
+    "tỉnh dậy trên một đống",
+    "rác."
+   ],
+   "box_w": 583,
+   "box_h": 331,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 63,
+   "id": "text_7dcf597170ea4c23",
+   "source": "A WORLD WITHOUT ADAPTERS OR AWAKENED.",
+   "translation": "Một thế giới không có Adapter\nhay Awakened.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 53,
+   "font_px_at_800": 47.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Một thế giới không có",
+    "Adapter",
+    "hay Awakened."
+   ],
+   "box_w": 452,
+   "box_h": 279,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 63,
+   "id": "text_e0b23f74cf3641a6",
+   "source": "HOW COULD SUCH A WORLD EVEN EXIST?",
+   "translation": "Sao một thế giới như thế\nlại có thể tồn tại chứ?",
+   "role": "thought",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Sao một thế giới như thế",
+    "lại có thể tồn tại chứ?"
+   ],
+   "box_w": 551,
+   "box_h": 249,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 64,
+   "id": "text_4aa0fd1ee1ec4d4d",
+   "source": "He sought out other genre novels, like a patient seeking painkillers.",
+   "translation": "cậu tìm đọc những tiểu thuyết thể loại khác,\nnhư bệnh nhân tìm thuốc giảm đau.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "cậu tìm đọc những tiểu thuyết",
+    "thể loại khác,",
+    "như bệnh nhân tìm thuốc giảm",
+    "đau."
+   ],
+   "box_w": 666,
+   "box_h": 408,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 64,
+   "id": "text_6fa78183767e4a34",
+   "source": "And because of that, no matter where he was, Jaehwan was always an outsider,",
+   "translation": "Vì thế, dù ở đâu, Jaehwan cũng luôn là kẻ ngoài cuộc,",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Vì thế, dù ở đâu, Jaehwan",
+    "cũng luôn là kẻ ngoài cuộc,"
+   ],
+   "box_w": 617,
+   "box_h": 366,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 64,
+   "id": "text_b56fe4e4211d4dc8",
+   "source": "Whenever he felt that agonizing sorrow,",
+   "translation": "Mỗi khi cảm thấy nỗi đau quặn thắt ấy,",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 66,
+   "font_px_at_800": 58.7,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Mỗi khi cảm thấy nỗi",
+    "đau quặn thắt ấy,"
+   ],
+   "box_w": 553,
+   "box_h": 302,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 64,
+   "id": "text_0b5b8524853d4e00",
+   "source": "Gloomy, and often alone.",
+   "translation": "u sầu, thường cô độc.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 87,
+   "font_px_at_800": 77.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "u sầu, thường",
+    "cô độc."
+   ],
+   "box_w": 513,
+   "box_h": 301,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 59,
+   "split_word": false
+  },
+  {
+   "slice": 64,
+   "id": "text_ab1b1813db744170",
+   "source": "He couldn’t endure it otherwise.",
+   "translation": "Nếu không, cậu chẳng chịu nổi.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Nếu không, cậu",
+    "chẳng chịu nổi."
+   ],
+   "box_w": 540,
+   "box_h": 242,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 65,
+   "id": "text_bca604ae83d84869",
+   "source": "BUT IF YOU WERE TO ASK IF JAEHWAN HAD NO FRIENDS, THAT WASN’T THE CASE EITHER.",
+   "translation": "Nhưng nếu hỏi Jaehwan có bạn bè không,\nthì cũng không phải là cậu chẳng có ai.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Nhưng nếu hỏi Jaehwan có",
+    "bạn bè không,",
+    "thì cũng không phải là cậu",
+    "chẳng có ai."
+   ],
+   "box_w": 614,
+   "box_h": 402,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 40,
+   "split_word": false
+  },
+  {
+   "slice": 66,
+   "id": "text_3fe7e57961494d0d",
+   "source": "When he first met them, he thought he was dreaming.",
+   "translation": "Lần đầu gặp họ, cậu cứ ngỡ mình đang mơ.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Lần đầu gặp họ, cậu",
+    "cứ ngỡ mình đang mơ."
+   ],
+   "box_w": 650,
+   "box_h": 360,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 66,
+   "id": "text_ea3d0aff5bc341a8",
+   "source": "He even called out their names without realizing it.",
+   "translation": "Cậu thậm chí còn gọi tên họ mà không nhận ra.",
+   "role": "narration",
+   "container": "box",
+   "font": "narration.mac-dinh-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 52,
+   "font_px_at_800": 46.2,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Cậu thậm chí còn gọi tên",
+    "họ mà không nhận ra."
+   ],
+   "box_w": 486,
+   "box_h": 265,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 67,
+   "id": "text_7d4fd5398f0946d0",
+   "source": "YOONHWAN, SEOYUL...?",
+   "translation": "Yoonhwan,\nSeoyul...?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 123,
+   "font_px_at_800": 109.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Yoonhwan,",
+    "Seoyul...?"
+   ],
+   "box_w": 524,
+   "box_h": 342,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 75,
+   "split_word": false
+  },
+  {
+   "slice": 68,
+   "id": "text_b21fb624b7804ca8",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  }
+ ],
+ "readability": {
+  "rendered": 136,
+  "font_px_at_800": {
+   "min": 10.7,
+   "p10": 48.0,
+   "median": 59.6,
+   "max": 177.8
+  },
+  "under_16px": 3,
+  "under_20px": 5,
+  "split_word": 0,
+  "does_not_fit": 0,
+  "missing_glyphs": 1,
+  "size_from_ocr": 0,
+  "by_role": {
+   "dark_threat": [
+    73.8
+   ],
+   "dialogue": [
+    10.7,
+    10.7,
+    16.0,
+    46.2,
+    48.9,
+    50.7,
+    51.6,
+    51.6,
+    52.4,
+    53.3,
+    55.1,
+    55.1,
+    56.0,
+    56.0,
+    56.0,
+    56.9,
+    56.9,
+    56.9,
+    57.8,
+    59.6,
+    59.6,
+    60.4,
+    61.3,
+    61.3,
+    61.3,
+    63.1,
+    63.1,
+    63.1,
+    63.1,
+    64.0,
+    65.8,
+    65.8,
+    65.8,
+    68.4,
+    68.4,
+    68.4,
+    68.4,
+    69.3,
+    71.1,
+    72.0,
+    79.1,
+    85.3,
+    88.9,
+    93.3,
+    100.4,
+    101.3,
+    101.3,
+    109.3,
+    126.2
+   ],
+   "free_text": [
+    35.6,
+    77.3,
+    79.1
+   ],
+   "narration": [
+    18.7,
+    44.4,
+    46.2,
+    47.1,
+    47.1,
+    47.1,
+    48.0,
+    48.0,
+    48.9,
+    48.9,
+    49.8,
+    51.6,
+    51.6,
+    51.6,
+    51.6,
+    52.4,
+    52.4,
+    52.4,
+    52.4,
+    52.4,
+    53.3,
+    54.2,
+    54.2,
+    55.1,
+    56.0,
+    56.0,
+    56.0,
+    56.0,
+    56.0,
+    56.0,
+    56.0,
+    56.9,
+    56.9,
+    56.9,
+    56.9,
+    56.9,
+    57.8,
+    58.7,
+    58.7,
+    59.6,
+    59.6,
+    59.6,
+    59.6,
+    59.6,
+    60.4,
+    61.3,
+    61.3,
+    61.3,
+    61.3,
+    61.3,
+    62.2,
+    62.2,
+    62.2,
+    63.1,
+    63.1,
+    64.0,
+    64.0,
+    64.0,
+    64.0,
+    64.9,
+    68.4,
+    69.3,
+    70.2,
+    72.9,
+    77.3,
+    78.2,
+    81.8,
+    155.6
+   ],
+   "sfx": [
+    86.2,
+    126.2
+   ],
+   "thought": [
+    10.7,
+    52.4,
+    60.4,
+    60.4,
+    63.1,
+    69.3,
+    73.8,
+    81.8,
+    152.9
+   ],
+   "title": [
+    31.1,
+    48.0,
+    82.7,
+    177.8
+   ]
+  }
+ },
+ "per_chapter": {
+  "prompt_tokens": 763670,
+  "completion_tokens": 38978,
+  "cost_usd": 0.05237
+ },
+ "per_slice": {
+  "prompt_tokens": 11749,
+  "completion_tokens": 600
+ },
+ "scorecard": {
+  "clean": {
+   "slices": 65,
+   "text_left": 1,
+   "ghosts": 0,
+   "items": [
+    {
+     "slice": 48,
+     "kind": "text",
+     "box": [
+      263,
+      717,
+      318,
+      839
+     ],
+     "px": 390,
+     "share": 0.19
+    }
+   ]
+  },
+  "text": {
+   "objects": 141,
+   "translated": 136,
+   "untranslated": 5,
+   "needs_review": 4,
+   "kept_original": 0
+  },
+  "spend": {
+   "cost_usd": 0.05237,
+   "requests": 355,
+   "prompt_tokens": 763670,
+   "images": 275,
+   "wall_s": 961.5,
+   "by_stage": {
+    "scan": {
+     "requests": 34,
+     "images": 68,
+     "prompt_tokens": 54050,
+     "completion_tokens": 4308
+    },
+    "glossary": {
+     "requests": 33,
+     "images": 65,
+     "prompt_tokens": 104854,
+     "completion_tokens": 3338
+    },
+    "review": {
+     "requests": 12,
+     "images": 12,
+     "prompt_tokens": 41027,
+     "completion_tokens": 170
+    },
+    "translate": {
+     "requests": 65,
+     "images": 130,
+     "prompt_tokens": 426777,
+     "completion_tokens": 25569
+    },
+    "judge": {
+     "requests": 202,
+     "images": 0,
+     "prompt_tokens": 118884,
+     "completion_tokens": 0
+    },
+    "polish": {
+     "requests": 9,
+     "images": 0,
+     "prompt_tokens": 18078,
+     "completion_tokens": 5593
+    }
+   },
+   "stage_s": {
+    "download": 4.6,
+    "scan": 28.2,
+    "clean": 336.2,
+    "review": 121.2,
+    "translate": 159.9,
+    "polish": 295.3,
+    "render": 11.9,
+    "finish": 0.1
+   }
+  },
+  "polish": {
+   "judged": 110,
+   "flagged": 39,
+   "rewritten": 14,
+   "still_flagged": 29
+  },
+  "fit": {
+   "does_not_fit": 0,
+   "under_20px": 5,
+   "split_word": 0,
+   "missing_glyphs": 1
+  }
+ }
+}
