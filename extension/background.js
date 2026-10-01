@@ -33,8 +33,10 @@ async function collectPage(autoScroll) {
       continue;
     }
     let src = node.currentSrc || node.src || "";
-    if (!src || (src.startsWith("data:") && node.naturalWidth < 300)) src = lazy.map((name) => node.getAttribute(name)).find(Boolean) || src;
-    if (!src) continue;
+    const placeholder = !src || (src.startsWith("data:") && node.naturalWidth < 300);
+    if (placeholder) src = lazy.map((name) => node.getAttribute(name)).find(Boolean) || src;
+    // A loaded strip this thin is a divider, never a page.
+    if (!src || (!placeholder && node.naturalHeight && node.naturalHeight < 100)) continue;
     src = new URL(src, location.href).href;
     if (seen.has(src)) continue;
     seen.add(src);
