@@ -55,6 +55,7 @@ RETRY_ROUNDS = 3
 RENDER_RESTORE_ATTEMPTS = 3
 POLISH_ROUNDS = 2  # rewrites of one line before its best version stays
 POLISH_CONCURRENCY = 8  # judge calls in flight; each is one short text
+MAX_GRADED_KEPT = 400  # first grades kept in the report
 RENDER_FAILED_OBJECT = re.compile(r"\(vùng ([\w-]+)\)")
 POLL_SECONDS = 1.0
 # A.I calls wait on the network, so they get their own threads instead of queueing behind re-inpaints.
@@ -611,6 +612,9 @@ class AIModeRunner:
             for line, found in judged:
                 line.scores = found
             if _round == 0:
+                # Every first grade is kept, so the score limits can be calibrated on real chapters.
+                stats["scores"] = [{"page": line.page_index + 1, "text": line.text, "scores": found}
+                                   for line, found in judged[:MAX_GRADED_KEPT]]
                 stats["judged"] = len(judged)
                 stats["flagged"] = sum(bool(polish.problems(line.scores)) for line, _ in judged)
             flagged = [line for line, _ in judged if polish.problems(line.scores)]

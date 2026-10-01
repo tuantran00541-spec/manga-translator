@@ -328,7 +328,7 @@ def main() -> int:
                 if not isinstance(obj, dict):
                     continue
                 report["lines"].append({
-                    "slice": index + 1, "id": obj.get("id"), "source": obj.get("ocr_text") or obj.get("text") or "",
+                    "slice": index + 1, "id": obj.get("id"), "source": obj.get("source_read") or obj.get("ocr_text") or obj.get("text") or "",
                     "translation": obj.get("translation") or "",
                     "role": obj.get("typography_role"), "container": obj.get("container"),
                     "font": obj.get("font_ai_id") or (obj.get("style") or {}).get("font"),
