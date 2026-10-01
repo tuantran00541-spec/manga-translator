@@ -522,6 +522,9 @@ async def translate_page_in_context(
                 obj["source_cap_px"] = candidate["source_cap_px"]
             obj["translation_model"] = translated.model
             obj["translation_input_text"] = candidate["text"]
+            source_read = getattr(translated, "sources", {}).get(candidate["id"])
+            if source_read:
+                obj["source_read"] = source_read
             obj["auto_translation"] = value
             _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(candidate["id"]))
             role = getattr(translated, "roles", {}).get(candidate["id"])

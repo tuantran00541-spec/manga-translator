@@ -19,6 +19,7 @@ LOWER_IS_BETTER = {
     "clean.text_left", "clean.ghosts", "text.untranslated", "text.needs_review", "text.kept_original",
     "fit.does_not_fit", "fit.under_20px", "fit.split_word", "fit.missing_glyphs",
     "spend.cost_usd", "spend.requests", "spend.prompt_tokens", "spend.images", "spend.wall_s",
+    "polish.flagged", "polish.still_flagged",
 }
 
 
@@ -98,6 +99,8 @@ def score_chapter(pages: list[dict], detector, run: dict | None = None) -> dict:
     card = {"clean": clean_score(pages, detector), "text": text_score(pages)}
     if run:
         card["spend"] = spend_score(run)
+        polished = (run.get("report") or {}).get("polish") or {}
+        card["polish"] = {k: polished.get(k, 0) for k in ("judged", "flagged", "rewritten", "still_flagged")}
         readability = run.get("readability") or {}
         card["fit"] = {k: readability.get(k) for k in ("does_not_fit", "under_20px", "split_word", "missing_glyphs")}
     return card

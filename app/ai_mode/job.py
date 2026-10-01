@@ -17,6 +17,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 
+import requests
 from fastapi import HTTPException
 
 from app.ai_mode.checkpoints import _covered, review_clean, settle_clean_review
@@ -33,6 +34,7 @@ STAGES: tuple[tuple[str, str], ...] = (
     ("clean", "Checkpoint 2: Clean ảnh"),
     ("review", "Checkpoint 3: AI so ảnh gốc và ảnh clean"),
     ("translate", "Checkpoint 4: Dịch và chọn font"),
+    ("polish", "Nâng cao: Jev soát câu dịch"),
     ("render", "Render"),
     ("finish", "Hoàn tất"),
 )
@@ -51,6 +53,8 @@ RETRY_BATCH = 4
 RETRY_ROUNDS = 3
 # Objects per slice given back their original pixels when their translation cannot be lettered.
 RENDER_RESTORE_ATTEMPTS = 3
+POLISH_ROUNDS = 2  # rewrites of one line before its best version stays
+POLISH_CONCURRENCY = 8  # judge calls in flight; each is one short text
 RENDER_FAILED_OBJECT = re.compile(r"\(vùng ([\w-]+)\)")
 POLL_SECONDS = 1.0
 # A.I calls wait on the network, so they get their own threads instead of queueing behind re-inpaints.
@@ -76,6 +80,7 @@ class AIModeSettings:
     budget_usd: float = 0.30
     workers: int = 2
     story_notes: str = ""
+    polish: bool = False  # advanced: a judge model grades each line and weak ones are rewritten
 
 
 @dataclass
@@ -127,6 +132,7 @@ class AIModeRunner:
             "editorial_blockers": 0, "blocker_samples": [], "source_lang": None,
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
             "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [],
+            "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "errors": [], "samples": []},
         })
         self._memory = None
         self._glossary_task: asyncio.Task | None = None
@@ -563,6 +569,99 @@ class AIModeRunner:
         self.report["characters"] = sheet["characters"][:MAX_REPORT_ITEMS]
         self.report["address"] = sheet["address"][:MAX_REPORT_ITEMS]
         self._progress(len(indices), len(indices), f"Dịch {self.report['translated']} vùng")
+
+    async def polish(self) -> None:
+        """Advanced: the judge grades each translated line; weak lines are rewritten and kept only when graded better."""
+        from app.ai_mode import polish
+
+        stats = self.report["polish"]
+        if not self.settings.polish:
+            self._progress(0, 0, "Tắt")
+            return
+        from app.ai_mode.seams import seam_mirror_ids
+
+        manifest = self._manifest()
+        indices = self._active_pages()
+        # A text crossing a slice cut is graded on the slice that owns it; the copy follows.
+        mirrors = {(index, str(obj_id)) for index in indices for obj_id in seam_mirror_ids(manifest, index)}
+        lines = [line for line in polish.collect_lines(manifest.get("pages", []), indices)
+                 if (line.page_index, line.id) not in mirrors]
+        memory = self._memory.snapshot() if self._memory is not None else {}
+        gate = asyncio.Semaphore(POLISH_CONCURRENCY)
+        unavailable = False
+
+        async def grade(line, text=None):
+            nonlocal unavailable
+            async with gate:
+                if unavailable or self.job.cancel_requested:
+                    return None
+                try:
+                    return await _ai_call(polish.judge, self.provider, self.api_key, polish.line_state(line, text))
+                except (RuntimeError, ValueError, OSError, requests.RequestException) as exc:
+                    _append(stats["errors"], _detail(exc)[:200])
+                    # No judge behind this provider: stop asking.
+                    unavailable = unavailable or " 404" in _detail(exc)
+                    return None
+
+        self._progress(0, len(lines))
+        pending = lines
+        for _round in range(POLISH_ROUNDS):
+            scores = await asyncio.gather(*(grade(line) for line in pending))
+            judged = [(line, found) for line, found in zip(pending, scores) if found]
+            for line, found in judged:
+                line.scores = found
+            if _round == 0:
+                stats["judged"] = len(judged)
+                stats["flagged"] = sum(bool(polish.problems(line.scores)) for line, _ in judged)
+            flagged = [line for line, _ in judged if polish.problems(line.scores)]
+            if not flagged or self.job.cancel_requested:
+                break
+            batches = [flagged[i:i + polish.REWRITE_BATCH] for i in range(0, len(flagged), polish.REWRITE_BATCH)]
+            kept = []
+            for batch in batches:
+                try:
+                    texts, cost = await _ai_call(polish.rewrite, self.provider, self.settings.model, self.api_key,
+                                                 batch, memory)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    _append(stats["errors"], _detail(exc)[:200])
+                    continue
+                self._add_cost(cost if self.provider.tracks_cost else None)
+                candidates = [(line, texts[line.id]) for line in batch if texts.get(line.id, line.text) != line.text]
+                regraded = await asyncio.gather(*(grade(line, text) for line, text in candidates))
+                for (line, text), found in zip(candidates, regraded):
+                    if found and polish.quality(found) > polish.quality(line.scores):
+                        _append(stats["samples"], {"page": line.page_index + 1, "source": line.source,
+                                                   "before": line.text, "after": text,
+                                                   "scores_before": line.scores, "scores_after": found})
+                        line.text, line.scores = text, found
+                        kept.append(line)
+            await asyncio.to_thread(self._save_polished, kept)
+            stats["rewritten"] += len(kept)
+            # A line still flagged, rewritten or not, gets one more try with its current text.
+            pending = [line for line in flagged if polish.problems(line.scores)]
+            self._progress(len(lines), len(lines))
+        stats["still_flagged"] = sum(bool(polish.problems(line.scores)) for line in lines if line.scores)
+        if stats["rewritten"]:
+            await self._sync_seams()
+        self._progress(len(lines), len(lines), f"Chấm {stats['judged']} câu, sửa {stats['rewritten']}")
+
+    def _save_polished(self, lines) -> None:
+        from app.manifest_utils import invalidate_page_render
+
+        if not lines:
+            return
+        with get_manifest_lock(self.job.chapter_id):
+            manifest = load_manifest_raw(self.job.chapter_id)
+            for line in lines:
+                page = manifest["pages"][line.page_index]
+                obj = next((o for o in page.get("text_objects") or []
+                            if isinstance(o, dict) and str(o.get("id")) == line.id), None)
+                if obj is None:
+                    continue
+                obj.setdefault("polished_from", obj.get("translation"))
+                obj["translation"] = obj["auto_translation"] = line.text
+                invalidate_page_render(manifest, line.page_index)
+            save_manifest_raw(self.job.chapter_id, manifest)
 
     async def _sync_seams(self) -> list[int]:
         """Letter every text crossing a slice cut exactly as its owning slice does."""

@@ -132,7 +132,7 @@ def _run_manager(fail_at=None, cancel=False):
 
 def test_manager_runs_every_stage_in_order():
     snapshot = _run_manager()
-    assert RecordingRunner.calls == ["download", "scan", "clean", "review", "translate", "render", "finish"]
+    assert RecordingRunner.calls == ["download", "scan", "clean", "review", "translate", "polish", "render", "finish"]
     assert snapshot["status"] == "completed"
     assert all(stage["status"] == "done" for stage in snapshot["stages"])
     assert snapshot["chapter_id"] == CHAPTER

@@ -28,7 +28,7 @@ _TRANSLATIONS_SCHEMA = {
     "properties": {
         "translations": {"type": "array", "items": {
             "type": "object",
-            "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"},
+            "properties": {"id": {"type": "string"}, "source": {"type": "string"}, "translated_text": {"type": "string"},
                            "role": {"type": "string"}, "container": {"type": "string"}},
             "required": ["id", "translated_text"],
         }},
@@ -63,6 +63,7 @@ class VisionTranslationResult:
     enlarge_ids: frozenset[str] = frozenset()
     colors: dict[str, str] = field(default_factory=dict)
     containers: dict[str, str] = field(default_factory=dict)
+    sources: dict[str, str] = field(default_factory=dict)  # the source text the model read in each box
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -262,7 +263,7 @@ class VisionPageTranslator:
         ids = set(real.values())
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
             result, data = _drop_foreign_script(result, data)
-        roles, containers, review, answered, enlarge, colors = {}, {}, set(), set(), set(), {}
+        roles, containers, review, answered, enlarge, colors, sources = {}, {}, set(), set(), set(), {}, {}
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
                 continue
@@ -277,6 +278,8 @@ class VisionPageTranslator:
                 review.add(str(entry["id"]))
             if entry.get("enlarge") is True:
                 enlarge.add(str(entry["id"]))
+            if isinstance(entry.get("source"), str) and entry["source"].strip():
+                sources[str(entry["id"])] = " ".join(entry["source"].split())[:1000]
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
         # Bubble speech always takes the base font; display fonts are for shouts, captions and art.
@@ -292,7 +295,7 @@ class VisionPageTranslator:
             }
         return replace(
             result, font_choices=fonts, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
-            enlarge_ids=frozenset(enlarge), colors=colors, containers=containers,
+            enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources,
         )
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):

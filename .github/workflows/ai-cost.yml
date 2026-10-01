@@ -15,6 +15,10 @@ on:
       price:
         description: "USD per million tokens for that model: input output [cached]"
         required: false
+      polish:
+        description: "Advanced: the Jev judge grades every translated line and weak ones are rewritten"
+        type: boolean
+        default: false
       stage_models:
         description: 'Models per checkpoint, in fallback order: [{"stage":"review","model":"...","price":[in,out],"effort":"none"}]'
         required: false
@@ -124,6 +128,11 @@ jobs:
             echo "GATEWAY_UPSTREAM_REASONING_EFFORT=$(conf effort)"
             echo "GATEWAY_PRICE_CACHED_PER_M=$price_cached"
             echo "GATEWAY_STAGE_MODELS=$(printf '%s' "$INPUT_STAGES" | tr -d '\n')"
+            # minirouter serves the Jev judge; its answers are free and input costs this much per million tokens.
+            if [ "${provider:-sovinfra}" = minirouter ]; then
+              echo "GATEWAY_JUDGE_MODEL=typesafe-ai/jev"
+              echo "GATEWAY_JUDGE_PRICE_PER_M=0.0462"
+            fi
           } >> "$GITHUB_ENV"
 
       - name: Check the provider secret
@@ -191,11 +200,12 @@ jobs:
           SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
           INPUT_URL: ${{ github.event.inputs.chapter_url }}
+          INPUT_POLISH: ${{ github.event.inputs.polish }}
         run: |
           export GATEWAY_UPSTREAM_KEY="${!PROVIDER_SECRET}"
           url="${INPUT_URL:-$(head -n1 .github/ai-cost.txt | tr -d '\r')}"
           rm -rf audit-results/ai-cost
-          python scripts/ai_cost_run.py "$url" --out audit-results/ai-cost
+          python scripts/ai_cost_run.py "$url" --out audit-results/ai-cost $( [ "$INPUT_POLISH" = true ] && echo --polish )
 
       - name: Logs
         if: always()

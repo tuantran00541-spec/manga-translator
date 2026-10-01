@@ -32,7 +32,9 @@ ROLES = frozenset({"system", "user", "assistant"})
 REASONING_BUDGETS = {"none": 0, "minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}
 
 
-STAGES = frozenset({"scan", "glossary", "review", "translate"})  # A.I mode checkpoints a client may name
+STAGES = frozenset({"scan", "glossary", "review", "translate", "polish"})  # A.I mode checkpoints a client may name
+MAX_JUDGE_STATE_CHARS = 8000  # one translated line with its neighbours and notes
+MAX_JUDGE_QUESTIONS = 8
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,8 @@ class Upstream:
     # Step name -> Routes tried in order; a later one answers when an earlier one is overloaded or failing.
     stages: dict = field(default_factory=dict)
     fallbacks: tuple = ()  # the same for requests that name no step
+    judge_model: str = ""  # a decision model that grades translated lines; empty turns /v1/evaluate off
+    judge_usd_per_m: float = 0.0  # its price per million input tokens; its answers are free
 
     @property
     def default(self) -> Route:
@@ -87,7 +91,8 @@ class Upstream:
     def cost(self, usage: dict, model: str | None = None) -> float:
         return self.priced(model).cost(usage)
 
-    def send(self, payload: dict, trace: dict | None = None, models: list | None = None) -> tuple[int, dict]:
+    def send(self, payload: dict, trace: dict | None = None, models: list | None = None,
+             path: str = "chat/completions") -> tuple[int, dict]:
         """POST upstream, retrying transient failures on the next model (a name or Route) in ``models``; ``trace`` records attempts."""
         models = models or [payload.get("model")]
         for attempt in range(self.retries + 1):
@@ -106,7 +111,7 @@ class Upstream:
                     trace["model"] = payload["model"]
             try:
                 response = requests.post(
-                    f"{self.base.rstrip('/')}/chat/completions",
+                    f"{self.base.rstrip('/')}/{path}",
                     headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
                     json=payload,
                     timeout=(10, 300),
@@ -230,6 +235,8 @@ def upstream_from_env() -> Upstream:
         retries=max(0, int(os.getenv("GATEWAY_UPSTREAM_RETRIES", "2") or 0)),
         stages=_stage_chains(_routes_from_env("GATEWAY_STAGE_MODELS")),
         fallbacks=tuple(route for _stage, route in _routes_from_env("GATEWAY_FALLBACK_MODELS")),
+        judge_model=os.getenv("GATEWAY_JUDGE_MODEL", "").strip(),
+        judge_usd_per_m=float(os.getenv("GATEWAY_JUDGE_PRICE_PER_M", "0") or 0),
     )
 
 
@@ -540,6 +547,44 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
                 message = message.replace(upstream.api_key, "***")
             return _error(status if status in (400, 429) else 502, "upstream_error",
                           f"Upstream HTTP {status}" + (f": {message}" if message else ""))
+        body.setdefault("usage", {})["gateway_job_cost_usd"] = round(total, 6)
+        return body
+
+    @app.post("/v1/evaluate")
+    async def evaluate(payload: dict, row=Depends(job)):
+        if not upstream.judge_model:
+            return _error(404, "judge_unavailable", "No judge model is configured")
+        state, questions = payload.get("state"), payload.get("questions")
+        if (not isinstance(state, str) or not state.strip() or len(state) > MAX_JUDGE_STATE_CHARS
+                or not isinstance(questions, dict) or not 0 < len(questions) <= MAX_JUDGE_QUESTIONS):
+            return _error(400, "bad_request", "A judge request is one state string and up to 8 questions")
+        forwarded = {"model": upstream.judge_model, "state": state, "questions": questions}
+        held = len(json.dumps(forwarded)) / 4 * upstream.judge_usd_per_m / 1_000_000
+        try:
+            store.begin_request(row["id"], held)
+        except QuotaExceeded:
+            return _error(402, "cost_cap", "This chapter reached its A.I cost cap")
+        started = time.perf_counter()
+        try:
+            status, body = await run_in_threadpool(upstream.send, forwarded, None, None, "evaluate")
+        except requests.RequestException:
+            status, body = 0, {}
+        except BaseException:
+            store.add_cost(row["id"], 0.0, released_usd=held)
+            raise
+        usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+        # Routers name the input count differently; a missing count is estimated from the request size.
+        tokens = next((int(usage[key]) for key in ("inputTokens", "input_tokens", "prompt_tokens")
+                       if isinstance(usage.get(key), (int, float))), round(len(json.dumps(forwarded)) / 4))
+        total = store.add_cost(row["id"], tokens * upstream.judge_usd_per_m / 1_000_000, tokens, 0, released_usd=held)
+        if trace_path:
+            _trace_line(trace_path, {"t": round(time.time(), 3), "ms": round((time.perf_counter() - started) * 1000),
+                                     "status": status, "stage": "judge", "model": upstream.judge_model,
+                                     "images": 0, "prompt_tokens": tokens, "completion_tokens": 0})
+        if status == 0:
+            return _error(502, "upstream_unreachable", "A.I upstream is unreachable")
+        if status >= 400:
+            return _error(status if status in (400, 429) else 502, "upstream_error", f"Judge HTTP {status}")
         body.setdefault("usage", {})["gateway_job_cost_usd"] = round(total, 6)
         return body
 

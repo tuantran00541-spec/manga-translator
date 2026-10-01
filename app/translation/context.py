@@ -49,7 +49,7 @@ _VIETNAMESE = """
 _OUTPUT = """
 <output>
 JSON only:
-{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","container":"<container>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
+{{"translations":[{{"id":"<id>","source":"<the text IMAGE 1 shows in the box>","translated_text":"<text, lines split with \\n>","role":"<role>","container":"<container>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
  "font_choices":{{"<id>":"<font_id>"}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, apparent age and gender, relationship>"}}],

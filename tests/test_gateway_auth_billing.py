@@ -519,3 +519,25 @@ def test_housekeeping_closes_stale_jobs_and_drops_old_sessions(world, tmp_path):
     assert store.purge()["sessions"] == 1
     store.backup(tmp_path / "copy.sqlite")
     assert Store(tmp_path / "copy.sqlite").stats()["accounts"] == 1
+
+
+def test_judge_requests_go_to_evaluate_and_bill_input_only(tmp_path, monkeypatch):
+    sent = []
+
+    def send(self, payload, trace=None, models=None, path="chat/completions"):
+        sent.append((path, payload))
+        return 200, {"answers": {"natural": {"type": "score", "score": 2.6}}, "usage": {"inputTokens": 1_000_000}}
+
+    monkeypatch.setattr(Upstream, "send", send)
+    upstream = Upstream("http://127.0.0.1:9", "", "m", 0, 0, judge_model="typesafe-ai/jev", judge_usd_per_m=0.0462)
+    client = TestClient(create_app(Store(tmp_path / "gw.sqlite"), upstream, ADMIN,
+                                   mailer=Mailer(api_key="", sender="", dev_mode=True)))
+    job = _job(client)
+    question = {"natural": {"type": "score", "instructions": "x", "criteria": ["bad", "good"]}}
+    body = client.post("/v1/evaluate", headers=job, json={"state": "s", "questions": question, "model": "other"}).json()
+    assert sent == [("evaluate", {"model": "typesafe-ai/jev", "state": "s", "questions": question})]
+    assert body["usage"]["gateway_job_cost_usd"] == 0.0462, "a million input tokens at the judge price"
+    assert client.post("/v1/evaluate", headers=job, json={"state": 1, "questions": question}).status_code == 400
+    bare = TestClient(create_app(Store(tmp_path / "bare.sqlite"), Upstream("http://127.0.0.1:9", "", "m", 0, 0), ADMIN,
+                                 mailer=Mailer(api_key="", sender="", dev_mode=True)))
+    assert bare.post("/v1/evaluate", headers=_job(bare), json={"state": "s", "questions": question}).status_code == 404

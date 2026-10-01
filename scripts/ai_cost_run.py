@@ -226,6 +226,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--balance", type=float, default=5.0, help="USD credited to the test account")
     parser.add_argument("--timeout-min", type=float, default=60)
+    parser.add_argument("--polish", action="store_true", help="let the Jev judge grade and send back weak lines")
     args = parser.parse_args()
     out = args.out.resolve()
     if not out.is_relative_to(ROOT):
@@ -254,7 +255,7 @@ def main() -> int:
         _wait(f"{APP}/health", app)
 
         started = time.perf_counter()
-        response = requests.post(f"{APP}/api/ai_mode/start", json={"url": args.url, "provider": "manga-cloud"}, timeout=60)
+        response = requests.post(f"{APP}/api/ai_mode/start", json={"url": args.url, "provider": "manga-cloud", "polish": args.polish}, timeout=60)
         if not response.ok:
             raise SystemExit(f"start failed: {response.status_code} {response.text[:400]}")
         job = response.json()
@@ -284,6 +285,7 @@ def main() -> int:
         "model": os.environ.get("GATEWAY_UPSTREAM_MODEL"),
         "price_usd_per_m": {"input": float(os.environ.get("GATEWAY_PRICE_INPUT_PER_M", "0")),
                             "output": float(os.environ.get("GATEWAY_PRICE_OUTPUT_PER_M", "0"))},
+        "polish": args.polish,
         "status": job["status"],
         "error": job.get("error"),
         "wall_s": round(wall, 1),
