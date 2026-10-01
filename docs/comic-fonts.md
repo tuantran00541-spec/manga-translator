@@ -22,9 +22,9 @@ Precedence, highest first:
 
 - `font_selection_mode=user`: a valid editor/API choice is always kept. An
   unknown ID falls back to `default`.
-- `font_selection_mode=ai`: a validated AI `font_id` (the translator may pick a
-  catalog font by role: dialogue, SFX, horror, ...). An unknown ID falls back
-  to `default`.
+- `font_selection_mode=ai`: the font A.I mode set from the text's role and
+  container (`app/render/font_guide.py`). An unknown ID falls back to
+  `default`.
 - `font_selection_mode=auto` (also used for newly detected text objects): use
   the AI choice when there is one, otherwise `default`.
 - A legacy object with an unmarked non-default style keeps that font.

@@ -398,7 +398,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     raise ValueError("empty seam detector strip")
                 seam_image = provider_image[seam_local_y1:seam_local_y2, :]
                 seam_source_y1 = provider_source_y1 + seam_local_y1
-                seam_boxes = self.detector.detect(seam_image, parallel=True)
+                seam_boxes = self.detector.detect(seam_image)
                 detector_metrics = self.detector.last_metrics()
             except Exception as exc:
                 shared_metrics["failures"] = int(shared_metrics["failures"]) + 1
@@ -613,7 +613,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         committed_indices: list[int] = []
         discarded_stale_indices: list[int] = []
         errors: list[tuple[int, Exception]] = []
-        parallel_detectors = max_workers == 1
 
         def _process_one(item) -> tuple[int, dict, dict | None]:
             (
@@ -634,7 +633,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     stitch_core=stitch_core,
                     supplemental_detections=shared_seam_detections.get(idx),
                     seam_context_unavailable=idx in seam_context_unavailable,
-                    parallel_detectors=parallel_detectors,
                 ),
                 snapshot,
             )

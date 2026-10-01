@@ -68,14 +68,11 @@ class PageProcessingMixin:
         stitch_core: dict | None = None,
         supplemental_detections: list[BubbleBox] | None = None,
         seam_context_unavailable: bool = False,
-        *,
-        parallel_detectors: bool = False,
     ) -> dict:
         started_at = time.perf_counter()
         read_started_at = started_at
         image = read_image(img_path)
         read_ms = (time.perf_counter() - read_started_at) * 1000.0
-        detector_kwargs = {"parallel": parallel_detectors}
 
         core_bounds: tuple[int, int] | None = None
         if isinstance(stitch_core, dict):
@@ -97,10 +94,10 @@ class PageProcessingMixin:
             core_image = image[core_y1:core_y2, :]
             detected = [
                 self._shift_detection_y(box, core_y1)
-                for box in self.detector.detect(core_image, **detector_kwargs)
+                for box in self.detector.detect(core_image)
             ]
         else:
-            detected = self.detector.detect(image, **detector_kwargs)
+            detected = self.detector.detect(image)
         detector_metrics = self.detector.last_metrics()
 
         if supplemental_detections:

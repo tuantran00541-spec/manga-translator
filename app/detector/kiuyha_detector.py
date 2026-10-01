@@ -312,7 +312,7 @@ class KiuyhaTextDetector:
                     boxes.append(_text_box(x1, y1, x2, y2, t.confidence, mask.astype(np.uint8) * 255, self.source_model))
         return boxes
 
-    def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
+    def detect(self, image: np.ndarray) -> list[BubbleBox]:
         """Text boxes for the pipeline, timing kept for ``last_metrics``."""
         started = time.perf_counter()
         boxes = self.text_boxes(image)
