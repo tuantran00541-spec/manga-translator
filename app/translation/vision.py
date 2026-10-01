@@ -245,11 +245,11 @@ class VisionPageTranslator:
             if str(source_lang or "").lower() in {"", "auto"}
             else _language_name(source_lang)
         )
-        system = system_prompt(_language_name(target_lang), target_lang)
+        system = system_prompt(_language_name(target_lang), target_lang, memory.settled() if memory is not None else None)
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
             (f"CHAPTER MEMORY (context from earlier slices, not to be copied into the answer): "
-             f"{json.dumps(memory.snapshot(), ensure_ascii=False, separators=(',', ':'))}\n\n"
+             f"{json.dumps(memory.snapshot(settled=False), ensure_ascii=False, separators=(',', ':'))}\n\n"
              if memory is not None else "")
             + f"{where}Translate these text objects from {source_name}.\n"
             + json.dumps({"image_width": w, "image_height": h, "objects": objects,

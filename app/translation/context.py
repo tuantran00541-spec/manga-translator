@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 from collections import deque
 
@@ -31,7 +32,7 @@ ANSWER: the JSON in <output>, nothing else.
 - Trust the image over source_text, which is an OCR hint and often wrong.
 - Stay within max_chars: it is what fits at the raw size, and longer text is lettered smaller. If a line still cannot fit, set "review": true. Set "enlarge": true when the raw text is too small to read.
 - Read the scene (speaker, listener, relationship, emotion, the lines around it) and translate the meaning. Give each character one consistent voice and add nothing the source does not say.
-- Treat CHAPTER MEMORY as settled and use its glossary names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
+- Treat <chapter_glossary> and CHAPTER MEMORY as settled and use their names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
 - Copy the source punctuation exactly: every "...", "?!", "!?", "!!" and "—" stays where the source has it, with both marks of "?!". Keep the tone; make jokes only where the source does.
 - List in "unboxed" every line someone says, thinks or narrates (dialogue, narration, captions, titles, system messages) that the image shows outside every red box; it is erased and translated next. Sound effects drawn into the art, signs that are only scenery and scanlator credits stay out. Boxes are on a 0-1000 grid of the image: "x1","y1" top-left and "x2","y2" bottom-right.
 - Leave translated_text empty for scanlator credits, watermarks, URLs and sound effects drawn into the art (role "sfx"). A sound effect lettered as plain text gets a short onomatopoeia.
@@ -44,7 +45,7 @@ ANSWER: the JSON in <output>, nothing else.
 _VIETNAMESE = """
 <vietnamese>
 - Forms of address come from the two people. Before their first line, look at speaker and listener in the images (apparent age and gender, clothes, rank) and at how they relate (family, master and disciple, officer and civilian, boss and worker, friends, strangers, enemies), then choose the self/other pair a Vietnamese reader expects from exactly those two. Examples: a grown police officer to a teenage boy "tôi"/"cậu", the boy back "tôi"/"anh" ("cháu"/"chú" when the man is much older); a master to a disciple "ta"/"con"; rivals "ta"/"ngươi" or "tao"/"mày"; close friends "tớ"/"cậu" or "tao"/"mày"; a subject to a king "thần"/"bệ hạ".
-- A pair in CHAPTER MEMORY address is settled: use it for every line between those two, and report a new pair, or a change the story makes, in "address". Keep "bạn" for text that addresses the reader (system windows, notices). Narration and inner thoughts use the self form the narrator uses in dialogue.
+- A pair in the glossary or CHAPTER MEMORY address is settled: use it for every line between those two, and report a new pair, or a change the story makes, in "address". Keep "bạn" for text that addresses the reader (system windows, notices). Narration and inner thoughts use the self form the narrator uses in dialogue.
 - Write natural speech: drop translationese ("Điều mà tôi muốn nói là…"), a subject the scene makes clear and filler (thì, là, mà, một cách, những, các, đã/đang/sẽ when the time is clear); prefer the short word (vì, nếu, giờ).
 - Genre terms: cultivation uses sư phụ, sư huynh, đạo hữu, bổn tọa and Hán Việt realms; game stories keep Level, Skill, Stat, Dungeon with Hệ thống, hồi quy, thức tỉnh; military ranks become Vietnamese ranks.
 </vietnamese>
@@ -64,11 +65,15 @@ Every id appears once in translations and in font_choices. characters and addres
 """.strip()
 
 
-def system_prompt(target_name: str, target_lang: str) -> str:
+def system_prompt(target_name: str, target_lang: str, settled: dict | None = None) -> str:
     parts = [_TASK.format(target=target_name), "<fonts>\n" + font_guide_prompt() + "\n</fonts>"]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE)
     parts.append(_OUTPUT.format())
+    if settled:
+        # What the chapter settled before translating sits in the system text, which the provider caches.
+        parts.append("<chapter_glossary>\n" + json.dumps(settled, ensure_ascii=False, separators=(",", ":"))
+                     + "\n</chapter_glossary>")
     return "\n\n".join(parts)
 
 
@@ -110,11 +115,14 @@ class ChapterMemory:
                 self.container_fonts[container] = self._admit(font_id)
             return self.container_fonts[container]
 
-    def snapshot(self) -> dict:
+    def settled(self) -> dict:
+        """The glossary and story notes, fixed for the whole chapter."""
+        return {**({"glossary": self.glossary} if self.glossary else {}), **({"story_notes": self.notes} if self.notes else {})}
+
+    def snapshot(self, settled: bool = True) -> dict:
         with self._lock:
             return {
-                **({"glossary": self.glossary} if self.glossary else {}),
-                "story_notes": self.notes,
+                **(self.settled() if settled else {}),
                 "characters": [{"name": name, "note": note} for name, note in self.characters.items()],
                 "address": [{"from": a, "to": b, **terms} for (a, b), terms in self.address.items()],
                 "recent_lines": list(self.recent),
