@@ -203,7 +203,7 @@ def _transport(path: Path) -> dict:
 
 def _scorecard(pages: list, report: dict, out: Path) -> dict:
     """Score the chapter and save each place the cleanup left text or a ghost, original beside clean."""
-    from app.ai_mode.scorecard import score_chapter
+    from scripts.scorecard import score_chapter
     from app.config import KIUYHA_TEXT_MODEL
     from app.detector.kiuyha_detector import KiuyhaTextDetector
 

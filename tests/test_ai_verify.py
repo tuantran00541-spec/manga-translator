@@ -2,8 +2,8 @@ import cv2
 import numpy as np
 import pytest
 
-from app.ai_mode import scorecard
-from app.ai_mode.verify import leftovers
+from scripts import scorecard
+from scripts.verify import leftovers
 from app.detector import ctd_mask
 from ctd_fake import InkModel
 

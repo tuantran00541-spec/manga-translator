@@ -1,6 +1,6 @@
 """Score a finished chapter, so each change to A.I mode is measured against the last run.
 
-``python -m app.ai_mode.scorecard BASE.json NEW.json`` prints what got better and what got worse.
+``python -m scripts.scorecard BASE.json NEW.json`` prints what got better and what got worse.
 """
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from pathlib import Path
 
 import numpy as np
 
-from app.ai_mode.verify import leftovers, text_mask
 from app.image_io import read_image
 from app.region_policy import page_preserve_regions, text_object_in_preserve_region
+from scripts.verify import leftovers, text_mask
 
 # Metrics where a smaller number is better; every other compared metric is better when larger.
 LOWER_IS_BETTER = {
@@ -130,7 +130,7 @@ def compare(base: dict, new: dict) -> list[str]:
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
-        print("usage: python -m app.ai_mode.scorecard BASE.json NEW.json")
+        print("usage: python -m scripts.scorecard BASE.json NEW.json")
         return 2
     base, new = (json.loads(Path(path).read_text(encoding="utf-8")) for path in argv)
     for line in compare(base.get("scorecard", base), new.get("scorecard", new)) or ["no metric changed"]:

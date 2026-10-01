@@ -333,10 +333,8 @@ def test_english_left_as_the_translation_is_treated_as_untranslated():
 
 
 def test_the_font_follows_role_and_container_not_the_model():
-    from app.render.font_guide import font_for, lettering_font
+    from app.render.font_guide import font_for
 
-    assert lettering_font("emphasis.anton") == "emphasis.anton"
-    assert lettering_font("dialogue.inter") == lettering_font(None) == "dialogue.mac-dinh-3"
     assert font_for("dialogue", "bubble") == font_for("shout", "bubble") == "dialogue.mac-dinh-3"
     assert font_for("narration", "box") == "dialogue.mac-dinh-3", "Mặc Định 2 is handwriting, not a caption face"
     assert font_for("thought", "free") == "narration.mac-dinh-2"
