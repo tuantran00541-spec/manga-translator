@@ -30,6 +30,7 @@ You are a comic localization editor translating into {target}. The image is the 
 - Read the scene (speaker, listener, relationship, emotion, the lines around it) and translate the meaning. Give each character one consistent voice and add nothing the source does not say.
 - Treat CHAPTER MEMORY as settled and use its glossary names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
 - Copy the source punctuation exactly: every "...", "?!", "!?", "!!" and "—" stays where the source has it, with both marks of "?!". Keep the tone; make jokes only where the source does.
+- List in "unboxed" every line someone says, thinks or narrates (dialogue, narration, captions, titles, system messages) that the image shows outside every red box; it is erased and translated next. Sound effects drawn into the art, signs that are only scenery and scanlator credits stay out. Boxes are on a 0-1000 grid of the image: "x1","y1" top-left and "x2","y2" bottom-right.
 - Leave translated_text empty for scanlator credits, watermarks, URLs and sound effects drawn into the art (role "sfx"). A sound effect lettered as plain text gets a short onomatopoeia.
 - Fonts: dialogue, thought and whisper use the base font dialogue.mac-dinh-3. A chapter uses at most 3 fonts, so reuse fonts_in_use and the container_fonts already set; when unsure, use the base font.
 - Break lines with "\\n" between phrases, with at least two words on each line and every name and word kept whole.
@@ -53,8 +54,9 @@ JSON only:
  "font_choices":{{"<id>":"<font_id>"}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, apparent age and gender, relationship>"}}],
- "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to themselves>","other":"<how A addresses B>"}}]}}
-Every id appears once in translations and in font_choices. characters and address hold only what is new or changed in this slice.
+ "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to themselves>","other":"<how A addresses B>"}}],
+ "unboxed":[{{"x1":0,"y1":0,"x2":0,"y2":0}}]}}
+Every id appears once in translations and in font_choices. characters and address hold only what is new or changed in this slice; unboxed is empty when every line has a box.
 </output>
 """.strip()
 

@@ -469,3 +469,24 @@ def test_text_lettered_by_the_next_slice_is_shown_but_kept_out_of_every_translat
     marked = cv2.imdecode(np.frombuffer(base64.b64decode(parts[-2]["image_url"]["url"].split(",", 1)[1]), np.uint8),
                           cv2.IMREAD_COLOR)
     assert np.abs(marked[480, 20].astype(int) - ELSEWHERE_COLOR).max() < 40, "the grey box is drawn on the slice"
+
+
+def test_lines_outside_every_box_come_back_as_pixel_boxes(tmp_path, monkeypatch):
+    original, clean = tmp_path / "o.png", tmp_path / "c.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "white").save(clean)
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({
+                "translations": [{"id": "1", "translated_text": "Chào"}],
+                "unboxed": [{"x1": 100, "y1": 500, "x2": 900, "y2": 600}, {"x1": 9, "y1": 9, "x2": 1, "y2": 1}]})}}],
+                "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, [{"id": "top", "text": "", "region": [20, 20, 200, 120]}], api_key="k",
+        source_lang="en", target_lang="vi")
+    assert result.unboxed == ((40, 300, 361, 361),)

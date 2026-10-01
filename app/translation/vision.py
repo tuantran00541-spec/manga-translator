@@ -9,6 +9,7 @@ import cv2
 import requests
 
 from app.ai_mode.vision_json import stage_headers
+from app.box_format import scaled_box
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
@@ -39,6 +40,8 @@ _TRANSLATIONS_SCHEMA = {
             "properties": {"name": {"type": "string"}, "note": {"type": "string"}},
             "required": ["name"],
         }},
+        "unboxed": {"type": "array", "items": {"type": "object", "properties": {
+            k: {"type": "number"} for k in ("x1", "y1", "x2", "y2")}}},
         "address": {"type": "array", "items": {
             "type": "object",
             "properties": {k: {"type": "string"} for k in ("from", "to", "self", "other")},
@@ -64,6 +67,7 @@ class VisionTranslationResult:
     colors: dict[str, str] = field(default_factory=dict)
     containers: dict[str, str] = field(default_factory=dict)
     sources: dict[str, str] = field(default_factory=dict)  # the source text the model read in each box
+    unboxed: tuple[tuple[int, int, int, int], ...] = ()  # pixel boxes of lines the model saw outside every box
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -147,6 +151,7 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
     ), data
 
 
+MAX_UNBOXED = 8  # lines outside every box one slice may report
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
 FONT_SAMPLES_LABEL = "FONT SAMPLES: each row is a font_id in red and a sample line lettered in that font."
 
@@ -294,8 +299,12 @@ class VisionPageTranslator:
                       if result.translations.get(key) else DEFAULT_LETTERING_FONT, "font_mode": "ai"}
                 for key in (str(item["id"]) for item in items) if key in fonts
             }
+        unboxed = tuple(
+            (int(box[0]), int(box[1]), int(box[2]) + 1, int(box[3]) + 1)
+            for raw in (data.get("unboxed") or [])[:MAX_UNBOXED] if (box := scaled_box(raw, w, h)) is not None
+        )
         return replace(
-            result, font_choices=fonts, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
+            result, font_choices=fonts, roles=roles, unboxed=unboxed, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
             enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources,
         )
 

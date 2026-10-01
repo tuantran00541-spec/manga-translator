@@ -582,6 +582,7 @@ async def translate_page_in_context(
         "missing_ids": sorted(getattr(translated, "missing_ids", ())),
         "blank_ids": blank_ids,
         "art_regions": art_regions,
+        "unboxed": [list(box) for box in getattr(translated, "unboxed", ())],
         "remaining": max(0, total_candidates - len(candidates)),
     }
     return result

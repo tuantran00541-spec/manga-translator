@@ -23,19 +23,13 @@ _BOX = '{"x1":0,"y1":0,"x2":0,"y2":0,"confidence":0.0}'
 
 CLEAN_REVIEW_PROMPT = (
     "You do the final check of an automatic manga text cleanup. The image is one slice after its text was "
-    "erased; each green box marks a place where text was erased. Scan it top to bottom and edge to edge, inside "
-    "and around every bubble, caption box, dark area, gradient, panel border, screen and the art. Report two kinds "
-    "of problem:\n"
-    "- missed: readable text that someone says, thinks or narrates (dialogue, narration, captions, system "
-    "messages, comments on a screen, titles), in any language and anywhere on the slice, even when only partly "
-    "erased. It will be erased and translated, so report every such line.\n"
-    "- residue: fragments of erased letters, ghost outlines, smears and blotches in or touching a green box, and "
-    "leftover scanlator watermarks or credits anywhere. They will be erased; nothing is translated.\n"
-    "Leave sound effects drawn into the art and the art itself unreported. "
+    "erased; each green box marks a place where text was erased. Look in and around every green box for "
+    "fragments of erased letters, ghost outlines, smears and blotches, and anywhere for leftover scanlator "
+    "watermarks or credits. They will be erased; nothing is translated. Text that was never erased is found by "
+    "the translator, and sound effects and the art stay unreported. "
     + BOX_RULE
-    + "Keep each box tight around the problem. "
-    "A list with nothing to report stays empty; a clean slice returns two empty lists. Return JSON only: "
-    f'{{"missed":[{_BOX}],"residue":[{_BOX}]}}'
+    + "Keep each box tight around the problem. A clean slice returns an empty list. Return JSON only: "
+    f'{{"residue":[{_BOX}]}}'
 )
 ERASED_COLOR = (0, 170, 0)  # BGR green
 

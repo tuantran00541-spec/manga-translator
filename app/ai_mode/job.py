@@ -132,7 +132,7 @@ class AIModeRunner:
             "translated": 0, "unreadable": 0, "review_flags": 0, "translate_errors": [], "render_errors": [],
             "editorial_blockers": 0, "blocker_samples": [], "source_lang": None,
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
-            "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [],
+            "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [], "unboxed_pages": [],
             "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "errors": [], "samples": []},
         })
         self._memory = None
@@ -553,6 +553,8 @@ class AIModeRunner:
                     self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
                     if run.get("render_error"):
                         _append(self.report["render_errors"], f"Lát {page_index + 1}: {run['render_error']}")
+                if run is not None and run.get("unboxed"):
+                    await self._add_unboxed(page_index, run["unboxed"], source_lang)
                 # A failed or cut-off slice retries everything; otherwise only what the model skipped.
                 if run is None or run.get("remaining") or run.get("missing_ids"):
                     only = None if run is None or run.get("remaining") else set(run.get("missing_ids") or [])
@@ -667,6 +669,38 @@ class AIModeRunner:
                 obj["translation"] = obj["auto_translation"] = line.text
                 invalidate_page_render(manifest, line.page_index)
             save_manifest_raw(self.job.chapter_id, manifest)
+
+    async def _add_unboxed(self, page_index: int, boxes: list, source_lang: str) -> None:
+        """Lines the translator saw outside every box are boxed, erased and translated like the rest."""
+        from app.ai_mode.checkpoints import MARGIN_PX, MAX_AREA_RATIO, MIN_SIDE_PX
+        from app.dependencies import pipeline
+
+        page = self._manifest()["pages"][page_index]
+        width, height = int(page.get("width") or 0), int(page.get("height") or 0)
+        existing = self._page_boxes(page_index)
+        fresh = []
+        for x1, y1, x2, y2 in self._in_core(page_index, [tuple(map(int, box)) for box in boxes]):
+            if (x2 - x1 < MIN_SIDE_PX or y2 - y1 < MIN_SIDE_PX
+                    or (width and height and (x2 - x1) * (y2 - y1) > MAX_AREA_RATIO * width * height)):
+                continue
+            box = (max(0, x1 - MARGIN_PX), max(0, y1 - MARGIN_PX), x2 + MARGIN_PX, y2 + MARGIN_PX)
+            if not _covered(box, existing + fresh):
+                fresh.append(box)
+        if not fresh:
+            return
+        before = {str(obj.get("id")) for obj in page.get("text_objects") or [] if isinstance(obj, dict)}
+        try:
+            await asyncio.to_thread(pipeline.apply_review_fixes, self.job.chapter_id, page_index, boxes=fresh)
+        except (HTTPException, RuntimeError, ValueError, OSError) as exc:
+            _append(self.report["translate_errors"], f"Lát {page_index + 1}: thêm chữ sót thất bại: {_detail(exc)[:150]}")
+            return
+        await asyncio.to_thread(self._ensure_objects, page_index)
+        now = {str(obj.get("id")) for obj in self._manifest()["pages"][page_index].get("text_objects") or []
+               if isinstance(obj, dict)}
+        self.report["missed_added"] += len(fresh)
+        _append(self.report["unboxed_pages"], page_index + 1)
+        if now - before:
+            await self._retry_untranslated(page_index, source_lang, now - before)
 
     async def _sync_seams(self) -> list[int]:
         """Letter every text crossing a slice cut exactly as its owning slice does."""

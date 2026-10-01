@@ -611,3 +611,27 @@ def test_checkpoint_three_never_restores_over_a_detected_text_box():
     art = (100, 900, 400, 1200)
     settled = settle_clean_review(CleanReview(3, (), (), ((100, 150, 1500, 560), art)), [caption])
     assert settled.restore == (art,), "the caption stays erased; damaged art away from text is restored"
+
+
+def test_a_line_the_translator_sees_outside_every_box_is_boxed_erased_and_translated(monkeypatch):
+    from app.dependencies import pipeline
+
+    existing = {"x1": 100, "y1": 100, "x2": 200, "y2": 160}
+    manifest = {"pages": [{"width": 400, "height": 600, "boxes": [existing], "text_objects": [{"id": "old"}]}]}
+    added, retried = [], []
+
+    def fixes(chapter, index, boxes=()):
+        added.append(list(boxes))
+        manifest["pages"][0]["text_objects"].append({"id": "new"})
+
+    monkeypatch.setattr(pipeline, "apply_review_fixes", fixes, raising=False)
+    runner = _runner(monkeypatch, "translate", manifest)
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+
+    async def retry(page_index, source_lang, only):
+        retried.append((page_index, only))
+
+    monkeypatch.setattr(runner, "_retry_untranslated", retry)
+    asyncio.run(runner._add_unboxed(0, [[105, 105, 195, 155], [20, 300, 180, 360], [0, 0, 3, 3]], "en"))
+    assert added == [[(14, 294, 186, 366)]], "a box over existing text and a speck are dropped; the line gets a margin"
+    assert retried == [(0, {"new"})] and runner.report["missed_added"] == 1
