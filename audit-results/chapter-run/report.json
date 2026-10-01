@@ -1,0 +1,44 @@
+{
+ "url": "https://asurascans.com/comics/shadow-slave-05c7df14/chapter/1",
+ "slices": 135,
+ "cpu": "AMD EPYC 9V74 80-Core Processor",
+ "download_s": 14.7,
+ "process_s": 495.9,
+ "per_slice_s": 3.67,
+ "time_s": {
+  "read_s": 13.0,
+  "detect_s": 396.7,
+  "auto_inpaint_s": 406.5,
+  "manual_inpaint_s": 0.0,
+  "write_s": 17.9,
+  "total_s": 834.4,
+  "text_model_s": 396.6,
+  "second_pass_boxes": 0.0,
+  "lama_model_s": 215.0,
+  "lama_model_runs": 57.0,
+  "lama_regions": 57.0,
+  "smart_fill_regions": 107.0,
+  "session_lock_wait_s": 0.0,
+  "ort_global_lock_wait_s": 0.0,
+  "seam_attempts": 49.0,
+  "seam_failures": 0.0,
+  "seam_wall_s": 74.3,
+  "seam_text_model_s": 71.3,
+  "wall_s": 495.8,
+  "workers": 2.0
+ },
+ "blocks": 395,
+ "blocks_left": 1,
+ "left": [
+  {
+   "slice": 47,
+   "box": [
+    729,
+    2095,
+    833,
+    2225
+   ],
+   "px": 1105
+  }
+ ]
+}
