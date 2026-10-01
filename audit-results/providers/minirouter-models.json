@@ -64,6 +64,15 @@
   }
  },
  {
+  "id": "alibaba/qwen3.8-max",
+  "name": "Qwen 3.8 Max",
+  "pricing": {
+   "input_cache_read": "0.0000002625",
+   "input": "0.0000021",
+   "output": "0.0000063"
+  }
+ },
+ {
   "id": "alibaba/qwen3.8-flash",
   "name": "Qwen 3.8 Flash",
   "pricing": {
@@ -71,15 +80,6 @@
    "input_cache_write": "0.00000021",
    "input": "0.0000001575",
    "output": "0.0000004935"
-  }
- },
- {
-  "id": "alibaba/qwen3.8-max",
-  "name": "Qwen 3.8 Max",
-  "pricing": {
-   "input_cache_read": "0.0000002625",
-   "input": "0.0000021",
-   "output": "0.0000063"
   }
  },
  {
@@ -111,14 +111,6 @@
   }
  },
  {
-  "id": "alibaba/qwen3-vl-235b-a22b-instruct",
-  "name": "Qwen3 VL 235B A22B Instruct",
-  "pricing": {
-   "input": "0.00000042",
-   "output": "0.00000168"
-  }
- },
- {
   "id": "anthropic/claude-opus-5.5-fast",
   "name": "Claude Opus 5.5 (Fast)",
   "pricing": {
@@ -127,6 +119,24 @@
    "input": "0.0000084",
    "output": "0.000042",
    "web_search": "10.5"
+  }
+ },
+ {
+  "id": "alibaba/qwen3-vl-235b-a22b-instruct",
+  "name": "Qwen3 VL 235B A22B Instruct",
+  "pricing": {
+   "input": "0.00000042",
+   "output": "0.00000168"
+  }
+ },
+ {
+  "id": "google/gemini-3.5-flash",
+  "name": "Gemini 3.5 Flash",
+  "pricing": {
+   "input_cache_read": "0.0000001575",
+   "input": "0.000001575",
+   "output": "0.00000945",
+   "web_search": "14.7"
   }
  },
  {
@@ -149,21 +159,32 @@
   }
  },
  {
-  "id": "google/gemini-3.5-flash",
-  "name": "Gemini 3.5 Flash",
-  "pricing": {
-   "input_cache_read": "0.0000001575",
-   "input": "0.000001575",
-   "output": "0.00000945",
-   "web_search": "14.7"
-  }
- },
- {
   "id": "alibaba/qwen-3-14b",
   "name": "Qwen3-14B",
   "pricing": {
    "input": "0.000000126",
    "output": "0.000000252"
+  }
+ },
+ {
+  "id": "google/gemini-3.6-flash",
+  "name": "Gemini 3.6 Flash",
+  "pricing": {
+   "input_cache_read": "0.00000007875",
+   "input": "0.0000007875",
+   "output": "0.0000039375",
+   "web_search": "14.7"
+  }
+ },
+ {
+  "id": "openai/gpt-5.6-sol-fast",
+  "name": "GPT 5.6 Sol (Fast)",
+  "pricing": {
+   "input_cache_read": "0.00000084",
+   "input_cache_write": "0.0000105",
+   "input": "0.0000084",
+   "output": "0.000042",
+   "web_search": "10.5"
   }
  },
  {
@@ -194,24 +215,12 @@
   }
  },
  {
-  "id": "google/gemini-3.6-flash",
-  "name": "Gemini 3.6 Flash",
+  "id": "inception/mercury-2",
+  "name": "Mercury 2",
   "pricing": {
-   "input_cache_read": "0.00000007875",
-   "input": "0.0000007875",
-   "output": "0.0000039375",
-   "web_search": "14.7"
-  }
- },
- {
-  "id": "openai/gpt-5.6-sol-fast",
-  "name": "GPT 5.6 Sol (Fast)",
-  "pricing": {
-   "input_cache_read": "0.00000084",
-   "input_cache_write": "0.0000105",
-   "input": "0.0000084",
-   "output": "0.000042",
-   "web_search": "10.5"
+   "input_cache_read": "0.00000002625",
+   "input": "0.0000002625",
+   "output": "0.0000007875"
   }
  },
  {
@@ -250,23 +259,6 @@
   }
  },
  {
-  "id": "inception/mercury-2",
-  "name": "Mercury 2",
-  "pricing": {
-   "input_cache_read": "0.00000002625",
-   "input": "0.0000002625",
-   "output": "0.0000007875"
-  }
- },
- {
-  "id": "alibaba/qwen3-next-80b-a3b-instruct",
-  "name": "Qwen3 Next 80B A3B Instruct",
-  "pricing": {
-   "input": "0.0000001575",
-   "output": "0.00000126"
-  }
- },
- {
   "id": "alibaba/qwen3.7-max",
   "name": "Qwen 3.7 Max",
   "pricing": {
@@ -298,11 +290,30 @@
   }
  },
  {
-  "id": "alibaba/qwen-3-235b",
-  "name": "Qwen3 235B A22B",
+  "id": "alibaba/qwen3-next-80b-a3b-instruct",
+  "name": "Qwen3 Next 80B A3B Instruct",
   "pricing": {
-   "input": "0.000000231",
-   "output": "0.000000924"
+   "input": "0.0000001575",
+   "output": "0.00000126"
+  }
+ },
+ {
+  "id": "openai/gpt-5.1-codex-mini",
+  "name": "GPT 5.1 Codex Mini",
+  "pricing": {
+   "input_cache_read": "0.0000000315",
+   "input": "0.0000002625",
+   "output": "0.0000021",
+   "web_search": "14.7"
+  }
+ },
+ {
+  "id": "sakana/fugu-ultra",
+  "name": "Fugu Ultra",
+  "pricing": {
+   "input_cache_read": "0.000000525",
+   "input": "0.00000525",
+   "output": "0.0000315"
   }
  },
  {
@@ -334,31 +345,42 @@
   }
  },
  {
-  "id": "openai/gpt-5.1-codex-mini",
-  "name": "GPT 5.1 Codex Mini",
-  "pricing": {
-   "input_cache_read": "0.0000000315",
-   "input": "0.0000002625",
-   "output": "0.0000021",
-   "web_search": "14.7"
-  }
- },
- {
-  "id": "sakana/fugu-ultra",
-  "name": "Fugu Ultra",
-  "pricing": {
-   "input_cache_read": "0.000000525",
-   "input": "0.00000525",
-   "output": "0.0000315"
-  }
- },
- {
   "id": "sakana/fugu-ultra-v2",
   "name": "Fugu Ultra v2",
   "pricing": {
    "input_cache_read": "0.000000525",
    "input": "0.00000525",
    "output": "0.0000315"
+  }
+ },
+ {
+  "id": "alibaba/qwen-3-235b",
+  "name": "Qwen3 235B A22B",
+  "pricing": {
+   "input": "0.000000231",
+   "output": "0.000000924"
+  }
+ },
+ {
+  "id": "openai/gpt-6-astra-fast",
+  "name": "GPT-6 Astra (Fast)",
+  "pricing": {
+   "input_cache_read": "0.0000021",
+   "input_cache_write": "0.00002625",
+   "input": "0.000021",
+   "output": "0.000105",
+   "web_search": "10.5"
+  }
+ },
+ {
+  "id": "openai/gpt-6-sol",
+  "name": "GPT-6 Sol",
+  "pricing": {
+   "input_cache_read": "0.00000021",
+   "input_cache_write": "0.000002625",
+   "input": "0.0000021",
+   "output": "0.0000105",
+   "web_search": "10.5"
   }
  },
  {
@@ -388,28 +410,6 @@
    "input_cache_write": "0.000013125",
    "input": "0.0000105",
    "output": "0.0000525",
-   "web_search": "10.5"
-  }
- },
- {
-  "id": "openai/gpt-6-astra-fast",
-  "name": "GPT-6 Astra (Fast)",
-  "pricing": {
-   "input_cache_read": "0.0000021",
-   "input_cache_write": "0.00002625",
-   "input": "0.000021",
-   "output": "0.000105",
-   "web_search": "10.5"
-  }
- },
- {
-  "id": "openai/gpt-6-sol",
-  "name": "GPT-6 Sol",
-  "pricing": {
-   "input_cache_read": "0.00000021",
-   "input_cache_write": "0.000002625",
-   "input": "0.0000021",
-   "output": "0.0000105",
    "web_search": "10.5"
   }
  },
@@ -450,15 +450,6 @@
   }
  },
  {
-  "id": "bytedance/seed-1.6",
-  "name": "Seed 1.6",
-  "pricing": {
-   "input_cache_read": "0.0000000525",
-   "input": "0.0000002625",
-   "output": "0.0000021"
-  }
- },
- {
   "id": "mistral/mistral-large-3",
   "name": "Mistral Large 3",
   "pricing": {
@@ -474,6 +465,15 @@
    "input_cache_read": "0.0000001575",
    "input": "0.0000009975",
    "output": "0.0000042"
+  }
+ },
+ {
+  "id": "bytedance/seed-1.6",
+  "name": "Seed 1.6",
+  "pricing": {
+   "input_cache_read": "0.0000000525",
+   "input": "0.0000002625",
+   "output": "0.0000021"
   }
  },
  {
@@ -531,6 +531,15 @@
   }
  },
  {
+  "id": "thinkingmachines/inkling-small",
+  "name": "Inkling Small",
+  "pricing": {
+   "input_cache_read": "0.000000105",
+   "input": "0.0000004725",
+   "output": "0.00000126"
+  }
+ },
+ {
   "id": "alibaba/qwen3.6-27b",
   "name": "Qwen 3.6 27B",
   "pricing": {
@@ -563,15 +572,6 @@
   "name": "Morph V3 Fast",
   "pricing": {
    "input": "0.00000084",
-   "output": "0.00000126"
-  }
- },
- {
-  "id": "thinkingmachines/inkling-small",
-  "name": "Inkling Small",
-  "pricing": {
-   "input_cache_read": "0.000000105",
-   "input": "0.0000004725",
    "output": "0.00000126"
   }
  },
@@ -665,6 +665,16 @@
   }
  },
  {
+  "id": "spacexai/grok-4.20-reasoning",
+  "name": "Grok 4.20 Reasoning",
+  "pricing": {
+   "input_cache_read": "0.00000021",
+   "input": "0.0000013125",
+   "output": "0.000002625",
+   "web_search": "5.25"
+  }
+ },
+ {
   "id": "mistral/ministral-8b",
   "name": "Ministral 8B",
   "pricing": {
@@ -697,16 +707,6 @@
    "input_cache_read": "0.000000168",
    "input": "0.0000009975",
    "output": "0.0000042"
-  }
- },
- {
-  "id": "spacexai/grok-4.20-reasoning",
-  "name": "Grok 4.20 Reasoning",
-  "pricing": {
-   "input_cache_read": "0.00000021",
-   "input": "0.0000013125",
-   "output": "0.000002625",
-   "web_search": "5.25"
   }
  },
  {
@@ -756,6 +756,16 @@
   }
  },
  {
+  "id": "spacexai/grok-4.3",
+  "name": "Grok 4.3",
+  "pricing": {
+   "input_cache_read": "0.00000021",
+   "input": "0.0000013125",
+   "output": "0.000002625",
+   "web_search": "5.25"
+  }
+ },
+ {
   "id": "anthropic/claude-opus-4.6",
   "name": "Claude Opus 4.6",
   "pricing": {
@@ -782,16 +792,6 @@
    "input_cache_read": "0.0000000147",
    "input": "0.0000000798",
    "output": "0.00000016065"
-  }
- },
- {
-  "id": "spacexai/grok-4.3",
-  "name": "Grok 4.3",
-  "pricing": {
-   "input_cache_read": "0.00000021",
-   "input": "0.0000013125",
-   "output": "0.000002625",
-   "web_search": "5.25"
   }
  },
  {
@@ -884,6 +884,16 @@
   }
  },
  {
+  "id": "spacexai/grok-4.6",
+  "name": "Grok 4.6",
+  "pricing": {
+   "input_cache_read": "0.000000525",
+   "input": "0.0000021",
+   "output": "0.0000063",
+   "web_search": "5.25"
+  }
+ },
+ {
   "id": "alibaba/qwen3-max",
   "name": "Qwen3 Max",
   "pricing": {
@@ -915,16 +925,6 @@
   "pricing": {
    "input": "0.000000525",
    "output": "0.000001575"
-  }
- },
- {
-  "id": "spacexai/grok-4.6",
-  "name": "Grok 4.6",
-  "pricing": {
-   "input_cache_read": "0.000000525",
-   "input": "0.0000021",
-   "output": "0.0000063",
-   "web_search": "5.25"
   }
  },
  {
@@ -966,6 +966,16 @@
   }
  },
  {
+  "id": "spacexai/grok-build-0.1",
+  "name": "Grok Build 0.1",
+  "pricing": {
+   "input_cache_read": "0.00000021",
+   "input": "0.00000105",
+   "output": "0.0000021",
+   "web_search": "5.25"
+  }
+ },
+ {
   "id": "alibaba/qwen3-next-80b-a3b-thinking",
   "name": "Qwen3 Next 80B A3B Thinking",
   "pricing": {
@@ -989,16 +999,6 @@
    "input": "0.0000018375",
    "output": "0.0000147",
    "web_search": "10.5"
-  }
- },
- {
-  "id": "spacexai/grok-build-0.1",
-  "name": "Grok Build 0.1",
-  "pricing": {
-   "input_cache_read": "0.00000021",
-   "input": "0.00000105",
-   "output": "0.0000021",
-   "web_search": "5.25"
   }
  },
  {
@@ -1039,6 +1039,15 @@
   }
  },
  {
+  "id": "alibaba/qwen3.5-9b",
+  "name": "Qwen 3.5 9B",
+  "pricing": {
+   "input": "0.000000084",
+   "output": "0.0000001365",
+   "request": "0.000105"
+  }
+ },
+ {
   "id": "openai/gpt-5.4-mini-fast",
   "name": "GPT 5.4 Mini (Fast)",
   "pricing": {
@@ -1046,15 +1055,6 @@
    "input": "0.000001575",
    "output": "0.00000945",
    "web_search": "10.5"
-  }
- },
- {
-  "id": "alibaba/qwen3.5-9b",
-  "name": "Qwen 3.5 9B",
-  "pricing": {
-   "input": "0.000000084",
-   "output": "0.0000001365",
-   "request": "0.000105"
   }
  },
  {
@@ -1076,6 +1076,15 @@
   }
  },
  {
+  "id": "xiaomi/mimo-v2.6-flash",
+  "name": "MiMo V2.6 Flash",
+  "pricing": {
+   "input_cache_read": "0.00000000294",
+   "input": "0.000000147",
+   "output": "0.000000294"
+  }
+ },
+ {
   "id": "alibaba/qwen3-max-preview",
   "name": "Qwen3 Max Preview",
   "pricing": {
@@ -1092,15 +1101,6 @@
    "input": "0.0000021",
    "output": "0.0000126",
    "web_search": "14.7"
-  }
- },
- {
-  "id": "xiaomi/mimo-v2.6-flash",
-  "name": "MiMo V2.6 Flash",
-  "pricing": {
-   "input_cache_read": "0.00000000294",
-   "input": "0.000000147",
-   "output": "0.000000294"
   }
  },
  {
@@ -1368,6 +1368,15 @@
   }
  },
  {
+  "id": "zai/glm-4.5-air",
+  "name": "GLM 4.5 Air",
+  "pricing": {
+   "input_cache_read": "0.0000000315",
+   "input": "0.00000021",
+   "output": "0.000001155"
+  }
+ },
+ {
   "id": "meituan/longcat-2.5-preview",
   "name": "LongCat 2.5 Preview",
   "pricing": {
@@ -1401,15 +1410,6 @@
    "input_cache_read": "0.000000126",
    "input": "0.00000063",
    "output": "0.00000252"
-  }
- },
- {
-  "id": "zai/glm-4.5-air",
-  "name": "GLM 4.5 Air",
-  "pricing": {
-   "input_cache_read": "0.0000000315",
-   "input": "0.00000021",
-   "output": "0.000001155"
   }
  },
  {
@@ -1455,6 +1455,15 @@
   }
  },
  {
+  "id": "spacexai/grok-4.1-fast-reasoning",
+  "name": "Grok 4.1 Fast Reasoning",
+  "pricing": {
+   "input_cache_read": "0.0000000525",
+   "input": "0.00000021",
+   "output": "0.000000525"
+  }
+ },
+ {
   "id": "openai/gpt-4.1",
   "name": "GPT-4.1",
   "pricing": {
@@ -1471,15 +1480,6 @@
    "input_cache_read": "0.000000021",
    "input": "0.0000000945",
    "output": "0.000000315"
-  }
- },
- {
-  "id": "spacexai/grok-4.1-fast-reasoning",
-  "name": "Grok 4.1 Fast Reasoning",
-  "pricing": {
-   "input_cache_read": "0.0000000525",
-   "input": "0.00000021",
-   "output": "0.000000525"
   }
  },
  {
@@ -1651,6 +1651,15 @@
   }
  },
  {
+  "id": "zai/glm-4.5v",
+  "name": "GLM 4.5V",
+  "pricing": {
+   "input_cache_read": "0.0000001155",
+   "input": "0.00000063",
+   "output": "0.00000189"
+  }
+ },
+ {
   "id": "inception/mercury-2.5",
   "name": "Mercury 2.5",
   "pricing": {
@@ -1682,15 +1691,6 @@
    "input_cache_read": "0.0000000021",
    "input": "0.000000105",
    "output": "0.00000021"
-  }
- },
- {
-  "id": "zai/glm-4.5v",
-  "name": "GLM 4.5V",
-  "pricing": {
-   "input_cache_read": "0.0000001155",
-   "input": "0.00000063",
-   "output": "0.00000189"
   }
  },
  {
@@ -1942,15 +1942,6 @@
   }
  },
  {
-  "id": "zai/glm-5.2-fast",
-  "name": "GLM 5.2 Fast",
-  "pricing": {
-   "input_cache_read": "0.000000588",
-   "input": "0.00000294",
-   "output": "0.00000924"
-  }
- },
- {
   "id": "openai/gpt-5.4-pro",
   "name": "GPT 5.4 Pro",
   "pricing": {
@@ -1987,15 +1978,6 @@
   "pricing": {
    "input": "0.00000105",
    "output": "0.00000336"
-  }
- },
- {
-  "id": "zai/glm-5.3",
-  "name": "GLM 5.3",
-  "pricing": {
-   "input_cache_read": "0.000000147",
-   "input": "0.00000147",
-   "output": "0.00000462"
   }
  },
  {
@@ -2079,6 +2061,15 @@
   }
  },
  {
+  "id": "zai/glm-5.3-flash",
+  "name": "GLM 5.3 Flash",
+  "pricing": {
+   "input_cache_read": "0.0000000315",
+   "input": "0.0000001575",
+   "output": "0.000000525"
+  }
+ },
+ {
   "id": "alibaba/qwen3-coder",
   "name": "Qwen3 Coder 480B A35B Instruct",
   "pricing": {
@@ -2107,12 +2098,40 @@
   }
  },
  {
-  "id": "zai/glm-5.3-flash",
-  "name": "GLM 5.3 Flash",
+  "id": "thinkingmachines/inkling",
+  "name": "Inkling",
   "pricing": {
-   "input_cache_read": "0.0000000315",
-   "input": "0.0000001575",
-   "output": "0.000000525"
+   "input_cache_read": "0.0000001785",
+   "input": "0.00000105",
+   "output": "0.0000042525"
+  }
+ },
+ {
+  "id": "spacexai/grok-4.20-multi-agent",
+  "name": "Grok 4.20 Multi-Agent",
+  "pricing": {
+   "input_cache_read": "0.00000021",
+   "input": "0.0000013125",
+   "output": "0.000002625",
+   "web_search": "5.25"
+  }
+ },
+ {
+  "id": "zai/glm-5.2-fast",
+  "name": "GLM 5.2 Fast",
+  "pricing": {
+   "input_cache_read": "0.000000588",
+   "input": "0.00000294",
+   "output": "0.00000924"
+  }
+ },
+ {
+  "id": "zai/glm-5.3",
+  "name": "GLM 5.3",
+  "pricing": {
+   "input_cache_read": "0.000000147",
+   "input": "0.00000147",
+   "output": "0.00000462"
   }
  },
  {
@@ -2135,34 +2154,6 @@
    "input": "0.0000105",
    "output": "0.0000525",
    "web_search": "10.5"
-  }
- },
- {
-  "id": "thinkingmachines/inkling",
-  "name": "Inkling",
-  "pricing": {
-   "input_cache_read": "0.0000001785",
-   "input": "0.00000105",
-   "output": "0.0000042525"
-  }
- },
- {
-  "id": "spacexai/grok-4.20-multi-agent",
-  "name": "Grok 4.20 Multi-Agent",
-  "pricing": {
-   "input_cache_read": "0.00000021",
-   "input": "0.0000013125",
-   "output": "0.000002625",
-   "web_search": "5.25"
-  }
- },
- {
-  "id": "deepseek/deepseek-v4-pro",
-  "name": "DeepSeek V4 Pro",
-  "pricing": {
-   "input_cache_read": "0.0000000231",
-   "input": "0.000000693",
-   "output": "0.000002079"
   }
  },
  {
@@ -2190,6 +2181,15 @@
   "pricing": {
    "input": "0",
    "output": "0"
+  }
+ },
+ {
+  "id": "deepseek/deepseek-v4-pro",
+  "name": "DeepSeek V4 Pro",
+  "pricing": {
+   "input_cache_read": "0.0000000231",
+   "input": "0.000000693",
+   "output": "0.000002079"
   }
  },
  {
@@ -2239,6 +2239,15 @@
   }
  },
  {
+  "id": "poolside/laguna-s-2.1",
+  "name": "Laguna S 2.1",
+  "pricing": {
+   "input_cache_read": "0.0000000105",
+   "input": "0.000000105",
+   "output": "0.00000021"
+  }
+ },
+ {
   "id": "anthropic/claude-opus-4",
   "name": "Claude Opus 4",
   "pricing": {
@@ -2255,15 +2264,6 @@
   "pricing": {
    "input": "0.0000001785",
    "output": "0.000000693"
-  }
- },
- {
-  "id": "poolside/laguna-s-2.1",
-  "name": "Laguna S 2.1",
-  "pricing": {
-   "input_cache_read": "0.0000000105",
-   "input": "0.000000105",
-   "output": "0.00000021"
   }
  },
  {
@@ -2352,6 +2352,15 @@
   }
  },
  {
+  "id": "spacexai/grok-4.1-fast-non-reasoning",
+  "name": "Grok 4.1 Fast Non-Reasoning",
+  "pricing": {
+   "input_cache_read": "0.0000000525",
+   "input": "0.00000021",
+   "output": "0.000000525"
+  }
+ },
+ {
   "id": "openai/gpt-5.5",
   "name": "GPT 5.5",
   "pricing": {
@@ -2368,15 +2377,6 @@
    "input_cache_read": "0.0000000525",
    "input": "0.00000105",
    "output": "0.000002835"
-  }
- },
- {
-  "id": "spacexai/grok-4.1-fast-non-reasoning",
-  "name": "Grok 4.1 Fast Non-Reasoning",
-  "pricing": {
-   "input_cache_read": "0.0000000525",
-   "input": "0.00000021",
-   "output": "0.000000525"
   }
  },
  {
