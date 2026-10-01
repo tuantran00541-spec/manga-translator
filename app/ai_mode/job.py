@@ -656,16 +656,17 @@ class AIModeRunner:
             return
         before = {str(obj.get("id")) for obj in page.get("text_objects") or [] if isinstance(obj, dict)}
         try:
-            await asyncio.to_thread(pipeline.apply_review_fixes, self.job.chapter_id, page_index, boxes=fresh)
+            await asyncio.to_thread(pipeline.apply_review_fixes, self.job.chapter_id, page_index, boxes=fresh,
+                                    skip_covered=True)
         except (HTTPException, RuntimeError, ValueError, OSError) as exc:
             _append(self.report["translate_errors"], f"Lát {page_index + 1}: thêm chữ sót thất bại: {_detail(exc)[:150]}")
             return
         await asyncio.to_thread(self._ensure_objects, page_index)
         now = {str(obj.get("id")) for obj in self._manifest()["pages"][page_index].get("text_objects") or []
                if isinstance(obj, dict)}
-        self.report["missed_added"] += len(fresh)
-        _append(self.report["unboxed_pages"], page_index + 1)
         if now - before:
+            self.report["missed_added"] += len(now - before)
+            _append(self.report["unboxed_pages"], page_index + 1)
             await self._retry_untranslated(page_index, source_lang, now - before)
 
     async def _sync_seams(self) -> list[int]:

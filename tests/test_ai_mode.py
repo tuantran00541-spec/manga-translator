@@ -607,7 +607,8 @@ def test_a_line_the_translator_sees_outside_every_box_is_boxed_erased_and_transl
     manifest = {"pages": [{"width": 400, "height": 600, "boxes": [existing], "text_objects": [{"id": "old"}]}]}
     added, retried = [], []
 
-    def fixes(chapter, index, boxes=()):
+    def fixes(chapter, index, boxes=(), skip_covered=False):
+        assert skip_covered, "a box that grows over existing letters is not added"
         added.append(list(boxes))
         manifest["pages"][0]["text_objects"].append({"id": "new"})
 
