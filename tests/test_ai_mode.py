@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import zipfile
 
 import cv2
@@ -184,7 +185,6 @@ def _scan_stage(monkeypatch, scans, pages=8):
 
     manifest = {"pages": [{"original": f"p{i}.png", "preserve_regions": []} for i in range(pages)]}
     skipped, preserved = [], {}
-    monkeypatch.setattr(ai_job, "SCAN_BATCH_SIZE", 4)  # the batching logic, whatever the provider limit
     monkeypatch.setattr(ai_job, "validate_managed_path", lambda value, root: value)
     monkeypatch.setattr(ai_job, "read_image", lambda path: np.zeros((100, 80, 3), np.uint8))
     monkeypatch.setattr(ai_job, "scan_slices", lambda provider, model, key, images: (
@@ -194,8 +194,9 @@ def _scan_stage(monkeypatch, scans, pages=8):
     monkeypatch.setattr(chapters, "_set_page_preserve_regions",
                         lambda chapter_id, index, regions: preserved.__setitem__(index, regions))
 
-    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="scan",
-                           stages={"scan": {"done": 0, "total": 0, "detail": ""}})
+    # Four slices a request: the batching logic, whatever the user's limit.
+    job = ai_job.AIModeJob(job_id="j", settings=replace(SETTINGS, images_per_request=4), chapter_id=CHAPTER,
+                           stage="scan", stages={"scan": {"done": 0, "total": 0, "detail": ""}})
     runner = AIModeRunner(job, PROVIDERS["deepseek"], "key")
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
     asyncio.run(runner.scan())

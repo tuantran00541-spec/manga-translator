@@ -27,6 +27,7 @@ class AIModeStartRequest(BaseModel):
     workers: int = Field(default=PIPELINE_DEFAULT_WORKERS, ge=1, le=8)
     story_notes: str = Field(default="", max_length=1500)
     polish: bool = False
+    images_per_request: int = Field(default=2, ge=1, le=8)
 
     @field_validator("url")
     @classmethod
@@ -85,7 +86,8 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
         settings = AIModeSettings(
             url=req.url, provider=provider.id, model=provider.default_qc_model, target_lang=req.target_lang,
             budget_usd=float(reservation.get("cost_cap_usd") or req.budget_usd), workers=req.workers,
-            story_notes=req.story_notes, polish=req.polish,
+            # Manga Cloud reads on a free model that takes two images a request; it is not the user's to raise.
+            story_notes=req.story_notes, polish=req.polish, images_per_request=2,
         )
         job_token = str(reservation["job_token"])
         bound = bind_cloud_job(provider, job_token)
@@ -111,6 +113,7 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
     settings = AIModeSettings(
         url=req.url, provider=provider.id, model=model, target_lang=req.target_lang,
         budget_usd=req.budget_usd, workers=req.workers, story_notes=req.story_notes, polish=req.polish,
+        images_per_request=req.images_per_request,
     )
     try:
         return ai_mode_jobs.start(settings, provider=provider, api_key=api_key)

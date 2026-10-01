@@ -53,6 +53,9 @@
     // The Jev judge runs behind the Manga Cloud gateway.
     const polishField = $("ai-mode-polish-field");
     if (polishField) polishField.hidden = !cloud;
+    // Manga Cloud picks its own reading model; the limit is for the user's own key.
+    const imagesField = $("ai-mode-images-field");
+    if (imagesField) imagesField.hidden = cloud;
   }
 
   function ensureCloudOption() {
@@ -388,6 +391,7 @@
       workers: typeof window.getWorkersSetting === "function" ? window.getWorkersSetting() : 2,
       story_notes: $("ai-mode-notes")?.value.trim() || "",
       polish: provider === CLOUD && Boolean($("ai-mode-polish")?.checked),
+      images_per_request: Math.min(8, Math.max(1, Math.round(Number($("ai-mode-images")?.value) || 2))),
     };
     setRunning(true);
     try {

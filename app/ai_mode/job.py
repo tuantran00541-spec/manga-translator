@@ -38,10 +38,7 @@ STAGES: tuple[tuple[str, str], ...] = (
     ("render", "Render"),
     ("finish", "Hoàn tất"),
 )
-# Two images per request: the most sovinfra's free qwen3.8-27b accepts (three or more get 422).
-SCAN_BATCH_SIZE = 2
 SCAN_CONCURRENCY = 4
-GLOSSARY_BATCH_SIZE = 2
 # Slices of transcript per text-only glossary request; a request reads the lettering, not the images.
 GLOSSARY_TEXT_SLICES = 40
 # More "credit" slices than this is a misread of the chapter, not credits.
@@ -85,6 +82,7 @@ class AIModeSettings:
     workers: int = 2
     story_notes: str = ""
     polish: bool = False  # advanced: a judge model grades each line and weak ones are rewritten
+    images_per_request: int = 2  # slices sent together to the scan and glossary; the user raises it for their model
 
 
 @dataclass
@@ -209,7 +207,8 @@ class AIModeRunner:
         chapter_id = self.job.chapter_id
         pages = self._manifest().get("pages", [])
         active = [index for index, page in enumerate(pages) if not page.get("skipped")]
-        batches = [active[i:i + SCAN_BATCH_SIZE] for i in range(0, len(active), SCAN_BATCH_SIZE)]
+        size = max(1, self.settings.images_per_request)
+        batches = [active[i:i + size] for i in range(0, len(active), size)]
         scans = []
         def scan_call(batch: list[int]):
             images = [
@@ -369,7 +368,8 @@ class AIModeRunner:
         unknown = [index for index in indices if index not in self._transcripts]
         batches = [known[i:i + GLOSSARY_TEXT_SLICES] for i in range(0, len(known), GLOSSARY_TEXT_SLICES)]
         batches = [batch for batch in batches if any(self._transcripts[index] for index in batch)]
-        batches += [unknown[i:i + GLOSSARY_BATCH_SIZE] for i in range(0, len(unknown), GLOSSARY_BATCH_SIZE)]
+        size = max(1, self.settings.images_per_request)
+        batches += [unknown[i:i + size] for i in range(0, len(unknown), size)]
         self.report["glossary_text_slices"] = len(known)
         self.report["glossary_image_slices"] = len(unknown)
         glossary = merge_glossaries(list(await asyncio.gather(*(read(batch) for batch in batches))))
