@@ -284,7 +284,7 @@ class VisionPageTranslator:
                 sources[str(entry["id"])] = " ".join(entry["source"].split())[:1000]
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
-        fonts = {key: {"font_id": font_for(roles.get(key), containers.get(key)), "font_mode": "ai"}
+        fonts = {key: {"font_id": font_for(roles.get(key), containers.get(key), target_lang), "font_mode": "ai"}
                  for key in (result.font_choices or {})}
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])

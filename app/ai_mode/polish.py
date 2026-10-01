@@ -51,6 +51,17 @@ PROBLEMS = {
     "settled": "it does not use the chapter's forms of address or glossary terms",
 }
 
+def in_language(value, language: str):
+    """``value`` with Vietnamese, the language the questions were written and calibrated in, swapped for ``language``."""
+    if isinstance(value, str):
+        return value.replace("Vietnamese", language)
+    if isinstance(value, dict):
+        return {key: in_language(item, language) for key, item in value.items()}
+    if isinstance(value, list):
+        return [in_language(item, language) for item in value]
+    return value
+
+
 REWRITE_PROMPT = (
     "INPUT: lines of a Vietnamese comic translation. Each item has the speaker when known, the SOURCE line, the "
     "current TRANSLATION, the lines before and after it, and the problem a reviewer found.\n"
@@ -126,9 +137,9 @@ def settled(line: Line, memory: dict | None) -> tuple[list[str], list[str]]:
     return address, terms
 
 
-def line_state(line: Line, text: str | None = None, memory: dict | None = None) -> str:
+def line_state(line: Line, text: str | None = None, memory: dict | None = None, language: str = "Vietnamese") -> str:
     """What the judge reads: the source, one translation, the lines around it and what the chapter settled."""
-    state = (f"SOURCE: {_flat(line.source)}\nTRANSLATION (Vietnamese): {_flat(text or line.text)}\n"
+    state = (f"SOURCE: {_flat(line.source)}\nTRANSLATION ({language}): {_flat(text or line.text)}\n"
              f"LINE BEFORE: {_flat(line.before) or '(none)'}\nLINE AFTER: {_flat(line.after) or '(none)'}")
     address, terms = settled(line, memory)
     if line.speaker:
@@ -140,9 +151,9 @@ def line_state(line: Line, text: str | None = None, memory: dict | None = None) 
     return state[:MAX_STATE_CHARS]
 
 
-def questions(line: Line, memory: dict | None) -> dict:
+def questions(line: Line, memory: dict | None, language: str = "Vietnamese") -> dict:
     """The three quality questions, plus the settled one when the chapter settled something for this line."""
-    return {**QUESTIONS, "settled": SETTLED} if any(settled(line, memory)) else QUESTIONS
+    return in_language({**QUESTIONS, "settled": SETTLED} if any(settled(line, memory)) else QUESTIONS, language)
 
 
 def evaluate_url(provider) -> str:
@@ -183,12 +194,13 @@ def quality(scores: dict[str, float]) -> float:
     return sum(scores.get(key, 0.0) / (len(q["criteria"]) - 1) for key, q in asked.items()) / len(asked)
 
 
-def rewrite(provider, model: str, api_key: str, lines: list[Line], memory: dict) -> tuple[dict[str, str], float | None]:
+def rewrite(provider, model: str, api_key: str, lines: list[Line], memory: dict,
+            language: str = "Vietnamese") -> tuple[dict[str, str], float | None]:
     """Ask the translator to rewrite flagged lines, with what the judge found and the chapter memory."""
     items = [{"id": line.id, **({"speaker": line.speaker} if line.speaker else {}), "source": line.source, "translation": line.text, "before": line.before,
-              "after": line.after, "problem": "; ".join(problems(line.scores)),
+              "after": line.after, "problem": in_language("; ".join(problems(line.scores)), language),
               **({"max_chars": line.max_chars} if line.max_chars else {})} for line in lines]
-    prompt = (REWRITE_PROMPT + "\n\nCHAPTER MEMORY: "
+    prompt = (in_language(REWRITE_PROMPT, language) + "\n\nCHAPTER MEMORY: "
               + json.dumps({k: memory.get(k) for k in ("glossary", "characters", "address") if memory.get(k)},
                            ensure_ascii=False, separators=(",", ":"))
               + "\n\nITEMS: " + json.dumps(items, ensure_ascii=False, separators=(",", ":")))

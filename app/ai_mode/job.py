@@ -557,6 +557,9 @@ class AIModeRunner:
         lines = [line for line in polish.collect_lines(manifest.get("pages", []), indices)
                  if (line.page_index, line.id) not in mirrors]
         memory = self._memory.snapshot() if self._memory is not None else {}
+        from app.translation.deepseek import _language_name
+
+        language = _language_name(self.settings.target_lang)
         gate = asyncio.Semaphore(POLISH_CONCURRENCY)
         unavailable = False
 
@@ -567,7 +570,8 @@ class AIModeRunner:
                     return None
                 try:
                     return await _ai_call(polish.judge, self.provider, self.api_key,
-                                          polish.line_state(line, text, memory), polish.questions(line, memory))
+                                          polish.line_state(line, text, memory, language),
+                                          polish.questions(line, memory, language))
                 except (RuntimeError, ValueError, OSError, requests.RequestException) as exc:
                     _append(stats["errors"], _detail(exc)[:200])
                     # No judge behind this provider: stop asking.
@@ -595,7 +599,7 @@ class AIModeRunner:
             for batch in batches:
                 try:
                     texts, cost = await _ai_call(polish.rewrite, self.provider, self.settings.model, self.api_key,
-                                                 batch, memory)
+                                                 batch, memory, language)
                 except (RuntimeError, ValueError, OSError) as exc:
                     _append(stats["errors"], _detail(exc)[:200])
                     continue

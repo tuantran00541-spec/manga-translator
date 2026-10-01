@@ -342,6 +342,8 @@ def test_the_font_follows_role_and_container_not_the_model():
     assert font_for("narration", "free") == font_for("title", "free") == "emphasis.anton", "bold captions on the art"
     assert font_for("shout", "spiky") == "emphasis.bangers" and font_for("system_ui", "bubble") == "skill.exo-2"
     assert font_for(None, None) == "dialogue.mac-dinh-3"
+    assert font_for("dialogue", "bubble", "es") == "thought.comic-neue", "the base font has no ñ, ç or ß"
+    assert font_for("narration", "free", "de") == "emphasis.anton"
     assert parse_vision_translation('{"translations":[{"id":"a","translated_text":"Thì…"}]}', {"a"}) == {"a": "Thì..."}
 
 

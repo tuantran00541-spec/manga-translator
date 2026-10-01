@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from app.ai_mode import polish
 from app.ai_mode.job import AIModeJob, AIModeRunner, AIModeSettings
@@ -106,3 +107,11 @@ def test_address_shows_only_what_holds_for_any_listener_and_a_rewrite_keeps_its_
     old = {"natural": 2.6, "clear": 1.87, "faithful": 1.85, "settled": 0.15}
     assert not polish.better({"natural": 2.35, "clear": 1.87, "faithful": 1.86, "settled": 0.91}, old)
     assert polish.better({"natural": 2.55, "clear": 1.87, "faithful": 1.86, "settled": 0.91}, old)
+
+
+def test_the_judge_and_the_rewrite_follow_the_target_language():
+    line = polish.Line(0, "a", "Run!", "¡Corre ya!")
+    assert "TRANSLATION (Spanish): ¡Corre ya!" in polish.line_state(line, language="Spanish")
+    asked = polish.questions(line, {}, "Spanish")
+    assert "as Spanish" in asked["natural"]["instructions"] and "Vietnamese" not in json.dumps(asked)
+    assert polish.questions(line, {}) == polish.QUESTIONS, "Vietnamese keeps the calibrated wording"
