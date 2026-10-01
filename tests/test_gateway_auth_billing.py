@@ -587,3 +587,23 @@ def test_a_stage_route_on_another_provider_goes_to_its_base_with_its_own_key(mon
                                               "key_env": "NOT_SET"}]))
     with pytest.raises(ValueError):
         _routes_from_env("ROUTES")
+
+
+def test_a_dead_key_on_another_provider_falls_back_to_the_next_model():
+    seen = []
+    app = FastAPI()
+
+    @app.post("/{provider}/chat/completions")
+    def chat(provider: str, payload: dict):
+        seen.append(provider)
+        if provider == "free":
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": {"message": "Invalid API key."}}, status_code=401)
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {}}
+
+    base, server = _serve(app)
+    upstream = Upstream(f"{base}/main", "main-key", "luna", 0, 0, retry_wait_s=0)
+    status, _body = upstream.send({"model": "x", "messages": []},
+                                  models=[Route("q", 0, 0, base=f"{base}/free", api_key="dead"), Route("luna", 0, 0)])
+    server.should_exit = True
+    assert (status, seen) == (200, ["free", "main"])

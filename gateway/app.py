@@ -140,7 +140,10 @@ class Upstream:
                 continue
             if trace is not None:
                 trace.setdefault("statuses", []).append(response.status_code)
-            if response.status_code in RETRY_STATUSES and not last:
+            # A dead key on another provider hands the request to the next model in the chain.
+            refused = (response.status_code in (401, 403) and isinstance(route, Route) and route.base is not None
+                       and attempt + 1 < len(models))
+            if (response.status_code in RETRY_STATUSES or refused) and not last:
                 if attempt + 1 >= len(models):
                     time.sleep(min(RETRY_AFTER_MAX_S, _retry_after(response) or self.retry_wait_s * 2 ** attempt))
                 continue
