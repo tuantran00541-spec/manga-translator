@@ -42,6 +42,7 @@ jobs:
               ("hello", hello, "What word is written in this image? Answer with the word only."),
               ("page", page, "Transcribe every line of English text in this comic image, top to bottom, one line each. Text only."),
               ("page-again", page, "List the speech bubbles in this comic image and who seems to speak in each. Be brief."),
+              ("translate", page, "Translate every line of text in this comic image into natural Vietnamese, one line each."),
           ]
           out["tests"] = []
           for name, image, question in tests:
