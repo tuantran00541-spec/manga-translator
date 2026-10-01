@@ -1,0 +1,3813 @@
+{
+ "url": "https://asurascans.com/comics/youngest-scion-of-the-mages-3ec3b16f/chapter/137",
+ "model": "openai/gpt-6-luna",
+ "price_usd_per_m": {
+  "input": 0.105,
+  "output": 0.525
+ },
+ "polish": true,
+ "cpu": "AMD EPYC 7763 64-Core Processor",
+ "status": "completed",
+ "error": null,
+ "wall_s": 1441.3,
+ "stages": [
+  {
+   "key": "download",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 3.8,
+   "detail": "52 lát"
+  },
+  {
+   "key": "scan",
+   "status": "done",
+   "done": 52,
+   "total": 52,
+   "elapsed_s": 48.2,
+   "detail": "2 lát credit, 0 lát không chữ, 1 logo"
+  },
+  {
+   "key": "clean",
+   "status": "done",
+   "done": 50,
+   "total": 50,
+   "elapsed_s": 256.5,
+   "detail": ""
+  },
+  {
+   "key": "review",
+   "status": "done",
+   "done": 50,
+   "total": 50,
+   "elapsed_s": 122.3,
+   "detail": "9 tờ crop, repaint 19"
+  },
+  {
+   "key": "translate",
+   "status": "done",
+   "done": 50,
+   "total": 50,
+   "elapsed_s": 618.4,
+   "detail": "Dịch 89 vùng"
+  },
+  {
+   "key": "polish",
+   "status": "done",
+   "done": 49,
+   "total": 49,
+   "elapsed_s": 380.0,
+   "detail": "Chấm 49 câu, sửa 1"
+  },
+  {
+   "key": "render",
+   "status": "done",
+   "done": 50,
+   "total": 50,
+   "elapsed_s": 10.1,
+   "detail": ""
+  },
+  {
+   "key": "finish",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 0.1,
+   "detail": "Xong"
+  }
+ ],
+ "report": {
+  "credit_pages": [
+   0,
+   51
+  ],
+  "credit_rejected": [],
+  "logo_regions": 1,
+  "scan_errors": [],
+  "repainted_regions": 19,
+  "repaint_pages": [
+   2,
+   3,
+   7,
+   10,
+   12,
+   18,
+   20,
+   25,
+   26,
+   29,
+   32,
+   36,
+   38,
+   43,
+   44,
+   46,
+   49
+  ],
+  "qc_flagged": 0,
+  "qc_errors": [],
+  "translated": 89,
+  "unreadable": 20,
+  "review_flags": 0,
+  "translate_errors": [
+   "Lát 11: Vision model returned invalid JSON",
+   "Lát 19: Manga Cloud returned no translation text (Structured response was truncated; finish_reason=length)",
+   "Lát 21: Manga Cloud returned no translation text (Structured response was truncated; finish_reason=length)",
+   "Lát 26 (thử lại): Manga Cloud returned no translation text (Structured response was truncated; finish_reason=length)",
+   "Lát 26 (thử lại): Manga Cloud returned no translation text (Structured response was truncated; finish_reason=length)",
+   "Lát 26 (thử lại): Manga Cloud vision request failed"
+  ],
+  "render_errors": [],
+  "editorial_blockers": 5,
+  "blocker_samples": [
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 8,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 11,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 19,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 47,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 50,
+    "reason": "active story object has neither OCR source nor translation"
+   }
+  ],
+  "source_lang": "en",
+  "textless_pages": [],
+  "textless_rejected": [],
+  "kept_regions": 0,
+  "missed_added": 1,
+  "retried_pages": [
+   11,
+   19,
+   21,
+   26
+  ],
+  "restored_regions": 1,
+  "sfx_kept": 10,
+  "review_list": [
+   {
+    "page": 26,
+    "id": "text_1849466f6cd94133",
+    "reason": "AI không dịch được sau khi thử lại; đã giữ ảnh gốc"
+   }
+  ],
+  "unboxed_pages": [
+   26
+  ],
+  "polish": {
+   "judged": 49,
+   "flagged": 18,
+   "rewritten": 1,
+   "still_flagged": 18,
+   "errors": [
+    "Manga Cloud returned no text",
+    "Manga Cloud returned no text"
+   ],
+   "samples": [
+    {
+     "page": 48,
+     "source": "I SHOULD WRAP THINGS UP AND GO TO SLEEP...",
+     "before": "Giờ dọn dẹp\nxong rồi đi ngủ...",
+     "after": "Mình nên dọn dẹp\nxong rồi đi ngủ...",
+     "scores_before": {
+      "natural": 2.2,
+      "clear": 1.7,
+      "faithful": 1.39
+     },
+     "scores_after": {
+      "natural": 2.59,
+      "clear": 1.87,
+      "faithful": 1.4
+     }
+    }
+   ],
+   "scores": [
+    {
+     "page": 2,
+     "text": "Tôi bắn đây!",
+     "scores": {
+      "natural": 1.8,
+      "clear": 1.31,
+      "faithful": 1.51
+     }
+    },
+    {
+     "page": 7,
+     "text": "Phần còn lại... cứ để ngươi lo...",
+     "scores": {
+      "natural": 2.57,
+      "clear": 1.9,
+      "faithful": 1.9
+     }
+    },
+    {
+     "page": 8,
+     "text": "Từ bao giờ\nhắn lên đây vậy?!",
+     "scores": {
+      "natural": 2.66,
+      "clear": 1.89,
+      "faithful": 1.86
+     }
+    },
+    {
+     "page": 9,
+     "text": "[Sử dụng Kỹ thuật Chiến Đấu Ma pháp Sơ cấp,\n\"Chiến Thuật Chớp Nhoáng.\"]",
+     "scores": {
+      "natural": 2.19,
+      "clear": 1.91,
+      "faithful": 1.95
+     }
+    },
+    {
+     "page": 10,
+     "text": "[Thuộc tính \"Hoãn Lưu\"\nđã được áp dụng.]",
+     "scores": {
+      "natural": 2.07,
+      "clear": 1.83,
+      "faithful": 1.92
+     }
+    },
+    {
+     "page": 11,
+     "text": "Ma lực của Larsen đang bùng nổ.",
+     "scores": {
+      "natural": 2.48,
+      "clear": 1.97,
+      "faithful": 1.97
+     }
+    },
+    {
+     "page": 13,
+     "text": "Kết Giới không giữ nổi nữa.",
+     "scores": {
+      "natural": 2.1,
+      "clear": 1.71,
+      "faithful": 1.85
+     }
+    },
+    {
+     "page": 14,
+     "text": "Nó đang tới\nchỗ cô ấy.",
+     "scores": {
+      "natural": 2.34,
+      "clear": 1.65,
+      "faithful": 1.86
+     }
+    },
+    {
+     "page": 16,
+     "text": "Thiểm Hiện là Ma Pháp\nVòng Tròn thứ 5.",
+     "scores": {
+      "natural": 1.92,
+      "clear": 1.51,
+      "faithful": 1.87
+     }
+    },
+    {
+     "page": 16,
+     "text": "Em thắng rồi, chị.",
+     "scores": {
+      "natural": 2.67,
+      "clear": 1.86,
+      "faithful": 1.78
+     }
+    },
+    {
+     "page": 17,
+     "text": "Ngươi hứa chỉ dùng\ntối đa Ma Pháp Vòng\nTròn thứ 4.",
+     "scores": {
+      "natural": 1.95,
+      "clear": 1.78,
+      "faithful": 1.92
+     }
+    },
+    {
+     "page": 18,
+     "text": "Vậy ngươi đã tính ép ta\ndùng Thiểm Hiện ngay từ đầu.",
+     "scores": {
+      "natural": 2.34,
+      "clear": 1.85,
+      "faithful": 1.87
+     }
+    },
+    {
+     "page": 18,
+     "text": "Còn cách nào khác\nđể ta đánh bại ngươi không?",
+     "scores": {
+      "natural": 2.31,
+      "clear": 1.91,
+      "faithful": 1.87
+     }
+    },
+    {
+     "page": 19,
+     "text": "Thất Thiếu Gia thắng rồi!!!",
+     "scores": {
+      "natural": 2.35,
+      "clear": 1.85,
+      "faithful": 1.93
+     }
+    },
+    {
+     "page": 21,
+     "text": "ngay cả một pháp sư\nlỗi lạc cũng không\nthể nhận ra\nsự hiện diện của\nLôi Long đúng cách.",
+     "scores": {
+      "natural": 2.18,
+      "clear": 1.95,
+      "faithful": 1.92
+     }
+    },
+    {
+     "page": 21,
+     "text": "Ngươi đã chuẩn bị sẵn\nLôi Long Thổ Tức chưa?",
+     "scores": {
+      "natural": 2.18,
+      "clear": 1.67,
+      "faithful": 1.86
+     }
+    },
+    {
+     "page": 21,
+     "text": "Em đã lợi dụng\nthực tế rằng",
+     "scores": {
+      "natural": 2.11,
+      "clear": 1.63,
+      "faithful": 1.84
+     }
+    },
+    {
+     "page": 23,
+     "text": "Ta không còn cách nào khác phải thừa nhận\nsự lợi hại và mưu trí của ngươi.",
+     "scores": {
+      "natural": 2.08,
+      "clear": 1.94,
+      "faithful": 1.93
+     }
+    },
+    {
+     "page": 23,
+     "text": "Chị tự để em lại gần từ đầu đấy.",
+     "scores": {
+      "natural": 2.42,
+      "clear": 1.8,
+      "faithful": 1.74
+     }
+    },
+    {
+     "page": 23,
+     "text": "Chỉ vì chị lơi lỏng phòng bị thôi.",
+     "scores": {
+      "natural": 2.59,
+      "clear": 1.95,
+      "faithful": 1.85
+     }
+    },
+    {
+     "page": 24,
+     "text": "Miễn sao em\nthấy phù hợp.",
+     "scores": {
+      "natural": 2.52,
+      "clear": 1.9,
+      "faithful": 1.79
+     }
+    },
+    {
+     "page": 24,
+     "text": "Giờ thì như đã hứa,\nem sẽ tự quyết\nvề chuyện Trusty.",
+     "scores": {
+      "natural": 2.19,
+      "clear": 1.61,
+      "faithful": 1.72
+     }
+    },
+    {
+     "page": 25,
+     "text": "Không ngờ\nLarsen lại\ntiến bộ nhiều\nđến thế.",
+     "scores": {
+      "natural": 2.71,
+      "clear": 1.93,
+      "faithful": 1.71
+     }
+    },
+    {
+     "page": 25,
+     "text": "Đã hứa thì\nphải giữ.",
+     "scores": {
+      "natural": 2.85,
+      "clear": 2.0,
+      "faithful": 1.95
+     }
+    },
+    {
+     "page": 26,
+     "text": "Là sự bướng bỉnh để đạt được\nthứ ngươi muốn, bất kể thế nào.",
+     "scores": {
+      "natural": 1.98,
+      "clear": 1.89,
+      "faithful": 1.93
+     }
+    },
+    {
+     "page": 27,
+     "text": "Và cả tiềm năng để\nbiến điều đó thành sự thật.",
+     "scores": {
+      "natural": 2.33,
+      "clear": 1.83,
+      "faithful": 1.83
+     }
+    },
+    {
+     "page": 27,
+     "text": "Nếu Larsen còn tiến\nxa hơn nữa và quay lại\nchống lại ta...",
+     "scores": {
+      "natural": 2.18,
+      "clear": 1.73,
+      "faithful": 1.78
+     }
+    },
+    {
+     "page": 29,
+     "text": "Phép thuật đó\nlà...!!!",
+     "scores": {
+      "natural": 2.33,
+      "clear": 1.72,
+      "faithful": 1.94
+     }
+    },
+    {
+     "page": 30,
+     "text": "Ta sợ sự lớn mạnh\ncủa ngươi.",
+     "scores": {
+      "natural": 2.01,
+      "clear": 1.94,
+      "faithful": 1.97
+     }
+    },
+    {
+     "page": 31,
+     "text": "Tầm nhìn của tôi\nđột ngột bị cắt đứt.",
+     "scores": {
+      "natural": 2.15,
+      "clear": 1.89,
+      "faithful": 1.99
+     }
+    },
+    {
+     "page": 32,
+     "text": "Cái này là...?",
+     "scores": {
+      "natural": 2.48,
+      "clear": 1.8,
+      "faithful": 1.87
+     }
+    },
+    {
+     "page": 35,
+     "text": "Máy chém ư?",
+     "scores": {
+      "natural": 2.37,
+      "clear": 1.92,
+      "faithful": 1.9
+     }
+    },
+    {
+     "page": 36,
+     "text": "Đây là ma pháp\ncủa Ivelia sao?",
+     "scores": {
+      "natural": 2.48,
+      "clear": 1.92,
+      "faithful": 1.91
+     }
+    },
+    {
+     "page": 36,
+     "text": "Chẳng lẽ đây...",
+     "scores": {
+      "natural": 2.84,
+      "clear": 1.76,
+      "faithful": 1.93
+     }
+    },
+    {
+     "page": 37,
+     "text": "Quỹ Đạo\nTrị Dũ Chi Lực?",
+     "scores": {
+      "natural": 1.31,
+      "clear": 1.22,
+      "faithful": 1.77
+     }
+    },
+    {
+     "page": 39,
+     "text": "Tôi sắp chết!!!",
+     "scores": {
+      "natural": 2.72,
+      "clear": 1.98,
+      "faithful": 1.96
+     }
+    },
+    {
+     "page": 41,
+     "text": "Thiếu gia có sao không?",
+     "scores": {
+      "natural": 2.73,
+      "clear": 1.95,
+      "faithful": 1.91
+     }
+    },
+    {
+     "page": 41,
+     "text": "Lôi Long ở đâu?",
+     "scores": {
+      "natural": 2.41,
+      "clear": 1.74,
+      "faithful": 1.92
+     }
+    },
+    {
+     "page": 42,
+     "text": "Cô ấy ở tầng hai\ncùng tiểu thư Ivelia.",
+     "scores": {
+      "natural": 2.65,
+      "clear": 1.97,
+      "faithful": 1.98
+     }
+    },
+    {
+     "page": 42,
+     "text": "À thì...\nchuyện đó...",
+     "scores": {
+      "natural": 2.73,
+      "clear": 1.64,
+      "faithful": 1.92
+     }
+    },
+    {
+     "page": 43,
+     "text": "Ivelia và Trusty\nở bên nhau sao?!",
+     "scores": {
+      "natural": 2.68,
+      "clear": 1.9,
+      "faithful": 1.95
+     }
+    },
+    {
+     "page": 46,
+     "text": "Rốt cuộc chuyện gì\nđang xảy ra thế?!",
+     "scores": {
+      "natural": 2.8,
+      "clear": 1.99,
+      "faithful": 1.96
+     }
+    },
+    {
+     "page": 48,
+     "text": "Vui quá vì kết thúc\nkhông gặp chút rắc rối gì.",
+     "scores": {
+      "natural": 2.48,
+      "clear": 1.99,
+      "faithful": 1.97
+     }
+    },
+    {
+     "page": 48,
+     "text": "Giờ dọn dẹp\nxong rồi đi ngủ...",
+     "scores": {
+      "natural": 2.21,
+      "clear": 1.67,
+      "faithful": 1.43
+     }
+    },
+    {
+     "page": 48,
+     "text": "Phù~ May\nquá luôn.",
+     "scores": {
+      "natural": 2.84,
+      "clear": 1.97,
+      "faithful": 1.92
+     }
+    },
+    {
+     "page": 50,
+     "text": "Lục Thiếu Gia Carlton?!",
+     "scores": {
+      "natural": 2.39,
+      "clear": 1.62,
+      "faithful": 1.92
+     }
+    },
+    {
+     "page": 50,
+     "text": "Larsen Mayton đang ở trong\nHuấn Luyện Phụ Điện\nngay lúc này, phải không?",
+     "scores": {
+      "natural": 1.83,
+      "clear": 1.64,
+      "faithful": 1.5
+     }
+    },
+    {
+     "page": 51,
+     "text": "NGAY BÂY GIỜ!!!",
+     "scores": {
+      "natural": 2.78,
+      "clear": 1.99,
+      "faithful": 1.98
+     }
+    },
+    {
+     "page": 51,
+     "text": "Bảo hắn ta tôi ở đây.",
+     "scores": {
+      "natural": 2.6,
+      "clear": 1.89,
+      "faithful": 1.95
+     }
+    }
+   ]
+  },
+  "glossary": {
+   "names": [
+    {
+     "source": "Larsen",
+     "target": "Larsen",
+     "note": "person - possessive 'Larsen's Mana'"
+    },
+    {
+     "source": "Trusty",
+     "target": "Trusty",
+     "note": "person / contracted being"
+    },
+    {
+     "source": "Thunder Dragon",
+     "target": "Lôi Long",
+     "note": "creature/species"
+    },
+    {
+     "source": "Larsen Mayton",
+     "target": "Larsen Mayton",
+     "note": "person - full name of Larsen"
+    },
+    {
+     "source": "Ivelia",
+     "target": "Ivelia",
+     "note": "person, owner of the magic questioned"
+    },
+    {
+     "source": "Dragon's Authority Breath",
+     "target": "Long Uy Thổ Tức",
+     "note": "technique"
+    },
+    {
+     "source": "Barrier",
+     "target": "Kết Giới",
+     "note": "technique - 2ND CIRCLE LIGHT ATTRIBUTE MAGIC [BARRIER]"
+    },
+    {
+     "source": "Blitz Tactic",
+     "target": "Chiến Thuật Chớp Nhoáng",
+     "note": "technique - Beginner Magic Combat Technique \"Blitz Tactic.\""
+    },
+    {
+     "source": "Flow Slowly",
+     "target": "Hoãn Lưu",
+     "note": "attribute - Attribute \"Flow Slowly\""
+    },
+    {
+     "source": "Blink",
+     "target": "Thiểm Hiện",
+     "note": "spell / technique - 5th Circle magic used by the sister"
+    },
+    {
+     "source": "Seventh Young Master",
+     "target": "Thất Thiếu Gia",
+     "note": "title of the blond male winner"
+    },
+    {
+     "source": "Mayton Family",
+     "target": "Gia tộc Mayton",
+     "note": "clan/family"
+    },
+    {
+     "source": "Thunder Dragon's Breath",
+     "target": "Lôi Long Thổ Tức",
+     "note": "technique/breath attack"
+    },
+    {
+     "source": "Orbital Healing Power",
+     "target": "Quỹ Đạo Trị Dũ Chi Lực",
+     "note": "technique/ability"
+    },
+    {
+     "source": "Carlton",
+     "target": "Carlton",
+     "note": "person - Sixth Young Master"
+    },
+    {
+     "source": "Training Annex",
+     "target": "Huấn Luyện Phụ Điện",
+     "note": "place - building inside academy"
+    }
+   ],
+   "terms": [
+    {
+     "source": "mana",
+     "target": "Ma lực"
+    },
+    {
+     "source": "young master",
+     "target": "Thiếu Gia"
+    },
+    {
+     "source": "circle",
+     "target": "vòng tròn ma pháp"
+    },
+    {
+     "source": "master",
+     "target": "Sư phụ"
+    },
+    {
+     "source": "2nd circle",
+     "target": "Nhị Hoàn"
+    },
+    {
+     "source": "light attribute magic",
+     "target": "Ma pháp Thuộc tính Quang"
+    },
+    {
+     "source": "beginner magic combat technique",
+     "target": "Kỹ thuật Chiến Đấu Ma pháp Sơ cấp"
+    },
+    {
+     "source": "attribute",
+     "target": "Thuộc tính"
+    },
+    {
+     "source": "barrier",
+     "target": "Kết Giới"
+    },
+    {
+     "source": "circle magic",
+     "target": "Ma Pháp Vòng Tròn"
+    },
+    {
+     "source": "5th circle magic",
+     "target": "Ma Pháp Vòng Tròn thứ 5"
+    },
+    {
+     "source": "4th circle magic",
+     "target": "Ma Pháp Vòng Tròn thứ 4"
+    },
+    {
+     "source": "mage",
+     "target": "pháp sư"
+    },
+    {
+     "source": "young lady",
+     "target": "tiểu thư"
+    },
+    {
+     "source": "sixth young master",
+     "target": "Lục Thiếu Gia"
+    },
+    {
+     "source": "administrator",
+     "target": "Quản Sự"
+    }
+   ],
+   "address": [
+    {
+     "from": "blonde girl",
+     "to": "Master",
+     "self": "con",
+     "other": "sư phụ"
+    },
+    {
+     "from": "blond young man (Seventh Young Master)",
+     "to": "white-haired woman (Sister)",
+     "self": "em",
+     "other": "chị"
+    },
+    {
+     "from": "white-haired woman (Sister)",
+     "to": "blond young man (Seventh Young Master)",
+     "self": "chị",
+     "other": "em"
+    },
+    {
+     "from": "Larsen",
+     "to": "long-haired mage",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "long-haired mage",
+     "to": "Larsen",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "Larsen",
+     "to": "Sister",
+     "self": "em",
+     "other": "chị"
+    },
+    {
+     "from": "Sister",
+     "to": "Larsen Mayton",
+     "self": "ta",
+     "other": "ngươi"
+    },
+    {
+     "from": "hooded attendant",
+     "to": "young master (blond boy)",
+     "self": "tôi",
+     "other": "thiếu gia"
+    },
+    {
+     "from": "young master (blond boy)",
+     "to": "hooded attendant",
+     "self": "tôi",
+     "other": "anh"
+    },
+    {
+     "from": "Administrator",
+     "to": "Carlton",
+     "self": "tôi",
+     "other": "Lục thiếu gia"
+    },
+    {
+     "from": "Carlton",
+     "to": "Administrator",
+     "self": "ta",
+     "other": "ngươi"
+    }
+   ]
+  },
+  "review_sheets": 9,
+  "review_crops": 112,
+  "lines_joined": 0,
+  "overlaps_dropped": 0,
+  "seam_copies": 1,
+  "characters": [
+   {
+    "name": "blond young man (Seventh Young Master)",
+    "note": "young blond man in white shirt, smiling, deciding the fate of Trusty"
+   },
+   {
+    "name": "white-haired woman",
+    "note": "tall woman with long white hair, older superior, observing Larsen's growth"
+   },
+   {
+    "name": "blonde girl",
+    "note": "young blonde woman, lying injured/unconscious in shallow water, weak final words"
+   },
+   {
+    "name": "unknown speaker",
+    "note": "figure in white shirt and dark pants standing in shallow water, seen from behind; accuses someone of breaking a promise"
+   },
+   {
+    "name": "Larsen",
+    "note": "blond boy in white shirt, shocked reaction"
+   },
+   {
+    "name": "hooded attendant",
+    "note": "figure in dark hooded robe and red glasses, shocked reaction"
+   },
+   {
+    "name": "angry young man",
+    "note": "young man with reddish-brown hair and blue eyes, gritting teeth, giving an urgent order"
+   },
+   {
+    "name": "Administrator",
+    "note": "orange-haired man in red official uniform with gold epaulettes, carrying a blue orb staff; shocked to see Carlton"
+   },
+   {
+    "name": "Carlton",
+    "note": "Sixth Young Master, seen from behind in a dark hood, speaking to the Administrator"
+   }
+  ],
+  "address": [
+   {
+    "from": "blond young man (Seventh Young Master)",
+    "to": "white-haired woman (Sister)",
+    "self": "em",
+    "other": "chị"
+   },
+   {
+    "from": "white-haired woman",
+    "to": "Larsen Mayton",
+    "self": "ta",
+    "other": "ngươi"
+   },
+   {
+    "from": "white-haired woman",
+    "to": "Larsen",
+    "self": "ta",
+    "other": "ngươi"
+   },
+   {
+    "from": "Larsen",
+    "to": "Sister",
+    "self": "em",
+    "other": "chị"
+   },
+   {
+    "from": "Larsen",
+    "to": "hooded attendant",
+    "self": "tôi",
+    "other": "anh"
+   },
+   {
+    "from": "hooded attendant",
+    "to": "Larsen",
+    "self": "tôi",
+    "other": "thiếu gia"
+   }
+  ]
+ },
+ "gateway_job": {
+  "status": "completed",
+  "requests": 164,
+  "prompt_tokens": 517383,
+  "completion_tokens": 116662,
+  "cost_usd": 0.07268997162,
+  "charged_micros": 76322
+ },
+ "transport": {
+  "scan": {
+   "requests": 13,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 7.9,
+    "p90": 13.0,
+    "max": 13.1,
+    "sum": 114.8
+   },
+   "span_s": 47.9,
+   "images": 52,
+   "request_kb_avg": 698.6,
+   "prompt_tokens": 44697,
+   "cached_tokens": 30215,
+   "completion_tokens": 6086,
+   "reasoning_tokens": 2662
+  },
+  "glossary": {
+   "requests": 9,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 11.2,
+    "p90": 16.2,
+    "max": 16.2,
+    "sum": 98.5
+   },
+   "span_s": 35.6,
+   "images": 50,
+   "request_kb_avg": 1770.4,
+   "prompt_tokens": 89914,
+   "cached_tokens": 44539,
+   "completion_tokens": 6235,
+   "reasoning_tokens": 4956
+  },
+  "review": {
+   "requests": 9,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 9.4,
+    "p90": 12.0,
+    "max": 12.0,
+    "sum": 81.9
+   },
+   "span_s": 13.5,
+   "images": 9,
+   "request_kb_avg": 756.4,
+   "prompt_tokens": 37679,
+   "cached_tokens": 4987,
+   "completion_tokens": 4481,
+   "reasoning_tokens": 4277
+  },
+  "translate": {
+   "requests": 52,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 5,
+   "latency_s": {
+    "p50": 17.7,
+    "p90": 91.1,
+    "max": 136.1,
+    "sum": 1669.7
+   },
+   "span_s": 616.8,
+   "images": 104,
+   "request_kb_avg": 532.3,
+   "prompt_tokens": 296102,
+   "cached_tokens": 116160,
+   "completion_tokens": 78928,
+   "reasoning_tokens": 69234
+  },
+  "judge": {
+   "requests": 75,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 8.2,
+    "p90": 13.4,
+    "max": 20.5,
+    "sum": 660.7
+   },
+   "span_s": 335.4,
+   "images": 0,
+   "request_kb_avg": 0.0,
+   "prompt_tokens": 37520,
+   "cached_tokens": 0,
+   "completion_tokens": 0,
+   "reasoning_tokens": 0
+  },
+  "polish": {
+   "requests": 6,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 2,
+   "latency_s": {
+    "p50": 48.6,
+    "p90": 75.6,
+    "max": 75.6,
+    "sum": 271.9
+   },
+   "span_s": 320.0,
+   "images": 0,
+   "request_kb_avg": 8.8,
+   "prompt_tokens": 11471,
+   "cached_tokens": 2048,
+   "completion_tokens": 20932,
+   "reasoning_tokens": 20181
+  }
+ },
+ "export_error": "HTTP 409: {\"detail\":\"Editorial preflight blocked final render/export: 5 unresolved story-text blocker(s): story_object_missing_ocr@p8:text_ab5712f57f924b8d, story_object_missing_ocr@p11:text_71ff13779bc246d3, story_object_missing_ocr@p19:text_0e56d7f0000d4498, story_object_missing_ocr@p47:text_c74cec9a31bd43c",
+ "slices": 52,
+ "slices_active": 50,
+ "clean_ms": {
+  "auto_inpaint": 300150,
+  "auto_inpaint.lama_model_ms": 229692,
+  "auto_inpaint.ort_global_lock_wait_ms": 0,
+  "auto_inpaint.session_lock_wait_ms": 0,
+  "detect": 163425,
+  "manual_inpaint": 0,
+  "manual_inpaint.lama_model_ms": 0,
+  "manual_inpaint.ort_global_lock_wait_ms": 0,
+  "manual_inpaint.session_lock_wait_ms": 0,
+  "read": 2894,
+  "total": 471538,
+  "write": 5030
+ },
+ "pairs": 50,
+ "lines": [
+  {
+   "slice": 2,
+   "id": "text_48039bdf84754a8c",
+   "source": "I'M FIRING!",
+   "translation": "Tôi bắn đây!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 74,
+   "font_px_at_800": 65.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Tôi bắn đây!"
+   ],
+   "box_w": 369,
+   "box_h": 146,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 2,
+   "id": "text_a4740155a70443ec",
+   "source": "MASTER!",
+   "translation": "Sư phụ!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 93,
+   "font_px_at_800": 82.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Sư phụ!"
+   ],
+   "box_w": 353,
+   "box_h": 158,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 51,
+   "split_word": false
+  },
+  {
+   "slice": 2,
+   "id": "text_fb90b4abe3344ed1",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 3,
+   "id": "text_5c6a8703d8fa4d47",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 4,
+   "id": "text_fa34c26b983a4aef",
+   "source": "DRAGON'S AUTHORITY BREATH",
+   "translation": "Long Uy Thổ Tức",
+   "role": "title",
+   "container": "box",
+   "font": "emphasis.bungee",
+   "review": false,
+   "page_width": 900,
+   "font_px": 146,
+   "font_px_at_800": 129.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Long Uy",
+    "Thổ Tức"
+   ],
+   "box_w": 900,
+   "box_h": 474,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 104,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_ea268d24e8f94b70",
+   "source": "...!!",
+   "translation": "...!!",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 77,
+   "font_px_at_800": 68.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "...!!"
+   ],
+   "box_w": 235,
+   "box_h": 171,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_c595c3c4b7564cec",
+   "source": "I'LL LEAVE THE REST TO YOU...",
+   "translation": "Phần còn lại... cứ để ngươi lo...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 81,
+   "font_px_at_800": 72.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Phần còn lại...",
+    "cứ để ngươi",
+    "lo..."
+   ],
+   "box_w": 499,
+   "box_h": 336,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_2f4380de2c6845c8",
+   "source": "2ND CIRCLE LIGHT ATTRIBUTE MAGIC [BARRIER]",
+   "translation": "Nhị Hoàn\nMa pháp Thuộc tính Quang\n[Kết Giới]",
+   "role": "skill_name",
+   "container": "box",
+   "font": "emphasis.bungee",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Nhị Hoàn",
+    "Ma pháp Thuộc tính",
+    "Quang",
+    "[Kết Giới]"
+   ],
+   "box_w": 650,
+   "box_h": 386,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_198e2e4d593d41f1",
+   "source": "SINCE WHEN DID HE GET HERE?!",
+   "translation": "Từ bao giờ\nhắn lên đây vậy?!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Từ bao giờ",
+    "hắn lên đây",
+    "vậy?!"
+   ],
+   "box_w": 411,
+   "box_h": 265,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_ab5712f57f924b8d",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 8,
+   "id": "text_111f3ea3327242c1",
+   "source": "...!!",
+   "translation": "...!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "...!!"
+   ],
+   "box_w": 190,
+   "box_h": 139,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_ad5704c8ec0145db",
+   "source": "[USING BEGINNER MAGIC COMBAT TECHNIQUE, \"BLITZ TACTIC.\"]",
+   "translation": "[Sử dụng Kỹ thuật Chiến Đấu Ma pháp Sơ cấp,\n\"Chiến Thuật Chớp Nhoáng.\"]",
+   "role": "system_ui",
+   "container": "box",
+   "font": "emphasis.bungee",
+   "review": false,
+   "page_width": 900,
+   "font_px": 52,
+   "font_px_at_800": 46.2,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "[Sử dụng Kỹ thuật Chiến Đấu",
+    "Ma pháp Sơ cấp,",
+    "\"Chiến Thuật Chớp Nhoáng.\"]"
+   ],
+   "box_w": 900,
+   "box_h": 326,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 65,
+   "split_word": false
+  },
+  {
+   "slice": 10,
+   "id": "text_97f9c7a242b447de",
+   "source": "[ATTRIBUTE \"FLOW SLOWLY\" IS APPLIED.]",
+   "translation": "[Thuộc tính \"Hoãn Lưu\"\nđã được áp dụng.]",
+   "role": "system_ui",
+   "container": "box",
+   "font": "emphasis.bungee",
+   "review": false,
+   "page_width": 900,
+   "font_px": 81,
+   "font_px_at_800": 72.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "[Thuộc tính \"Hoãn",
+    "Lưu\"",
+    "đã được áp dụng.]"
+   ],
+   "box_w": 893,
+   "box_h": 405,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 84,
+   "split_word": false
+  },
+  {
+   "slice": 11,
+   "id": "text_24770c6721b84cad",
+   "source": "LARSEN'S MANA IS EXPLODING.",
+   "translation": "Ma lực của Larsen đang bùng nổ.",
+   "role": "narration",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ma lực của Larsen",
+    "đang bùng nổ."
+   ],
+   "box_w": 419,
+   "box_h": 183,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 11,
+   "id": "text_71ff13779bc246d3",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 13,
+   "id": "text_be4f6bbdfa314091",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 13,
+   "id": "text_3e228dd37b554c6d",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 13,
+   "id": "text_02e11acdf6f047c3",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 13,
+   "id": "text_0b093573750b40f9",
+   "source": "THE BARRIER WON'T HOLD.",
+   "translation": "Kết Giới không giữ nổi nữa.",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Kết Giới không",
+    "giữ nổi nữa."
+   ],
+   "box_w": 408,
+   "box_h": 195,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 14,
+   "id": "text_80972512d6bb4b95",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 14,
+   "id": "text_c63d22b79a624e58",
+   "source": "IT'S REACHING HER.",
+   "translation": "Nó đang tới\nchỗ cô ấy.",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 74,
+   "font_px_at_800": 65.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Nó đang tới",
+    "chỗ cô ấy."
+   ],
+   "box_w": 423,
+   "box_h": 303,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 14,
+   "id": "text_9eb69678d38c4427",
+   "source": "!!!",
+   "translation": "!!!",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "!!!"
+   ],
+   "box_w": 175,
+   "box_h": 151,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 16,
+   "id": "text_9787cb811edd463b",
+   "source": "BLINK IS 5TH CIRCLE MAGIC.",
+   "translation": "Thiểm Hiện là Ma Pháp\nVòng Tròn thứ 5.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Thiểm Hiện là Ma",
+    "Pháp",
+    "Vòng Tròn thứ 5."
+   ],
+   "box_w": 560,
+   "box_h": 234,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 16,
+   "id": "text_221d7a05de864e84",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 16,
+   "id": "text_686b2ee8ab744830",
+   "source": "I WIN, SISTER.",
+   "translation": "Em thắng rồi, chị.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 103,
+   "font_px_at_800": 91.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Em thắng",
+    "rồi, chị."
+   ],
+   "box_w": 432,
+   "box_h": 278,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 57,
+   "split_word": false
+  },
+  {
+   "slice": 16,
+   "id": "text_724c7c139d2d4444",
+   "source": "WHAT?",
+   "translation": "Cái gì?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 74,
+   "font_px_at_800": 65.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Cái gì?"
+   ],
+   "box_w": 333,
+   "box_h": 216,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 16,
+   "id": "text_da0be59ce6e34eec",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 17,
+   "id": "text_90790c151a7d49c6",
+   "source": "YOU PROMISED TO ONLY USE UP TO 4TH CIRCLE MAGIC.",
+   "translation": "Ngươi hứa chỉ dùng\ntối đa Ma Pháp Vòng\nTròn thứ 4.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Ngươi hứa chỉ dùng",
+    "tối đa Ma Pháp Vòng",
+    "Tròn thứ 4."
+   ],
+   "box_w": 587,
+   "box_h": 284,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 18,
+   "id": "text_c62a39c4f9af4378",
+   "source": "SO YOU PLANNED TO FORCE ME TO USE BLINK FROM THE VERY BEGINNING.",
+   "translation": "Vậy ngươi đã tính ép ta\ndùng Thiểm Hiện ngay từ đầu.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 52,
+   "font_px_at_800": 46.2,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Vậy ngươi đã tính ép ta",
+    "dùng Thiểm Hiện ngay từ",
+    "đầu."
+   ],
+   "box_w": 569,
+   "box_h": 302,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 29,
+   "split_word": false
+  },
+  {
+   "slice": 18,
+   "id": "text_cf27746a11954e4b",
+   "source": "WAS THERE ANY OTHER WAY FOR ME TO DEFEAT YOU?",
+   "translation": "Còn cách nào khác\nđể ta đánh bại ngươi không?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Còn cách nào khác",
+    "để ta đánh bại ngươi",
+    "không?"
+   ],
+   "box_w": 593,
+   "box_h": 278,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 18,
+   "id": "text_091c2dec05ef48a0",
+   "source": "……..",
+   "translation": "........",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 14,
+   "font_px_at_800": 12.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "........"
+   ],
+   "box_w": 192,
+   "box_h": 110,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 8,
+   "split_word": false
+  },
+  {
+   "slice": 19,
+   "id": "text_21b912ec900d4ce9",
+   "source": "!!!!!!",
+   "translation": "!!!!!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "!!!!!!"
+   ],
+   "box_w": 600,
+   "box_h": 684,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 118,
+   "split_word": false
+  },
+  {
+   "slice": 19,
+   "id": "text_073d68c47bc54df6",
+   "source": "THE SEVENTH YOUNG MASTER WON!!!",
+   "translation": "Thất Thiếu Gia thắng rồi!!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Thất Thiếu Gia thắng",
+    "rồi!!!"
+   ],
+   "box_w": 647,
+   "box_h": 423,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 19,
+   "id": "text_0e56d7f0000d4498",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 21,
+   "id": "text_3df5d5e71e414e62",
+   "source": "THAT EVEN AN OUTSTANDING MAGE WOULDN'T BE ABLE TO READ THE THUNDER DRAGON'S PRESENCE PROPERLY.",
+   "translation": "ngay cả một pháp sư\nlỗi lạc cũng không\nthể nhận ra\nsự hiện diện của\nLôi Long đúng cách.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 52,
+   "font_px_at_800": 46.2,
+   "size_source": "fit",
+   "lines": 5,
+   "wrapped": [
+    "ngay cả một pháp sư",
+    "lỗi lạc cũng không",
+    "thể nhận ra",
+    "sự hiện diện của",
+    "Lôi Long đúng cách."
+   ],
+   "box_w": 652,
+   "box_h": 420,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 29,
+   "split_word": false
+  },
+  {
+   "slice": 21,
+   "id": "text_e318df0e7793480b",
+   "source": "DID YOU PREPARE THE THUNDER DRAGON'S BREATH IN ADVANCE?",
+   "translation": "Ngươi đã chuẩn bị sẵn\nLôi Long Thổ Tức chưa?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 49,
+   "font_px_at_800": 43.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ngươi đã chuẩn bị sẵn",
+    "Lôi Long Thổ Tức chưa?"
+   ],
+   "box_w": 544,
+   "box_h": 279,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 27,
+   "split_word": false
+  },
+  {
+   "slice": 21,
+   "id": "text_16838136abe14686",
+   "source": "I UTILIZED THE FACT",
+   "translation": "Em đã lợi dụng\nthực tế rằng",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 66,
+   "font_px_at_800": 58.7,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Em đã lợi dụng",
+    "thực tế rằng"
+   ],
+   "box_w": 398,
+   "box_h": 218,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 21,
+   "id": "text_ecec11b7005f48eb",
+   "source": "NO WAY...",
+   "translation": "Không thể...",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 79,
+   "font_px_at_800": 70.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Không thể..."
+   ],
+   "box_w": 403,
+   "box_h": 158,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 52,
+   "split_word": false
+  },
+  {
+   "slice": 21,
+   "id": "text_aa6aa9936e6040b4",
+   "source": "YES.",
+   "translation": "Vâng.",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 96,
+   "font_px_at_800": 85.3,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Vâng."
+   ],
+   "box_w": 243,
+   "box_h": 159,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 53,
+   "split_word": false
+  },
+  {
+   "slice": 21,
+   "id": "text_458eb147d75b4eef",
+   "source": "SNORE",
+   "translation": "khò khò",
+   "role": "sfx",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "khò khò"
+   ],
+   "box_w": 218,
+   "box_h": 140,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 22,
+   "id": "text_78e1669366b74b42",
+   "source": "",
+   "translation": "Lôi Long ở ngay trong\nGia tộc Mayton?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Lôi Long ở ngay",
+    "trong",
+    "Gia tộc Mayton?"
+   ],
+   "box_w": 545,
+   "box_h": 342,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 22,
+   "id": "text_8d7db40388e94b9c",
+   "source": "",
+   "translation": "Còn bất ngờ hơn\nnhiều so với ta nghĩ.",
+   "role": "thought",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 46,
+   "font_px_at_800": 40.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Còn bất ngờ hơn",
+    "nhiều so với ta nghĩ."
+   ],
+   "box_w": 446,
+   "box_h": 216,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 25,
+   "split_word": false
+  },
+  {
+   "slice": 22,
+   "id": "text_0f752e6a5fbf4cc7",
+   "source": "",
+   "translation": "Qua cuộc nói chuyện đó?",
+   "role": "thought",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 49,
+   "font_px_at_800": 43.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Qua cuộc nói",
+    "chuyện đó?"
+   ],
+   "box_w": 402,
+   "box_h": 168,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 27,
+   "split_word": false
+  },
+  {
+   "slice": 23,
+   "id": "text_d4465ba4d0384f44",
+   "source": "I HAVE NO CHOICE BUT TO ACKNOWLEDGE YOUR SKILL AND WIT.",
+   "translation": "Ta không còn cách nào khác phải thừa nhận\nsự lợi hại và mưu trí của ngươi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Ta không còn cách nào",
+    "khác phải thừa nhận",
+    "sự lợi hại và mưu trí của",
+    "ngươi."
+   ],
+   "box_w": 586,
+   "box_h": 319,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 23,
+   "id": "text_8e16bd0f5b984548",
+   "source": "YOU ALLOWED ME TO CLOSE THE DISTANCE IN THE FIRST PLACE.",
+   "translation": "Chị tự để em lại gần từ đầu đấy.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chị tự để em lại gần",
+    "từ đầu đấy."
+   ],
+   "box_w": 554,
+   "box_h": 338,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 23,
+   "id": "text_941e63feabcb42f2",
+   "source": "IT WAS ONLY BECAUSE YOU LET YOUR GUARD DOWN.",
+   "translation": "Chỉ vì chị lơi lỏng phòng bị thôi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chỉ vì chị lơi lỏng phòng bị",
+    "thôi."
+   ],
+   "box_w": 700,
+   "box_h": 370,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 23,
+   "id": "text_0d9744cbb6ef4751",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 24,
+   "id": "text_c0022ea4b95a4639",
+   "source": "HOWEVER I SEE FIT.",
+   "translation": "Miễn sao em\nthấy phù hợp.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 83,
+   "font_px_at_800": 73.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Miễn sao em",
+    "thấy phù hợp."
+   ],
+   "box_w": 464,
+   "box_h": 254,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 51,
+   "split_word": false
+  },
+  {
+   "slice": 24,
+   "id": "text_68916df542754962",
+   "source": "NOW, AS PROMISED, I WILL MAKE MY DECISIONS REGARDING TRUSTY",
+   "translation": "Giờ thì như đã hứa,\nem sẽ tự quyết\nvề chuyện Trusty.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 49,
+   "font_px_at_800": 43.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Giờ thì như đã hứa,",
+    "em sẽ tự quyết",
+    "về chuyện Trusty."
+   ],
+   "box_w": 611,
+   "box_h": 223,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 27,
+   "split_word": false
+  },
+  {
+   "slice": 25,
+   "id": "text_7bf6452b2a314cf4",
+   "source": "TO THINK LARSEN WOULD HAVE GROWN THIS MUCH.",
+   "translation": "Không ngờ\nLarsen lại\ntiến bộ nhiều\nđến thế.",
+   "role": "thought",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Không ngờ",
+    "Larsen lại",
+    "tiến bộ nhiều",
+    "đến thế."
+   ],
+   "box_w": 546,
+   "box_h": 368,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 25,
+   "id": "text_7959fc4306284b43",
+   "source": "A PROMISE IS A PROMISE.",
+   "translation": "Đã hứa thì\nphải giữ.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Đã hứa thì",
+    "phải giữ."
+   ],
+   "box_w": 431,
+   "box_h": 194,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 25,
+   "id": "text_dee199e4c3e24cf6",
+   "source": "FINE,",
+   "translation": "Được,",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 102,
+   "font_px_at_800": 90.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Được,"
+   ],
+   "box_w": 360,
+   "box_h": 243,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 56,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_0170a0d68fd642c4",
+   "source": "IT ISN'T JUST HIS CIRCLE OR MANA THAT INCREASED.",
+   "translation": "Không chỉ vòng tròn ma pháp\nhay Ma lực của ngươi tăng lên đâu.",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Không chỉ vòng tròn",
+    "ma pháp",
+    "hay Ma lực của ngươi",
+    "tăng lên đâu."
+   ],
+   "box_w": 644,
+   "box_h": 398,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 40,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_646ca8e065c9490b",
+   "source": "THE STUBBORNNESS TO ACHIEVE WHAT HE WANTS NO MATTER WHAT.",
+   "translation": "Là sự bướng bỉnh để đạt được\nthứ ngươi muốn, bất kể thế nào.",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Là sự bướng bỉnh để đạt",
+    "được",
+    "thứ ngươi muốn, bất kể",
+    "thế nào."
+   ],
+   "box_w": 593,
+   "box_h": 379,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_c14208c5850a44b8",
+   "source": "THE TRULY TERRIFYING THING IS SOMETHING ELSE.",
+   "translation": "Điều thực sự đáng sợ\nlà chuyện khác.",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 49,
+   "font_px_at_800": 43.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Điều thực sự đáng sợ",
+    "là chuyện khác."
+   ],
+   "box_w": 516,
+   "box_h": 229,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 27,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_41d1e0f5b7f747ac",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 26,
+   "id": "text_1849466f6cd94133",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 27,
+   "id": "text_16dd2709fc974af3",
+   "source": "Shatter",
+   "translation": "Rắc!",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Rắc!"
+   ],
+   "box_w": 770,
+   "box_h": 515,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 201,
+   "split_word": false
+  },
+  {
+   "slice": 27,
+   "id": "text_1fbcc9b91f6d424e",
+   "source": "AND THE POTENTIAL TO MAKE IT HAPPEN.",
+   "translation": "Và cả tiềm năng để\nbiến điều đó thành sự thật.",
+   "role": "thought",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Và cả tiềm năng",
+    "để",
+    "biến điều đó",
+    "thành sự thật."
+   ],
+   "box_w": 519,
+   "box_h": 362,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 27,
+   "id": "text_c70f465af4fb447d",
+   "source": "IF LARSEN GROWS EVEN FURTHER AND TURNS AGAINST ME...",
+   "translation": "Nếu Larsen còn tiến\nxa hơn nữa và quay lại\nchống lại ta...",
+   "role": "thought",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nếu Larsen còn tiến",
+    "xa hơn nữa và quay lại",
+    "chống lại ta..."
+   ],
+   "box_w": 555,
+   "box_h": 255,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 27,
+   "id": "text_98dba530032f42d7",
+   "source": "",
+   "translation": "Rắc!",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 161,
+   "font_px_at_800": 143.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Rắc!"
+   ],
+   "box_w": 387,
+   "box_h": 296,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 116,
+   "split_word": false
+  },
+  {
+   "slice": 28,
+   "id": "text_603209ee171240f5",
+   "source": "SISTER?!",
+   "translation": "Chị?!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 105,
+   "font_px_at_800": 93.3,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Chị?!"
+   ],
+   "box_w": 445,
+   "box_h": 170,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 58,
+   "split_word": false
+  },
+  {
+   "slice": 29,
+   "id": "text_831a1972f22d4743",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 29,
+   "id": "text_a332e25313c34d26",
+   "source": "THAT MAGIC IS...!!!",
+   "translation": "Phép thuật đó\nlà...!!!",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 83,
+   "font_px_at_800": 73.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Phép thuật đó",
+    "là...!!!"
+   ],
+   "box_w": 530,
+   "box_h": 240,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 46,
+   "split_word": false
+  },
+  {
+   "slice": 30,
+   "id": "text_da3f36854a944bfa",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 30,
+   "id": "text_02c09ebbc86444ab",
+   "source": "",
+   "translation": "Vù!",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Vù!"
+   ],
+   "box_w": 519,
+   "box_h": 439,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 252,
+   "split_word": false
+  },
+  {
+   "slice": 30,
+   "id": "text_cd3f9b17ec1047be",
+   "source": "LARSEN MAYTON.",
+   "translation": "Larsen Mayton.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 162,
+   "font_px_at_800": 144.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Larsen",
+    "Mayton."
+   ],
+   "box_w": 516,
+   "box_h": 385,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 89,
+   "split_word": false
+  },
+  {
+   "slice": 30,
+   "id": "text_f772f962b9f84f49",
+   "source": "I AM AFRAID OF YOUR GROWTH.",
+   "translation": "Ta sợ sự lớn mạnh\ncủa ngươi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 86,
+   "font_px_at_800": 76.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ta sợ sự lớn mạnh",
+    "của ngươi."
+   ],
+   "box_w": 612,
+   "box_h": 286,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 60,
+   "split_word": false
+  },
+  {
+   "slice": 31,
+   "id": "text_ea601616add74d3a",
+   "source": "",
+   "translation": "Vù!",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Vù!"
+   ],
+   "box_w": 519,
+   "box_h": 439,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 252,
+   "split_word": false
+  },
+  {
+   "slice": 31,
+   "id": "text_998e313f91ff41d9",
+   "source": "MY VISION WAS SUDDENLY CUT OFF.",
+   "translation": "Tầm nhìn của tôi\nđột ngột bị cắt đứt.",
+   "role": "narration",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tầm nhìn của tôi",
+    "đột ngột bị cắt",
+    "đứt."
+   ],
+   "box_w": 467,
+   "box_h": 264,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 31,
+   "id": "text_17a6e417249f462a",
+   "source": "",
+   "translation": "Bộp!",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 48,
+   "font_px_at_800": 42.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Bộp!"
+   ],
+   "box_w": 309,
+   "box_h": 224,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 31,
+   "id": "text_e362f01d617a4454",
+   "source": "",
+   "translation": "Bộp!",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 48,
+   "font_px_at_800": 42.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Bộp!"
+   ],
+   "box_w": 309,
+   "box_h": 216,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 32,
+   "id": "text_c8927fd754274023",
+   "source": "!",
+   "translation": "!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 48,
+   "font_px_at_800": 42.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "!"
+   ],
+   "box_w": 129,
+   "box_h": 159,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 32,
+   "id": "text_05c71596ca7b4d9f",
+   "source": "THIS IS...?",
+   "translation": "Cái này là...?",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Cái này là...?"
+   ],
+   "box_w": 363,
+   "box_h": 127,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 33,
+   "id": "text_268eff0e86cf48f4",
+   "source": "LIGHT?",
+   "translation": "Ánh sáng?!",
+   "role": "thought",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 75,
+   "font_px_at_800": 66.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Ánh sáng?!"
+   ],
+   "box_w": 337,
+   "box_h": 145,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 52,
+   "split_word": false
+  },
+  {
+   "slice": 33,
+   "id": "text_19a568d3e7664887",
+   "source": "휙",
+   "translation": "Vù!",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 48,
+   "font_px_at_800": 42.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Vù!"
+   ],
+   "box_w": 399,
+   "box_h": 465,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 33,
+   "id": "text_445949e736fb4a59",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 34,
+   "id": "text_60b25f82155e4ea8",
+   "source": "",
+   "translation": "Vù...",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Vù..."
+   ],
+   "box_w": 616,
+   "box_h": 997,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 138,
+   "split_word": false
+  },
+  {
+   "slice": 34,
+   "id": "text_78540f8164ff48d2",
+   "source": "",
+   "translation": "!!!!",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 40,
+   "font_px_at_800": 35.6,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "!!!!"
+   ],
+   "box_w": 362,
+   "box_h": 313,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 22,
+   "split_word": false
+  },
+  {
+   "slice": 35,
+   "id": "text_07317b7a0229410d",
+   "source": "A GUILLOTINE?",
+   "translation": "Máy chém ư?",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Máy chém ư?"
+   ],
+   "box_w": 454,
+   "box_h": 120,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 36,
+   "id": "text_2d44711ead464e74",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 36,
+   "id": "text_1c5789b7e76b4cba",
+   "source": "IS THIS IVELIA'S MAGIC?",
+   "translation": "Đây là ma pháp\ncủa Ivelia sao?",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 77,
+   "font_px_at_800": 68.4,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Đây là ma",
+    "pháp",
+    "của Ivelia",
+    "sao?"
+   ],
+   "box_w": 437,
+   "box_h": 358,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 36,
+   "id": "text_084b52583ef049a3",
+   "source": "COULD THIS BE...",
+   "translation": "Chẳng lẽ đây...",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 98,
+   "font_px_at_800": 87.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chẳng lẽ",
+    "đây..."
+   ],
+   "box_w": 470,
+   "box_h": 271,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 54,
+   "split_word": false
+  },
+  {
+   "slice": 36,
+   "id": "text_34d8b744488c42cb",
+   "source": "NO, WAIT...!",
+   "translation": "Khoan đã...!",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 89,
+   "font_px_at_800": 79.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Khoan đã...!"
+   ],
+   "box_w": 475,
+   "box_h": 153,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 49,
+   "split_word": false
+  },
+  {
+   "slice": 37,
+   "id": "text_a0bff2255f274abf",
+   "source": "ORBITAL HEALING POWER?",
+   "translation": "Quỹ Đạo\nTrị Dũ Chi Lực?",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 74,
+   "font_px_at_800": 65.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Quỹ Đạo",
+    "Trị Dũ Chi Lực?"
+   ],
+   "box_w": 592,
+   "box_h": 224,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 37,
+   "id": "text_c51f0df601554091",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 37,
+   "id": "text_19b5f2d762024e29",
+   "source": "크크크",
+   "translation": "Khặc khặc",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 149,
+   "font_px_at_800": 132.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Khặc",
+    "khặc"
+   ],
+   "box_w": 697,
+   "box_h": 465,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 278,
+   "split_word": false
+  },
+  {
+   "slice": 39,
+   "id": "text_81677f85201b4d2b",
+   "source": "I'M GOING TO DIE!!!",
+   "translation": "Tôi sắp chết!!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 102,
+   "font_px_at_800": 90.7,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Tôi sắp",
+    "chết!!!"
+   ],
+   "box_w": 548,
+   "box_h": 283,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 56,
+   "split_word": false
+  },
+  {
+   "slice": 39,
+   "id": "text_737571be010947ee",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 40,
+   "id": "text_2c17b26dfd6f4002",
+   "source": "GAH...!!!",
+   "translation": "Ực...!!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Ực...!!!"
+   ],
+   "box_w": 530,
+   "box_h": 339,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 156,
+   "split_word": false
+  },
+  {
+   "slice": 40,
+   "id": "text_a777b09b3ac14f2f",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 41,
+   "id": "text_3defa3fb67174118",
+   "source": "ARE YOU ALRIGHT, YOUNG MASTER?",
+   "translation": "Thiếu gia có sao không?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Thiếu gia có sao không?"
+   ],
+   "box_w": 759,
+   "box_h": 471,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 40,
+   "split_word": false
+  },
+  {
+   "slice": 41,
+   "id": "text_bef81c0cc0f5457b",
+   "source": "WHERE IS THE THUNDER DRAGON?",
+   "translation": "Lôi Long ở đâu?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 50,
+   "font_px_at_800": 44.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Lôi Long ở đâu?"
+   ],
+   "box_w": 361,
+   "box_h": 230,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 28,
+   "split_word": false
+  },
+  {
+   "slice": 42,
+   "id": "text_8ef9e2658d084d0c",
+   "source": "SHE IS ON THE SECOND FLOOR WITH YOUNG LADY IVELIA.",
+   "translation": "Cô ấy ở tầng hai\ncùng tiểu thư Ivelia.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Cô ấy ở tầng hai",
+    "cùng tiểu thư Ivelia."
+   ],
+   "box_w": 587,
+   "box_h": 333,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 42,
+   "id": "text_f86e40afab25471e",
+   "source": "WELL... ABOUT THAT...",
+   "translation": "À thì...\nchuyện đó...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 62,
+   "font_px_at_800": 55.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "À thì...",
+    "chuyện đó..."
+   ],
+   "box_w": 415,
+   "box_h": 195,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 43,
+   "id": "text_0e22449916af40e1",
+   "source": "IVELIA AND TRUSTY ARE TOGETHER?!",
+   "translation": "Ivelia và Trusty\nở bên nhau sao?!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 86,
+   "font_px_at_800": 76.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ivelia và Trusty",
+    "ở bên nhau sao?!"
+   ],
+   "box_w": 700,
+   "box_h": 350,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 47,
+   "split_word": false
+  },
+  {
+   "slice": 44,
+   "id": "text_ea160a61972146fe",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 44,
+   "id": "text_345a4cc992144c42",
+   "source": "......",
+   "translation": "......",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 16,
+   "font_px_at_800": 14.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "......"
+   ],
+   "box_w": 266,
+   "box_h": 57,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 9,
+   "split_word": false
+  },
+  {
+   "slice": 45,
+   "id": "text_7940a22665ea462e",
+   "source": "",
+   "translation": "Grrr...",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 62,
+   "font_px_at_800": 55.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Grrr..."
+   ],
+   "box_w": 388,
+   "box_h": 267,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 45,
+   "id": "text_df5d44e927704eb1",
+   "source": "",
+   "translation": "Grrr...",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 62,
+   "font_px_at_800": 55.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Grrr..."
+   ],
+   "box_w": 360,
+   "box_h": 265,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 46,
+   "id": "text_cd873b6d116543c6",
+   "source": "WHAT ON EARTH IS GOING ON?!",
+   "translation": "Rốt cuộc chuyện gì\nđang xảy ra thế?!",
+   "role": "shout",
+   "container": "box",
+   "font": "emphasis.bungee",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Rốt cuộc chuyện gì",
+    "đang xảy ra thế?!"
+   ],
+   "box_w": 655,
+   "box_h": 249,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 50,
+   "split_word": false
+  },
+  {
+   "slice": 47,
+   "id": "text_c74cec9a31bd43c1",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 48,
+   "id": "text_c688ff1cd57e4f65",
+   "source": "Step Step",
+   "translation": "Bước\nBước",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Bước",
+    "Bước"
+   ],
+   "box_w": 696,
+   "box_h": 655,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 188,
+   "split_word": false
+  },
+  {
+   "slice": 48,
+   "id": "text_7af3ac0be0cf4aa6",
+   "source": "I'M SO GLAD IT ENDED WITHOUT ANY TROUBLE.",
+   "translation": "Vui quá vì kết thúc\nkhông gặp chút rắc rối gì.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Vui quá vì kết",
+    "thúc",
+    "không gặp chút",
+    "rắc rối gì."
+   ],
+   "box_w": 525,
+   "box_h": 379,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 48,
+   "id": "text_15611ed63a634c18",
+   "source": "I SHOULD WRAP THINGS UP AND GO TO SLEEP...",
+   "translation": "Mình nên dọn dẹp\nxong rồi đi ngủ...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Mình nên dọn dẹp",
+    "xong rồi đi ngủ..."
+   ],
+   "box_w": 543,
+   "box_h": 384,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 48,
+   "id": "text_58ae247b4c034a28",
+   "source": "PHEW~ WHAT A RELIEF.",
+   "translation": "Phù~ May\nquá luôn.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Phù~ May",
+    "quá luôn."
+   ],
+   "box_w": 421,
+   "box_h": 211,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 49,
+   "id": "text_f6445a38a0e14441",
+   "source": "",
+   "translation": "bước\nbước",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "bước",
+    "bước"
+   ],
+   "box_w": 631,
+   "box_h": 696,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 197,
+   "split_word": false
+  },
+  {
+   "slice": 49,
+   "id": "text_4f523eabe9724942",
+   "source": "",
+   "translation": "S-",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 48,
+   "font_px_at_800": 42.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "S-"
+   ],
+   "box_w": 289,
+   "box_h": 234,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 50,
+   "id": "text_de3321dff027423c",
+   "source": "SIXTH YOUNG MASTER CARLTON?!",
+   "translation": "Lục Thiếu Gia Carlton?!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Lục Thiếu Gia",
+    "Carlton?!"
+   ],
+   "box_w": 636,
+   "box_h": 324,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 50,
+   "id": "text_b947554a78ba493d",
+   "source": "LARSEN MAYTON IS INSIDE THE TRAINING ANNEX RIGHT NOW, ISN'T HE?",
+   "translation": "Larsen Mayton đang ở trong\nHuấn Luyện Phụ Điện\nngay lúc này, phải không?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Larsen Mayton đang ở",
+    "trong",
+    "Huấn Luyện Phụ Điện",
+    "ngay lúc này, phải không?"
+   ],
+   "box_w": 639,
+   "box_h": 309,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 50,
+   "id": "text_50e60069cf0d47eb",
+   "source": "ADMINISTRATOR.",
+   "translation": "Quản Sự.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Quản Sự."
+   ],
+   "box_w": 425,
+   "box_h": 126,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 50,
+   "id": "text_97c9a1198a41423c",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 51,
+   "id": "text_36113f5483b7498f",
+   "source": "RIGHT NOW!!!",
+   "translation": "NGAY BÂY GIỜ!!!",
+   "role": "shout",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 157,
+   "font_px_at_800": 139.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "NGAY BÂY",
+    "GIỜ!!!"
+   ],
+   "box_w": 544,
+   "box_h": 393,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 86,
+   "split_word": false
+  },
+  {
+   "slice": 51,
+   "id": "text_d099a469c51c4a7c",
+   "source": "TELL HIM I'M HERE.",
+   "translation": "Bảo hắn ta tôi ở đây.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 121,
+   "font_px_at_800": 107.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Bảo hắn ta",
+    "tôi ở đây."
+   ],
+   "box_w": 555,
+   "box_h": 321,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 67,
+   "split_word": false
+  }
+ ],
+ "readability": {
+  "rendered": 90,
+  "font_px_at_800": {
+   "min": 12.4,
+   "p10": 43.6,
+   "median": 59.6,
+   "max": 177.8
+  },
+  "under_16px": 2,
+  "under_20px": 2,
+  "split_word": 0,
+  "does_not_fit": 0,
+  "missing_glyphs": 0,
+  "size_from_ocr": 0,
+  "by_role": {
+   "dialogue": [
+    12.4,
+    14.2,
+    35.6,
+    42.7,
+    42.7,
+    43.6,
+    43.6,
+    43.6,
+    44.4,
+    46.2,
+    46.2,
+    49.8,
+    49.8,
+    49.8,
+    49.8,
+    52.4,
+    52.4,
+    52.4,
+    52.4,
+    55.1,
+    56.9,
+    57.8,
+    57.8,
+    57.8,
+    57.8,
+    58.7,
+    59.6,
+    59.6,
+    61.3,
+    61.3,
+    61.3,
+    61.3,
+    64.0,
+    64.0,
+    65.8,
+    65.8,
+    68.4,
+    68.4,
+    70.2,
+    72.0,
+    73.8,
+    73.8,
+    76.4,
+    79.1,
+    85.3,
+    87.1,
+    90.7,
+    91.6,
+    107.6,
+    144.0
+   ],
+   "narration": [
+    48.9,
+    52.4
+   ],
+   "sfx": [
+    42.7,
+    42.7,
+    42.7,
+    55.1,
+    55.1,
+    56.9,
+    132.4,
+    143.1,
+    177.8,
+    177.8,
+    177.8,
+    177.8,
+    177.8,
+    177.8
+   ],
+   "shout": [
+    49.8,
+    51.6,
+    52.4,
+    57.8,
+    65.8,
+    65.8,
+    69.3,
+    76.4,
+    82.7,
+    90.7,
+    93.3,
+    139.6,
+    177.8,
+    177.8
+   ],
+   "skill_name": [
+    49.8
+   ],
+   "system_ui": [
+    46.2,
+    72.0
+   ],
+   "thought": [
+    40.9,
+    43.6,
+    49.8,
+    59.6,
+    59.6,
+    66.7
+   ],
+   "title": [
+    129.8
+   ]
+  }
+ },
+ "per_chapter": {
+  "prompt_tokens": 517383,
+  "completion_tokens": 116662,
+  "cost_usd": 0.07269
+ },
+ "per_slice": {
+  "prompt_tokens": 10348,
+  "completion_tokens": 2333
+ },
+ "scorecard": {
+  "clean": {
+   "slices": 50,
+   "text_left": 0,
+   "ghosts": 0,
+   "items": []
+  },
+  "text": {
+   "objects": 100,
+   "translated": 88,
+   "untranslated": 12,
+   "needs_review": 0,
+   "kept_original": 0
+  },
+  "spend": {
+   "cost_usd": 0.07269,
+   "requests": 164,
+   "prompt_tokens": 517383,
+   "images": 215,
+   "wall_s": 1441.3,
+   "by_stage": {
+    "scan": {
+     "requests": 13,
+     "images": 52,
+     "prompt_tokens": 44697,
+     "completion_tokens": 6086
+    },
+    "glossary": {
+     "requests": 9,
+     "images": 50,
+     "prompt_tokens": 89914,
+     "completion_tokens": 6235
+    },
+    "review": {
+     "requests": 9,
+     "images": 9,
+     "prompt_tokens": 37679,
+     "completion_tokens": 4481
+    },
+    "translate": {
+     "requests": 52,
+     "images": 104,
+     "prompt_tokens": 296102,
+     "completion_tokens": 78928
+    },
+    "judge": {
+     "requests": 75,
+     "images": 0,
+     "prompt_tokens": 37520,
+     "completion_tokens": 0
+    },
+    "polish": {
+     "requests": 6,
+     "images": 0,
+     "prompt_tokens": 11471,
+     "completion_tokens": 20932
+    }
+   },
+   "stage_s": {
+    "download": 3.8,
+    "scan": 48.2,
+    "clean": 256.5,
+    "review": 122.3,
+    "translate": 618.4,
+    "polish": 380.0,
+    "render": 10.1,
+    "finish": 0.1
+   }
+  },
+  "polish": {
+   "judged": 49,
+   "flagged": 18,
+   "rewritten": 1,
+   "still_flagged": 18
+  },
+  "fit": {
+   "does_not_fit": 0,
+   "under_20px": 2,
+   "split_word": 0,
+   "missing_glyphs": 0
+  }
+ }
+}
