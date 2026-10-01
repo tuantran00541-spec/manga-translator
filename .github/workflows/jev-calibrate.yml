@@ -1,6 +1,11 @@
 name: Jev calibrate
 
 on:
+  # A workflow that is not on main cannot be dispatched, so this one-off runs on push.
+  push:
+    paths:
+      - "scripts/jev_calibrate.py"
+      - ".github/workflows/jev-calibrate.yml"
   workflow_dispatch:
 
 permissions:
