@@ -45,7 +45,7 @@ def test_the_stage_keeps_a_rewrite_only_when_the_judge_grades_it_better(monkeypa
               "Tôi đi ngay bây giờ.": {"natural": 1.2, "clear": 2.0, "faithful": 2.0},
               "Cút khỏi đây ngay!": {"natural": 2.8, "clear": 2.0, "faithful": 2.0},
               "Tôi đi luôn đây.": {"natural": 0.5, "clear": 1.0, "faithful": 1.0}}
-    monkeypatch.setattr(polish, "judge", lambda provider, key, state: graded[state.split("\n")[1].split(": ", 1)[1]])
+    monkeypatch.setattr(polish, "judge", lambda provider, key, state, asked: graded[state.split("\n")[1].split(": ", 1)[1]])
     monkeypatch.setattr(polish, "rewrite", lambda *a: ({"a": "Cút khỏi đây ngay!", "b": "Tôi đi luôn đây."}, None))
     job = AIModeJob("j", AIModeSettings(url="u", provider="openai", model="m", polish=True))
     job.stages = {"polish": {}}
@@ -81,3 +81,18 @@ def test_the_judge_reads_each_line_flat_and_ignores_noise_level_gains():
     old = {"natural": 2.51, "clear": 1.78, "faithful": 1.91}
     assert not polish.better({"natural": 2.57, "clear": 1.79, "faithful": 1.93}, old), "adding 'các' is not a rewrite"
     assert polish.better({"natural": 2.83, "clear": 1.9, "faithful": 1.97}, old)
+
+
+def test_the_judge_sees_the_speakers_settled_address_and_the_glossary_terms_in_the_line():
+    memory = {"glossary": {"names": [{"source": "Sunny", "target": "Sunny"}, {"source": "Nephis", "target": "Nephis"}],
+                           "terms": [{"source": "Nightmare Spell", "target": "Bùa Chú Ác Mộng"}],
+                           "address": [{"from": "Sunny", "to": "Nephis", "self": "tôi", "other": "cô"}]},
+              "address": [{"from": "Sunny", "to": "Nephis", "self": "tôi", "other": "cô"},
+                          {"from": "Nephis", "to": "Sunny", "self": "tôi", "other": "cậu"}]}
+    line = polish.Line(0, "a", "The Nightmare Spell took me, Nephis.", "Bùa chú bắt tôi rồi, Nephis.", speaker="Sunny")
+    state = polish.line_state(line, memory=memory)
+    assert "SPEAKER: Sunny" in state and 'to Nephis: self "tôi", other "cô"' in state and "cậu" not in state
+    assert "Nightmare Spell = Bùa Chú Ác Mộng" in state and "Sunny = Sunny" not in state
+    assert "settled" in polish.questions(line, memory)
+    assert "settled" not in polish.questions(polish.Line(0, "b", "Run!", "Chạy!"), memory)
+    assert polish.problems({"natural": 3.0, "clear": 2.0, "faithful": 2.0, "settled": 0.4}) == [polish.PROBLEMS["settled"]]

@@ -565,7 +565,8 @@ class AIModeRunner:
                 if unavailable or self.job.cancel_requested:
                     return None
                 try:
-                    return await _ai_call(polish.judge, self.provider, self.api_key, polish.line_state(line, text))
+                    return await _ai_call(polish.judge, self.provider, self.api_key,
+                                          polish.line_state(line, text, memory), polish.questions(line, memory))
                 except (RuntimeError, ValueError, OSError, requests.RequestException) as exc:
                     _append(stats["errors"], _detail(exc)[:200])
                     # No judge behind this provider: stop asking.

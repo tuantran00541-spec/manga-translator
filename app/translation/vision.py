@@ -67,6 +67,7 @@ class VisionTranslationResult:
     colors: dict[str, str] = field(default_factory=dict)
     containers: dict[str, str] = field(default_factory=dict)
     sources: dict[str, str] = field(default_factory=dict)  # the source text the model read in each box
+    speakers: dict[str, str] = field(default_factory=dict)  # who says each box's line, or "narration"
     unboxed: tuple[tuple[int, int, int, int], ...] = ()  # pixel boxes of lines the model saw outside every box
 
 
@@ -302,13 +303,15 @@ class VisionPageTranslator:
                       if result.translations.get(key) else DEFAULT_LETTERING_FONT, "font_mode": "ai"}
                 for key in (str(item["id"]) for item in items) if key in fonts
             }
+        speakers = {str(k): " ".join(str(v).split())[:80] for k, v in (data.get("speakers") or {}).items()
+                    if str(k) in ids and isinstance(v, str) and v.strip()} if isinstance(data.get("speakers"), dict) else {}
         unboxed = tuple(
             (int(box[0]), int(box[1]), int(box[2]) + 1, int(box[3]) + 1)
             for raw in (data.get("unboxed") or [])[:MAX_UNBOXED] if (box := scaled_box(raw, w, h)) is not None
         )
         return replace(
             result, font_choices=fonts, roles=roles, unboxed=unboxed, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
-            enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources,
+            enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources, speakers=speakers,
         )
 
     def _openai(self, system, prompt, marked, *, api_key, ids, max_tokens):

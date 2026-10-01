@@ -482,7 +482,7 @@ def test_lines_outside_every_box_come_back_as_pixel_boxes(tmp_path, monkeypatch)
 
         def json(self):
             return {"choices": [{"message": {"content": json.dumps({
-                "translations": [{"id": "1", "translated_text": "Chào"}],
+                "translations": [{"id": "1", "translated_text": "Chào"}], "speakers": {"1": "Sunny", "9": "x"},
                 "unboxed": [{"x1": 100, "y1": 500, "x2": 900, "y2": 600}, {"x1": 9, "y1": 9, "x2": 1, "y2": 1}]})}}],
                 "usage": {}}
 
@@ -491,3 +491,4 @@ def test_lines_outside_every_box_come_back_as_pixel_boxes(tmp_path, monkeypatch)
         original, clean, [{"id": "top", "text": "", "region": [20, 20, 200, 120]}], api_key="k",
         source_lang="en", target_lang="vi")
     assert result.unboxed == ((40, 300, 361, 361),)
+    assert result.speakers == {"top": "Sunny"}, "speakers come back under the real ids"

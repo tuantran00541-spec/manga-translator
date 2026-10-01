@@ -14,6 +14,7 @@ JUDGED_ROLES = frozenset({"dialogue", "narration", "thought", "whisper", "shout"
 MIN_WORDS = 3
 REWRITE_BATCH = 8
 MAX_STATE_CHARS = 2000
+MAX_SETTLED = 6  # address pairs or glossary entries shown with one line
 MIN_GAIN = 0.025  # a rewrite that gains less on the 0-1 scale is the judge's noise, not a better line
 
 QUESTIONS = {
@@ -34,17 +35,24 @@ QUESTIONS = {
         "criteria": ["says something else", "drops or adds part of the meaning", "keeps the meaning"],
     },
 }
+# Asked only when the chapter settled how this speaker talks or a glossary term is in the line.
+SETTLED = {
+    "type": "score",
+    "instructions": "Does TRANSLATION use the forms of address in ADDRESS and the terms in GLOSSARY wherever they apply?",
+    "criteria": ["uses other forms or terms", "uses some of them", "uses them all"],
+}
 # A line under one is sent back; on 40 labelled lines these flag no good line and 28 of 30 bad ones.
-LIMITS = {"natural": 2.0, "clear": 1.8, "faithful": 1.5}
+LIMITS = {"natural": 2.0, "clear": 1.8, "faithful": 1.5, "settled": 1.0}  # settled is not calibrated yet
 PROBLEMS = {
     "natural": "it sounds unnatural or word-for-word in Vietnamese",
     "clear": "its meaning is unclear",
     "faithful": "it does not keep the source meaning",
+    "settled": "it does not use the chapter's forms of address or glossary terms",
 }
 
 REWRITE_PROMPT = (
-    "INPUT: lines of a Vietnamese comic translation. Each item has the SOURCE line, the current TRANSLATION, "
-    "the lines before and after it, and the problem a reviewer found.\n"
+    "INPUT: lines of a Vietnamese comic translation. Each item has the speaker when known, the SOURCE line, the "
+    "current TRANSLATION, the lines before and after it, and the problem a reviewer found.\n"
     "TASK: rewrite each TRANSLATION so it says exactly what SOURCE says, as natural Vietnamese a reader of this "
     "comic expects.\n"
     "KEEP: the names, terms and forms of address in CHAPTER MEMORY; the source punctuation (every \"...\", "
@@ -63,6 +71,7 @@ class Line:
     before: str = ""
     after: str = ""
     max_chars: int | None = None
+    speaker: str = ""
     scores: dict[str, float] = field(default_factory=dict)
 
 
@@ -85,6 +94,7 @@ def collect_lines(pages: list[dict], indices: list[int]) -> list[Line]:
             page_index, str(obj["id"]), source, text,
             before=ordered[n - 1][2] if n else "", after=ordered[n + 1][2] if n + 1 < len(ordered) else "",
             max_chars=obj.get("max_chars") if isinstance(obj.get("max_chars"), int) else None,
+            speaker=str(obj.get("speaker") or "").strip(),
         ))
     return lines
 
@@ -93,29 +103,59 @@ def _flat(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
-def line_state(line: Line, text: str | None = None) -> str:
-    """What the judge reads: the source, one translation and the translated lines around it, each on one line."""
+def settled(line: Line, memory: dict | None) -> tuple[list[str], list[str]]:
+    """The speaker's settled forms of address and the glossary entries whose source is in the line."""
+    memory = memory or {}
+    glossary = memory.get("glossary") or {}
+    pairs = {}
+    for entry in [*(glossary.get("address") or []), *(memory.get("address") or [])]:
+        if isinstance(entry, dict) and line.speaker and _flat(entry.get("from")).lower() == line.speaker.lower():
+            pairs[_flat(entry.get("to"))] = entry
+    address = [f"to {to}: self \"{entry.get('self', '?')}\", other \"{entry.get('other', '?')}\""
+               for to, entry in pairs.items()][:MAX_SETTLED]
+    source = _flat(line.source).lower()
+    terms = [f"{_flat(entry.get('source'))} = {_flat(entry.get('target'))}"
+             for entry in [*(glossary.get("names") or []), *(glossary.get("terms") or [])]
+             if isinstance(entry, dict) and _flat(entry.get("source")) and _flat(entry.get("source")).lower() in source
+             and _flat(entry.get("target"))][:MAX_SETTLED]
+    return address, terms
+
+
+def line_state(line: Line, text: str | None = None, memory: dict | None = None) -> str:
+    """What the judge reads: the source, one translation, the lines around it and what the chapter settled."""
     state = (f"SOURCE: {_flat(line.source)}\nTRANSLATION (Vietnamese): {_flat(text or line.text)}\n"
              f"LINE BEFORE: {_flat(line.before) or '(none)'}\nLINE AFTER: {_flat(line.after) or '(none)'}")
+    address, terms = settled(line, memory)
+    if line.speaker:
+        state += f"\nSPEAKER: {line.speaker}"
+    if address:
+        state += "\nADDRESS (how the speaker refers to themselves and to each listener): " + "; ".join(address)
+    if terms:
+        state += "\nGLOSSARY: " + "; ".join(terms)
     return state[:MAX_STATE_CHARS]
+
+
+def questions(line: Line, memory: dict | None) -> dict:
+    """The three quality questions, plus the settled one when the chapter settled something for this line."""
+    return {**QUESTIONS, "settled": SETTLED} if any(settled(line, memory)) else QUESTIONS
 
 
 def evaluate_url(provider) -> str:
     return f"{str(provider.api_base).rstrip('/')}/evaluate"
 
 
-def judge(provider, api_key: str, state: str) -> dict[str, float]:
+def judge(provider, api_key: str, state: str, asked: dict = QUESTIONS) -> dict[str, float]:
     """One judge call; returns each question's score, missing ones left out."""
     response = requests.post(
         evaluate_url(provider), headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"state": state, "questions": QUESTIONS},
+        json={"state": state, "questions": asked},
         timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS), allow_redirects=False,
     )
     if not response.ok:
         raise RuntimeError(f"Judge HTTP {response.status_code}: {response.text[:200]}")
     answers = response.json().get("answers") or {}
     scores = {}
-    for key in QUESTIONS:
+    for key in asked:
         answer = answers.get(key) if isinstance(answers, dict) else None
         if isinstance(answer, dict) and isinstance(answer.get("score"), (int, float)):
             scores[key] = float(answer["score"])
@@ -133,12 +173,13 @@ def better(new: dict[str, float], old: dict[str, float]) -> bool:
 
 def quality(scores: dict[str, float]) -> float:
     """All scores on one 0-1 scale, so a rewrite is kept only when the judge likes it better overall."""
-    return sum(scores.get(key, 0.0) / (len(q["criteria"]) - 1) for key, q in QUESTIONS.items()) / len(QUESTIONS)
+    asked = {**QUESTIONS, **({"settled": SETTLED} if "settled" in scores else {})}
+    return sum(scores.get(key, 0.0) / (len(q["criteria"]) - 1) for key, q in asked.items()) / len(asked)
 
 
 def rewrite(provider, model: str, api_key: str, lines: list[Line], memory: dict) -> tuple[dict[str, str], float | None]:
     """Ask the translator to rewrite flagged lines, with what the judge found and the chapter memory."""
-    items = [{"id": line.id, "source": line.source, "translation": line.text, "before": line.before,
+    items = [{"id": line.id, **({"speaker": line.speaker} if line.speaker else {}), "source": line.source, "translation": line.text, "before": line.before,
               "after": line.after, "problem": "; ".join(problems(line.scores)),
               **({"max_chars": line.max_chars} if line.max_chars else {})} for line in lines]
     prompt = (REWRITE_PROMPT + "\n\nCHAPTER MEMORY: "
