@@ -7,8 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       chapter_url:
-        description: "Chapter URL to translate through the Manga Cloud gateway"
+        description: "Chapter URLs to translate through the Manga Cloud gateway, separated by spaces; each runs on its own runner"
         required: true
+      label:
+        description: "Name of this run; evidence goes to audit-results/ai-cost/<label>/<chapter>"
+        required: false
+        default: run
       model:
         description: "Upstream model for this run instead of the one in .github/ai-cost.txt"
         required: false
@@ -29,11 +33,42 @@ permissions:
   contents: write
 
 concurrency:
-  group: ai-cost-${{ github.ref }}
+  group: ai-cost-${{ github.ref }}-${{ github.event.inputs.label || 'push' }}
   cancel-in-progress: true
 
 jobs:
+  chapters:
+    runs-on: ubuntu-22.04
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/ai-cost.txt
+          sparse-checkout-cone-mode: false
+
+      - id: list
+        env:
+          INPUT_URL: ${{ github.event.inputs.chapter_url }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re
+          urls = (os.environ.get("INPUT_URL") or open(".github/ai-cost.txt").readline()).split()
+          rows = []
+          for url in urls:
+              parts = [part for part in url.split("?")[0].split("/") if part]
+              name = re.sub(r"-[0-9a-f]{8}$", "", parts[-3] if len(parts) >= 3 else "chapter")
+              rows.append({"url": url, "slug": f"{name}-{parts[-1]}"})
+          print("list=" + json.dumps(rows))
+          PY
+
   cost:
+    needs: chapters
+    name: cost (${{ matrix.slug }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.chapters.outputs.list) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -199,13 +234,13 @@ jobs:
         env:
           SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
-          INPUT_URL: ${{ github.event.inputs.chapter_url }}
+          CHAPTER_URL: ${{ matrix.url }}
+          OUT: audit-results/ai-cost/${{ github.event.inputs.label || 'push' }}/${{ matrix.slug }}
           INPUT_POLISH: ${{ github.event.inputs.polish }}
         run: |
           export GATEWAY_UPSTREAM_KEY="${!PROVIDER_SECRET}"
-          url="${INPUT_URL:-$(head -n1 .github/ai-cost.txt | tr -d '\r')}"
-          rm -rf audit-results/ai-cost
-          python scripts/ai_cost_run.py "$url" --out audit-results/ai-cost $( [ "$INPUT_POLISH" = true ] && echo --polish )
+          rm -rf "audit-results/ai-cost"
+          python scripts/ai_cost_run.py "$CHAPTER_URL" --out "$OUT" $( [ "$INPUT_POLISH" = true ] && echo --polish )
 
       - name: Logs
         if: always()
@@ -217,5 +252,5 @@ jobs:
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/ai-cost audit-results/providers
-          message: "audit: A.I cost (run ${{ github.run_id }})"
+          paths: audit-results/ai-cost/${{ github.event.inputs.label || 'push' }}/${{ matrix.slug }} audit-results/providers
+          message: "audit: A.I cost ${{ github.event.inputs.label || 'push' }} ${{ matrix.slug }} (run ${{ github.run_id }})"

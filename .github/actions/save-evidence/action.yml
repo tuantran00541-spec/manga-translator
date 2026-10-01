@@ -22,12 +22,12 @@ runs:
         for p in "${keep[@]}"; do mkdir -p "/tmp/evidence/$p" && cp -r "$p/." "/tmp/evidence/$p/"; done
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-        for i in 1 2 3 4; do
+        for i in 1 2 3 4 5 6 7 8; do
           git fetch -q origin audit-evidence && git checkout -q -f -B evidence FETCH_HEAD
           for p in "${keep[@]}"; do rm -rf "$p" && mkdir -p "$p" && cp -r "/tmp/evidence/$p/." "$p/"; done
           git add -A -f "${keep[@]}"
           git commit -qm "$EVIDENCE_MESSAGE" || exit 0
           git push -q origin HEAD:audit-evidence && exit 0
-          sleep 5
+          sleep $((5 + RANDOM % 20))
         done
         exit 1
