@@ -3,12 +3,21 @@ description: Download the released comic-text-detector, check it, and export mod
 runs:
   using: composite
   steps:
-    - shell: bash
+    # The export never changes for the same script, so runners reuse it instead of downloading torch each time.
+    - id: cache
+      uses: actions/cache@v4
+      with:
+        path: models/ctd_seg.onnx
+        key: ctd-seg-${{ hashFiles('scripts/export_ctd_onnx.py') }}-v1
+
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
       run: |
         python -m venv /tmp/ctd
-        /tmp/ctd/bin/pip install -q torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
-        /tmp/ctd/bin/pip install -q numpy==1.26.4 onnx==1.17.0 onnx2torch==1.5.15 onnxruntime==1.20.1
+        pip() { /tmp/ctd/bin/pip install -q --retries 10 --timeout 60 "$@"; }
+        pip torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+        pip numpy==1.26.4 onnx==1.17.0 onnx2torch==1.5.15 onnxruntime==1.20.1
         mkdir -p .cache
-        curl -sSL -o .cache/comictextdetector.pt.onnx https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx
+        curl -sSL --retry 5 --retry-all-errors -o .cache/comictextdetector.pt.onnx https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx
         echo "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f  .cache/comictextdetector.pt.onnx" | sha256sum -c
         /tmp/ctd/bin/python scripts/export_ctd_onnx.py
