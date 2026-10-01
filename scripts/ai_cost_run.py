@@ -170,13 +170,6 @@ def _slice_width(chapter_id: str, index: int) -> int:
     return 800
 
 
-TRANSPORT_STAGES = (
-    ("You are preparing manga", "scan"),
-    ("You check an automatic manga", "review"),
-    ("ROLE You are a veteran comic localization", "translate"),
-)
-
-
 def _transport(path: Path) -> dict:
     """Per stage: requests, latency, payload size, tokens and retries from the gateway trace."""
     if not path.is_file():
@@ -184,9 +177,7 @@ def _transport(path: Path) -> dict:
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     stages: dict[str, list[dict]] = {}
     for row in rows:
-        head = str(row.get("prompt_head") or "")
-        stage = next((name for prefix, name in TRANSPORT_STAGES if head.startswith(prefix)), "other")
-        stages.setdefault(stage, []).append(row)
+        stages.setdefault(str(row.get("stage") or "other"), []).append(row)
     summary = {}
     for stage, items in stages.items():
         ms = sorted(int(r.get("ms") or 0) for r in items)
@@ -207,6 +198,26 @@ def _transport(path: Path) -> dict:
             "completion_tokens": total("completion_tokens"), "reasoning_tokens": total("reasoning_tokens"),
         }
     return summary
+
+
+def _scorecard(pages: list, report: dict, out: Path) -> dict:
+    """Score the chapter and save each place the cleanup left text or a ghost, original beside clean."""
+    from app.ai_mode.scorecard import score_chapter
+    from app.config import KIUYHA_TEXT_MODEL
+    from app.detector.kiuyha_detector import KiuyhaTextDetector
+
+    card = score_chapter(pages, KiuyhaTextDetector(KIUYHA_TEXT_MODEL), report)
+    folder = out / "leftovers"
+    folder.mkdir(parents=True, exist_ok=True)
+    for number, item in enumerate(card["clean"]["items"], start=1):
+        page = pages[item["slice"] - 1]
+        x1, y1, x2, y2 = item["box"]
+        crops = [cv2.imread(str(page[key]))[max(0, y1 - 40):y2 + 40, max(0, x1 - 40):x2 + 40] for key in ("original", "clean")]
+        side = np.hstack([crops[0], np.full((crops[0].shape[0], 8, 3), 128, np.uint8), crops[1]])
+        cv2.imwrite(str(folder / f"{number:02d}-slice{item['slice']:03d}-{item['kind']}.jpg"), side,
+                    [cv2.IMWRITE_JPEG_QUALITY, 85])
+    (out / "scorecard.json").write_text(json.dumps(card, ensure_ascii=False, indent=1), encoding="utf-8")
+    return card
 
 
 def main() -> int:
@@ -346,8 +357,10 @@ def main() -> int:
             "prompt_tokens": round(usage["prompt_tokens"] / slices),
             "completion_tokens": round(usage["completion_tokens"] / slices),
         }
+    if chapter_id and manifest_path.is_file():
+        report["scorecard"] = _scorecard(pages, report, out)
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(json.dumps({k: report.get(k) for k in ("status", "error", "wall_s", "gateway_job", "transport", "per_chapter", "per_slice", "readability")},
+    print(json.dumps({k: report.get(k) for k in ("status", "error", "wall_s", "gateway_job", "transport", "per_chapter", "per_slice", "readability", "scorecard")},
                      ensure_ascii=False, indent=1))
     return 0 if job["status"] == "completed" else 1
 

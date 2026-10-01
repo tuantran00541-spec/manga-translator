@@ -51,9 +51,14 @@ def _prob(img: np.ndarray, scale: float) -> np.ndarray:
     return cv2.resize(p, (w, h)) if scale != 1 else p
 
 
+def probability(img: np.ndarray) -> np.ndarray:
+    """How sure the model is that each pixel is a letter, the higher of full and half size."""
+    return np.max([_prob(img, s) for s in SCALES], axis=0)
+
+
 def letters(img: np.ndarray) -> np.ndarray:
     """Pixels the model reads as letters, at full and half size."""
-    return np.max([_prob(img, s) for s in SCALES], axis=0) > THRESHOLD
+    return probability(img) > THRESHOLD
 
 
 def text_size(part: np.ndarray) -> int:
