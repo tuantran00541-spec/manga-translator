@@ -69,10 +69,11 @@ begin
   end;
 end;
 
-procedure DeinitializeSetup();
+function GetCustomSetupExitCode: Integer;
 begin
+  Result := 0;
   if InstallFailed then
-    ExitCode := 1;
+    Result := 1;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
