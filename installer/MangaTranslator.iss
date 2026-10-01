@@ -27,7 +27,7 @@ Compression=lzma2
 SolidCompression=yes
 
 [Messages]
-WelcomeLabel2=Cài Manga Translator vào máy này.%n%nLần đầu cài sẽ tải Python, thư viện và model (khoảng 3 GB), mất 5–15 phút tùy mạng. Một cửa sổ sẽ hiện từng bước đang làm.
+WelcomeLabel2=Cài Manga Translator vào máy này.%n%nLần đầu cài sẽ tải Python, thư viện và model, mất 5–15 phút tùy mạng; cài xong chiếm khoảng 1,6 GB. Một cửa sổ sẽ hiện từng bước đang làm.
 FinishedLabel=Đã cài xong. Bấm đúp biểu tượng Manga Translator trên desktop để mở app.
 
 [Files]
@@ -94,6 +94,7 @@ begin
   DelTree(App, True, True, True);
   DelTree(Home + '\python', True, True, True);
   DelTree(Home + '\uv', True, True, True);
+  DelTree(Home + '\uv-cache', True, True, True);
   DelTree(Home + '\bin', True, True, True);
   DelTree(Home + '\paddlex', True, True, True);
 end;

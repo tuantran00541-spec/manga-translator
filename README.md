@@ -151,7 +151,7 @@ Rendered pages and chapter exports are tied to the canonical editorial state. If
 ### Requirements
 
 - Python 3.12 (the installer brings its own)
-- A CPU-capable machine, with about 8 GB free for the first install
+- A CPU-capable machine, with about 5 GB free for the first install
 - Chromium for Playwright URL ingestion and browser checks
 - More RAM helps OCR and very large pages
 
@@ -159,7 +159,7 @@ The image path accepts up to **100,000,000 decoded pixels** per image.
 
 ### Install
 
-**Windows:** download [MangaTranslator-Setup.exe](https://github.com/tuantran00541-spec/manga-translator/releases/latest/download/MangaTranslator-Setup.exe) and double-click it. It needs no admin rights; the first install downloads about 3 GB and takes 5–15 minutes. Uninstall it from Windows Settings → Apps; it asks whether to keep your translated chapters.
+**Windows:** download [MangaTranslator-Setup.exe](https://github.com/tuantran00541-spec/manga-translator/releases/latest/download/MangaTranslator-Setup.exe) and double-click it. It needs no admin rights; the first install takes 5–15 minutes and uses about 1.6 GB of disk. Uninstall it from Windows Settings → Apps; it asks whether to keep your translated chapters.
 
 Or with one command, nothing else to install first:
 

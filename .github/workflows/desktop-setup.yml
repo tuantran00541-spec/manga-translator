@@ -63,7 +63,7 @@ jobs:
             '  .cache (CTD source)' = Size (Join-Path $home_ 'app\.cache')
             'python' = Size (Join-Path $home_ 'python')
             'uv' = Size (Join-Path $home_ 'uv')
-            'uv download cache' = Size (Join-Path $env:LOCALAPPDATA 'uv\cache')
+            'uv download cache (removed)' = Size (Join-Path $home_ 'uv-cache')
             'Playwright Chromium' = Size (Join-Path $env:LOCALAPPDATA 'ms-playwright')
             'Hugging Face cache' = Size (Join-Path $env:USERPROFILE '.cache\huggingface')
             'PaddleX models' = Size (Join-Path $env:USERPROFILE '.paddlex')

@@ -23,7 +23,7 @@ CTD_SHA256 = "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f"
 # Kept across updates: the environment, models, chapters and logs of the user.
 KEEP = frozenset({".venv", "models", "data", "logs", ".cache"})
 MARKER = ".manga-install.json"
-FREE_GB_NEEDED = 8
+FREE_GB_NEEDED = 5
 
 
 def say(message: str) -> None:
