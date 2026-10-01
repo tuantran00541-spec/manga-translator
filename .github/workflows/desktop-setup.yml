@@ -51,6 +51,26 @@ jobs:
           $link = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Manga Translator.lnk'
           if (-not (Test-Path $link)) { throw 'no desktop icon after the setup' }
 
+      - name: How much the install takes on disk
+        shell: powershell
+        run: |
+          function Size($path) { if (Test-Path $path) { [math]::Round((Get-ChildItem $path -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum / 1MB) } else { 0 } }
+          $home_ = Join-Path $env:LOCALAPPDATA 'manga-translator'
+          $rows = [ordered]@{
+            'app (code + .venv + models)' = Size (Join-Path $home_ 'app')
+            '  .venv (libraries)' = Size (Join-Path $home_ 'app\.venv')
+            '  models' = Size (Join-Path $home_ 'app\models')
+            '  .cache (CTD source)' = Size (Join-Path $home_ 'app\.cache')
+            'python' = Size (Join-Path $home_ 'python')
+            'uv' = Size (Join-Path $home_ 'uv')
+            'uv download cache' = Size (Join-Path $env:LOCALAPPDATA 'uv\cache')
+            'Playwright Chromium' = Size (Join-Path $env:LOCALAPPDATA 'ms-playwright')
+            'Hugging Face cache' = Size (Join-Path $env:USERPROFILE '.cache\huggingface')
+            'PaddleX models' = Size (Join-Path $env:USERPROFILE '.paddlex')
+          }
+          $rows.GetEnumerator() | ForEach-Object { '{0,-30} {1,7} MB' -f $_.Key, $_.Value }
+          & (Join-Path $home_ 'app\.venv\Scripts\python.exe') -c "import importlib.metadata as m, os; rows=sorted(((sum(os.path.getsize(d.locate_file(f)) for f in (d.files or []) if os.path.exists(d.locate_file(f))), d.metadata['Name']) for d in m.distributions()), reverse=True)[:12]; [print(f'{n:28} {s/2**20:7.0f} MB') for s, n in rows]"
+
       - name: The desktop icon opens the app window
         shell: powershell
         run: |
