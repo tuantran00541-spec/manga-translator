@@ -159,7 +159,9 @@ The image path accepts up to **100,000,000 decoded pixels** per image.
 
 ### Install
 
-One command, nothing else to install first:
+**Windows:** download [MangaTranslator-Setup.exe](https://github.com/tuantran00541-spec/manga-translator/releases/latest/download/MangaTranslator-Setup.exe) and double-click it. It needs no admin rights; the first install downloads about 3 GB and takes 5–15 minutes. Uninstall it from Windows Settings → Apps; it asks whether to keep your translated chapters.
+
+Or with one command, nothing else to install first:
 
 ~~~powershell
 # Windows: paste into PowerShell or cmd
