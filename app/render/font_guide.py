@@ -9,12 +9,12 @@ from app.config import DEFAULT_FONT
 GUIDE_DIR = DEFAULT_FONT.parent / "guide"
 DEFAULT_LETTERING_FONT = "dialogue.mac-dinh-3"
 # The font follows what the text is and what it sits in, never the model's taste, so one kind of text always
-# looks the same: speech in bubbles, narration in boxes, bold captions on the art, shouts in spiky balloons.
+# looks the same: speech and narration boxes in the comic font, bold captions on the art, shouts in spiky balloons.
 FONT_BY_ROLE = {"system_ui": "skill.exo-2", "skill_name": "skill.kanit", "sfx": "sfx.black-ops-one"}
 FONT_BY_CONTAINER = {
     "bubble": {},
     "spiky": {"*": "emphasis.bangers"},
-    "box": {"title": "emphasis.anton", "*": "narration.mac-dinh-2"},
+    "box": {"title": "emphasis.anton"},
     "screen": {"*": "skill.exo-2"},
     "free": {"narration": "emphasis.anton", "title": "emphasis.anton", "free_text": "emphasis.anton",
              "thought": "narration.mac-dinh-2", "shout": "emphasis.bangers", "dark_threat": "emphasis.bangers"},
