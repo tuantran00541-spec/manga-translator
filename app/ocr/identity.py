@@ -79,29 +79,26 @@ def engine_identity(lang: str) -> str:
     if tier not in {"small", "medium"}:
         tier = "small"
 
-    if normalized in {"ja", "japan"}:
-        backend = f"manga-ocr:{_package_version('manga-ocr')}"
-    else:
-        paddle_version = _package_version("paddleocr")
-        orientation = "ori-on" if env_enabled(
-            "MANGA_PPOCRV6_TEXTLINE_ORIENTATION", False
-        ) else "ori-off"
-        target_mode = env_choice(
-            "MANGA_OCR_TARGET_SELECTION",
-            default="all",
-            allowed={"all", "centered"},
+    paddle_version = _package_version("paddleocr")
+    orientation = "ori-on" if env_enabled(
+        "MANGA_PPOCRV6_TEXTLINE_ORIENTATION", False
+    ) else "ori-off"
+    target_mode = env_choice(
+        "MANGA_OCR_TARGET_SELECTION",
+        default="all",
+        allowed={"all", "centered"},
+    )
+    if normalized in {"ko", "korean"}:
+        backend = (
+            f"paddleocr:{paddle_version}:ppocrv6-{tier}-det:"
+            f"korean-ppocrv5-mobile-rec:{orientation}:target-{target_mode}:"
+            "complete-v2:retry-selective"
         )
-        if normalized in {"ko", "korean"}:
-            backend = (
-                f"paddleocr:{paddle_version}:ppocrv6-{tier}-det:"
-                f"korean-ppocrv5-mobile-rec:{orientation}:target-{target_mode}:"
-                "complete-v2:retry-selective"
-            )
-        else:
-            backend = (
-                f"paddleocr:{paddle_version}:ppocrv6-{tier}:"
-                f"{orientation}:target-{target_mode}:complete-v2:retry-selective"
-            )
+    else:
+        backend = (
+            f"paddleocr:{paddle_version}:ppocrv6-{tier}:"
+            f"{orientation}:target-{target_mode}:complete-v2:retry-selective"
+        )
     return f"{OCR_PIPELINE_VERSION}:{backend}"
 
 

@@ -65,7 +65,7 @@ jobs:
           # The version reader must see the real runtime: a wrong number would send users into needless installs.
           & $python -c "import sys; sys.path.insert(0, r'$app'); from app import vc_runtime as v; print({n: v.file_version(v.system32() / n) for n in v.DLLS}, v.problems()); assert v.file_version(v.system32() / 'msvcp140.dll') >= v.MIN_VERSION and not v.problems()"
           if ($LASTEXITCODE -ne 0) { throw 'the Visual C++ runtime check is wrong on a real Windows' }
-          & $python -c "import torch, paddle, onnxruntime, cv2, paddleocr, manga_ocr; print('torch', torch.__version__, 'ort', onnxruntime.__version__, onnxruntime.get_available_providers())"
+          & $python -c "import paddle, onnxruntime, cv2, paddleocr; print('paddle', paddle.__version__, 'ort', onnxruntime.__version__, onnxruntime.get_available_providers())"
           if ($LASTEXITCODE -ne 0) { throw 'a library failed to load' }
 
       - name: The app starts with every model
@@ -150,7 +150,7 @@ jobs:
           # A clean login shell of the user's kind: only its start-up files can put manga on PATH.
           env -i HOME="$HOME" TERM=dumb PATH=/usr/bin:/bin "$(command -v ${{ matrix.shell }})" -lic 'command -v manga && manga --version'
           python="$HOME/.local/share/manga-translator/app/.venv/bin/python"
-          "$python" -c "import torch, paddle, onnxruntime, cv2, paddleocr, manga_ocr; print('torch', torch.__version__, 'ort', onnxruntime.__version__)"
+          "$python" -c "import paddle, onnxruntime, cv2, paddleocr; print('paddle', paddle.__version__, 'ort', onnxruntime.__version__)"
           if [ "$(uname)" = Darwin ]; then "$python" -c "import webview; from importlib.metadata import version; print('pywebview', version('pywebview'))"; fi
           ls -la "$HOME/.local/share/manga-translator/app/models"
 

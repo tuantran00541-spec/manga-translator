@@ -127,7 +127,7 @@ def refine_with_japanese_reader(first: LanguageDetection, japanese_texts: list[s
     kana_bubbles = sum(1 for text in read if script_counts(text)["kana"] >= 2)
     share = kana_bubbles / len(read)
     if share >= 0.5:
-        return LanguageDetection("ja", share, len(read), {**first.counts, "kana_bubbles": kana_bubbles}, "manga-ocr-kana")
+        return LanguageDetection("ja", share, len(read), {**first.counts, "kana_bubbles": kana_bubbles}, "japanese-kana")
     return first
 
 

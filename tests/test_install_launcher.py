@@ -171,7 +171,7 @@ def test_no_network_for_the_runtime_points_to_the_manual_download(monkeypatch):
         vc_runtime.install()
 
 
-def test_the_app_repairs_the_runtime_before_loading_torch(monkeypatch, capsys):
+def test_the_app_repairs_the_runtime_before_loading_the_libraries(monkeypatch, capsys):
     from app import vc_runtime
 
     calls = []

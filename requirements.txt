@@ -15,7 +15,6 @@ onnxruntime-openvino==1.24.1; platform_system == "Linux" and platform_machine ==
 onnxruntime==1.21.0; platform_system == "Darwin" or (platform_system == "Linux" and platform_machine != "x86_64") or (platform_system == "Windows" and platform_machine != "AMD64")
 paddleocr==3.7.0
 paddlepaddle==3.2.2
-manga-ocr==0.1.16
 pyclipper==1.3.0.post5
 shapely==2.0.6
 python-multipart==0.0.12
@@ -23,9 +22,6 @@ pydantic==2.9.2
 filelock==3.16.1
 loguru==0.7.2
 psutil==6.1.1
-transformers==4.45.2
-# Docker preinstalls the matching CPU-only 2.5.1+cpu wheel before resolving this pin.
-torch==2.5.1
 
 keyring==25.6.0
 # The app window (WebView2 on Windows, WebKit on macOS); Linux keeps the browser.

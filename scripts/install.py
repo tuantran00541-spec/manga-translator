@@ -132,7 +132,7 @@ def check_disk(target: Path) -> None:
 
 
 def ensure_vc_runtime() -> None:
-    """Install or update the Microsoft Visual C++ runtime that torch, onnxruntime and paddle need."""
+    """Install or update the Microsoft Visual C++ runtime that onnxruntime and paddle need."""
     if not WINDOWS:
         return
     sys.path.insert(0, str(ROOT))
@@ -179,12 +179,9 @@ def ensure_venv(target: Path, uv: str | None) -> Path:
 def install_packages(python: Path, target: Path, uv: str | None) -> None:
     requirements = target / "requirements.txt"
     if uv:
-        # uv takes torch (and only torch) from the CPU index; the default Linux build pulls gigabytes of CUDA.
-        run(uv, "pip", "install", "--python", python, "-r", requirements, "--torch-backend", "cpu")
+        run(uv, "pip", "install", "--python", python, "-r", requirements)
     else:
         run(python, "-m", "pip", "install", "-q", "--upgrade", "pip")
-        if sys.platform != "darwin":
-            run(python, "-m", "pip", "install", "-q", TORCH, "--index-url", TORCH_CPU_INDEX)
         run(python, "-m", "pip", "install", "-q", "-r", requirements)
     # Chromium only serves chapter links from script-heavy sites, so a failure here is not fatal.
     if subprocess.run([str(python), "-m", "playwright", "install", "chromium"]).returncode != 0:

@@ -54,3 +54,9 @@ def test_a_doubtful_single_line_read_is_checked_with_line_detection():
 def test_the_fast_read_is_kept_when_line_detection_finds_nothing():
     ocr, _ = _ocr(_result("OK", quality="review", model="fast"), _result(""))
     assert ocr.read_detailed(np.zeros((40, 200, 3), np.uint8), "en").text == "OK"
+
+
+def test_japanese_is_read_by_the_full_paddle_pipeline():
+    ocr, paddle = _ocr(_result("", model="fast"), _result("何言ってんだよ"))
+    assert ocr.read_detailed(np.zeros((300, 120, 3), np.uint8), "ja").text == "何言ってんだよ"
+    assert paddle.calls == ["full"]

@@ -1,4 +1,4 @@
-"""The Microsoft Visual C++ runtime that torch, onnxruntime and paddle load from Windows; standard library only."""
+"""The Microsoft Visual C++ runtime that onnxruntime and paddle load from Windows; standard library only."""
 from __future__ import annotations
 
 import ctypes
