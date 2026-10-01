@@ -437,6 +437,7 @@ def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypat
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
     monkeypatch.setattr(runner, "_active_pages", lambda: [0])
     monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+    monkeypatch.setattr(runner, "_settle_blanks", lambda: 0)
     asyncio.run(runner.render())
 
     assert len(calls) == 2, "the slice is rendered again once the object is restored"
@@ -624,3 +625,21 @@ def test_a_line_the_translator_sees_outside_every_box_is_boxed_erased_and_transl
     asyncio.run(runner._add_unboxed(0, [[105, 105, 195, 155], [20, 300, 180, 360], [0, 0, 3, 3]], "en"))
     assert added == [[(14, 294, 186, 366)]], "a box over existing text and a speck are dropped; the line gets a margin"
     assert retried == [(0, {"new"})] and runner.report["missed_added"] == 1
+
+
+def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
+    region = {"x1": 0, "y1": 0, "x2": 50, "y2": 20}
+    manifest = {"pages": [
+        {"text_objects": [{"id": "said", "translation": "Chào", "region": region},
+                          {"id": "credit", "translation": "", "region": region},
+                          {"id": "gone", "translation": "", "source_missing": True, "region": region}]},
+        {"skipped": True, "text_objects": [{"id": "skip", "translation": "", "region": region}]},
+    ]}
+    saved = []
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter: manifest)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter, data: saved.append(chapter))
+    runner = _runner(monkeypatch, "render", manifest)
+    assert runner._settle_blanks() == 1 and saved == [CHAPTER]
+    objects = manifest["pages"][0]["text_objects"]
+    assert objects[1]["editorial_disposition"] == "non_story" and objects[1]["editorial_reviewed"] is True
+    assert "editorial_disposition" not in objects[0] and "editorial_disposition" not in objects[2]

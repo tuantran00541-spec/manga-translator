@@ -803,10 +803,34 @@ class AIModeRunner:
                 "reason": "AI không dịch được sau khi thử lại; đã giữ ảnh gốc",
             })
 
+    def _settle_blanks(self) -> int:
+        """Objects the translator left blank on purpose (credits, watermarks, art) are reviewed non-story text."""
+        from app.region_policy import text_object_in_preserve_region
+
+        chapter_id = self.job.chapter_id
+        settled = 0
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            for page in manifest.get("pages") or []:
+                if not isinstance(page, dict) or page.get("skipped"):
+                    continue
+                for obj in page.get("text_objects") or []:
+                    if (not isinstance(obj, dict) or obj.get("source_missing") or obj.get("joined_into")
+                            or obj.get("overlap_dropped") or obj.get("editorial_reviewed")
+                            or str(obj.get("translation") or "").strip() or text_object_in_preserve_region(page, obj)):
+                        continue
+                    # Export refuses story text with no source and no translation; A.I mode chose to letter nothing here.
+                    obj["editorial_disposition"], obj["editorial_reviewed"] = "non_story", True
+                    settled += 1
+            if settled:
+                save_manifest_raw(chapter_id, manifest)
+        return settled
+
     async def render(self) -> None:
         from app.routers.image import _current_rendered_path
 
         chapter_id = self.job.chapter_id
+        self.report["blanks_settled"] = await asyncio.to_thread(self._settle_blanks)
         indices = self._active_pages()
         for done, page_index in enumerate(indices):
             self._check_cancel()
