@@ -122,7 +122,7 @@ def _fit_metrics(obj: dict, page_width: int) -> dict:
 
     from app.parameters import RENDER_AUTO_STROKE_WIDTH, RENDER_DEFAULT_PADDING, RENDER_MIN_READABLE_FONT_SIZE, RENDER_PADDING_RATIO_MAX
     from app.render.page_renderer import _render_region_for_text_object, _resolve_ocr_style
-    from app.render.text_renderer import _calc_line_height, _fit_text, _wrap_text, font_draws_text, get_font_object, get_font_path
+    from app.render.text_renderer import _calc_line_height, _fit_text, _wrap_text, drawable, font_draws_text, get_font_object, get_font_path
 
     text = str(obj.get("translation") or "").strip()
     region = _render_region_for_text_object(obj)
@@ -138,6 +138,7 @@ def _fit_metrics(obj: dict, page_width: int) -> dict:
     style = obj.get("style") or {}
     draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
     font_path = get_font_path(style.get("font") or "default")
+    font_path, text = drawable(font_path, text)
     missing_glyphs = not font_draws_text(font_path, text)
     size = _resolve_ocr_style(None, style.get("fontSize", "auto"), obj.get("ocr_font_size"), "auto")
     if isinstance(size, (int, float)) or (isinstance(size, str) and size.isdigit()):
