@@ -1,7 +1,41 @@
 {
  "models": {
-  "status": 401,
-  "body": "{\"error\":{\"message\":\"Invalid API key.\",\"type\":\"authentication_error\",\"code\":\"invalid_api_key\"}}"
+  "status": 200,
+  "body": {
+   "object": "list",
+   "data": [
+    {
+     "id": "sovapi",
+     "object": "model",
+     "created": 0,
+     "owned_by": "sovinfra"
+    },
+    {
+     "id": "gemma-4-31b",
+     "object": "model",
+     "created": 0,
+     "owned_by": "sovinfra"
+    },
+    {
+     "id": "qwen3.8-27b",
+     "object": "model",
+     "created": 0,
+     "owned_by": "sovinfra",
+     "context_length": 262144,
+     "name": "Qwen 3.8-27B FP8 · H200",
+     "description": "Qwen 3.8-27B FP8 on H200 supports code, reasoning, vision and tool calling. qwen3-coder-next remains a compatibility alias for the same model."
+    },
+    {
+     "id": "qwen3-coder-next",
+     "object": "model",
+     "created": 0,
+     "owned_by": "sovinfra",
+     "context_length": 262144,
+     "name": "Qwen 3.8-27B FP8 · H200",
+     "description": "Qwen 3.8-27B FP8 on H200 supports code, reasoning, vision and tool calling. qwen3-coder-next remains a compatibility alias for the same model."
+    }
+   ]
+  }
  },
  "tests": [
   {
@@ -11,9 +45,20 @@
     96,
     160
    ],
-   "status": 401,
-   "s": 0.5,
-   "error": "{\"error\":{\"message\":\"Invalid API key.\",\"type\":\"authentication_error\",\"code\":\"invalid_api_key\"}}"
+   "status": 200,
+   "s": 0.7,
+   "reply": "HELLO",
+   "usage": {
+    "prompt_tokens": 105,
+    "total_tokens": 108,
+    "completion_tokens": 3,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "multimodal_tokens": {
+      "image": 77
+     }
+    }
+   }
   },
   {
    "test": "page",
@@ -22,9 +67,20 @@
     1600,
     800
    ],
-   "status": 401,
-   "s": 1.0,
-   "error": "{\"error\":{\"message\":\"Invalid API key.\",\"type\":\"authentication_error\",\"code\":\"invalid_api_key\"}}"
+   "status": 200,
+   "s": 3.6,
+   "reply": "CÀ PHÊ THẬT.\nKHÔNG PHẢI THỨ\nĐỒ TỔNG HỢP",
+   "usage": {
+    "prompt_tokens": 1287,
+    "total_tokens": 1310,
+    "completion_tokens": 23,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "multimodal_tokens": {
+      "image": 1250
+     }
+    }
+   }
   },
   {
    "test": "page-again",
@@ -33,9 +89,42 @@
     1600,
     800
    ],
-   "status": 401,
-   "s": 1.1,
-   "error": "{\"error\":{\"message\":\"Invalid API key.\",\"type\":\"authentication_error\",\"code\":\"invalid_api_key\"}}"
+   "status": 200,
+   "s": 2.5,
+   "reply": "1. **Speech bubble (top, white background):**\n   - Text: \"CÀ PHÊ THẬT.\"\n   - Speaker: Not explicitly shown, but likely the character holding the coffee cup (implied by context and focus on the hands/cup).\n\n2. **Speech bubble (bottom, cloudy blue background):**\n   - Text: \"KHÔNG PHẢI THỨ ĐỔ TỔNG HỢP\"\n   - Speaker: Same as above — the person holding the cup. The continuation of thought/emphasis suggests it’s part of the same utterance or internal monologue.\n\n✅ **Summary:**\n- Both lines are spoken/thought by the same unseen character holding the coffee cup.\n- No other characters or speakers are depicted.\n\n*(Note: In Vietnamese webtoons, such text often represents internal thoughts or narration, even without a traditional speech bubble shape.)*",
+   "usage": {
+    "prompt_tokens": 1283,
+    "total_tokens": 1467,
+    "completion_tokens": 184,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "multimodal_tokens": {
+      "image": 1250
+     }
+    }
+   }
+  },
+  {
+   "test": "translate",
+   "model": "qwen3.8-27b",
+   "image": [
+    1600,
+    800
+   ],
+   "status": 200,
+   "s": 1.5,
+   "reply": "Cà phê thật.\nKhông phải đồ tổng hợp.",
+   "usage": {
+    "prompt_tokens": 1281,
+    "total_tokens": 1294,
+    "completion_tokens": 13,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "multimodal_tokens": {
+      "image": 1250
+     }
+    }
+   }
   }
  ]
 }
