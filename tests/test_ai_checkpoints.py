@@ -1,24 +1,20 @@
-from app.ai_mode.checkpoints import parse_clean_review
+import numpy as np
+
+from app.ai_mode.checkpoints import SHEET_SIDE, TAG_PX, crops_for, pack
 
 
-def test_clean_review_maps_confident_boxes_and_drops_misreads():
-    review = parse_clean_review({
-        "missed": [{"x1": 250, "y1": 100, "x2": 750, "y2": 200, "confidence": 0.9},
-                   {"x1": 250, "y1": 100, "x2": 750, "y2": 200, "confidence": 0.3}],
-        "residue": [{"x1": 0, "y1": 0, "x2": 1000, "y2": 1000, "confidence": 0.9},
-                    {"x1": 0, "y1": 0, "x2": 1, "y2": 1, "confidence": 0.9}],
-        "restore": "nonsense",
-    }, 4, 400, 600)
-    assert review.page_index == 4
-    assert review.missed == ((94, 54, 306, 126),), "0-1000 to pixels plus a margin; unsure boxes dropped"
-    assert review.residue == () and review.restore == (), "whole-slice, tiny and malformed boxes are misreads"
+def test_each_erased_box_gets_a_padded_crop_and_huge_ones_are_shrunk():
+    clean = np.full((3000, 1600, 3), 255, np.uint8)
+    crops = crops_for(4, clean, [(100, 100, 300, 200), (0, 0, 1600, 2000), (5, 5, 7, 7)])
+    assert [crop.id for crop in crops] == ["5.1", "5.2", "5.3"]
+    assert crops[0].image.shape[:2] == (148, 248), "24 px of background round the box"
+    assert max(crops[1].image.shape[:2]) == 900
+    assert crops[0].rect == (100, 100, 300, 200)
 
 
-def test_clean_review_boxes_name_their_corners():
-    # Shadow Slave 1, slices 4, 55 and 69: a model read [ymin, xmin, ...] as x first and boxed a tall strip of art.
-    review = parse_clean_review({
-        "missed": [{"x1": 250, "y1": 800, "x2": 900, "y2": 950, "confidence": 0.9}],
-        "residue": [{"box_2d": [800, 250, 950, 900], "confidence": 0.9}],
-    }, 0, 1600, 4000)
-    assert review.missed == ((394, 3194, 1446, 3806),), "a caption across the foot of the slice stays across it"
-    assert review.residue == (), "an unnamed list is not guessed at"
+def test_crops_share_sheets_and_none_overlaps_or_is_lost():
+    clean = np.full((3000, 1600, 3), 255, np.uint8)
+    crops = crops_for(0, clean, [(0, 0, 600, 400)] * 40)
+    sheets = pack(crops)
+    assert sum(len(placed) for _, placed in sheets) == 40 and len(sheets) < 40
+    assert all(sheet.shape[0] <= SHEET_SIDE + TAG_PX and sheet.shape[1] <= SHEET_SIDE for sheet, _ in sheets)

@@ -1,79 +1,90 @@
-"""Checkpoint 3 (review of the cleaned slice): prompt and parsing."""
+"""Checkpoint 3: crops round every erased place, packed onto a few sheets, checked for residue."""
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 
 import cv2
 import numpy as np
 
 from app.ai_mode.vision_json import request_vision_json
-from app.box_format import BOX_RULE, scaled_box
 
-MIN_CONFIDENCE = 0.6
-RESTORE_CONFIDENCE = 0.8  # a wrong restore leaves source text on the page
 OVERLAP = 0.3  # of the smaller box; two lettered objects overlapping this much garble each other
 MIN_SIDE_PX = 10
 MAX_AREA_RATIO = 0.4  # a box over most of a slice is a misread
 MARGIN_PX = 6
-MAX_BOXES = 12
+CROP_PAD_PX = 24  # background shown round an erased box, where a ghost or smear would sit
+MAX_CROP_SIDE = 900  # a bigger crop is shrunk to this; letter fragments still show
+SHEET_SIDE = 2048
+TAG_PX = 30  # strip above each crop carrying its id
+GAP_PX = 8
 CLEAN_REVIEW_EFFORT = "low"
 
-_BOX = '{"x1":0,"y1":0,"x2":0,"y2":0,"confidence":0.0}'
-
 CLEAN_REVIEW_PROMPT = (
-    "You do the final check of an automatic manga text cleanup. The image is one slice after its text was "
-    "erased; each green box marks a place where text was erased. Look in and around every green box for "
-    "fragments of erased letters, ghost outlines, smears and blotches, and anywhere for leftover scanlator "
-    "watermarks or credits. They will be erased; nothing is translated. Text that was never erased is found by "
-    "the translator, and sound effects and the art stay unreported. "
-    + BOX_RULE
-    + "Keep each box tight around the problem. A clean slice returns an empty list. Return JSON only: "
-    f'{{"residue":[{_BOX}]}}'
+    "You do the final check of an automatic manga text cleanup. The image is a sheet of crops; each crop shows "
+    "one place on a slice where text was erased, with its id in the black tag above it. For each crop decide "
+    "whether fragments of the erased letters, ghost outlines, smears or blotches are left. Clean backgrounds, "
+    "drawn art, balloon outlines, sound effects and text on a sign that was never erased are not residue. "
+    'Return JSON only: {"residue":["<id>"]} with the ids that need another erase, or an empty list.'
 )
-ERASED_COLOR = (0, 170, 0)  # BGR green
-
-
-def mark_erased(clean: np.ndarray, boxes) -> np.ndarray:
-    """The clean slice with a thin green outline round each place where text was erased."""
-    marked = clean.copy()
-    thickness = max(2, clean.shape[1] // 500)
-    for x1, y1, x2, y2 in boxes:
-        cv2.rectangle(marked, (int(x1), int(y1)), (int(x2), int(y2)), ERASED_COLOR, thickness)
-    return marked
 
 
 @dataclass(frozen=True)
-class CleanReview:
+class Crop:
+    id: str
     page_index: int
-    missed: tuple[tuple[int, int, int, int], ...] = ()
-    residue: tuple[tuple[int, int, int, int], ...] = ()
-    restore: tuple[tuple[int, int, int, int], ...] = ()
+    rect: tuple[int, int, int, int]  # the erased box on the slice
+    image: np.ndarray
 
 
-def _box(raw, width: int, height: int, *, min_confidence: float = MIN_CONFIDENCE) -> tuple[int, int, int, int] | None:
-    """Pixel box from a named 0-1000 box, or None when unsure, tiny or implausibly large."""
-    if not isinstance(raw, dict):
-        return None
-    try:
-        if float(raw.get("confidence", 1.0)) < min_confidence:
-            return None
-    except (TypeError, ValueError):
-        return None
-    scaled = scaled_box(raw, width, height)
-    if scaled is None:
-        return None
-    x1, y1, x2, y2 = scaled
-    if x2 - x1 < MIN_SIDE_PX or y2 - y1 < MIN_SIDE_PX or (x2 - x1) * (y2 - y1) > MAX_AREA_RATIO * width * height:
-        return None
-    return (max(0, math.floor(x1) - MARGIN_PX), max(0, math.floor(y1) - MARGIN_PX),
-            min(width, math.ceil(x2) + MARGIN_PX), min(height, math.ceil(y2) + MARGIN_PX))
+def crops_for(page_index: int, clean: np.ndarray, boxes) -> list[Crop]:
+    """One crop of the clean slice round each erased box."""
+    h, w = clean.shape[:2]
+    out = []
+    for n, (x1, y1, x2, y2) in enumerate(boxes):
+        cx1, cy1 = max(0, x1 - CROP_PAD_PX), max(0, y1 - CROP_PAD_PX)
+        cx2, cy2 = min(w, x2 + CROP_PAD_PX), min(h, y2 + CROP_PAD_PX)
+        if cx2 - cx1 < MIN_SIDE_PX or cy2 - cy1 < MIN_SIDE_PX:
+            continue
+        crop = clean[cy1:cy2, cx1:cx2]
+        scale = min(1.0, MAX_CROP_SIDE / max(crop.shape[:2]))
+        if scale < 1.0:
+            crop = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        out.append(Crop(f"{page_index + 1}.{n + 1}", page_index, (x1, y1, x2, y2), crop))
+    return out
 
 
-def _boxes(items, width: int, height: int, min_confidence: float = MIN_CONFIDENCE) -> tuple[tuple[int, int, int, int], ...]:
-    items = items if isinstance(items, list) else []
-    return tuple(box for raw in items[:MAX_BOXES]
-                 if (box := _box(raw, width, height, min_confidence=min_confidence)) is not None)
+def pack(crops: list[Crop]) -> list[tuple[np.ndarray, list[Crop]]]:
+    """Crops in rows on white sheets no bigger than SHEET_SIDE, each under a black tag with its id."""
+    sheets, placed, rows = [], [], []
+    x = y = row_h = 0
+
+    def flush():
+        nonlocal placed, rows
+        if placed:
+            height = max(top + c.image.shape[0] + TAG_PX for _, top, c in rows)
+            width = max(left + c.image.shape[1] for left, _, c in rows)
+            sheet = np.full((height, width, 3), 255, np.uint8)
+            for left, top, crop in rows:
+                ch, cw = crop.image.shape[:2]
+                cv2.rectangle(sheet, (left, top), (left + max(cw, 70), top + TAG_PX - 2), (0, 0, 0), -1)
+                cv2.putText(sheet, crop.id, (left + 4, top + TAG_PX - 9), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                            (255, 255, 255), 2)
+                sheet[top + TAG_PX:top + TAG_PX + ch, left:left + cw] = crop.image
+            sheets.append((sheet, placed))
+        placed, rows = [], []
+
+    for crop in sorted(crops, key=lambda c: -c.image.shape[0]):
+        ch, cw = crop.image.shape[0] + TAG_PX, max(crop.image.shape[1], 70)
+        if x and x + cw > SHEET_SIDE:
+            x, y, row_h = 0, y + row_h + GAP_PX, 0
+        if y and y + ch > SHEET_SIDE:
+            flush()
+            x = y = row_h = 0
+        rows.append((x, y, crop))
+        placed.append(crop)
+        x, row_h = x + cw + GAP_PX, max(row_h, ch)
+    flush()
+    return sheets
 
 
 def _covered(box, others) -> bool:
@@ -88,32 +99,10 @@ def _covered(box, others) -> bool:
     return False
 
 
-def settle_clean_review(review: CleanReview, existing: list[tuple[int, int, int, int]]) -> CleanReview:
-    """Missed text over an existing box is re-erased, not added twice; restore never brings back text."""
-    missed = [box for box in review.missed if not _covered(box, existing)]
-    residue = list(review.residue) + [box for box in review.missed if box not in missed]
-    erase = missed + residue
-    # Restoring over a detected text box puts the source lettering back untranslated.
-    restore = [box for box in review.restore if not _covered(box, erase + list(existing))]
-    return CleanReview(review.page_index, tuple(missed), tuple(residue), tuple(restore))
-
-
-def parse_clean_review(data: dict, page_index: int, width: int, height: int) -> CleanReview:
-    data = data if isinstance(data, dict) else {}
-    return CleanReview(
-        page_index,
-        missed=_boxes(data.get("missed"), width, height),
-        residue=_boxes(data.get("residue"), width, height),
-        restore=_boxes(data.get("restore"), width, height, RESTORE_CONFIDENCE),
-    )
-
-
-def review_clean(provider, model: str, api_key: str, page_index: int,
-                 original: np.ndarray, clean: np.ndarray, boxes=()) -> tuple[CleanReview, float | None]:
-    """Checkpoint 3: one request with the cleaned slice and its erased places outlined (the raw slice never led to a restore)."""
-    # This check thinks (low effort) so it looks at every part of the slice.
-    result = request_vision_json(provider, model, api_key, CLEAN_REVIEW_PROMPT,
-                                 [("CLEAN SLICE", mark_erased(clean, boxes))], max_tokens=1200,
-                                 reasoning_effort=CLEAN_REVIEW_EFFORT, stage="review")
-    height, width = original.shape[:2]
-    return parse_clean_review(result.data, page_index, width, height), result.estimated_cost_usd
+def review_sheet(provider, model: str, api_key: str, sheet: np.ndarray, crops: list[Crop]) -> tuple[list[Crop], float | None]:
+    """Checkpoint 3: one request per sheet; returns the crops with residue left."""
+    # This check thinks (low effort) so it looks at every crop.
+    result = request_vision_json(provider, model, api_key, CLEAN_REVIEW_PROMPT, [("SHEET OF CROPS", sheet)],
+                                 max_tokens=800, reasoning_effort=CLEAN_REVIEW_EFFORT, stage="review")
+    flagged = {str(item) for item in result.data.get("residue") or [] if isinstance(item, (str, int, float))}
+    return [crop for crop in crops if crop.id in flagged], result.estimated_cost_usd

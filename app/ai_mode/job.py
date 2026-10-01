@@ -15,12 +15,12 @@ import re
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 import requests
 from fastapi import HTTPException
 
-from app.ai_mode.checkpoints import _covered, review_clean, settle_clean_review
+from app.ai_mode.checkpoints import _covered
 from app.ai_mode.page_scan import scan_slices
 from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.image_io import read_image
@@ -117,6 +117,13 @@ def _append(items: list, value) -> None:
         items.append(value)
 
 
+def pipeline_fix(chapter_id: str, page_index: int, rects: list) -> None:
+    """Erase residue again in one re-inpaint of the slice."""
+    from app.dependencies import pipeline
+
+    pipeline.apply_review_fixes(chapter_id, page_index, repaint=list(rects))
+
+
 class AIModeRunner:
     """Owns the stage logic. Kept separate from the manager so tests can stub stages."""
 
@@ -139,7 +146,6 @@ class AIModeRunner:
         self._glossary_task: asyncio.Task | None = None
         self._review_queue: asyncio.Queue | None = None
         self._review_task: asyncio.Task | None = None
-        self._review_spill: dict[int, dict[str, list]] = {}
         # Logo regions the scan added, per slice; the review may find leftover text on one and free it.
         self._scan_logos: dict[int, list[tuple[int, int, int, int]]] = {}
         self._slice_total: int | None = None
@@ -359,33 +365,16 @@ class AIModeRunner:
         other = read_image(validate_managed_path(page[second_key], second_root / chapter_id))
         return original, other
 
-    def _in_core(self, page_index: int, boxes, spill: dict | None = None, kind: str = "") -> tuple:
-        """Boxes whose centre is in the part of the slice that is exported; a box crossing the cut is also given to the neighbour."""
-        pages = self._manifest()["pages"]
-        core = pages[page_index].get("stitch_core")
+    def _in_core(self, page_index: int, boxes) -> tuple:
+        """Boxes whose centre is in the part of the slice that is exported."""
+        core = self._manifest()["pages"][page_index].get("stitch_core")
         if not isinstance(core, dict):
             return tuple(boxes)
         try:
-            top, bottom, offset = int(core["core_y1"]), int(core["core_y2"]), int(core["source_y1"])
+            top, bottom = int(core["core_y1"]), int(core["core_y2"])
         except (KeyError, TypeError, ValueError):
             return tuple(boxes)
-        kept = []
-        for box in boxes:
-            if not top <= (box[1] + box[3]) / 2 < bottom:
-                continue
-            kept.append(box)
-            if spill is None or (box[1] >= top and box[3] <= bottom):
-                continue
-            for other_index in (page_index - 1,) * (box[1] < top) + (page_index + 1,) * (box[3] > bottom):
-                other = pages[other_index] if 0 <= other_index < len(pages) else {}
-                other_core = other.get("stitch_core")
-                if (other.get("skipped") or not isinstance(other_core, dict)
-                        or other.get("source_page") != pages[page_index].get("source_page")):
-                    continue
-                shift = offset - int(other_core["source_y1"])
-                spill.setdefault(other_index, {}).setdefault(kind, []).append(
-                    (box[0], box[1] + shift, box[2], box[3] + shift))
-        return tuple(kept)
+        return tuple(box for box in boxes if top <= (box[1] + box[3]) / 2 < bottom)
 
     def _page_boxes(self, page_index: int) -> list[tuple[int, int, int, int]]:
         """Pixel rectangles of the page's active text boxes."""
@@ -396,69 +385,59 @@ class AIModeRunner:
     def _start_review(self, total: int) -> None:
         """Start checkpoint 3 as a queue: each slice put on it is checked; None ends it."""
         self._review_queue = asyncio.Queue()
-        self._review_spill = {}
         self._review_task = asyncio.create_task(self._review_stream(total))
 
     async def _review_stream(self, total: int) -> None:
-        from app.dependencies import pipeline
+        """Collect crops round the erased places of each slice as it is clean; None sends them on a few sheets."""
+        from app.ai_mode import checkpoints
 
-        chapter_id = self.job.chapter_id
-        gate = asyncio.Semaphore(REVIEW_CONCURRENCY)
+        crops: list = []
         finished = 0
-        spill = self._review_spill  # fixes crossing a slice cut, for the neighbouring slice
 
-        def check(page_index: int):
-            """Ask the model about one slice and keep what applies to it; manifest reads stay off the event loop."""
-            original, clean = self._images(page_index, "clean", PROCESSED_DIR)
-            found, cost = review_clean(self.provider, self.settings.model, self.api_key, page_index, original, clean,
-                                       boxes=self._page_boxes(page_index))
-            found = settle_clean_review(found, self._page_boxes(page_index))
-            crossing: dict[int, dict[str, list]] = {}
-            found = replace(found, missed=self._in_core(page_index, found.missed, crossing, "missed"),
-                            residue=self._in_core(page_index, found.residue, crossing, "residue"),
-                            restore=self._in_core(page_index, found.restore))
-            return found, cost, crossing
-
-        async def review_one(page_index: int) -> None:
-            nonlocal finished
-            try:
-                # Only the model call holds the gate; the local fix runs while other slices are checked.
-                async with gate:
-                    remaining = self._remaining_budget()
-                    if self.job.cancel_requested or (remaining is not None and remaining < 0.001):
-                        return
-                    found, cost, crossing = await _ai_call(check, page_index)
-                    self._add_cost(cost)
-                for other, kinds in crossing.items():
-                    for kind, boxes in kinds.items():
-                        spill.setdefault(other, {}).setdefault(kind, []).extend(boxes)
-                if found.residue and self._scan_logos.get(page_index):
-                    await asyncio.to_thread(self._free_logos_with_text, page_index, found.residue)
-                if found.restore or found.missed or found.residue:
-                    await asyncio.to_thread(
-                        pipeline.apply_review_fixes, chapter_id, page_index,
-                        preserve=list(found.restore), boxes=list(found.missed), repaint=list(found.residue))
-                    self.report["kept_regions"] += len(found.restore)
-                    self.report["missed_added"] += len(found.missed)
-                    self.report["repainted_regions"] += len(found.residue)
-                    if found.residue:
-                        _append(self.report["repaint_pages"], page_index)
-            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
-                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
-            finally:
-                finished += 1
-                self._progress(finished, total, stage="review")
+        def cut(page_index: int) -> list:
+            _, clean = self._images(page_index, "clean", PROCESSED_DIR)
+            return checkpoints.crops_for(page_index, clean, self._in_core(page_index, self._page_boxes(page_index)))
 
         self._progress(0, total, stage="review")
-        tasks = []
-        try:
-            while (page_index := await self._review_queue.get()) is not None:
-                tasks.append(asyncio.create_task(review_one(page_index)))
-            await asyncio.gather(*tasks)
-        except BaseException:
-            for task in tasks:
-                task.cancel()
-            raise
+        while (page_index := await self._review_queue.get()) is not None:
+            try:
+                crops.extend(await asyncio.to_thread(cut, page_index))
+            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
+                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+            finished += 1
+            self._progress(finished, total, stage="review")
+        sheets = await asyncio.to_thread(checkpoints.pack, crops)
+        gate = asyncio.Semaphore(REVIEW_CONCURRENCY)
+
+        async def check(sheet, placed) -> list:
+            async with gate:
+                remaining = self._remaining_budget()
+                if self.job.cancel_requested or (remaining is not None and remaining < 0.001):
+                    return []
+                try:
+                    found, cost = await _ai_call(checkpoints.review_sheet, self.provider, self.settings.model,
+                                                 self.api_key, sheet, placed)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    _append(self.report["qc_errors"], f"Tờ crop: {_detail(exc)[:200]}")
+                    return []
+                self._add_cost(cost)
+                return found
+
+        flagged = [crop for found in await asyncio.gather(*(check(s, p) for s, p in sheets)) for crop in found]
+        self.report["review_sheets"] = len(sheets)
+        self.report["review_crops"] = len(crops)
+        by_page: dict[int, list] = {}
+        for crop in flagged:
+            by_page.setdefault(crop.page_index, []).append(crop.rect)
+        for page_index, rects in sorted(by_page.items()):
+            try:
+                if self._scan_logos.get(page_index):
+                    await asyncio.to_thread(self._free_logos_with_text, page_index, rects)
+                await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
+                self.report["repainted_regions"] += len(rects)
+                _append(self.report["repaint_pages"], page_index)
+            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
+                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
 
     def _free_logos_with_text(self, page_index: int, residue) -> None:
         """A scan logo region the review finds leftover text on was a watermark; it stops protecting that text."""
@@ -477,10 +456,7 @@ class AIModeRunner:
         self.report["logos_freed"] = self.report.get("logos_freed", 0) + len(freed)
 
     async def review(self) -> None:
-        """Checkpoint 3: the model compares each raw and clean slice; the system applies what it reports."""
-        from app.dependencies import pipeline
-
-        chapter_id = self.job.chapter_id
+        """Checkpoint 3: the model checks crops round every erased place; residue it finds is erased again."""
         indices = self._active_pages()
         if self._review_task is None:  # the cleanup did not feed it, so every slice is checked now
             self._start_review(len(indices))
@@ -488,20 +464,9 @@ class AIModeRunner:
                 self._review_queue.put_nowait(page_index)
             self._review_queue.put_nowait(None)
         await self._review_task
-        for page_index, fixes in self._review_spill.items():
-            # The neighbour may already hold that text as its own box.
-            existing = self._page_boxes(page_index)
-            missed = [box for box in fixes.get("missed", []) if not _covered(box, existing)]
-            try:
-                await asyncio.to_thread(pipeline.apply_review_fixes, chapter_id, page_index,
-                                        boxes=missed, repaint=fixes.get("residue", []))
-            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
-                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
         self._check_cancel()
-        self._progress(len(indices), len(indices), (
-            f"Xoá thêm {self.report['missed_added']} vùng sót, repaint {self.report['repainted_regions']}, "
-            f"giữ nguyên {self.report['kept_regions']}"
-        ))
+        self._progress(len(indices), len(indices),
+                       f"{self.report.get('review_sheets', 0)} tờ crop, repaint {self.report['repainted_regions']}")
 
     async def translate(self) -> None:
         from app.ocr.language_detect import site_language_hint
