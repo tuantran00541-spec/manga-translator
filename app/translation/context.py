@@ -21,11 +21,11 @@ EMPHASIS_ROLES = frozenset({"shout", "dark_threat", "sfx"})  # a shout in a plai
 
 _TASK = """
 <task>
-You are a comic localization editor translating into {target}. IMAGE 1 is the raw slice. IMAGE 2 is the same slice cleaned, with each text box outlined in red and labelled with its id; the translation is lettered there. For each box: read the text IMAGE 1 shows inside it, translate it into {target} the way a native reader would say it, pick the font whose FONT SAMPLES row looks closest to the raw lettering, and keep it short enough to letter at the raw size.
+You are a comic localization editor translating into {target}. The image is the raw slice with each text box outlined in red and labelled with its id; the text is erased and the translation lettered in that box. For each box: read the text the image shows inside it, translate it into {target} the way a native reader would say it, pick the font whose FONT SAMPLES row looks closest to the raw lettering, and keep it short enough to letter at the raw size.
 </task>
 
 <rules>
-- Trust IMAGE 1 over source_text, which is an OCR hint and often wrong.
+- Trust the image over source_text, which is an OCR hint and often wrong.
 - Stay within max_chars: it is what fits at the raw size, and longer text is lettered smaller. If a line still cannot fit, set "review": true. Set "enlarge": true when the raw text is too small to read.
 - Read the scene (speaker, listener, relationship, emotion, the lines around it) and translate the meaning. Give each character one consistent voice and add nothing the source does not say.
 - Treat CHAPTER MEMORY as settled and use its glossary names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
@@ -49,7 +49,7 @@ _VIETNAMESE = """
 _OUTPUT = """
 <output>
 JSON only:
-{{"translations":[{{"id":"<id>","source":"<the text IMAGE 1 shows in the box>","translated_text":"<text, lines split with \\n>","role":"<role>","container":"<container>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
+{{"translations":[{{"id":"<id>","source":"<the text the image shows in the box>","translated_text":"<text, lines split with \\n>","role":"<role>","container":"<container>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
  "font_choices":{{"<id>":"<font_id>"}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, apparent age and gender, relationship>"}}],

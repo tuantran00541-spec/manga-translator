@@ -78,10 +78,9 @@ def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeyp
     assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}, "no pick: base font"
     content = payload["messages"][1]["content"]
     images = [item for item in content if item.get("type") == "image_url"]
-    assert len(images) == 3, "font samples, original, clean"
+    assert len(images) == 2, "font samples, then the raw slice with its boxes drawn on"
     assert content[0]["text"].startswith("FONT SAMPLES"), "the fixed specimen leads so it is cached"
     assert all(item["image_url"]["url"].startswith("data:image/jpeg;base64,") for item in images)
-    assert images[1]["image_url"]["url"] != images[2]["image_url"]["url"]
     prompt = content[-1]["text"]
     assert '"id":"1"' in prompt and "text_1" not in prompt
     assert '"bbox_xyxy":[10,20,50,40]' in prompt
@@ -469,4 +468,4 @@ def test_text_lettered_by_the_next_slice_is_shown_but_kept_out_of_every_translat
     assert '"lettered_elsewhere":[[20,400,380,560]]' in prompt and "never fold its words" in prompt
     marked = cv2.imdecode(np.frombuffer(base64.b64decode(parts[-2]["image_url"]["url"].split(",", 1)[1]), np.uint8),
                           cv2.IMREAD_COLOR)
-    assert np.abs(marked[480, 20].astype(int) - ELSEWHERE_COLOR).max() < 40, "the grey box is drawn on IMAGE 2"
+    assert np.abs(marked[480, 20].astype(int) - ELSEWHERE_COLOR).max() < 40, "the grey box is drawn on the slice"

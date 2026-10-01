@@ -246,19 +246,20 @@ class VisionPageTranslator:
             + json.dumps({"image_width": w, "image_height": h, "objects": objects,
                           **({"lettered_elsewhere": [list(map(int, box)) for box in elsewhere]} if elsewhere else {})},
                          ensure_ascii=False, separators=(",", ":"))
-            + ("\nlettered_elsewhere boxes (grey X in IMAGE 2) hold text the neighbouring slice translates: "
+            + ("\nlettered_elsewhere boxes (grey X in the image) hold text the neighbouring slice translates: "
                "never translate it, and never fold its words or meaning into any object's translation."
                if elsewhere else "")
             + '\n\nTranslate every object above and answer with one JSON object that starts with {"translations":[. '
             + "Write translated_text in sentence case, even when the source is in capitals."
         )
-        original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(mark_objects(cleaned, objects, elsewhere))
+        # One image: the boxes are drawn on the raw slice, whose text the model reads.
+        marked_b64 = _encode_for_gemini(mark_objects(original, objects, elsewhere))
         ids = set(real)
         max_tokens = min(4096, max(1200, 160 * len(items) + 700))
         if self.provider.protocol == "gemini":
-            result, data = self._gemini(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
+            result, data = self._gemini(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         else:
-            result, data = self._openai(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
+            result, data = self._openai(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         result, data = _unalias(result, data, real)
         ids = set(real.values())
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
@@ -298,7 +299,7 @@ class VisionPageTranslator:
             enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources,
         )
 
-    def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
+    def _openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
         url = str(self.provider.chat_url or "")
         if not url:
             raise ValueError("Provider does not have chat completions")
@@ -310,10 +311,8 @@ class VisionPageTranslator:
                 # The specimen comes first so the cached prefix covers it.
                 {"type": "text", "text": FONT_SAMPLES_LABEL},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{font_specimen_b64()}"}},
-                {"type": "text", "text": "IMAGE 1: ORIGINAL"},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{original}"}},
-                {"type": "text", "text": "IMAGE 2: CLEAN"},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{cleaned}"}},
+                {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{marked}"}},
                 {"type": "text", "text": prompt},  # the ask goes last, after the images it refers to
             ]}],
             "response_format": {"type": "json_object"},
@@ -351,17 +350,15 @@ class VisionPageTranslator:
         cost = _usage_cost_usd(usage) if self.provider.tracks_cost else None
         return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
 
-    def _gemini(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
+    def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens):
         payload = {
             "model": self.model, "store": False,
             "input": [
                 {"type": "text", "text": system},
                 {"type": "text", "text": FONT_SAMPLES_LABEL},
                 {"type": "image", "data": font_specimen_b64(), "mime_type": "image/jpeg"},
-                {"type": "text", "text": "IMAGE 1: ORIGINAL"},
-                {"type": "image", "data": original, "mime_type": "image/jpeg"},
-                {"type": "text", "text": "IMAGE 2: CLEAN"},
-                {"type": "image", "data": cleaned, "mime_type": "image/jpeg"},
+                {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
+                {"type": "image", "data": marked, "mime_type": "image/jpeg"},
                 {"type": "text", "text": prompt},
             ],
             "response_format": {"type": "text", "mime_type": "application/json", "schema": _TRANSLATIONS_SCHEMA},
