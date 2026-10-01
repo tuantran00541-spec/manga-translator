@@ -73,3 +73,11 @@ def test_the_stage_does_nothing_when_off():
     runner = AIModeRunner(job, PROVIDERS["openai"], "k")
     asyncio.run(runner.polish())
     assert runner.report["polish"]["judged"] == 0 and job.stages["polish"]["detail"] == "Tắt"
+
+
+def test_the_judge_reads_each_line_flat_and_ignores_noise_level_gains():
+    state = polish.line_state(polish.Line(0, "a", "I HAVE BEEN\nMARKED...", "Mình đã bị\nđánh dấu..."))
+    assert "TRANSLATION (Vietnamese): Mình đã bị đánh dấu...\n" in state and "SOURCE: I HAVE BEEN MARKED..." in state
+    old = {"natural": 2.51, "clear": 1.78, "faithful": 1.91}
+    assert not polish.better({"natural": 2.57, "clear": 1.79, "faithful": 1.93}, old), "adding 'các' is not a rewrite"
+    assert polish.better({"natural": 2.83, "clear": 1.9, "faithful": 1.97}, old)

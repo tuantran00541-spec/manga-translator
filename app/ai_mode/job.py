@@ -633,7 +633,7 @@ class AIModeRunner:
                 candidates = [(line, texts[line.id]) for line in batch if texts.get(line.id, line.text) != line.text]
                 regraded = await asyncio.gather(*(grade(line, text) for line, text in candidates))
                 for (line, text), found in zip(candidates, regraded):
-                    if found and polish.quality(found) > polish.quality(line.scores):
+                    if found and polish.better(found, line.scores):
                         _append(stats["samples"], {"page": line.page_index + 1, "source": line.source,
                                                    "before": line.text, "after": text,
                                                    "scores_before": line.scores, "scores_after": found})

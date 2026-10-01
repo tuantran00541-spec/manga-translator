@@ -14,6 +14,7 @@ JUDGED_ROLES = frozenset({"dialogue", "narration", "thought", "whisper", "shout"
 MIN_WORDS = 3
 REWRITE_BATCH = 8
 MAX_STATE_CHARS = 2000
+MIN_GAIN = 0.025  # a rewrite that gains less on the 0-1 scale is the judge's noise, not a better line
 
 QUESTIONS = {
     "natural": {
@@ -24,8 +25,7 @@ QUESTIONS = {
     },
     "clear": {
         "type": "score",
-        "instructions": "How easily does a Vietnamese reader understand what TRANSLATION means, "
-                        "given the lines before and after it?",
+        "instructions": "How easily does a Vietnamese reader understand what TRANSLATION means on its own?",
         "criteria": ["makes no sense", "unclear or ambiguous", "clear"],
     },
     "faithful": {
@@ -47,7 +47,8 @@ REWRITE_PROMPT = (
     "before and after it, and what a reviewer found wrong. Rewrite each TRANSLATION so it keeps exactly what the "
     "source says and reads as natural Vietnamese a reader of this comic expects. Keep the names, terms and forms of "
     "address in CHAPTER MEMORY, the source punctuation (every \"...\", \"?!\", \"!!\" and \"—\"), sentence case, "
-    "and stay within max_chars when it is given. If the reviewer is wrong and the translation is already right, "
+    "line breaks (\\n between phrases, as many lines as the current translation), and stay within max_chars when "
+    "it is given. If the reviewer is wrong and the translation is already right, "
     "return it unchanged. JSON only: {\"rewrites\":[{\"id\":\"<id>\",\"text\":\"<the rewritten line>\"}]}"
 )
 
@@ -87,10 +88,14 @@ def collect_lines(pages: list[dict], indices: list[int]) -> list[Line]:
     return lines
 
 
+def _flat(text: str) -> str:
+    return " ".join(str(text or "").split())
+
+
 def line_state(line: Line, text: str | None = None) -> str:
-    """What the judge reads: the source, one translation and the translated lines around it."""
-    state = (f"SOURCE: {line.source}\nTRANSLATION (Vietnamese): {text or line.text}\n"
-             f"LINE BEFORE: {line.before or '(none)'}\nLINE AFTER: {line.after or '(none)'}")
+    """What the judge reads: the source, one translation and the translated lines around it, each on one line."""
+    state = (f"SOURCE: {_flat(line.source)}\nTRANSLATION (Vietnamese): {_flat(text or line.text)}\n"
+             f"LINE BEFORE: {_flat(line.before) or '(none)'}\nLINE AFTER: {_flat(line.after) or '(none)'}")
     return state[:MAX_STATE_CHARS]
 
 
@@ -118,6 +123,11 @@ def judge(provider, api_key: str, state: str) -> dict[str, float]:
 
 def problems(scores: dict[str, float]) -> list[str]:
     return [PROBLEMS[key] for key, limit in LIMITS.items() if key in scores and scores[key] < limit]
+
+
+def better(new: dict[str, float], old: dict[str, float]) -> bool:
+    """True when the judge grades a rewrite clearly better than the line it replaces."""
+    return quality(new) >= quality(old) + MIN_GAIN
 
 
 def quality(scores: dict[str, float]) -> float:
