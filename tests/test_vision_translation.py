@@ -442,6 +442,8 @@ def test_glossary_vote_drops_a_misread_name_and_fixes_one_form_of_address():
     assert [name["source"] for name in glossary["names"]] == ["Yanguo", "Lee Jin"]
     assert glossary["address"] == [{"from": "disciples", "to": "master", "self": "bọn con", "other": "sư phụ"}]
     assert glossary["terms"] == [{"source": "qi refining", "target": "Luyện Khí"}]
+    clash = merge_glossaries([{"names": [{"source": "Hero", "target": "Dũng Sĩ"}], "terms": [{"source": "hero", "target": "Anh Hùng"}]}])
+    assert clash["terms"] == [], "a term that is also a name keeps the name's translation"
     assert ChapterMemory("", glossary).snapshot()["glossary"] == glossary
 
 

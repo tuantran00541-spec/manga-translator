@@ -92,8 +92,10 @@ def merge_glossaries(parts: list[dict]) -> dict:
     return {
         "names": [{"source": _winner(names[key]["spelling"]), "target": _winner(names[key]["target"]),
                    **({"note": names[key]["note"]} if names[key]["note"] else {})} for key in ranked[:MAX_NAMES]],
+        # A term that is also a name ("hero" and "Hero") keeps the name's one translation.
         "terms": [{"source": source, "target": _winner(counter)}
-                  for source, counter in sorted(terms.items(), key=lambda item: -sum(item[1].values()))[:MAX_TERMS]],
+                  for source, counter in sorted(terms.items(), key=lambda item: -sum(item[1].values()))
+                  if source not in names or source in misread][:MAX_TERMS],
         "address": [
             {"from": _winner(slot["from"]), "to": _winner(slot["to"]),
              **{key: _winner(slot[key]) for key in ("self", "other") if slot[key]}}
