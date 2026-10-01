@@ -42,6 +42,8 @@ STAGES: tuple[tuple[str, str], ...] = (
 SCAN_BATCH_SIZE = 2
 SCAN_CONCURRENCY = 4
 GLOSSARY_BATCH_SIZE = 2
+# Slices of transcript per text-only glossary request; a request reads the lettering, not the images.
+GLOSSARY_TEXT_SLICES = 40
 # More "credit" slices than this is a misread of the chapter, not credits.
 CREDIT_MAX_SHARE = 0.25
 CREDIT_MAX_ABSOLUTE = 3
@@ -141,6 +143,7 @@ class AIModeRunner:
             "editorial_blockers": 0, "blocker_samples": [], "source_lang": None,
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
             "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [], "unboxed_pages": [],
+            "repaint_retried": 0, "residue_left": [],
             "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "errors": [], "samples": []},
         })
         self._memory = None
@@ -149,6 +152,8 @@ class AIModeRunner:
         self._review_task: asyncio.Task | None = None
         # Logo regions the scan added, per slice; the review may find leftover text on one and free it.
         self._scan_logos: dict[int, list[tuple[int, int, int, int]]] = {}
+        # The lettering the scan read on each slice it answered for, as (who, text) lines.
+        self._transcripts: dict[int, tuple[tuple[str, str], ...]] = {}
         self._slice_total: int | None = None
 
     # -- bookkeeping ---------------------------------------------------------
@@ -287,6 +292,7 @@ class AIModeRunner:
             self._scan_logos[scan.page_index] = list(scan.logos)
             logos += len(scan.logos)
         self.report["logo_regions"] = logos
+        self._transcripts = {scan.page_index: scan.lines for scan in scans if scan.page_index not in credits}
         self._progress(len(active), len(active),
                        f"{len(credits)} lát credit, {len(textless)} lát không chữ, {logos} logo")
 
@@ -329,17 +335,22 @@ class AIModeRunner:
 
     async def _read_glossary(self, indices: list[int]) -> dict:
         """Names, terms and forms of address for the whole chapter; empty when the read fails."""
-        from app.ai_mode.glossary import merge_glossaries, read_glossary
+        from app.ai_mode.glossary import merge_glossaries, read_glossary, read_glossary_text
         from app.translation.deepseek import _language_name
 
         pages = self._manifest().get("pages", [])
         gate = asyncio.Semaphore(SCAN_CONCURRENCY)
 
+        target = _language_name(self.settings.target_lang)
+
         def read_batch(batch: list[int]):
+            if all(index in self._transcripts for index in batch):
+                return read_glossary_text(self.provider, self.settings.model, self.api_key, target,
+                                          self.settings.target_lang, {i: self._transcripts[i] for i in batch})
             images = [(index, read_image(validate_managed_path(pages[index]["original"], RAW_DIR / self.job.chapter_id)))
                       for index in batch]
-            return read_glossary(self.provider, self.settings.model, self.api_key,
-                                 _language_name(self.settings.target_lang), self.settings.target_lang, images)
+            return read_glossary(self.provider, self.settings.model, self.api_key, target, self.settings.target_lang,
+                                 images)
 
         async def read(batch: list[int]) -> dict:
             async with gate:
@@ -353,7 +364,14 @@ class AIModeRunner:
                 self._add_cost(cost)
                 return data
 
-        batches = [indices[i:i + GLOSSARY_BATCH_SIZE] for i in range(0, len(indices), GLOSSARY_BATCH_SIZE)]
+        # Slices the scan read go as text; a slice it could not read is still read from its image.
+        known = [index for index in indices if index in self._transcripts]
+        unknown = [index for index in indices if index not in self._transcripts]
+        batches = [known[i:i + GLOSSARY_TEXT_SLICES] for i in range(0, len(known), GLOSSARY_TEXT_SLICES)]
+        batches = [batch for batch in batches if any(self._transcripts[index] for index in batch)]
+        batches += [unknown[i:i + GLOSSARY_BATCH_SIZE] for i in range(0, len(unknown), GLOSSARY_BATCH_SIZE)]
+        self.report["glossary_text_slices"] = len(known)
+        self.report["glossary_image_slices"] = len(unknown)
         glossary = merge_glossaries(list(await asyncio.gather(*(read(batch) for batch in batches))))
         self.report["glossary"] = glossary
         return glossary
@@ -437,8 +455,26 @@ class AIModeRunner:
                 await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
                 self.report["repainted_regions"] += len(rects)
                 _append(self.report["repaint_pages"], page_index)
+                await self._verify_repaint(page_index, rects)
             except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
                 _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+
+    def _still_reading(self, page_index: int, rects: list) -> list:
+        """The repainted rectangles where the letter model still reads text on the clean slice."""
+        from app.detector.ctd_mask import still_reads
+
+        clean = self._images(page_index, "clean", PROCESSED_DIR)[1]
+        return [rect for rect in rects if still_reads(clean, tuple(int(v) for v in rect))]
+
+    async def _verify_repaint(self, page_index: int, rects: list) -> None:
+        """Read each repainted place again on the CPU; text still there gets one more pass, then goes to the reviewer."""
+        left = await asyncio.to_thread(self._still_reading, page_index, rects)
+        if left:
+            self.report["repaint_retried"] += len(left)
+            await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, left)
+            left = await asyncio.to_thread(self._still_reading, page_index, left)
+        for rect in left:
+            _append(self.report["residue_left"], {"page": page_index + 1, "rect": [int(v) for v in rect]})
 
     def _free_logos_with_text(self, page_index: int, residue) -> None:
         """A scan logo region the review finds leftover text on was a watermark; it stops protecting that text."""

@@ -287,6 +287,10 @@
       lines.push(`${r.restored_regions} vùng AI không dịch được, đã giữ ảnh gốc${pages.length ? ` (lát ${pages.join(", ")})` : ""}`);
     }
     if (r.repainted_regions) lines.push(`Repaint ${r.repainted_regions} vùng AI thấy còn sót ở ${r.repaint_pages?.length || 0} lát`);
+    if (r.residue_left?.length) {
+      const pages = [...new Set(r.residue_left.map((item) => item.page))].slice(0, 8);
+      lines.push(`${r.residue_left.length} vùng vẫn còn chữ sau 2 lần xóa, nên xem lại (lát ${pages.join(", ")})`);
+    }
     if (r.source_lang) lines.push(`Ngôn ngữ gốc: ${window.SOURCE_LANG_LABELS?.[r.source_lang] || r.source_lang}`);
     if (r.translated || r.unreadable) lines.push(`Dịch ${r.translated || 0} vùng chữ${r.unreadable ? `, ${r.unreadable} vùng AI không đọc được` : ""}`);
     const polish = r.polish || {};
