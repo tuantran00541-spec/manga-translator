@@ -286,6 +286,9 @@ def main() -> int:
         "price_usd_per_m": {"input": float(os.environ.get("GATEWAY_PRICE_INPUT_PER_M", "0")),
                             "output": float(os.environ.get("GATEWAY_PRICE_OUTPUT_PER_M", "0"))},
         "polish": args.polish,
+        # Run times are only comparable on the same CPU type.
+        "cpu": next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines()
+                     if line.startswith("model name")), "unknown") if Path("/proc/cpuinfo").is_file() else "unknown",
         "status": job["status"],
         "error": job.get("error"),
         "wall_s": round(wall, 1),
