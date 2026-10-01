@@ -87,6 +87,7 @@ Across five chapters of five series, A.I mode cost about **$0.07** of model call
 ### Import and slicing
 
 - PNG, JPEG, WEBP and BMP; ZIP and CBZ chapters
+- The browser extension: open the chapter in your own Chrome or Edge, click once, and its images go into the app. Sites behind Cloudflare that block Playwright work, because your browser has already loaded the pages.
 - Chapter URLs through HTTP and Playwright: relative URLs, srcset, lazy-load attributes and scroll-based discovery, with site adapters where a fast path is stable
 - Bounded downloads and upload validation
 - Long pages are cut in low-content bands, never at a fixed height. Source-page identity and stitch ownership are recorded, so the chapter is rebuilt with no duplicated or missing pixels.
@@ -117,8 +118,7 @@ Uncertain detections, watermarks and review-only regions are not silently promot
 
 ### OCR
 
-- **MangaOCR** for Japanese
-- **PP-OCRv6 / PaddleOCR** for Chinese, Korean and English
+- **PP-OCRv6 / PaddleOCR** for Japanese, Chinese, Korean and English. On 110 Black Jack text boxes it missed 3.2% of the dialogue characters, against 13% for MangaOCR, which the app used before.
 
 OCR is chapter-aware and revision-safe, and keeps the source lettering's colour, position and size as hints for typesetting.
 
@@ -223,6 +223,16 @@ python run.py     # from an activated environment
 ~~~
 
 Open `http://127.0.0.1:8000`.
+
+### Browser extension
+
+Sites behind Cloudflare usually refuse Playwright. The extension in [`extension/`](extension) takes the images from the chapter you have open in Chrome or Edge instead:
+
+1. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
+2. Click **Load unpacked** and pick the `extension` folder: in the app folder for a source checkout, or `%LOCALAPPDATA%\manga-translator\app\extension` after the Windows setup.
+3. With the app running, open a chapter, then click the Manga Translator icon and **Gửi chương vào app**.
+
+It scrolls the page so lazy images load, takes the wide images and canvases in reading order, converts formats the app does not read (GIF, AVIF) to PNG, and opens the new chapter in the app. It only talks to the app on this computer.
 
 ### Docker
 

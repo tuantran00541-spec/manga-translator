@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 280px; margin: 0; padding: 14px; font: 13px/1.45 system-ui, sans-serif; color: #1f2328; background: #fff; }
+  h1 { margin: 0 0 8px; font-size: 14px; }
+  p { margin: 0 0 10px; color: #57606a; }
+  label { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }
+  button { width: 100%; padding: 8px; border: 0; border-radius: 6px; background: #1f6feb; color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { background: #8c959f; cursor: default; }
+  #status { margin-top: 10px; min-height: 1.4em; }
+  #status.error { color: #cf222e; }
+  #status.done { color: #1a7f37; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e6edf3; background: #161b22; }
+    p { color: #8b949e; }
+  }
+</style>
+</head>
+<body>
+<h1>Manga Translator</h1>
+<p>Đọc chương trên trang này như bình thường, rồi bấm nút để gửi ảnh vào app đang mở trên máy.</p>
+<label><input type="checkbox" id="scroll" checked> Tự cuộn hết trang để tải đủ ảnh</label>
+<button id="send">Gửi chương vào app</button>
+<div id="status"></div>
+<script src="popup.js"></script>
+</body>
+</html>
