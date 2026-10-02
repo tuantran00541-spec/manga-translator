@@ -57,6 +57,12 @@ export function mountActions(shell) {
   if (!actions) return;
   actions.replaceChildren();
 
+  const status = document.createElement("span");
+  status.className = "editor-save-status";
+  status.setAttribute("role", "status");
+  actions.appendChild(status);
+  window.refreshSaveStatus?.();
+
   if (typeof window.buildChapterExportButton === "function") {
     actions.appendChild(window.buildChapterExportButton());
   }

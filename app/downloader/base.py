@@ -14,6 +14,17 @@ from app.parameters import (
 )
 
 
+
+def _retry_delay(exc: requests.RequestException, attempt: int) -> float:
+    """Seconds to wait before retrying; a site saying "too many requests" gets real slack."""
+    response = getattr(exc, "response", None)
+    if response is not None and response.status_code == 429:
+        try:
+            return min(60.0, max(1.0, float(response.headers.get("Retry-After", ""))))
+        except ValueError:
+            return 10.0 * attempt
+    return float(DOWNLOAD_RETRY_BACKOFF_SECONDS) * attempt
+
 class BaseAdapter(ABC):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -82,7 +93,7 @@ class BaseAdapter(ABC):
             except requests.RequestException as exc:
                 if attempt >= attempts:
                     raise
-                delay = float(DOWNLOAD_RETRY_BACKOFF_SECONDS) * attempt
+                delay = _retry_delay(exc, attempt)
                 logger.warning(
                     "Image download attempt {}/{} failed for {}: {}. Retrying in {:.1f}s",
                     attempt,

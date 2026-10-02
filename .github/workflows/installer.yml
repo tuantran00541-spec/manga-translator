@@ -118,10 +118,16 @@ jobs:
           $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + $env:Path
           $models = Join-Path (Split-Path (Split-Path (Get-Command manga).Source)) 'app\models'
           $before = (Get-Item (Join-Path $models 'lama-manga-dynamic.onnx')).LastWriteTimeUtc
+          # A package an older version needed must be gone after the update.
+          $venv = Join-Path (Split-Path $models) '.venv\Scripts\python.exe'
+          $uv = Join-Path (Split-Path (Split-Path $models)) 'uv\uv.exe'
+          & $uv pip install --python $venv pyfiglet==1.0.2
           manga update
           if ($LASTEXITCODE -ne 0) { throw 'manga update failed' }
           $after = (Get-Item (Join-Path $models 'lama-manga-dynamic.onnx')).LastWriteTimeUtc
           if ($before -ne $after) { throw 'update downloaded the model again' }
+          & $venv -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('pyfiglet') is not None)"
+          if ($LASTEXITCODE -ne 0) { throw 'update kept a package that is no longer needed' }
           Get-ChildItem $models
 
   unix:
@@ -173,6 +179,10 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           model="$HOME/.local/share/manga-translator/app/models/lama-manga-dynamic.onnx"
           before=$(ls -l --time-style=full-iso "$model" 2>/dev/null || ls -lT "$model")
+          home="$HOME/.local/share/manga-translator"
+          "$home/uv/uv" pip install --python "$home/app/.venv/bin/python" pyfiglet==1.0.2
           manga update
           after=$(ls -l --time-style=full-iso "$model" 2>/dev/null || ls -lT "$model")
           [ "$before" = "$after" ] || { echo "update downloaded the model again"; exit 1; }
+          "$home/app/.venv/bin/python" -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('pyfiglet') is not None)" \
+            || { echo "update kept a package that is no longer needed"; exit 1; }

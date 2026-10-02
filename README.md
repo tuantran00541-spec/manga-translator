@@ -162,6 +162,8 @@ The image path accepts up to **100,000,000 decoded pixels** per image.
 
 **Windows:** download [MangaTranslator-Setup.exe](https://github.com/tuantran00541-spec/manga-translator/releases/latest/download/MangaTranslator-Setup.exe) and double-click it. It needs no admin rights; the first install takes 5–15 minutes and uses about 1.6 GB of disk. Uninstall it from Windows Settings → Apps; it asks whether to keep your translated chapters.
 
+The setup is not code-signed yet, so Windows SmartScreen may show "Windows protected your PC". Click **More info → Run anyway** (Vietnamese Windows: **Thêm thông tin → Vẫn chạy**). The one-command install below does not go through SmartScreen.
+
 Or with one command, nothing else to install first:
 
 ~~~powershell
@@ -407,4 +409,10 @@ Detection, cleanup, OCR, translation, typography and AI help are all allowed to 
 
 ## License
 
-See the repository license and the bundled asset metadata for software and font licensing.
+Copyright (C) 2026 tuantran00541-spec. The code is licensed under the [GNU Affero General Public License v3.0](LICENSE): you may use, change and share it, and anyone who runs a changed version as a network service must offer its source to that service's users.
+
+Bundled third-party parts keep their own licenses:
+
+- **Fonts:** SIL Open Font License, see `app/static/fonts/licenses/`.
+- **Vietnamese word list:** MIT, see `app/render/vi_words.LICENSE.txt`.
+- **Models:** downloaded at install time, under their own authors' terms.

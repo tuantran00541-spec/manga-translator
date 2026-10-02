@@ -23,30 +23,38 @@ from app.region_policy import text_object_in_preserve_region
 router = APIRouter(prefix="/api", tags=["export"])
 
 
+BLOCKER_LABELS = {
+    "untranslated_story_object": "chưa dịch",
+    "story_object_missing_ocr": "chưa có chữ gốc",
+    "unaccounted_story_candidate": "chữ chưa có vùng",
+}
+
+
 def _editorial_gate_or_409(
     manifest: dict,
     *,
     require_final_approval: bool = False,
+    force: bool = False,
 ) -> dict:
     preflight = editorial_preflight(
         manifest,
         require_final_approval=require_final_approval,
     )
-    if preflight["ok"]:
+    if preflight["ok"] or force:
         return preflight
-    samples = []
-    for blocker in preflight["blockers"][:5]:
-        target = blocker.get("box_id") or blocker.get("object_id") or "region"
-        samples.append(
-            f"{blocker['kind']}@p{int(blocker['page_index']) + 1}:{target}"
-        )
-    detail = ", ".join(samples)
-    if preflight["blocker_count"] > len(samples):
-        detail += f", +{preflight['blocker_count'] - len(samples)} more"
+    counts: dict[str, int] = {}
+    for blocker in preflight["blockers"]:
+        label = BLOCKER_LABELS.get(blocker["kind"], "cần xem lại")
+        counts[label] = counts.get(label, 0) + 1
+    parts = ", ".join(f"{n} vùng {label}" for label, n in counts.items())
     raise HTTPException(
         409,
-        "Editorial preflight blocked final render/export: "
-        f"{preflight['blocker_count']} unresolved story-text blocker(s): {detail}",
+        {
+            "code": "editorial_preflight",
+            "blocker_count": preflight["blocker_count"],
+            "counts": counts,
+            "message": f"Chương còn {parts}.",
+        },
     )
 
 
@@ -311,7 +319,7 @@ def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
         )
 
 
-def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
+def _snapshot_export_inputs(chapter_id: str, force: bool = False) -> list[dict]:
     with get_manifest_lock(chapter_id):
         manifest = load_manifest_raw(chapter_id)
         changed = False
@@ -322,7 +330,7 @@ def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
             changed = changed or page_changed
         if changed:
             save_manifest_raw(chapter_id, manifest)
-        _editorial_gate_or_409(manifest, require_final_approval=True)
+        _editorial_gate_or_409(manifest, require_final_approval=True, force=force)
         snapshot: list[dict] = []
         for page_index, page in enumerate(manifest.get("pages", [])):
             path = _export_path_for_page(chapter_id, page_index, page, manifest)
@@ -384,7 +392,7 @@ def export_preflight(chapter_id: str) -> dict:
 
 
 @router.post("/render/chapter")
-def render_chapter(chapter_id: str) -> dict:
+def render_chapter(chapter_id: str, force: bool = False) -> dict:
     validate_chapter_id(chapter_id)
     with get_manifest_lock(chapter_id):
         manifest = load_manifest_raw(chapter_id)
@@ -396,7 +404,7 @@ def render_chapter(chapter_id: str) -> dict:
             changed = changed or page_changed
         if changed:
             save_manifest_raw(chapter_id, manifest)
-        preflight = _editorial_gate_or_409(manifest)
+        preflight = _editorial_gate_or_409(manifest, force=force)
         total = len(manifest.get("pages", []))
 
     rendered = 0
@@ -430,7 +438,7 @@ def render_chapter(chapter_id: str) -> dict:
         "reused": reused,
         "skipped": skipped,
         "total": len(latest.get("pages", [])),
-        "download_url": f"/api/export/{chapter_id}.zip",
+        "download_url": f"/api/export/{chapter_id}.zip" + ("?force=true" if force else ""),
         "editorial_preflight": preflight,
     }
     return result
@@ -440,9 +448,9 @@ def render_chapter(chapter_id: str) -> dict:
     "/export/{chapter_id}.zip",
     responses={409: {"description": "At least one rendered page is stale or unavailable"}},
 )
-def export_chapter(chapter_id: str):
+def export_chapter(chapter_id: str, force: bool = False):
     validate_chapter_id(chapter_id)
-    final_archive = write_chapter_archive(chapter_id)
+    final_archive = write_chapter_archive(chapter_id, force)
     return FileResponse(
         final_archive,
         filename=f"manga-translator-{chapter_id}.zip",
@@ -450,14 +458,14 @@ def export_chapter(chapter_id: str):
     )
 
 
-def write_chapter_archive(chapter_id: str) -> Path:
+def write_chapter_archive(chapter_id: str, force: bool = False) -> Path:
     """Stitch every current page into a ZIP and return its path."""
     out_dir = OUTPUT_DIR / chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
     final_archive = out_dir / f"chapter_{chapter_id}.zip"
     tmp_archive = out_dir / f"chapter_{chapter_id}.export.{uuid.uuid4().hex[:12]}.tmp"
 
-    snapshot = _snapshot_export_inputs(chapter_id)
+    snapshot = _snapshot_export_inputs(chapter_id, force)
     groups: dict[int, list[dict]] = {}
     for item in snapshot:
         path = item["path"]
@@ -495,7 +503,7 @@ def write_chapter_archive(chapter_id: str) -> Path:
                     409,
                     "Chapter changed while export was running. Export again to include the latest edits.",
                 )
-            _editorial_gate_or_409(load_manifest_raw(chapter_id), require_final_approval=True)
+            _editorial_gate_or_409(load_manifest_raw(chapter_id), require_final_approval=True, force=force)
             atomic_replace(tmp_archive, final_archive)
     finally:
         if tmp_archive.exists():

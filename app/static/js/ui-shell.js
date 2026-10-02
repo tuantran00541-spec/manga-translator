@@ -75,9 +75,13 @@
     if (home) home.hidden = resolved !== "home";
     if (importView) importView.hidden = resolved !== "import";
     setPageTitle(resolved === "home" ? "Trang chủ" : "Nhập nội dung");
+    // Coming back home lists the chapters worked on since the page loaded.
+    if (resolved === "home") window.loadRecentChapters?.();
     const start = document.getElementById("start-action");
-    if (start) start.textContent = resolved === "home" ? "Dự án mới" : "Tải chương";
+    if (start) start.textContent = "Dự án mới";
     if ((document.body.dataset.appStage || "landing") !== "landing") return;
+    // The import page has its own load button; a second one in the header confused new users.
+    if (start) start.hidden = resolved === "import";
     syncSidebar("landing");
     closeSidebar();
     if (resolved === "import") queueMicrotask(() => document.getElementById("chapter-url")?.focus());
@@ -188,7 +192,7 @@
       return false;
     }
     if (currentStage === "review" && document.querySelector(".review-workspace-shell.review-busy")) {
-      showNavigationMessage("Đang xử lý kiểm tra chất lượng. Vui lòng chờ hoàn tất.");
+      showNavigationMessage("Đang xử lý ảnh. Vui lòng chờ hoàn tất.");
       return false;
     }
 
@@ -299,17 +303,7 @@
         if (typeof window.processSelectedPages === "function") window.processSelectedPages();
         return;
       }
-      if ((document.body.dataset.landingMode || "home") === "home") {
-        setLandingMode("import");
-        document.getElementById("chapter-url")?.focus();
-        return;
-      }
-      const url = document.getElementById("chapter-url")?.value?.trim();
-      if (url && typeof window.loadChapter === "function") window.loadChapter();
-      else {
-        document.getElementById("chapter-url")?.focus();
-        showNavigationMessage("Dán liên kết chương hoặc chọn tệp từ thiết bị.");
-      }
+      setLandingMode("import");
     });
     document.addEventListener("keydown", onShellKeydown, true);
   }

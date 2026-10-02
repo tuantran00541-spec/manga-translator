@@ -4,7 +4,7 @@
   --surface-panel: #ffffff;
   --surface-raised: #ffffff;
   --surface-hover: #ffffff;
-  --surface-overlay: #ffffff;
+  --surface-overlay: rgba(0, 0, 0, 0.35);
   --surface-input: #ffffff;
   --surface-canvas-deep: #ffffff;
   --border-subtle: #000000;
@@ -81,7 +81,7 @@ body:not([data-app-stage="landing"]) {
   --surface-panel: #000000;
   --surface-raised: #000000;
   --surface-hover: #000000;
-  --surface-overlay: #000000;
+  --surface-overlay: rgba(0, 0, 0, 0.6);
   --surface-input: #000000;
   --surface-canvas-deep: #000000;
   --border-subtle: #ffffff;

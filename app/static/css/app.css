@@ -163,6 +163,7 @@
   .ai-mode-notes textarea { width: 100%; resize: vertical; font: inherit; }
   .ai-mode-form .ai-mode-polish { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
   .ai-mode-polish[hidden] { display: none; }
+  .ai-mode-form .ai-mode-polish input { flex: 0 0 auto; width: 16px; height: 16px; min-height: 0; margin: 1px 0 0; }
   .ai-mode-form .ui-field { gap: 4px; font-size: 12px; }
   .ai-mode-form :is(select, input) { width: 100%; min-width: 0; }
   .ai-mode-status { grid-column: 1 / -1; display: grid; gap: 10px; }

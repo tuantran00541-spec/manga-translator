@@ -27,6 +27,7 @@ function getErrorMessage(status, data) {
     if (typeof data.detail === "string" && data.detail.trim()) {
       return data.detail.trim();
     }
+    if (typeof data.detail?.message === "string") return data.detail.message;
   }
   const statusMessages = {
     400: "Yêu cầu không hợp lệ (400)",
@@ -225,6 +226,7 @@ async function loadRecentChapters() {
     setPanelVisible(false);
   }
 }
+window.loadRecentChapters = loadRecentChapters;
 
 async function refreshChapterManifest(chapterId) {
   if (!chapterId) return null;

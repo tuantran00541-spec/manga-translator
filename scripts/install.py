@@ -176,16 +176,25 @@ def ensure_venv(target: Path, uv: str | None) -> Path:
     return python
 
 
-def install_packages(python: Path, target: Path, uv: str | None) -> None:
+def install_packages(python: Path, target: Path, uv: str | None, exact: bool) -> None:
     requirements = target / "requirements.txt"
     if uv:
-        run(uv, "pip", "install", "--python", python, "-r", requirements)
+        # An app install drops what older versions needed (torch, manga-ocr); a developer clone keeps its extras.
+        run(uv, "pip", "install", "--python", python, "-r", requirements, *(["--exact"] if exact else []))
     else:
         run(python, "-m", "pip", "install", "-q", "--upgrade", "pip")
         run(python, "-m", "pip", "install", "-q", "-r", requirements)
     # Chromium only serves chapter links from script-heavy sites, so a failure here is not fatal.
     if subprocess.run([str(python), "-m", "playwright", "install", "chromium"]).returncode != 0:
         print("    Chưa cài được Chromium: vẫn dùng được ảnh/ZIP, chỉ tải chương từ vài trang web là cần nó.")
+
+
+def remove_old_caches() -> None:
+    """Delete the manga-ocr model that versions before 0.3 downloaded; nothing uses it now."""
+    old = Path.home() / ".cache" / "huggingface" / "hub" / "models--kha-white--manga-ocr-base"
+    if old.is_dir():
+        say("Xóa model manga-ocr cũ không còn dùng")
+        shutil.rmtree(old, ignore_errors=True)
 
 
 def build_ctd(target: Path, uv: str | None) -> None:
@@ -252,7 +261,7 @@ def add_to_user_path_windows(folder: Path) -> None:
             # Keep the value's type: rewriting REG_EXPAND_SZ as a plain string breaks %USERPROFILE% entries.
             winreg.SetValueEx(key, "Path", 0, kind, updated)
     # Tell Windows the environment changed, so windows opened from now on see the command.
-    ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000, None)
+    ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "Environment", 0x0002, 1000, None)
 
 
 RC_LINE = 'export PATH="{folder}:$PATH"  # manga-translator'
@@ -352,7 +361,9 @@ def main(argv: list[str] | None = None) -> None:
     say("Chuẩn bị Python 3.12 (.venv)")
     python = ensure_venv(target, uv)
     say("Cài thư viện (lần đầu mất vài phút)")
-    install_packages(python, target, uv)
+    install_packages(python, target, uv, exact=target != ROOT)
+    if target != ROOT:
+        remove_old_caches()
     say("Tải và chuẩn bị model")
     (target / "models").mkdir(exist_ok=True)
     download(LAMA_URL, target / "models" / "lama-manga-dynamic.onnx", LAMA_SHA256)
