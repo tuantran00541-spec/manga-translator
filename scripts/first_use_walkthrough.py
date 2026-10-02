@@ -87,7 +87,7 @@ def wait_stage(page: Page, stage: str, timeout_s: float, journal: Journal, row: 
             return
         if time.time() >= next_shot:
             row["shots"].append(journal.shot(page, f"{tag}-progress"))
-            row["notes"].append("progress text: " + visible_text(page, "#workbench-status, .process-progress, .ui-state, .review-busy"))
+            row["notes"].append("progress text: " + visible_text(page, "#start-action, #workbench-status, .review-busy"))
             next_shot = time.time() + 60
         page.wait_for_timeout(1000)
     raise TimeoutError(f"stage {stage} not reached in {timeout_s}s")
