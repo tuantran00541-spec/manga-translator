@@ -398,7 +398,9 @@ def ai_mode_path(page: Page, journal: Journal, url: str, admin: str) -> None:
         started = time.time()
         next_shot = started + 30
         while time.time() - started < 3600:
-            if page.locator("#ai-mode-open").is_visible():
+            if page.locator("#ai-mode-open").is_visible() or page.locator(".ai-mode-stage.is-failed").count():
+                break
+            if time.time() - started > 60 and not page.locator("#ai-mode-status").is_visible():
                 break
             if time.time() >= next_shot:
                 row["shots"].append(journal.shot(page, "ai-progress"))
