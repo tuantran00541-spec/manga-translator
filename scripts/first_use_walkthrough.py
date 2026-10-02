@@ -293,7 +293,7 @@ def manual_path(page: Page, journal: Journal, url: str, out: Path) -> None:
 
     with journal.step(page, "export") as row:
         downloads = []
-        page.on("download", downloads.append)
+        page.on("download", lambda d: downloads.append(d))
         page.get_by_role("button", name="Xuất chương (.zip)", exact=True).click()
         deadline = time.time() + 600
         while time.time() < deadline and not downloads and not any("thất bại" in t for t in page.evaluate("window.__toasts")):
@@ -333,6 +333,7 @@ def manual_path(page: Page, journal: Journal, url: str, out: Path) -> None:
         page.locator("#theme-select").select_option("dark")
         page.wait_for_timeout(800)
         row["shots"].append(journal.shot(page, "dark-home"))
+        page.reload(wait_until="networkidle")
         page.locator(".recent-card").first.click()
         page.wait_for_timeout(5000)
         row["shots"].append(journal.shot(page, "dark-editor"))
