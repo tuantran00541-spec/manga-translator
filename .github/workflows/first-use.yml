@@ -1,0 +1,95 @@
+name: First-use walkthrough
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - "scripts/first_use_walkthrough.py"
+      - ".github/workflows/first-use.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: first-use-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  walk:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      CHAPTER_URL: https://asurascans.com/comics/shadow-slave-05c7df14/chapter/1
+      AI_CHAPTER_URL: https://asurascans.com/comics/shadow-slave-05c7df14/chapter/2
+      OUT: audit-results/first-use
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install the app as a user would
+        run: |
+          python -m pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Restore detector and inpaint models
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Build the CTD mask model
+        uses: ./.github/actions/build-ctd
+
+      - name: Start Manga Cloud and the app
+        env:
+          GATEWAY_UPSTREAM_KEY: ${{ secrets.MINIROUTER_API_KEY }}
+          GATEWAY_UPSTREAM_BASE: https://api.minirouter.sh/v1
+          GATEWAY_UPSTREAM_MODEL: openai/gpt-6-luna
+          GATEWAY_PRICE_INPUT_PER_M: "0.105"
+          GATEWAY_PRICE_OUTPUT_PER_M: "0.525"
+          GATEWAY_PRICE_CACHED_PER_M: "0.0105"
+          GATEWAY_STAGE_MODELS: '[{"stage":"scan","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"review","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"translate","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"translate","model":"xiaomi/mimo-v2.6-flash","price":[0.147,0.294,0.00294]}]'
+          GATEWAY_ADMIN_KEY: walkthrough-admin
+          GATEWAY_DEV_LOGIN: "1"
+          GATEWAY_DB: /tmp/gateway.sqlite
+        run: |
+          test -n "$GATEWAY_UPSTREAM_KEY" || { echo "::error::MINIROUTER_API_KEY is missing"; exit 1; }
+          nohup python -m gateway > /tmp/gateway.log 2>&1 &
+          MANGA_TIERS=1 MANGA_CLOUD_URL=http://127.0.0.1:8100/v1 nohup python run.py > /tmp/app.log 2>&1 &
+          for i in $(seq 1 180); do
+            curl -sf http://127.0.0.1:8100/health > /dev/null && curl -sf http://127.0.0.1:8000/health > /dev/null && exit 0
+            sleep 1
+          done
+          tail -n 50 /tmp/gateway.log /tmp/app.log
+          exit 1
+
+      - name: Use the app like a first-time user
+        env:
+          GATEWAY_ADMIN_KEY: walkthrough-admin
+        run: python scripts/first_use_walkthrough.py --url "$CHAPTER_URL" --ai-url "$AI_CHAPTER_URL" --out "$OUT"
+
+      - name: Logs
+        if: always()
+        run: |
+          mkdir -p "$OUT"
+          grep -E "ERROR|WARNING|Traceback" /tmp/app.log | tail -n 200 > "$OUT/app-warnings.log" || true
+          tail -n 100 /tmp/gateway.log > "$OUT/gateway-tail.log" || true
+          tail -n 40 "$OUT/app-warnings.log"
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/first-use
+          message: "audit: first-use walkthrough (run ${{ github.run_id }})"
