@@ -63,6 +63,23 @@ def test_an_update_replaces_the_code_but_keeps_models_chapters_and_the_environme
     assert (target / "data" / "chapter.json").read_text() == "mine" and (target / ".venv" / "pyvenv.cfg").is_file()
 
 
+def test_an_app_install_drops_packages_older_versions_needed(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(install, "run", lambda *args, **kw: calls.append([str(a) for a in args]))
+    monkeypatch.setattr(install.subprocess, "run", lambda *a, **kw: type("R", (), {"returncode": 0})())
+    install.install_packages(tmp_path / "python", tmp_path, "uv", exact=True)
+    install.install_packages(tmp_path / "python", tmp_path, "uv", exact=False)
+    assert "--exact" in calls[0] and "--exact" not in calls[1]
+
+
+def test_the_old_manga_ocr_model_is_removed(tmp_path, monkeypatch):
+    monkeypatch.setattr(install.Path, "home", lambda: tmp_path)
+    old = tmp_path / ".cache" / "huggingface" / "hub" / "models--kha-white--manga-ocr-base"
+    old.mkdir(parents=True)
+    install.remove_old_caches()
+    assert not old.exists()
+
+
 def test_the_installer_refuses_to_take_over_a_folder_it_did_not_make(tmp_path):
     (tmp_path / "app").mkdir()
     (tmp_path / "app" / "thesis.docx").write_text("precious")

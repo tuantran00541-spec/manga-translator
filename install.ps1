@@ -69,6 +69,9 @@
     try {
         & $uv run --no-project --python 3.12 (Join-Path $source 'scripts\install.py') --target $target
         if ($LASTEXITCODE -ne 0) { throw 'Cai dat chua xong, xem loi o tren roi chay lai lenh cai.' }
+        # Tens of thousands of small files: uv clears them far faster than Remove-Item, which looked like a hang.
+        Say 'Don bo nho tam cua lan cai (co the mat 1-2 phut)'
+        & $uv cache clean *> $null
         Remove-Item -Recurse -Force (Join-Path $home_ 'uv-cache') -ErrorAction SilentlyContinue
     } finally {
         foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
