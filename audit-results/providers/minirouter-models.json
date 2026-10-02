@@ -64,14 +64,6 @@
   }
  },
  {
-  "id": "alibaba/qwen3-coder-30b-a3b",
-  "name": "Qwen 3 Coder 30B A3B Instruct",
-  "pricing": {
-   "input": "0.0000001575",
-   "output": "0.00000063"
-  }
- },
- {
   "id": "stepfun/step-5-preview",
   "name": "Step 5 Preview",
   "pricing": {
@@ -81,12 +73,57 @@
   }
  },
  {
+  "id": "alibaba/qwen3-coder-30b-a3b",
+  "name": "Qwen 3 Coder 30B A3B Instruct",
+  "pricing": {
+   "input": "0.0000001575",
+   "output": "0.00000063"
+  }
+ },
+ {
   "id": "alibaba/qwen3-coder-plus",
   "name": "Qwen3 Coder Plus",
   "pricing": {
    "input": "0.00000105",
    "output": "0.00000525",
    "input_cache_read": "0.00000021"
+  }
+ },
+ {
+  "id": "alibaba/qwen3.8-2.4t-a95b",
+  "name": "Qwen3.8 2.4T A95B",
+  "pricing": {
+   "input": "0.0000021",
+   "output": "0.0000063",
+   "input_cache_read": "0.0000002625"
+  }
+ },
+ {
+  "id": "alibaba/qwen3.8-max",
+  "name": "Qwen 3.8 Max",
+  "pricing": {
+   "input": "0.0000021",
+   "output": "0.0000063",
+   "input_cache_read": "0.0000002625"
+  }
+ },
+ {
+  "id": "alibaba/qwen3.8-max-prime",
+  "name": "Qwen 3.8 Max Prime",
+  "pricing": {
+   "input": "0.0000042",
+   "output": "0.0000126",
+   "input_cache_read": "0.000000525",
+   "input_cache_write": "0.00000525"
+  }
+ },
+ {
+  "id": "thinkingmachines/inkling-small",
+  "name": "Inkling Small",
+  "pricing": {
+   "input": "0.0000004725",
+   "output": "0.00000126",
+   "input_cache_read": "0.000000105"
   }
  },
  {
@@ -103,24 +140,6 @@
   "pricing": {
    "input": "0.0000001575",
    "output": "0.00000126"
-  }
- },
- {
-  "id": "thinkingmachines/inkling-small",
-  "name": "Inkling Small",
-  "pricing": {
-   "input": "0.0000004725",
-   "output": "0.00000126",
-   "input_cache_read": "0.000000105"
-  }
- },
- {
-  "id": "spacexai/grok-4.1-fast-reasoning",
-  "name": "Grok 4.1 Fast Reasoning",
-  "pricing": {
-   "input": "0.00000021",
-   "output": "0.000000525",
-   "input_cache_read": "0.0000000525"
   }
  },
  {
@@ -144,31 +163,12 @@
   }
  },
  {
-  "id": "mistral/mistral-large-3",
-  "name": "Mistral Large 3",
+  "id": "spacexai/grok-4.1-fast-reasoning",
+  "name": "Grok 4.1 Fast Reasoning",
   "pricing": {
-   "input": "0.000000525",
-   "output": "0.000001575",
+   "input": "0.00000021",
+   "output": "0.000000525",
    "input_cache_read": "0.0000000525"
-  }
- },
- {
-  "id": "alibaba/qwen3.7-max",
-  "name": "Qwen 3.7 Max",
-  "pricing": {
-   "input": "0.000002625",
-   "output": "0.000007875",
-   "input_cache_read": "0.000000525",
-   "input_cache_write": "0.00000328125"
-  }
- },
- {
-  "id": "alibaba/qwen3.8-2.4t-a95b",
-  "name": "Qwen3.8 2.4T A95B",
-  "pricing": {
-   "input": "0.0000021",
-   "output": "0.0000063",
-   "input_cache_read": "0.0000002625"
   }
  },
  {
@@ -192,6 +192,25 @@
   }
  },
  {
+  "id": "alibaba/qwen3.7-max",
+  "name": "Qwen 3.7 Max",
+  "pricing": {
+   "input": "0.000002625",
+   "output": "0.000007875",
+   "input_cache_read": "0.000000525",
+   "input_cache_write": "0.00000328125"
+  }
+ },
+ {
+  "id": "mistral/mistral-large-3",
+  "name": "Mistral Large 3",
+  "pricing": {
+   "input": "0.000000525",
+   "output": "0.000001575",
+   "input_cache_read": "0.0000000525"
+  }
+ },
+ {
   "id": "spacexai/grok-build-0.1",
   "name": "Grok Build 0.1",
   "pricing": {
@@ -211,15 +230,6 @@
   }
  },
  {
-  "id": "zai/glm-5-turbo",
-  "name": "GLM 5 Turbo",
-  "pricing": {
-   "input": "0.00000126",
-   "output": "0.0000042",
-   "input_cache_read": "0.000000252"
-  }
- },
- {
   "id": "alibaba/qwen3.8-flash",
   "name": "Qwen 3.8 Flash",
   "pricing": {
@@ -230,22 +240,12 @@
   }
  },
  {
-  "id": "alibaba/qwen3.8-max",
-  "name": "Qwen 3.8 Max",
+  "id": "zai/glm-5-turbo",
+  "name": "GLM 5 Turbo",
   "pricing": {
-   "input": "0.0000021",
-   "output": "0.0000063",
-   "input_cache_read": "0.0000002625"
-  }
- },
- {
-  "id": "alibaba/qwen3.8-max-prime",
-  "name": "Qwen 3.8 Max Prime",
-  "pricing": {
-   "input": "0.0000042",
-   "output": "0.0000126",
-   "input_cache_read": "0.000000525",
-   "input_cache_write": "0.00000525"
+   "input": "0.00000126",
+   "output": "0.0000042",
+   "input_cache_read": "0.000000252"
   }
  },
  {
@@ -405,15 +405,6 @@
   }
  },
  {
-  "id": "inclusionai/ling-3.0-flash-fin",
-  "name": "Ling 3.0 Flash Fin",
-  "pricing": {
-   "input": "0.00000007875",
-   "output": "0.000000231",
-   "input_cache_read": "0.00000001575"
-  }
- },
- {
   "id": "inclusionai/ling-3.0-flash-sante-free",
   "name": "Ling 3.0 Flash Sante (Free)",
   "pricing": {
@@ -429,6 +420,15 @@
    "output": "0.00000252",
    "input_cache_read": "0.000000063",
    "input_cache_write": "0.00000039375"
+  }
+ },
+ {
+  "id": "inclusionai/ling-3.0-flash-fin",
+  "name": "Ling 3.0 Flash Fin",
+  "pricing": {
+   "input": "0.00000007875",
+   "output": "0.000000231",
+   "input_cache_read": "0.00000001575"
   }
  },
  {
@@ -465,6 +465,14 @@
   }
  },
  {
+  "id": "nvidia/nemotron-3-super-120b-a12b",
+  "name": "NVIDIA Nemotron 3 Super 120B A12B",
+  "pricing": {
+   "input": "0.0000001575",
+   "output": "0.0000006825"
+  }
+ },
+ {
   "id": "alibaba/qwen3.8-27b",
   "name": "Qwen3.8 27B",
   "pricing": {
@@ -493,14 +501,6 @@
    "output": "0.00000252",
    "input_cache_read": "0.0000000315",
    "input_cache_write": "0.00000039375"
-  }
- },
- {
-  "id": "nvidia/nemotron-3-super-120b-a12b",
-  "name": "NVIDIA Nemotron 3 Super 120B A12B",
-  "pricing": {
-   "input": "0.0000001575",
-   "output": "0.0000006825"
   }
  },
  {
@@ -631,6 +631,15 @@
   }
  },
  {
+  "id": "zai/glm-5.3-flash",
+  "name": "GLM 5.3 Flash",
+  "pricing": {
+   "input": "0.0000001575",
+   "output": "0.000000525",
+   "input_cache_read": "0.0000000315"
+  }
+ },
+ {
   "id": "google/gemini-3.6-flash",
   "name": "Gemini 3.6 Flash",
   "pricing": {
@@ -664,15 +673,6 @@
   "pricing": {
    "input": "0.0000005985",
    "output": "0.000002415"
-  }
- },
- {
-  "id": "zai/glm-5.3-flash",
-  "name": "GLM 5.3 Flash",
-  "pricing": {
-   "input": "0.0000001575",
-   "output": "0.000000525",
-   "input_cache_read": "0.0000000315"
   }
  },
  {
@@ -1575,6 +1575,15 @@
   }
  },
  {
+  "id": "sakana/namazu",
+  "name": "Sakana Namazu",
+  "pricing": {
+   "input": "0.0000009975",
+   "output": "0.0000042",
+   "input_cache_read": "0.0000001575"
+  }
+ },
+ {
   "id": "anthropic/claude-sonnet-5",
   "name": "Claude Sonnet 5",
   "pricing": {
@@ -1583,15 +1592,6 @@
    "input_cache_read": "0.00000021",
    "input_cache_write": "0.000002625",
    "web_search": "10.5"
-  }
- },
- {
-  "id": "sakana/namazu",
-  "name": "Sakana Namazu",
-  "pricing": {
-   "input": "0.0000009975",
-   "output": "0.0000042",
-   "input_cache_read": "0.0000001575"
   }
  },
  {
