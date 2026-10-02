@@ -292,10 +292,17 @@ def manual_path(page: Page, journal: Journal, url: str, out: Path) -> None:
         row["shots"].append(journal.shot(page, "lettered"))
 
     with journal.step(page, "export") as row:
-        with page.expect_download(timeout=600_000) as info:
-            page.get_by_role("button", name="Xuất chương (.zip)", exact=True).click()
+        downloads = []
+        page.on("download", downloads.append)
+        page.get_by_role("button", name="Xuất chương (.zip)", exact=True).click()
+        deadline = time.time() + 600
+        while time.time() < deadline and not downloads and not any("thất bại" in t for t in page.evaluate("window.__toasts")):
+            page.wait_for_timeout(1000)
+        row["shots"].append(journal.shot(page, "export"))
+        if not downloads:
+            raise RuntimeError("no file was downloaded")
         path = out / "manual-export.zip"
-        info.value.save_as(str(path))
+        downloads[0].save_as(str(path))
         with zipfile.ZipFile(path) as archive:
             names = archive.namelist()
         row["notes"].append(f"zip has {len(names)} files: {names[:5]}")
