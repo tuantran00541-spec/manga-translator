@@ -190,7 +190,7 @@ def manual_path(page: Page, journal: Journal, url: str, out: Path) -> None:
         row["notes"].append("save status: " + visible_text(page, ".editor-save-status"))
 
     with journal.step(page, "ocr-whole-chapter") as row:
-        page.get_by_role("button", name="Thêm thao tác", exact=True).click()
+        page.locator(".review-more-toggle").click()
         page.wait_for_timeout(500)
         row["shots"].append(journal.shot(page, "more-menu"))
         run = page.get_by_role("button", name="OCR toàn chương", exact=True)
