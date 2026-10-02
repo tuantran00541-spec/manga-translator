@@ -5,7 +5,6 @@ import os
 import requests
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, field_validator
 
 from app.ai_providers import (
     PROVIDERS,
@@ -18,10 +17,6 @@ from app.downloader.http import safe_get
 from app.schemas import VisualQCKeyRequest
 from app.secret_store import (
     SecretStoreUnavailable,
-    delete_deepseek_api_key,
-    delete_gemini_api_key,
-    set_deepseek_api_key,
-    set_gemini_api_key,
     delete_provider_api_key,
     delete_provider_config,
     get_provider_api_key,
@@ -32,32 +27,9 @@ from app.secret_store import (
     set_provider_config,
 )
 from app.security import validate_url
-from app.visual_qc.deepseek_region_client import DEFAULT_DEEPSEEK_MODEL
 from app.visual_qc.gemini import DEFAULT_GEMINI_MODEL
 
 router = APIRouter(prefix="/api/visual_qc", tags=["visual-qc"])
-
-
-class DeepSeekKeyRequest(BaseModel):
-    api_key: str
-
-    @field_validator("api_key")
-    @classmethod
-    def _api_key_not_empty(cls, value: str) -> str:
-        value = (value or "").strip()
-        if not value:
-            raise ValueError("DeepSeek API key is required")
-        if len(value) > 4096:
-            raise ValueError("DeepSeek API key is unexpectedly long")
-        return value
-
-
-
-
-
-
-
-
 
 
 def _resolve_configured_provider(provider_id: str):
@@ -91,13 +63,6 @@ def _validate_custom_remote(provider) -> None:
         )
     validate_url(provider.chat_url)
     validate_url(provider.models_url)
-
-
-
-
-
-
-
 
 
 @router.get("/settings")
@@ -306,70 +271,3 @@ def list_provider_models(provider_id: str) -> dict:
         "provider_label": provider.label,
         "models": sorted(set(models))[:500],
     }
-
-
-@router.post("/key")
-def save_visual_qc_key(req: VisualQCKeyRequest) -> dict:
-    try:
-        set_gemini_api_key(req.api_key)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    except SecretStoreUnavailable as exc:
-        raise HTTPException(503, str(exc)) from exc
-    return {"configured": True, "source": "os_secure_storage", "model": DEFAULT_GEMINI_MODEL}
-
-
-@router.delete("/key")
-def clear_visual_qc_key() -> dict:
-    if (os.getenv("GEMINI_API_KEY") or "").strip() or (os.getenv("GOOGLE_API_KEY") or "").strip():
-        return {
-            "configured": True,
-            "source": "environment",
-            "model": DEFAULT_GEMINI_MODEL,
-            "detail": "Environment-provided keys must be removed from the process environment.",
-        }
-    try:
-        delete_gemini_api_key()
-    except SecretStoreUnavailable as exc:
-        raise HTTPException(503, str(exc)) from exc
-    return {"configured": False, "source": "none", "model": DEFAULT_GEMINI_MODEL}
-
-
-@router.post(
-    "/deepseek/key",
-    responses={
-        400: {"description": "Invalid DeepSeek API key"},
-        503: {"description": "OS secure storage is unavailable"},
-    },
-)
-def save_deepseek_visual_qc_key(req: DeepSeekKeyRequest) -> dict:
-    try:
-        set_deepseek_api_key(req.api_key)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    except SecretStoreUnavailable as exc:
-        raise HTTPException(503, str(exc)) from exc
-    return {
-        "configured": True,
-        "source": "os_secure_storage",
-        "model": DEFAULT_DEEPSEEK_MODEL,
-    }
-
-
-@router.delete(
-    "/deepseek/key",
-    responses={503: {"description": "OS secure storage is unavailable"}},
-)
-def clear_deepseek_visual_qc_key() -> dict:
-    if (os.getenv("DEEPSEEK_API_KEY") or "").strip():
-        return {
-            "configured": True,
-            "source": "environment",
-            "model": DEFAULT_DEEPSEEK_MODEL,
-            "detail": "Environment-provided keys must be removed from the process environment.",
-        }
-    try:
-        delete_deepseek_api_key()
-    except SecretStoreUnavailable as exc:
-        raise HTTPException(503, str(exc)) from exc
-    return {"configured": False, "source": "none", "model": DEFAULT_DEEPSEEK_MODEL}

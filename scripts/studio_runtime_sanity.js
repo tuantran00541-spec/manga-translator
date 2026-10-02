@@ -62,7 +62,7 @@ assert(reviewWorkspace.includes('provider_api_base'), 'custom provider settings 
 assert(reviewWorkspace.includes('remove_config=true'), 'custom provider settings must support removing its configuration');
 assert(reviewWorkspace.includes('syncAIProviderSelects'), 'custom providers must be synchronized into feature selectors');
 assert(visionTranslation.includes('{"type": "image_url"'), 'vision translation must send image inputs to OpenAI-compatible providers');
-assert(translationRouter.includes('def _resolve_translation_provider'), 'translation API must resolve configured custom providers');
+assert(translationRouter.includes('def _resolve_vision_provider'), 'translation API must resolve configured custom providers');
 assert(!review.includes('/api/visual_qc/key'), 'Review must use provider-scoped credential endpoints only');
 assert(preview.includes('drawLayer.addEventListener("pointerdown"'), 'preview exclusion drawing must support touch input');
 assert(preview.includes('window.setAppStage?.("preview")'), 'preview must own its stage lifecycle');

@@ -196,13 +196,6 @@ def validate_api_base(value: str | None) -> str:
     return api_base
 
 
-def get_provider(provider_id: str) -> AIProvider:
-    provider = PROVIDERS.get(normalize_provider_id(provider_id))
-    if provider is None:
-        raise ValueError(f"Unsupported AI provider: {provider_id}")
-    return provider
-
-
 def resolve_provider(
     provider_id: str,
     *,
@@ -235,17 +228,6 @@ def resolve_provider(
         tracks_cost=False,
         builtin=False,
     )
-
-
-def get_translation_provider(provider_id: str) -> AIProvider:
-    provider = get_provider(provider_id)
-    if (
-        provider.protocol != "openai"
-        or not provider.supports_translation
-        or not provider.default_translation_model
-    ):
-        raise ValueError(f"{provider.label} is not available for translation")
-    return provider
 
 
 def validate_model_name(value: str | None, *, default: str) -> str:

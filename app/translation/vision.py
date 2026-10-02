@@ -15,7 +15,7 @@ from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ
 from app.security import validate_url
 from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
 from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
-from app.translation.deepseek import _language_name, _usage_cost_usd
+from app.translation.cost import language_name, usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini, _read_image
 from app.visual_qc.gemini_interactions import (
@@ -235,9 +235,9 @@ class VisionPageTranslator:
         source_name = (
             "the original language shown in the image"
             if str(source_lang or "").lower() in {"", "auto"}
-            else _language_name(source_lang)
+            else language_name(source_lang)
         )
-        system = system_prompt(_language_name(target_lang), target_lang, memory.settled() if memory is not None else None)
+        system = system_prompt(language_name(target_lang), target_lang, memory.settled() if memory is not None else None)
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
             (f"CHAPTER MEMORY (context from earlier slices, not to be copied into the answer): "
@@ -344,7 +344,7 @@ class VisionPageTranslator:
             raise RuntimeError(f"{self.provider.label} returned no translation text ({exc}; finish_reason={reason})") from exc
         translations, font_choices, data = _parse_vision_payload(answer, ids)
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
-        cost = _usage_cost_usd(usage) if self.provider.tracks_cost else None
+        cost = usage_cost_usd(usage) if self.provider.tracks_cost else None
         return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
 
     def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens):

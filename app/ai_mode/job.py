@@ -335,12 +335,12 @@ class AIModeRunner:
     async def _read_glossary(self, indices: list[int]) -> dict:
         """Names, terms and forms of address for the whole chapter; empty when the read fails."""
         from app.ai_mode.glossary import merge_glossaries, read_glossary, read_glossary_text
-        from app.translation.deepseek import _language_name
+        from app.translation.cost import language_name
 
         pages = self._manifest().get("pages", [])
         gate = asyncio.Semaphore(SCAN_CONCURRENCY)
 
-        target = _language_name(self.settings.target_lang)
+        target = language_name(self.settings.target_lang)
 
         def read_batch(batch: list[int]):
             if all(index in self._transcripts for index in batch):
@@ -593,9 +593,9 @@ class AIModeRunner:
         lines = [line for line in polish.collect_lines(manifest.get("pages", []), indices)
                  if (line.page_index, line.id) not in mirrors]
         memory = self._memory.snapshot() if self._memory is not None else {}
-        from app.translation.deepseek import _language_name
+        from app.translation.cost import language_name
 
-        language = _language_name(self.settings.target_lang)
+        language = language_name(self.settings.target_lang)
         gate = asyncio.Semaphore(POLISH_CONCURRENCY)
         unavailable = False
 

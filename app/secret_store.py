@@ -139,14 +139,6 @@ def get_gemini_api_key() -> str | None:
     )
 
 
-def set_gemini_api_key(value: str) -> None:
-    _set_api_key(_GEMINI_ACCOUNT, value, "Gemini")
-
-
-def delete_gemini_api_key() -> None:
-    _delete_api_key(_GEMINI_ACCOUNT, "Gemini")
-
-
 def gemini_key_status() -> dict:
     return _key_status(
         _GEMINI_ACCOUNT,
@@ -161,14 +153,6 @@ def get_deepseek_api_key() -> str | None:
         ("DEEPSEEK_API_KEY",),
         "DeepSeek",
     )
-
-
-def set_deepseek_api_key(value: str) -> None:
-    _set_api_key(_DEEPSEEK_ACCOUNT, value, "DeepSeek")
-
-
-def delete_deepseek_api_key() -> None:
-    _delete_api_key(_DEEPSEEK_ACCOUNT, "DeepSeek")
 
 
 def deepseek_key_status() -> dict:

@@ -85,7 +85,7 @@ flowchart TD
     D --> E["main.py: lifespan"]
     E --> F["check_models() → log trạng thái"]
     E --> G["mount /static → app/static/"]
-    E --> H["include_router × 10: chapters · automation · translation · OCR · editor · render · image · export · visual QC"]
+    E --> H["include_router × 10: chapters · automation · translation · OCR · editor · render · image · export · AI providers"]
     E --> I["thêm RequestSizeLimitMiddleware"]
     E --> J["GET /health → {status, models_missing}"]
     E --> K["GET / → app/templates/index.html"]

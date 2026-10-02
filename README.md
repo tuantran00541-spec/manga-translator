@@ -141,11 +141,7 @@ The renderer bundles **71 comic fonts** (69 under OFL-1.1, 40 covering Vietnames
 
 ### AI providers
 
-Built in: Google Gemini, DeepSeek, OpenAI and OpenRouter. The settings layer also registers custom **OpenAI-compatible** providers on validated HTTPS API bases. Each provider advertises its capabilities separately, so one registry serves model discovery, translation and Visual QC.
-
-### Visual QC
-
-Visual QC is an inspection layer, not the editor of record: region-aware chapter inspection with revision-aware caching, bounded concurrency, cancel and retry, per-provider results, and browser-tested navigation of findings. Models return each box as four named corners (`x1, y1, x2, y2`, normalised to 0–1000), which no model reads on the wrong axis.
+Built in: Google Gemini, DeepSeek, OpenAI and OpenRouter. The settings layer also registers custom **OpenAI-compatible** providers on validated HTTPS API bases. Each provider advertises its capabilities separately, so one registry serves model discovery and A.I mode.
 
 ### Revision-safe render and export
 
@@ -289,7 +285,7 @@ Detection, inpainting, OCR and rendering thresholds are fixed constants in `app/
 | ONNX Runtime | `MANGA_ORT_PROVIDER`, `MANGA_ORT_REQUIRE_PROVIDER`, `MANGA_ORT_INTRA_OP_THREADS`, `MANGA_ORT_OPENVINO_*`, `MANGA_ORT_CPU_MEM_ARENA`, `MANGA_ORT_MEM_PATTERN`, `MANGA_ORT_SERIALIZE_INFERENCE` |
 | OCR | `MANGA_PPOCRV6_TIER`, `MANGA_PPOCRV6_TEXTLINE_ORIENTATION`, `MANGA_OCR_TARGET_SELECTION`, `MANGA_OCR_IMAGE_CACHE_MB`, `MANGA_OCR_JOB_CONCURRENCY_LIMIT`, `MANGA_OCR_JOB_ACTIVE_LIMIT` |
 | Access | `MANGA_ALLOWED_HOSTS`: extra host names the app answers to, comma separated (loopback always works; add the machine's LAN name or IP to open it from another device) |
-| Network and AI | `MANGA_DOWNLOAD_WORKERS`, `MANGA_DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS`, `MANGA_REMOTE_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_READ_TIMEOUT_SECONDS`, `MANGA_VISUAL_QC_*` |
+| Network and AI | `MANGA_DOWNLOAD_WORKERS`, `MANGA_DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS`, `MANGA_REMOTE_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_READ_TIMEOUT_SECONDS` |
 
 ## CPU-first design
 
@@ -376,7 +372,7 @@ app/
   translation/    text and two-image vision translation
   ai_mode/        the A.I checkpoints, glossary and Jev pass
   render/         typography, font catalog and lettering fonts
-  visual_qc/      visual inspection and provider orchestration
+  visual_qc/      Gemini and DeepSeek image helpers used by A.I mode
   routers/        FastAPI API surface
   static/         browser workbench
   pipeline*.py    chapter processing and runtime coordination
