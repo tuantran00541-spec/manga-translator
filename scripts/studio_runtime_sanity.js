@@ -14,7 +14,6 @@ const review = fs.readFileSync('app/static/js/review.js', 'utf8');
 const preview = fs.readFileSync('app/static/js/preview.js', 'utf8');
 const theme = fs.readFileSync('app/static/js/theme.js', 'utf8');
 const chapterOcr = fs.readFileSync('app/static/js/chapter-ocr.js', 'utf8');
-const chapterQc = fs.readFileSync('app/static/js/chapter-qc.js', 'utf8');
 const visionTranslation = fs.readFileSync('app/translation/vision.py', 'utf8');
 const translationRouter = fs.readFileSync('app/routers/translation.py', 'utf8');
 assert(css.includes('./studio.css'), 'studio stylesheet must be the runtime surface');
@@ -29,7 +28,7 @@ assert(!editor.includes('function setupEditorDraw'), 'the separate editor page v
 assert(editor.includes('void flushAllPendingPersists().catch'), 'page switches must persist without blocking navigation');
 assert(!transforms.includes('new MutationObserver'), 'box transforms must not keep a document-wide mutation observer');
 assert(!shell.includes('event.key === "Tab" && !event.ctrlKey'), 'shell must preserve native Tab navigation');
-assert(shell.includes('event.key === "f" || event.key === "F"'), 'focus mode must use the dedicated F shortcut');
+assert(!html.includes('workbench-panel-controls') && !shell.includes('toggleFocusMode'), 'panel and focus toggles must stay removed');
 assert(reviewWorkspace.includes('window.cleanupReviewWorkspace = () =>'), 'Review must expose one lifecycle cleanup');
 assert(reviewWorkspace.includes('review-canvas-only'), 'Review must mount the single-document canvas layout');
 assert(stitchInspector.includes('new AbortController()'), 'stitched Review interactions must have abortable ownership');
@@ -62,8 +61,6 @@ assert(reviewWorkspace.includes('Mã này đã dành riêng'), 'custom provider 
 assert(reviewWorkspace.includes('provider_api_base'), 'custom provider settings must save its OpenAI-compatible API root');
 assert(reviewWorkspace.includes('remove_config=true'), 'custom provider settings must support removing its configuration');
 assert(reviewWorkspace.includes('syncAIProviderSelects'), 'custom providers must be synchronized into feature selectors');
-assert(editor.includes('syncAIProviderSelects'), 'vision translation selector must include configured custom providers');
-assert(chapterQc.includes('syncAIProviderSelects'), 'visual QC selector must include configured custom providers');
 assert(visionTranslation.includes('{"type": "image_url"'), 'vision translation must send image inputs to OpenAI-compatible providers');
 assert(translationRouter.includes('def _resolve_translation_provider'), 'translation API must resolve configured custom providers');
 assert(!review.includes('/api/visual_qc/key'), 'Review must use provider-scoped credential endpoints only');
@@ -79,10 +76,6 @@ assert(shell.includes('let shellMounted = false'), 'shell listeners must have an
 assert(!html.includes('workbench-topbar'), 'legacy horizontal topbar must be removed');
 assert(!html.includes('workbench-stage-link'), 'legacy horizontal workflow links must be removed');
 assert(!chapterOcr.includes('observeWorkspaceRoot'), 'OCR must not scan the whole workspace with an observer');
-assert(!chapterQc.includes('observeWorkspaceRoot'), 'chapter QC must not scan the whole workspace with an observer');
-assert(!chapterQc.includes('new MutationObserver'), 'chapter QC must use explicit lifecycle synchronization');
-assert(chapterQc.includes('window.syncChapterQCWorkspace = renderPanel'), 'chapter QC must expose explicit workspace synchronization');
-assert(chapterQc.includes('window.mountChapterQC = scan') && stitchInspector.includes('window.mountChapterQC?.()'), 'Review must mount the whole-chapter AI QC entry point');
 assert((reviewWorkspace.match(/new MutationObserver/g) || []).length === 0, 'Review canvas must not keep DOM observers');
 assert(!reviewWorkspace.includes('busyObserver'), 'Review busy state must not infer lifecycle from DOM mutations');
 assert(!reviewWorkspace.includes('createPageNavigator({'), 'Review must not recreate the old thumbnail page navigator');

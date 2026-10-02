@@ -5,16 +5,12 @@
     preview: "Xem cắt lát",
     review: "Xử lý & Biên tập",
   };
-  const PANEL_QUERY = "(max-width: 1000px)";
 
   let trackedChapterId = null;
   let maxReachedIndex = 0;
   let navigationBusy = false;
   let pendingNavigation = null;
-  let activePanels = null;
-  let focusModeActive = false;
   let shellMounted = false;
-  const panelPreferences = new Map();
 
   function inferredReachedIndex(activeStage) {
     const pages = window.currentManifest?.pages || [];
@@ -87,88 +83,6 @@
     if (resolved === "import") queueMicrotask(() => document.getElementById("chapter-url")?.focus());
   }
 
-  function panelMode() {
-    return window.matchMedia(PANEL_QUERY).matches ? "compact" : "wide";
-  }
-
-  function syncWorkbenchPanels() {
-    const controls = document.getElementById("workbench-panel-controls");
-    const pageView = document.getElementById("page-view");
-    const visible = Boolean(activePanels?.grid?.isConnected && !pageView?.hidden);
-    if (controls) controls.hidden = !visible;
-    if (!activePanels?.grid?.isConnected) return;
-
-    const { stage, grid, nav, inspector } = activePanels;
-    const pageBtn = document.getElementById("toggle-page-panel");
-    const inspectorBtn = document.getElementById("toggle-inspector-panel");
-    const focusBtn = document.getElementById("toggle-focus-mode");
-    if (focusBtn) {
-      focusBtn.setAttribute("aria-pressed", String(focusModeActive));
-      focusBtn.classList.toggle("ui-btn-primary", focusModeActive);
-      focusBtn.classList.toggle("ui-btn-ghost", !focusModeActive);
-    }
-
-    if (focusModeActive) {
-      nav.hidden = true;
-      inspector.hidden = true;
-      grid.dataset.navOpen = "false";
-      grid.dataset.inspectorOpen = "false";
-      grid.classList.add("focus-mode");
-      pageBtn?.setAttribute("aria-expanded", "false");
-      inspectorBtn?.setAttribute("aria-expanded", "false");
-      return;
-    }
-
-    grid.classList.remove("focus-mode");
-    const compact = panelMode() === "compact";
-    const key = `${stage}:${panelMode()}`;
-    const state = panelPreferences.get(key) || { nav: !compact, inspector: !compact };
-    nav.hidden = !state.nav;
-    inspector.hidden = !state.inspector;
-    grid.dataset.navOpen = String(state.nav);
-    grid.dataset.inspectorOpen = String(state.inspector);
-    [[pageBtn, nav, state.nav], [inspectorBtn, inspector, state.inspector]].forEach(([button, panel, open]) => {
-      if (!button) return;
-      button.setAttribute("aria-controls", panel.id);
-      button.setAttribute("aria-expanded", String(open));
-    });
-  }
-
-  function setPanelOpen(name, open) {
-    if (!activePanels?.grid?.isConnected) return;
-    if (focusModeActive && open) {
-      focusModeActive = false;
-      document.body.classList.remove("focus-mode");
-    }
-    const compact = panelMode() === "compact";
-    const key = `${activePanels.stage}:${panelMode()}`;
-    const state = { ...(panelPreferences.get(key) || { nav: !compact, inspector: !compact }), [name]: open };
-    if (compact && open) state[name === "nav" ? "inspector" : "nav"] = false;
-    panelPreferences.set(key, state);
-    syncWorkbenchPanels();
-  }
-
-  function toggleFocusMode() {
-    focusModeActive = !focusModeActive;
-    document.body.classList.toggle("focus-mode", focusModeActive);
-    syncWorkbenchPanels();
-  }
-
-  function setupWorkbenchPanels(stage) {
-    const grid = document.querySelector("#page-view .workbench-stage-grid");
-    const nav = grid?.querySelector(":scope > .page-navigator");
-    const inspector = grid?.querySelector(":scope > .context-inspector");
-    if (!grid || !nav || !inspector) {
-      activePanels = null;
-      syncWorkbenchPanels();
-      return;
-    }
-    nav.id = `${stage}-page-panel`;
-    inspector.id = `${stage}-inspector-panel`;
-    activePanels = { stage, grid, nav, inspector };
-    syncWorkbenchPanels();
-  }
-
   function setAppStage(stage) {
     const resolved = STAGES.includes(stage) ? stage : "landing";
     const chapterId = window.currentChapterId || null;
@@ -197,14 +111,12 @@
       if (isPreview) start.textContent = "Bắt đầu xử lý";
     }
     if (resolved === "landing") {
-      activePanels = null;
       setLandingMode(document.body.dataset.landingMode || "home");
     } else {
       setPageTitle(STAGE_LABELS[resolved]);
     }
     setAppContext(chapterId ? `Chương ${chapterId}` : "Chưa mở chương");
     syncSidebar(resolved);
-    syncWorkbenchPanels();
     closeSidebar();
   }
 
@@ -359,15 +271,6 @@
       document.getElementById("sidebar-toggle")?.focus();
       return;
     }
-    if (event.key === "Escape") {
-      const pageOpen = document.getElementById("toggle-page-panel")?.getAttribute("aria-expanded") === "true";
-      const inspectorOpen = document.getElementById("toggle-inspector-panel")?.getAttribute("aria-expanded") === "true";
-      if (panelMode() === "compact" && activePanels && (pageOpen || inspectorOpen)) {
-        event.preventDefault();
-        setPanelOpen(pageOpen ? "nav" : "inspector", false);
-      }
-      return;
-    }
     if (event.key === "Tab" && document.body.classList.contains("settings-open")) {
       const drawer = document.getElementById("settings-drawer");
       const focusable = [...drawer.querySelectorAll("button, input, select, textarea, a[href], [tabindex='0']")].filter((el) => !el.disabled && !el.closest("[hidden]") && el.getClientRects().length);
@@ -376,16 +279,6 @@
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
       return;
-    }
-    const tag = event.target?.tagName?.toLowerCase();
-    const editable = event.target?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
-    if ((event.key === "f" || event.key === "F") && !event.ctrlKey && !event.altKey && !event.metaKey && !editable && activePanels?.grid?.isConnected) {
-      event.preventDefault();
-      toggleFocusMode();
-    } else if (event.key === "\\" && !editable && activePanels?.grid?.isConnected) {
-      event.preventDefault();
-      const open = document.getElementById("toggle-inspector-panel")?.getAttribute("aria-expanded") === "true";
-      setPanelOpen("inspector", !open);
     }
   }
 
@@ -397,10 +290,6 @@
     document.getElementById("settings-backdrop")?.addEventListener("click", closeSettings);
     document.getElementById("sidebar-toggle")?.addEventListener("click", () => document.body.classList.contains("sidebar-open") ? closeSidebar() : openSidebar());
     document.getElementById("sidebar-backdrop")?.addEventListener("click", closeSidebar);
-    document.getElementById("toggle-focus-mode")?.addEventListener("click", toggleFocusMode);
-    document.getElementById("toggle-page-panel")?.addEventListener("click", (event) => setPanelOpen("nav", event.currentTarget.getAttribute("aria-expanded") !== "true"));
-    document.getElementById("toggle-inspector-panel")?.addEventListener("click", (event) => setPanelOpen("inspector", event.currentTarget.getAttribute("aria-expanded") !== "true"));
-    window.matchMedia(PANEL_QUERY).addEventListener("change", syncWorkbenchPanels);
     document.getElementById("app-home")?.addEventListener("click", () => navigateAppStage("landing", "home"));
     document.querySelectorAll("[data-open-import]").forEach((button) => button.addEventListener("click", () => navigateAppStage("landing", "import")));
     document.querySelectorAll(".sidebar-link[data-route]").forEach((button) => button.addEventListener("click", () => navigateAppStage("landing", button.dataset.route)));
@@ -429,8 +318,6 @@
   window.setLandingMode = setLandingMode;
   window.navigateAppStage = navigateAppStage;
   window.mountAISettings = mountAISettings;
-  window.setupWorkbenchPanels = setupWorkbenchPanels;
-  window.showWorkbenchInspector = () => setPanelOpen("inspector", true);
 
   document.addEventListener("DOMContentLoaded", () => {
     setupShellEvents();

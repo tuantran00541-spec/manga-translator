@@ -570,25 +570,3 @@ class VisualQCKeyRequest(BaseModel):
             raise ValueError("API key is unexpectedly long")
         return v
 
-
-class VisualQCInspectRequest(BaseModel):
-    chapter_id: str
-    page_index: int = Field(ge=0)
-    provider: str = "gemini"
-    model: str | None = None
-
-    @field_validator("provider")
-    @classmethod
-    def _provider(cls, value: str) -> str:
-        from app.ai_providers import normalize_provider_id
-
-        return normalize_provider_id(value)
-
-    @field_validator("model")
-    @classmethod
-    def _model(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        from app.ai_providers import validate_model_name
-
-        return validate_model_name(value, default="")

@@ -35,7 +35,7 @@
   function styleOf(obj) {
     const style = {};
     STYLE_KEYS.forEach((key) => { style[key] = obj.style?.[key] ?? window.DEFAULT_TEXT_OBJECT_STYLE[key]; });
-    if (obj.font_selection_mode === "auto") style.font = "auto";
+    style.font = window.shownFontId ? window.shownFontId(obj) : style.font;
     return style;
   }
 
@@ -53,7 +53,7 @@
 
   function applyTo(obj, preset) {
     obj.style = Object.assign({}, window.DEFAULT_TEXT_OBJECT_STYLE, obj.style || {}, preset.style);
-    obj.font_selection_mode = preset.style.font === "auto" ? "auto" : "user";
+    obj.font_selection_mode = "user";
     obj.font_ai_id = null;
     obj.font_match = null;
   }

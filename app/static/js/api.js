@@ -580,12 +580,6 @@ async function renderTranslations(pageIndex) {
       : "middle";
   });
 
-  const btn = document.querySelector(".editor-render-btn");
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Đang kết xuất…";
-  }
-
   try {
     const resp = await fetch("/api/render", {
       method: "POST",
@@ -616,19 +610,15 @@ async function renderTranslations(pageIndex) {
 
     if (currentManifest && currentManifest.pages && currentManifest.pages[pageIndex]) {
       currentManifest.pages[pageIndex].rendered = true;
+      currentManifest.pages[pageIndex].render_revision = data.render_revision;
     }
-    showRenderResult(pageIndex, data.output);
     if (data.warning) {
       showToast(data.warning, "info");
     }
+    return true;
   } catch (err) {
     if (chapterId === currentChapterId) {
       showToast("Kết xuất ảnh thất bại: " + err.message, "error");
-    }
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Kết xuất bản dịch";
     }
   }
 }

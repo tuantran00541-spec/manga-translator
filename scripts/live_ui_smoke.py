@@ -107,7 +107,7 @@ def _select_text_object(page: Page) -> None:
 def _exercise_font_picker(page: Page) -> None:
     font_select = page.locator(".font-style-toolbar select")
     expect(font_select).to_have_count(1)
-    expect(font_select.locator('option[value="auto"]')).to_have_count(1)
+    expect(font_select.locator('option[value="auto"]')).to_have_count(0)
     expect(page.get_by_role("button", name="Gợi ý gần nhất", exact=True)).to_have_count(0)
 
     catalog = page.evaluate(
@@ -127,7 +127,6 @@ def _exercise_font_picker(page: Page) -> None:
 
 def _exercise_desktop(page: Page) -> None:
     _wait_for_review(page)
-    expect(page.locator(".chapter-translate-controls")).to_be_visible()
     viewport_box = page.locator(".review-document-viewport").bounding_box()
     if not viewport_box or viewport_box["height"] < 160:
         chain = _review_layout_chain(page)
@@ -308,7 +307,6 @@ def _exercise_mobile(page: Page) -> None:
             f"mobile Review canvas is not usable: {viewport_box}; chain={chain}"
         )
 
-    expect(page.locator("#workbench-panel-controls")).to_be_hidden()
     expect(page.locator("#site-header")).to_be_hidden()
     expect(page.locator(".page-navigator")).to_have_count(0)
     expect(page.locator(".review-stitched-select")).to_have_count(0)

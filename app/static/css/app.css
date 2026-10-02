@@ -23,8 +23,7 @@
   .app-heading strong { font-size: 12px; font-weight: 650; }
   .app-heading span { padding-left: 8px; border-left: 1px solid var(--border-subtle); font-size: 10px; }
   .app-header-actions { gap: 5px; }
-  .workbench-panel-controls { gap: 3px; }
-  .workbench-panel-controls .ui-btn, .header-primary-action { min-height: 30px; padding: 0 9px; border-radius: 3px; font-size: 11px; }
+  .header-primary-action { min-height: 30px; padding: 0 9px; border-radius: 3px; font-size: 11px; }
   .workbench-stage-grid { grid-template-columns: minmax(0, 1fr) var(--ps-dock-width); grid-template-rows: minmax(190px, 42%) minmax(0, 58%); grid-template-areas: "canvas pages" "canvas inspector"; gap: 0; background: var(--surface-canvas-deep); }
   .workbench-stage-grid > .page-navigator { grid-area: pages; }
   .workbench-stage-grid > :is(.workbench-canvas-column, .review-canvas-host) { grid-area: canvas; }
@@ -48,11 +47,6 @@
   .review-actions-group .ui-btn, .zoom-controls .ui-btn, .zoom-controls .ui-icon-btn { min-height: 28px; border-radius: 3px; font-size: 11px; }
   .preview-workspace-heading { margin-right: auto; }
   .preview-workspace-title { font-size: 11px; }
-  .workbench-stage-grid[data-nav-open="false"] { grid-template-columns: minmax(0, 1fr) var(--ps-dock-width); grid-template-rows: 0 minmax(0, 1fr); }
-  .workbench-stage-grid[data-inspector-open="false"] { grid-template-columns: minmax(0, 1fr) var(--ps-dock-width); grid-template-rows: minmax(0, 1fr) 0; }
-  .workbench-stage-grid[data-nav-open="false"][data-inspector-open="false"], .workbench-stage-grid.focus-mode { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "canvas"; }
-  .workbench-stage-grid[data-nav-open="false"] > .page-navigator, .workbench-stage-grid[data-inspector-open="false"] > .context-inspector { display: none; }
-  .workbench-stage-grid.focus-mode > :is(.page-navigator, .context-inspector) { display: none; }
   .review-workspace-shell.review-canvas-only { grid-template-rows: minmax(0, 1fr); }
   .review-workspace-shell.review-canvas-only > .review-canvas-only-layout { grid-row: 1; min-height: 0; height: 100%; }
   .review-canvas-only-host { grid-template-rows: minmax(0, 1fr); }
@@ -70,10 +64,9 @@
   .review-single-document .review-stitched-image { position: absolute; top: 0; left: 0; line-height: 0; transform-origin: top left; background: var(--surface-panel); box-shadow: none; }
   .review-single-document .review-card-compat { display: none; }
   @media (max-width: 1000px) {
-    .workbench-stage-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "canvas"; }
-    .page-navigator, .context-inspector, .translation-panel-host { position: absolute; top: 0; bottom: 0; z-index: var(--z-panel); width: var(--ps-dock-width); }
-    .page-navigator { left: auto; right: 0; border-left: 1px solid var(--border-strong); border-right: 0; }
-    .context-inspector, .translation-panel-host { right: 0; }
+    .workbench-stage-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(60vh, 1fr) max-content max-content; grid-template-areas: "canvas" "pages" "inspector"; overflow-y: auto; }
+    .workbench-stage-grid > :is(.page-navigator, .context-inspector) { position: static; width: auto; border-left: 0; border-top: 1px solid var(--border-strong); box-shadow: none; }
+    .translation-panel-host { position: absolute; top: 0; bottom: 0; z-index: var(--z-panel); width: var(--ps-dock-width); right: 0; }
   }
   @media (max-width: 820px) {
     .app-shell { grid-template-columns: minmax(0, 1fr); }
@@ -204,8 +197,6 @@
     .ai-mode-stage span { text-align: left; }
   }
   .review-inline-translation { max-height: 240px; overflow: auto; }
-  .review-workspace-shell.review-chapter-qc-running :is(.review-render-text-btn, .chapter-translate-controls) { opacity: .45; pointer-events: none; }
-  .review-workspace-shell.review-chapter-qc-running .review-text-object-overlay { opacity: .5; pointer-events: none; }
   .review-document-viewport.review-space-pan { cursor: grab; }
   .review-document-viewport.review-space-pan.is-panning { cursor: grabbing; }
 }

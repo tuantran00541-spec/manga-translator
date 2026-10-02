@@ -390,11 +390,6 @@ def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
             candidate["max_chars"] = char_budget(font_path, candidate.get("fit_region") or candidate["region"], cap)
 
 
-@router.post("/page/vision")
-async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
-    return await translate_page_in_context(req)
-
-
 async def translate_page_in_context(
     req: TranslateVisionPageRequest, memory: ChapterMemory | None = None, slice_total: int | None = None,
     skip_seam_mirrors: bool = False,

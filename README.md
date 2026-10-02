@@ -141,7 +141,7 @@ The renderer bundles **71 comic fonts** (69 under OFL-1.1, 40 covering Vietnames
 
 ### AI providers
 
-Built in: Google Gemini, DeepSeek, OpenAI, OpenRouter and Experiential Labs. The settings layer also registers custom **OpenAI-compatible** providers on validated HTTPS API bases. Each provider advertises its capabilities separately, so one registry serves model discovery, translation and Visual QC.
+Built in: Google Gemini, DeepSeek, OpenAI and OpenRouter. The settings layer also registers custom **OpenAI-compatible** providers on validated HTTPS API bases. Each provider advertises its capabilities separately, so one registry serves model discovery, translation and Visual QC.
 
 ### Visual QC
 

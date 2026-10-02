@@ -116,20 +116,6 @@ PROVIDERS: dict[str, AIProvider] = {
         supports_translation=True,
         tracks_cost=False,
     ),
-    "experiential": AIProvider(
-        id="experiential",
-        label="Experiential Labs",
-        protocol="openai",
-        api_base="https://api.experientiallabs.ai/v1",
-        default_qc_model="deepseek-v4.1-flash",
-        default_translation_model="deepseek-v4.1-flash",
-        env_names=("EXPLABS_API_KEY",),
-        request_profile="standard",
-        image_transport="data_url",
-        supports_visual_qc=True,
-        supports_translation=True,
-        tracks_cost=False,
-    ),
 }
 
 PROVIDER_IDS = frozenset(PROVIDERS)

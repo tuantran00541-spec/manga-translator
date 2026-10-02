@@ -9,36 +9,32 @@ from app.ai_providers import (
     validate_model_name,
 )
 from app.routers import visual_qc as visual_qc_router
-from app.routers.translation import TranslateChapterRequest
+from app.routers.translation import TranslateChapterRequest, TranslateVisionPageRequest
 from app.translation.deepseek import DeepSeekTranslator
-from app.visual_qc.schemas import VisualQCChapterRequest
 
 
 def test_provider_registry_uses_fixed_https_endpoints():
-    assert set(PROVIDERS) == {"gemini", "deepseek", "openai", "openrouter", "experiential"}
+    assert set(PROVIDERS) == {"gemini", "deepseek", "openai", "openrouter"}
     assert get_provider("openai").chat_url == "https://api.openai.com/v1/chat/completions"
     assert all(provider.api_base.startswith("https://") for provider in PROVIDERS.values())
-    assert get_provider("experiential").models_url == "https://api.experientiallabs.ai/v1/models"
 
 
 def test_requests_validate_provider_id_shape_and_model():
-    request = VisualQCChapterRequest(
+    request = TranslateChapterRequest(
         chapter_id="chapter", provider="openrouter", model="vendor/vision"
     )
     assert request.provider == "openrouter"
     assert request.model == "vendor/vision"
 
-    custom = VisualQCChapterRequest(
+    custom = TranslateChapterRequest(
         chapter_id="chapter", provider="custom-lab", model="vendor/vision"
     )
     assert custom.provider == "custom-lab"
 
-    assert TranslateChapterRequest(
-        chapter_id="chapter", provider="gemini"
-    ).provider == "gemini"
+    assert TranslateChapterRequest(chapter_id="chapter").provider == "deepseek"
 
     with pytest.raises(ValueError):
-        VisualQCChapterRequest(chapter_id="chapter", provider="Bad Provider!")
+        TranslateChapterRequest(chapter_id="chapter", provider="Bad Provider!")
     with pytest.raises(ValueError):
         validate_model_name("bad\nmodel", default="fallback")
 
@@ -191,12 +187,7 @@ def test_custom_provider_is_openai_compatible_and_https_only():
 
 
 def test_runtime_request_schemas_accept_custom_provider_id_only():
-    chapter = VisualQCChapterRequest(
-        chapter_id="chapter",
-        provider="custom-lab",
-        model="vendor/vision",
-    )
-    inspect = visual_qc_router.VisualQCInspectRequest(
+    page = TranslateVisionPageRequest(
         chapter_id="chapter",
         page_index=0,
         provider="custom-lab",
@@ -207,7 +198,7 @@ def test_runtime_request_schemas_accept_custom_provider_id_only():
         provider="custom-lab",
         model="vendor/text",
     )
-    assert chapter.provider == inspect.provider == translation.provider == "custom-lab"
+    assert page.provider == translation.provider == "custom-lab"
 
 
 def test_custom_provider_registry_round_trips_without_exposing_key(monkeypatch):
