@@ -162,6 +162,8 @@ The image path accepts up to **100,000,000 decoded pixels** per image.
 
 **Windows:** download [MangaTranslator-Setup.exe](https://github.com/tuantran00541-spec/manga-translator/releases/latest/download/MangaTranslator-Setup.exe) and double-click it. It needs no admin rights; the first install takes 5–15 minutes and uses about 1.6 GB of disk. Uninstall it from Windows Settings → Apps; it asks whether to keep your translated chapters.
 
+The setup is not code-signed yet, so Windows SmartScreen may show "Windows protected your PC". Click **More info → Run anyway** (Vietnamese Windows: **Thêm thông tin → Vẫn chạy**). The one-command install below does not go through SmartScreen.
+
 Or with one command, nothing else to install first:
 
 ~~~powershell
