@@ -8,7 +8,7 @@
   "shots": [
    "01-home.png"
   ],
-  "seconds": 1.5,
+  "seconds": 0.7,
   "toasts": [],
   "console_errors": []
  },
@@ -21,7 +21,7 @@
   "shots": [
    "02-import.png"
   ],
-  "seconds": 0.7,
+  "seconds": 0.6,
   "toasts": [],
   "console_errors": []
  },
@@ -30,13 +30,13 @@
   "ok": true,
   "notes": [
    "'Tải chương' buttons on screen: 2",
-   "preview header: Chương bf7baed9 | 135/135 lát được chọn",
+   "preview header: Chương 198e8397 | 135/135 lát được chọn",
    "slices listed: 135"
   ],
   "shots": [
    "03-preview.png"
   ],
-  "seconds": 16.8,
+  "seconds": 10.7,
   "toasts": [],
   "console_errors": []
  },
@@ -50,7 +50,7 @@
   "shots": [
    "04-preview-skip.png"
   ],
-  "seconds": 2.8,
+  "seconds": 2.6,
   "toasts": [],
   "console_errors": []
  },
@@ -63,7 +63,7 @@
   "shots": [
    "05-preview-preserve.png"
   ],
-  "seconds": 2.0,
+  "seconds": 1.9,
   "toasts": [],
   "console_errors": []
  },
@@ -72,12 +72,9 @@
   "ok": true,
   "notes": [
    "progress text: Đang xử lý 0/135…",
-   "progress text: Đang xử lý 5/135…",
-   "progress text: Đang xử lý 26/135…",
-   "progress text: Đang xử lý 48/135…",
-   "progress text: Đang xử lý 73/135…",
-   "progress text: Đang xử lý 95/135…",
-   "progress text: Đang xử lý 116/135…",
+   "progress text: Đang xử lý 23/135…",
+   "progress text: Đang xử lý 56/135…",
+   "progress text: Đang xử lý 98/135…",
    "text regions on screen: 0"
   ],
   "shots": [
@@ -85,12 +82,9 @@
    "07-processing-progress.png",
    "08-processing-progress.png",
    "09-processing-progress.png",
-   "10-processing-progress.png",
-   "11-processing-progress.png",
-   "12-processing-progress.png",
-   "13-review-first-look.png"
+   "10-review-first-look.png"
   ],
-  "seconds": 432.0,
+  "seconds": 267.3,
   "toasts": [],
   "console_errors": []
  },
@@ -99,10 +93,10 @@
   "ok": true,
   "notes": [],
   "shots": [
-   "14-view-Ảnh gốc.png",
-   "15-view-Sau inpaint.png"
+   "11-view-Ảnh gốc.png",
+   "12-view-Sau inpaint.png"
   ],
-  "seconds": 5.4,
+  "seconds": 5.3,
   "toasts": [],
   "console_errors": []
  },
@@ -113,7 +107,7 @@
    "tools in rail: 7"
   ],
   "shots": [
-   "16-tooltip-brush.png"
+   "13-tooltip-brush.png"
   ],
   "seconds": 0.8,
   "toasts": [],
@@ -126,9 +120,9 @@
    "OCR text of first region: ''"
   ],
   "shots": [
-   "17-inspector.png"
+   "14-inspector.png"
   ],
-  "seconds": 25.1,
+  "seconds": 7.9,
   "toasts": [],
   "console_errors": []
  },
@@ -150,10 +144,10 @@
    "OCR panel: "
   ],
   "shots": [
-   "18-more-menu.png",
-   "19-ocr-done.png"
+   "15-more-menu.png",
+   "16-ocr-done.png"
   ],
-  "seconds": 142.5,
+  "seconds": 84.1,
   "toasts": [
    "OCR toàn chương đã hoàn tất."
   ],
@@ -167,9 +161,9 @@
    "rows matching 'số': 4"
   ],
   "shots": [
-   "20-proof-panel.png"
+   "17-proof-panel.png"
   ],
-  "seconds": 4.7,
+  "seconds": 4.5,
   "toasts": [],
   "console_errors": []
  },
@@ -180,9 +174,9 @@
    "regions before/after drawing: 142/143"
   ],
   "shots": [
-   "21-new-region.png"
+   "18-new-region.png"
   ],
-  "seconds": 2.9,
+  "seconds": 2.8,
   "toasts": [],
   "console_errors": []
  },
@@ -203,9 +197,9 @@
   "ok": true,
   "notes": [],
   "shots": [
-   "22-preset.png"
+   "19-preset.png"
   ],
-  "seconds": 1.7,
+  "seconds": 1.6,
   "toasts": [
    "Đã lưu kiểu \"Lời thoại đậm\"."
   ],
@@ -216,10 +210,10 @@
   "ok": true,
   "notes": [],
   "shots": [
-   "23-brush-painted.png",
-   "24-brush-cleaned.png"
+   "20-brush-painted.png",
+   "21-brush-cleaned.png"
   ],
-  "seconds": 3.3,
+  "seconds": 3.0,
   "toasts": [],
   "console_errors": []
  },
@@ -227,12 +221,12 @@
   "step": "lettered-view",
   "ok": true,
   "notes": [
-   "lettered view ready after 7.1s"
+   "lettered view ready after 5.1s"
   ],
   "shots": [
-   "25-lettered.png"
+   "22-lettered.png"
   ],
-  "seconds": 7.3,
+  "seconds": 5.2,
   "toasts": [],
   "console_errors": []
  },
@@ -240,23 +234,28 @@
   "step": "export",
   "ok": false,
   "notes": [
-   "FAILED: AttributeError: 'builtin_function_or_method' object has no attribute '_pw_impl_instance_'"
+   "FAILED: RuntimeError: no file was downloaded"
   ],
   "shots": [
-   "26-export-failed.png"
+   "23-export.png",
+   "24-export-failed.png"
   ],
-  "seconds": 0.2,
-  "toasts": [],
-  "console_errors": []
+  "seconds": 1.3,
+  "toasts": [
+   "Xuất chương thất bại: Editorial preflight blocked final render/export: 137 unresolved story-text blocker(s): untranslated_story_object@p1:text_388b3959a5f141d9, untranslated_story_object@p4:text_ef87c2b2f101430b, untranslated_story_object@p5:text_6a01f9abd1ef4cf6, untranslated_story_object@p12:text_e4f2e5635faa4ba9, untranslated_story_object@p15:text_1cdb6d3142724a62, +132 more"
+  ],
+  "console_errors": [
+   "Failed to load resource: the server responded with a status of 409 (Conflict)"
+  ]
  },
  {
   "step": "keyboard-help",
   "ok": true,
   "notes": [],
   "shots": [
-   "27-shortcut-help.png"
+   "25-shortcut-help.png"
   ],
-  "seconds": 0.7,
+  "seconds": 0.6,
   "toasts": [],
   "console_errors": []
  },
@@ -267,9 +266,9 @@
    "settings: Cài đặt\nDịch vụ AI\n\nAPI key được giữ trong kho bí mật của hệ điều hành.\n\nChưa có dịch vụ nào được kết nối\nMặc định\nGoogle Gemini\nDeepSeek\nOpenAI\nOpenRouter\nGoogle Gemini\nChưa có key\nDeepSeek\nChưa có key\nOpenAI\nChưa có key\nOpenRouter\nChưa có key\n+ Thêm provider tùy chỉnh"
   ],
   "shots": [
-   "28-settings.png"
+   "26-settings.png"
   ],
-  "seconds": 1.8,
+  "seconds": 1.6,
   "toasts": [],
   "console_errors": []
  },
@@ -280,7 +279,7 @@
    "home text: KHÔNG GIAN LÀM VIỆC\nXin chào!\n\nChọn một chương gần đây hoặc bắt đầu dự án dịch mới.\n\nChưa có chương gần đây\n\nNhập liên kết, ảnh hoặc tệp truyện để bắt đầu.\n\nBắt đầu dự án đầu tiên"
   ],
   "shots": [
-   "29-home-recent.png"
+   "27-home-recent.png"
   ],
   "seconds": 1.1,
   "toasts": [],
@@ -288,16 +287,15 @@
  },
  {
   "step": "dark-theme",
-  "ok": false,
+  "ok": true,
   "notes": [
-   "theme picker visible in the editor: True",
-   "FAILED: TimeoutError: Locator.click: Timeout 30000ms exceeded.\nCall log:\nwaiting for locator(\".recent-card\").first\n"
+   "theme picker visible in the editor: True"
   ],
   "shots": [
-   "30-dark-home.png",
-   "31-dark-theme-failed.png"
+   "28-dark-home.png",
+   "29-dark-editor.png"
   ],
-  "seconds": 30.9,
+  "seconds": 7.5,
   "toasts": [],
   "console_errors": []
  },
@@ -308,7 +306,7 @@
    "uploaded 3 images; preview: 15/15 lát được chọn"
   ],
   "shots": [
-   "32-upload-preview.png"
+   "30-upload-preview.png"
   ],
   "seconds": 4.3,
   "toasts": [],
@@ -319,10 +317,10 @@
   "ok": true,
   "notes": [],
   "shots": [
-   "33-mobile-home.png",
-   "34-mobile-menu.png"
+   "31-mobile-home.png",
+   "32-mobile-menu.png"
   ],
-  "seconds": 1.3,
+  "seconds": 1.2,
   "toasts": [],
   "console_errors": []
  },
@@ -331,9 +329,9 @@
   "ok": true,
   "notes": [],
   "shots": [
-   "35-mobile-chapter.png"
+   "33-mobile-chapter.png"
   ],
-  "seconds": 5.2,
+  "seconds": 5.1,
   "toasts": [],
   "console_errors": []
  },
@@ -344,9 +342,9 @@
    "A.I panel: AI\nA.I mode\n\nDán URL, AI tự làm hết: bỏ trang credit, giữ logo, clean, repaint chỗ sót, dịch, chọn font và render. Xong là chương đã có chữ mở sẵn để bạn xem, sửa và xuất.\n\nĐăng nhập để dùng Manga Cloud, hoặc chọn nhà cung cấp khác và dùng key A.I của bạn (miễn phí).\nEmail\nGửi mã\nLiên kết chương cho A.I mode\nDịch vụ AI\nManga Cloud\nGoogle Gemini\nDeepSeek\nOpenAI\nOpenRouter\nDịch sang\nTiếng Việt\nEnglish\nBahasa Indonesia\nEspañol\nPortuguês\nFrançais\nDeutsch\nBối cảnh truyện (tùy chọn)\nNâng cao: Jev soát câu dịch. Câu chưa tự nhiên, lủng củng hay tối nghĩa được gửi lại cho AI viết lại.\nChạy A.I mode"
   ],
   "shots": [
-   "36-ai-mode.png"
+   "34-ai-mode.png"
   ],
-  "seconds": 2.3,
+  "seconds": 2.2,
   "toasts": [],
   "console_errors": []
  },
@@ -354,26 +352,23 @@
   "step": "ai-mode-sign-in",
   "ok": true,
   "notes": [
-   "code toast: ['Mã thử nghiệm: 618077']",
-   "plan bar: Đăng nhập để dùng Manga Cloud, hoặc chọn nhà cung cấp khác và dùng key A.I của bạn (miễn phí).\nEmail\nMã 6 số\nĐăng nhập"
+   "code toast: ['Mã thử nghiệm: 947362']",
+   "plan bar: nguoi-moi@example.com · Số dư $0.00 (≈ 0 chương)\nTài khoản"
   ],
   "shots": [
-   "37-ai-signed-in.png"
+   "35-ai-signed-in.png"
   ],
-  "seconds": 3.7,
+  "seconds": 3.6,
   "toasts": [
-   "Mã thử nghiệm: 618077",
-   "Không đăng nhập được: Cannot save Manga Cloud API key to OS secure storage: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details."
+   "Mã thử nghiệm: 947362"
   ],
-  "console_errors": [
-   "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
-  ]
+  "console_errors": []
  },
  {
   "step": "ai-mode-top-up-simulated",
   "ok": true,
   "notes": [
-   "plan bar after $1 credit: Đăng nhập để dùng Manga Cloud, hoặc chọn nhà cung cấp khác và dùng key A.I của bạn (miễn phí).\nEmail\nGửi mã"
+   "plan bar after $1 credit: nguoi-moi@example.com · Số dư $1.00 (≈ 3 chương)\nTài khoản"
   ],
   "shots": [],
   "seconds": 2.1,
@@ -385,31 +380,43 @@
   "ok": true,
   "notes": [
    "provider picked: manga-cloud",
-   "30s: Mở chươngHủy\n              Báo cáo của AI",
-   "finished after 60s: Mở chươngHủy\n              Báo cáo của AI"
+   "30s: Tải chương\nXong · 160 lát · 10s\nCheckpoint 1: AI bỏ lát credit, lát trống và giữ logo\nĐang chạy 18/160\nCheckpoint 2: Clean ảnh\nChờ\nCheckpoint 3: AI so ảnh gốc và ảnh clean\nChờ\nCheckpoint 4: Dịch và chọn font\nChờ\nNâng cao: Jev soát câu dịch\nChờ\nRender\nChờ\nHoàn tất\nChờ\n\nAI đang làm, bạn có thể để trang này mở hoặc quay lại sau.\n\nHủy",
+   "151s: Tải chương\nXong · 160 lát · 10s\nCheckpoint 1: AI bỏ lát credit, lát trống và giữ logo\nXong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s\nCheckpoint 2: Clean ảnh\nĐang chạy 18/131\nCheckpoint 3: AI so ảnh gốc và ảnh clean\nChờ\nCheckpoint 4: Dịch và chọn font\nChờ\nNâng cao: Jev soát câu dịch\nChờ\nRender\nChờ\nHoàn tất\nChờ\n\nAI đang làm, bạn có thể để trang này mở hoặc quay lại sau.\n\nHủy",
+   "272s: Tải chương\nXong · 160 lát · 10s\nCheckpoint 1: AI bỏ lát credit, lát trống và giữ logo\nXong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s\nCheckpoint 2: Clean ảnh\nĐang chạy 82/131\nCheckpoint 3: AI so ảnh gốc và ảnh clean\nChờ\nCheckpoint 4: Dịch và chọn font\nChờ\nNâng cao: Jev soát câu dịch\nChờ\nRender\nChờ\nHoàn tất\nChờ\n\nAI đang làm, bạn có thể để trang này mở hoặc quay lại sau.\n\nHủy",
+   "393s: Tải chương\nXong · 160 lát · 10s\nCheckpoint 1: AI bỏ lát credit, lát trống và giữ logo\nXong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s\nCheckpoint 2: Clean ảnh\nXong · 4p12s\nCheckpoint 3: AI so ảnh gốc và ảnh clean\nĐang chạy 131/131\nCheckpoint 4: Dịch và chọn font\nChờ\nNâng cao: Jev soát câu dịch\nChờ\nRender\nChờ\nHoàn tất\nChờ\n\nAI đang làm, bạn có thể để trang này mở hoặc quay lại sau.\n\nHủy",
+   "513s: Tải chương\nXong · 160 lát · 10s\nCheckpoint 1: AI bỏ lát credit, lát trống và giữ logo\nXong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s\nCheckpoint 2: Clean ảnh\nXong · 4p12s\nCheckpoint 3: AI so ảnh gốc và ảnh clean\nXong · 15 tờ crop, repaint 13 · 1p19s\nCheckpoint 4: Dịch và chọn font\nĐang chạy 26/131\nNâng cao: Jev soát câu dịch\nChờ\nRender\nChờ\nHoàn tất\nChờ\n\nAI đang làm, bạn có thể để trang này mở hoặc quay lại sau.\n\nHủy",
+   "633s: Tải chương\nXong · 160 lát · 10s\nCheckpoint 1: AI bỏ lát credit, lát trống và giữ logo\nXong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s\nCheckpoint 2: Clean ảnh\nXong · 4p12s\nCheckpoint 3: AI so ảnh gốc và ảnh clean\nXong · 15 tờ crop, repaint 13 · 1p19s\nCheckpoint 4: Dịch và chọn font\nĐang chạy 51/131\nNâng cao: Jev soát câu dịch\nChờ\nRender\nChờ\nHoàn tất\nChờ\n\nAI đang làm, bạn có thể để trang này mở hoặc quay lại sau.\n\nHủy",
+   "754s: Tải chương\nXong · 160 lát · 10s\nCheckpoint 1: AI bỏ lát credit, lát trống và giữ logo\nXong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s\nCheckpoint 2: Clean ảnh\nXong · 4p12s\nCheckpoint 3: AI so ảnh gốc và ảnh clean\nXong · 15 tờ crop, repaint 13 · 1p19s\nCheckpoint 4: Dịch và chọn font\nĐang chạy 81/131\nNâng cao: Jev soát câu dịch\nChờ\nRender\nChờ\nHoàn tất\nChờ\n\nAI đang làm, bạn có thể để trang này mở hoặc quay lại sau.\n\nHủy",
+   "874s: Tải chương\nXong · 160 lát · 10s\nCheckpoint 1: AI bỏ lát credit, lát trống và giữ logo\nXong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s\nCheckpoint 2: Clean ảnh\nXong · 4p12s\nCheckpoint 3: AI so ảnh gốc và ảnh clean\nXong · 15 tờ crop, repaint 13 · 1p19s\nCheckpoint 4: Dịch và chọn font\nĐang chạy 128/131\nNâng cao: Jev soát câu dịch\nChờ\nRender\nChờ\nHoàn tất\nChờ\n\nAI đang làm, bạn có thể để trang này mở hoặc quay lại sau.\n\nHủy",
+   "finished after 931s: Tải chươngXong · 160 lát · 10sCheckpoint 1: AI bỏ lát credit, lát trống và giữ logoXong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33sCheckpoint 2: Clean ảnhXong · 4p12sCheckpoint 3: AI so ảnh gốc và ảnh cleanXong · 15 tờ crop, repaint 13 · 1p19sCheckpoint 4: Dịch và chọn fontXong · Dịch 117 vùng · 7p40sNâng cao: Jev soát câu dịchXong · Tắt · 0sRenderXong · 34sHoàn tấtXong · Xong · 0s\n              Xong! Chương đã có chữ, mở ra để xem, sửa và xuất.\n              Mở chươngHủy\n              Báo cáo của AIBỏ qua 1 lát credit: lát 160Bỏ qua 28 lát không có chữ (giữ ảnh gốc)Giữ nguyên 1 vùng logo"
   ],
   "shots": [
+   "36-ai-progress.png",
+   "37-ai-progress.png",
    "38-ai-progress.png",
-   "39-ai-done.png"
+   "39-ai-progress.png",
+   "40-ai-progress.png",
+   "41-ai-progress.png",
+   "42-ai-progress.png",
+   "43-ai-progress.png",
+   "44-ai-done.png"
   ],
-  "seconds": 60.4,
+  "seconds": 931.2,
   "toasts": [
-   "Không chạy được A.I mode: Chưa đăng nhập Manga Cloud"
+   "A.I mode xong, đang mở chương."
   ],
-  "console_errors": [
-   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
-  ]
+  "console_errors": []
  },
  {
   "step": "ai-mode-open-result",
   "ok": false,
   "notes": [
-   "FAILED: TimeoutError: Locator.click: Timeout 30000ms exceeded.\nCall log:\nwaiting for locator(\"#ai-mode-open\")\n  -   locator resolved to <button hidden=\"\" type=\"button\" id=\"ai-mode-open\" class=\"ui-btn ui-btn-primary\">Mở chương</button>\n  - attempting click action\n  -   waiting for element to be visible, enabled and stable\n  -   element is not visible\n  - retrying click action, attempt #1\n  -   waiting for element to be "
+   "FAILED: TimeoutError: Locator.click: Timeout 30000ms exceeded.\nCall log:\nwaiting for locator(\"#ai-mode-open\")\n  -   locator resolved to <button type=\"button\" id=\"ai-mode-open\" class=\"ui-btn ui-btn-primary\">Mở chương</button>\n  - attempting click action\n  -   waiting for element to be visible, enabled and stable\n  -   element is not visible\n  - retrying click action, attempt #1\n  -   waiting for element to be visible, e"
   ],
   "shots": [
-   "40-ai-mode-open-result-failed.png"
+   "45-ai-mode-open-result-failed.png"
   ],
-  "seconds": 30.1,
+  "seconds": 30.0,
   "toasts": [],
   "console_errors": []
  }
