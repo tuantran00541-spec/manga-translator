@@ -181,13 +181,3 @@ def classify_ocr_quality(
         return OCRQuality("reject", "symbol-noise")
 
     return OCRQuality("good", None)
-
-
-def should_block_translation(obj: dict) -> bool:
-    if str(obj.get("ocr_quality") or "").strip().lower() != "reject":
-        return False
-    if not obj.get("auto_generated"):
-        return False
-    current = str(obj.get("ocr_text") or "").strip()
-    automatic = str(obj.get("auto_ocr_text") or "").strip()
-    return bool(current) and current == automatic

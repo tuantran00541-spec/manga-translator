@@ -10,7 +10,7 @@ Stages remain:
 
 1. **Nhập nội dung** — URL, local files, recent chapters.
 2. **Xử lý ảnh** — page/slice selection, exclusions, automatic processing.
-3. **Kiểm tra chất lượng** — manual correction and AI-assisted QC.
+3. **Kiểm tra chất lượng** — manual correction of cleaned pages.
 4. **Biên tập bản dịch** — text regions, OCR, translation, styling, rendering/export.
 
 Stage semantics are stable; their old horizontal presentation is not.
@@ -103,7 +103,6 @@ The canvas owns:
 - selection overlays;
 - direct manipulation;
 - brush/draw overlays;
-- QC highlights;
 - zoom/pan affordances.
 
 Do not wrap the canvas in decorative card chrome unless the boundary communicates a real state or interaction.
@@ -152,7 +151,7 @@ for the current editor canvas rather than by a document-wide observer.
 
 Editor source ownership is split by responsibility: `editor.js` owns canvas
 and stage lifecycle, `editor-inspector.js` owns panel rendering, and
-`editor-persistence.js` owns ordered saves. Review and chapter-QC busy state is
+`editor-persistence.js` owns ordered saves. Review busy state is
 synchronized explicitly; DOM mutation observers must not be used as a job-state
 or event-binding mechanism.
 
@@ -165,7 +164,6 @@ Preferred terms:
 - chapter → **chương**
 - text object → **vùng chữ**
 - clean image → **ảnh đã xử lý**
-- AI QC → **kiểm tra bằng AI** / **kiểm tra chất lượng bằng AI**
 - repaint → **xử lý vùng đánh dấu**
 - render → **kết xuất**
 - excluded region → **vùng loại trừ**

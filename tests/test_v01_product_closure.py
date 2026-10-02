@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import tempfile
 import zipfile
 from pathlib import Path
@@ -14,14 +13,13 @@ import app.manifest_utils as manifest_utils
 import app.routers.export as export_router
 import app.routers.image as image_router
 import app.routers.render_commit as render_commit
-import app.routers.translation as translation_router
-from app.translation.deepseek import TranslationResult
+from app.text_objects import ensure_page_text_objects
 
 
 CHAPTER_ID = "c0ffee12"
 
 
-def test_processed_chapter_closes_translate_render_export_loop():
+def test_processed_chapter_closes_render_export_loop():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         raw = root / "raw"
@@ -85,25 +83,11 @@ def test_processed_chapter_closes_translate_render_export_loop():
                 },
             )
 
-            fake_translation = TranslationResult(
-                translations={"text_deadbeef": "Xin chào"},
-                usage={"prompt_tokens": 20, "completion_tokens": 5},
-                estimated_cost_usd=0.00001,
-                model="deepseek-v4-flash",
-            )
-            request = translation_router.TranslateChapterRequest(
-                chapter_id=CHAPTER_ID,
-                source_lang="en",
-                target_lang="vi",
-                budget_usd=0.02,
-            )
-            with (
-                patch.object(translation_router, "get_provider_api_key", return_value="test-key"),
-                patch.object(translation_router.DeepSeekTranslator, "translate", return_value=fake_translation),
-            ):
-                translated = asyncio.run(translation_router.translate_chapter(request))
+            manifest = manifest_utils.load_manifest_raw(CHAPTER_ID)
+            ensure_page_text_objects(manifest["pages"][0])
+            manifest["pages"][0]["text_objects"][0]["translation"] = "Xin chào"
+            manifest_utils.save_manifest_raw(CHAPTER_ID, manifest)
 
-            assert translated["translation_run"]["translated"] == 1
             page = manifest_utils.load_manifest_raw(CHAPTER_ID)["pages"][0]
             assert len(page["text_objects"]) == 1
             assert page["text_objects"][0]["source_boxes"] == ["box_deadbeef"]

@@ -21,7 +21,6 @@ from app.manifest_utils import (
     save_manifest_raw,
     urlify_manifest,
 )
-from app.ocr.quality import should_block_translation
 from app.render.font_catalog import FontNotFoundError, resolve_font_id
 from app.render.page_renderer import letter_box
 from app.secret_store import (
@@ -34,8 +33,7 @@ from app.schemas import RenderRequest
 from app.routers.render_commit import render_page
 from app.text_objects import ensure_page_text_objects
 from app.region_policy import text_object_in_preserve_region
-from app.translation import DeepSeekTranslator, TranslationBudgetExceeded
-from app.translation.deepseek import PRICING_VERSION, _preflight_cost_usd
+from app.translation.cost import preflight_cost_usd
 from app.translation.vision import VisionPageTranslator
 from app.translation.context import ChapterMemory
 
@@ -83,28 +81,6 @@ class TranslateChapterRequest(BaseModel):
         return float(value)
 
 
-def _resolve_translation_provider(provider_id: str):
-    normalized = normalize_provider_id(provider_id)
-    if normalized in PROVIDERS:
-        provider = PROVIDERS[normalized]
-    else:
-        stored = get_provider_config(normalized)
-        if not isinstance(stored, dict):
-            raise ValueError(
-                f"Custom AI provider is not configured: {normalized}"
-            )
-        provider = resolve_provider(
-            normalized,
-            label=stored.get("label"),
-            protocol=stored.get("protocol"),
-            api_base=stored.get("api_base"),
-        )
-        validate_url(str(provider.chat_url))
-    if provider.protocol != "openai" or not provider.supports_translation:
-        raise ValueError(f"{provider.label} is not available for translation")
-    return provider
-
-
 def _find_object(page: dict, object_id: str) -> dict | None:
     return next(
         (
@@ -136,175 +112,6 @@ def _apply_ai_font_choice(obj: dict, choice: dict | None) -> None:
     if font_mode == "ai" and obj.get("font_selection_mode") != "user":
         obj["font_ai_id"] = font_id
         obj["font_selection_mode"] = "ai"
-
-
-@router.post("/chapter")
-async def translate_chapter(req: TranslateChapterRequest) -> dict:
-    validate_chapter_id(req.chapter_id)
-    try:
-        provider = _resolve_translation_provider(req.provider)
-        model = validate_model_name(
-            req.model,
-            default=str(provider.default_translation_model or ""),
-        )
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    except SecretStoreUnavailable as exc:
-        raise HTTPException(503, str(exc)) from exc
-    translator = DeepSeekTranslator(
-        model=model,
-        api_url=str(provider.chat_url),
-        provider_id=provider.id,
-        provider_label=provider.label,
-        provider=provider,
-    )
-    try:
-        api_key = get_provider_api_key(
-            provider.id,
-            provider_label=provider.label,
-        )
-    except SecretStoreUnavailable as exc:
-        raise HTTPException(503, str(exc)) from exc
-    if not api_key:
-        raise HTTPException(409, f"{provider.label} API key is not configured")
-
-    skipped_ocr_reject = 0
-    skipped_source_missing = 0
-    skipped_preserve_region = 0
-    with get_manifest_lock(req.chapter_id):
-        manifest = load_manifest_raw(req.chapter_id)
-        ensured_pages: set[int] = set()
-        candidates: list[dict] = []
-        for page_index, page in enumerate(manifest.get("pages", [])):
-            if page.get("skipped") or page.get("process_required"):
-                continue
-            _, changed = ensure_page_text_objects(page)
-            if changed:
-                ensured_pages.add(page_index)
-            for obj in page.get("text_objects") or []:
-                if not isinstance(obj, dict) or not obj.get("id"):
-                    continue
-                if obj.get("source_missing"):
-                    skipped_source_missing += 1
-                    continue
-                if text_object_in_preserve_region(page, obj):
-                    skipped_preserve_region += 1
-                    continue
-                source = str(obj.get("ocr_text") or "").strip()
-                current_translation = str(obj.get("translation") or "")
-                if not source or (current_translation.strip() and not req.force):
-                    continue
-                if should_block_translation(obj):
-                    skipped_ocr_reject += 1
-                    continue
-                candidates.append(
-                    {
-                        "id": str(obj["id"]),
-                        "page_index": page_index,
-                        "text": source,
-                        "initial_translation": current_translation,
-                    }
-                )
-        if ensured_pages:
-            for page_index in ensured_pages:
-                invalidate_page_render(manifest, page_index)
-            save_manifest_raw(req.chapter_id, manifest)
-
-    if len(candidates) > MAX_CHAPTER_TRANSLATION_OBJECTS:
-        raise HTTPException(
-            400,
-            f"Chapter has {len(candidates)} translatable regions; maximum is {MAX_CHAPTER_TRANSLATION_OBJECTS}",
-        )
-    if not candidates:
-        result = urlify_manifest(manifest)
-        result["translation_run"] = {
-            "translated": 0,
-            "stale": 0,
-            "skipped_ocr_reject": skipped_ocr_reject,
-            "skipped_source_missing": skipped_source_missing,
-            "skipped_preserve_region": skipped_preserve_region,
-            "model": translator.model,
-            "estimated_cost_usd": 0.0,
-            "budget_usd": req.budget_usd,
-            "pricing_version": PRICING_VERSION,
-        }
-        return result
-
-    try:
-        translated = await run_in_threadpool(
-            translator.translate,
-            candidates,
-            api_key=api_key,
-            source_lang=req.source_lang,
-            target_lang=req.target_lang,
-            budget_usd=req.budget_usd,
-        )
-    except TranslationBudgetExceeded as exc:
-        raise HTTPException(409, str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(502, str(exc)) from exc
-
-    committed = 0
-    stale = 0
-    changed_pages: set[int] = set()
-    with get_manifest_lock(req.chapter_id):
-        latest = load_manifest_raw(req.chapter_id)
-        pages = latest.get("pages", [])
-        for item in candidates:
-            page_index = int(item["page_index"])
-            if page_index < 0 or page_index >= len(pages):
-                stale += 1
-                continue
-            page = pages[page_index]
-            if page.get("skipped") or page.get("process_required"):
-                stale += 1
-                continue
-            obj = _find_object(page, str(item["id"]))
-            if obj is None or obj.get("source_missing"):
-                stale += 1
-                continue
-            if text_object_in_preserve_region(page, obj):
-                stale += 1
-                continue
-            if str(obj.get("ocr_text") or "").strip() != str(item["text"]).strip():
-                stale += 1
-                continue
-            if str(obj.get("translation") or "") != str(item["initial_translation"]):
-                stale += 1
-                continue
-            value = translated.translations.get(str(item["id"]))
-            if not value:
-                stale += 1
-                continue
-            obj["translation"] = value
-            obj["translation_source"] = provider.id
-            obj["translation_model"] = translated.model
-            obj["translation_input_text"] = str(item["text"])
-            obj["auto_translation"] = value
-            _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(str(item["id"])))
-            changed_pages.add(page_index)
-            committed += 1
-
-        for page_index in changed_pages:
-            invalidate_page_render(latest, page_index)
-        if changed_pages:
-            save_manifest_raw(req.chapter_id, latest)
-
-    result = urlify_manifest(latest)
-    result["translation_run"] = {
-        "translated": committed,
-        "stale": stale,
-        "skipped_ocr_reject": skipped_ocr_reject,
-        "skipped_source_missing": skipped_source_missing,
-        "model": translated.model,
-        "usage": translated.usage,
-        "estimated_cost_usd": round(translated.estimated_cost_usd, 6),
-        "budget_usd": req.budget_usd,
-        "pricing_version": PRICING_VERSION,
-    }
-    return result
 
 
 class TranslateVisionPageRequest(TranslateChapterRequest):
@@ -459,7 +266,7 @@ async def translate_page_in_context(
     if not original_path.is_file() or not clean_path.is_file():
         raise HTTPException(404, "Original or cleaned image is unavailable")
 
-    if provider.tracks_cost and _preflight_cost_usd(candidates) > req.budget_usd:
+    if provider.tracks_cost and preflight_cost_usd(candidates) > req.budget_usd:
         raise HTTPException(409, "Text-only lower-bound estimate exceeds remaining budget")
     await run_in_threadpool(_add_fit_budgets, original_path, candidates)
     translator = VisionPageTranslator(provider, model)

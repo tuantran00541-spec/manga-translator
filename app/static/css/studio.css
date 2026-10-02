@@ -54,7 +54,6 @@
   .ui-disclosure > summary.ui-btn { display: inline-flex; align-items: center; list-style: none; }
   .ui-disclosure > summary::-webkit-details-marker { display: none; }
   .ui-disclosure:not([open]) > :not(summary) { display: none; }
-  .ui-disclosure-panel { display: grid; gap: 12px; margin-top: 8px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-app); }
   .ui-empty-state, .ui-state { padding: 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); color: var(--text-muted); font-size: 12px; }
   .ui-badge, .recent-stage-badge { display: inline-flex; align-items: center; width: fit-content; padding: 3px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--text-secondary); font-size: 10px; font-weight: 700; }
 
@@ -184,10 +183,10 @@
   .page-navigator-item-text strong { font-size: 11px; }
   .page-navigator-item-text span { color: var(--text-muted); font-size: 10px; }
   .review-canvas-host, .workbench-canvas-column { display: grid; min-width: 0; min-height: 0; overflow: auto; padding: clamp(12px, 2.4vw, 28px); background: var(--surface-canvas-deep); place-items: start center; }
-  .review-card, .preview-card { width: min(100%, 1100px); }
+  .review-card { width: min(100%, 1100px); }
   .preview-label { margin-bottom: 8px; color: var(--text-muted); font-size: 11px; font-weight: 700; }
-  .review-image-wrap, .preview-image-wrap, .review-stitched-image { position: relative; line-height: 0; }
-  .review-image-wrap img, .preview-image-wrap img, .review-stitched-image img { display: block; width: auto; max-width: 100%; height: auto; }
+  .preview-image-wrap, .review-stitched-image { position: relative; line-height: 0; }
+  .preview-image-wrap img, .review-stitched-image img { display: block; width: auto; max-width: 100%; height: auto; }
 
   .text-object-overlay { position: absolute; z-index: 2; border: 2px solid var(--focus-ring); background: transparent; box-shadow: none; touch-action: none; }
   .text-object-overlay.ellipse { border-radius: 50%; }
@@ -210,7 +209,6 @@
   .bold-toggle-btn.active, .size-auto-btn.selected, .align-btn.selected { border-color: var(--text-primary); background: var(--accent-soft); color: var(--text-primary); }
   .align-group { display: grid; gap: 6px; }
   .align-btn-row { flex-wrap: wrap; }
-  .download-link { color: var(--focus-ring); font-size: 12px; }
 
   .process-commandbar { justify-content: space-between; }
   .preview-workspace-heading { display: grid; gap: 2px; min-width: 0; }
@@ -232,9 +230,6 @@
   .review-view-switch { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-app); }
   .review-view-switch .active { background: var(--accent-soft); color: var(--text-primary); }
   .review-canvas-host .review-card { overflow: hidden; }
-  .review-image-wrap { width: fit-content; max-width: 100%; margin: 0 auto; }
-  .review-busy .review-image-wrap::after { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface-overlay); color: var(--text-primary); content: attr(data-busy-text); font-size: 12px; font-weight: 700; line-height: 1.4; }
-  .review-busy .review-image-wrap:not([data-busy-text])::after { content: "Đang xử lý…"; }
   .review-stitched-shell { overflow: hidden; }
   .review-stitched-toolbar { flex-wrap: wrap; }
   .review-stitched-warning { padding: 8px 10px; color: var(--text-secondary); font-size: 11px; }

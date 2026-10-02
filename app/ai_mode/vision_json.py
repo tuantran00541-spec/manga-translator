@@ -15,7 +15,7 @@ import requests
 from app.ai_providers import CLOUD_PROVIDER_ID, AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
-from app.translation.deepseek import _usage_cost_usd
+from app.translation.cost import usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini
 from app.visual_qc.gemini_interactions import (
@@ -124,7 +124,7 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
     except (TypeError, KeyError, ValueError) as exc:
         raise RuntimeError(f"{provider.label} returned no text") from exc
     usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
-    cost = _usage_cost_usd(usage) if provider.tracks_cost else None
+    cost = usage_cost_usd(usage) if provider.tracks_cost else None
     return VisionJSONResult(parse_json_object(answer), usage, cost)
 
 
