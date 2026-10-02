@@ -1,11 +1,14 @@
+import json
+import threading
 from pathlib import Path
 import cv2
 import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from app.config import BASE_DIR
 from app.dependencies import pipeline
 from app.logging_config import logger
-from app.manifest_utils import get_manifest_lock, get_page_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
+from app.manifest_utils import atomic_replace, get_manifest_lock, get_page_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.image_io import read_image
 from app.schemas import (
     AddBoxRequest,
@@ -19,6 +22,7 @@ from app.schemas import (
     ReviewDispositionRequest,
     ScriptReviewRequest,
     SaveDraftRequest,
+    StylePresetsRequest,
     UpdateBoxRequest,
     UpdateTextObjectRequest,
 )
@@ -32,6 +36,9 @@ from app.editorial_gate import (
 )
 
 router = APIRouter(prefix="/api", tags=["editor"])
+
+STYLE_PRESETS_PATH = BASE_DIR / "data" / "style_presets.json"
+_style_presets_lock = threading.Lock()
 
 
 def _decode_repaint_mask_payload(mask_bytes: bytes) -> np.ndarray:
@@ -541,3 +548,30 @@ def save_draft(req: SaveDraftRequest) -> dict:
     except Exception as exc:
         logger.opt(exception=True).error("Chapter {} operation 'save_draft' failed: {}", req.chapter_id, exc)
         raise HTTPException(500, f"Save draft failed: {exc}") from exc
+
+
+@router.get("/style_presets")
+def get_style_presets() -> dict:
+    try:
+        data = json.loads(STYLE_PRESETS_PATH.read_text(encoding="utf-8"))
+        presets = StylePresetsRequest.model_validate(data).presets
+    except FileNotFoundError:
+        presets = []
+    except (ValueError, OSError) as exc:
+        logger.warning("Style presets unreadable, starting empty: {}", exc)
+        presets = []
+    return {"presets": [p.model_dump() for p in presets]}
+
+
+@router.put("/style_presets")
+def put_style_presets(req: StylePresetsRequest) -> dict:
+    names = [p.name.strip() for p in req.presets]
+    if any(not n for n in names) or len(set(names)) != len(names):
+        raise HTTPException(400, "Preset names must be unique and not blank")
+    payload = {"presets": [{"name": n, "style": p.style.model_dump()} for n, p in zip(names, req.presets)]}
+    with _style_presets_lock:
+        STYLE_PRESETS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = STYLE_PRESETS_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+        atomic_replace(tmp, STYLE_PRESETS_PATH)
+    return payload

@@ -137,6 +137,7 @@ async function createTextObject(pageIndex, shape, region) {
   if (!obj) throw new Error("Không tạo được vùng chữ");
   editorState.selectedTextObjectId = obj.id;
   applyManifestResponse(manifest, pageIndex, { id: obj.id });
+  window.editorHistory?.recordCreate(pageIndex, obj.id);
   associateTextObjectOcr(pageIndex, obj.id).catch((err) => {
     showToast("Không thể nhóm OCR tự động. Bạn vẫn có thể nhập nội dung thủ công: " + err.message, "info");
   });
@@ -150,6 +151,8 @@ async function deleteTextObject(pageIndex, id) {
     typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
   ]);
   if (chapterId !== currentChapterId) return;
+  const removed = findTextObject(pageIndex, id);
+  const removedCopy = removed ? JSON.parse(JSON.stringify(removed)) : null;
   const manifest = await apiTextObject("delete", {
     chapter_id: chapterId,
     page_index: pageIndex,
@@ -159,6 +162,7 @@ async function deleteTextObject(pageIndex, id) {
   if (editorState.selectedTextObjectId === id) editorState.selectedTextObjectId = null;
   if (typeof window.removePendingPersist === "function") window.removePendingPersist(pageIndex, id);
   applyManifestResponse(manifest, pageIndex, { id });
+  window.editorHistory?.recordDelete(pageIndex, removedCopy);
 }
 window.deleteTextObject = deleteTextObject;
 
@@ -209,8 +213,42 @@ async function duplicateTextObject(pageIndex, id) {
   if (chapterId !== currentChapterId) return;
   editorState.selectedTextObjectId = created.id;
   applyManifestResponse(updated, pageIndex, { id: created.id });
+  window.editorHistory?.recordCreate(pageIndex, created.id);
 }
 window.duplicateTextObject = duplicateTextObject;
+
+// Re-creates a deleted text object from a saved snapshot and returns its new id.
+async function restoreTextObject(pageIndex, snap) {
+  const chapterId = currentChapterId;
+  if (!chapterId || !snap?.region) return null;
+  await window.flushAllPendingPersists?.();
+  if (chapterId !== currentChapterId) return null;
+  const manifest = await apiTextObject("create", {
+    chapter_id: chapterId,
+    page_index: pageIndex,
+    shape: snap.shape || "rectangle",
+    region: snap.region,
+  });
+  const objs = manifest.pages[pageIndex].text_objects || [];
+  const created = objs[objs.length - 1];
+  if (!created) return null;
+  const updated = await apiTextObject("update", {
+    chapter_id: chapterId,
+    page_index: pageIndex,
+    id: created.id,
+    ocr_text: snap.ocr_text,
+    translation: snap.translation,
+    style: snap.style,
+    font_selection_mode: snap.font_selection_mode,
+    font_match: snap.font_match,
+    font_ai_id: snap.font_ai_id,
+  });
+  if (chapterId !== currentChapterId) return null;
+  editorState.selectedTextObjectId = created.id;
+  applyManifestResponse(updated, pageIndex, { id: created.id });
+  return created.id;
+}
+window.restoreTextObject = restoreTextObject;
 
 async function associateTextObjectOcr(pageIndex, id) {
   const chapterId = currentChapterId;

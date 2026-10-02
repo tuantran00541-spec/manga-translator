@@ -405,6 +405,17 @@ class TextObjectStyle(BaseModel):
         return v
 
 
+class StylePreset(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=40)
+    style: TextObjectStyle
+
+
+class StylePresetsRequest(BaseModel):
+    presets: list[StylePreset] = Field(max_length=20)
+
+
 def _validate_text_object_shape(v: str) -> str:
     if v not in ALLOWED_TEXT_OBJECT_SHAPES:
         raise ValueError("shape must be 'rectangle' or 'ellipse'")

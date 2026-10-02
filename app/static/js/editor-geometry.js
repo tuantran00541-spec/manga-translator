@@ -148,6 +148,7 @@
     }
     const obj = textObject(pageIndex, id);
     if (!obj || !obj.region) return;
+    window.editorHistory?.touch(pageIndex, id);
     geomDirty.set(`${pageIndex}:${id}`, {
       x1: obj.region.x1, y1: obj.region.y1,
       x2: obj.region.x2, y2: obj.region.y2,

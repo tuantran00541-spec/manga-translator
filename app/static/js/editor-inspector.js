@@ -27,6 +27,7 @@ function renderEditorPanel(pageIndex) {
     return;
   }
   panel.dataset.objectId = obj.id;
+  window.editorHistory?.watch(pageIndex, obj);
 
   const ocrLabel = document.createElement("label");
   ocrLabel.className = "ui-field text-editor-field";
@@ -65,6 +66,7 @@ function renderEditorPanel(pageIndex) {
   textBody.append(ocrLabel, trLabel);
 
   const typographyBody = buildPanelSection(panel, "Kiểu chữ", false);
+  window.stylePresets?.buildSection(typographyBody, obj, pageIndex);
   buildTextSection(typographyBody, panel, obj, pageIndex);
 
   const appearanceBody = buildPanelSection(panel, "Màu và nền", false);

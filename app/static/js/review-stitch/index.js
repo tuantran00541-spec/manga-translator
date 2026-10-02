@@ -1,6 +1,7 @@
 import { canvasBlob, captureSnapshot, chunkHasPaint, drawBrushMask, paintPoint, paintStroke } from "./brush.js";
 import { installOverlaySync, installTextDrawing, mountTextInspector, renderOverlays, reviewPageIndexAtSourceY, sourcePoint } from "./overlays.js";
 import { SHORTCUTS, chapterKey, deleteSnapshot, hasSnapshotPrefix, resetChapterState, snapshotKey, state } from "./state.js";
+import { installProofing } from "./proofing.js";
 import { orderedSlices, renderStrip } from "./strip.js";
 import { mountActions, mountToolRail, setTool, syncTool } from "./tools.js";
 import { applyZoom, stepZoom } from "./zoom.js";
@@ -219,6 +220,7 @@ export function mount(workspace) {
   shell.append(brushBar, zoomDock);
   installTextDrawing(shell, signal);
   mountActions(shell, signal, () => shell._rerender?.());
+  installProofing(shell, signal);
   window.mountChapterOCR?.();
   window.mountChapterQC?.();
   detectingLang = !window.currentSourceLang?.();
