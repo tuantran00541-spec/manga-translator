@@ -4,6 +4,10 @@ import argparse
 from io import BytesIO
 import json
 from pathlib import Path
+import subprocess
+import sys
+import time
+import urllib.request
 
 from PIL import Image
 from playwright.sync_api import Page, expect, sync_playwright
@@ -103,7 +107,7 @@ def _select_text_object(page: Page) -> None:
 def _exercise_font_picker(page: Page) -> None:
     font_select = page.locator(".font-style-toolbar select")
     expect(font_select).to_have_count(1)
-    expect(font_select.locator('option[value="auto"]')).to_have_count(1)
+    expect(font_select.locator('option[value="auto"]')).to_have_count(0)
     expect(page.get_by_role("button", name="Gợi ý gần nhất", exact=True)).to_have_count(0)
 
     catalog = page.evaluate(
@@ -123,7 +127,6 @@ def _exercise_font_picker(page: Page) -> None:
 
 def _exercise_desktop(page: Page) -> None:
     _wait_for_review(page)
-    expect(page.locator(".chapter-translate-controls")).to_be_visible()
     viewport_box = page.locator(".review-document-viewport").bounding_box()
     if not viewport_box or viewport_box["height"] < 160:
         chain = _review_layout_chain(page)
@@ -304,7 +307,6 @@ def _exercise_mobile(page: Page) -> None:
             f"mobile Review canvas is not usable: {viewport_box}; chain={chain}"
         )
 
-    expect(page.locator("#workbench-panel-controls")).to_be_hidden()
     expect(page.locator("#site-header")).to_be_hidden()
     expect(page.locator(".page-navigator")).to_have_count(0)
     expect(page.locator(".review-stitched-select")).to_have_count(0)
@@ -445,6 +447,125 @@ def _exercise_long_image(page: Page, base_url: str, artifacts: Path, name: str) 
     has_band("blue", artifacts / f"{name}-long-bottom.png")
 
 
+def _server_objects(base_url: str, page_index: int) -> list[dict]:
+    with urllib.request.urlopen(f"{base_url}/api/chapter/f00d0001") as response:
+        return json.load(response)["pages"][page_index].get("text_objects") or []
+
+
+def _until(check, what: str, timeout: float = 6.0):
+    deadline = time.monotonic() + timeout
+    while True:
+        value = check()
+        if value:
+            return value
+        if time.monotonic() > deadline:
+            raise AssertionError(f"timed out waiting for {what}")
+        time.sleep(0.15)
+
+
+def _exercise_editing(page: Page, base_url: str, artifacts: Path) -> None:
+    """Undo/redo, keyboard proofreading, the proofing panel and style presets against the saved chapter."""
+    def obj(page_index: int, match) -> dict | None:
+        return next((o for o in _server_objects(base_url, page_index) if match(o)), None)
+
+    canvas = page.locator(".review-document-viewport")
+    page.goto(f"{base_url}/#f00d0001", wait_until="networkidle")
+    _wait_for_review(page)
+    _wait_for_text_overlay(page)
+
+    page.locator('.review-text-object-overlay[data-object-id="bubble-a"]').click()
+    page.locator(".review-floating-inspector .translation-textarea").fill("Sửa thử")
+    page.keyboard.press("Escape")
+    _until(lambda: obj(0, lambda o: o["id"] == "bubble-a")["translation"] == "Sửa thử", "the edit to save")
+    page.keyboard.press("Control+z")
+    _until(lambda: obj(0, lambda o: o["id"] == "bubble-a")["translation"] == "Đoạn thoại mẫu", "undo to save")
+    page.keyboard.press("Control+y")
+    _until(lambda: obj(0, lambda o: o["id"] == "bubble-a")["translation"] == "Sửa thử", "redo to save")
+
+    before = obj(0, lambda o: o["id"] == "bubble-a")["region"]
+    box = page.locator('.review-text-object-overlay[data-object-id="bubble-a"]').bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + 60, y + 40, steps=5)
+    page.mouse.up()
+    _until(lambda: obj(0, lambda o: o["id"] == "bubble-a")["region"] != before, "the drag to save")
+    canvas.focus()
+    page.keyboard.press("Control+z")
+    _until(lambda: obj(0, lambda o: o["id"] == "bubble-a")["region"] == before, "the drag to be undone")
+
+    page.locator('.review-text-object-overlay[data-object-id="bubble-a"]').click()
+    canvas.focus()
+    page.keyboard.press("Delete")
+    _until(lambda: obj(0, lambda o: o["id"] == "bubble-a") is None, "the delete")
+    page.keyboard.press("Control+z")
+    restored = _until(lambda: obj(0, lambda o: o.get("translation") == "Sửa thử"), "the deleted object to come back")
+    if restored["region"] != before or restored["style"].get("bold") is not True:
+        raise AssertionError(f"undo did not restore the object as it was: {restored}")
+    page.keyboard.press("Control+y")
+    _until(lambda: obj(0, lambda o: o["id"] == restored["id"]) is None, "redo of the delete")
+    page.keyboard.press("Control+z")
+    a_id = _until(lambda: obj(0, lambda o: o.get("translation") == "Sửa thử"), "the object to come back again")["id"]
+
+    selected = "() => window.editorState.selectedTextObjectId"
+    page.wait_for_function(f"() => window.editorState.selectedTextObjectId === {json.dumps(a_id)}")
+    page.keyboard.press("Alt+ArrowDown")
+    page.wait_for_function("() => window.editorState.selectedTextObjectId === 'bubble-b'")
+    page.keyboard.press("Alt+ArrowUp")
+    page.wait_for_function(f"() => window.editorState.selectedTextObjectId === {json.dumps(a_id)}")
+    page.keyboard.press("Enter")
+    page.wait_for_function("() => document.activeElement?.classList.contains('translation-textarea')")
+    page.keyboard.press("Control+Enter")
+    page.wait_for_function("() => window.editorState.selectedTextObjectId === 'bubble-b' && document.activeElement?.classList.contains('translation-textarea')")
+    page.keyboard.press("Escape")
+    if page.evaluate(selected) != "bubble-b" or page.evaluate("document.activeElement?.classList.contains('translation-textarea')"):
+        raise AssertionError("Escape must leave the field and keep the selection")
+    canvas.evaluate("element => element.scrollTop = 0")
+    workspace = page.locator(".review-workspace-shell")
+    for key, expected in (("d", "1"), ("d", "2"), ("a", "1")):
+        page.keyboard.press(key)
+        expect(workspace).to_have_attribute("data-review-canonical-index", expected)
+    page.keyboard.press("?")
+    expect(page.locator(".review-shortcut-help")).to_be_visible()
+    page.keyboard.press("?")
+    expect(page.locator(".review-shortcut-help")).to_be_hidden()
+
+    page.keyboard.press("Control+f")
+    expect(page.locator(".review-proof-panel")).to_be_visible()
+    expect(page.locator(".review-proof-row")).to_have_count(2)
+    page.keyboard.type("bóng")
+    expect(page.locator(".review-proof-row")).to_have_count(1)
+    page.keyboard.press("Control+h")
+    page.keyboard.type("khung")
+    page.locator(".review-proof-replace-all").click()
+    _until(lambda: obj(1, lambda o: o["id"] == "bubble-b")["translation"] == "Bong khung thứ hai", "replace all")
+    canvas.focus()
+    page.keyboard.press("Control+z")
+    _until(lambda: obj(1, lambda o: o["id"] == "bubble-b")["translation"] == "Bong bóng thứ hai", "replace all to be undone")
+    page.locator(".review-proof-find").fill("")
+    page.locator('.review-proof-row[data-object-id="bubble-b"] .review-proof-translation').fill("Sửa trong bảng soát")
+    _until(lambda: obj(1, lambda o: o["id"] == "bubble-b")["translation"] == "Sửa trong bảng soát", "an edit in the panel")
+    page.screenshot(path=str(artifacts / "editing-proof-panel.png"))
+
+    page.locator(".review-proof-close").click()
+    page.locator(f'.review-text-object-overlay[data-object-id="{a_id}"]').click()
+    page.locator(".review-floating-inspector summary", has_text="Kiểu chữ").click()
+    page.locator(".style-preset-name").fill("Hiệu ứng")
+    page.locator(".style-preset-store").click()
+    expect(page.locator(".style-preset-select option")).to_have_count(2)
+    page.locator('.review-text-object-overlay[data-object-id="bubble-b"]').click()
+    canvas.focus()
+    page.keyboard.press("1")
+    _until(lambda: obj(1, lambda o: o["id"] == "bubble-b")["style"].get("strokeWidth") == "3", "preset key 1")
+    page.keyboard.press("Control+z")
+    _until(lambda: obj(1, lambda o: o["id"] == "bubble-b")["style"].get("strokeWidth") != "3", "the preset to be undone")
+    page.keyboard.press("Control+f")
+    page.locator('.review-proof-row[data-object-id="bubble-b"] .review-proof-check').check()
+    page.locator(".review-proof-preset").select_option("Hiệu ứng")
+    page.locator(".review-proof-preset-apply").click()
+    _until(lambda: obj(1, lambda o: o["id"] == "bubble-b")["style"].get("bold") is True, "a preset applied from the panel")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -486,6 +607,19 @@ def main() -> None:
                 _exercise_long_image(page, args.base_url.rstrip("/"), args.artifacts, name)
                 print(f"{name}: PASS")
                 page.close()
+
+            page = browser.new_page(viewport={"width": 1440, "height": 960}, device_scale_factor=1)
+            page.on("pageerror", lambda exc: failures.append(f"editing page error: {exc}"))
+            page.on("console", lambda message: failures.append(f"editing console error: {message.text}") if message.type == "error" else None)
+            request = urllib.request.Request(f"{args.base_url.rstrip('/')}/api/style_presets", data=b'{"presets": []}', method="PUT", headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(request).close()
+            try:
+                _exercise_editing(page, args.base_url.rstrip("/"), args.artifacts)
+                print("editing: PASS")
+            finally:
+                page.close()
+                urllib.request.urlopen(request).close()
+                subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "create_ui_smoke_fixture.py")], check=True)
         finally:
             browser.close()
 

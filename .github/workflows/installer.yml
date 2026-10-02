@@ -5,6 +5,8 @@ name: Installer
 on:
   workflow_dispatch:
   push:
+    # The installer fetches a branch by name, so tags are left out.
+    branches: ['**']
     paths:
       - install.ps1
       - install.sh

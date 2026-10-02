@@ -27,6 +27,7 @@ function renderEditorPanel(pageIndex) {
     return;
   }
   panel.dataset.objectId = obj.id;
+  window.editorHistory?.watch(pageIndex, obj);
 
   const ocrLabel = document.createElement("label");
   ocrLabel.className = "ui-field text-editor-field";
@@ -65,15 +66,11 @@ function renderEditorPanel(pageIndex) {
   textBody.append(ocrLabel, trLabel);
 
   const typographyBody = buildPanelSection(panel, "Kiểu chữ", false);
+  window.stylePresets?.buildSection(typographyBody, obj, pageIndex);
   buildTextSection(typographyBody, panel, obj, pageIndex);
 
-  const appearanceBody = buildPanelSection(panel, "Màu và nền", false);
+  const appearanceBody = buildPanelSection(panel, "Màu chữ", false);
   buildAppearanceSection(appearanceBody, panel, obj, pageIndex);
-
-  buildBackgroundSection(appearanceBody, panel, obj, pageIndex);
-
-  const geometryBody = buildPanelSection(panel, "Vị trí và kích thước", false);
-  buildGeometryControls(geometryBody, obj, pageIndex);
 
   const actions = document.createElement("div");
   actions.className = "text-object-actions";
@@ -85,17 +82,6 @@ function renderEditorPanel(pageIndex) {
   ocrBtn.addEventListener("click", () => {
     associateTextObjectOcr(pageIndex, obj.id).catch((err) => {
       showToast("Không thể nhận dạng lại bằng OCR: " + err.message, "info");
-    });
-  });
-
-  const dupBtn = document.createElement("button");
-  dupBtn.type = "button";
-  dupBtn.className = "ui-btn ui-btn-ghost text-object-action-btn";
-  dupBtn.textContent = "Nhân đôi";
-  dupBtn.title = "Tạo bản sao vùng chữ này";
-  dupBtn.addEventListener("click", () => {
-    duplicateTextObject(pageIndex, obj.id).catch((err) => {
-      showToast("Không thể nhân đôi vùng chữ: " + err.message, "error");
     });
   });
 
@@ -115,7 +101,7 @@ function renderEditorPanel(pageIndex) {
     });
   });
 
-  actions.append(ocrBtn, dupBtn, delBtn);
+  actions.append(ocrBtn, delBtn);
   panel.appendChild(actions);
 
   syncStyleDataset(panel, obj.style);
@@ -151,6 +137,14 @@ function syncStyleDataset(panel, style) {
   panel.dataset.verticalAlign = style.verticalAlign || "middle";
 }
 
+// The font the renderer will use, so AI-picked fonts show by name.
+function shownFontId(obj) {
+  if (obj.font_selection_mode !== "user" && obj.font_ai_id) return obj.font_ai_id;
+  const font = obj.style?.font;
+  return font && font !== "auto" ? font : "default";
+}
+window.shownFontId = shownFontId;
+
 function buildTextSection(body, panel, obj, pageIndex) {
   const style = obj.style || (obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE));
   const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
@@ -165,10 +159,6 @@ function buildTextSection(body, panel, obj, pageIndex) {
   if (fonts.length === 0) {
     fontSelect.innerHTML = '<option value="default">Mặc định (Comic)</option>';
   } else {
-    const autoOpt = document.createElement("option");
-    autoOpt.value = "auto";
-    autoOpt.textContent = "Tự động (AI chọn)";
-    fontSelect.appendChild(autoOpt);
     const groups = new Map();
     fonts.forEach((f) => {
       if (!f || f.id === "auto") return;
@@ -186,10 +176,11 @@ function buildTextSection(body, panel, obj, pageIndex) {
       group.appendChild(opt);
     });
   }
-  fontSelect.value = obj.font_selection_mode === "auto" ? "auto" : (style.font || "default");
+  fontSelect.value = shownFontId(obj);
+  if (!fontSelect.value) fontSelect.value = "default";
   fontSelect.addEventListener("change", () => {
     style.font = fontSelect.value;
-    obj.font_selection_mode = fontSelect.value === "auto" ? "auto" : "user";
+    obj.font_selection_mode = "user";
     obj.font_ai_id = null;
     obj.font_match = null;
     panel.dataset.font = fontSelect.value;
@@ -363,155 +354,6 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
 
   body.append(colorToolbar, strokeToolbar);
 }
-
-function buildBackgroundSection(body, panel, obj, pageIndex) {
-  const style = obj.style || (obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE));
-  const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
-
-  const bgToolbar = document.createElement("div");
-  bgToolbar.className = "ui-control-row bg-toolbar";
-
-  const toggleId = "bg-toggle-" + obj.id;
-  const bgToggle = document.createElement("input");
-  bgToggle.type = "checkbox";
-  bgToggle.id = toggleId;
-  bgToggle.className = "bg-toggle-checkbox";
-  bgToggle.checked = !!(style.bgColor && style.bgColor !== "transparent");
-  const toggleLabel = document.createElement("label");
-  toggleLabel.htmlFor = toggleId;
-  toggleLabel.className = "bg-toggle-label";
-  toggleLabel.textContent = "Nền";
-
-  const bgSelect = document.createElement("select");
-  bgSelect.className = "ui-select";
-  const bgColors = ["#ffffff", "#000000"];
-  if (style.bgColor && style.bgColor !== "transparent" && !bgColors.includes(style.bgColor)) {
-    bgColors.unshift(style.bgColor);
-  }
-  bgColors.forEach((val) => {
-    const opt = document.createElement("option");
-    opt.value = val;
-    opt.textContent = val === "#ffffff" ? "Trắng" : val === "#000000" ? "Đen" : val;
-    bgSelect.appendChild(opt);
-  });
-  bgSelect.value = (style.bgColor && style.bgColor !== "transparent") ? style.bgColor : "#ffffff";
-
-  const radiusSlider = document.createElement("input");
-  radiusSlider.type = "range";
-  radiusSlider.className = "corner-radius-slider";
-  radiusSlider.min = "0";
-  radiusSlider.max = "20";
-  radiusSlider.value = style.cornerRadius || "0";
-  radiusSlider.title = "Độ bo góc nền";
-  const radiusValSpan = document.createElement("span");
-  radiusValSpan.className = "ui-value";
-  radiusValSpan.textContent = (style.cornerRadius || "0") + "px";
-
-  const updateEnabled = () => {
-    bgSelect.disabled = !bgToggle.checked;
-    radiusSlider.disabled = !bgToggle.checked;
-  };
-
-  bgToggle.addEventListener("change", () => {
-    style.bgColor = bgToggle.checked ? bgSelect.value : "transparent";
-    panel.dataset.bgColor = style.bgColor;
-    updateEnabled();
-    schedule();
-  });
-  bgSelect.addEventListener("change", () => {
-    style.bgColor = bgSelect.value;
-    panel.dataset.bgColor = bgSelect.value;
-    schedule();
-  });
-  radiusSlider.addEventListener("input", () => {
-    style.cornerRadius = radiusSlider.value;
-    panel.dataset.cornerRadius = radiusSlider.value;
-    radiusValSpan.textContent = radiusSlider.value + "px";
-    schedule();
-  });
-
-  updateEnabled();
-  bgToolbar.append(toggleLabel, bgToggle, bgSelect, radiusSlider, radiusValSpan);
-  body.appendChild(bgToolbar);
-}
-
-const TEXT_OBJECT_MIN_SIZE = 10;
-
-function getPageImageSize(pageIndex) {
-  const page = currentManifest && currentManifest.pages ? currentManifest.pages[pageIndex] : null;
-  if (page && page.width && page.height) return { w: page.width, h: page.height };
-  return { w: Infinity, h: Infinity };
-}
-
-function buildGeometryControls(panel, obj, pageIndex) {
-  const { w: W, h: H } = getPageImageSize(pageIndex);
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const grid = document.createElement("div");
-  grid.className = "geometry-grid";
-  grid.dataset.geometryFor = obj.id;
-
-  const mkField = (label, get, commit) => {
-    const wrap = document.createElement("div");
-    wrap.className = "ui-field geometry-field";
-    const lbl = document.createElement("span");
-    lbl.className = "geometry-field-label";
-    lbl.textContent = label;
-    const inp = document.createElement("input");
-    inp.type = "number";
-    inp.className = "ui-input geometry-input";
-    inp.dataset.geometryField = label;
-    const refresh = () => { inp.value = String(get()); };
-    refresh();
-    inp.addEventListener("change", () => {
-      const raw = parseInt(inp.value, 10);
-      if (!Number.isFinite(raw)) { refresh(); return; }
-      commit(raw);
-      refresh();
-      if (typeof window.syncOverlayForObject === "function") window.syncOverlayForObject(pageIndex, obj.id);
-      if (typeof window.scheduleGeomPersist === "function") window.scheduleGeomPersist(pageIndex, obj.id);
-    });
-    wrap.append(lbl, inp);
-    return { wrap, refresh };
-  };
-
-  const fx = mkField("X", () => obj.region.x1, (v) => {
-    const w = obj.region.x2 - obj.region.x1;
-    obj.region.x1 = clamp(Math.round(v), 0, W - w);
-    obj.region.x2 = obj.region.x1 + w;
-  });
-  const fy = mkField("Y", () => obj.region.y1, (v) => {
-    const h = obj.region.y2 - obj.region.y1;
-    obj.region.y1 = clamp(Math.round(v), 0, H - h);
-    obj.region.y2 = obj.region.y1 + h;
-  });
-  const fw = mkField("W", () => obj.region.x2 - obj.region.x1, (v) => {
-    const newW = clamp(Math.round(v), TEXT_OBJECT_MIN_SIZE, W - obj.region.x1);
-    obj.region.x2 = obj.region.x1 + newW;
-  });
-  const fh = mkField("H", () => obj.region.y2 - obj.region.y1, (v) => {
-    const newH = clamp(Math.round(v), TEXT_OBJECT_MIN_SIZE, H - obj.region.y1);
-    obj.region.y2 = obj.region.y1 + newH;
-  });
-
-  grid.append(fx.wrap, fy.wrap, fw.wrap, fh.wrap);
-  panel.appendChild(grid);
-}
-
-function refreshGeometryControls(pageIndex, id) {
-  const grid = document.querySelector(`.geometry-grid[data-geometry-for="${id}"]`);
-  const obj = findTextObject(pageIndex, id);
-  if (!grid || !obj || !obj.region) return;
-  const r = obj.region;
-  const set = (field, val) => {
-    const inp = grid.querySelector(`input[data-geometry-field="${field}"]`);
-    if (inp) inp.value = String(val);
-  };
-  set("X", r.x1);
-  set("Y", r.y1);
-  set("W", r.x2 - r.x1);
-  set("H", r.y2 - r.y1);
-}
-window.refreshGeometryControls = refreshGeometryControls;
 
 function buildAlignmentControls(body, panel, obj, pageIndex) {
   const style = obj.style || (obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE));

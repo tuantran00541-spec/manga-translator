@@ -405,6 +405,17 @@ class TextObjectStyle(BaseModel):
         return v
 
 
+class StylePreset(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=40)
+    style: TextObjectStyle
+
+
+class StylePresetsRequest(BaseModel):
+    presets: list[StylePreset] = Field(max_length=20)
+
+
 def _validate_text_object_shape(v: str) -> str:
     if v not in ALLOWED_TEXT_OBJECT_SHAPES:
         raise ValueError("shape must be 'rectangle' or 'ellipse'")
@@ -559,25 +570,3 @@ class VisualQCKeyRequest(BaseModel):
             raise ValueError("API key is unexpectedly long")
         return v
 
-
-class VisualQCInspectRequest(BaseModel):
-    chapter_id: str
-    page_index: int = Field(ge=0)
-    provider: str = "gemini"
-    model: str | None = None
-
-    @field_validator("provider")
-    @classmethod
-    def _provider(cls, value: str) -> str:
-        from app.ai_providers import normalize_provider_id
-
-        return normalize_provider_id(value)
-
-    @field_validator("model")
-    @classmethod
-    def _model(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        from app.ai_providers import validate_model_name
-
-        return validate_model_name(value, default="")

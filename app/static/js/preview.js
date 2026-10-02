@@ -126,7 +126,6 @@ function renderPreview() {
 
   const page = pages[previewActivePageIndex];
   renderPreviewPage(surface, page, previewActivePageIndex, pages, inspector);
-  window.setupWorkbenchPanels?.("preview");
 
   if (typeof setWorkflowCheckpoint === "function") {
     setWorkflowCheckpoint("preview", previewActivePageIndex);

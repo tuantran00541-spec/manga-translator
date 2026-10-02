@@ -123,7 +123,7 @@ export function installTransform(shell, overlay, desc, pageIndex, obj, signal) {
     const o = drag.original; drag = null; overlay.classList.remove("transforming");
     const r = obj.region;
     if (r.x1 !== o.x1 || r.y1 !== o.y1 || r.x2 !== o.x2 || r.y2 !== o.y2) {
-      window.scheduleGeomPersist?.(pageIndex, obj.id); window.refreshGeometryControls?.(pageIndex, obj.id);
+      window.scheduleGeomPersist?.(pageIndex, obj.id);
     }
   };
   overlay.addEventListener("pointerup", end, { signal }); overlay.addEventListener("pointercancel", end, { signal });

@@ -52,48 +52,11 @@ export function mountToolRail(shell, signal) {
   syncToolButtons();
 }
 
-export function mountActions(shell, signal, rerender) {
+export function mountActions(shell) {
   const actions = shell.querySelector(".review-docbar-actions");
   if (!actions) return;
   actions.replaceChildren();
 
-  const render = document.createElement("button");
-  render.type = "button";
-  render.className = "ui-btn ui-btn-ghost ui-btn-compact review-render-text-btn";
-  render.textContent = "Render chữ";
-  render.title = "Kết xuất chữ lên ảnh";
-
-  render.addEventListener("click", async () => {
-    const indices = [...new Set((shell._descriptors || []).map((d) => Number(d.item.canonicalIndex)))];
-    if (!indices.length || typeof window.renderTranslations !== "function") return;
-    render.disabled = true;
-    render.textContent = "Đang render…";
-    try {
-      let count = 0;
-      for (const pageIndex of indices) {
-        await window.renderTranslations(pageIndex);
-        const page = window.currentManifest?.pages?.[pageIndex];
-        if (page?.rendered) {
-          page._reviewRenderedUrl = page.rendered;
-          count++;
-        }
-      }
-      if (!count) return window.showToast?.("Không có vùng chữ nào để render.", "info");
-      state.variant = "rendered";
-      window.showToast?.(`Đã render chữ trên ${count} ảnh.`, "success");
-      rerender();
-    } catch (err) {
-      window.showToast?.("Không thể render chữ: " + err.message, "error");
-    } finally {
-      render.disabled = false;
-      render.textContent = "Render chữ";
-    }
-  }, { signal });
-
-  (shell.querySelector(".review-more-actions") || actions).appendChild(render);
-  if (typeof window.buildChapterTranslateControls === "function") {
-    actions.appendChild(window.buildChapterTranslateControls());
-  }
   if (typeof window.buildChapterExportButton === "function") {
     actions.appendChild(window.buildChapterExportButton());
   }

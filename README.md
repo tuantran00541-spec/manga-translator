@@ -132,11 +132,16 @@ OCR is chapter-aware and revision-safe, and keeps the source lettering's colour,
 
 The browser workbench edits translated text, font, size, weight, stroke, background, alignment, region geometry and manual text objects in one Review workspace.
 
+- **Undo and redo** (Ctrl+Z, Ctrl+Y) for text edits, moves, resizes, styles, new and deleted text objects, and whole find-and-replace or preset runs.
+- **Keyboard proofreading**: A/D move between slices, Alt+Up/Down between text objects, Enter edits the translation, Ctrl+Enter saves and goes to the next one, Esc returns to the page; `?` lists every shortcut.
+- **Proofreading panel** (Ctrl+F, Ctrl+H): every source line and translation of the chapter in reading order, editable in place, with find, replace-all and an untranslated-only filter.
+- **Style presets**: save a text object's look as "Dialogue", "Narration" or "SFX", apply it with keys 1-9 or to many checked rows at once. Presets are kept in `data/style_presets.json`.
+
 The renderer bundles **71 comic fonts** (69 under OFL-1.1, 40 covering Vietnamese) across dialogue, emphasis, thought, narration, skill, SFX, horror and romance. A.I mode letters each text in the font for its role and container (speech, narration, shouts, screens, SFX); every font choice is validated against the installed catalog rather than accepted as a file path. Wrapped lines are balanced so a line never leaves one word alone. See [docs/comic-fonts.md](docs/comic-fonts.md).
 
 ### AI providers
 
-Built in: Google Gemini, DeepSeek, OpenAI, OpenRouter and Experiential Labs. The settings layer also registers custom **OpenAI-compatible** providers on validated HTTPS API bases. Each provider advertises its capabilities separately, so one registry serves model discovery, translation and Visual QC.
+Built in: Google Gemini, DeepSeek, OpenAI and OpenRouter. The settings layer also registers custom **OpenAI-compatible** providers on validated HTTPS API bases. Each provider advertises its capabilities separately, so one registry serves model discovery, translation and Visual QC.
 
 ### Visual QC
 

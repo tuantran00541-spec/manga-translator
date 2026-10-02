@@ -1,3 +1,1 @@
-from .gemini import GeminiVisualQC, VisualQCIssue
-
-__all__ = ["GeminiVisualQC", "VisualQCIssue"]
+"""Vision helpers kept from the visual QC tools."""

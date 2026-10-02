@@ -91,24 +91,6 @@ def test_scan_sends_every_slice_as_a_labelled_image(monkeypatch):
     assert cost is None, "OpenAI does not report priced usage"
 
 
-@pytest.mark.parametrize("provider_id, label", [
-    ("openai", "OpenAI"), ("openrouter", "OpenRouter"), ("my-proxy", "my-proxy"),
-])
-def test_chapter_qc_accepts_every_vision_provider(provider_id, label):
-    # The QC step of A.I mode (and the QC button) used to reject everything
-    # except Gemini and DeepSeek before even checking the key.
-    import contextlib
-    from app.visual_qc.service import ChapterQCService
-
-    service = ChapterQCService(
-        object(), provider=provider_id, api_key_provider=lambda: None,
-        manifest_loader=lambda chapter_id: {"pages": []}, manifest_saver=lambda *args: None,
-        manifest_lock=lambda chapter_id: contextlib.nullcontext(),
-    )
-    with pytest.raises(ValueError, match=f"^{label} API key is not configured$"):
-        asyncio.run(service.start("abcd1234"))
-
-
 # -- orchestration ------------------------------------------------------------
 
 class RecordingRunner:

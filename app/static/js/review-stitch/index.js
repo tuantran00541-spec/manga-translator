@@ -1,6 +1,7 @@
 import { canvasBlob, captureSnapshot, chunkHasPaint, drawBrushMask, paintPoint, paintStroke } from "./brush.js";
 import { installOverlaySync, installTextDrawing, mountTextInspector, renderOverlays, reviewPageIndexAtSourceY, sourcePoint } from "./overlays.js";
 import { SHORTCUTS, chapterKey, deleteSnapshot, hasSnapshotPrefix, resetChapterState, snapshotKey, state } from "./state.js";
+import { installProofing } from "./proofing.js";
 import { orderedSlices, renderStrip } from "./strip.js";
 import { mountActions, mountToolRail, setTool, syncTool } from "./tools.js";
 import { applyZoom, stepZoom } from "./zoom.js";
@@ -218,9 +219,9 @@ export function mount(workspace) {
   mountToolRail(shell, signal);
   shell.append(brushBar, zoomDock);
   installTextDrawing(shell, signal);
-  mountActions(shell, signal, () => shell._rerender?.());
+  mountActions(shell);
+  installProofing(shell, signal);
   window.mountChapterOCR?.();
-  window.mountChapterQC?.();
   detectingLang = !window.currentSourceLang?.();
   syncLang();
   window.detectSourceLang?.()
@@ -274,7 +275,33 @@ export function mount(workspace) {
     void renderStrip(shell, items, signal);
   };
   shell._rerender = rerender;
-  shell._showRendered = () => { state.variant = "rendered"; rerender(); };
+  // Renders pages whose lettering changed since their last render, then shows the lettered view.
+  const letteringSig = (page) => JSON.stringify((page.text_objects || []).filter((o) => o?.translation?.trim()));
+  const showRendered = async () => {
+    const pages = window.currentManifest?.pages || [];
+    const todo = [...new Set(items.map((it) => Number(it.canonicalIndex)))].filter((i) => {
+      const page = pages[i];
+      if (!page || page.skipped) return false;
+      const sig = letteringSig(page);
+      return sig !== page._renderSig && (sig !== "[]" || page.rendered);
+    });
+    if (todo.length && typeof window.renderTranslations === "function") {
+      busy(true);
+      try {
+        for (const [n, i] of todo.entries()) {
+          rendered.textContent = `Đang render ${n + 1}/${todo.length}…`;
+          const sig = letteringSig(pages[i]);
+          if (await window.renderTranslations(i)) pages[i]._renderSig = sig;
+        }
+      } finally {
+        rendered.textContent = "Có chữ";
+        busy(false);
+      }
+    }
+    state.variant = "rendered";
+    rerender();
+  };
+  shell._showRendered = showRendered;
   signal.addEventListener("abort", () => captureSnapshot(shell), { once: true });
 
   image.addEventListener("pointerdown", (e) => { if (state.variant !== "clean" || !["brush", "eraser"].includes(state.tool) || e.button !== 0) { return; } const p = sourcePoint(image, e); if (!p) { return; } e.preventDefault(); painting = true; last = p; image.setPointerCapture?.(e.pointerId); paintPoint(shell, p.x, p.y, radius, state.tool === "eraser"); }, { signal });
@@ -301,7 +328,7 @@ export function mount(workspace) {
 
   size.addEventListener("input", () => { radius = Number(size.value); sizeOut.textContent = `${radius * 2}px`; }, { signal });
   clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } deleteSnapshot(snapshotKey()); syncBrushBar(); }, { signal });
-  clean.addEventListener("click", () => { if (state.variant !== "clean") { state.variant = "clean"; rerender(); } }, { signal }); rendered.addEventListener("click", () => { if (state.variant !== "rendered") { captureSnapshot(shell); state.variant = "rendered"; rerender(); } }, { signal }); original.addEventListener("click", () => { if (state.variant !== "original") { captureSnapshot(shell); state.variant = "original"; rerender(); } }, { signal });
+  clean.addEventListener("click", () => { if (state.variant !== "clean") { state.variant = "clean"; rerender(); } }, { signal }); rendered.addEventListener("click", () => { captureSnapshot(shell); void showRendered(); }, { signal }); original.addEventListener("click", () => { if (state.variant !== "original") { captureSnapshot(shell); state.variant = "original"; rerender(); } }, { signal });
   zoomOut.addEventListener("click", () => { stepZoom(-1); applyZoom(shell); }, { signal }); zoomIn.addEventListener("click", () => { stepZoom(1); applyZoom(shell); }, { signal }); zoomValue.addEventListener("click", () => { state.fitWidth = true; applyZoom(shell); }, { signal }); one.addEventListener("click", () => { state.fitWidth = false; state.zoom = 100; applyZoom(shell); }, { signal });
   window.addEventListener("resize", () => { if (state.fitWidth) applyZoom(shell); }, { signal });
 

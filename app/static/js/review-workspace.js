@@ -8,18 +8,17 @@
     const providers = window.aiProviderSettings || {};
     const fixedLabels = {
       gemini: "Google Gemini", deepseek: "DeepSeek", openai: "OpenAI",
-      openrouter: "OpenRouter", experiential: "Experiential Labs",
+      openrouter: "OpenRouter",
     };
-    document.querySelectorAll(".chapter-translate-provider, .chapter-qc-provider, .ai-active-provider, .ai-mode-provider").forEach((select) => {
+    document.querySelectorAll(".ai-active-provider, .ai-mode-provider").forEach((select) => {
       const selected = select.value;
-      const capability = select.classList.contains("chapter-translate-provider") ? "translation"
-        : select.classList.contains("chapter-qc-provider") || select.classList.contains("ai-mode-provider") ? "visual_qc" : null;
+      const capability = select.classList.contains("ai-mode-provider") ? "visual_qc" : null;
       const available = Object.values(providers).filter((info) => !capability || info.capabilities?.[capability]);
       const options = available.map((info) => new Option(info.label || fixedLabels[info.id] || info.id, info.id));
       if (options.length) select.replaceChildren(...options);
       if ([...select.options].some((option) => option.value === selected)) select.value = selected;
-      else if (select.classList.contains("chapter-translate-provider") || select.classList.contains("ai-mode-provider")) select.value = "deepseek";
-      else if (select.classList.contains("chapter-qc-provider") || select.classList.contains("ai-active-provider")) select.value = "gemini";
+      else if (select.classList.contains("ai-mode-provider")) select.value = "deepseek";
+      else select.value = "gemini";
       select.dispatchEvent(new Event("ai-providers-updated", { bubbles: true }));
     });
   }
@@ -28,8 +27,8 @@
   function createAIProviderSettings() {
     if (aiSettingsInstance?.config?.isConnected) return aiSettingsInstance.status;
 
-    const builtinProviders = ["gemini", "deepseek", "openai", "openrouter", "experiential"];
-    const labels = { gemini: "Google Gemini", deepseek: "DeepSeek", openai: "OpenAI", openrouter: "OpenRouter", experiential: "Experiential Labs" };
+    const builtinProviders = ["gemini", "deepseek", "openai", "openrouter"];
+    const labels = { gemini: "Google Gemini", deepseek: "DeepSeek", openai: "OpenAI", openrouter: "OpenRouter" };
 
     const el = (tag, className, text) => {
       const node = document.createElement(tag);
@@ -417,7 +416,6 @@
       window._reviewStitchAbort?.abort();
     };
 
-    window.setupWorkbenchPanels?.("review");
     window.mountStitchInspector?.();
   }
 

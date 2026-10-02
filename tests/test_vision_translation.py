@@ -154,7 +154,7 @@ def test_vision_page_commits_only_translation_and_renders_saved_style(
         chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
         source_lang="en", target_lang="vi",
     )
-    answer = asyncio.run(translation_router.translate_page_with_images(request))
+    answer = asyncio.run(translation_router.translate_page_in_context(request))
     info = answer["translation_run"]
     assert info["translated"] == 1
     assert info["rendered_pages"] == [0]
@@ -186,7 +186,7 @@ def test_vision_page_rejects_stale_region_without_overwriting(saved_chapter, mon
     request = translation_router.TranslateVisionPageRequest(
         chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
     )
-    answer = asyncio.run(translation_router.translate_page_with_images(request))
+    answer = asyncio.run(translation_router.translate_page_in_context(request))
     assert answer["translation_run"]["translated"] == 0
     assert answer["translation_run"]["stale"] == 1
     assert answer["translation_run"]["rendered_pages"] == []
@@ -356,7 +356,7 @@ def test_sound_effect_left_as_art_returns_its_region_for_restoring(saved_chapter
     request = translation_router.TranslateVisionPageRequest(
         chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="en", target_lang="vi",
     )
-    info = asyncio.run(translation_router.translate_page_with_images(request))["translation_run"]
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
     assert info["blank_ids"] == ["obj_1"] and info["art_regions"] == [region]
 
 

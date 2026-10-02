@@ -194,25 +194,6 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
     };
   }
 
-  function setQcDisabled(control, locked) {
-    if (!(control instanceof HTMLButtonElement || control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement)) return;
-    if (locked) {
-      if (control.dataset.qcWasDisabled === undefined) control.dataset.qcWasDisabled = control.disabled ? "1" : "0";
-      control.disabled = true;
-      return;
-    }
-    if (control.dataset.qcWasDisabled === undefined) return;
-    control.disabled = control.dataset.qcWasDisabled === "1";
-    delete control.dataset.qcWasDisabled;
-  }
-
-  function syncQcLock(workspace) {
-    if (!workspace) return;
-    const locked = workspace.classList.contains("review-chapter-qc-running");
-    document.querySelectorAll(".review-rail-tool").forEach((control) => setQcDisabled(control, locked));
-    workspace.querySelectorAll(".review-render-text-btn,.chapter-translate-controls button,.review-inline-translation").forEach((control) => setQcDisabled(control, locked));
-  }
-
   function restoreReviewWorkspaceState(workspace) {
     const state = workspace?._reviewRestoreState;
     if (!state) return;
@@ -270,7 +251,6 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
   function refreshReviewAdapters() {
     const workspace = document.querySelector("#page-view.review-mode .review-workspace-shell");
     if (!workspace) return;
-    syncQcLock(workspace);
     restoreReviewWorkspaceState(workspace);
   }
 
@@ -302,13 +282,6 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
       workspace.querySelector(".review-document-viewport")?.classList.add("review-space-pan");
       return;
     }
-    if (!workspace.classList.contains("review-chapter-qc-running") || editableTarget(event.target)) return;
-    const key = String(event.key || "").toLowerCase();
-    const mutatingShortcut = ["v", "r", "o", "b", "e", "[", "]", "delete", "backspace"].includes(key);
-    if (mutatingShortcut) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
   }, true);
 
   document.addEventListener("keyup", (event) => {
@@ -332,10 +305,6 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
-    }
-    if (workspace.classList.contains("review-chapter-qc-running") && event.target?.closest?.(".review-stitched-image")) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
     }
   }, true);
 

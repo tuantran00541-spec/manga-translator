@@ -76,6 +76,8 @@ function _captureTextState(obj) {
 function scheduleTextObjectPersist(pageIndex, id) {
   const obj = findTextObject(pageIndex, id);
   if (!obj) return;
+  window.editorHistory?.touch(pageIndex, id);
+  document.dispatchEvent(new CustomEvent("text-object-edited", { detail: { pageIndex, id } }));
   _textDirty.set(`${pageIndex}:${id}`, Object.assign({ pageIndex, id }, _captureTextState(obj)));
   _textHasError = false;
   refreshSaveStatus();
