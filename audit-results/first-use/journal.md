@@ -1,6 +1,6 @@
 # First-use walkthrough
 
-## OK · home · 0.7s
+## OK · home · 0.8s
 - home text: KHÔNG GIAN LÀM VIỆC
 Xin chào!
 
@@ -13,25 +13,25 @@ Nhập liên kết, ảnh hoặc tệp truyện để bắt đầu.
 Bắt đầu dự án đầu tiên
 ![](01-home.png)
 
-## OK · open-import · 0.6s
+## OK · open-import · 0.7s
 - import text: DỰ ÁN MỚI
 Nhập nội dung
 
 Dán liên kết chương hoặc tải ảnh, ZIP, CBZ từ máy. Ngôn ngữ gốc được tự nhận diện sau khi xử lý ảnh. | A.I mode | Mở từ liên kết | Tải tệp lên
 ![](02-import.png)
 
-## OK · load-chapter-from-link · 10.7s
-- 'Tải chương' buttons on screen: 2
-- preview header: Chương 198e8397 | 135/135 lát được chọn
+## OK · load-chapter-from-link · 16.0s
+- 'Tải chương' buttons on screen: 1
+- preview header: Chương 2304ccf6 | 135/135 lát được chọn
 - slices listed: 135
 ![](03-preview.png)
 
-## OK · preview-browse-and-skip · 2.6s
+## OK · preview-browse-and-skip · 2.8s
 - after skip: 134/135 lát được chọn
 - after restore: 135/135 lát được chọn
 ![](04-preview-skip.png)
 
-## OK · preview-preserve-region · 1.9s
+## OK · preview-preserve-region · 2.0s
 - inspector: TRANG ĐANG CHỌN
 TRANG 1 · LÁT 3/6
 Đang đánh dấu · Chọn để kết thúc
@@ -39,75 +39,98 @@ Xóa vùng giữ nguyên
 Bỏ qua lát ảnh
 ![](05-preview-preserve.png)
 
-## OK · process-chapter · 267.3s
+## OK · process-chapter · 611.1s
 - progress text: Đang xử lý 0/135…
-- progress text: Đang xử lý 23/135…
-- progress text: Đang xử lý 56/135…
-- progress text: Đang xử lý 98/135…
+- progress text: Đang xử lý 0/135…
+- progress text: Đang xử lý 14/135…
+- progress text: Đang xử lý 26/135…
+- progress text: Đang xử lý 41/135…
+- progress text: Đang xử lý 54/135…
+- progress text: Đang xử lý 77/135…
+- progress text: Đang xử lý 93/135…
+- progress text: Đang xử lý 108/135…
+- progress text: Đang xử lý 122/135…
 - text regions on screen: 0
 ![](06-processing-progress.png)
 ![](07-processing-progress.png)
 ![](08-processing-progress.png)
 ![](09-processing-progress.png)
-![](10-review-first-look.png)
+![](10-processing-progress.png)
+![](11-processing-progress.png)
+![](12-processing-progress.png)
+![](13-processing-progress.png)
+![](14-processing-progress.png)
+![](15-processing-progress.png)
+![](16-review-first-look.png)
 
-## OK · review-views · 5.3s
-![](11-view-Ảnh gốc.png)
-![](12-view-Sau inpaint.png)
+## OK · auto-ocr · 194.8s
+- OCR finished by itself: True
+- toast: Đang nhận dạng chữ gốc của cả chương, xem tiến độ ở menu ba chấm góc phải.
+- toast: OCR toàn chương đã hoàn tất.
+
+## OK · review-views · 5.4s
+![](17-view-Ảnh gốc.png)
+![](18-view-Sau inpaint.png)
 
 ## OK · tool-tooltips · 0.8s
 - tools in rail: 7
-![](13-tooltip-brush.png)
+![](19-tooltip-brush.png)
 
-## OK · select-bubble · 7.9s
-- OCR text of first region: ''
-![](14-inspector.png)
+## OK · select-bubble · 1.1s
+- OCR text of first region: '“DARE TO DREAM”'
+![](20-inspector.png)
 
 ## OK · type-translation · 1.5s
-- save status: 
+- save status: Đã lưu
 
-## OK · ocr-whole-chapter · 84.1s
-- OCR panel: 
-- toast: OCR toàn chương đã hoàn tất.
-![](15-more-menu.png)
-![](16-ocr-done.png)
+## OK · ocr-whole-chapter · 0.7s
+- menu: Ngôn ngữ gốc
+Chưa rõ
+Tiếng Nhật
+Tiếng Trung
+Tiếng Hàn
+Tiếng Anh
+tự nhận
+OCR toàn chương
+![](21-more-menu.png)
 
-## OK · proof-panel · 4.5s
+## OK · proof-panel · 4.7s
 - rows in proof panel: 142
 - rows matching 'số': 4
-![](17-proof-panel.png)
+![](22-proof-panel.png)
 
-## OK · draw-new-region · 2.8s
+## OK · draw-new-region · 2.9s
 - regions before/after drawing: 142/143
-![](18-new-region.png)
+![](23-new-region.png)
 
 ## OK · undo-redo · 3.1s
 - regions after undo: 142
 - regions after redo: 143
 
-## OK · style-preset · 1.6s
+## OK · style-preset · 1.8s
 - toast: Đã lưu kiểu "Lời thoại đậm".
-![](19-preset.png)
+![](24-preset.png)
 
-## OK · brush-clean · 3.0s
-![](20-brush-painted.png)
-![](21-brush-cleaned.png)
+## OK · brush-clean · 3.4s
+![](25-brush-painted.png)
+![](26-brush-cleaned.png)
 
-## OK · lettered-view · 5.2s
-- lettered view ready after 5.1s
-![](22-lettered.png)
+## OK · lettered-view · 7.3s
+- lettered view ready after 7.1s
+![](27-lettered.png)
 
-## FAIL · export · 1.3s
-- FAILED: RuntimeError: no file was downloaded
-- toast: Xuất chương thất bại: Editorial preflight blocked final render/export: 137 unresolved story-text blocker(s): untranslated_story_object@p1:text_388b3959a5f141d9, untranslated_story_object@p4:text_ef87c2b2f101430b, untranslated_story_object@p5:text_6a01f9abd1ef4cf6, untranslated_story_object@p12:text_e4f2e5635faa4ba9, untranslated_story_object@p15:text_1cdb6d3142724a62, +132 more
+## OK · export · 167.1s
+- zip has 43 files: ['page_001.png', 'page_002.png', 'page_003.png', 'page_004.png', 'page_005.png']
+- toast: Đã kết xuất 131 trang.
 - console error: Failed to load resource: the server responded with a status of 409 (Conflict)
-![](23-export.png)
-![](24-export-failed.png)
+- console error: dialog: Chương còn 136 vùng chưa dịch, 1 vùng chưa có chữ gốc.
+Vẫn xuất chương? Những vùng đó sẽ để trống chữ.
+![](28-export.png)
 
-## OK · keyboard-help · 0.6s
-![](25-shortcut-help.png)
+## OK · keyboard-help · 0.7s
+![](29-shortcut-help.png)
 
-## OK · settings · 1.6s
+## OK · settings · 1.8s
 - settings: Cài đặt
 Dịch vụ AI
 
@@ -128,38 +151,53 @@ Chưa có key
 OpenRouter
 Chưa có key
 + Thêm provider tùy chỉnh
-![](26-settings.png)
+![](30-settings.png)
 
-## OK · back-home-recent · 1.1s
+## OK · back-home-recent · 1.2s
 - home text: KHÔNG GIAN LÀM VIỆC
 Xin chào!
 
 Chọn một chương gần đây hoặc bắt đầu dự án dịch mới.
 
-Chưa có chương gần đây
+Dự án gần đây
+1
+https://asurascans.com/comics/shadow-slave-05c7df14/chapter/1
+135 trang ·
+Kiểm tra chất lượng
+![](31-home-recent.png)
 
-Nhập liên kết, ảnh hoặc tệp truyện để bắt đầu.
-
-Bắt đầu dự án đầu tiên
-![](27-home-recent.png)
-
-## OK · dark-theme · 7.5s
+## OK · dark-theme · 7.7s
 - theme picker visible in the editor: True
-![](28-dark-home.png)
-![](29-dark-editor.png)
+![](32-dark-home.png)
+![](33-dark-editor.png)
 
-## OK · upload-zip · 4.3s
+## OK · upload-zip · 5.3s
 - uploaded 3 images; preview: 15/15 lát được chọn
-![](30-upload-preview.png)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+- console error: Failed to load resource: the server responded with a status of 400 (Bad Request)
+![](34-upload-preview.png)
 
-## OK · mobile-home · 1.2s
-![](31-mobile-home.png)
-![](32-mobile-menu.png)
+## OK · mobile-home · 1.3s
+![](35-mobile-home.png)
+![](36-mobile-menu.png)
 
 ## OK · mobile-open-recent · 5.1s
-![](33-mobile-chapter.png)
+![](37-mobile-chapter.png)
 
-## OK · ai-mode-first-look · 2.2s
+## OK · ai-mode-first-look · 2.3s
 - A.I panel: AI
 A.I mode
 
@@ -186,25 +224,25 @@ Deutsch
 Bối cảnh truyện (tùy chọn)
 Nâng cao: Jev soát câu dịch. Câu chưa tự nhiên, lủng củng hay tối nghĩa được gửi lại cho AI viết lại.
 Chạy A.I mode
-![](34-ai-mode.png)
+![](38-ai-mode.png)
 
-## OK · ai-mode-sign-in · 3.6s
-- code toast: ['Mã thử nghiệm: 947362']
+## OK · ai-mode-sign-in · 3.7s
+- code toast: ['Mã thử nghiệm: 012373']
 - plan bar: nguoi-moi@example.com · Số dư $0.00 (≈ 0 chương)
 Tài khoản
-- toast: Mã thử nghiệm: 947362
-![](35-ai-signed-in.png)
+- toast: Mã thử nghiệm: 012373
+![](39-ai-signed-in.png)
 
 ## OK · ai-mode-top-up-simulated · 2.1s
 - plan bar after $1 credit: nguoi-moi@example.com · Số dư $1.00 (≈ 3 chương)
 Tài khoản
 
-## OK · ai-mode-run · 931.2s
+## OK · ai-mode-run · 69.5s
 - provider picked: manga-cloud
 - 30s: Tải chương
-Xong · 160 lát · 10s
+Đang chạy 0/1 · Đang tải ảnh từ nguồn
 Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo
-Đang chạy 18/160
+Chờ
 Checkpoint 2: Clean ảnh
 Chờ
 Checkpoint 3: AI so ảnh gốc và ảnh clean
@@ -221,12 +259,12 @@ Chờ
 AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.
 
 Hủy
-- 151s: Tải chương
-Xong · 160 lát · 10s
+- finished after 69s: Tải chương
+Lỗi · Đang tải ảnh từ nguồn
 Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo
-Xong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s
+Chờ
 Checkpoint 2: Clean ảnh
-Đang chạy 18/131
+Chờ
 Checkpoint 3: AI so ảnh gốc và ảnh clean
 Chờ
 Checkpoint 4: Dịch và chọn font
@@ -238,152 +276,18 @@ Chờ
 Hoàn tất
 Chờ
 
-AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.
-
-Hủy
-- 272s: Tải chương
-Xong · 160 lát · 10s
-Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo
-Xong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s
-Checkpoint 2: Clean ảnh
-Đang chạy 82/131
-Checkpoint 3: AI so ảnh gốc và ảnh clean
-Chờ
-Checkpoint 4: Dịch và chọn font
-Chờ
-Nâng cao: Jev soát câu dịch
-Chờ
-Render
-Chờ
-Hoàn tất
-Chờ
-
-AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.
-
-Hủy
-- 393s: Tải chương
-Xong · 160 lát · 10s
-Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo
-Xong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s
-Checkpoint 2: Clean ảnh
-Xong · 4p12s
-Checkpoint 3: AI so ảnh gốc và ảnh clean
-Đang chạy 131/131
-Checkpoint 4: Dịch và chọn font
-Chờ
-Nâng cao: Jev soát câu dịch
-Chờ
-Render
-Chờ
-Hoàn tất
-Chờ
-
-AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.
-
-Hủy
-- 513s: Tải chương
-Xong · 160 lát · 10s
-Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo
-Xong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s
-Checkpoint 2: Clean ảnh
-Xong · 4p12s
-Checkpoint 3: AI so ảnh gốc và ảnh clean
-Xong · 15 tờ crop, repaint 13 · 1p19s
-Checkpoint 4: Dịch và chọn font
-Đang chạy 26/131
-Nâng cao: Jev soát câu dịch
-Chờ
-Render
-Chờ
-Hoàn tất
-Chờ
-
-AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.
-
-Hủy
-- 633s: Tải chương
-Xong · 160 lát · 10s
-Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo
-Xong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s
-Checkpoint 2: Clean ảnh
-Xong · 4p12s
-Checkpoint 3: AI so ảnh gốc và ảnh clean
-Xong · 15 tờ crop, repaint 13 · 1p19s
-Checkpoint 4: Dịch và chọn font
-Đang chạy 51/131
-Nâng cao: Jev soát câu dịch
-Chờ
-Render
-Chờ
-Hoàn tất
-Chờ
-
-AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.
-
-Hủy
-- 754s: Tải chương
-Xong · 160 lát · 10s
-Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo
-Xong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s
-Checkpoint 2: Clean ảnh
-Xong · 4p12s
-Checkpoint 3: AI so ảnh gốc và ảnh clean
-Xong · 15 tờ crop, repaint 13 · 1p19s
-Checkpoint 4: Dịch và chọn font
-Đang chạy 81/131
-Nâng cao: Jev soát câu dịch
-Chờ
-Render
-Chờ
-Hoàn tất
-Chờ
-
-AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.
-
-Hủy
-- 874s: Tải chương
-Xong · 160 lát · 10s
-Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo
-Xong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33s
-Checkpoint 2: Clean ảnh
-Xong · 4p12s
-Checkpoint 3: AI so ảnh gốc và ảnh clean
-Xong · 15 tờ crop, repaint 13 · 1p19s
-Checkpoint 4: Dịch và chọn font
-Đang chạy 128/131
-Nâng cao: Jev soát câu dịch
-Chờ
-Render
-Chờ
-Hoàn tất
-Chờ
-
-AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.
-
-Hủy
-- finished after 931s: Tải chươngXong · 160 lát · 10sCheckpoint 1: AI bỏ lát credit, lát trống và giữ logoXong · 1 lát credit, 28 lát không chữ, 1 logo · 1p33sCheckpoint 2: Clean ảnhXong · 4p12sCheckpoint 3: AI so ảnh gốc và ảnh cleanXong · 15 tờ crop, repaint 13 · 1p19sCheckpoint 4: Dịch và chọn fontXong · Dịch 117 vùng · 7p40sNâng cao: Jev soát câu dịchXong · Tắt · 0sRenderXong · 34sHoàn tấtXong · Xong · 0s
-              Xong! Chương đã có chữ, mở ra để xem, sửa và xuất.
-              Mở chươngHủy
-              Báo cáo của AIBỏ qua 1 lát credit: lát 160Bỏ qua 28 lát không có chữ (giữ ảnh gốc)Giữ nguyên 1 vùng logo
-- toast: A.I mode xong, đang mở chương.
-![](36-ai-progress.png)
-![](37-ai-progress.png)
-![](38-ai-progress.png)
-![](39-ai-progress.png)
+Dừng vì lỗi: Download chapter failed: 429 Client Error: Too Many Requests for url: https://cdn.asurascans.com/asura-images/chapters/shadow-slave/2/f2a2df.webp?v=1787241989
 ![](40-ai-progress.png)
-![](41-ai-progress.png)
-![](42-ai-progress.png)
-![](43-ai-progress.png)
-![](44-ai-done.png)
+![](41-ai-done.png)
 
-## FAIL · ai-mode-open-result · 30.0s
+## FAIL · ai-mode-open-result · 30.1s
 - FAILED: TimeoutError: Locator.click: Timeout 30000ms exceeded.
 Call log:
 waiting for locator("#ai-mode-open")
-  -   locator resolved to <button type="button" id="ai-mode-open" class="ui-btn ui-btn-primary">Mở chương</button>
+  -   locator resolved to <button hidden="" type="button" id="ai-mode-open" class="ui-btn ui-btn-primary">Mở chương</button>
   - attempting click action
   -   waiting for element to be visible, enabled and stable
   -   element is not visible
   - retrying click action, attempt #1
-  -   waiting for element to be visible, e
-![](45-ai-mode-open-result-failed.png)
+  -   waiting for element to be 
+![](42-ai-mode-open-result-failed.png)
