@@ -160,6 +160,12 @@ def manual_path(page: Page, journal: Journal, url: str, out: Path) -> None:
     if not journal.rows[-1]["ok"]:
         return
 
+    with journal.step(page, "auto-ocr") as row:
+        deadline = time.time() + 900
+        while time.time() < deadline and not any("OCR toàn chương đã hoàn tất" in t for t in page.evaluate("window.__toasts")):
+            page.wait_for_timeout(2000)
+        row["notes"].append(f"OCR finished by itself: {any('đã hoàn tất' in t for t in page.evaluate('window.__toasts'))}")
+
     with journal.step(page, "review-views") as row:
         for name in ("Ảnh gốc", "Sau inpaint"):
             page.get_by_role("button", name=name, exact=True).click()
@@ -193,17 +199,7 @@ def manual_path(page: Page, journal: Journal, url: str, out: Path) -> None:
         page.locator(".review-more-toggle").click()
         page.wait_for_timeout(500)
         row["shots"].append(journal.shot(page, "more-menu"))
-        run = page.get_by_role("button", name="OCR toàn chương", exact=True)
-        if run.count() and run.first.is_enabled():
-            run.first.click()
-            page.wait_for_timeout(1000)
-            deadline = time.time() + 600
-            while time.time() < deadline and not any("OCR" in t for t in page.evaluate("window.__toasts")):
-                page.wait_for_timeout(2000)
-            row["notes"].append("OCR panel: " + visible_text(page, ".chapter-ocr-panel"))
-            row["shots"].append(journal.shot(page, "ocr-done"))
-        else:
-            row["notes"].append("OCR toàn chương button missing or disabled")
+        row["notes"].append("menu: " + visible_text(page, ".review-more-panel"))
         page.keyboard.press("Escape")
 
     with journal.step(page, "proof-panel") as row:
@@ -414,9 +410,11 @@ def ai_mode_path(page: Page, journal: Journal, url: str, admin: str) -> None:
         return
 
     with journal.step(page, "ai-mode-open-result") as row:
-        page.locator("#ai-mode-open").click()
+        if page.evaluate("document.body.dataset.appStage") != "review":
+            page.locator("#ai-mode-open").click()
         wait_stage(page, "review", 120, journal, row, "ai-open")
         page.wait_for_timeout(4000)
+        row["notes"].append("view shown: " + visible_text(page, ".review-view-switch .ui-btn[aria-pressed=true]"))
         row["shots"].append(journal.shot(page, "ai-result-top"))
         viewport = page.locator(".review-document-viewport")
         height = viewport.evaluate("v => v.scrollHeight")
@@ -469,6 +467,7 @@ def main() -> int:
         page.add_init_script(TOAST_HOOK)
         page.on("pageerror", lambda e: journal.errors.append(str(e)))
         page.on("console", lambda m: journal.errors.append(m.text) if m.type == "error" else None)
+        page.on("dialog", lambda d: (journal.errors.append("dialog: " + d.message), d.accept()))
         manual_path(page, journal, args.url, args.out)
         upload_path(page, journal, args.out)
         mobile_pass(browser, journal)
