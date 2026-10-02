@@ -234,6 +234,8 @@ def create_chapter(req: ChapterRequest) -> dict:
             req.url,
             exc,
         )
+        if getattr(getattr(exc, "response", None), "status_code", None) == 429:
+            raise HTTPException(429, "Trang truyện đang giới hạn vì tải quá nhiều. Đợi vài phút rồi thử lại.") from exc
         raise HTTPException(500, f"Download chapter failed: {exc}") from exc
 
 
