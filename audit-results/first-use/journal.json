@@ -8,7 +8,7 @@
   "shots": [
    "01-home.png"
   ],
-  "seconds": 0.9,
+  "seconds": 1.5,
   "toasts": [],
   "console_errors": []
  },
@@ -30,13 +30,13 @@
   "ok": true,
   "notes": [
    "'Tải chương' buttons on screen: 2",
-   "preview header: Chương 37a5dfef | 135/135 lát được chọn",
+   "preview header: Chương bf7baed9 | 135/135 lát được chọn",
    "slices listed: 135"
   ],
   "shots": [
    "03-preview.png"
   ],
-  "seconds": 16.1,
+  "seconds": 16.8,
   "toasts": [],
   "console_errors": []
  },
@@ -50,7 +50,7 @@
   "shots": [
    "04-preview-skip.png"
   ],
-  "seconds": 2.9,
+  "seconds": 2.8,
   "toasts": [],
   "console_errors": []
  },
@@ -64,6 +64,352 @@
    "05-preview-preserve.png"
   ],
   "seconds": 2.0,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "process-chapter",
+  "ok": true,
+  "notes": [
+   "progress text: Đang xử lý 0/135…",
+   "progress text: Đang xử lý 5/135…",
+   "progress text: Đang xử lý 26/135…",
+   "progress text: Đang xử lý 48/135…",
+   "progress text: Đang xử lý 73/135…",
+   "progress text: Đang xử lý 95/135…",
+   "progress text: Đang xử lý 116/135…",
+   "text regions on screen: 0"
+  ],
+  "shots": [
+   "06-processing-progress.png",
+   "07-processing-progress.png",
+   "08-processing-progress.png",
+   "09-processing-progress.png",
+   "10-processing-progress.png",
+   "11-processing-progress.png",
+   "12-processing-progress.png",
+   "13-review-first-look.png"
+  ],
+  "seconds": 432.0,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "review-views",
+  "ok": true,
+  "notes": [],
+  "shots": [
+   "14-view-Ảnh gốc.png",
+   "15-view-Sau inpaint.png"
+  ],
+  "seconds": 5.4,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "tool-tooltips",
+  "ok": true,
+  "notes": [
+   "tools in rail: 7"
+  ],
+  "shots": [
+   "16-tooltip-brush.png"
+  ],
+  "seconds": 0.8,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "select-bubble",
+  "ok": true,
+  "notes": [
+   "OCR text of first region: ''"
+  ],
+  "shots": [
+   "17-inspector.png"
+  ],
+  "seconds": 25.1,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "type-translation",
+  "ok": true,
+  "notes": [
+   "save status: "
+  ],
+  "shots": [],
+  "seconds": 1.5,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "ocr-whole-chapter",
+  "ok": true,
+  "notes": [
+   "OCR panel: "
+  ],
+  "shots": [
+   "18-more-menu.png",
+   "19-ocr-done.png"
+  ],
+  "seconds": 142.5,
+  "toasts": [
+   "OCR toàn chương đã hoàn tất."
+  ],
+  "console_errors": []
+ },
+ {
+  "step": "proof-panel",
+  "ok": true,
+  "notes": [
+   "rows in proof panel: 142",
+   "rows matching 'số': 4"
+  ],
+  "shots": [
+   "20-proof-panel.png"
+  ],
+  "seconds": 4.7,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "draw-new-region",
+  "ok": true,
+  "notes": [
+   "regions before/after drawing: 142/143"
+  ],
+  "shots": [
+   "21-new-region.png"
+  ],
+  "seconds": 2.9,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "undo-redo",
+  "ok": true,
+  "notes": [
+   "regions after undo: 142",
+   "regions after redo: 143"
+  ],
+  "shots": [],
+  "seconds": 3.1,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "style-preset",
+  "ok": true,
+  "notes": [],
+  "shots": [
+   "22-preset.png"
+  ],
+  "seconds": 1.7,
+  "toasts": [
+   "Đã lưu kiểu \"Lời thoại đậm\"."
+  ],
+  "console_errors": []
+ },
+ {
+  "step": "brush-clean",
+  "ok": true,
+  "notes": [],
+  "shots": [
+   "23-brush-painted.png",
+   "24-brush-cleaned.png"
+  ],
+  "seconds": 3.3,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "lettered-view",
+  "ok": true,
+  "notes": [
+   "lettered view ready after 7.1s"
+  ],
+  "shots": [
+   "25-lettered.png"
+  ],
+  "seconds": 7.3,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "export",
+  "ok": false,
+  "notes": [
+   "FAILED: AttributeError: 'builtin_function_or_method' object has no attribute '_pw_impl_instance_'"
+  ],
+  "shots": [
+   "26-export-failed.png"
+  ],
+  "seconds": 0.2,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "keyboard-help",
+  "ok": true,
+  "notes": [],
+  "shots": [
+   "27-shortcut-help.png"
+  ],
+  "seconds": 0.7,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "settings",
+  "ok": true,
+  "notes": [
+   "settings: Cài đặt\nDịch vụ AI\n\nAPI key được giữ trong kho bí mật của hệ điều hành.\n\nChưa có dịch vụ nào được kết nối\nMặc định\nGoogle Gemini\nDeepSeek\nOpenAI\nOpenRouter\nGoogle Gemini\nChưa có key\nDeepSeek\nChưa có key\nOpenAI\nChưa có key\nOpenRouter\nChưa có key\n+ Thêm provider tùy chỉnh"
+  ],
+  "shots": [
+   "28-settings.png"
+  ],
+  "seconds": 1.8,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "back-home-recent",
+  "ok": true,
+  "notes": [
+   "home text: KHÔNG GIAN LÀM VIỆC\nXin chào!\n\nChọn một chương gần đây hoặc bắt đầu dự án dịch mới.\n\nChưa có chương gần đây\n\nNhập liên kết, ảnh hoặc tệp truyện để bắt đầu.\n\nBắt đầu dự án đầu tiên"
+  ],
+  "shots": [
+   "29-home-recent.png"
+  ],
+  "seconds": 1.1,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "dark-theme",
+  "ok": false,
+  "notes": [
+   "theme picker visible in the editor: True",
+   "FAILED: TimeoutError: Locator.click: Timeout 30000ms exceeded.\nCall log:\nwaiting for locator(\".recent-card\").first\n"
+  ],
+  "shots": [
+   "30-dark-home.png",
+   "31-dark-theme-failed.png"
+  ],
+  "seconds": 30.9,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "upload-zip",
+  "ok": true,
+  "notes": [
+   "uploaded 3 images; preview: 15/15 lát được chọn"
+  ],
+  "shots": [
+   "32-upload-preview.png"
+  ],
+  "seconds": 4.3,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "mobile-home",
+  "ok": true,
+  "notes": [],
+  "shots": [
+   "33-mobile-home.png",
+   "34-mobile-menu.png"
+  ],
+  "seconds": 1.3,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "mobile-open-recent",
+  "ok": true,
+  "notes": [],
+  "shots": [
+   "35-mobile-chapter.png"
+  ],
+  "seconds": 5.2,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "ai-mode-first-look",
+  "ok": true,
+  "notes": [
+   "A.I panel: AI\nA.I mode\n\nDán URL, AI tự làm hết: bỏ trang credit, giữ logo, clean, repaint chỗ sót, dịch, chọn font và render. Xong là chương đã có chữ mở sẵn để bạn xem, sửa và xuất.\n\nĐăng nhập để dùng Manga Cloud, hoặc chọn nhà cung cấp khác và dùng key A.I của bạn (miễn phí).\nEmail\nGửi mã\nLiên kết chương cho A.I mode\nDịch vụ AI\nManga Cloud\nGoogle Gemini\nDeepSeek\nOpenAI\nOpenRouter\nDịch sang\nTiếng Việt\nEnglish\nBahasa Indonesia\nEspañol\nPortuguês\nFrançais\nDeutsch\nBối cảnh truyện (tùy chọn)\nNâng cao: Jev soát câu dịch. Câu chưa tự nhiên, lủng củng hay tối nghĩa được gửi lại cho AI viết lại.\nChạy A.I mode"
+  ],
+  "shots": [
+   "36-ai-mode.png"
+  ],
+  "seconds": 2.3,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "ai-mode-sign-in",
+  "ok": true,
+  "notes": [
+   "code toast: ['Mã thử nghiệm: 618077']",
+   "plan bar: Đăng nhập để dùng Manga Cloud, hoặc chọn nhà cung cấp khác và dùng key A.I của bạn (miễn phí).\nEmail\nMã 6 số\nĐăng nhập"
+  ],
+  "shots": [
+   "37-ai-signed-in.png"
+  ],
+  "seconds": 3.7,
+  "toasts": [
+   "Mã thử nghiệm: 618077",
+   "Không đăng nhập được: Cannot save Manga Cloud API key to OS secure storage: No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details."
+  ],
+  "console_errors": [
+   "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+  ]
+ },
+ {
+  "step": "ai-mode-top-up-simulated",
+  "ok": true,
+  "notes": [
+   "plan bar after $1 credit: Đăng nhập để dùng Manga Cloud, hoặc chọn nhà cung cấp khác và dùng key A.I của bạn (miễn phí).\nEmail\nGửi mã"
+  ],
+  "shots": [],
+  "seconds": 2.1,
+  "toasts": [],
+  "console_errors": []
+ },
+ {
+  "step": "ai-mode-run",
+  "ok": true,
+  "notes": [
+   "provider picked: manga-cloud",
+   "30s: Mở chươngHủy\n              Báo cáo của AI",
+   "finished after 60s: Mở chươngHủy\n              Báo cáo của AI"
+  ],
+  "shots": [
+   "38-ai-progress.png",
+   "39-ai-done.png"
+  ],
+  "seconds": 60.4,
+  "toasts": [
+   "Không chạy được A.I mode: Chưa đăng nhập Manga Cloud"
+  ],
+  "console_errors": [
+   "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+ },
+ {
+  "step": "ai-mode-open-result",
+  "ok": false,
+  "notes": [
+   "FAILED: TimeoutError: Locator.click: Timeout 30000ms exceeded.\nCall log:\nwaiting for locator(\"#ai-mode-open\")\n  -   locator resolved to <button hidden=\"\" type=\"button\" id=\"ai-mode-open\" class=\"ui-btn ui-btn-primary\">Mở chương</button>\n  - attempting click action\n  -   waiting for element to be visible, enabled and stable\n  -   element is not visible\n  - retrying click action, attempt #1\n  -   waiting for element to be "
+  ],
+  "shots": [
+   "40-ai-mode-open-result-failed.png"
+  ],
+  "seconds": 30.1,
   "toasts": [],
   "console_errors": []
  }
