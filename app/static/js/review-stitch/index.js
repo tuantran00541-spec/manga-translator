@@ -363,6 +363,12 @@ export function mount(workspace) {
     } catch (err) { window.showToast?.("Không thể bỏ repaint: " + err.message, "error"); } finally { busy(false); }
   }, { signal });
 
+  // A finished A.I run opens on its lettering, which the server has just rendered.
+  if (window.openLetteredChapter && window.openLetteredChapter === window.currentChapterId) {
+    window.openLetteredChapter = null;
+    (window.currentManifest?.pages || []).forEach((page) => { if (page?.rendered) page._renderSig = letteringSig(page); });
+    state.variant = "rendered";
+  }
   syncVariant(); setTool(shell, state.tool); rerender();
 }
 

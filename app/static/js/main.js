@@ -46,6 +46,8 @@ async function finishSuccessfulProcessing(chapterId) {
   if (chapterId !== currentChapterId) return;
   if (document.body?.dataset?.appStage === "preview") {
     renderReview();
+    // New users found empty source text after processing; reading it starts right away.
+    window.startChapterOCR?.({ auto: true });
   }
 }
 

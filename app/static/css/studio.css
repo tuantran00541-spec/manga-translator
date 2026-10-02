@@ -38,6 +38,7 @@
   .ui-btn-primary { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
   .ui-btn-primary:hover:not(:disabled) { border-color: var(--accent-hover); background: var(--accent-hover); }
   .ui-btn-ghost { border-color: var(--border-subtle); background: transparent; color: var(--text-secondary); }
+  .ui-btn-ghost.ui-btn-primary { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
   .ui-btn-danger { border-color: var(--border-strong); background: var(--danger-soft); color: var(--danger); }
   .ui-btn-compact { min-height: 32px; padding: 0 9px; font-size: 11px; }
   .ui-icon { width: 16px; height: 16px; fill: currentColor; }
@@ -144,7 +145,7 @@
   .ai-link-btn:disabled { opacity: .45; cursor: default; }
   .ai-custom-provider-form > .ai-provider-summary .ai-provider-name { color: var(--text-secondary); font-weight: 500; }
   #toast-container { position: fixed; z-index: var(--z-toast); right: 16px; bottom: 16px; display: grid; gap: 8px; width: min(380px, calc(100vw - 32px)); pointer-events: none; }
-  .ui-toast { padding: 12px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-panel); color: var(--text-primary); opacity: 0; transform: translateY(8px); transition: opacity var(--motion-normal), transform var(--motion-normal); }
+  .ui-toast { overflow-wrap: anywhere; padding: 12px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-panel); color: var(--text-primary); opacity: 0; transform: translateY(8px); transition: opacity var(--motion-normal), transform var(--motion-normal); }
   .ui-toast.is-visible { opacity: 1; transform: translateY(0); }
   .ui-toast.is-error { border-color: var(--danger); }
   .ui-toast.is-success { border-color: var(--success); }
@@ -270,7 +271,7 @@
     .home-empty-state { padding: 20px; }
     .chapter-input-grid { grid-template-columns: 1fr; }
     .process-commandbar { align-items: stretch; flex-wrap: wrap; padding: 8px; }
-    .editor-save-status { width: 100%; margin-left: 0; }
+    .editor-save-status { margin-left: 0; font-size: 0; gap: 0; }
     .review-canvas-host, .workbench-canvas-column { padding: 9px; }
     .page-navigator, .context-inspector, .translation-panel-host { width: min(100%, 420px); }
     .settings-drawer { width: 100vw; }

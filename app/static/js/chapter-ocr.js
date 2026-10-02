@@ -150,7 +150,7 @@
     }
   }
 
-  async function startChapterOCR() {
+  async function startChapterOCR({ auto = false } = {}) {
     if (!window.currentChapterId || isRunning()) return;
     const chapterId = window.currentChapterId;
     const generation = ++state.generation;
@@ -170,7 +170,10 @@
       if (generation !== state.generation || chapterId !== window.currentChapterId) return;
       state.snapshot = snapshot;
       renderAll();
-      if (isRunning(snapshot)) schedulePoll(snapshot.job_id, generation);
+      if (isRunning(snapshot)) {
+        if (auto) showToast("Đang nhận dạng chữ gốc của cả chương, xem tiến độ ở menu ba chấm góc phải.", "info");
+        schedulePoll(snapshot.job_id, generation);
+      }
     } catch (err) {
       if (generation === state.generation && chapterId === window.currentChapterId) {
         showToast("Không thể chạy OCR toàn chương: " + err.message, "error");
@@ -257,7 +260,7 @@
     run.className = "ui-btn ui-btn-ghost ui-btn-compact chapter-ocr-run";
     run.textContent = "OCR toàn chương";
     run.title = "Nhận dạng chữ toàn chương";
-    run.addEventListener("click", startChapterOCR);
+    run.addEventListener("click", () => startChapterOCR());
     actions.prepend(run);
 
     const inspector = workspace.querySelector(".review-inspector");
@@ -308,4 +311,5 @@
 
   window.fetchOcr = safeFetchOcr;
   window.mountChapterOCR = scan;
+  window.startChapterOCR = startChapterOCR;
 })();

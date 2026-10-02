@@ -365,6 +365,7 @@
       } else if (job.status === "completed" && wasRunning && job.chapter_id) {
         // A job finishing while watched opens its chapter; an old finished job only shows its summary.
         window.showToast?.("A.I mode xong, đang mở chương.", "success");
+        window.openLetteredChapter = job.chapter_id;
         window.resumeChapter?.(job.chapter_id);
       }
     } catch (err) {
@@ -450,7 +451,9 @@
       }
     });
     $("ai-mode-open").addEventListener("click", () => {
-      if (currentJob?.chapter_id) window.resumeChapter?.(currentJob.chapter_id);
+      if (!currentJob?.chapter_id) return;
+      if (currentJob.status === "completed") window.openLetteredChapter = currentJob.chapter_id;
+      window.resumeChapter?.(currentJob.chapter_id);
     });
     syncProviderFields();
     window.syncAIProviderSelects?.();

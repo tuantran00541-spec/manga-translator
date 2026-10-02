@@ -104,7 +104,8 @@ class AIModeJob:
 
 def _detail(exc: Exception) -> str:
     if isinstance(exc, HTTPException):
-        return str(exc.detail)
+        detail = exc.detail
+        return str(detail.get("message", detail)) if isinstance(detail, dict) else str(detail)
     return str(exc) or type(exc).__name__
 
 

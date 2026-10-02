@@ -305,6 +305,14 @@ function buildChapterExportButton() {
   button.className = "ui-btn ui-btn-primary chapter-export-run";
   button.textContent = "Xuất chương (.zip)";
 
+  const renderChapter = async (chapterId, force) => {
+    const response = await fetch(`/api/render/chapter?chapter_id=${encodeURIComponent(chapterId)}${force ? "&force=true" : ""}`, {
+      method: "POST",
+    });
+    const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => r.json().catch(() => ({}));
+    return { response, data: await parse(response) };
+  };
+
   button.addEventListener("click", async () => {
     const chapterId = window.currentChapterId;
     if (!chapterId) return;
@@ -315,11 +323,12 @@ function buildChapterExportButton() {
         await window.flushAllPendingPersists();
       }
       if (chapterId !== window.currentChapterId) return;
-      const response = await fetch(`/api/render/chapter?chapter_id=${encodeURIComponent(chapterId)}`, {
-        method: "POST",
-      });
-      const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => r.json().catch(() => ({}));
-      const data = await parse(response);
+      let { response, data } = await renderChapter(chapterId, false);
+      // Unfinished text asks before exporting; the untranslated regions stay clean in the file.
+      if (response.status === 409 && data?.detail?.code === "editorial_preflight") {
+        if (!window.confirm(`${data.detail.message}\nVẫn xuất chương? Những vùng đó sẽ để trống chữ.`)) return;
+        ({ response, data } = await renderChapter(chapterId, true));
+      }
       if (!response.ok) {
         const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d?.detail || `HTTP ${s}`;
         throw new Error(getErr(response.status, data));
