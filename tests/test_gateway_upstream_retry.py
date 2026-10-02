@@ -110,7 +110,11 @@ def test_each_checkpoint_has_its_model_and_an_overloaded_one_hands_over_at_once(
         kwargs["json"].get("reasoning_effort")) or _Response(200, {"ok": True}))
     upstream.send({"model": "x", "reasoning_effort": "low"}, None, [Route("muse", 0.1, 0.2, None, "none")])
     upstream.send({"model": "x", "reasoning_effort": "low"}, None, [Route("luna", 0.1, 0.5)])
-    assert efforts == ["none", "low"], "a model's own thinking level wins; otherwise the request's is kept"
+    upstream.send({"model": "x", "reasoning_effort": "low"}, None, [Route("qwen", 0.1, 0.1, None, "omit")])
+    assert efforts == ["none", "low", None], "a model's own thinking level wins; otherwise the request's is kept"
+
+    monkeypatch.setenv("GATEWAY_STAGE_MODELS", '[{"stage": "scan", "model": "qwen", "price": [0, 0], "effort": "omit"}]')
+    assert upstream_from_env().stages["scan"][0].reasoning_effort == "omit"
 
     monkeypatch.setenv("GATEWAY_STAGE_MODELS", '[{"stage": "read", "model": "x", "price": [0, 0]}]')
     with pytest.raises(ValueError):

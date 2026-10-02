@@ -218,6 +218,8 @@ jobs:
               body = {"model": model, "max_tokens": 2000, "reasoning_effort": effort, "messages": [{"role": "user", "content": [
                   {"type": "text", "text": "What word is written in this image? Answer with the word only."},
                   {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}]}]}
+              if effort == "omit":  # the model rejects any reasoning field
+                  del body["reasoning_effort"]
               started = time.time()
               response = requests.post(
                   base.rstrip("/") + "/chat/completions",
