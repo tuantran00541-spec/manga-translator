@@ -322,17 +322,23 @@ def manual_path(page: Page, journal: Journal, url: str, out: Path) -> None:
         row["shots"].append(journal.shot(page, "settings"))
         page.keyboard.press("Escape")
 
-    with journal.step(page, "dark-theme") as row:
-        page.locator("#theme-select").select_option("dark")
-        page.wait_for_timeout(800)
-        row["shots"].append(journal.shot(page, "dark"))
-        page.locator("#theme-select").select_option("system")
-
     with journal.step(page, "back-home-recent") as row:
         page.get_by_role("button", name="Trang chủ", exact=True).click()
         page.wait_for_timeout(1000)
         row["notes"].append("home text: " + visible_text(page, "#home-view"))
         row["shots"].append(journal.shot(page, "home-recent"))
+
+    with journal.step(page, "dark-theme") as row:
+        row["notes"].append(f"theme picker visible in the editor: {page.locator('#theme-select').is_visible()}")
+        page.locator("#theme-select").select_option("dark")
+        page.wait_for_timeout(800)
+        row["shots"].append(journal.shot(page, "dark-home"))
+        page.locator(".recent-card").first.click()
+        page.wait_for_timeout(5000)
+        row["shots"].append(journal.shot(page, "dark-editor"))
+        page.get_by_role("button", name="Trang chủ", exact=True).click()
+        page.wait_for_timeout(800)
+        page.locator("#theme-select").select_option("system")
 
 
 def upload_path(page: Page, journal: Journal, out: Path) -> None:
