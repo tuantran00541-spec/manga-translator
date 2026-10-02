@@ -8,7 +8,7 @@
   "shots": [
    "01-home.png"
   ],
-  "seconds": 0.8,
+  "seconds": 0.9,
   "toasts": [],
   "console_errors": []
  },
@@ -21,7 +21,7 @@
   "shots": [
    "02-import.png"
   ],
-  "seconds": 0.6,
+  "seconds": 0.7,
   "toasts": [],
   "console_errors": []
  },
@@ -30,13 +30,13 @@
   "ok": true,
   "notes": [
    "'Tải chương' buttons on screen: 2",
-   "preview header: Chương 3203218f | 135/135 lát được chọn",
+   "preview header: Chương 37a5dfef | 135/135 lát được chọn",
    "slices listed: 135"
   ],
   "shots": [
    "03-preview.png"
   ],
-  "seconds": 13.0,
+  "seconds": 16.1,
   "toasts": [],
   "console_errors": []
  },
@@ -50,7 +50,7 @@
   "shots": [
    "04-preview-skip.png"
   ],
-  "seconds": 2.7,
+  "seconds": 2.9,
   "toasts": [],
   "console_errors": []
  },
@@ -64,60 +64,6 @@
    "05-preview-preserve.png"
   ],
   "seconds": 2.0,
-  "toasts": [],
-  "console_errors": []
- },
- {
-  "step": "process-chapter",
-  "ok": true,
-  "notes": [
-   "progress text: ",
-   "progress text: ",
-   "progress text: ",
-   "progress text: ",
-   "progress text: ",
-   "progress text: ",
-   "progress text: ",
-   "progress text: ",
-   "text regions on screen: 0"
-  ],
-  "shots": [
-   "06-processing-progress.png",
-   "07-processing-progress.png",
-   "08-processing-progress.png",
-   "09-processing-progress.png",
-   "10-processing-progress.png",
-   "11-processing-progress.png",
-   "12-processing-progress.png",
-   "13-processing-progress.png",
-   "14-review-first-look.png"
-  ],
-  "seconds": 493.8,
-  "toasts": [],
-  "console_errors": []
- },
- {
-  "step": "review-views",
-  "ok": true,
-  "notes": [],
-  "shots": [
-   "15-view-Ảnh gốc.png",
-   "16-view-Sau inpaint.png"
-  ],
-  "seconds": 5.5,
-  "toasts": [],
-  "console_errors": []
- },
- {
-  "step": "tool-tooltips",
-  "ok": true,
-  "notes": [
-   "tools in rail: 7"
-  ],
-  "shots": [
-   "17-tooltip-brush.png"
-  ],
-  "seconds": 0.8,
   "toasts": [],
   "console_errors": []
  }
