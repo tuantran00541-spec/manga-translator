@@ -1,62 +1,85 @@
-name: Qwen Image 2.1 UC Q4_K_M smoke test
+name: Qwen Image 2.1 UC edit smoke test
 
+# One-off: can Qwen-Image-2.1 (uncensored Q4_K_M) erase manga lettering on a CPU runner, and how long does it take.
 on:
   push:
+    branches-ignore: [main]
     paths:
       - ".github/workflows/qwen21-smoke.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  download-and-inspect:
+  edit:
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 180
+    env:
+      OUT: audit-results/qwen21-edit
     steps:
       - uses: actions/checkout@v4
 
-      - name: Disk before download
+      - name: Make room
         run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / && free -h && nproc
+
+      - name: Build stable-diffusion.cpp (CPU)
+        run: |
+          git clone --depth 1 --recursive https://github.com/leejet/stable-diffusion.cpp sdcpp
+          cmake -S sdcpp -B sdcpp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build sdcpp/build -j "$(nproc)"
+          ls sdcpp/build/bin
+
+      - name: Download weights
+        run: |
+          python3 -m pip install -q -U "huggingface_hub[cli]"
+          hf download abenzerps/Qwen-Image-2.1-Uncensored-GGUF qwen-image-2.1-UC-Q4_K_M.gguf \
+            vae/qwen_image_2.1_vae_bf16.safetensors --local-dir w
+          hf download unsloth/Qwen3-VL-8B-Instruct-GGUF Qwen3-VL-8B-Instruct-Q4_K_M.gguf mmproj-BF16.gguf --local-dir w
+          find w -type f -printf "%p %s bytes\n"
           df -h /
-          free -h
 
-      - name: Install HF CLI
+      - name: Inputs
         run: |
-          python3 -m pip install -U "huggingface_hub[cli]"
-
-      - name: Download Qwen-Image-2.1 UC Q4_K_M core
-        env:
-          HF_HUB_ENABLE_HF_TRANSFER: "1"
-        run: |
-          mkdir -p qwen21-uc
-          hf download Plana-Archive/Qwen-Image-2.1-Uncensored-GGUF             qwen-image-2.1-UC-Q4_K_M.gguf             --local-dir qwen21-uc
-          hf download Plana-Archive/Qwen-Image-2.1-Uncensored-GGUF             text_encoders/qwen3vl_8b_int8_convrot.safetensors             vae/qwen_image_2.1_vae_bf16.safetensors             --local-dir qwen21-uc
-          find qwen21-uc -type f -printf "%p %s bytes\n"
-          df -h /
-
-      - name: Verify model sizes
-        run: |
+          python3 -m pip install -q pillow
+          mkdir -p "$OUT"
+          git fetch -q origin audit-evidence
+          git show origin/audit-evidence:audit-results/ai-cost/push/shadow-slave-1/pairs/036.jpg > pair036.jpg
           python3 - <<'PY'
-          from pathlib import Path
-          files = list(Path("qwen21-uc").rglob("*"))
-          files = [p for p in files if p.is_file()]
-          total = sum(p.stat().st_size for p in files)
-          print("files:", len(files))
-          print("total bytes:", total)
-          print("total GiB:", total / 1024**3)
-          for p in files:
-              print(f"{p}: {p.stat().st_size/1024**3:.2f} GiB")
-          assert any(p.name == "qwen-image-2.1-UC-Q4_K_M.gguf" for p in files)
-          assert any(p.name == "model-00001-of-00002.safetensors" for p in files)
-          assert any(p.name == "model-00002-of-00002.safetensors" for p in files)
-          assert any("qwen_image_2.1_vae" in p.name for p in files)
+          from PIL import Image
+          def fit(im, side=512):
+              s = side / max(im.size)
+              w, h = (max(32, int(v * s) // 32 * 32) for v in im.size)
+              return im.resize((w, h), Image.LANCZOS)
+          fit(Image.open("docs/images/demo-raw.jpg").convert("RGB")).save("in-demo.png")
+          pair = Image.open("pair036.jpg").convert("RGB")
+          fit(pair.crop((0, 0, pair.width // 2, pair.height))).save("in-police.png")
+          for name in ("in-demo.png", "in-police.png"):
+              print(name, Image.open(name).size)
           PY
+          cp in-*.png "$OUT/"
 
-      - name: Upload model files
-        uses: actions/upload-artifact@v4
+      - name: Edit
+        run: |
+          SD=$(ls sdcpp/build/bin/sd-cli sdcpp/build/bin/sd 2>/dev/null | head -n1)
+          for name in demo police; do
+            size=$(python3 -c "from PIL import Image; w,h=Image.open('in-$name.png').size; print(w,h)")
+            set -- $size
+            start=$(date +%s)
+            "$SD" --diffusion-model w/qwen-image-2.1-UC-Q4_K_M.gguf --vae w/vae/qwen_image_2.1_vae_bf16.safetensors \
+              --llm w/Qwen3-VL-8B-Instruct-Q4_K_M.gguf --llm_vision w/mmproj-BF16.gguf \
+              -r "in-$name.png" -W "$1" -H "$2" --steps 20 --cfg-scale 6.0 --sampling-method euler --seed 42 \
+              -t "$(nproc)" -v \
+              -p "Remove all lettering, captions and speech-bubble text. Keep the artwork, colours and bubbles exactly the same." \
+              -o "$OUT/out-$name.png" 2>&1 | tail -n 40 | tee "$OUT/log-$name.txt"
+            echo "$name: $(( $(date +%s) - start )) s" | tee -a "$OUT/timing.txt"
+          done
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
         with:
-          name: qwen-image-2.1-uc-q4km-awq4-core
-          path: qwen21-uc
-          if-no-files-found: error
-          retention-days: 1
+          paths: audit-results/qwen21-edit
+          message: "audit: Qwen-Image-2.1 UC edit smoke (run ${{ github.run_id }})"
