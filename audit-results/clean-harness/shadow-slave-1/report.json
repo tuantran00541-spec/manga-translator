@@ -1,0 +1,39 @@
+{
+ "url": "https://asurascans.com/comics/shadow-slave-05c7df14/chapter/1",
+ "slices": 135,
+ "clean_s": 406.8,
+ "harness_s": 8.7,
+ "text_before": 1,
+ "ghost_before": 0,
+ "text_after": 0,
+ "ghost_after": 0,
+ "kiuyha_left_before": 1,
+ "kiuyha_left_after": 1,
+ "blocks_tried": 1,
+ "blocks_improved": 1,
+ "blocks": [
+  {
+   "slice": 86,
+   "kind": "text",
+   "box": [
+    882,
+    2107,
+    1167,
+    2238
+   ],
+   "start": 2711,
+   "steps": [
+    {
+     "try": "residue",
+     "score": 0
+    }
+   ],
+   "kept": "residue",
+   "end": 0
+  },
+  {
+   "slice": 86,
+   "changed_px": 1340
+  }
+ ]
+}
