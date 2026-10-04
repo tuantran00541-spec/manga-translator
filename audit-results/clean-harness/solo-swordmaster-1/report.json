@@ -1,89 +1,269 @@
 {
  "url": "https://asurascans.com/comics/solo-swordmaster-3ec3b16f/chapter/1",
  "slices": 140,
- "clean_s": 427.6,
- "harness_s": 20.7,
- "text_before": 1,
- "ghost_before": 2,
- "text_after": 0,
- "ghost_after": 0,
- "kiuyha_left_before": 2,
- "kiuyha_left_after": 1,
- "blocks_tried": 3,
- "blocks_improved": 3,
+ "clean_s": 293.9,
+ "harness_s": 199.7,
+ "judge_calls": 555,
+ "blocks_tried": 5,
+ "blocks_kept_change": 3,
+ "held_out_reads_before": 3,
+ "held_out_reads_after": 2,
+ "plain_reads_before": 1,
+ "plain_reads_after": 1,
  "blocks": [
   {
-   "slice": 54,
-   "kind": "text",
-   "box": [
-    427,
-    1618,
-    728,
-    1747
-   ],
-   "start": 23053,
-   "steps": [
-    {
-     "try": "residue",
-     "score": 0
-    }
-   ],
-   "kept": "residue",
-   "end": 0
-  },
-  {
-   "slice": 54,
-   "changed_px": 14879
-  },
-  {
-   "slice": 101,
-   "kind": "ghost",
-   "box": [
-    155,
-    888,
-    766,
-    1088
-   ],
-   "start": 10649,
-   "steps": [
-    {
-     "try": "residue",
-     "score": 0
-    }
-   ],
-   "kept": "residue",
-   "end": 0
-  },
-  {
-   "slice": 101,
-   "changed_px": 12020
-  },
-  {
-   "slice": 126,
-   "kind": "ghost",
+   "slice": 75,
    "box": [
     0,
-    2399,
-    253,
-    2477
+    1501,
+    244,
+    1611
    ],
-   "start": 280,
+   "held_out": [
+    "unsharp",
+    "zoom_down",
+    "clahe",
+    "deviation"
+   ],
+   "held_before": 0.166,
+   "held_after": 0.0,
+   "plain_before": 0.0,
+   "plain_after": 0.0,
    "steps": [
     {
-     "try": "residue",
-     "score": 921
+     "try": "judged",
+     "views": [
+      "channel",
+      "edges",
+      "dark"
+     ],
+     "before": 0.443,
+     "after": 0.0
     },
     {
-     "try": "residue_lama",
-     "score": 0
+     "try": "judged_lama",
+     "views": [
+      "channel",
+      "highpass",
+      "zoom_up"
+     ],
+     "skip": "clean under these views"
+    },
+    {
+     "try": "deviation",
+     "views": [
+      "edges",
+      "highpass",
+      "saturation"
+     ],
+     "skip": "clean under these views"
     }
    ],
-   "kept": "residue_lama",
-   "end": 0
+   "kept": [
+    "judged"
+   ]
   },
   {
-   "slice": 126,
-   "changed_px": 2670
+   "slice": 87,
+   "box": [
+    0,
+    2568,
+    271,
+    2682
+   ],
+   "held_out": [
+    "deviation",
+    "edges",
+    "clahe",
+    "zoom_up"
+   ],
+   "held_before": 0.479,
+   "held_after": 0.479,
+   "plain_before": 0.0,
+   "plain_after": 0.0,
+   "steps": [
+    {
+     "try": "judged",
+     "views": [
+      "saturation",
+      "zoom_down",
+      "dark"
+     ],
+     "skip": "clean under these views"
+    },
+    {
+     "try": "judged_lama",
+     "views": [
+      "bright",
+      "unsharp",
+      "zoom_down"
+     ],
+     "skip": "clean under these views"
+    }
+   ]
+  },
+  {
+   "slice": 95,
+   "box": [
+    0,
+    2123,
+    273,
+    2239
+   ],
+   "held_out": [
+    "bright",
+    "plain",
+    "highpass",
+    "deviation"
+   ],
+   "held_before": 0.0,
+   "held_after": 0.0,
+   "plain_before": 0.0,
+   "plain_after": 0.0,
+   "steps": [
+    {
+     "try": "judged",
+     "views": [
+      "channel",
+      "dark",
+      "zoom_down"
+     ],
+     "skip": "clean under these views"
+    },
+    {
+     "try": "judged_lama",
+     "views": [
+      "clahe",
+      "edges",
+      "channel"
+     ],
+     "before": 0.737,
+     "after": 0.0
+    },
+    {
+     "try": "deviation",
+     "views": [
+      "zoom_down",
+      "dark",
+      "zoom_up"
+     ],
+     "skip": "clean under these views"
+    },
+    {
+     "try": "deviation_lama",
+     "views": [
+      "channel",
+      "invert",
+      "saturation"
+     ],
+     "skip": "clean under these views"
+    }
+   ],
+   "kept": [
+    "judged_lama"
+   ]
+  },
+  {
+   "slice": 102,
+   "box": [
+    0,
+    2243,
+    287,
+    2393
+   ],
+   "held_out": [
+    "invert",
+    "dark",
+    "edges",
+    "deviation"
+   ],
+   "held_before": 0.267,
+   "held_after": 0.267,
+   "plain_before": 0.252,
+   "plain_after": 0.252,
+   "steps": [
+    {
+     "try": "judged",
+     "views": [
+      "channel",
+      "zoom_down",
+      "bright"
+     ],
+     "skip": "clean under these views"
+    },
+    {
+     "try": "judged_lama",
+     "views": [
+      "zoom_down",
+      "highpass",
+      "bright"
+     ],
+     "skip": "clean under these views"
+    }
+   ]
+  },
+  {
+   "slice": 116,
+   "box": [
+    0,
+    13,
+    255,
+    123
+   ],
+   "held_out": [
+    "deviation",
+    "bright",
+    "saturation",
+    "zoom_up"
+   ],
+   "held_before": 0.0,
+   "held_after": 0.0,
+   "plain_before": 0.0,
+   "plain_after": 0.0,
+   "steps": [
+    {
+     "try": "judged",
+     "views": [
+      "highpass",
+      "zoom_down",
+      "unsharp"
+     ],
+     "before": 0.178,
+     "after": 0.0
+    },
+    {
+     "try": "judged_lama",
+     "views": [
+      "dark",
+      "invert",
+      "edges"
+     ],
+     "before": 0.383,
+     "after": 0.0
+    },
+    {
+     "try": "deviation",
+     "views": [
+      "edges",
+      "dark",
+      "zoom_down"
+     ],
+     "skip": "clean under these views"
+    },
+    {
+     "try": "deviation_lama",
+     "views": [
+      "zoom_down",
+      "edges",
+      "invert"
+     ],
+     "skip": "clean under these views"
+    }
+   ],
+   "kept": [
+    "judged",
+    "judged_lama"
+   ]
   }
  ]
 }
