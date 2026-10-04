@@ -1,39 +1,106 @@
 {
  "url": "https://asurascans.com/comics/shadow-slave-05c7df14/chapter/1",
  "slices": 135,
- "clean_s": 406.8,
- "harness_s": 8.7,
- "text_before": 1,
- "ghost_before": 0,
- "text_after": 0,
- "ghost_after": 0,
- "kiuyha_left_before": 1,
- "kiuyha_left_after": 1,
- "blocks_tried": 1,
- "blocks_improved": 1,
+ "clean_s": 608.2,
+ "harness_s": 419.7,
+ "judge_calls": 828,
+ "blocks_tried": 2,
+ "blocks_kept_change": 1,
+ "held_out_reads_before": 2,
+ "held_out_reads_after": 2,
+ "plain_reads_before": 0,
+ "plain_reads_after": 0,
  "blocks": [
   {
-   "slice": 86,
-   "kind": "text",
+   "slice": 33,
    "box": [
-    882,
-    2107,
-    1167,
-    2238
+    844,
+    1065,
+    1094,
+    1299
    ],
-   "start": 2711,
+   "held_out": [
+    "zoom_down",
+    "highpass",
+    "bright",
+    "edges"
+   ],
+   "held_before": 0.298,
+   "held_after": 0.374,
+   "plain_before": 0.0,
+   "plain_after": 0.0,
    "steps": [
     {
-     "try": "residue",
-     "score": 0
+     "try": "judged",
+     "views": [
+      "dark",
+      "clahe",
+      "channel"
+     ],
+     "before": 0.027,
+     "after": 0.0
+    },
+    {
+     "try": "judged_lama",
+     "views": [
+      "unsharp",
+      "dark",
+      "channel"
+     ],
+     "skip": "clean under these views"
+    },
+    {
+     "try": "deviation",
+     "views": [
+      "zoom_up",
+      "deviation",
+      "channel"
+     ],
+     "skip": "clean under these views"
     }
    ],
-   "kept": "residue",
-   "end": 0
+   "kept": [
+    "judged"
+   ]
   },
   {
-   "slice": 86,
-   "changed_px": 1340
+   "slice": 35,
+   "box": [
+    866,
+    1136,
+    994,
+    1326
+   ],
+   "held_out": [
+    "invert",
+    "plain",
+    "deviation",
+    "clahe"
+   ],
+   "held_before": 0.057,
+   "held_after": 0.057,
+   "plain_before": 0.0,
+   "plain_after": 0.0,
+   "steps": [
+    {
+     "try": "judged",
+     "views": [
+      "bright",
+      "zoom_down",
+      "channel"
+     ],
+     "skip": "clean under these views"
+    },
+    {
+     "try": "judged_lama",
+     "views": [
+      "channel",
+      "highpass",
+      "saturation"
+     ],
+     "skip": "clean under these views"
+    }
+   ]
   }
  ]
 }
