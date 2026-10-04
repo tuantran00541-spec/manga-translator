@@ -1,0 +1,89 @@
+{
+ "url": "https://asurascans.com/comics/solo-swordmaster-3ec3b16f/chapter/1",
+ "slices": 140,
+ "clean_s": 427.6,
+ "harness_s": 20.7,
+ "text_before": 1,
+ "ghost_before": 2,
+ "text_after": 0,
+ "ghost_after": 0,
+ "kiuyha_left_before": 2,
+ "kiuyha_left_after": 1,
+ "blocks_tried": 3,
+ "blocks_improved": 3,
+ "blocks": [
+  {
+   "slice": 54,
+   "kind": "text",
+   "box": [
+    427,
+    1618,
+    728,
+    1747
+   ],
+   "start": 23053,
+   "steps": [
+    {
+     "try": "residue",
+     "score": 0
+    }
+   ],
+   "kept": "residue",
+   "end": 0
+  },
+  {
+   "slice": 54,
+   "changed_px": 14879
+  },
+  {
+   "slice": 101,
+   "kind": "ghost",
+   "box": [
+    155,
+    888,
+    766,
+    1088
+   ],
+   "start": 10649,
+   "steps": [
+    {
+     "try": "residue",
+     "score": 0
+    }
+   ],
+   "kept": "residue",
+   "end": 0
+  },
+  {
+   "slice": 101,
+   "changed_px": 12020
+  },
+  {
+   "slice": 126,
+   "kind": "ghost",
+   "box": [
+    0,
+    2399,
+    253,
+    2477
+   ],
+   "start": 280,
+   "steps": [
+    {
+     "try": "residue",
+     "score": 921
+    },
+    {
+     "try": "residue_lama",
+     "score": 0
+    }
+   ],
+   "kept": "residue_lama",
+   "end": 0
+  },
+  {
+   "slice": 126,
+   "changed_px": 2670
+  }
+ ]
+}
