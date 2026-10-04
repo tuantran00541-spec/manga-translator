@@ -11,6 +11,8 @@ from app.config import CTD_MODEL
 from app.knobs import knob
 
 THRESHOLD = knob("mask.ink_threshold")
+FAINT = 0.12  # letter probability of marks that join the text only beside its letters
+CORE = 0.8  # letter probability of the surest pixels; glow and blur that weld letters into one blob fall below it
 SCALES = (1.0, 0.5)  # the half-size pass catches very large lettering
 STRIDE = 64  # the model's input sides must be multiples of this
 PAD_SHARE = knob("mask.pad_share")
@@ -23,6 +25,8 @@ REACH_ROUNDS = knob("mask.reach_rounds")
 CHAIN = knob("mask.chain")
 KMEANS_SEED = 1234  # fixed seed for the background colour clusters, so one image always gives one mask
 FRINGE = knob("mask.fringe")
+FRINGE_NEAR = 0.25  # share of the reach a shadow may take without fading
+FRINGE_FADE = 0.2  # Lab drop per pixel that marks a blur still fading out
 FRINGE_TOLERANCE = knob("mask.fringe_tolerance")
 FRINGE_FLAT_SHARE = knob("mask.fringe_flat_share")
 FRINGE_INK_SHARE = knob("mask.fringe_ink_share")
@@ -57,17 +61,67 @@ def probability(img: np.ndarray) -> np.ndarray:
     return np.max([_prob(img, s) for s in SCALES], axis=0)
 
 
-def letters(img: np.ndarray) -> np.ndarray:
-    """Pixels the model reads as letters, at full and half size."""
-    return probability(img) > THRESHOLD
-
-
-def text_size(part: np.ndarray) -> int:
-    """Median letter height of a letter mask."""
+def text_size(part: np.ndarray, prob: np.ndarray | None = None) -> int:
+    """Letter height: the median line height of the model's surest pixels, else the median letter of a mask."""
+    if prob is not None and prob.shape == part.shape:
+        rows = (prob > CORE).any(axis=1)
+        edges = np.flatnonzero(np.diff(np.concatenate(([0], rows.astype(np.int8), [0]))))
+        lines = [end - start for start, end in zip(edges[::2], edges[1::2]) if end - start >= 6]
+        if lines:
+            return int(np.median(lines))
     _, _, stats, _ = cv2.connectedComponentsWithStats(part.astype(np.uint8))
     heights = stats[1:, cv2.CC_STAT_HEIGHT]
     heights = heights[heights >= 6]
     return int(np.median(heights)) if len(heights) else 0
+
+
+def _centres(bg: np.ndarray) -> np.ndarray:
+    """Up to four Lab colours of the background round a crop."""
+    # k-means++ draws from OpenCV's per-thread RNG; without a fixed seed the mask depended on earlier calls.
+    cv2.setRNGSeed(KMEANS_SEED)
+    _, _, centers = cv2.kmeans(bg.astype(np.float32), min(4, len(bg)), None,
+                               (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0), 2, cv2.KMEANS_PP_CENTERS)
+    return centers
+
+
+def _distance(a: np.ndarray, centers: np.ndarray) -> np.ndarray:
+    """Lab distance of each pixel to the nearest background colour, one centre at a time to spare memory."""
+    nearest = None
+    for centre in centers:
+        diff = a - centre
+        square = np.einsum("...k,...k->...", diff, diff)
+        nearest = square if nearest is None else np.minimum(nearest, square)
+    return np.sqrt(nearest)
+
+
+def _plate(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, bg: np.ndarray, inner: tuple[bool, bool, bool, bool]):
+    """A dark plate the letters sit on, such as a scanlator badge, closed inside the crop; None for bubbles and art."""
+    if len(bg) < 20 or not seed.any():
+        return None
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
+    centers = _centres(bg)
+    unlike = _distance(lab, centers) > np.percentile(_distance(bg.astype(np.float32), centers), 95) + PLATE_MARGIN
+    unlike = cv2.morphologyEx(unlike.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8),
+                              borderType=cv2.BORDER_CONSTANT, borderValue=0) > 0
+    _, labels = cv2.connectedComponents((unlike | grown).astype(np.uint8))
+    ids = np.unique(labels[seed])
+    part = np.isin(labels, ids[ids > 0])
+    left, top, right, bottom = inner
+    if (top and part[0].any()) or (bottom and part[-1].any()) or (left and part[:, 0].any()) or (right and part[:, -1].any()):
+        return None
+    under = part & ~grown
+    # A plate is more than the letters, and darker than paper: bubbles and caption boxes keep their shape.
+    if under.sum() < PLATE_AREA * part.sum() or np.median(lab[..., 0][under]) > PLATE_LIGHT:
+        return None
+    ys, xs = np.nonzero(part)
+    sy, sx = np.nonzero(seed)
+    height, width = ys.max() - ys.min() + 1, xs.max() - xs.min() + 1
+    if height > PLATE_TALL * (sy.max() - sy.min() + 1) or width > PLATE_WIDE * (sx.max() - sx.min() + 1):
+        return None
+    if part.sum() < PLATE_SOLID * height * width:
+        return None
+    outline, _ = cv2.findContours(part.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return cv2.drawContours(np.zeros(part.shape, np.uint8), outline, -1, 1, -1) > 0
 
 
 def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.ndarray:
@@ -76,19 +130,10 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
         return seed
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
     bg = bg.astype(np.float32)
-    # k-means++ draws from OpenCV's per-thread RNG; without a fixed seed the mask depended on earlier calls.
-    cv2.setRNGSeed(KMEANS_SEED)
-    _, _, centers = cv2.kmeans(bg, min(4, len(bg)), None,
-                               (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0), 2, cv2.KMEANS_PP_CENTERS)
+    centers = _centres(bg)
 
     def dist(a):
-        # One centre at a time: the same distances without a pixels x centres x channels array.
-        nearest = None
-        for centre in centers:
-            diff = a - centre
-            square = np.einsum("...k,...k->...", diff, diff)
-            nearest = square if nearest is None else np.minimum(nearest, square)
-        return np.sqrt(nearest)
+        return _distance(a, centers)
 
     smooth = np.hypot(cv2.Sobel(lab[..., 0], cv2.CV_32F, 1, 0), cv2.Sobel(lab[..., 0], cv2.CV_32F, 0, 1)) < EDGE
     open_ = ((dist(lab.reshape(-1, 3)).reshape(lab.shape[:2]) > np.percentile(dist(bg), 90) + 6) & smooth) | seed
@@ -118,9 +163,15 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
 
 
 def _fringe(lab: np.ndarray, seed: np.ndarray, region: np.ndarray, reach: int) -> np.ndarray:
-    """A soft shadow fading from the letters into one flat background joins the mask, so LaMa never redraws it."""
-    width = max(3, int(reach * FRINGE))
-    band = (cv2.dilate(region.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4 * width + 1,) * 2)) > 0) & ~region
+    """A soft shadow or blur fading from the letters into one flat background joins the mask, so LaMa never redraws it."""
+    width = max(3, int(reach * FRINGE_NEAR))
+    far = max(width, int(reach * FRINGE))
+
+    def around(px):
+        return cv2.dilate(region.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * px + 1,) * 2)) > 0
+
+    # The background is read past where a blur may still fade, as a heavy blur fills the band right by the letters.
+    band = around(far + 2 * width) & ~around(far)
     if band.sum() < 50 or not seed.any():
         return region
     # The background right round the letters, when most of that band is one flat colour.
@@ -132,15 +183,26 @@ def _fringe(lab: np.ndarray, seed: np.ndarray, region: np.ndarray, reach: int) -
     ink = float(np.median(to_back[seed]))
     # Between background and ink, so neither the background nor ink-dark lines such as a balloon outline join.
     shade = (to_back > FRINGE_TOLERANCE) & (to_back < FRINGE_INK_SHARE * ink)
-    near = cv2.distanceTransform((~region).astype(np.uint8), cv2.DIST_L2, 3) <= width
+    gap = cv2.distanceTransform((~region).astype(np.uint8), cv2.DIST_L2, 3)
+    # Past the shadow's usual width only a fading blur goes on; flat art beside the letters stops it.
+    smooth = cv2.GaussianBlur(to_back, (0, 0), 1.0)
     grown, k3 = region, np.ones((3, 3), np.uint8)
-    for _ in range(width):
-        nxt = grown | ((cv2.dilate(grown.astype(np.uint8), k3) > 0) & shade & near)
+    for _ in range(far):
+        inner = cv2.dilate(np.where(grown, smooth, 0).astype(np.float32), k3)
+        fading = (gap <= width) | (smooth <= inner - FRINGE_FADE)
+        nxt = grown | ((cv2.dilate(grown.astype(np.uint8), k3) > 0) & shade & (gap <= far) & fading)
         if (nxt == grown).all():
             break
         grown = nxt
     return grown
 
+
+PLATE_MARGIN = 8  # Lab distance past the background's own spread that marks a plate pixel
+PLATE_AREA = 0.15  # share of a plate its letters' mask must leave uncovered
+PLATE_LIGHT = 200  # Lab lightness above which the plate is paper (a bubble or caption box), never erased
+PLATE_TALL = 2.0  # a plate is at most this many times the letters' height
+PLATE_WIDE = 1.6  # and this many times their width
+PLATE_SOLID = 0.6  # share of its bounding box a plate fills
 
 SPECK = knob("mask.speck")
 SPECK_HOPS = knob("mask.speck_hops")
@@ -198,10 +260,11 @@ def _cut(seed: np.ndarray) -> tuple[bool, bool, bool, bool]:
 
 
 def _reach_cut_letters(image: np.ndarray, first: tuple[int, int, int, int], step: int):
-    """Grow the crop while its edge cuts letters, keeping only the text the first box holds; returns crop and seed."""
+    """Grow the crop while its edge cuts letters, keeping only the text the first box holds; returns crop, seed and probability."""
     h, w = image.shape[:2]
     bx1, by1, bx2, by2 = first
-    seed = letters(image[by1:by2, bx1:bx2])
+    prob = probability(image[by1:by2, bx1:bx2])
+    seed = prob > THRESHOLD
     for _ in range(REACH_ROUNDS):
         left, top, right, bottom = _cut(seed)
         cut = (left and bx1 > 0, top and by1 > 0, right and bx2 < w, bottom and by2 < h)
@@ -209,21 +272,42 @@ def _reach_cut_letters(image: np.ndarray, first: tuple[int, int, int, int], step
             break
         bx1, by1 = max(0, bx1 - step * cut[0]), max(0, by1 - step * cut[1])
         bx2, by2 = min(w, bx2 + step * cut[2]), min(h, by2 + step * cut[3])
-        seed = letters(image[by1:by2, bx1:bx2])
+        prob = probability(image[by1:by2, bx1:bx2])
+        seed = prob > THRESHOLD
     if (bx1, by1, bx2, by2) == first:
-        return first, seed
+        return first, seed, prob
     inside = np.zeros(seed.shape, bool)
     inside[first[1] - by1:first[3] - by1, first[0] - bx1:first[2] - bx1] = True
     seed = _chained(seed, inside)
     # The crop shrinks back to the first box plus the letters it had cut.
     ys, xs = np.nonzero(seed)
+    inner = (slice(first[1] - by1, first[3] - by1), slice(first[0] - bx1, first[2] - bx1))
     if not len(xs):
-        return first, seed[first[1] - by1:first[3] - by1, first[0] - bx1:first[2] - bx1]
-    margin = max(8, text_size(seed) // 2)
+        return first, seed[inner], prob[inner]
+    margin = max(8, text_size(seed, prob) // 2)
     nx1, ny1 = min(first[0], max(bx1, bx1 + int(xs.min()) - margin)), min(first[1], max(by1, by1 + int(ys.min()) - margin))
     nx2 = max(first[2], min(bx2, bx1 + int(xs.max()) + 1 + margin))
     ny2 = max(first[3], min(by2, by1 + int(ys.max()) + 1 + margin))
-    return (nx1, ny1, nx2, ny2), seed[ny1 - by1:ny2 - by1, nx1 - bx1:nx2 - bx1]
+    keep = (slice(ny1 - by1, ny2 - by1), slice(nx1 - bx1, nx2 - bx1))
+    return (nx1, ny1, nx2, ny2), seed[keep], prob[keep]
+
+
+def _faint_letters(seed: np.ndarray, prob: np.ndarray) -> np.ndarray:
+    """Faintly read marks on the text's own lines and within a letter gap of it, like a thin blurred '!', join the letters."""
+    if not seed.any():
+        return seed
+    size = text_size(seed, prob)
+    faint = (prob > FAINT) & ~seed
+    if not faint.any() or size < 4:
+        return seed
+    rows = np.zeros(seed.shape, bool)
+    rows[seed.any(axis=1)] = True
+    near = cv2.dilate(seed.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * max(3, int(CHAIN * size)) + 1,) * 2)) > 0
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(faint.astype(np.uint8))
+    keep = np.unique(labels[faint & near & rows])
+    # A faint mark is letter-sized; a wide faint area is art the model half reads.
+    keep = keep[(keep > 0) & (stats[keep, cv2.CC_STAT_HEIGHT] <= 2 * size) & (stats[keep, cv2.CC_STAT_WIDTH] <= 2 * size)]
+    return seed | np.isin(labels, keep)
 
 
 def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_letters: bool = False):
@@ -238,13 +322,17 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_lette
     if min(first[2] - first[0], first[3] - first[1]) < 8:
         empty = np.zeros((max(0, first[3] - first[1]), max(0, first[2] - first[0])), bool)
         return (first, empty, empty) if with_letters else (first, empty)
-    (bx1, by1, bx2, by2), seed = _reach_cut_letters(image, first, pad)
+    (bx1, by1, bx2, by2), seed, prob = _reach_cut_letters(image, first, pad)
+    seed = _faint_letters(seed, prob)
     crop = image[by1:by2, bx1:bx2]
     ex1, ey1, ex2, ey2 = max(0, bx1 - RING), max(0, by1 - RING), min(w, bx2 + RING), min(h, by2 + RING)
     ring = np.ones((ey2 - ey1, ex2 - ex1), bool)
     ring[by1 - ey1:by2 - ey1, bx1 - ex1:bx2 - ex1] = False
     bg = cv2.cvtColor(image[ey1:ey2, ex1:ex2], cv2.COLOR_BGR2LAB)[ring]
-    grown = grow(crop, seed, bg, int(text_size(seed) * REACH))
+    grown = grow(crop, seed, bg, int(text_size(seed, prob) * REACH))
+    plate = _plate(crop, seed, grown, bg, (bx1 > 0, by1 > 0, bx2 < w, by2 < h))
+    if plate is not None:
+        grown = grown | plate
     return ((bx1, by1, bx2, by2), grown, seed) if with_letters else ((bx1, by1, bx2, by2), grown)
 
 

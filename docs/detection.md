@@ -4,16 +4,26 @@
 
 1. [Kiuyha/Manga-Bubble-YOLO](https://huggingface.co/Kiuyha/Manga-Bubble-YOLO)
    (YOLO26n, 2.4 M parameters, trained at 1280 on manga incl. English and
-   Vietnamese fan translations) finds text boxes. A slice (about 800 × 2400
-   px) is laid in the 1280 input as its top and bottom halves side by side,
-   so text reaches the model at 0.79× instead of 0.53× for the whole slice.
-   Boxes are padded 16 px and merged across the overlap.
+   Vietnamese fan translations) finds text boxes in three passes: the slice
+   as its top and bottom halves side by side, near-native bands for small
+   text, and windows shrunk to page scale (400 px wide, packed as columns in
+   one input), where the model scores big stylised captions 0.8–0.9 that the
+   other passes miss. A page-scale box needs a score of 0.45, which drawn
+   sound effects stay under. Boxes are padded 16 px and merged across passes.
 2. Each padded box goes through the mask head of
    [comic-text-detector](https://github.com/dmMaze/comic-text-detector) at
    full and half size (the half pass catches very large lettering). The
    letters it reads are grown by a thin outline (12 % of the letter height,
    so a white stroke round the letters goes too) and then, pixel by pixel,
    into smooth pixels unlike the colours round the box: glow and shadow.
+   The letter height is the median line height of the model's surest pixels,
+   so glowing captions whose letters weld into one blob still get a reach as
+   tall as their letters. A blur fading from the letters into a flat
+   background is followed until it stops fading, and a mark the model reads
+   faintly on the text's own line (a thin blurred "!") joins the letters.
+   Letters on a small dark plate closed inside the box, such as a scanlator
+   badge, are erased with the plate; paper-light plates (bubbles, caption
+   boxes) are never taken.
    Growth that runs off the box or keeps going is art touching the letters
    and is dropped. A run of dots such as "..." stays with the text it follows,
    and a box holding two separate captions becomes two texts.

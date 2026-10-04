@@ -85,12 +85,12 @@ def _text_slice():
     return image
 
 
-def test_tall_slice_runs_a_coarse_pass_and_near_native_bands_and_masks_letters_with_outline():
+def test_tall_slice_runs_coarse_page_scale_and_near_native_passes_and_masks_letters_with_outline():
     image = _text_slice()
     session = _BlobSession()
     detector = KiuyhaTextDetector("unused", session=session)
     boxes = detector.text_boxes(image)
-    assert len(session.blobs) == 1 + 3, "the whole slice once, then three overlapping bands"
+    assert len(session.blobs) == 1 + 1 + 3, "the whole slice coarse, once at page scale, then three overlapping bands"
     assert len(boxes) == 3, "a line seen by several passes is one box"
     for baseline in (300, 1250, 2150):
         assert any(b.y1 < baseline - 20 and b.y2 > baseline for b in boxes), baseline

@@ -18,8 +18,11 @@ LETTERBOX_VALUE = 114
 STRIDE = 32
 NMS_IOU = knob("detect.nms_iou")
 BOX_PAD = knob("detect.box_pad")
-HALVES_GAP = 16
-HALVES_MIN_OVERLAP = 256
+COLUMN_GAP = 16  # letterbox gap between columns packed into one input
+HALVES_MIN_OVERLAP = 256  # rows the two halves of the coarse pass share at least
+PAGE_WIDTH = 400  # slice width at page scale, where the model scores big lettering highest
+PAGE_OVERLAP = 0.15  # share of a page-scale window repeated in the next one
+PAGE_CONFIDENCE = 0.45  # page-scale score a box needs; drawn sound effects score below it, lettering above
 BAND_OVERLAP = 0.25  # share of a detection band repeated in the next one
 EDGE_TOUCH = knob("detect.edge_touch")
 UNION_SHARE = knob("detect.union_share")
@@ -230,7 +233,7 @@ class KiuyhaTextDetector:
         if self.fixed is None or self.fixed[0] != self.fixed[1]:
             return None
         size = self.fixed[0]
-        scale = min(1.0, (size - HALVES_GAP) / (2.0 * width))
+        scale = min(1.0, (size - COLUMN_GAP) / (2.0 * width))
         overlap = int(2 * size / scale) - height
         if overlap < HALVES_MIN_OVERLAP:
             overlap = min(height, HALVES_MIN_OVERLAP)
@@ -261,9 +264,9 @@ class KiuyhaTextDetector:
         return found
 
     def detect_slice(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Padded text boxes for a slice: one coarse pass plus near-native bands, pieces of one text merged."""
+        """Padded text boxes for a slice: coarse, page-scale and near-native passes, pieces of one text merged."""
         h, w = image.shape[:2]
-        found = _union_overlapping(self._coarse_boxes(image) + self.band_boxes(image))
+        found = _union_overlapping(self._coarse_boxes(image) + self.page_boxes(image) + self.band_boxes(image))
         return [(max(0, x1 - BOX_PAD), max(0, y1 - BOX_PAD), min(w, x2 + BOX_PAD), min(h, y2 + BOX_PAD), score)
                 for x1, y1, x2, y2, score in found]
 
@@ -282,7 +285,7 @@ class KiuyhaTextDetector:
                 rw, rh = min(size - x, int(w * scale)), min(size, int((y1 - y0) * scale))
                 canvas[:rh, x:x + rw] = cv2.resize(image[y0:y1], (rw, rh), interpolation=cv2.INTER_LINEAR)
                 columns.append((x, rw, rh, y0, y1))
-                x += rw + HALVES_GAP
+                x += rw + COLUMN_GAP
             found = []
             for cx1, cy1, cx2, cy2, score in self.raw_boxes(canvas):
                 px, rw, rh, y0, y1 = columns[0] if (cx1 + cx2) / 2 < columns[1][0] else columns[1]
@@ -293,6 +296,45 @@ class KiuyhaTextDetector:
                     found.append((bx1, by1, bx2, by2, score))
             found = _merge(found)
         return found
+
+    def page_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
+        """Boxes from the slice shrunk to page scale, where the model reads big lettering best, packed as columns."""
+        h, w = image.shape[:2]
+        if self.fixed is None:
+            return self.raw_boxes(image)
+        size_h, size_w = self.fixed
+        scale = min(1.0, PAGE_WIDTH / w)
+        sw = max(1, int(round(w * scale)))
+        window = int(size_h / scale)
+        step = int(window * (1 - PAGE_OVERLAP))
+        starts = [0] if window >= h else list(range(0, h - window, step)) + [h - window]
+        per_canvas = max(1, (size_w + COLUMN_GAP) // (sw + COLUMN_GAP))
+        found = []
+        for first in range(0, len(starts), per_canvas):
+            canvas = np.full((size_h, size_w, 3), LETTERBOX_VALUE, np.uint8)
+            columns = []
+            for k, y0 in enumerate(starts[first:first + per_canvas]):
+                part = image[y0:y0 + window]
+                rh = min(size_h, int(round(part.shape[0] * scale)))
+                x = k * (sw + COLUMN_GAP)
+                canvas[:rh, x:x + sw] = cv2.resize(part, (sw, rh), interpolation=cv2.INTER_AREA)
+                columns.append((x, rh, y0, part.shape[0]))
+            for cx1, cy1, cx2, cy2, score in self.raw_boxes(canvas):
+                if score < PAGE_CONFIDENCE:
+                    continue
+                centre = (cx1 + cx2) / 2
+                column = next((c for c in columns if c[0] <= centre < c[0] + sw), None)
+                if column is None:
+                    continue
+                x, rh, y0, part_h = column
+                bx1, bx2 = int(max(0, cx1 - x) / scale), int(math.ceil(min(sw, cx2 - x) / scale))
+                by1, by2 = int(max(0, cy1) / scale), int(math.ceil(min(rh, cy2) / scale))
+                # A box cut by an inner window edge is seen whole in the next window.
+                if (by1 <= EDGE_TOUCH / scale and y0 > 0) or (by2 >= part_h - EDGE_TOUCH / scale and y0 + part_h < h):
+                    continue
+                if bx2 - bx1 > 4 and by2 - by1 > 4:
+                    found.append((min(w, bx1), by1 + y0, min(w, bx2), min(h, by2 + y0), score))
+        return _merge(found)
 
     def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
         """Detected text blocks with letter masks, ready for inpainting and OCR."""

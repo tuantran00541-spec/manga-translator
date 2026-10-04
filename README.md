@@ -44,7 +44,7 @@ A page cleaned twice gives the same pixels, on any CPU: the sampled slices of a 
 
 ### It is fast where it matters
 
-- A 2.4 M-parameter detector finds the text of a slice in one pass (the slice goes in as two halves side by side), on the OpenVINO runtime when available.
+- A 2.4 M-parameter detector finds the text of a slice in a few packed passes (halves side by side, near-native bands, page-scale columns for big captions), on the OpenVINO runtime when available.
 - The letter-mask model runs about 40× faster than the released one with identical masks.
 - LaMa fills each region in one downscaled pass (512 px long side), and only where a fill is needed: a hole ringed by one colour, of any shade, is filled flat with no model run.
 
