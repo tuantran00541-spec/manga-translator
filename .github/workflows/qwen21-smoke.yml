@@ -1,0 +1,59 @@
+name: Qwen Image 2.1 CPU smoke test
+
+on:
+  push:
+    paths:
+      - ".github/workflows/qwen21-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  download-and-inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Disk before download
+        run: |
+          df -h /
+          free -h
+
+      - name: Install HF CLI
+        run: |
+          python3 -m pip install -U "huggingface_hub[cli]"
+
+      - name: Download Qwen-Image-2.1 INT8 core
+        env:
+          HF_HUB_ENABLE_HF_TRANSFER: "1"
+        run: |
+          mkdir -p qwen21
+          hf download Comfy-Org/Qwen-Image-2.1             diffusion_models/qwen_image_2.1_int8_convrot.safetensors             text_encoders/qwen3vl_8b_int8_convrot.safetensors             vae/qwen_image_2.1_vae_bf16.safetensors             --local-dir qwen21
+          find qwen21 -type f -printf "%p %s bytes\\n"
+          df -h /
+
+      - name: Verify model sizes and checksums
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          files = list(Path("qwen21").rglob("*.safetensors"))
+          total = sum(p.stat().st_size for p in files)
+          print("files:", len(files))
+          print("total bytes:", total)
+          print("total GiB:", total / 1024**3)
+          for p in files:
+              print(f"{p}: {p.stat().st_size/1024**3:.2f} GiB")
+          assert any("qwen_image_2.1_int8" in str(p) for p in files)
+          assert any("qwen3vl_8b_int8" in str(p) for p in files)
+          assert any("qwen_image_2.1_vae" in str(p) for p in files)
+          PY
+
+      - name: Upload model files
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen-image-2.1-int8-core
+          path: qwen21
+          if-no-files-found: error
+          retention-days: 1
