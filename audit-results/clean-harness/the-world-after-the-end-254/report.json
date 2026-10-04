@@ -1,39 +1,14 @@
 {
  "url": "https://asurascans.com/comics/the-world-after-the-end-3ec3b16f/chapter/254",
  "slices": 68,
- "clean_s": 341.1,
- "harness_s": 9.1,
- "text_before": 1,
- "ghost_before": 0,
- "text_after": 0,
- "ghost_after": 0,
- "kiuyha_left_before": 0,
- "kiuyha_left_after": 0,
- "blocks_tried": 1,
- "blocks_improved": 1,
- "blocks": [
-  {
-   "slice": 47,
-   "kind": "text",
-   "box": [
-    251,
-    705,
-    330,
-    851
-   ],
-   "start": 4168,
-   "steps": [
-    {
-     "try": "residue",
-     "score": 0
-    }
-   ],
-   "kept": "residue",
-   "end": 0
-  },
-  {
-   "slice": 47,
-   "changed_px": 5943
-  }
- ]
+ "clean_s": 341.3,
+ "harness_s": 176.6,
+ "judge_calls": 334,
+ "blocks_tried": 0,
+ "blocks_kept_change": 0,
+ "held_out_reads_before": 0,
+ "held_out_reads_after": 0,
+ "plain_reads_before": 0,
+ "plain_reads_after": 0,
+ "blocks": []
 }
