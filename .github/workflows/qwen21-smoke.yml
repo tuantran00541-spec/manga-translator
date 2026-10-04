@@ -48,14 +48,15 @@ jobs:
           for p in files:
               print(f"{p}: {p.stat().st_size/1024**3:.2f} GiB")
           assert any(p.name == "qwen-image-2.1-UC-Q4_K_M.gguf" for p in files)
-          assert any("qwen3vl_8b_int8" in p.name for p in files)
+          assert any(p.name == "model-00001-of-00002.safetensors" for p in files)
+          assert any(p.name == "model-00002-of-00002.safetensors" for p in files)
           assert any("qwen_image_2.1_vae" in p.name for p in files)
           PY
 
       - name: Upload model files
         uses: actions/upload-artifact@v4
         with:
-          name: qwen-image-2.1-uc-q4km-core
+          name: qwen-image-2.1-uc-q4km-awq4-core
           path: qwen21-uc
           if-no-files-found: error
           retention-days: 1
