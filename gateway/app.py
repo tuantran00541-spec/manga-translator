@@ -30,7 +30,6 @@ FORWARDED_FIELDS = frozenset({"messages", "max_tokens", "response_format", "temp
 ROLES = frozenset({"system", "user", "assistant"})
 # A client may ask for more thinking on one request; the gateway adds room for it.
 REASONING_BUDGETS = {"none": 0, "minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}
-NO_REASONING = "omit"  # a route effort for models that reject any reasoning field
 
 
 STAGES = frozenset({"scan", "glossary", "review", "translate", "polish"})  # A.I mode checkpoints a client may name
@@ -107,9 +106,7 @@ class Upstream:
             base, api_key = self.base, self.api_key
             if isinstance(route, Route):
                 payload = {**payload, "model": route.model}
-                if route.reasoning_effort == NO_REASONING:
-                    payload = {k: v for k, v in payload.items() if k != "reasoning_effort"}
-                elif route.reasoning_effort:
+                if route.reasoning_effort:
                     payload["reasoning_effort"] = route.reasoning_effort
                 if route.base:
                     base, api_key = route.base, route.api_key
@@ -224,7 +221,7 @@ def _routes_from_env(name: str) -> list[tuple[str | None, Route]]:
         stage, effort = item.get("stage"), item.get("effort")
         if stage is not None and stage not in STAGES:
             raise ValueError(f"{name}: unknown stage {stage!r}")
-        if effort is not None and effort not in REASONING_BUDGETS and effort != NO_REASONING:
+        if effort is not None and effort not in REASONING_BUDGETS:
             raise ValueError(f"{name}: unknown effort {effort!r}")
         base, key = item.get("base"), ""
         if base is not None:

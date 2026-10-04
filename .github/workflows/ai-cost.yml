@@ -26,9 +26,9 @@ on:
       stage_models:
         description: 'Models per checkpoint, in fallback order: [{"stage":"review","model":"...","price":[in,out],"effort":"none"}]'
         required: false
-        # Free sovinfra qwen3.8-27b scans and checks residue (two images a request, no thinking); muse, whose
-        # glossary is far cleaner than qwen's, reads names and terms; luna translates.
-        default: '[{"stage":"scan","model":"qwen3.8-27b","base":"https://api.sovinfra.ai/v1","key_env":"GATEWAY_SOVINFRA_KEY","price":[0,0],"effort":"none"},{"stage":"scan","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"review","model":"qwen3.8-27b","base":"https://api.sovinfra.ai/v1","key_env":"GATEWAY_SOVINFRA_KEY","price":[0,0],"effort":"none"},{"stage":"review","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"translate","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"translate","model":"xiaomi/mimo-v2.6-flash","price":[0.147,0.294,0.00294]}]'
+        # qwen3.7-flash scans and checks residue (cheapest reader that takes images, no thinking); muse reads
+        # names and terms; luna translates.
+        default: '[{"stage":"scan","model":"alibaba/qwen3.7-flash","price":[0.0315,0.1365,0.0063],"effort":"none"},{"stage":"scan","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"review","model":"alibaba/qwen3.7-flash","price":[0.0315,0.1365,0.0063],"effort":"none"},{"stage":"review","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"translate","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"translate","model":"xiaomi/mimo-v2.6-flash","price":[0.147,0.294,0.00294]}]'
 
 permissions:
   contents: write
@@ -199,7 +199,6 @@ jobs:
           SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
           GATEWAY_SOVINFRA_KEY: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
-          GATEWAY_AGNES_KEY: ${{ secrets.Agnes_key }}
         run: |
           KEY="${!PROVIDER_SECRET}" python - <<'PY'
           import base64, json, os, sys, time, cv2, numpy as np, requests
@@ -218,8 +217,6 @@ jobs:
               body = {"model": model, "max_tokens": 2000, "reasoning_effort": effort, "messages": [{"role": "user", "content": [
                   {"type": "text", "text": "What word is written in this image? Answer with the word only."},
                   {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}]}]}
-              if effort == "omit":  # the model rejects any reasoning field
-                  del body["reasoning_effort"]
               started = time.time()
               response = requests.post(
                   base.rstrip("/") + "/chat/completions",
@@ -243,8 +240,6 @@ jobs:
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
           # A stage route with "base" and "key_env": "GATEWAY_SOVINFRA_KEY" runs on sovinfra's free tokens.
           GATEWAY_SOVINFRA_KEY: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
-          # A route with "key_env": "GATEWAY_AGNES_KEY" runs on Agnes AI's API.
-          GATEWAY_AGNES_KEY: ${{ secrets.Agnes_key }}
           CHAPTER_URL: ${{ matrix.url }}
           OUT: audit-results/ai-cost/${{ github.event.inputs.label || 'push' }}/${{ matrix.slug }}
           INPUT_POLISH: ${{ github.event.inputs.polish }}
