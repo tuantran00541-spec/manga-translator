@@ -1,4 +1,4 @@
-name: Qwen Image 2.1 CPU smoke test
+name: Qwen Image 2.1 UC Q4_K_M smoke test
 
 on:
   push:
@@ -25,35 +25,37 @@ jobs:
         run: |
           python3 -m pip install -U "huggingface_hub[cli]"
 
-      - name: Download Qwen-Image-2.1 INT8 core
+      - name: Download Qwen-Image-2.1 UC Q4_K_M core
         env:
           HF_HUB_ENABLE_HF_TRANSFER: "1"
         run: |
-          mkdir -p qwen21
-          hf download Comfy-Org/Qwen-Image-2.1             diffusion_models/qwen_image_2.1_int8_convrot.safetensors             text_encoders/qwen3vl_8b_int8_convrot.safetensors             vae/qwen_image_2.1_vae_bf16.safetensors             --local-dir qwen21
-          find qwen21 -type f -printf "%p %s bytes\\n"
+          mkdir -p qwen21-uc
+          hf download Plana-Archive/Qwen-Image-2.1-Uncensored-GGUF             qwen-image-2.1-UC-Q4_K_M.gguf             --local-dir qwen21-uc
+          hf download Plana-Archive/Qwen-Image-2.1-Uncensored-GGUF             text_encoders/qwen3vl_8b_int8_convrot.safetensors             vae/qwen_image_2.1_vae_bf16.safetensors             --local-dir qwen21-uc
+          find qwen21-uc -type f -printf "%p %s bytes\n"
           df -h /
 
-      - name: Verify model sizes and checksums
+      - name: Verify model sizes
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          files = list(Path("qwen21").rglob("*.safetensors"))
+          files = list(Path("qwen21-uc").rglob("*"))
+          files = [p for p in files if p.is_file()]
           total = sum(p.stat().st_size for p in files)
           print("files:", len(files))
           print("total bytes:", total)
           print("total GiB:", total / 1024**3)
           for p in files:
               print(f"{p}: {p.stat().st_size/1024**3:.2f} GiB")
-          assert any("qwen_image_2.1_int8" in str(p) for p in files)
-          assert any("qwen3vl_8b_int8" in str(p) for p in files)
-          assert any("qwen_image_2.1_vae" in str(p) for p in files)
+          assert any(p.name == "qwen-image-2.1-UC-Q4_K_M.gguf" for p in files)
+          assert any("qwen3vl_8b_int8" in p.name for p in files)
+          assert any("qwen_image_2.1_vae" in p.name for p in files)
           PY
 
       - name: Upload model files
         uses: actions/upload-artifact@v4
         with:
-          name: qwen-image-2.1-int8-core
-          path: qwen21
+          name: qwen-image-2.1-uc-q4km-core
+          path: qwen21-uc
           if-no-files-found: error
           retention-days: 1
