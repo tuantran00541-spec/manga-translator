@@ -2,6 +2,10 @@ name: Agent eval
 
 # Repeatable Agent scenarios on real models, the code before the research changes (base) against the code after (new).
 on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/agent-eval.yml"
   workflow_dispatch:
     inputs:
       base:
@@ -40,8 +44,8 @@ jobs:
         env:
           POLARGRID_KEY: ${{ secrets.polagrid_ }}
           AGNES_KEY: ${{ secrets.Agnes_key }}
-          BASE: ${{ inputs.base }}
-          REPEATS: ${{ inputs.repeats }}
+          BASE: ${{ inputs.base || 'acfebc32' }}
+          REPEATS: ${{ inputs.repeats || '2' }}
         run: |
           mkdir -p "$OUT"
           git worktree add "$RUNNER_TEMP/base" "$BASE"
