@@ -219,7 +219,7 @@
 
   function editLinesView(edits) {
     const pre = el("pre", "agent-pre");
-    (edits || []).forEach((edit, i) => {
+    (Array.isArray(edits) ? edits : []).forEach((edit, i) => {
       if (i) pre.append("\n");
       pre.append(el("span", "agent-patch-file", `${edit.op} ${edit.anchor || ""}${edit.end ? `..${edit.end}` : ""}`));
       if (edit.text) pre.append(`\n${edit.text}`);

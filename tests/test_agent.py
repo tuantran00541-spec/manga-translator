@@ -1585,3 +1585,12 @@ def test_tool_calls_with_broken_json_are_recovered_using_the_tools_parameter_nam
     assert not any(c.get("error") for c in got)
     _, still = client.parse_text_calls('<tool_call>{"name": "write_file", "arguments": {"content": "has "quotes" but no path"}}</tool_call>', tools)
     assert still[0].get("error"), "a call missing a required parameter stays unreadable"
+
+
+def test_arguments_sent_as_json_strings_are_read_as_the_type_the_tool_declares(ws):
+    shown = ws.run("read_file", {"path": "pkg/a.py", "anchors": "true", "limit": "2"}).splitlines()
+    assert shown[0].count("|") >= 1 and len(shown) == 2, "a flag and a number sent as strings still work"
+    anchor = shown[0].split("|")[0]
+    edits = json.dumps([{"op": "replace", "anchor": anchor, "text": "def g():"}])
+    ws.run("edit_lines", {"path": "pkg/a.py", "edits": edits})
+    assert (ws.root / "pkg" / "a.py").read_text().startswith("def g():")

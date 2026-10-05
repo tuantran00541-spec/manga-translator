@@ -146,6 +146,7 @@ class Workspace:
             raise ToolError(f"Unknown tool {name!r}")
         if not isinstance(args, dict):
             raise ToolError("Tool arguments must be a JSON object")
+        args = self._coerce(name, args)
         if KIND.get(name) == "edit" and self.policy.mode == "read-only":
             raise ToolError("The session is read-only; ask the user to allow edits")
         try:
@@ -160,6 +161,24 @@ class Workspace:
             if problems:
                 output += f"\nSyntax check failed:\n{problems}"
         return output
+
+    @staticmethod
+    def _coerce(name: str, args: dict) -> dict:
+        """Models often send an array, number or flag as a JSON string; read it as the type the tool declares."""
+        spec = next((s for s in SPECS if s["name"] == name), None)
+        props = (spec or {}).get("parameters", {}).get("properties", {})
+        fixed = dict(args)
+        for key, value in args.items():
+            kind = (props.get(key) or {}).get("type")
+            if isinstance(value, str) and kind in ("array", "object", "integer", "boolean"):
+                try:
+                    parsed = json.loads(value)
+                except ValueError:
+                    continue
+                if (kind == "array" and isinstance(parsed, list)) or (kind == "object" and isinstance(parsed, dict)) or (
+                        kind == "integer" and isinstance(parsed, int) and not isinstance(parsed, bool)) or (kind == "boolean" and isinstance(parsed, bool)):
+                    fixed[key] = parsed
+        return fixed
 
     def targets(self, name: str, args: dict) -> list[Path]:
         """The files an edit tool call is about to change."""

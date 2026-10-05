@@ -117,7 +117,7 @@ def parse_text_calls(text: str, tools: list[dict] | None = None) -> tuple[str, l
     for raw in TOOL_CALL_RE.findall(text or ""):
         found = _read_call(raw, schemas)
         if found is None:
-            calls.append({"id": uuid.uuid4().hex[:12], "name": "", "args": {}, "error": f"Unreadable tool call: {raw[:200]}. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."})
+            calls.append({"id": uuid.uuid4().hex[:12], "name": "", "args": {}, "error": f"Unreadable tool call: {raw[:200]}{' … ' + raw[-150:] if len(raw) > 400 else ''}. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."})
         else:
             calls.append({"id": uuid.uuid4().hex[:12], "name": found[0], "args": found[1]})
     return TOOL_CALL_RE.sub("", text or "").strip(), calls
