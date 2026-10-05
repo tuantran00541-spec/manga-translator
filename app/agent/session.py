@@ -164,6 +164,7 @@ class AgentSession:
         self._spawn_lock = threading.Lock()
         self.children: dict[str, AgentSession] = {}
         self.nick, self.job, self.closed, self.reported, self.mutating = "", None, False, False, False
+        self.pending: str | None = None
         self.counted = {"prompt_tokens": 0, "completion_tokens": 0}
         self.max_steps = SUBAGENT_STEPS if depth else MAX_STEPS
         self._usage_lock = threading.Lock()
@@ -458,6 +459,7 @@ class AgentSession:
             self.goal = None
             self._lock.notify_all()
         for child in list(self.children.values()):
+            child.pending = None
             child.stop()
 
     def close(self) -> None:
@@ -661,7 +663,9 @@ class AgentSession:
             return self._memory_tool(args)
         if call["name"] == "spawn_agent":
             nick = self._spawn(str(args.get("message") or ""), str(args.get("agent") or "explore"))
-            return f"Started {nick}. Do other work, then call wait_agent with ids [\"{nick}\"]; it also reports to you by itself when done."
+            queued = self.children[nick].pending is not None
+            lead = f"Queued {nick}: helpers that edit files run one at a time, so it starts when the one before it is done." if queued else f"Started {nick}."
+            return f"{lead} Do other work, then call wait_agent with ids [\"{nick}\"]; it also reports to you by itself when done."
         if call["name"] == "wait_agent":
             return self._wait_agents(args.get("ids"), args.get("timeout_s"))
         if call["name"] == "send_input":
@@ -672,6 +676,7 @@ class AgentSession:
         if call["name"] == "close_agent":
             child = self._child(str(args.get("id") or ""))
             state = self._state(child)
+            child.pending = None
             self._collect(child)
             child.close()
             child.closed = True
@@ -701,6 +706,8 @@ class AgentSession:
     def _state(child: "AgentSession") -> str:
         if child.closed:
             return "closed"
+        if child.pending is not None:
+            return "queued"
         if child.status != "idle":
             return "running"
         return "errored" if any(e["type"] == "error" for e in child.events[-3:]) else "completed"
@@ -713,7 +720,7 @@ class AgentSession:
 
     def _collect(self, child: "AgentSession") -> None:
         """Fold a finished helper's tokens into this session once and tell the page it is done."""
-        if child.reported or child.status != "idle":
+        if child.reported or child.status != "idle" or child.pending is not None:
             return
         child.reported = True
         self.tainted = self.tainted or child.tainted
@@ -738,7 +745,7 @@ class AgentSession:
         for nick, other in self.children.items():
             if dedupe and not other.closed and other.job == job:
                 raise ToolError(f"{nick} already has this exact job ({self._state(other)}); call wait_agent instead of starting it again")
-        running = sum(1 for c in self.children.values() if self._state(c) == "running")
+        running = sum(1 for c in self.children.values() if self._state(c) in ("running", "queued"))
         if running >= MAX_AGENT_THREADS:
             raise ToolError(f"{running} agents are already running (limit {MAX_AGENT_THREADS}); call wait_agent for some of them first")
         if len(self.children) >= MAX_CHILDREN:
@@ -747,9 +754,7 @@ class AgentSession:
         mutating = bool(allowed & (agents.EDIT_TOOLS | {"run_command"}))
         if self.plan_mode and mutating:
             raise ToolError("In plan mode only read-only agents may run")
-        busy = next((n for n, c in self.children.items() if c.mutating and self._state(c) == "running"), "") if mutating else ""
-        if busy:
-            raise ToolError(f"{busy} is changing files right now; call wait_agent for it first, so two helpers never edit at the same time")
+        busy = next((n for n, c in self.children.items() if c.mutating and self._state(c) in ("running", "queued")), "") if mutating else ""
         nick = next((n for n in NICKNAMES if n not in self.children), f"agent{len(self.children) + 1}")
         helper = Workspace(self.workspace.root, self.workspace.policy if mutating else sandbox.Policy("read-only", False),
                            read_roots=self.workspace.read_roots)
@@ -759,8 +764,22 @@ class AgentSession:
         child.text_tools, child.nick, child.job, child.mutating = self.text_tools, nick, job, mutating
         self.children[nick] = child
         self.emit("subagent", description=message[:80], agent=agent.name, id=nick, state="started")
-        child.send(message)
+        if busy:
+            # Two helpers never edit at once: this one starts when the one before it is done.
+            child.pending = message
+        else:
+            child.send(message)
         return nick
+
+    def _start_queued(self) -> None:
+        """Starts the next held-back editing helper once no other editing helper is working."""
+        if any(c.mutating and c.pending is None and c.status != "idle" and not c.closed for c in self.children.values()):
+            return
+        for child in self.children.values():
+            if child.pending is not None and not child.closed and not self._stop:
+                message, child.pending = child.pending, None
+                child.send(message)
+                return
 
     def _wait_agents(self, ids, timeout) -> str:
         names = [str(i).strip().lower() for i in ids] if isinstance(ids, list) and ids else []
@@ -769,12 +788,13 @@ class AgentSession:
             return "No agents to wait for."
         limit = max(1, min(WAIT_MAX, int(timeout or WAIT_DEFAULT)))
         end = time.time() + limit
-        while time.time() < end and not self._stop and any(self._state(c) == "running" for c in targets):
+        while time.time() < end and not self._stop and any(self._state(c) in ("running", "queued") for c in targets):
+            self._start_queued()
             time.sleep(0.25)
         rows, waiting = [], False
         for child in targets:
             state = self._state(child)
-            if state == "running":
+            if state in ("running", "queued"):
                 waiting = True
                 rows.append(f"{child.nick} ({child.agent.name}): still running")
                 continue
@@ -784,8 +804,9 @@ class AgentSession:
 
     def _notifications(self) -> None:
         """Tell the model about helpers that finished on their own, as Codex does with a notification message."""
+        self._start_queued()
         for child in list(self.children.values()):
-            if not child.closed and not child.reported and child.status == "idle":
+            if not child.closed and not child.reported and child.status == "idle" and child.pending is None:
                 self._collect(child)
                 note = {"agent_id": child.nick, "agent": child.agent.name, "status": self._state(child), "result": self._result(child)}
                 self.history.append({"role": "user", "content": f"<subagent_notification>{json.dumps(note, ensure_ascii=False)}</subagent_notification>"})
@@ -794,7 +815,8 @@ class AgentSession:
         """One job, started and waited for at once; the helper is closed afterwards."""
         nick = self._spawn(prompt, agent_name, dedupe=False)
         child = self.children[nick]
-        while self._state(child) == "running" and not self._stop:
+        while self._state(child) in ("running", "queued") and not self._stop:
+            self._start_queued()
             time.sleep(0.2)
         self._collect(child)
         answer = self._result(child)
@@ -1003,11 +1025,13 @@ class AgentSession:
             if self.queue or self._stop:
                 return bool(self.queue)
         # Helpers still working: wait for one to finish, then the model reads its report.
-        while any(self._state(c) == "running" for c in self.children.values()) and not self._stop and not self.queue:
-            if any(not c.closed and not c.reported and c.status == "idle" for c in self.children.values()):
+        done = lambda: any(not c.closed and not c.reported and c.status == "idle" and c.pending is None for c in self.children.values())
+        while any(self._state(c) in ("running", "queued") for c in self.children.values()) and not self._stop and not self.queue:
+            self._start_queued()
+            if done():
                 break
             time.sleep(0.25)
-        if any(not c.closed and not c.reported and c.status == "idle" for c in self.children.values()):
+        if done():
             return True
         if self._dirty and not self._gated and self.workspace.policy.mode != "read-only" and any(r["name"] == "run_command" for r in self.specs()):
             self._gated = True

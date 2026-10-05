@@ -82,7 +82,7 @@ def checks_for(name, root, session, events):
     if name == "writers":
         return {"a_made": (root / "a.txt").exists() and "A" in (root / "a.txt").read_text(),
                 "b_made": (root / "b.txt").exists() and "B" in (root / "b.txt").read_text(),
-                "refused_once": any("never edit at the same time" in t[2] for t in tools)}
+                "queued_once": any(t[2].startswith("Queued ") for t in tools)}
     return {}
 
 
@@ -110,7 +110,7 @@ def run_one(name, repeat):
     stop.set()
     events = list(session.events)
     checks = checks_for(name, root, session, events)
-    ok_keys = [k for k, v in checks.items() if isinstance(v, bool) and k not in ("refused_once",)]
+    ok_keys = [k for k, v in checks.items() if isinstance(v, bool) and k not in ("queued_once",)]
     row = {"label": args.label, "model": args.model, "scenario": name, "repeat": repeat, "ok": all(checks[k] for k in ok_keys), "checks": checks,
            "seconds": round(time.time() - start, 1), "steps": sum(e["type"] == "assistant" for e in events), "usage": session.usage,
            "tools": {n: [e["name"] for e in events if e["type"] == "tool"].count(n) for n in sorted({e["name"] for e in events if e["type"] == "tool"})},

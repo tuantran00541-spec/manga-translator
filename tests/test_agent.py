@@ -1077,20 +1077,26 @@ def test_the_agent_is_nudged_once_when_it_stops_after_editing_without_checking(w
     assert len(quiet.seen) == 2
 
 
-def test_only_one_helper_may_change_files_at_a_time(ws, home):
+def test_helpers_that_edit_files_run_one_after_the_other(ws, home):
     import threading
-    release = threading.Event()
+    order = []
 
-    def slow(messages, tools):
-        release.wait(5)
+    def child(messages, tools):
+        order.append(("start", messages[1]["content"]))
+        time.sleep(0.4)
+        order.append(("end", messages[1]["content"]))
         return turn("made it")
 
     spawn = lambda m: {"id": m, "name": "spawn_agent", "args": {"message": m, "agent": "coder"}}
-    fake = routed([turn(calls=[spawn("make file one"), spawn("make file two")]), lambda m, t: (release.set(), turn("ok"))[1]], slow)
+    fake = routed([turn(calls=[spawn("make file one"), spawn("make file two")]),
+                   turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("both done")], child)
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     run_to_idle(session)
     results = [(ok, o) for _, ok, o in tool_outputs(session)]
-    assert results[0][0] and not results[1][0] and "never edit at the same time" in results[1][1]
+    assert results[0][0] and results[1][0] and results[1][1].startswith("Queued birch")
+    assert order == [("start", "make file one"), ("end", "make file one"), ("start", "make file two"), ("end", "make file two")]
+    waited = results[2][1]
+    assert "ash (coder): completed" in waited and "birch (coder): completed" in waited
 
 
 def test_after_reading_untrusted_content_consequential_calls_ask_even_in_edits_mode(ws, home, monkeypatch):
