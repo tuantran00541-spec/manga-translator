@@ -32,8 +32,8 @@
   --text-quiet: color-mix(in srgb, var(--text-primary) 58%, transparent);
   --line-quiet: color-mix(in srgb, var(--text-primary) 14%, transparent);
   --surface-quiet: color-mix(in srgb, var(--text-primary) 7%, transparent);
-  --line-focus: color-mix(in srgb, var(--text-primary) 35%, transparent);
   --shadow-quiet: 0 4px 24px color-mix(in srgb, var(--text-primary) 7%, transparent);
+  --shadow-lift: 0 8px 32px color-mix(in srgb, var(--text-primary) 14%, transparent);
   --font-ui: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: "Cascadia Mono", "Consolas", monospace;
   --space-1: 4px;
