@@ -1,0 +1,25 @@
+[VERBOSE] model_loader.cpp:1108 - loading 81/81 tensors from w/quarter.gguf
+  |#                                                 | 1/81 - 0.00MB/s[K  |#############                                     | 20/81 - 787.01MB/s[K  |################                                  | 25/81 - 547.85MB/s[K  |##################                                | 29/81 - 485.34MB/s[K  |######################                            | 35/81 - 452.17MB/s[K  |##########################                        | 41/81 - 485.72MB/s[K  |#############################                     | 46/81 - 442.34MB/s[K  |#################################                 | 52/81 - 442.36MB/s[K  |###################################               | 56/81 - 420.32MB/s[K  |#####################################             | 59/81 - 417.79MB/s[K  |##########################################        | 67/81 - 438.73MB/s[K  |##############################################    | 73/81 - 435.53MB/s[K  |################################################# | 78/81 - 418.02MB/s[K  |##################################################| 81/81 - 432.66MB/s[K
+[INFO   ] model_loader.cpp:1378 - loading tensors completed, taking 2.74s (read: 2.66s, memcpy: 0.00s, convert: 0.00s, copy_to_backend: 0.00s)
+[VERBOSE] model_manager.cpp:490  - model manager prepared params backend buffers (1187.23 MB, 81 tensors, 1 blocks, RAM) on CPU
+[VERBOSE] ggml_runner.cpp:1019 - qwen_image_2_1 compute buffer size: 74.63 MB(RAM) on CPU (peak across 1 segment)
+[INFO   ] ggml_graph_cut.cpp:1032 - qwen_image_2_1 build cached graph cut plan done (taking 1 ms)
+  |======>                                           | 1/8 - 32.20s/it[K[INFO   ] ggml_graph_cut.cpp:1032 - qwen_image_2_1 build cached graph cut plan done (taking 1 ms)
+[INFO   ] ggml_graph_cut.cpp:1032 - qwen_image_2_1 build cached graph cut plan done (taking 1 ms)
+  |============>                                     | 2/8 - 28.26s/it[K  |==================>                               | 3/8 - 28.23s/it[K  |=========================>                        | 4/8 - 28.25s/it[K  |===============================>                  | 5/8 - 28.23s/it[K  |=====================================>            | 6/8 - 28.26s/it[K  |===========================================>      | 7/8 - 28.24s/it[K  |==================================================| 8/8 - 28.25s/it[K
+[INFO   ] image.cpp:899  - sampling completed, taking 229.93s
+[INFO   ] image.cpp:911  - generating 1 latent images completed, taking 229.93s
+[INFO   ] image.cpp:554  - decoding 1 latents
+[INFO   ] ggml_graph_cut.cpp:1032 - wan_vae build cached graph cut plan done (taking 1 ms)
+[VERBOSE] model_loader.cpp:1108 - loading 128/238 tensors from w/vae/qwen_image_2.1_vae_bf16.safetensors
+  |###                                               | 6/128 - 0.00MB/s[K  |###############                                   | 36/128 - 502.85MB/s[K  |#####################                             | 53/128 - 592.31MB/s[K  |##########################                        | 64/128 - 547.08MB/s[K  |##################################                | 86/128 - 547.17MB/s[K  |##################################################| 128/128 - 480.77MB/s[K
+[INFO   ] model_loader.cpp:1378 - loading tensors completed, taking 1.00s (read: 0.42s, memcpy: 0.00s, convert: 0.45s, copy_to_backend: 0.00s)
+[VERBOSE] model_manager.cpp:490  - model manager prepared params backend buffers (482.81 MB, 128 tensors, 1 blocks, RAM) on CPU
+[VERBOSE] ggml_runner.cpp:1019 - wan_vae compute buffer size: 850.61 MB(RAM) on CPU (peak across 1 segment)
+[VERBOSE] vae.hpp:351  - computing vae decode graph completed, taking 30.11s
+[INFO   ] image.cpp:620  - latent 1 decoded, taking 30.11s
+[INFO   ] image.cpp:624  - decode_first_stage completed, taking 30.11s
+[INFO   ] image.cpp:1050 - generate_image completed in 273.84s
+[VERBOSE] model_manager.cpp:1260 - model manager released params backend buffers (6121.03 MB, 704 tensors, 4 blocks, RAM) from CPU
+[INFO   ] main.cpp:497  - save result image 0 to 'audit-results/qwen21-slim/out-inpaint8-s8.png' (success)
+[INFO   ] main.cpp:573  - 1/1 images saved

@@ -1,0 +1,25 @@
+[VERBOSE] diffusion_engine.cpp:1281 - model metadata validated; weights will be prepared lazily
+[INFO   ] diffusion_engine.cpp:1327 - total params memory size = 9337.96MB (VRAM 0.00MB, RAM 9337.96MB): text_encoders 4302.33MB(RAM), diffusion_model 4391.25MB(RAM), vae 644.38MB(RAM), controlnet 0.00MB(N/A), extensions 0.00MB(N/A)
+[INFO   ] diffusion_engine.cpp:1466 - running in FLOW mode
+[INFO   ] image_preprocess.cpp:266  - preprocess ref[0]: 224x512 crop=(0,0,224,512) resize=224x512 pad=(0,0) output=224x512 filter=auto(0) antialias=false
+[INFO   ] image.cpp:814  - generate_image 224x512
+[VERBOSE] model_loader.cpp:189  - using 4 threads for model loading
+[INFO   ] diffusion_engine.cpp:3012 - Using 'qwen' preset for reference images
+[INFO   ] denoiser.hpp:1196 - get_sigmas with Flux scheduler
+[VERBOSE] denoiser.hpp:773  - Flux scheduler: image_seq_len=448, steps=4, mu=0.510, shift_terminal=0.020
+[INFO   ] request.cpp:420  - sampling using Euler method
+[INFO   ] image.cpp:274  - EDIT mode
+[VERBOSE] image.cpp:284  - auto resize ref images
+[VERBOSE] image.cpp:308  - resize vae ref image 0 from 512x224 to 512x224
+[INFO   ] ggml_graph_cut.cpp:1032 - wan_vae build cached graph cut plan done (taking 1 ms)
+[VERBOSE] model_loader.cpp:1108 - loading 98/238 tensors from w/vae/qwen_image_2.1_vae_bf16.safetensors
+  |##                                                | 2/98 - 0.00MB/s[K  |##################################################| 98/98 - 739.37MB/s[K
+[INFO   ] model_loader.cpp:1378 - loading tensors completed, taking 0.20s (read: 0.00s, memcpy: 0.00s, convert: 0.15s, copy_to_backend: 0.00s)
+[VERBOSE] model_manager.cpp:490  - model manager prepared params backend buffers (148.67 MB, 98 tensors, 1 blocks, RAM) on CPU
+[VERBOSE] ggml_runner.cpp:1019 - wan_vae compute buffer size: 328.71 MB(RAM) on CPU (peak across 1 segment)
+[VERBOSE] vae.hpp:290  - computing vae encode graph completed, taking 6.55s
+[INFO   ] image.cpp:398  - encode_first_stage completed, taking 6.56s
+[ERROR  ] conditioner.hpp:2558 - Qwen Image 2.1 editing requires Qwen3-VL vision weights; provide --llm_vision or a combined encoder
+[ERROR  ] image.cpp:448  - failed to encode prompt
+[ERROR  ] main.cpp:928  - generate failed
+[VERBOSE] model_manager.cpp:1260 - model manager released params backend buffers (148.67 MB, 98 tensors, 1 blocks, RAM) from CPU
