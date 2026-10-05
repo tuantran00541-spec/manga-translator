@@ -8,7 +8,6 @@ import uuid
 
 import requests
 
-from app.agent.tools import SPECS
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS
 from app.security import validate_url
@@ -34,14 +33,14 @@ def chat_url(provider: AIProvider) -> str:
     return str(provider.chat_url)
 
 
-def native_tools() -> list[dict]:
-    return [{"type": "function", "function": spec} for spec in SPECS]
+def native_tools(specs: list[dict]) -> list[dict]:
+    return [{"type": "function", "function": spec} for spec in specs]
 
 
-def text_tools_prompt() -> str:
+def text_tools_prompt(specs: list[dict]) -> str:
     return TEXT_TOOLS_GUIDE + "\n".join(
         f"- {s['name']}: {s['description']} Arguments: {json.dumps(s['parameters'].get('properties', {}))}"
-        for s in SPECS
+        for s in specs
     )
 
 
@@ -59,9 +58,9 @@ def parse_text_calls(text: str) -> tuple[str, list[dict]]:
     return TOOL_CALL_RE.sub("", text or "").strip(), calls
 
 
-def render(history: list[dict], system: str, text_mode: bool) -> list[dict]:
+def render(history: list[dict], system: str, text_mode: bool, specs: list[dict]) -> list[dict]:
     """The neutral history as chat messages, with tool calls native or written as text."""
-    messages = [{"role": "system", "content": system + ("\n\n" + text_tools_prompt() if text_mode else "")}]
+    messages = [{"role": "system", "content": system + ("\n\n" + text_tools_prompt(specs) if text_mode and specs else "")}]
     for item in history:
         role = item["role"]
         if role == "user":
@@ -89,14 +88,14 @@ def render(history: list[dict], system: str, text_mode: bool) -> list[dict]:
     return messages
 
 
-def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, use_tools: bool) -> dict:
+def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None) -> dict:
     """One assistant turn: its text, tool calls, reasoning and token usage."""
     url = chat_url(provider)
     validate_url(url)
     payload = {"model": model, "messages": messages, "stream": False}
     payload.update(provider.chat_completion_extras())
-    if use_tools:
-        payload["tools"] = native_tools()
+    if tools:
+        payload["tools"] = native_tools(tools)
     for attempt in range(RATE_LIMIT_RETRIES + 1):
         try:
             response = requests.post(url, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -116,7 +115,7 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
         raise RuntimeError(f"{provider.label} redirected the request")
     if not response.ok:
         detail = _safe_error_detail(response, api_key)
-        if use_tools and 400 <= response.status_code < 500 and "tool" in detail.lower():
+        if tools and 400 <= response.status_code < 500 and "tool" in detail.lower():
             raise ToolsUnsupported(detail)
         raise RuntimeError(f"{provider.label} HTTP {response.status_code}: {detail}")
     try:

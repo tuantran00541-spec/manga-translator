@@ -1,6 +1,6 @@
 name: Agent smoke
 
-# One-off: the Agent mode loop on real models fixes a bug in a tiny project until its tests pass.
+# One-off: the Agent mode loop on real models, sandboxed, with AGENTS.md, a skill and an MCP server, fixes a bug until tests pass.
 on:
   push:
     branches-ignore: [main]
@@ -14,9 +14,9 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
-      OUT: audit-results/agent-smoke
+      OUT: audit-results/agent-smoke-v2
       PYTHONPATH: "."
     steps:
       - uses: actions/checkout@v4
@@ -25,15 +25,16 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -q -r requirements-test.txt
 
-      - name: Each model fixes the same bug in auto mode
+      - name: Each model fixes the same bug in edits mode inside the sandbox
         env:
           POLARGRID_KEY: ${{ secrets.polagrid_ }}
           AGNES_KEY: ${{ secrets.Agnes_key }}
         run: |
           mkdir -p "$OUT"
           python - <<'PY'
-          import json, os, subprocess, tempfile, time
+          import json, os, subprocess, sys, tempfile, textwrap, threading, time
           from pathlib import Path
+          from app.agent import sandbox
           from app.agent.session import AgentSessionManager
           from app.agent.tools import Workspace
           from app.ai_providers import resolve_provider
@@ -43,8 +44,24 @@ jobs:
               ("polargrid", "https://api.mia-01.edge.polargrid.ai/v1", "POLARGRID_KEY", "qwen-3.8-27b"),
               ("agnes", "https://apihub.agnes-ai.com/v1", "AGNES_KEY", "agnes-3.0-flash"),
           ]
-          task = ("The tests in this project fail. Find the bug, fix it with the smallest change, "
-                  "then run `python -m pytest -q` to prove the tests pass. Do not edit the tests.")
+          server = textwrap.dedent('''
+              import json, sys
+              for line in sys.stdin:
+                  m = json.loads(line)
+                  if "id" not in m:
+                      continue
+                  if m["method"] == "initialize":
+                      r = {"protocolVersion": m["params"]["protocolVersion"], "capabilities": {"tools": {}}, "serverInfo": {"name": "prices"}}
+                  elif m["method"] == "tools/list":
+                      r = {"tools": [{"name": "price_list", "description": "The shop's official price list in dollars",
+                                      "annotations": {"readOnlyHint": True}, "inputSchema": {"type": "object", "properties": {}}}]}
+                  else:
+                      r = {"content": [{"type": "text", "text": json.dumps({"tea": 3.5, "cake": 4.25})}]}
+                  print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": r}), flush=True)
+          ''')
+          task = ("The tests fail. Find and fix the bug with the smallest change, then add one test to test_shop.py that "
+                  "checks total() on the shop's official prices of tea and cake (get them from the price list tool) with "
+                  "a 0.5 discount, and run the tests to prove they pass.")
           report = []
           for name, base, key_env, model in runs:
               root = Path(tempfile.mkdtemp())
@@ -57,22 +74,50 @@ jobs:
                   "from shop import total\n\n"
                   "def test_no_discount():\n    assert total([1.5, 2.5]) == 4.0\n\n"
                   "def test_discount():\n    assert total([10, 10], 0.25) == 15.0\n", encoding="utf-8")
+              (root / "AGENTS.md").write_text("Run tests with `python -m pytest -q -p no:cacheprovider`.\n", encoding="utf-8")
+              skill = root / ".agents" / "skills" / "shop-tests"
+              skill.mkdir(parents=True)
+              (skill / "SKILL.md").write_text("---\nname: shop-tests\ndescription: How tests in this shop project are written.\n---\n"
+                                              "Name each new test test_<what_it_checks> and use plain asserts.\n", encoding="utf-8")
+              (root / "prices_mcp.py").write_text(server, encoding="utf-8")
+              (root / ".mcp.json").write_text(json.dumps({"mcpServers": {"prices": {"command": sys.executable, "args": ["prices_mcp.py"]}}}),
+                                              encoding="utf-8")
               provider = resolve_provider(name, label=name, protocol="openai", api_base=base)
-              session = AgentSessionManager().create(provider, os.environ[key_env], model, Workspace(root), "auto")
+              agents = AgentSessionManager(Path(tempfile.mkdtemp()))
+              session = agents.create(provider, os.environ[key_env], model, Workspace(root, sandbox.Policy("workspace-write", False)), "edits")
+              session.trust_mcp("prices")
+              denied = []
+
+              def refuse():
+                  # Nobody is there to approve: any request to leave the sandbox is refused.
+                  while session.status != "done-watch":
+                      if session.status == "waiting" and session.pending:
+                          denied.append(session.pending["name"])
+                          session.decide("deny", "no approvals in this test")
+                      time.sleep(0.5)
+
+              threading.Thread(target=refuse, daemon=True).start()
               start = time.time()
               session.send(task)
-              while session.status != "idle" and time.time() - start < 600:
+              time.sleep(1)
+              while session.status != "idle" and time.time() - start < 900:
                   time.sleep(1)
               session.stop()
-              passed = subprocess.run(["python", "-m", "pytest", "-q"], cwd=root, capture_output=True, text=True).returncode == 0
-              row = {"model": model, "tests_pass_after": passed, "seconds": round(time.time() - start, 1),
-                     "text_tools": session.text_tools, "usage": session.usage,
-                     "steps": sum(1 for e in session.events if e["type"] == "assistant"),
-                     "tools": [e["name"] for e in session.events if e["type"] == "tool"],
-                     "shop_py": (root / "shop.py").read_text(), "tests_untouched": "0.25) == 15.0" in (root / "test_shop.py").read_text()}
+              passed = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"], cwd=root,
+                                      capture_output=True, text=True)
+              tests = (root / "test_shop.py").read_text()
+              row = {"model": model, "sandbox_backend": sandbox.backend(), "tests_pass_after": passed.returncode == 0,
+                     "pytest": passed.stdout[-300:], "seconds": round(time.time() - start, 1), "text_tools": session.text_tools,
+                     "usage": session.usage, "steps": sum(1 for e in session.events if e["type"] == "assistant"),
+                     "tools": [e["name"] for e in session.events if e["type"] == "tool"], "denied": denied,
+                     "mcp": session.mcp_status, "todos": session.todos, "shop_py": (root / "shop.py").read_text(),
+                     "new_test_uses_prices": "3.5" in tests and "4.25" in tests,
+                     "old_tests_untouched": "0.25) == 15.0" in tests,
+                     "final": next((e["text"] for e in reversed(session.events) if e["type"] == "assistant" and e["text"]), "")}
               report.append(row)
               (out / f"{name}-events.json").write_text(json.dumps(session.events, ensure_ascii=False, indent=1), encoding="utf-8")
-              print(json.dumps(row, ensure_ascii=False), flush=True)
+              print(json.dumps({k: v for k, v in row.items() if k != "final"}, ensure_ascii=False), flush=True)
+              agents.close_all()
           (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
           PY
 
@@ -80,5 +125,5 @@ jobs:
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/agent-smoke
-          message: "audit: Agent smoke (run ${{ github.run_id }})"
+          paths: audit-results/agent-smoke-v2
+          message: "audit: Agent smoke v2 (run ${{ github.run_id }})"

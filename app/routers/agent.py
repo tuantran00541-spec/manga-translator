@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
+from app.agent import sandbox
 from app.agent.session import MODES, AgentSessionManager
 from app.agent.tools import Workspace
 from app.ai_providers import CLOUD_PROVIDER_ID, validate_model_name
@@ -40,14 +41,16 @@ def guard(request: Request, x_manga_agent: str | None = Header(default=None)) ->
 
 
 router = APIRouter(prefix="/api/agent", tags=["agent"], dependencies=[Depends(guard)])
-agent_sessions = AgentSessionManager()
+agent_sessions = AgentSessionManager(BASE_DIR / "data" / "agent")
 
 
 class SessionRequest(BaseModel):
     provider: str
     model: str
-    mode: str = "ask"
+    mode: str = "edits"
     workspace: str = ""
+    sandbox: str = "workspace-write"
+    network: bool = False
 
 
 class MessageRequest(BaseModel):
@@ -62,6 +65,8 @@ class ApprovalRequest(BaseModel):
 class SessionUpdate(BaseModel):
     mode: str | None = None
     model: str | None = None
+    sandbox: str | None = None
+    network: bool | None = None
 
 
 def _session(session_id: str):
@@ -71,35 +76,63 @@ def _session(session_id: str):
         raise HTTPException(404, "Agent session not found") from exc
 
 
-@router.get("/config")
-def agent_config() -> dict:
-    return {"workspace": str(BASE_DIR), "modes": list(MODES)}
-
-
-@router.post("/sessions")
-async def create_session(req: SessionRequest) -> dict:
-    if req.provider == CLOUD_PROVIDER_ID:
+async def _provider_and_key(provider_id: str):
+    if provider_id == CLOUD_PROVIDER_ID:
         raise HTTPException(400, "Manga Cloud only serves A.I mode")
     try:
-        provider = await run_in_threadpool(_resolve_configured_provider, req.provider)
-        model = validate_model_name(req.model, default="")
+        provider = await run_in_threadpool(_resolve_configured_provider, provider_id)
         api_key = await run_in_threadpool(get_provider_api_key, provider.id, provider_label=provider.label)
-        workspace = Workspace(req.workspace.strip() or BASE_DIR)
-        if not api_key:
-            raise HTTPException(409, f"{provider.label} API key is not configured")
-        session = agent_sessions.create(provider, api_key, model, workspace, req.mode)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
+    if not api_key:
+        raise HTTPException(409, f"{provider.label} API key is not configured")
+    return provider, api_key
+
+
+@router.get("/config")
+def agent_config() -> dict:
+    return {"workspace": str(BASE_DIR), "modes": list(MODES), "sandboxes": list(sandbox.MODES), "sandbox_backend": sandbox.backend()}
+
+
+@router.post("/sessions")
+async def create_session(req: SessionRequest) -> dict:
+    provider, api_key = await _provider_and_key(req.provider)
+    try:
+        model = validate_model_name(req.model, default="")
+        if req.sandbox not in sandbox.MODES:
+            raise ValueError(f"sandbox must be one of {', '.join(sandbox.MODES)}")
+        workspace = Workspace(req.workspace.strip() or BASE_DIR, sandbox.Policy(req.sandbox, req.network))
+        session = await run_in_threadpool(agent_sessions.create, provider, api_key, model, workspace, req.mode)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return session.snapshot()
+
+
+@router.post("/sessions/{session_id}/resume")
+async def resume_session(session_id: str) -> dict:
+    if session_id in agent_sessions.sessions:
+        return agent_sessions.sessions[session_id].snapshot()
+    try:
+        data = agent_sessions.saved(session_id)
+    except (KeyError, OSError, ValueError) as exc:
+        raise HTTPException(404, "Saved agent session not found") from exc
+    provider, api_key = await _provider_and_key(str(data.get("provider") or ""))
+    try:
+        mode, network = (data.get("sandbox") or ["workspace-write", False])[:2]
+        workspace = Workspace(data["workspace"], sandbox.Policy(mode, bool(network)))
+        session = await run_in_threadpool(agent_sessions.create, provider, api_key, str(data.get("model") or ""), workspace,
+                                          data.get("mode") if data.get("mode") in MODES else "edits", session_id=session_id)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    session.restore(data)
     return session.snapshot()
 
 
 @router.get("/sessions")
 def list_sessions() -> dict:
-    rows = sorted(agent_sessions.sessions.values(), key=lambda s: s.created_at, reverse=True)
-    return {"sessions": [{"id": s.id, "status": s.status, "model": s.model, "provider_label": s.provider.label,
-                          "title": next((e["text"][:80] for e in s.events if e["type"] == "user"), "")} for s in rows]}
+    return {"sessions": agent_sessions.listing()}
 
 
 @router.get("/sessions/{session_id}")
@@ -111,10 +144,14 @@ def session_events(session_id: str, after: int = 0) -> dict:
 def send_message(session_id: str, req: MessageRequest) -> dict:
     session = _session(session_id)
     try:
+        if req.text.startswith("/") and not req.text.startswith("//"):
+            return session.command(req.text)
         session.send(req.text)
     except RuntimeError as exc:
         raise HTTPException(409, str(exc)) from exc
-    return {"status": session.status}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"sent": True}
 
 
 @router.post("/sessions/{session_id}/approval")
@@ -128,6 +165,23 @@ def approve(session_id: str, req: ApprovalRequest) -> dict:
     return {"ok": True}
 
 
+@router.post("/sessions/{session_id}/trust/mcp/{name}")
+async def trust_mcp(session_id: str, name: str) -> dict:
+    session = _session(session_id)
+    try:
+        await run_in_threadpool(session.trust_mcp, name)
+    except (KeyError, StopIteration) as exc:
+        raise HTTPException(404, "MCP server not found") from exc
+    return session.snapshot(len(session.events))
+
+
+@router.post("/sessions/{session_id}/trust/hooks")
+def trust_hooks(session_id: str) -> dict:
+    session = _session(session_id)
+    session.trust_hooks()
+    return session.snapshot(len(session.events))
+
+
 @router.post("/sessions/{session_id}/stop")
 def stop(session_id: str) -> dict:
     _session(session_id).stop()
@@ -137,15 +191,18 @@ def stop(session_id: str) -> dict:
 @router.patch("/sessions/{session_id}")
 def update_session(session_id: str, req: SessionUpdate) -> dict:
     session = _session(session_id)
-    if req.mode is not None:
-        if req.mode not in MODES:
-            raise HTTPException(400, f"mode must be one of {', '.join(MODES)}")
-        session.mode = req.mode
-    if req.model is not None:
-        try:
+    try:
+        if req.mode is not None:
+            if req.mode not in MODES:
+                raise ValueError(f"mode must be one of {', '.join(MODES)}")
+            session.mode = req.mode
+        if req.model is not None:
             session.model = validate_model_name(req.model, default="")
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
+        if req.sandbox is not None or req.network is not None:
+            policy = session.workspace.policy
+            session.set_policy(req.sandbox or policy.mode, policy.network if req.network is None else req.network)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return session.snapshot(len(session.events))
 
 
