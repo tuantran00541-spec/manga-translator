@@ -1,0 +1,100 @@
+name: Qwen Image 2.1 slimmed
+
+# One-off: how far can Qwen-Image-2.1 be cut (masked inpaint instead of edit, fewer steps, fewer blocks) and still erase lettering.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/qwen21-slim.yml"
+      - "scripts/qwen21_prune.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  slim:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 170
+    env:
+      OUT: audit-results/qwen21-slim
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / && free -h && nproc
+
+      - name: Build stable-diffusion.cpp (CPU)
+        run: |
+          git clone --depth 1 --recursive https://github.com/leejet/stable-diffusion.cpp sdcpp
+          cmake -S sdcpp -B sdcpp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build sdcpp/build -j "$(nproc)"
+
+      - name: Download weights
+        run: |
+          python3 -m pip install -q -U "huggingface_hub[cli]" gguf pillow numpy
+          hf download abenzerps/Qwen-Image-2.1-Uncensored-GGUF qwen-image-2.1-UC-Q4_K_M.gguf \
+            vae/qwen_image_2.1_vae_bf16.safetensors --local-dir w
+          hf download unsloth/Qwen3-VL-8B-Instruct-GGUF Qwen3-VL-8B-Instruct-Q4_K_M.gguf --local-dir w
+
+      - name: Pruned copies
+        run: |
+          python3 scripts/qwen21_prune.py w/qwen-image-2.1-UC-Q4_K_M.gguf w/half.gguf \
+            --keep 0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,31
+          python3 scripts/qwen21_prune.py w/qwen-image-2.1-UC-Q4_K_M.gguf w/quarter.gguf \
+            --keep 0,4,8,12,16,20,24,31
+          ls -la w/*.gguf
+
+      - name: Input and text mask
+        run: |
+          mkdir -p "$OUT"
+          python3 - <<'PY'
+          import numpy as np
+          from PIL import Image, ImageFilter
+          im = Image.open("docs/images/demo-raw.jpg").convert("RGB")
+          s = 512 / max(im.size)
+          w, h = (max(32, int(v * s) // 32 * 32) for v in im.size)
+          im = im.resize((w, h), Image.LANCZOS)
+          im.save("in.png")
+          gray = np.asarray(im.convert("L"), np.float32)
+          # Dark strokes sitting in bright bubble paper are lettering.
+          paper = np.asarray(Image.fromarray((gray > 200).astype(np.uint8) * 255).filter(ImageFilter.BoxBlur(12)), np.float32) / 255
+          ink = (gray < 110) & (paper > 0.55)
+          mask = Image.fromarray(ink.astype(np.uint8) * 255).filter(ImageFilter.MaxFilter(9))
+          mask.save("mask.png")
+          print(im.size, "mask share", float((np.asarray(mask) > 0).mean()))
+          PY
+          cp in.png mask.png "$OUT/"
+
+      - name: Variants
+        run: |
+          SD=$(ls sdcpp/build/bin/sd-cli sdcpp/build/bin/sd 2>/dev/null | head -n1)
+          set -- $(python3 -c "from PIL import Image; print(*Image.open('in.png').size)")
+          W=$1; H=$2
+          run() {
+            name=$1; shift
+            start=$(date +%s)
+            "$SD" --vae w/vae/qwen_image_2.1_vae_bf16.safetensors --llm w/Qwen3-VL-8B-Instruct-Q4_K_M.gguf \
+              -W "$W" -H "$H" --cfg-scale 4.0 --sampling-method euler --seed 42 -t "$(nproc)" -v \
+              -o "$OUT/out-$name.png" "$@" 2>&1 | tail -n 25 > "$OUT/log-$name.txt" || true
+            echo "$name: $(( $(date +%s) - start )) s" | tee -a "$OUT/timing.txt"
+          }
+          FULL=w/qwen-image-2.1-UC-Q4_K_M.gguf
+          ERASE="Remove all lettering, captions and speech-bubble text. Keep the artwork, colours and bubbles exactly the same."
+          FILL="clean empty speech bubble, plain background, no text, no letters"
+          run edit32-s4 --diffusion-model $FULL -r in.png --steps 4 -p "$ERASE"
+          run inpaint32-s8 --diffusion-model $FULL -i in.png --mask mask.png --strength 1.0 --steps 8 -p "$FILL"
+          run inpaint32-s4 --diffusion-model $FULL -i in.png --mask mask.png --strength 1.0 --steps 4 -p "$FILL"
+          run inpaint16-s8 --diffusion-model w/half.gguf -i in.png --mask mask.png --strength 1.0 --steps 8 -p "$FILL"
+          run inpaint8-s8 --diffusion-model w/quarter.gguf -i in.png --mask mask.png --strength 1.0 --steps 8 -p "$FILL"
+          run inpaint32-s8-noprompt --diffusion-model $FULL -i in.png --mask mask.png --strength 1.0 --steps 8 -p ""
+          grep -h "condition\|sampling completed\|generate_image completed\|layers =" "$OUT"/log-*.txt || true
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/qwen21-slim
+          message: "audit: Qwen-Image-2.1 slimmed (run ${{ github.run_id }})"
