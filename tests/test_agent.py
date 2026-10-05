@@ -1554,7 +1554,7 @@ def test_a_stream_that_puts_its_reply_in_an_unknown_field_is_not_lost():
 def test_a_reply_whose_tool_calls_the_stream_lost_is_asked_again_without_streaming(ws, home, monkeypatch):
     modes = []
 
-    def fake_complete(provider, key, model, messages, *, tools, on_delta=None):
+    def fake_complete(provider, key, model, messages, *, tools, on_delta=None, max_tokens=None):
         modes.append(on_delta is not None)
         if on_delta is not None:
             lost = turn("")
@@ -1594,3 +1594,18 @@ def test_arguments_sent_as_json_strings_are_read_as_the_type_the_tool_declares(w
     edits = json.dumps([{"op": "replace", "anchor": anchor, "text": "def g():"}])
     ws.run("edit_lines", {"path": "pkg/a.py", "edits": edits})
     assert (ws.root / "pkg" / "a.py").read_text().startswith("def g():")
+
+
+def test_the_output_limit_is_sent_dropped_when_refused_and_a_cut_off_call_gets_a_clear_message(monkeypatch):
+    sent = []
+    ok = {"choices": [{"message": {"content": '<tool_call>{"name": "write_file", "arguments": {"path": "a.py", "content": "def f():\\n    x = (1,'}, "finish_reason": "length"}],
+          "usage": {"prompt_tokens": 5, "completion_tokens": 8192}}
+
+    def fake_post(provider, key, payload, stream):
+        sent.append(dict(payload))
+        return FakeResponse(400, {"error": "max_tokens is too large"}) if "max_tokens" in payload else FakeResponse(200, ok)
+
+    monkeypatch.setattr(client, "_post", fake_post)
+    turn_ = client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[], max_tokens=8192)
+    assert "max_tokens" in sent[0] and "max_tokens" not in sent[1]
+    assert turn_["finish"] == "length" and "output length limit" in turn_["calls"][0]["error"]

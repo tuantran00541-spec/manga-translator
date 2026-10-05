@@ -1111,7 +1111,10 @@ class AgentSession:
         streams = (self.complete is client.complete or getattr(self.complete, "streams", False)) and not self._plain
         started = time.time()
         try:
-            return self.complete(self.provider, self.api_key, self.model, messages, tools=tools, **({"on_delta": self._on_delta} if streams else {}))
+            extra = {"on_delta": self._on_delta} if streams else {}
+            if self.complete is client.complete:
+                extra["max_tokens"] = self.profile["max_output_tokens"]
+            return self.complete(self.provider, self.api_key, self.model, messages, tools=tools, **extra)
         finally:
             self.stats["model_s"] += time.time() - started
 

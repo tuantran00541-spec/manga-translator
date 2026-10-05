@@ -26,6 +26,10 @@ Results come back in <tool_result> blocks. Stop after your tool calls and wait f
 """
 
 
+CUT_OFF = ("Your reply hit the output length limit and this call was cut off before it ended. Send it in smaller pieces: "
+           "create the file with a short write_file, then add the rest with edit_file or run_command (cat >> file <<'EOF').")
+
+
 class ToolsUnsupported(RuntimeError):
     """The provider refused the native tools field, so the session falls back to text tool calls."""
 
@@ -271,12 +275,19 @@ def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
                     spare.remove(match)
     reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
     result = {"text": str(text).strip(), "calls": calls, "reasoning": str(reasoning), "usage": usage_of(usage)}
+    finish = (message.get("_debug") or {}).get("finish")
+    result["finish"] = finish or ""
+    if finish == "length":
+        for call in calls:
+            if call.get("error"):
+                call["error"] = CUT_OFF
     if not (result["text"] or calls) and message.get("_debug"):
         result["debug"] = message["_debug"]
     return result
 
 
-def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None) -> dict:
+def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None,
+             max_tokens: int | None = None) -> dict:
     """One assistant turn: its text, tool calls, reasoning and token usage; streamed when on_delta is given."""
     payload = {"model": model, "messages": messages, "stream": bool(on_delta)}
     payload.update(provider.chat_completion_extras())
@@ -284,7 +295,15 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
         payload["tools"] = native_tools(tools)
     if on_delta:
         payload["stream_options"] = {"include_usage": True}
+    if max_tokens:
+        payload["max_tokens"] = int(max_tokens)
     response = _post(provider, api_key, payload, bool(on_delta))
+    if max_tokens and response.status_code == 400 and "max_tokens" in response.text.lower() or (
+            max_tokens and response.status_code == 400 and "max_completion_tokens" in response.text.lower()):
+        # A provider with a lower cap, or none to set, refuses the field; ask again without it.
+        payload.pop("max_tokens")
+        response.close()
+        response = _post(provider, api_key, payload, bool(on_delta))
     if on_delta and response.status_code == 400 and "stream_options" in response.text.lower():
         payload.pop("stream_options")
         response.close()

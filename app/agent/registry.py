@@ -34,7 +34,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
-                     "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True}
+                     "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -65,6 +65,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["max_steps"] = data["max_steps"]
                 if isinstance(data.get("token_budget"), int) and data["token_budget"] > 0:
                     profile["token_budget"] = data["token_budget"]
+                if isinstance(data.get("max_output_tokens"), int) and data["max_output_tokens"] > 0:
+                    profile["max_output_tokens"] = data["max_output_tokens"]
                 if isinstance(data.get("isolate_writers"), bool):
                     profile["isolate_writers"] = data["isolate_writers"]
                 if isinstance(data.get("untrusted_guard"), bool):
