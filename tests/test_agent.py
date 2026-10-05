@@ -701,3 +701,22 @@ def test_a_goal_keeps_the_agent_going_until_it_calls_goal_done(ws, home):
     assert session.goal is None and len(fake.seen) == 4
     assert "goal_done" in {s["name"] for s in fake.seen[0][1]} and "Goal: fix everything" in fake.seen[0][0][1]["content"]
     assert sum("not marked done" in m.get("content", "") for m in session.history) == 2
+
+
+def test_text_tool_calls_survive_the_shapes_open_models_produce():
+    text, calls = client.parse_text_calls('Plan.\n<tool_call>\n{"name": "exit_plan_mode", "arguments": {"plan": "1. x"}}')
+    assert text == "Plan." and calls[0]["name"] == "exit_plan_mode" and calls[0]["args"] == {"plan": "1. x"}
+    _, calls = client.parse_text_calls("<tool_call>\n<function=ask_user>\n<parameter=question>\nWhich?\n</parameter>\n</function>\n</tool_call>")
+    assert calls[0]["name"] == "ask_user" and calls[0]["args"] == {"question": "Which?"}
+    mangled = '<tool_call>{"name": "task", "arguments": "\n<tool_call>\n{"name": "task", "arguments": {"prompt": "go"}}</tool_call>'
+    _, calls = client.parse_text_calls(mangled)
+    assert [(c["name"], c["args"]) for c in calls if not c.get("error")] == [("task", {"prompt": "go"})]
+
+
+def test_rules_also_catch_shell_commands_that_name_a_denied_path():
+    from app.agent import rules
+    deny = [("default", "read", ".env", "deny"), ("user", "edit", "secret/*", "deny"), ("user", "edit", "*", "allow")]
+    path_of = lambda p: p
+    for command in ("cat .env", "echo hi > secret/key.txt", "tee secret/a.txt < x"):
+        assert rules.check(deny, "run_command", {"command": command}, path_of) == "deny", command
+    assert rules.check(deny, "run_command", {"command": "ls -la"}, path_of) is None

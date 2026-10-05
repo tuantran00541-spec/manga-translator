@@ -15,7 +15,9 @@ from app.visual_qc.deepseek_region_client import _safe_error_detail
 
 READ_TIMEOUT = 600
 RATE_LIMIT_RETRIES = 4
-TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.S)
+# A block may lack its closing tag when the model stops early or opens the next call.
+TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*(?:</tool_call>|(?=<tool_call>)|\Z)", re.S)
+PARAMETER_RE = re.compile(r"<parameter=(\w+)>\s*(.*?)\s*</parameter>", re.S)
 TEXT_TOOLS_GUIDE = """You call tools by writing, anywhere in your reply, one block per call:
 <tool_call>{"name": "read_file", "arguments": {"path": "app/main.py"}}</tool_call>
 Results come back in <tool_result> blocks. Stop after your tool calls and wait for the results. Tools:
@@ -44,17 +46,37 @@ def text_tools_prompt(specs: list[dict]) -> str:
     )
 
 
+def _read_call(raw: str) -> tuple[str, dict] | None:
+    """A call from JSON, from Qwen's <function=...><parameter=...> form, or from the last JSON object in a mangled block."""
+    try:
+        data = json.loads(raw)
+        args = data.get("arguments", data.get("args", {}))
+        return str(data.get("name") or ""), args if isinstance(args, dict) else {}
+    except (ValueError, AttributeError):
+        pass
+    named = re.search(r"function=(\w+)", raw)
+    if named:
+        return named.group(1), {k: v for k, v in PARAMETER_RE.findall(raw)}
+    for start in reversed([m.start() for m in re.finditer(r"\{", raw)]):
+        try:
+            data, _ = json.JSONDecoder().raw_decode(raw[start:])
+        except ValueError:
+            continue
+        if isinstance(data, dict) and data.get("name"):
+            args = data.get("arguments", data.get("args", {}))
+            return str(data["name"]), args if isinstance(args, dict) else {}
+    return None
+
+
 def parse_text_calls(text: str) -> tuple[str, list[dict]]:
     """Tool calls written as <tool_call> blocks, and the reply with those blocks taken out."""
     calls = []
     for raw in TOOL_CALL_RE.findall(text or ""):
-        try:
-            data = json.loads(raw)
-        except ValueError:
+        found = _read_call(raw)
+        if found is None:
             calls.append({"id": uuid.uuid4().hex[:12], "name": "", "args": {}, "error": f"Unreadable tool call: {raw[:200]}"})
-            continue
-        args = data.get("arguments", data.get("args", {}))
-        calls.append({"id": uuid.uuid4().hex[:12], "name": str(data.get("name") or ""), "args": args if isinstance(args, dict) else {}})
+        else:
+            calls.append({"id": uuid.uuid4().hex[:12], "name": found[0], "args": found[1]})
     return TOOL_CALL_RE.sub("", text or "").strip(), calls
 
 
@@ -139,7 +161,18 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
     if isinstance(text, list):
         text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
     # Models without native tools, and some with them, write their calls into the text.
-    if not calls:
-        text, calls = parse_text_calls(text)
+    if "<tool_call>" in text:
+        text, written = parse_text_calls(text)
+        if not calls:
+            calls = written
+        else:
+            # A native call that arrived with empty arguments takes them from the same call written in the text.
+            spare = [w for w in written if w["args"] and not w.get("error")]
+            for call in calls:
+                match = next((w for w in spare if w["name"] == call["name"]), None)
+                if match and not call["args"]:
+                    call["args"] = match["args"]
+                    call.pop("error", None)
+                    spare.remove(match)
     reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
     return {"text": str(text).strip(), "calls": calls, "reasoning": str(reasoning), "usage": body.get("usage") or {}}

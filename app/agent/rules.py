@@ -89,6 +89,16 @@ def _verdict(rules: list[Rule], category: str, subject: str) -> str | None:
     return found
 
 
+def _names_denied_path(rules: list[Rule], command: str) -> bool:
+    """Best effort: a command naming a path that an edit or read rule denies is denied too; the sandbox is the real wall."""
+    specific = [r for r in rules if r[2] not in ("*", "**")]
+    for token in re.split(r"[\s<>|&;()'\"=]+", command):
+        token = token.removeprefix("./")
+        if token and not token.startswith("-") and any(_verdict(specific, c, token) == "deny" for c in ("edit", "read")):
+            return True
+    return False
+
+
 def subjects(name: str, args: dict, path_of) -> list[str]:
     """What the rules for this call match against: commands, paths, URLs or names."""
     if name == "run_command":
@@ -117,6 +127,8 @@ def check(rules: list[Rule], name: str, args: dict, path_of) -> str | None:
         return None
     subs = [name] if category == "mcp" else subjects(name, args, path_of)
     verdicts = [_verdict(rules, category, s) for s in subs]
+    if name == "run_command" and _names_denied_path(rules, str(args.get("command") or "")):
+        verdicts.append("deny")
     if "deny" in verdicts:
         return "deny"
     if "ask" in verdicts:
