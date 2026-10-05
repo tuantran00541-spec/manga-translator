@@ -1,0 +1,86 @@
+[
+ {
+  "task": "split_lines",
+  "thinking": false,
+  "status": 200,
+  "seconds": 21.7,
+  "usage": {
+   "prompt_tokens": 264,
+   "completion_tokens": 642,
+   "total_tokens": 906
+  },
+  "reply": "```python\ndef split_cluster_lines(cluster, avg_h):\n    \"\"\"\n    Split a cluster of boxes into groups of lines.\n    \n    Args:\n        cluster: list of box objects with integer attributes x1, y1, x2, y2 (y grows downward)\n        avg_h: average height used for grouping threshold\n        \n    Returns:\n        list of groups (lists of the same box objects)\n    \"\"\"\n    if not cluster:\n        return []\n    \n    # Step 1: Sort boxes by (y1, x1)\n    sorted_boxes = sorted(cluster, key=lambda b: (b.y1, b.x1))\n    \n    # Build lines\n    lines = []  # each line is a list of boxes\n    \n    for box in sorted_boxes:\n        placed = False\n        for line in lines:\n            # Compute line's vertical span\n            line_y1 = min(b.y1 for b in line)\n            line_y2 = max(b.y2 for b in line)\n            \n            # Compute overlap\n            overlap = min(box.y2, line_y2) - max(box.y1, line_y1)\n            \n            # Compute min_h\n            box_height = box.y2 - box.y1\n            line_span_height = line_y2 - line_y1\n            min_h = min(box_height, line_span_height)\n            \n            # Check condition: min_h > 0 and overlap / min_h > 0.5\n            if min_h > 0 and overlap / min_h > 0.5:\n                line.append(box)\n                placed = True\n                break\n        \n        if not placed:\n            lines.append([box])\n    \n    # Step 2: Sort lines by their min y1\n    lines.sort(key=lambda line: min(b.y1 for b in line))\n    \n    # Build groups\n    groups = []\n    if not lines:\n        return groups\n    \n    current_group = [lines[0]]\n    \n    for i in range(1, len(lines)):\n        line = lines[i]\n        \n        # Compute max y2 - min y1 over current group's boxes plus this line's boxes\n        all_boxes = []\n        for g_line in current_group:\n            all_boxes.extend(g_line)\n        all_boxes.extend(line)\n        \n        min_y1 = min(b.y1 for b in all_boxes)\n        max_y2 = max(b.y2 for b in all_boxes)\n        \n        if max_y2 - min_y1 > 3.0 * avg_h:\n            # Close current group and start a new one\n            groups.append(current_group)\n            current_group = [line]\n        else:\n            # Join current group\n            current_group.append(line)\n    \n    # Don't forget the last group\n    groups.append(current_group)\n    \n    # Flatten each group: box order is line by line, box order inside each line\n    result = []\n    for group in groups:\n        flat = []\n        for line in group:\n            flat.extend(line)\n        result.append(flat)\n    \n    return result\n```",
+  "passed": 300,
+  "cases": 300
+ },
+ {
+  "task": "fix_weight",
+  "thinking": false,
+  "status": 200,
+  "seconds": 19.9,
+  "usage": {
+   "prompt_tokens": 256,
+   "completion_tokens": 635,
+   "total_tokens": 891
+  },
+  "reply": "I need to analyze the bugs in this function:\n\n1. **When `overlap <= 0`**: The function should return all 1s, but currently it tries to create a ramp with `overlap` elements (which could be 0 or negative), causing issues.\n\n2. **When tile is shorter than twice the overlap**: If `length < 2 * overlap` and both `has_before` and `has_after` are true, the ramps overlap. The spec says \"where both ramps cover a pixel, the smaller weight wins.\" Currently, the code just overwrites, so the `has_after` ramp overwrites the `has_before` ramp in the overlapping region, which is incorrect.\n\n3. **Ramp length should be `min(overlap, length)`**: The spec says \"The ramp length is min(overlap, length)\". Currently, it uses `overlap` directly, which could be larger than `length`, causing index errors or incorrect behavior.\n\n4. **Crashes on very short tiles**: If `overlap > length`, then `weight[:overlap]` would try to assign more elements than exist, or `np.linspace(0.0, 1.0, overlap)` creates a ramp longer than the tile.\n\nLet me fix these issues:\n\n```python\nimport numpy as np\n\ndef tile_weight(length, overlap, has_before, has_after):\n    weight = np.ones(length, dtype=np.float32)\n    \n    if overlap <= 0:\n        return weight\n    \n    ramp_len = min(overlap, length)\n    ramp = np.linspace(0.0, 1.0, ramp_len, dtype=np.float32)\n    \n    if has_before:\n        weight[:ramp_len] = ramp\n    \n    if has_after:\n        after_ramp = ramp[::-1]\n        # Apply the after ramp, but where both ramps cover a pixel, the smaller weight wins\n        if has_before and ramp_len * 2 > length:\n            # There's overlap between the before and after ramps\n            # The before ramp covers [0, ramp_len)\n            # The after ramp covers [length - ramp_len, length)\n            # Overlap region is [length - ramp_len, ramp_len)\n            overlap_start = length - ramp_len\n            overlap_end = ramp_len\n            if overlap_start < overlap_end:\n                # In the overlap region, take the minimum of before and after weights\n                before_weights = weight[overlap_start:overlap_end]\n                after_weights = after_ramp[:overlap_end - overlap_start]\n                weight[overlap_start:overlap_end] = np.minimum(before_weights, after_weights)\n                # Apply the non-overlapping part of the after ramp\n                if overlap_end < length:\n                    weight[overlap_end:] = after_ramp[overlap_end - overlap_start:]\n        else:\n            weight[-ramp_len:] = after_ramp\n    \n    return weight\n```",
+  "passed": 400,
+  "cases": 400
+ },
+ {
+  "task": "remap_mask",
+  "thinking": false,
+  "status": 200,
+  "seconds": 14.6,
+  "usage": {
+   "prompt_tokens": 198,
+   "completion_tokens": 341,
+   "total_tokens": 539
+  },
+  "reply": "```python\nimport numpy as np\n\n\ndef remap_local_mask_page_space(mask, source_box, target_box):\n    if mask is None:\n        return None\n\n    src_w = source_box['x2'] - source_box['x1']\n    src_h = source_box['y2'] - source_box['y1']\n    tgt_w = target_box['x2'] - target_box['x1']\n    tgt_h = target_box['y2'] - target_box['y1']\n\n    if src_w <= 0 or src_h <= 0 or tgt_w <= 0 or tgt_h <= 0:\n        return None\n\n    result = np.zeros((tgt_h, tgt_w), dtype=np.uint8)\n\n    # Compute overlap in page coordinates\n    overlap_x1 = max(source_box['x1'], target_box['x1'])\n    overlap_y1 = max(source_box['y1'], target_box['y1'])\n    overlap_x2 = min(source_box['x2'], target_box['x2'])\n    overlap_y2 = min(source_box['y2'], target_box['y2'])\n\n    if overlap_x1 >= overlap_x2 or overlap_y1 >= overlap_y2:\n        return result\n\n    # Overlap region in source local coordinates\n    src_x1 = overlap_x1 - source_box['x1']\n    src_y1 = overlap_y1 - source_box['y1']\n    src_x2 = overlap_x2 - source_box['x1']\n    src_y2 = overlap_y2 - source_box['y1']\n\n    # Overlap region in target local coordinates\n    tgt_x1 = overlap_x1 - target_box['x1']\n    tgt_y1 = overlap_y1 - target_box['y1']\n    tgt_x2 = overlap_x2 - target_box['x1']\n    tgt_y2 = overlap_y2 - target_box['y1']\n\n    result[tgt_y1:tgt_y2, tgt_x1:tgt_x2] = mask[src_y1:src_y2, src_x1:src_x2]\n\n    return result\n```",
+  "passed": 400,
+  "cases": 400
+ },
+ {
+  "task": "split_lines",
+  "thinking": true,
+  "status": 200,
+  "seconds": 21.5,
+  "usage": {
+   "prompt_tokens": 264,
+   "completion_tokens": 642,
+   "total_tokens": 906
+  },
+  "reply": "```python\ndef split_cluster_lines(cluster, avg_h):\n    \"\"\"\n    Split a cluster of boxes into groups of lines.\n    \n    Args:\n        cluster: list of box objects with integer attributes x1, y1, x2, y2 (y grows downward)\n        avg_h: average height used for grouping threshold\n        \n    Returns:\n        list of groups (lists of the same box objects)\n    \"\"\"\n    if not cluster:\n        return []\n    \n    # Step 1: Sort boxes by (y1, x1)\n    sorted_boxes = sorted(cluster, key=lambda b: (b.y1, b.x1))\n    \n    # Build lines\n    lines = []  # each line is a list of boxes\n    \n    for box in sorted_boxes:\n        placed = False\n        for line in lines:\n            # Compute line's vertical span\n            line_y1 = min(b.y1 for b in line)\n            line_y2 = max(b.y2 for b in line)\n            \n            # Compute overlap\n            overlap = min(box.y2, line_y2) - max(box.y1, line_y1)\n            \n            # Compute min_h\n            box_height = box.y2 - box.y1\n            line_span_height = line_y2 - line_y1\n            min_h = min(box_height, line_span_height)\n            \n            # Check condition: min_h > 0 and overlap / min_h > 0.5\n            if min_h > 0 and overlap / min_h > 0.5:\n                line.append(box)\n                placed = True\n                break\n        \n        if not placed:\n            lines.append([box])\n    \n    # Step 2: Sort lines by their min y1\n    lines.sort(key=lambda line: min(b.y1 for b in line))\n    \n    # Build groups\n    groups = []\n    if not lines:\n        return groups\n    \n    current_group = [lines[0]]\n    \n    for i in range(1, len(lines)):\n        line = lines[i]\n        \n        # Compute max y2 - min y1 over current group's boxes plus this line's boxes\n        all_boxes = []\n        for g_line in current_group:\n            all_boxes.extend(g_line)\n        all_boxes.extend(line)\n        \n        min_y1 = min(b.y1 for b in all_boxes)\n        max_y2 = max(b.y2 for b in all_boxes)\n        \n        if max_y2 - min_y1 > 3.0 * avg_h:\n            # Close current group and start a new one\n            groups.append(current_group)\n            current_group = [line]\n        else:\n            # Join current group\n            current_group.append(line)\n    \n    # Don't forget the last group\n    groups.append(current_group)\n    \n    # Flatten each group: box order is line by line, box order inside each line\n    result = []\n    for group in groups:\n        flat = []\n        for line in group:\n            flat.extend(line)\n        result.append(flat)\n    \n    return result\n```",
+  "passed": 300,
+  "cases": 300
+ },
+ {
+  "task": "fix_weight",
+  "thinking": true,
+  "status": 200,
+  "seconds": 20.0,
+  "usage": {
+   "prompt_tokens": 256,
+   "completion_tokens": 635,
+   "total_tokens": 891
+  },
+  "reply": "I need to analyze the bugs in this function:\n\n1. **When `overlap <= 0`**: The function should return all 1s, but currently it tries to create a ramp with `overlap` elements (which could be 0 or negative), causing issues.\n\n2. **When tile is shorter than twice the overlap**: If `length < 2 * overlap` and both `has_before` and `has_after` are true, the ramps overlap. The spec says \"where both ramps cover a pixel, the smaller weight wins.\" Currently, the code just overwrites, so the `has_after` ramp overwrites the `has_before` ramp in the overlapping region, which is incorrect.\n\n3. **Ramp length should be `min(overlap, length)`**: The spec says \"The ramp length is min(overlap, length)\". Currently, it uses `overlap` directly, which could be larger than `length`, causing index errors or incorrect behavior.\n\n4. **Crashes on very short tiles**: If `overlap > length`, then `weight[:overlap]` would try to assign more elements than exist, or `np.linspace(0.0, 1.0, overlap)` creates a ramp longer than the tile.\n\nLet me fix these issues:\n\n```python\nimport numpy as np\n\ndef tile_weight(length, overlap, has_before, has_after):\n    weight = np.ones(length, dtype=np.float32)\n    \n    if overlap <= 0:\n        return weight\n    \n    ramp_len = min(overlap, length)\n    ramp = np.linspace(0.0, 1.0, ramp_len, dtype=np.float32)\n    \n    if has_before:\n        weight[:ramp_len] = ramp\n    \n    if has_after:\n        after_ramp = ramp[::-1]\n        # Apply the after ramp, but where both ramps cover a pixel, the smaller weight wins\n        if has_before and ramp_len * 2 > length:\n            # There's overlap between the before and after ramps\n            # The before ramp covers [0, ramp_len)\n            # The after ramp covers [length - ramp_len, length)\n            # Overlap region is [length - ramp_len, ramp_len)\n            overlap_start = length - ramp_len\n            overlap_end = ramp_len\n            if overlap_start < overlap_end:\n                # In the overlap region, take the minimum of before and after weights\n                before_weights = weight[overlap_start:overlap_end]\n                after_weights = after_ramp[:overlap_end - overlap_start]\n                weight[overlap_start:overlap_end] = np.minimum(before_weights, after_weights)\n                # Apply the non-overlapping part of the after ramp\n                if overlap_end < length:\n                    weight[overlap_end:] = after_ramp[overlap_end - overlap_start:]\n        else:\n            weight[-ramp_len:] = after_ramp\n    \n    return weight\n```",
+  "passed": 400,
+  "cases": 400
+ },
+ {
+  "task": "remap_mask",
+  "thinking": true,
+  "status": 200,
+  "seconds": 14.6,
+  "usage": {
+   "prompt_tokens": 198,
+   "completion_tokens": 341,
+   "total_tokens": 539
+  },
+  "reply": "```python\nimport numpy as np\n\n\ndef remap_local_mask_page_space(mask, source_box, target_box):\n    if mask is None:\n        return None\n\n    src_w = source_box['x2'] - source_box['x1']\n    src_h = source_box['y2'] - source_box['y1']\n    tgt_w = target_box['x2'] - target_box['x1']\n    tgt_h = target_box['y2'] - target_box['y1']\n\n    if src_w <= 0 or src_h <= 0 or tgt_w <= 0 or tgt_h <= 0:\n        return None\n\n    result = np.zeros((tgt_h, tgt_w), dtype=np.uint8)\n\n    # Compute overlap in page coordinates\n    overlap_x1 = max(source_box['x1'], target_box['x1'])\n    overlap_y1 = max(source_box['y1'], target_box['y1'])\n    overlap_x2 = min(source_box['x2'], target_box['x2'])\n    overlap_y2 = min(source_box['y2'], target_box['y2'])\n\n    if overlap_x1 >= overlap_x2 or overlap_y1 >= overlap_y2:\n        return result\n\n    # Overlap region in source local coordinates\n    src_x1 = overlap_x1 - source_box['x1']\n    src_y1 = overlap_y1 - source_box['y1']\n    src_x2 = overlap_x2 - source_box['x1']\n    src_y2 = overlap_y2 - source_box['y1']\n\n    # Overlap region in target local coordinates\n    tgt_x1 = overlap_x1 - target_box['x1']\n    tgt_y1 = overlap_y1 - target_box['y1']\n    tgt_x2 = overlap_x2 - target_box['x1']\n    tgt_y2 = overlap_y2 - target_box['y1']\n\n    result[tgt_y1:tgt_y2, tgt_x1:tgt_x2] = mask[src_y1:src_y2, src_x1:src_x2]\n\n    return result\n```",
+  "passed": 400,
+  "cases": 400
+ }
+]
