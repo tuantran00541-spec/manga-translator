@@ -147,13 +147,20 @@ Built in: Google Gemini, DeepSeek, OpenAI and OpenRouter. The settings layer als
 
 The **Agent** screen is a coding agent like Claude Code or Codex on any provider from Settings, including a custom OpenAI-compatible base URL. Models that refuse the native tools field fall back to tool calls written as text, and rate-limited calls wait and retry.
 
-- **Tools:** list, read, search and glob files; write, edit, or change many files at once with Codex's `apply_patch` format; run commands; read web pages; keep a plan (`todo_write`); send a read-only helper agent to research (`task`).
+- **Tools:** list, read, search and glob files; write, edit, or change many files at once with Codex's `apply_patch` format; run commands; read web pages; keep a plan (`todo_write`); hand a job to a helper agent (`task`).
 - **Sandbox:** commands run read-only, workspace-write (the default) or with full access, network off unless allowed. Linux enforces it with Landlock and macOS with Seatbelt; Windows has no sandbox, so there commands always wait for approval unless you choose to allow everything. A command may ask to run outside the sandbox, which always needs your approval.
 - **Approvals:** ask before every change, edit and run sandboxed commands freely, or do everything.
 - **Project context:** reads `AGENTS.md` and `CLAUDE.md` from the workspace and your home folder.
 - **Skills:** [Agent Skills](https://agentskills.io/specification) folders in `.agents/skills`, `.claude/skills` or `.codex/skills` of the workspace or your home. Only their names and descriptions are sent until the agent loads one.
 - **MCP:** stdio and streamable HTTP servers from the workspace `.mcp.json`, `~/.manga-agent/mcp.json`, `~/.claude.json` and `~/.codex/config.toml`. A server the workspace declares starts only after you allow it, and the trust is pinned to its exact config.
-- **Hooks and commands:** `PreToolUse` and `PostToolUse` hooks from `.agents/settings.json` or Claude Code's `.claude/settings.json` (workspace hooks need your trust; a hook exiting 2 blocks the call). Custom slash commands come from `.agents/commands`, `.claude/commands` and `~/.codex/prompts`. Built-ins are `/help`, `/compact`, `/init`, `/skills`, `/mcp`, `/model`, `/mode`, `/sandbox` and `/clear`.
+- **Hooks and commands:** `PreToolUse` and `PostToolUse` hooks from `.agents/settings.json` or Claude Code's `.claude/settings.json` (workspace hooks need your trust; a hook exiting 2 blocks the call). Custom slash commands come from `.agents/commands`, `.claude/commands` and `~/.codex/prompts`. Built-ins are `/help`, `/compact`, `/init`, `/skills`, `/mcp`, `/model`, `/mode`, `/sandbox`, `/plan`, `/goal`, `/undo`, `/memory`, `/agents`, `/rules` and `/clear`.
+- **Precise edits:** `read_file` with `anchors=true` shows lines as `N#hh|text` and `edit_lines` changes them by anchor, so weak models never retype code; a stale anchor is refused. Edits also report Python and JSON syntax errors at once (idea from oh-my-pi).
+- **Permission rules:** `allow`, `ask` or `deny` by glob for commands, paths, URLs, agents and MCP tools, in `.agents/settings.json` or `~/.manga-agent/settings.json` (`permission`) or Claude Code's `permissions` lists; the last matching rule wins and `.env` files are denied by default. A project can only tighten rules, never allow. Three identical calls in a row are blocked (opencode).
+- **Undo:** `/undo` puts back the files the last turn changed with the edit tools, not what a shell command changed (Hermes, Kimi).
+- **Agents:** `explore`, `plan` and `coder` plus your own Markdown files with front matter in `.agents/agents` or `.claude/agents` (`tools`, `disallowedTools`, `model`). Several `task` calls in one reply run in parallel and a helper's edits go through your approvals (Kimi, Muse).
+- **While it works:** a message you send mid-run joins the next step; `@path` attaches a file or folder; `ask_user` lets the agent ask you with answer buttons (pi, Hermes, Kimi).
+- **Plan and goal:** `/plan` keeps the agent read-only until you approve its plan; `/goal` keeps it working across turns until it calls `goal_done` (Kimi).
+- **Memory:** the agent keeps lasting notes per project and per user in `~/.manga-agent/memory`; see and edit them with `/memory` (Hermes).
 - **Long sessions:** conversations past about 300k characters are summarised by the model; sessions are saved under `data/agent` and can be reopened.
 
 Agent routes answer only this machine, need an `X-Manga-Agent` header, and switch off with `MANGA_AGENT_MODE=0`.

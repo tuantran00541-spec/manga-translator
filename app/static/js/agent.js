@@ -4,12 +4,13 @@
   const HEAD = { "X-Manga-Agent": "1" };
   const VERBS = {
     list_dir: "Xem", read_file: "Đọc", search: "Tìm", glob: "Tìm file", write_file: "Tạo", edit_file: "Sửa",
-    apply_patch: "Vá", run_command: "Chạy", web_fetch: "Mở trang", skill: "Mở skill", todo_write: "Kế hoạch", task: "Agent phụ",
+    apply_patch: "Vá", edit_lines: "Sửa dòng", run_command: "Chạy", web_fetch: "Mở trang", skill: "Mở skill", todo_write: "Kế hoạch",
+    task: "Agent phụ", memory: "Ghi nhớ", ask_user: "Hỏi bạn", exit_plan_mode: "Kế hoạch", goal_done: "Xong mục tiêu",
   };
   // How each kind of call is counted in a group's one-line summary.
   const TALLY = {
     run_command: ["chạy", "lệnh"], read_file: ["đọc", "file"], edit_file: ["sửa", "file"], write_file: ["sửa", "file"],
-    apply_patch: ["sửa", "file"], list_dir: ["tìm", "lần"], search: ["tìm", "lần"], glob: ["tìm", "lần"],
+    apply_patch: ["sửa", "file"], edit_lines: ["sửa", "file"], memory: ["ghi", "nhớ"], list_dir: ["tìm", "lần"], search: ["tìm", "lần"], glob: ["tìm", "lần"],
     web_fetch: ["đọc", "trang web"], skill: ["mở", "skill"], task: ["giao", "việc cho agent phụ"], mcp: ["gọi", "công cụ MCP"],
   };
   const SANDBOX_TEXT = {
@@ -19,6 +20,7 @@
   const EXAMPLES = [
     "Đọc app/inpaint/clustering.py rồi viết test cho split_cluster_lines",
     "Chạy toàn bộ test và sửa những test đang hỏng",
+    "/plan Thêm test cho phần chia lát ảnh dài",
     "/init",
   ];
   const $ = (id) => document.getElementById(id);
@@ -89,7 +91,7 @@
         wrap.append(el("pre", "agent-pre", part.replace(/\n$/, "")));
         return;
       }
-      part.split(/\n{2,}/).forEach((block) => {
+      part.replace(/^(#{1,4} .*)\n(?=\S)/gm, "$1\n\n").split(/\n{2,}/).forEach((block) => {
         const lines = block.split("\n").filter((l) => l.trim());
         if (!lines.length) return;
         if (lines.every((l) => /^\s*[-*] /.test(l)) || lines.every((l) => /^\s*\d+[.)] /.test(l))) {
@@ -122,6 +124,9 @@
     if (c.name === "task") return a.description || "";
     if (c.name === "skill") return a.name || "";
     if (c.name === "todo_write") return `${(a.items || []).length} việc`;
+    if (c.name === "ask_user") return a.question || "";
+    if (c.name === "memory") return `${a.action || ""} ${a.text || ""}`.trim();
+    if (c.name === "goal_done") return a.summary || "";
     if (c.name === "apply_patch") return (String(a.patch || "").match(/^\*\*\* (?:Add|Update|Delete) File: .+$/gm) || []).map((l) => l.split(": ")[1]).join(", ");
     if (isMcp(c.name)) return c.name.replace(/^mcp__/, "").replace("__", ": ");
     return a.path || ".";
@@ -171,6 +176,7 @@
   }
 
   function addRow(c) {
+    if (c.name === "ask_user" || c.name === "exit_plan_mode") return;
     const g = group || newGroup();
     const key = isMcp(c.name) ? "mcp" : c.name;
     if (TALLY[key]) g.tally[key] = (g.tally[key] || 0) + 1;
@@ -190,11 +196,22 @@
     if (c.name === "edit_file") body.append(el("pre", "agent-pre agent-old", a.old_text || ""), el("pre", "agent-pre agent-new", a.new_text || ""));
     else if (c.name === "write_file") body.append(el("pre", "agent-pre agent-new", a.content || ""));
     else if (c.name === "apply_patch") body.append(patchView(a.patch));
+    else if (c.name === "edit_lines") body.append(editLinesView(a.edits));
     else if (c.name === "task") body.append(el("pre", "agent-pre", a.prompt || ""));
     else if (isMcp(c.name)) body.append(el("pre", "agent-pre", JSON.stringify(a, null, 2)));
     row.append(body);
     g.list.append(row);
     refreshGroup();
+  }
+
+  function editLinesView(edits) {
+    const pre = el("pre", "agent-pre");
+    (edits || []).forEach((edit, i) => {
+      if (i) pre.append("\n");
+      pre.append(el("span", "agent-patch-file", `${edit.op} ${edit.anchor || ""}${edit.end ? `..${edit.end}` : ""}`));
+      if (edit.text) pre.append(`\n${edit.text}`);
+    });
+    return pre;
   }
 
   function patchView(text) {
@@ -212,7 +229,10 @@
     log.querySelector(".agent-empty")?.remove();
     if (event.type === "user") {
       group = null;
-      log.append(el("div", "agent-user", event.text));
+      const bubble = el("div", "agent-user", event.text);
+      if (event.refs?.length) bubble.append(el("span", "agent-refs", `Đính kèm: ${event.refs.join(", ")}`));
+      if (event.queued) bubble.append(el("span", "agent-refs", "Đã xếp hàng, agent sẽ đọc ở bước kế tiếp"));
+      log.append(bubble);
     } else if (event.type === "assistant") {
       if (event.reasoning) {
         const think = el("details", "agent-think");
@@ -243,13 +263,58 @@
       }
       log.append(approvalCard(event.call));
     } else if (event.type === "subagent" && event.state === "done") {
-      log.append(el("p", "agent-note", `Agent phụ xong: ${event.description} · ${event.tools} lần gọi công cụ`));
+      log.append(el("p", "agent-note", `Agent phụ ${event.agent || ""} xong: ${event.description} · ${event.tools} lần gọi công cụ`));
     } else if (event.type === "notice" || event.type === "error") {
       log.append(el("p", event.type === "error" ? "agent-note agent-error" : "agent-note", event.text));
     }
   }
 
+  function decide(card, decision, note, doneText) {
+    const buttons = card.querySelectorAll("button");
+    buttons.forEach((b) => { b.disabled = true; });
+    post(`/api/agent/sessions/${session.id}/approval`, { decision, note }).then(() => {
+      if (doneText) card.replaceWith(el("p", "agent-note", doneText));
+      else card.remove();
+      if (decision === "allow_all") $("agent-mode").value = "auto";
+      poll();
+    }).catch((error) => {
+      window.showToast?.(error.message, "error");
+      buttons.forEach((b) => { b.disabled = false; });
+    });
+  }
+
+  // A question for the user: answer choices as buttons, or a typed answer.
+  function questionCard(c) {
+    const card = el("div", "agent-approval");
+    card.append(el("p", "agent-approval-title", c.args.question || ""));
+    const actions = el("div", "agent-approval-actions");
+    (c.args.options || []).forEach((option) => actions.append(button(option, "agent-btn", () => decide(card, "allow", option, `Bạn trả lời: ${option}`))));
+    const answer = el("input", "agent-approval-note");
+    answer.placeholder = "Câu trả lời của bạn";
+    answer.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && answer.value.trim() && !event.isComposing) decide(card, "allow", answer.value.trim(), `Bạn trả lời: ${answer.value.trim()}`);
+    });
+    actions.append(answer, button("Gửi", "agent-btn agent-btn-primary", () => answer.value.trim() && decide(card, "allow", answer.value.trim(), `Bạn trả lời: ${answer.value.trim()}`)),
+      button("Bỏ qua", "agent-btn", () => decide(card, "deny", "", "Đã bỏ qua câu hỏi.")));
+    card.append(actions);
+    return card;
+  }
+
+  function planCard(c) {
+    const card = el("div", "agent-approval");
+    const note = el("input", "agent-approval-note");
+    note.placeholder = "Cần sửa gì trong kế hoạch?";
+    const actions = el("div", "agent-approval-actions");
+    actions.append(button("Duyệt và làm", "agent-btn agent-btn-primary", () => decide(card, "allow", "", "")),
+      button("Duyệt, tự làm hết", "agent-btn", () => decide(card, "allow_all", "", "")),
+      button("Sửa lại", "agent-btn", () => decide(card, "deny", note.value, "Đã yêu cầu sửa kế hoạch.")), note);
+    card.append(el("p", "agent-approval-title", "Kế hoạch chờ bạn duyệt"), prose(c.args.plan), actions);
+    return card;
+  }
+
   function approvalCard(c) {
+    if (c.name === "ask_user") return questionCard(c);
+    if (c.name === "exit_plan_mode") return planCard(c);
     const card = el("div", "agent-approval");
     const title = el("p", "agent-approval-title");
     title.append(document.createTextNode("Cho phép "), el("strong", "", (isMcp(c.name) ? "gọi MCP" : VERBS[c.name] || c.name).toLowerCase()),
@@ -257,19 +322,9 @@
     const note = el("input", "agent-approval-note");
     note.placeholder = "Lý do từ chối (tùy chọn)";
     const actions = el("div", "agent-approval-actions");
-    [["allow", "Cho phép", "agent-btn agent-btn-primary"], ["allow_all", "Luôn cho phép", "agent-btn"], ["deny", "Từ chối", "agent-btn"]].forEach(([decision, label, cls]) => {
-      actions.append(button(label, cls, async () => {
-        actions.querySelectorAll("button").forEach((b) => { b.disabled = true; });
-        try {
-          await post(`/api/agent/sessions/${session.id}/approval`, { decision, note: note.value });
-          card.replaceWith(el("p", "agent-note", decision === "deny" ? "Đã từ chối." : decision === "allow_all" ? "Đã cho phép, từ giờ tự làm hết." : "Đã cho phép."));
-          if (decision === "allow_all") $("agent-mode").value = "auto";
-          poll();
-        } catch (error) {
-          window.showToast?.(error.message, "error");
-          actions.querySelectorAll("button").forEach((b) => { b.disabled = false; });
-        }
-      }));
+    [["allow", "Cho phép", "agent-btn agent-btn-primary", "Đã cho phép."], ["allow_all", "Luôn cho phép", "agent-btn", "Đã cho phép, từ giờ tự làm hết."],
+      ["deny", "Từ chối", "agent-btn", "Đã từ chối."]].forEach(([decision, label, cls, done]) => {
+      actions.append(button(label, cls, () => decide(card, decision, note.value, done)));
     });
     actions.append(note);
     card.append(title, actions);
@@ -296,6 +351,8 @@
     $("agent-sandbox-info").textContent = sb.mode === "full-access"
       ? "Sandbox tắt: lệnh có toàn quyền trên máy."
       : `${SANDBOX_TEXT[sb.backend] || ""} Mạng ${sb.network ? "bật" : "tắt"}.`;
+    const named = snap.agents || [];
+    if (named.length) box.append(el("p", "agent-muted", `Agent phụ: ${named.map((a) => a.name).join(", ")}. Gõ /rules, /memory, /undo, /plan, /goal.`));
     const skills = snap.skills || [];
     box.append(el("p", "agent-muted", skills.length ? `Skill: ${skills.map((s) => s.name).join(", ")}` : "Chưa có skill (.agents/skills, .claude/skills, .codex/skills)."));
     (snap.mcp || []).forEach((server) => {
@@ -317,11 +374,13 @@
   function showStatus(snap) {
     const busy = snap.status === "running" || snap.status === "waiting";
     $("agent-stop").hidden = !busy;
-    $("agent-send").hidden = busy;
+    $("agent-send").hidden = false;
     const usage = snap.usage || {};
     const state = { running: "Đang làm", waiting: "Chờ bạn duyệt" }[snap.status];
     const parts = [snap.title || "Phiên mới", `${usage.prompt_tokens || 0} token vào, ${usage.completion_tokens || 0} ra`];
     if (snap.text_tools) parts.push("gọi công cụ bằng văn bản");
+    if (snap.plan_mode) parts.push("đang lập kế hoạch");
+    if (snap.goal) parts.push(`mục tiêu: ${snap.goal}`);
     $("agent-status").textContent = parts.join(" · ");
     const log = $("agent-log");
     log.querySelector(".agent-working")?.remove();

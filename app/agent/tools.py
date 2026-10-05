@@ -1,14 +1,16 @@
 """Tools the agent works with: files inside one workspace, sandboxed commands and web pages."""
 from __future__ import annotations
 
+import ast
 import fnmatch
+import json
 import os
 from pathlib import Path
 import re
 
 from bs4 import BeautifulSoup
 
-from app.agent import patch as patches, sandbox
+from app.agent import hashline, patch as patches, sandbox
 from app.downloader.http import read_response_limited, safe_get
 
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache"}
@@ -25,7 +27,7 @@ MAX_COMMAND_TIMEOUT = 1800
 
 # What each tool can do decides whether it waits for the user: read, edit, exec or net.
 KIND = {"list_dir": "read", "read_file": "read", "search": "read", "glob": "read", "write_file": "edit",
-        "edit_file": "edit", "apply_patch": "edit", "run_command": "exec", "web_fetch": "net"}
+        "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "run_command": "exec", "web_fetch": "net"}
 
 SPECS = [
     {"name": "list_dir", "description": "List files and folders under a path in the workspace.",
@@ -36,7 +38,8 @@ SPECS = [
      "parameters": {"type": "object", "required": ["path"], "properties": {
          "path": {"type": "string"},
          "offset": {"type": "integer", "description": "First line to read, from 1."},
-         "limit": {"type": "integer", "description": "How many lines to read, at most 2000."}}}},
+         "limit": {"type": "integer", "description": "How many lines to read, at most 2000."},
+         "anchors": {"type": "boolean", "description": "Show each line as N#hh|text so edit_lines can point at it."}}}},
     {"name": "search", "description": "Search file contents with a regular expression; returns file:line: text.",
      "parameters": {"type": "object", "required": ["pattern"], "properties": {
          "pattern": {"type": "string"}, "path": {"type": "string"},
@@ -52,6 +55,11 @@ SPECS = [
      "parameters": {"type": "object", "required": ["path", "old_text", "new_text"], "properties": {
          "path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"},
          "replace_all": {"type": "boolean"}}}},
+    {"name": "edit_lines", "description": hashline.GUIDE,
+     "parameters": {"type": "object", "required": ["path", "edits"], "properties": {
+         "path": {"type": "string"}, "edits": {"type": "array", "items": {"type": "object", "required": ["op", "anchor"], "properties": {
+             "op": {"type": "string", "enum": list(hashline.OPS)}, "anchor": {"type": "string"},
+             "end": {"type": "string"}, "text": {"type": "string"}}}}}}},
     {"name": "apply_patch", "description": "Add, update, move or delete several files in one patch.\n" + patches.GUIDE,
      "parameters": {"type": "object", "required": ["patch"], "properties": {"patch": {"type": "string"}}}},
     {"name": "run_command", "description": "Run a shell command in the workspace root and return its output and exit code. "
@@ -114,9 +122,40 @@ class Workspace:
         if KIND.get(name) == "edit" and self.policy.mode == "read-only":
             raise ToolError("The session is read-only; ask the user to allow edits")
         try:
-            return handler(**args)
+            output = handler(**args)
         except TypeError as exc:
             raise ToolError(f"Bad arguments for {name}: {exc}") from exc
+        if KIND.get(name) == "edit":
+            problems = self.diagnose(self.targets(name, args))
+            if problems:
+                output += f"\nSyntax check failed:\n{problems}"
+        return output
+
+    def targets(self, name: str, args: dict) -> list[Path]:
+        """The files an edit tool call is about to change."""
+        try:
+            if name == "apply_patch":
+                return [self.resolve(p, write=True) for h in patches.parse(str(args.get("patch") or "")) for p in (h.path, h.move_to) if p]
+            if name in ("write_file", "edit_file", "edit_lines"):
+                return [self.resolve(args.get("path"), write=True)]
+        except (ToolError, patches.PatchError):
+            pass
+        return []
+
+    def diagnose(self, paths: list[Path]) -> str:
+        """Syntax errors in changed Python and JSON files, so the model sees them at once."""
+        rows = []
+        for path in paths:
+            if path.suffix not in (".py", ".json") or not path.is_file():
+                continue
+            try:
+                source = path.read_text(encoding="utf-8")
+                ast.parse(source) if path.suffix == ".py" else json.loads(source)
+            except SyntaxError as exc:
+                rows.append(f"{self.rel(path)}:{exc.lineno}: {exc.msg}")
+            except ValueError as exc:
+                rows.append(f"{self.rel(path)}: {exc}")
+        return "\n".join(rows)
 
     def _files(self, top: Path, name_glob: str | None = None):
         if top.is_file():
@@ -150,7 +189,7 @@ class Workspace:
             rows.append(f"… stopped at {MAX_LIST_ENTRIES} entries")
         return "\n".join(rows) or "(empty folder)"
 
-    def _tool_read_file(self, path: str, offset: int = 1, limit: int = MAX_READ_LINES) -> str:
+    def _tool_read_file(self, path: str, offset: int = 1, limit: int = MAX_READ_LINES, anchors: bool = False) -> str:
         target = self.resolve(path)
         if not target.is_file():
             raise ToolError(f"{path!r} is not a file")
@@ -161,7 +200,7 @@ class Workspace:
         start = max(1, int(offset))
         count = max(1, min(MAX_READ_LINES, int(limit)))
         chunk = lines[start - 1:start - 1 + count]
-        body = "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(chunk))
+        body = hashline.render(chunk, start) if anchors else "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(chunk))
         more = len(lines) - (start - 1 + len(chunk))
         tail = f"\n… {more} more lines" if more > 0 else ""
         return clip(body + tail) if chunk else f"(file has {len(lines)} lines)"
@@ -219,6 +258,16 @@ class Workspace:
         target.write_text(text.replace(old_text, new_text) if replace_all else text.replace(old_text, new_text, 1),
                           encoding="utf-8")
         return f"Edited {self.rel(target)} ({count if replace_all else 1} change)"
+
+    def _tool_edit_lines(self, path: str, edits: list) -> str:
+        target = self.resolve(path, write=True)
+        if not target.is_file():
+            raise ToolError(f"{path!r} is not a file")
+        try:
+            target.write_text(hashline.apply(target.read_bytes().decode("utf-8"), edits), encoding="utf-8", newline="")
+        except hashline.HashlineError as exc:
+            raise ToolError(str(exc)) from exc
+        return f"Edited {self.rel(target)} ({len(edits)} edits)"
 
     def _tool_apply_patch(self, patch: str) -> str:
         try:

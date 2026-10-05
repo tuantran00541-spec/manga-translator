@@ -487,3 +487,217 @@ def test_a_session_runs_is_saved_and_resumes_through_the_api(api):
                      headers=head).status_code == 400
     assert http.delete(f"/api/agent/sessions/{sid}", headers=head).status_code == 200
     assert http.post(f"/api/agent/sessions/{sid}/resume", headers=head).status_code == 404
+
+
+# Harness v3: hashline edits, rules, undo, agents, queue, references, memory, plan, goal.
+
+def run_to_idle(session, text="go"):
+    session.send(text)
+    wait_for(session, "idle")
+
+
+def tool_outputs(session):
+    return [(e["name"], e["ok"], e["output"]) for e in session.events if e["type"] == "tool"]
+
+
+def test_hashline_edits_check_anchors_and_keep_line_endings(ws):
+    (ws.root / "crlf.txt").write_bytes(b"one\r\ntwo\r\nthree\r\n")
+    shown = ws.run("read_file", {"path": "crlf.txt", "anchors": True}).splitlines()
+    anchor = lambda i: shown[i].split("|")[0]
+    ws.run("edit_lines", {"path": "crlf.txt", "edits": [{"op": "replace", "anchor": anchor(1), "text": "TWO\nTWO-B"},
+                                                          {"op": "insert_after", "anchor": anchor(2), "text": "four"}]})
+    assert (ws.root / "crlf.txt").read_bytes() == b"one\r\nTWO\r\nTWO-B\r\nthree\r\nfour\r\n"
+    with pytest.raises(ToolError, match="stale"):
+        ws.run("edit_lines", {"path": "crlf.txt", "edits": [{"op": "delete", "anchor": anchor(1)}]})
+    fresh = ws.run("read_file", {"path": "crlf.txt", "anchors": True}).splitlines()
+    first, second = (line.split("|")[0] for line in fresh[:2])
+    with pytest.raises(ToolError, match="same lines"):
+        ws.run("edit_lines", {"path": "crlf.txt", "edits": [{"op": "replace", "anchor": first, "end": second, "text": "x"},
+                                                              {"op": "delete", "anchor": second}]})
+    assert (ws.root / "crlf.txt").read_bytes().startswith(b"one\r\nTWO")
+
+
+def test_edits_report_syntax_errors_at_once(ws):
+    assert "Syntax check failed" in ws.run("write_file", {"path": "bad.py", "content": "def f(:\n"})
+    assert "Syntax check" not in ws.run("write_file", {"path": "good.py", "content": "x = 1\n"})
+    assert "bad.json" in ws.run("write_file", {"path": "bad.json", "content": "{"})
+
+
+def test_rules_allow_ask_and_deny_by_pattern(ws, home):
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "settings.json").write_text(json.dumps({"permission": {
+        "bash": {"*": "ask", "echo *": "allow", "rm *": "deny"}, "edit": {"notes/*": "allow"}}}), encoding="utf-8")
+    (ws.root / ".agents").mkdir()
+    (ws.root / ".agents" / "settings.json").write_text(json.dumps({"permission": {"bash": {"git *": "allow"}, "read": {"secret/*": "deny"}}}), encoding="utf-8")
+    fake = scripted(turn(calls=[call("run_command", command="echo hi"), call("run_command", command="echo a && rm -rf pkg"),
+                                call("write_file", path="notes/a.txt", content="x"), call("read_file", path="secret/k.txt"),
+                                call("read_file", path=".env")]), turn("ok"))
+    (ws.root / ".env").write_text("KEY=1", encoding="utf-8")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
+    session.send("go")
+    wait_for(session, "idle")
+    results = {i: o for i, (_, _, o) in enumerate(tool_outputs(session))}
+    assert "hi" in results[0] and "Denied by a permission rule" in results[1] and (ws.root / "pkg").exists()
+    assert (ws.root / "notes" / "a.txt").exists()
+    assert "Denied" in results[3] and "Denied" in results[4]
+    from app.agent import rules
+    loaded = rules.load(ws.root, home)
+    assert ("workspace", "bash", "git *", "allow") not in loaded and ("workspace", "read", "secret/*", "deny") in loaded
+
+
+def test_claude_style_permission_lists_are_read(ws, home):
+    from app.agent import rules
+    (ws.root / ".claude").mkdir()
+    (ws.root / ".claude" / "settings.json").write_text(json.dumps({"permissions": {"allow": ["Bash(git status:*)"], "deny": ["Bash(rm:*)", "Read(.secrets/*)"]}}), encoding="utf-8")
+    loaded = rules.load(ws.root, home)
+    assert ("workspace", "bash", "rm*", "deny") in loaded and ("workspace", "read", ".secrets/*", "deny") in loaded
+    assert not any(r[3] == "allow" and r[0] == "workspace" for r in loaded)
+
+
+def test_the_same_call_three_times_in_a_row_is_blocked(ws, home):
+    same = call("list_dir")
+    fake = scripted(turn(calls=[same]), turn(calls=[same]), turn(calls=[same]), turn("stuck"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    outputs = [o for _, _, o in tool_outputs(session)]
+    assert "pkg/" in outputs[0] and outputs[2].startswith("Blocked")
+
+
+def test_undo_restores_edited_files_and_removes_new_ones(ws, home):
+    fake = scripted(turn(calls=[call("write_file", path="pkg/a.py", content="changed\n"), call("write_file", path="new.txt", content="n")]),
+                    turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert (ws.root / "new.txt").exists()
+    assert "pkg/a.py" in session.command("/undo")["message"]
+    assert "return 1" in (ws.root / "pkg" / "a.py").read_text() and not (ws.root / "new.txt").exists()
+    assert session.history[-2]["content"].startswith("[The user undid")
+    assert "Không có gì" in session.command("/undo")["message"]
+
+
+def test_agent_files_limit_tools_and_a_coder_helper_edits_through_the_parents_approval(ws, home):
+    (ws.root / ".agents" / "agents").mkdir(parents=True)
+    (ws.root / ".agents" / "agents" / "reviewer.md").write_text(
+        "---\nname: reviewer\ndescription: Reviews code.\ntools: [Read, Grep]\nmodel: tiny\n---\nYou review code.", encoding="utf-8")
+    seen = []
+
+    def reviewer(messages, tools):
+        seen.append(({s["name"] for s in tools}, messages[0]["content"]))
+        return turn("looks fine")
+
+    def coder(messages, tools):
+        return turn(calls=[call("write_file", path="made.txt", content="by coder")])
+
+    fake = scripted(turn(calls=[call("task", description="r", prompt="review", agent="reviewer")]), reviewer,
+                    turn(calls=[call("task", description="c", prompt="make a file", agent="coder")]), coder,
+                    turn("child done"), turn("all done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
+    session.send("go")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "write_file" and not (ws.root / "made.txt").exists()
+    session.decide("allow")
+    wait_for(session, "idle")
+    assert seen[0][0] == {"read_file", "search"} and "You review code." in seen[0][1]
+    assert (ws.root / "made.txt").read_text() == "by coder"
+    assert any(a["name"] == "reviewer" for a in session.snapshot()["agents"])
+    session.command("/undo")
+    assert not (ws.root / "made.txt").exists()
+
+
+def test_several_task_calls_in_one_reply_run_together(ws, home):
+    import threading
+    gate = threading.Barrier(2, timeout=5)
+
+    def helper(messages, tools):
+        gate.wait()
+        return turn(f"report {messages[1]['content']}")
+
+    fake = scripted(turn(calls=[{"id": "t1", "name": "task", "args": {"description": "a", "prompt": "A"}},
+                                {"id": "t2", "name": "task", "args": {"description": "b", "prompt": "B"}}]),
+                    helper, helper, turn("merged"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert sorted(o for _, _, o in tool_outputs(session)) == ["report A", "report B"]
+
+
+def test_a_message_sent_while_the_agent_works_joins_the_next_step(ws, home):
+    import threading
+    release, started = threading.Event(), threading.Event()
+
+    def slow(messages, tools):
+        started.set()
+        release.wait(5)
+        return turn(calls=[call("list_dir")])
+
+    fake = scripted(slow, lambda m, t: turn("seen " + m[-1]["content"]))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session.send("first")
+    assert started.wait(5) and session.send("second, change course") is True
+    release.set()
+    wait_for(session, "idle")
+    assert fake.seen[1][0][-1]["content"] == "second, change course"
+    assert [e["queued"] for e in session.events if e["type"] == "user"] == [False, True]
+
+
+def test_at_references_attach_files_but_not_secrets(ws, home):
+    (ws.root / ".env").write_text("KEY=1", encoding="utf-8")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("ok")))
+    run_to_idle(session, "look at @pkg/a.py, and @.env and @missing.txt")
+    sent = session.history[0]["content"]
+    assert '<attached path="pkg/a.py">' in sent and "return 1" in sent and "KEY=1" not in sent and "missing" not in sent.split("</attached>")[-1]
+    assert session.events[0]["text"] == "look at @pkg/a.py, and @.env and @missing.txt" and session.events[0]["refs"] == ["pkg/a.py"]
+
+
+def test_memory_notes_persist_into_the_next_session(ws, home):
+    fake = scripted(turn(calls=[call("memory", action="add", scope="project", text="Tests run with pytest -q")]), turn("noted"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    later = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("hi")))
+    assert "1. Tests run with pytest -q" in later.system_prompt()
+    assert "pytest" in later.command("/memory")["message"]
+    later.command("/memory rm project 1")
+    assert "Tests run" not in later.system_prompt()
+
+
+def test_plan_mode_is_read_only_until_the_plan_is_approved(ws, home):
+    names = []
+
+    def planning(messages, tools):
+        names.append({s["name"] for s in tools})
+        return turn(calls=[call("exit_plan_mode", plan="1. change a.py")])
+
+    def building(messages, tools):
+        names.append({s["name"] for s in tools})
+        return turn(calls=[call("write_file", path="out.txt", content="built")])
+
+    fake = scripted(planning, building, turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=fake)
+    session.command("/plan")
+    session.send("add a feature")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "exit_plan_mode" and session.pending["args"]["plan"] == "1. change a.py"
+    assert "write_file" not in names[0] and "exit_plan_mode" in names[0] and "PLAN MODE" in fake.seen[0][0][0]["content"]
+    session.decide("allow")
+    wait_for(session, "idle")
+    assert "write_file" in names[1] and "exit_plan_mode" not in names[1] and (ws.root / "out.txt").exists()
+
+
+def test_ask_user_returns_the_answer(ws, home):
+    fake = scripted(turn(calls=[call("ask_user", question="Which one?", options=["a", "b"])]), turn("ok"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session.send("go")
+    wait_for(session, "waiting")
+    assert session.pending["args"]["options"] == ["a", "b"]
+    session.decide("allow", "b")
+    wait_for(session, "idle")
+    assert tool_outputs(session)[0][2] == "The user answered: b"
+
+
+def test_a_goal_keeps_the_agent_going_until_it_calls_goal_done(ws, home):
+    fake = scripted(turn("step one"), turn("still going"), turn(calls=[call("goal_done", summary="all done")]), turn("final"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session.command("/goal fix everything")
+    wait_for(session, "idle")
+    assert session.goal is None and len(fake.seen) == 4
+    assert "goal_done" in {s["name"] for s in fake.seen[0][1]} and "Goal: fix everything" in fake.seen[0][0][1]["content"]
+    assert sum("not marked done" in m.get("content", "") for m in session.history) == 2

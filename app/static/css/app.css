@@ -295,6 +295,7 @@
   .agent-empty h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
   .agent-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 6px; }
   .agent-user { align-self: flex-end; max-width: 82%; padding: 9px 14px; border-radius: 18px; background: var(--surface-quiet); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .agent-refs { display: block; margin-top: 4px; color: var(--text-quiet); font-size: 12px; }
   .agent-prose { display: grid; gap: 8px; overflow-wrap: anywhere; }
   .agent-prose p, .agent-prose ul, .agent-prose ol { margin: 0; }
   .agent-prose ul, .agent-prose ol { padding-left: 22px; }

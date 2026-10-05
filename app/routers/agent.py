@@ -146,12 +146,11 @@ def send_message(session_id: str, req: MessageRequest) -> dict:
     try:
         if req.text.startswith("/") and not req.text.startswith("//"):
             return session.command(req.text)
-        session.send(req.text)
+        return {"sent": True, "queued": session.send(req.text)}
     except RuntimeError as exc:
         raise HTTPException(409, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {"sent": True}
 
 
 @router.post("/sessions/{session_id}/approval")
