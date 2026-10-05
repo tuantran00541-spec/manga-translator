@@ -1,0 +1,30 @@
+[
+ {
+  "name": "read024",
+  "model": "qwen-3.8-27b",
+  "status": 400,
+  "seconds": 0.9,
+  "usage": null,
+  "body": "{\"message\":\"model 'qwen-3.8-27b' does not support image input\",\"detail\":\"model 'qwen-3.8-27b' does not support image input\",\"error\":{\"message\":\"model 'qwen-3.8-27b' does not support image input\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "name": "read094",
+  "model": "qwen-3.8-27b",
+  "status": 400,
+  "seconds": 0.9,
+  "usage": null,
+  "body": "{\"message\":\"model 'qwen-3.8-27b' does not support image input\",\"detail\":\"model 'qwen-3.8-27b' does not support image input\",\"error\":{\"message\":\"model 'qwen-3.8-27b' does not support image input\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "name": "translate",
+  "model": "qwen-3.8-27b",
+  "status": 200,
+  "seconds": 1.3,
+  "usage": {
+   "prompt_tokens": 50,
+   "completion_tokens": 20,
+   "total_tokens": 70
+  },
+  "reply": "```json\n[\n  {\"en\": \"No input provided.\", \"vi\": \"Không có nội dung để dịch.\"}\n]\n```"
+ }
+]
