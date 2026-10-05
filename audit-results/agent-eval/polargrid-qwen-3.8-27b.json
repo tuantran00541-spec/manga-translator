@@ -2,34 +2,32 @@
  {
   "label": "polargrid",
   "model": "qwen-3.8-27b",
-  "scenario": "build",
+  "scenario": "debug",
   "repeat": 0,
-  "ok": false,
+  "ok": true,
   "timed_out": false,
   "checks": {
-   "tool_exists": false,
-   "tests_pass": false,
-   "enough_tests": false
+   "tests_pass": true,
+   "tests_untouched": true
   },
-  "seconds": 54,
-  "steps": 8,
+  "seconds": 50,
+  "steps": 10,
   "usage": {
-   "prompt_tokens": 11060,
-   "completion_tokens": 946
+   "prompt_tokens": 19317,
+   "completion_tokens": 808
   },
   "tools": {
-   "": 6,
-   "list_dir": 1,
-   "todo_write": 1
+   "": 3,
+   "edit_file": 3,
+   "read_file": 2,
+   "run_command": 3
   },
-  "failed_tools": 6,
+  "failed_tools": 3,
   "helpers": 0,
   "masked": 0,
   "offloaded": 0,
   "skills": [],
-  "errors": [
-   "Model viết 4 lượt liền lệnh gọi công cụ không đọc được; dừng để khỏi tốn token."
-  ],
+  "errors": [],
   "notices": []
  }
 ]
