@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 170
     env:
-      OUT: audit-results/agent-eval
+      OUT: audit-results/agent-eval/${{ matrix.provider.name }}-${{ matrix.scenario }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,5 +53,5 @@ jobs:
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/agent-eval
+          paths: audit-results/agent-eval/${{ matrix.provider.name }}-${{ matrix.scenario }}
           message: "audit: Agent eval ${{ matrix.provider.name }} ${{ matrix.scenario }} (run ${{ github.run_id }})"
