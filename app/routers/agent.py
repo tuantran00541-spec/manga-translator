@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import ipaddress
 import os
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
@@ -16,14 +17,24 @@ from app.secret_store import SecretStoreUnavailable, get_provider_api_key
 AGENT_HEADER = "1"
 
 
+def is_loopback(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def agent_enabled() -> bool:
     return os.getenv("MANGA_AGENT_MODE", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
-def guard(x_manga_agent: str | None = Header(default=None)) -> None:
-    """Agent calls change files and run commands, so they need the switch on and a header a foreign page cannot send without a preflight."""
+def guard(request: Request, x_manga_agent: str | None = Header(default=None)) -> None:
+    """Agent calls change files and run commands, so they need the switch on, this machine, and a header a foreign page cannot send without a preflight."""
     if not agent_enabled():
         raise HTTPException(404, "Agent mode is turned off (MANGA_AGENT_MODE=0)")
+    # MANGA_ALLOWED_HOSTS may open the app to the LAN; the agent stays on this machine.
+    if not is_loopback(request.client.host if request.client else ""):
+        raise HTTPException(403, "Agent mode only answers this machine")
     if x_manga_agent != AGENT_HEADER:
         raise HTTPException(403, "Agent requests need the X-Manga-Agent header")
 

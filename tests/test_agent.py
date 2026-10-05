@@ -8,6 +8,7 @@ from app.agent import client
 from app.agent.session import AgentSessionManager
 from app.agent.tools import ToolError, Workspace
 from app.ai_providers import PROVIDERS
+from app.routers.agent import is_loopback
 
 
 @pytest.fixture
@@ -173,12 +174,18 @@ def api(monkeypatch, ws):
     monkeypatch.setattr(manager, "create", lambda *a, **kw: real_create(*a, **{**kw, "complete": fake}))
     monkeypatch.setattr(agent, "agent_sessions", manager)
     monkeypatch.setattr(agent, "get_provider_api_key", lambda *a, **kw: "secret")
+    # The test client calls from the host name "testclient", which stands in for this machine here.
+    monkeypatch.setattr(agent, "is_loopback", lambda host: host == "testclient")
     return TestClient(app, base_url="http://127.0.0.1"), str(ws.root)
 
 
-def test_the_api_needs_the_agent_header_and_the_switch(api, monkeypatch):
+def test_the_api_needs_the_agent_header_this_machine_and_the_switch(api, monkeypatch):
     http, root = api
     assert http.get("/api/agent/config").status_code == 403
+    assert http.get("/api/agent/config", headers={"X-Manga-Agent": "1"}).status_code == 200
+    assert is_loopback("127.0.0.1") and is_loopback("::1") and not is_loopback("192.168.1.20")
+    monkeypatch.setattr("app.routers.agent.is_loopback", is_loopback)
+    assert http.get("/api/agent/config", headers={"X-Manga-Agent": "1"}).status_code == 403, "a caller off this machine is refused"
     monkeypatch.setenv("MANGA_AGENT_MODE", "0")
     assert http.get("/api/agent/config", headers={"X-Manga-Agent": "1"}).status_code == 404
 

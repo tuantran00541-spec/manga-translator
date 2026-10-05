@@ -143,6 +143,10 @@ The renderer bundles **71 comic fonts** (69 under OFL-1.1, 40 covering Vietnames
 
 Built in: Google Gemini, DeepSeek, OpenAI and OpenRouter. The settings layer also registers custom **OpenAI-compatible** providers on validated HTTPS API bases. Each provider advertises its capabilities separately, so one registry serves model discovery and A.I mode.
 
+### Agent mode
+
+The **Agent** screen is a coding agent like Claude Code or Codex on any provider from Settings, including a custom OpenAI-compatible base URL. It lists, reads and searches files, edits them and runs commands inside one workspace folder (the app's own folder by default). Models that refuse the native tools field fall back to tool calls written as text, and rate-limited calls wait and retry. Edits and commands wait for your approval unless you allow them: ask before every change, edit freely but ask before commands, or do everything. Agent routes answer only this machine, need an `X-Manga-Agent` header, and switch off with `MANGA_AGENT_MODE=0`.
+
 ### Revision-safe render and export
 
 Rendered pages and chapter exports are tied to the canonical editorial state. If the editor changes relevant content while a render or export runs, the stale artifact is rejected instead of becoming the published result. Long webtoon slices are stitched back into their source pages on export.
@@ -286,6 +290,7 @@ Detection, inpainting, OCR and rendering thresholds are fixed constants in `app/
 | Processing | `MANGA_PIPELINE_DEFAULT_WORKERS`, `MANGA_PIPELINE_SLICE_WORKER_LIMIT`, `MANGA_USE_DYNAMIC_LAMA`, `MANGA_INPAINT_PRELOAD`, `MANGA_FIXED_LAMA_*` |
 | ONNX Runtime | `MANGA_ORT_PROVIDER`, `MANGA_ORT_REQUIRE_PROVIDER`, `MANGA_ORT_INTRA_OP_THREADS`, `MANGA_ORT_OPENVINO_*`, `MANGA_ORT_CPU_MEM_ARENA`, `MANGA_ORT_MEM_PATTERN`, `MANGA_ORT_SERIALIZE_INFERENCE` |
 | OCR | `MANGA_PPOCRV6_TIER`, `MANGA_PPOCRV6_TEXTLINE_ORIENTATION`, `MANGA_OCR_TARGET_SELECTION`, `MANGA_OCR_IMAGE_CACHE_MB`, `MANGA_OCR_JOB_CONCURRENCY_LIMIT`, `MANGA_OCR_JOB_ACTIVE_LIMIT` |
+| Agent | `MANGA_AGENT_MODE=0` turns the Agent screen's routes off |
 | Access | `MANGA_ALLOWED_HOSTS`: extra host names the app answers to, comma separated (loopback always works; add the machine's LAN name or IP to open it from another device) |
 | Network and AI | `MANGA_DOWNLOAD_WORKERS`, `MANGA_DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS`, `MANGA_REMOTE_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_READ_TIMEOUT_SECONDS` |
 
