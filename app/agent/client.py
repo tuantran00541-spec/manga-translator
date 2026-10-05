@@ -161,6 +161,7 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
 def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, bool]:
     """Assemble the streamed message; on_delta(live) is called as it grows and returns True to stop early."""
     text, reasoning, usage, calls, stopped = "", "", {}, {}, False
+    finish, other = "", {}
     for raw in response.iter_lines(decode_unicode=True):
         if not raw or not raw.startswith("data:"):
             continue
@@ -174,6 +175,10 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
         usage = chunk.get("usage") or usage
         for choice in chunk.get("choices") or []:
             delta = choice.get("delta") or {}
+            finish = choice.get("finish_reason") or finish
+            for key, value in delta.items():
+                if key not in ("content", "reasoning_content", "reasoning", "tool_calls", "role") and isinstance(value, str) and value:
+                    other[key] = other.get(key, "") + value
             text += delta.get("content") or ""
             reasoning += delta.get("reasoning_content") or delta.get("reasoning") or ""
             for part in delta.get("tool_calls") or []:
@@ -185,7 +190,10 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
         if on_delta({"text": text, "reasoning": reasoning, "tools": [c["name"] for c in calls.values() if c["name"]]}):
             stopped = True
             break
-    message = {"content": text, "reasoning_content": reasoning,
+    if other and not (text or reasoning or calls):
+        # Some providers put the reply in a field of their own; keep it rather than lose it.
+        reasoning = "".join(other.values())
+    message = {"content": text, "reasoning_content": reasoning, "_debug": {"finish": finish, "fields": sorted(other)},
                "tool_calls": [{"id": c["id"], "function": {"name": c["name"], "arguments": c["arguments"]}} for _, c in sorted(calls.items())]}
     return message, usage, stopped
 
@@ -221,7 +229,10 @@ def _build(message: dict, usage: dict) -> dict:
                     call.pop("error", None)
                     spare.remove(match)
     reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
-    return {"text": str(text).strip(), "calls": calls, "reasoning": str(reasoning), "usage": usage_of(usage)}
+    result = {"text": str(text).strip(), "calls": calls, "reasoning": str(reasoning), "usage": usage_of(usage)}
+    if not (result["text"] or calls) and message.get("_debug"):
+        result["debug"] = message["_debug"]
+    return result
 
 
 def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None) -> dict:

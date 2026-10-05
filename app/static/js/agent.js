@@ -123,6 +123,11 @@
     if (c.name === "run_command") return `${a.command || ""}${a.outside_sandbox ? "  (ngoài sandbox)" : ""}`;
     if (c.name === "search" || c.name === "glob") return `${a.pattern || ""}${a.path && a.path !== "." ? `  (${a.path})` : ""}`;
     if (c.name === "web_fetch") return a.url || "";
+    if (c.name === "web_search") return a.query || "";
+    if (c.name === "web_download") return `${a.url || ""} vào ${a.path || ""}`;
+    if (c.name === "symbols") return a.name || a.path || ".";
+    if (c.name === "view_image") return a.path || "";
+    if (c.name === "tool_search") return a.query || "";
     if (c.name === "task") return a.description || "";
     if (c.name === "spawn_agent") return `${a.agent || "explore"}: ${String(a.message || "").slice(0, 80)}`;
     if (c.name === "wait_agent") return (a.ids || []).join(", ") || "tất cả";

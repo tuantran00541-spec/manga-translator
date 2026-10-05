@@ -33,6 +33,8 @@ MAX_SKILLS_PER_TURN = 3
 MAX_AGENT_THREADS = 6
 MAX_IMAGES = 3
 MCP_DEFER = 15
+EMPTY_RETRIES = 3
+EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
 WAIT_MAX = 900
@@ -1272,7 +1274,7 @@ class AgentSession:
 
     def _steps(self, max_steps: int) -> None:
         """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
-        broken = 0
+        broken = empties = 0
         for _ in range(max_steps):
             if self._stop:
                 self.emit("notice", text="Đã dừng.")
@@ -1287,6 +1289,17 @@ class AgentSession:
             for key in self.usage:
                 self.usage[key] += int(turn["usage"].get(key) or 0)
             calls = turn["calls"]
+            if not turn["text"] and not calls:
+                empties += 1
+                used = turn["usage"].get("completion_tokens") or 0
+                self.emit("notice", text=f"Model trả lời rỗng ({used} token, {turn.get('debug') or 'không có chi tiết'}); thử lại {empties}/{EMPTY_RETRIES}.")
+                if empties <= EMPTY_RETRIES:
+                    if empties == 2:
+                        self.history.append({"role": "user", "content": EMPTY_NUDGE})
+                    continue
+                self.emit("error", text="Model trả lời rỗng nhiều lần liền; dừng.")
+                break
+            empties = 0
             self.history.append({"role": "assistant", "content": turn["text"], "calls": calls,
                                  **({"reasoning": turn["reasoning"][-20000:]} if self.echo_reasoning and turn["reasoning"] else {})})
             self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)

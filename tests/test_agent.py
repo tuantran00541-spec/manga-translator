@@ -1527,3 +1527,25 @@ def test_a_second_editing_helper_works_in_a_copy_and_its_changes_are_merged_back
     waited = next(o for n, _, o in tool_outputs(session) if n == "wait_agent")
     assert "merged" in waited and "NOT merged" in waited and "shared.txt" in waited
     assert not any(Path(tempfile.gettempdir()).glob("agent-copy-*/two.txt"))
+
+
+def test_an_empty_model_reply_is_retried_with_a_nudge_instead_of_ending_the_turn(ws, home):
+    empty = turn("")
+    empty["debug"] = {"finish": "stop", "fields": []}
+    fake = scripted(empty, empty, turn("Now I answer."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Now I answer."]
+    assert sum("trả lời rỗng" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
+    assert any(m["role"] == "user" and "reply was empty" in m["content"] for m in session.history)
+    gives_up = scripted(*[turn("")] * 5)
+    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", session_id="empty", complete=gives_up)
+    run_to_idle(other)
+    assert any(e["type"] == "error" and "rỗng" in e["text"] for e in other.events)
+
+
+def test_a_stream_that_puts_its_reply_in_an_unknown_field_is_not_lost():
+    lines = ['data: {"choices": [{"delta": {"thinking": "step one"}}]}', 'data: {"choices": [{"delta": {}, "finish_reason": "stop"}]}', "data: [DONE]"]
+    message, _, _ = client._read_stream(FakeResponse(200, lines), lambda live: False)
+    assert message["reasoning_content"] == "step one" and message["_debug"] == {"finish": "stop", "fields": ["thinking"]}
+    assert client._build(message, {})["debug"]["finish"] == "stop"

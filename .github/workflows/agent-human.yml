@@ -33,7 +33,7 @@ jobs:
         run: |
           mkdir -p "$WORK" "$OUT"
           git clone --depth 1 https://github.com/pallets/itsdangerous "$WORK/project"
-          python -m pip install -q -e "$WORK/project"
+          python -m pip install -q -e "$WORK/project" freezegun
           (cd "$WORK/project" && python -m pytest -q -p no:cacheprovider | tail -2)
 
       - name: Start the server with an in-memory key store
@@ -87,7 +87,7 @@ jobs:
           API, H = "http://127.0.0.1:8000/api/agent", {"X-Manga-Agent": "1"}
           TURNS = [
               {"say": "Chào, repo này là itsdangerous. Xem qua cấu trúc rồi giải thích ngắn gọn nó làm gì và các file chính nhé.",
-               "interject": [(25, "à đọc cả thư mục tests luôn nha")]},
+               "interject": [(7, "à đọc cả thư mục tests luôn nha")]},
               {"say": "Giờ spawn 5 agent chạy song song, mỗi agent review một module trong src/itsdangerous (signer, serializer, timed, url_safe, encoding), "
                       "tìm bug, thiếu type hint hoặc edge case chưa có test. Mỗi agent báo cáo 5 dòng. Cứ làm liên tục đừng hỏi tôi."},
               {"say": "Chạy toàn bộ test cho tôi, cho biết pass bao nhiêu"},
@@ -194,8 +194,8 @@ jobs:
         if: always()
         run: |
           cd "$WORK/project"
-          git status --short | tee "$OUT/project-status.txt"
-          python -m pytest -q -p no:cacheprovider 2>&1 | tail -15 | tee "$OUT/project-pytest.txt"
+          git status --short | tee "$GITHUB_WORKSPACE/$OUT/project-status.txt"
+          python -m pytest -q -p no:cacheprovider 2>&1 | tail -15 | tee "$GITHUB_WORKSPACE/$OUT/project-pytest.txt"
           ls "$WORK" | head; ls -a "$WORK/project" | grep -i conflict || true
 
       - name: Stop the server
