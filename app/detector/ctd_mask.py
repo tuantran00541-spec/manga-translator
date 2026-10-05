@@ -190,14 +190,19 @@ def _fringe(lab: np.ndarray, seed: np.ndarray, region: np.ndarray, reach: int) -
     bins, counts = np.unique(np.round(lab[band] / 4).astype(np.int32), axis=0, return_counts=True)
     back = bins[counts.argmax()].astype(np.float32) * 4
     to_back = np.linalg.norm(lab - back, axis=-1)
+    tolerance = FRINGE_TOLERANCE
     if (to_back[band] <= FRINGE_TOLERANCE).mean() < FRINGE_FLAT_SHARE:
-        return region
+        # A textured background (stars, a nebula) takes only a glow that keeps fading, above its own spread.
+        back = np.median(lab[band], axis=0)
+        to_back = np.linalg.norm(lab - back, axis=-1)
+        tolerance = max(FRINGE_TOLERANCE, float(np.percentile(to_back[band], 75)))
+        width = 0
     ink = float(np.median(to_back[seed]))
     # Between background and ink, so neither the background nor ink-dark lines such as a balloon outline join.
-    shade = (to_back > FRINGE_TOLERANCE) & (to_back < FRINGE_INK_SHARE * ink)
+    shade = (to_back > tolerance) & (to_back < FRINGE_INK_SHARE * ink)
     gap = cv2.distanceTransform((~region).astype(np.uint8), cv2.DIST_L2, 3)
     # Past the shadow's usual width only a fading blur goes on; flat art beside the letters stops it.
-    smooth = cv2.GaussianBlur(to_back, (0, 0), 1.0)
+    smooth = cv2.GaussianBlur(to_back, (0, 0), 1.0 if width else 2.0)
     grown, k3 = region, np.ones((3, 3), np.uint8)
     for _ in range(far):
         inner = cv2.dilate(np.where(grown, smooth, 0).astype(np.float32), k3)
