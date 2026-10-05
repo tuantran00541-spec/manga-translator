@@ -2,26 +2,26 @@
  {
   "label": "agnes",
   "model": "agnes-3.0-flash",
-  "scenario": "longrun",
+  "scenario": "build",
   "repeat": 0,
   "ok": true,
   "timed_out": false,
   "checks": {
-   "converter_exists": true,
+   "tool_exists": true,
    "tests_pass": true,
    "enough_tests": true
   },
-  "seconds": 250,
-  "steps": 13,
+  "seconds": 267,
+  "steps": 11,
   "usage": {
-   "prompt_tokens": 109747,
-   "completion_tokens": 6043
+   "prompt_tokens": 73276,
+   "completion_tokens": 4221
   },
   "tools": {
-   "edit_file": 4,
+   "edit_file": 2,
    "run_command": 3,
    "todo_write": 3,
-   "write_file": 2
+   "write_file": 3
   },
   "failed_tools": 0,
   "helpers": 0,
