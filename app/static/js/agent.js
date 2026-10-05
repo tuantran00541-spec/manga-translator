@@ -5,13 +5,13 @@
   const VERBS = {
     list_dir: "Xem", read_file: "Đọc", search: "Tìm", glob: "Tìm file", write_file: "Tạo", edit_file: "Sửa",
     apply_patch: "Vá", edit_lines: "Sửa dòng", run_command: "Chạy", web_fetch: "Mở trang", skill: "Mở skill", todo_write: "Kế hoạch",
-    task: "Agent phụ", spawn_agent: "Giao việc", wait_agent: "Đợi agent", send_input: "Nhắn agent", close_agent: "Đóng agent", memory: "Ghi nhớ", ask_user: "Hỏi bạn", exit_plan_mode: "Kế hoạch", goal_done: "Xong mục tiêu",
+    task: "Agent phụ", spawn_agent: "Giao việc", wait_agent: "Đợi agent", send_input: "Nhắn agent", close_agent: "Đóng agent", delegate: "Agent ngoài", memory: "Ghi nhớ", ask_user: "Hỏi bạn", exit_plan_mode: "Kế hoạch", goal_done: "Xong mục tiêu",
   };
   // How each kind of call is counted in a group's one-line summary.
   const TALLY = {
     run_command: ["chạy", "lệnh"], read_file: ["đọc", "file"], edit_file: ["sửa", "file"], write_file: ["sửa", "file"],
     apply_patch: ["sửa", "file"], edit_lines: ["sửa", "file"], spawn_agent: ["giao", "việc cho agent phụ"], wait_agent: ["đợi", "agent phụ"],
-    send_input: ["nhắn", "agent phụ"], close_agent: ["đóng", "agent phụ"], memory: ["ghi", "nhớ"], list_dir: ["tìm", "lần"], search: ["tìm", "lần"], glob: ["tìm", "lần"],
+    send_input: ["nhắn", "agent phụ"], delegate: ["giao", "việc cho agent ngoài"], close_agent: ["đóng", "agent phụ"], memory: ["ghi", "nhớ"], list_dir: ["tìm", "lần"], search: ["tìm", "lần"], glob: ["tìm", "lần"],
     web_fetch: ["đọc", "trang web"], skill: ["mở", "skill"], task: ["giao", "việc cho agent phụ"], mcp: ["gọi", "công cụ MCP"],
   };
   const SANDBOX_TEXT = {
@@ -130,6 +130,7 @@
     if (c.name === "skill") return a.name || "";
     if (c.name === "todo_write") return `${(a.items || []).length} việc`;
     if (c.name === "ask_user") return a.question || "";
+    if (c.name === "delegate") return `${a.agent || ""}: ${String(a.prompt || "").slice(0, 80)}`;
     if (c.name === "memory") return `${a.action || ""} ${a.text || ""}`.trim();
     if (c.name === "goal_done") return a.summary || "";
     if (c.name === "apply_patch") return (String(a.patch || "").match(/^\*\*\* (?:Add|Update|Delete) File: .+$/gm) || []).map((l) => l.split(": ")[1]).join(", ");
@@ -367,6 +368,15 @@
       if (server.state === "untrusted") row.append(button("Cho phép", "agent-btn", () => trust(`mcp/${encodeURIComponent(server.name)}`)));
       box.append(row);
     });
+    const plug = snap.plugins || {};
+    (plug.rows || []).forEach((row) => {
+      const state = { loaded: "đã nạp", untrusted: "chưa cho phép", failed: `lỗi: ${row.error}` }[row.state] || row.state;
+      const line = el("p", "agent-muted agent-info-row", `Plugin ${row.name} (${row.scope}) · ${state}`);
+      if (row.state === "untrusted" && !box.querySelector(".agent-plugin-trust")) line.append(button("Cho phép", "agent-btn agent-plugin-trust", () => trust("plugins")));
+      box.append(line);
+    });
+    if (plug.externals?.length) box.append(el("p", "agent-muted", `Agent ngoài: ${plug.externals.join(", ")} (luôn hỏi bạn trước)`));
+    if (snap.disabled?.length) box.append(el("p", "agent-muted", `Đã tắt: ${snap.disabled.join(", ")}`));
     const hooks = snap.hooks || {};
     if (hooks.user || hooks.workspace) {
       const row = el("p", "agent-muted agent-info-row", `Hook · ${hooks.user} của bạn, ${hooks.workspace} của dự án${hooks.workspace && !hooks.workspace_trusted ? " (chưa cho phép)" : ""}`);

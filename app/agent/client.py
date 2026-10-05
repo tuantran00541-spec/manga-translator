@@ -80,10 +80,11 @@ def parse_text_calls(text: str) -> tuple[str, list[dict]]:
     return TOOL_CALL_RE.sub("", text or "").strip(), calls
 
 
-def render(history: list[dict], system: str, text_mode: bool, specs: list[dict]) -> list[dict]:
+def render(history: list[dict], system: str, text_mode: bool, specs: list[dict], *, reasoning: bool = False) -> list[dict]:
     """The neutral history as chat messages, with tool calls native or written as text."""
     messages = [{"role": "system", "content": system + ("\n\n" + text_tools_prompt(specs) if text_mode and specs else "")}]
-    for item in history:
+    last_user = max((i for i, item in enumerate(history) if item["role"] == "user"), default=-1)
+    for index, item in enumerate(history):
         role = item["role"]
         if role == "user":
             messages.append({"role": "user", "content": item["content"]})
@@ -94,6 +95,9 @@ def render(history: list[dict], system: str, text_mode: bool, specs: list[dict])
                 messages.append({"role": "assistant", "content": (item.get("content") or "") + blocks})
             else:
                 message = {"role": "assistant", "content": item.get("content") or ""}
+                # DeepSeek's thinking mode needs the reasoning of the current turn's tool steps sent back.
+                if reasoning and item.get("reasoning") and index > last_user:
+                    message["reasoning_content"] = item["reasoning"]
                 if calls:
                     message["tool_calls"] = [{"id": c["id"], "type": "function",
                                               "function": {"name": c["name"], "arguments": json.dumps(c["args"])}} for c in calls]

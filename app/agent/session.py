@@ -12,7 +12,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from app.agent import agents, client, context, mcp, memory, rules, sandbox, skill_install, skills
+from app.agent import agents, client, context, external, mcp, memory, registry, rules, sandbox, skill_install, skills
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import KIND, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -93,6 +93,7 @@ BUILTIN_COMMANDS = {
     "goal": "Giao mục tiêu để agent tự làm nhiều lượt: /goal MỤC TIÊU hoặc /goal off",
     "undo": "Hoàn tác file agent đã sửa ở lượt gần nhất", "memory": "Xem ghi nhớ: /memory, /memory add NỘI DUNG, /memory rm project|user SỐ",
     "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn",
+    "plugins": "Xem plugin, tính năng đã tắt và agent ngoài (Codex, Claude Code)",
 }
 GOAL_PROMPT = ("Goal: {text}\nWork on it across as many steps as needed until it is fully done and verified. "
                "When it is done call goal_done with a short report; if you need a decision from the user call ask_user.")
@@ -143,6 +144,11 @@ class AgentSession:
         self._usage_lock = threading.Lock()
         self.agents = agents.discover(workspace.root, home_path) if not depth else {}
         self.rules = rules.load(workspace.root, home_path) if not depth else parent.rules
+        self.profile = registry.load_profile(workspace.root, home_path) if not depth else parent.profile
+        self.disabled = set(self.profile["disable"])
+        self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
+        self.externals = external.available(self.profile["external_agents"]) if not depth and "external" not in self.disabled else {}
+        self.registry = self._build_registry(home_path) if not depth else parent.registry
         self.checkpoints = parent.checkpoints if depth else Checkpoints()
         self.skills = skills.discover(workspace.root, home)
         workspace.read_roots = [s.folder for s in self.skills.values()]
@@ -152,6 +158,40 @@ class AgentSession:
         self.mcp_status: dict[str, dict] = {}
         self.mcp_tools: dict[str, tuple[str, dict]] = {}
         self._mcp_ready = depth > 0
+
+    # Plugins and feature groups.
+
+    def _build_registry(self, home_path: Path) -> registry.Registry:
+        reg = registry.Registry({s["name"] for s in SPECS} | set(SESSION_SPECS))
+        if self.externals:
+            reg.tool(external.spec(list(self.externals)), lambda session, args: external.run(session, args, self.externals),
+                     kind="exec", group="external", always_ask=True)
+        registry.load_plugins(reg, self.workspace.root, home_path, self.trust)
+        return reg
+
+    def _enabled(self, name: str) -> bool:
+        plugin = self.registry.tools.get(name)
+        return (plugin.group if plugin else registry.group_of(name)) not in self.disabled
+
+    def trust_plugins(self) -> None:
+        home_path = self.home if self.home is not None else Path.home()
+        files = registry.plugin_files(self.workspace.root, home_path)
+        self.trust.allow(self.workspace.root, "plugins", registry.workspace_digest(files))
+        self.registry = self._build_registry(home_path)
+
+    def _plugins_report(self) -> str:
+        rows = [f"{p['name']} ({p['scope']}): {p['state']}" + (f" — {p['error']}" if p["error"] else "") for p in self.registry.plugins]
+        rows += [f"Agent ngoài: {', '.join(self.externals) or 'không tìm thấy codex hay claude'}",
+                 f"Tính năng đã tắt: {', '.join(sorted(self.disabled)) or 'không'}", f"Vòng lặp: {self.profile['loop']}",
+                 f"Nhóm có thể tắt trong profile.json: {', '.join(registry.ALL_GROUPS)}"]
+        return "\n".join(rows)
+
+    def _hook_call(self, fn, *args) -> str:
+        try:
+            return str(fn(self, *args) or "")
+        except Exception as exc:
+            logger.warning("Agent plugin hook failed: {}", exc)
+            return ""
 
     # Events, state and persistence.
 
@@ -168,11 +208,14 @@ class AgentSession:
                     "sandbox": {"mode": self.workspace.policy.mode, "network": self.workspace.policy.network,
                                 "backend": sandbox.backend()},
                     "text_tools": self.text_tools, "usage": dict(self.usage), "pending": self.pending, "todos": self.todos,
+                    "disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins, "externals": list(self.externals),
+                                                                    "needs_trust": any(p["state"] == "untrusted" for p in self.registry.plugins)},
                     "plan_mode": self.plan_mode, "goal": self.goal and self.goal["text"], "queued": len(self.queue),
                     "agents": [{"name": a.name, "description": a.description} for a in self.agents.values()],
                     "skills": [{"name": s.name, "description": s.description} for s in self.skills.values()],
                     "mcp": list(self.mcp_status.values()), "hooks": self._hook_summary(),
-                    "commands": [{"name": k, "description": v} for k, v in BUILTIN_COMMANDS.items()]
+                    "commands": [{"name": k, "description": v} for k, v in self._builtin_commands().items()]
+                    + [{"name": k, "description": d} for k, (d, _) in self.registry.commands.items()]
                     + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
                     + [{"name": c["name"], "description": c["description"]} for c in self.commands.values()],
                     "events": [e for e in self.events if e["seq"] > after]}
@@ -209,6 +252,9 @@ class AgentSession:
         self.workspace.policy = sandbox.Policy(mode, bool(network))
 
     # Starting a turn, approvals and stopping.
+
+    def _builtin_commands(self) -> dict[str, str]:
+        return {k: v for k, v in BUILTIN_COMMANDS.items() if registry.COMMAND_GROUPS.get(k) not in self.disabled}
 
     def _rel(self, path: str) -> str:
         try:
@@ -261,9 +307,16 @@ class AgentSession:
         """A slash command: built-ins act at once, custom ones become a message to the agent."""
         name, _, args = text.strip()[1:].partition(" ")
         args = args.strip()
+        if registry.COMMAND_GROUPS.get(name) in self.disabled:
+            raise ValueError(f"/{name} đang tắt trong profile.json")
         if name == "help":
-            rows = [f"/{k} — {v}" for k, v in BUILTIN_COMMANDS.items()] + [f"/{c['name']} — {c['description']}" for c in self.commands.values()]
-            return {"message": "\n".join(rows)}
+            rows = [f"/{k} — {v}" for k, v in self._builtin_commands().items()] + [f"/{k} — {d}" for k, (d, _) in self.registry.commands.items()]
+            return {"message": "\n".join(rows + [f"/{c['name']} — {c['description']}" for c in self.commands.values()])}
+        if name == "plugins":
+            return {"message": self._plugins_report()}
+        if name in self.registry.commands:
+            result = self.registry.commands[name][1](self, args)
+            return result if isinstance(result, dict) else {"message": str(result)}
         if name == "skills":
             if args.split()[:1] == ["add"]:
                 return {"message": self._install_skills(args[3:].strip())}
@@ -456,6 +509,9 @@ class AgentSession:
     # Tools.
 
     def specs(self) -> list[dict]:
+        return [row for row in self._all_specs() if self._enabled(row["name"])]
+
+    def _all_specs(self) -> list[dict]:
         every = {s["name"] for s in SPECS} | {"skill"}
         if self.depth:
             allowed = self.agent.allowed(every) if self.agent else agents.READ_TOOLS
@@ -468,8 +524,10 @@ class AgentSession:
             rows.append(SESSION_SPECS["skill"])
         rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn,
                  SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
+        rows += [t.spec for t in self.registry.tools.values()]
         if self.plan_mode:
-            return [r for r in rows if r["name"] in PLAN_TOOLS] + [SESSION_SPECS["exit_plan_mode"]]
+            reads = {n for n, t in self.registry.tools.items() if t.kind == "read"}
+            return [r for r in rows if r["name"] in PLAN_TOOLS or r["name"] in reads] + [SESSION_SPECS["exit_plan_mode"]]
         if self.goal:
             rows.append(SESSION_SPECS["goal_done"])
         for name, (server, tool) in self.mcp_tools.items():
@@ -488,7 +546,10 @@ class AgentSession:
         if name in self.mcp_tools:
             read_only = (self.mcp_tools[name][1].get("annotations") or {}).get("readOnlyHint")
             return not (self.mode == "edits" and read_only)
-        kind = KIND.get(name, "exec")
+        plugin = self.registry.tools.get(name)
+        if plugin and plugin.always_ask:
+            return True
+        kind = plugin.kind if plugin else KIND.get(name, "exec")
         if kind == "read":
             return False
         if self.mode == "ask":
@@ -718,12 +779,23 @@ class AgentSession:
             allowed, message = self._run_hooks("PreToolUse", call)
             if not allowed:
                 return message, False
+            for fn in self.registry.hooks["pre_tool"]:
+                blocked = self._hook_call(fn, call)
+                if blocked:
+                    return blocked, False
         try:
             if call["name"] in SESSION_SPECS:
                 output, ok = self._session_tool(call), True
             elif call["name"] in self.mcp_tools:
                 server, tool = self.mcp_tools[call["name"]]
                 output, ok = self.mcp_servers[server].call_tool(tool["name"], call["args"])
+            elif call["name"] in self.registry.tools:
+                try:
+                    output, ok = str(self.registry.tools[call["name"]].handler(self, call["args"])), True
+                except ToolError:
+                    raise
+                except Exception as exc:
+                    output, ok = f"Error: {type(exc).__name__}: {exc}", False
             else:
                 if KIND.get(call["name"]) == "edit" and isinstance(call["args"], dict):
                     for path in self.workspace.targets(call["name"], call["args"]):
@@ -735,6 +807,8 @@ class AgentSession:
             output, ok = f"Error: {type(exc).__name__}: {exc}", False
         if call["name"] not in SESSION_SPECS:
             _, notes = self._run_hooks("PostToolUse", call, output)
+            for fn in self.registry.hooks["post_tool"]:
+                notes = "\n".join(n for n in (notes, self._hook_call(fn, call, output)) if n)
             if notes:
                 output = f"{output}\n{notes}"
         return output, ok
@@ -747,6 +821,7 @@ class AgentSession:
         if not self.depth:
             parts.append(context.instructions(self.workspace.root, self.home))
             parts.append(memory.prompt(self.home if self.home is not None else Path.home(), self.workspace.root))
+            parts += [self._hook_call(fn) for fn in self.registry.prompts]
             if self.plan_mode:
                 parts.append(PLAN_PROMPT)
         else:
@@ -757,12 +832,12 @@ class AgentSession:
     def _turn(self) -> dict:
         system, specs = self.system_prompt(), self.specs()
         try:
-            return self.complete(self.provider, self.api_key, self.model, client.render(self.history, system, self.text_tools, specs),
+            return self.complete(self.provider, self.api_key, self.model, client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
                                  tools=None if self.text_tools else specs)
         except client.ToolsUnsupported as exc:
             self.text_tools = True
             self.emit("notice", text=f"Model không nhận gọi công cụ kiểu gốc, chuyển sang gọi công cụ bằng văn bản ({exc}).")
-            return self.complete(self.provider, self.api_key, self.model, client.render(self.history, system, True, specs), tools=None)
+            return self.complete(self.provider, self.api_key, self.model, client.render(self.history, system, True, specs, reasoning=self.echo_reasoning), tools=None)
 
     def _size(self) -> int:
         return sum(len(json.dumps(item, ensure_ascii=False)) for item in self.history)
@@ -867,35 +942,43 @@ class AgentSession:
         for call in calls:
             record(call, *one(call))
 
+    def _steps(self, max_steps: int) -> None:
+        """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
+        broken = 0
+        for _ in range(max_steps):
+            if self._stop:
+                self.emit("notice", text="Đã dừng.")
+                break
+            self._drain()
+            self._make_room()
+            turn = self._turn()
+            for key in self.usage:
+                self.usage[key] += int(turn["usage"].get(key) or 0)
+            calls = turn["calls"]
+            self.history.append({"role": "assistant", "content": turn["text"], "calls": calls,
+                                 **({"reasoning": turn["reasoning"][-20000:]} if self.echo_reasoning and turn["reasoning"] else {})})
+            self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)
+            if not calls:
+                if self._more_work():
+                    continue
+                break
+            self._run_calls(calls)
+            broken = broken + 1 if all(c.get("error") or not c["name"] for c in calls) else 0
+            if broken >= UNREADABLE_TURNS:
+                self.emit("error", text=f"Model viết {broken} lượt liền lệnh gọi công cụ không đọc được; dừng để khỏi tốn token.")
+                break
+            self.save()
+        else:
+            self.emit("notice", text=f"Dừng sau {max_steps} bước; nhắn tiếp để agent làm tiếp.")
+
     def _loop(self, max_steps: int | None = None) -> None:
         max_steps = max_steps or self.max_steps
-        again, broken = False, 0
         try:
             self._ensure_mcp()
-            for _ in range(max_steps):
-                if self._stop:
-                    self.emit("notice", text="Đã dừng.")
-                    break
-                self._drain()
-                self._make_room()
-                turn = self._turn()
-                for key in self.usage:
-                    self.usage[key] += int(turn["usage"].get(key) or 0)
-                calls = turn["calls"]
-                self.history.append({"role": "assistant", "content": turn["text"], "calls": calls})
-                self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)
-                if not calls:
-                    if self._more_work():
-                        continue
-                    break
-                self._run_calls(calls)
-                broken = broken + 1 if all(c.get("error") or not c["name"] for c in calls) else 0
-                if broken >= UNREADABLE_TURNS:
-                    self.emit("error", text=f"Model viết {broken} lượt liền lệnh gọi công cụ không đọc được; dừng để khỏi tốn token.")
-                    break
-                self.save()
-            else:
-                self.emit("notice", text=f"Dừng sau {max_steps} bước; nhắn tiếp để agent làm tiếp.")
+            custom = self.registry.loops.get(self.profile["loop"])
+            if self.profile["loop"] != "default" and custom is None:
+                self.emit("notice", text=f"Không có vòng lặp {self.profile['loop']!r}; dùng vòng lặp mặc định.")
+            (custom or AgentSession._steps)(self, max_steps)
         except Exception as exc:
             logger.opt(exception=True).warning("Agent session {} failed", self.id)
             self.emit("error", text=str(exc)[:1000])
