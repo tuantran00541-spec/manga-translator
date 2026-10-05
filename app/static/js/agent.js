@@ -334,6 +334,7 @@
       actions.append(button(label, cls, () => decide(card, decision, note.value, done)));
     });
     actions.append(note);
+    if (c.why === "untrusted") card.append(el("p", "agent-muted", "Agent vừa đọc nội dung từ web hoặc MCP, có thể chứa lệnh giả, nên hỏi lại trước khi hành động."));
     card.append(title, actions);
     return card;
   }

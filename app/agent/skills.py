@@ -81,7 +81,7 @@ def catalog(found: dict[str, Skill]) -> str:
     rows = "\n".join(f"- {s.name}: {s.description}" for s in found.values() if not s.manual)
     if not rows:
         return ""
-    return ("Skills you can load with the skill tool when a task matches one; load it before starting that task. "
+    return ("Skills you can load with the skill tool when a task matches one; load it before starting that task, and at most three per task. "
             "Skills are written for other coding agents too: read TodoWrite as todo_write, Task or subagents as task or "
             "spawn_agent with wait_agent, Bash as run_command, Read, Edit and Write as read_file, edit_file and apply_patch, "
             "and asking the user as ask_user.\n" + rows)

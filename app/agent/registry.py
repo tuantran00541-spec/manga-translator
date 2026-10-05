@@ -32,7 +32,8 @@ def group_of(tool: str) -> str | None:
 
 def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
-    profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None}
+    profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
+                     "compact_model": "", "untrusted_guard": True}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -49,6 +50,11 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["external_agents"].update(data["external_agents"])
                 if isinstance(data.get("echo_reasoning"), bool):
                     profile["echo_reasoning"] = data["echo_reasoning"]
+                for key in ("subagent_model", "compact_model"):
+                    if isinstance(data.get(key), str):
+                        profile[key] = data[key].strip()[:100]
+                if isinstance(data.get("untrusted_guard"), bool):
+                    profile["untrusted_guard"] = data["untrusted_guard"]
     profile["disable"] = sorted(set(profile["disable"]))
     return profile
 

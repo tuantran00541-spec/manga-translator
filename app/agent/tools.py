@@ -282,7 +282,7 @@ class Workspace:
         policy = sandbox.Policy("full-access", True) if outside_sandbox else self.policy
         code, output = sandbox.run(str(command), policy, self.root, limit)
         status = f"[stopped after {limit} s]" if code is None else f"[exit code {code}]"
-        return clip(f"{output.strip()}\n{status}")
+        return clip(f"{output.strip()}\n{status}", 400_000)
 
     def _tool_web_fetch(self, url: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
         try:

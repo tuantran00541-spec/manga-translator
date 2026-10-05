@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import threading
 import time
 import uuid
@@ -20,13 +21,17 @@ from app.logging_config import logger
 MODES = ("ask", "edits", "auto")
 MAX_STEPS = 80
 SUBAGENT_STEPS = 30
+MASK_KEEP = 12
+MASK_BATCH = 6
+OFFLOAD_AT = 12_000
+MAX_SKILLS_PER_TURN = 3
 MAX_AGENT_THREADS = 6
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
 WAIT_MAX = 900
 NICKNAMES = ("ash", "birch", "cedar", "elm", "fern", "hazel", "ivy", "juniper", "maple", "oak", "pine", "rowan", "sage", "willow",
              "alder", "beech", "clover", "dahlia", "fir", "holly", "iris", "laurel", "moss", "nettle")
-COMPACT_AT = 300_000
+COMPACT_AT = 200_000
 MAX_HISTORY_CHARS = 450_000
 MAX_SESSIONS = 50
 HOOK_TIMEOUT = 60
@@ -102,9 +107,12 @@ GOAL_NUDGE = ("The goal is not marked done yet. Keep working on it. If it is fin
 PLAN_PROMPT = ("PLAN MODE: only read, search and research until the plan is ready, then call exit_plan_mode with the complete plan "
                "(files, steps, checks). Do not change anything until the user approves it.")
 REF = re.compile(r"(?<![\w@/])@([^\s@]+)")
-INIT_PROMPT = ("Study this repository: its layout, how to install, build, run, test and lint it, its code style and conventions. "
-               "Then write AGENTS.md at the root with short sections a coding agent needs (overview, commands, structure, "
-               "conventions, gotchas). If AGENTS.md exists, improve it instead of replacing what is still right.")
+INIT_PROMPT = ("Study this repository, then write AGENTS.md at the root with ONLY what an agent cannot work out by reading the code: "
+               "commands that are not obvious (install, test, lint, run), conventions the code does not show, and traps that cost time. "
+               "No overview, no directory tour, no style advice the linter already enforces; under 40 lines. "
+               "If AGENTS.md exists, cut it down the same way instead of adding to it.")
+GATE_NUDGE = ("You changed files but have not run anything since. Run the project's tests or the command that proves the change works, "
+              "and read the result, or say plainly why no check applies.")
 
 
 class AgentSession:
@@ -132,13 +140,15 @@ class AgentSession:
         self._stop = False
         self._lock = threading.Condition()
         self.queue: list[str] = []
+        self._dirty = self._gated = self.tainted = False
+        self._skills_loaded: list[str] = []
         self.plan_mode = False
         self.goal: dict | None = None
         self._recent: list[str] = []
         self._approval_lock = threading.RLock()
         self._spawn_lock = threading.Lock()
         self.children: dict[str, AgentSession] = {}
-        self.nick, self.job, self.closed, self.reported = "", None, False, False
+        self.nick, self.job, self.closed, self.reported, self.mutating = "", None, False, False, False
         self.counted = {"prompt_tokens": 0, "completion_tokens": 0}
         self.max_steps = SUBAGENT_STEPS if depth else MAX_STEPS
         self._usage_lock = threading.Lock()
@@ -151,13 +161,19 @@ class AgentSession:
         self.registry = self._build_registry(home_path) if not depth else parent.registry
         self.checkpoints = parent.checkpoints if depth else Checkpoints()
         self.skills = skills.discover(workspace.root, home)
-        workspace.read_roots = [s.folder for s in self.skills.values()]
+        self._set_read_roots()
         self.commands = context.commands(workspace.root, home) if not depth else {}
         self.hooks = context.hooks(workspace.root, home) if not depth else parent.hooks
         self.mcp_servers: dict[str, mcp.Server] = {}
         self.mcp_status: dict[str, dict] = {}
         self.mcp_tools: dict[str, tuple[str, dict]] = {}
         self._mcp_ready = depth > 0
+
+    def _outputs_dir(self) -> Path:
+        return (self.home if self.home is not None else Path.home()) / ".manga-agent" / "outputs" / self.id.split("-")[0]
+
+    def _set_read_roots(self) -> None:
+        self.workspace.read_roots = [s.folder for s in self.skills.values()] + [self._outputs_dir()]
 
     # Plugins and feature groups.
 
@@ -299,6 +315,8 @@ class AgentSession:
             return True
         if not self.depth:
             self.checkpoints.begin()
+        self._dirty = self._gated = self.tainted = False
+        self._skills_loaded = []
         self.history.append({"role": "user", "content": text + extra})
         threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
         return False
@@ -393,7 +411,7 @@ class AgentSession:
         except (ValueError, OSError) as exc:
             return f"Không cài được: {exc}"
         self.skills = skills.discover(self.workspace.root, self.home)
-        self.workspace.read_roots = [s.folder for s in self.skills.values()]
+        self._set_read_roots()
         return f"Đã cài {len(names)} skill vào ~/.manga-agent/skills: {', '.join(names)}. Đọc kỹ SKILL.md của chúng trước khi tin."
 
     def _memory_command(self, args: str) -> str:
@@ -552,6 +570,8 @@ class AgentSession:
         kind = plugin.kind if plugin else KIND.get(name, "exec")
         if kind == "read":
             return False
+        if self.tainted and self.profile["untrusted_guard"]:
+            return True
         if self.mode == "ask":
             return True
         if kind == "exec":
@@ -581,6 +601,10 @@ class AgentSession:
             found = self.skills.get(str(args.get("name") or ""))
             if found is None:
                 raise ToolError(f"No skill named {args.get('name')!r}; known: {', '.join(self.skills) or 'none'}")
+            if found.name not in self._skills_loaded:
+                if len(self._skills_loaded) >= MAX_SKILLS_PER_TURN:
+                    raise ToolError(f"Load at most {MAX_SKILLS_PER_TURN} skills per task; you already loaded {', '.join(self._skills_loaded)}. Use those.")
+                self._skills_loaded.append(found.name)
             return skills.load(found)
         if call["name"] == "todo_write":
             items = [{"content": str(i.get("content", ""))[:300], "status": i.get("status") if i.get("status") in
@@ -668,6 +692,7 @@ class AgentSession:
         if child.reported or child.status != "idle":
             return
         child.reported = True
+        self.tainted = self.tainted or child.tainted
         with self._usage_lock:
             for key in self.usage:
                 self.usage[key] += child.usage[key] - child.counted[key]
@@ -698,13 +723,16 @@ class AgentSession:
         mutating = bool(allowed & (agents.EDIT_TOOLS | {"run_command"}))
         if self.plan_mode and mutating:
             raise ToolError("In plan mode only read-only agents may run")
+        busy = next((n for n, c in self.children.items() if c.mutating and self._state(c) == "running"), "") if mutating else ""
+        if busy:
+            raise ToolError(f"{busy} is changing files right now; call wait_agent for it first, so two helpers never edit at the same time")
         nick = next((n for n in NICKNAMES if n not in self.children), f"agent{len(self.children) + 1}")
         helper = Workspace(self.workspace.root, self.workspace.policy if mutating else sandbox.Policy("read-only", False),
                            read_roots=self.workspace.read_roots)
-        child = AgentSession(f"{self.id}-{nick}", self.provider, self.api_key, agent.model or self.model, helper,
+        child = AgentSession(f"{self.id}-{nick}", self.provider, self.api_key, agent.model or self.profile.get("subagent_model") or self.model, helper,
                              self.mode if mutating else "auto", complete=self.complete, depth=self.depth + 1, home=self.home,
                              trust=self.trust, parent=self, agent=agent)
-        child.text_tools, child.nick, child.job = self.text_tools, nick, job
+        child.text_tools, child.nick, child.job, child.mutating = self.text_tools, nick, job, mutating
         self.children[nick] = child
         self.emit("subagent", description=message[:80], agent=agent.name, id=nick, state="started")
         child.send(message)
@@ -767,7 +795,8 @@ class AgentSession:
         if verdict == "deny":
             return f"Denied by a permission rule for {call['name']}. Do not retry it; use another way or ask the user.", False
         if self._needs_approval(call, verdict):
-            decision = self._wait_for_decision(call)
+            why = "untrusted" if self.tainted and self.mode != "auto" and self.profile["untrusted_guard"] else ""
+            decision = self._wait_for_decision({**call, "why": why} if why else call)
             if decision["decision"] == "allow_all":
                 self.mode = "auto"
                 if self.parent is not None:
@@ -805,6 +834,15 @@ class AgentSession:
             output, ok = f"Error: {exc}", False
         except (OSError, mcp.MCPError) as exc:
             output, ok = f"Error: {type(exc).__name__}: {exc}", False
+        name = call["name"]
+        if name == "web_fetch" or name in self.mcp_tools or name == "delegate":
+            self.tainted = True
+        if ok and KIND.get(name) == "edit":
+            self._dirty = True
+        elif name == "run_command":
+            self._dirty = False
+        if name == "run_command" or name in self.mcp_tools or name in self.registry.tools:
+            output = self._offload(call, output)
         if call["name"] not in SESSION_SPECS:
             _, notes = self._run_hooks("PostToolUse", call, output)
             for fn in self.registry.hooks["post_tool"]:
@@ -812,6 +850,20 @@ class AgentSession:
             if notes:
                 output = f"{output}\n{notes}"
         return output, ok
+
+    def _offload(self, call: dict, output: str) -> str:
+        """A long output goes to a file the model can read in pieces, instead of losing its middle."""
+        if len(output) <= OFFLOAD_AT:
+            return output
+        folder = self._outputs_dir()
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / f"{re.sub(r'[^A-Za-z0-9_-]', '_', str(call['id']))[:40]}-{call['name'][:20]}.txt"
+            path.write_text(output, encoding="utf-8")
+        except OSError:
+            return clip(output)
+        return (f"{output[:6000]}\n… [full output saved to {path}: {len(output) - 10000} more characters; "
+                f"read it with read_file offset and limit, or search it] …\n{output[-4000:]}")
 
     # The model turn and the loop.
 
@@ -865,7 +917,7 @@ class AgentSession:
                "and next steps. Be specific and complete." + (f" Focus on: {focus}" if focus else ""))
         messages = [{"role": "system", "content": "You write precise handover summaries."},
                     {"role": "user", "content": f"{ask}\n\n<conversation>\n{self._transcript(head)}\n</conversation>"}]
-        summary = self.complete(self.provider, self.api_key, self.model, messages, tools=None)["text"]
+        summary = self.complete(self.provider, self.api_key, self.profile.get("compact_model") or self.model, messages, tools=None)["text"]
         if not summary:
             return False
         self.history = [{"role": "user", "content": f"[Summary of the earlier conversation]\n{summary}"},
@@ -885,7 +937,20 @@ class AgentSession:
             self.emit("done")
             self.save()
 
+    def _mask_old(self) -> None:
+        """Older tool outputs are dropped in batches, keeping the recent ones; cheaper than summaries and as good."""
+        big = [i for i, item in enumerate(self.history) if item["role"] == "tool" and not item.get("masked") and len(item["content"]) > 300]
+        old = big[:-MASK_KEEP] if len(big) > MASK_KEEP else []
+        if len(old) < MASK_BATCH:
+            return
+        for i in old:
+            item = self.history[i]
+            saved = re.search(r"full output saved to (\S+?):", item["content"])
+            item["content"] = f"[older {item['name']} output removed to save room" + (f"; the full text is in {saved.group(1)}" if saved else "; run it again if needed") + "]"
+            item["masked"] = True
+
     def _make_room(self) -> None:
+        self._mask_old()
         if self._size() > COMPACT_AT and not self.depth:
             try:
                 self.compact()
@@ -917,6 +982,11 @@ class AgentSession:
                 break
             time.sleep(0.25)
         if any(not c.closed and not c.reported and c.status == "idle" for c in self.children.values()):
+            return True
+        if self._dirty and not self._gated and self.workspace.policy.mode != "read-only" and any(r["name"] == "run_command" for r in self.specs()):
+            self._gated = True
+            self.history.append({"role": "user", "content": GATE_NUDGE})
+            self.emit("notice", text="Đã sửa file mà chưa chạy kiểm tra nào; nhắc agent chạy kiểm tra.")
             return True
         if self.goal and self.goal["turns"] < GOAL_TURNS and not self.depth:
             self.goal["turns"] += 1
@@ -1052,6 +1122,8 @@ class AgentSessionManager:
         if session is not None:
             session.close()
         path = self._path(session_id)
+        if self.home is not None and session_id.isalnum():
+            shutil.rmtree(self.home / ".manga-agent" / "outputs" / session_id, ignore_errors=True)
         if path is not None and session_id.isalnum() and path.is_file():
             path.unlink()
         elif session is None:

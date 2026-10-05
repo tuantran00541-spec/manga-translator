@@ -9,7 +9,8 @@ import threading
 
 from app.agent.skills import frontmatter
 
-MAX_INSTRUCTIONS = 30_000
+# Context files that restate what the code shows hurt more than they help, so only a short one is read.
+MAX_INSTRUCTIONS = 8_000
 # Instruction files the main coding agents read, in the order they are given to the model.
 WORKSPACE_INSTRUCTIONS = ("AGENTS.md", "CLAUDE.md", ".claude/CLAUDE.md")
 HOME_INSTRUCTIONS = (".manga-agent/AGENTS.md", ".codex/AGENTS.md", ".claude/CLAUDE.md")
