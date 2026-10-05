@@ -1,0 +1,43 @@
+[
+ {
+  "model": "qwen-3.8-27b",
+  "tests_pass_after": true,
+  "seconds": 13.3,
+  "text_tools": false,
+  "usage": {
+   "prompt_tokens": 2070,
+   "completion_tokens": 252
+  },
+  "steps": 6,
+  "tools": [
+   "list_dir",
+   "read_file",
+   "read_file",
+   "run_command",
+   "edit_file",
+   "run_command"
+  ],
+  "shop_py": "def total(prices, discount=0.0):\n    \"\"\"Sum of prices after a fractional discount, rounded to cents.\"\"\"\n    subtotal = sum(prices)\n    return round(subtotal * (1 - discount), 2)\n",
+  "tests_untouched": true
+ },
+ {
+  "model": "agnes-3.0-flash",
+  "tests_pass_after": true,
+  "seconds": 207.3,
+  "text_tools": false,
+  "usage": {
+   "prompt_tokens": 6032,
+   "completion_tokens": 320
+  },
+  "steps": 5,
+  "tools": [
+   "list_dir",
+   "read_file",
+   "read_file",
+   "edit_file",
+   "run_command"
+  ],
+  "shop_py": "def total(prices, discount=0.0):\n    \"\"\"Sum of prices after a fractional discount, rounded to cents.\"\"\"\n    subtotal = sum(prices)\n    return round(subtotal * (1 - discount), 2)\n",
+  "tests_untouched": true
+ }
+]
