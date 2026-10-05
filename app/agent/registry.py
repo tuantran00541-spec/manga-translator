@@ -33,7 +33,8 @@ def group_of(tool: str) -> str | None:
 def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
-                     "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300}
+                     "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
+                     "models": {}, "prices": {}, "vision": None, "review_model": ""}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -53,6 +54,13 @@ def load_profile(workspace: Path, home: Path) -> dict:
                 for key in ("subagent_model", "compact_model"):
                     if isinstance(data.get(key), str):
                         profile[key] = data[key].strip()[:100]
+                for key in ("models", "prices"):
+                    if isinstance(data.get(key), dict):
+                        profile[key].update({k: v for k, v in data[key].items() if isinstance(v, dict)})
+                if isinstance(data.get("vision"), bool):
+                    profile["vision"] = data["vision"]
+                if isinstance(data.get("review_model"), str):
+                    profile["review_model"] = data["review_model"].strip()[:100]
                 if isinstance(data.get("max_steps"), int) and data["max_steps"] > 0:
                     profile["max_steps"] = data["max_steps"]
                 if isinstance(data.get("token_budget"), int) and data["token_budget"] > 0:

@@ -198,6 +198,12 @@ class FakeResponse:
     def json(self):
         return self._body
 
+    def close(self):
+        pass
+
+    def iter_lines(self, decode_unicode=True):
+        return iter(self._body if isinstance(self._body, list) else [])
+
 
 def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     monkeypatch.setattr(client, "validate_url", lambda url: url)
@@ -267,7 +273,7 @@ def test_ask_mode_waits_for_approval_then_writes(ws, home):
     wait_for(session, "idle")
     assert (ws.root / "new.txt").read_text() == "hi"
     assert [e["type"] for e in session.events] == ["user", "assistant", "approval", "tool", "assistant", "notice", "assistant", "done"]
-    assert session.usage == {"prompt_tokens": 3, "completion_tokens": 3}
+    assert session.usage == {"prompt_tokens": 3, "completion_tokens": 3, "cached_tokens": 0}
 
 
 def test_edits_mode_runs_sandboxed_commands_alone_and_asks_to_leave_the_sandbox(ws, home, monkeypatch):
@@ -1325,3 +1331,63 @@ def test_the_explore_helper_can_search_and_the_limits_allow_long_runs(ws, home):
     assert "web_search" in agents.READ_TOOLS
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
     assert session.max_steps >= 300 and {"web_search", "web_download", "job_output", "job_stop"} <= tool_names(session)
+
+
+# Streaming, cache numbers and parallel reads.
+
+def sse(*chunks):
+    return [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
+
+
+def test_a_streamed_turn_is_assembled_live_and_can_be_stopped(monkeypatch):
+    monkeypatch.setattr(client, "validate_url", lambda url: url)
+    chunks = sse({"choices": [{"delta": {"content": "Hel"}}]}, {"choices": [{"delta": {"content": "lo", "reasoning_content": "think"}}]},
+                 {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "list_dir", "arguments": "{\"pa"}}]}}]},
+                 {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "th\": \".\"}"}}]}}]},
+                 {"choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 7, "prompt_tokens_details": {"cached_tokens": 80}}})
+    seen = []
+    monkeypatch.setattr(client.requests, "post", lambda url, **kw: seen.append(kw["json"]) or FakeResponse(200, chunks))
+    lives = []
+    turn = client.complete(PROVIDERS["openai"], "k", "m", [], tools=[{"name": "list_dir", "description": "", "parameters": {}}], on_delta=lambda live: lives.append(dict(live)) and False)
+    assert turn["text"] == "Hello" and turn["reasoning"] == "think" and turn["calls"] == [{"id": "c1", "name": "list_dir", "args": {"path": "."}}]
+    assert turn["usage"] == {"prompt_tokens": 100, "completion_tokens": 7, "cached_tokens": 80}
+    assert seen[0]["stream"] is True and seen[0]["stream_options"] == {"include_usage": True}
+    assert lives[0]["text"] == "Hel" and lives[2]["tools"] == ["list_dir"]
+    stopped = client.complete(PROVIDERS["openai"], "k", "m", [], tools=None, on_delta=lambda live: True)
+    assert stopped["text"] == "Hel" and stopped["calls"] == []
+
+
+def test_the_session_shows_streamed_text_while_the_model_writes_and_counts_cached_tokens(ws, home):
+    seen = {}
+
+    def streaming(provider, key, model, messages, *, tools, on_delta=None):
+        if on_delta:
+            on_delta({"text": "working on it", "reasoning": "", "tools": ["list_dir"]})
+            seen["live"] = session.snapshot()["live"]
+        return {"text": "done", "calls": [], "reasoning": "", "usage": {"prompt_tokens": 50, "completion_tokens": 5, "cached_tokens": 40}}
+
+    streaming.streams = True
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=streaming)
+    run_to_idle(session)
+    assert seen["live"]["text"] == "working on it" and session.snapshot()["live"] is None
+    snap = session.snapshot()
+    assert snap["usage"]["cached_tokens"] == 40 and snap["stats"]["cache_pct"] == 80
+
+
+def test_read_only_tool_calls_in_one_reply_run_together_and_writes_stay_in_order(ws, home, monkeypatch):
+    import threading
+    gate = threading.Barrier(3, timeout=5)
+    original = Workspace._tool_list_dir
+
+    def waiting(self, path=".", depth=1):
+        gate.wait()
+        return original(self, path, depth)
+
+    monkeypatch.setattr(Workspace, "_tool_list_dir", waiting)
+    fake = scripted(turn(calls=[{"id": f"l{i}", "name": "list_dir", "args": {"depth": i + 1}} for i in range(3)]
+                         + [call("write_file", path="w.txt", content="1"), call("read_file", path="w.txt")]), turn("ok"), turn("checked"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    out = tool_outputs(session)
+    assert [n for n, _, _ in out] == ["list_dir"] * 3 + ["write_file", "read_file"]
+    assert "1" in out[4][2], "the read after the write sees the write"

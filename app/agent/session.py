@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import agents, client, context, external, mcp, memory, registry, rules, sandbox, skill_install, skills
+from app.agent import agents, client, context, external, mcp, memory, models, registry, rules, sandbox, skill_install, skills
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import KIND, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -41,6 +41,7 @@ MAX_SESSIONS = 50
 HOOK_TIMEOUT = 60
 MAX_REFS = 6
 MAX_PARALLEL = 3
+PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
 GOAL_TURNS = 8
 UNREADABLE_TURNS = 4
@@ -152,7 +153,9 @@ class AgentSession:
         self.status = "idle"
         self.text_tools = False
         self.title = ""
-        self.usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0}
+        self.stats = {"model_s": 0.0, "tool_s": 0.0}
+        self.live: dict | None = None
         self.created_at = self.updated_at = time.time()
         self.pending: dict | None = None
         self._decision: dict | None = None
@@ -163,6 +166,7 @@ class AgentSession:
         self._skills_loaded: list[str] = []
         self.web_ok: set[str] = set()
         self._turn_usage = 0
+        self._approval_lock = threading.Lock()
         self.plan_mode = False
         self.goal: dict | None = None
         self._recent: list[str] = []
@@ -171,13 +175,14 @@ class AgentSession:
         self.children: dict[str, AgentSession] = {}
         self.nick, self.job, self.closed, self.reported, self.mutating = "", None, False, False, False
         self.pending: str | None = None
-        self.counted = {"prompt_tokens": 0, "completion_tokens": 0}
+        self.counted = {"prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0}
         self.jobs: dict[str, sandbox.Job] = {}
         self._usage_lock = threading.Lock()
         self.agents = agents.discover(workspace.root, home_path) if not depth else {}
         self.rules = rules.load(workspace.root, home_path) if not depth else parent.rules
         self.profile = registry.load_profile(workspace.root, home_path) if not depth else parent.profile
         self.max_steps = SUBAGENT_STEPS if depth else self.profile["max_steps"]
+        self.quirks = models.quirks(model, self.profile["models"])
         self.disabled = set(self.profile["disable"])
         self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
         self.externals = external.available(self.profile["external_agents"]) if not depth and "external" not in self.disabled else {}
@@ -246,7 +251,8 @@ class AgentSession:
                     "model": self.model, "mode": self.mode, "workspace": str(self.workspace.root), "title": self.title,
                     "sandbox": {"mode": self.workspace.policy.mode, "network": self.workspace.policy.network,
                                 "backend": sandbox.backend()},
-                    "text_tools": self.text_tools, "usage": dict(self.usage), "pending": self.pending, "todos": self.todos,
+                    "text_tools": self.text_tools, "usage": dict(self.usage), "stats": self._stats(), "live": self.live,
+                    "pending": self.pending, "todos": self.todos,
                     "disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins, "externals": list(self.externals),
                                                                     "needs_trust": any(p["state"] == "untrusted" for p in self.registry.plugins)},
                     "plan_mode": self.plan_mode, "goal": self.goal and self.goal["text"], "queued": len(self.queue),
@@ -258,6 +264,19 @@ class AgentSession:
                     + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
                     + [{"name": c["name"], "description": c["description"]} for c in self.commands.values()],
                     "events": [e for e in self.events if e["seq"] > after]}
+
+    def _spent(self) -> int:
+        """Tokens used so far; cached ones are already part of the prompt."""
+        return self.usage["prompt_tokens"] + self.usage["completion_tokens"]
+
+    def _stats(self) -> dict:
+        prompt, cached = self.usage["prompt_tokens"], self.usage["cached_tokens"]
+        price = models.prices(self.model, self.profile["prices"])
+        cost = None
+        if price.get("in") is not None and price.get("out") is not None:
+            cost = round(((prompt - cached) * price["in"] + cached * price.get("cached", price["in"]) + self.usage["completion_tokens"] * price["out"]) / 1e6, 4)
+        return {"model_seconds": round(self.stats["model_s"], 1), "tool_seconds": round(self.stats["tool_s"], 1),
+                "cache_pct": round(100 * cached / prompt) if prompt else 0, "cost": cost}
 
     def save(self) -> None:
         if self.store is None:
@@ -341,7 +360,7 @@ class AgentSession:
             self.checkpoints.begin()
         self._dirty = self._gated = self.tainted = False
         self._skills_loaded = []
-        self._turn_usage = sum(self.usage.values())
+        self._turn_usage = self._spent()
         self.web_ok |= {h.lower() for h in URL_RE.findall(text)}
         self.history.append({"role": "user", "content": text + extra})
         threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
@@ -891,18 +910,20 @@ class AgentSession:
         verdict = rules.check(self.rules, call["name"], call["args"], self._rel) if isinstance(call["args"], dict) else None
         if verdict == "deny":
             return f"Denied by a permission rule for {call['name']}. Do not retry it; use another way or ask the user.", False
-        if self._needs_approval(call, verdict):
-            why = "untrusted" if self.tainted and self.mode != "auto" and self.profile["untrusted_guard"] else ""
-            decision = self._wait_for_decision({**call, "why": why} if why else call)
-            if decision["decision"] == "allow_all":
-                self.mode = "auto"
-                if self.parent is not None:
-                    self.parent.mode = "auto"
-            elif decision["decision"] != "allow":
-                note = f" Note from the user: {decision['note']}" if decision.get("note") else ""
-                return f"The user refused this {call['name']} call.{note}", False
-            if call["name"] in URL_TOOLS:
-                self.web_ok.add((urlparse(str(call["args"].get("url") or "")).hostname or "").lower())
+        # One question at a time: a parallel call on the same host sees the answer instead of asking again.
+        with self._approval_lock:
+            if self._needs_approval(call, verdict):
+                why = "untrusted" if self.tainted and self.mode != "auto" and self.profile["untrusted_guard"] else ""
+                decision = self._wait_for_decision({**call, "why": why} if why else call)
+                if decision["decision"] == "allow_all":
+                    self.mode = "auto"
+                    if self.parent is not None:
+                        self.parent.mode = "auto"
+                elif decision["decision"] != "allow":
+                    note = f" Note from the user: {decision['note']}" if decision.get("note") else ""
+                    return f"The user refused this {call['name']} call.{note}", False
+                if call["name"] in URL_TOOLS:
+                    self.web_ok.add((urlparse(str(call["args"].get("url") or "")).hostname or "").lower())
         if call["name"] not in SESSION_SPECS:
             allowed, message = self._run_hooks("PreToolUse", call)
             if not allowed:
@@ -975,6 +996,8 @@ class AgentSession:
             parts.append(context.instructions(self.workspace.root, self.home))
             parts.append(memory.prompt(self.home if self.home is not None else Path.home(), self.workspace.root))
             parts += [self._hook_call(fn) for fn in self.registry.prompts]
+            if self.quirks.get("prompt_extra"):
+                parts.append(str(self.quirks["prompt_extra"]))
             if self.plan_mode:
                 parts.append(PLAN_PROMPT)
         else:
@@ -982,15 +1005,27 @@ class AgentSession:
         parts.append(skills.catalog(self.skills))
         return "\n\n".join(p for p in parts if p)
 
+    def _on_delta(self, live: dict) -> bool:
+        self.live = live
+        return self._stop
+
+    def _call_model(self, messages: list[dict], tools: list[dict] | None) -> dict:
+        streams = self.complete is client.complete or getattr(self.complete, "streams", False)
+        started = time.time()
+        try:
+            return self.complete(self.provider, self.api_key, self.model, messages, tools=tools, **({"on_delta": self._on_delta} if streams else {}))
+        finally:
+            self.stats["model_s"] += time.time() - started
+
     def _turn(self) -> dict:
         system, specs = self.system_prompt(), self.specs()
         try:
-            return self.complete(self.provider, self.api_key, self.model, client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
-                                 tools=None if self.text_tools else specs)
+            return self._call_model(client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
+                                    None if self.text_tools else specs)
         except client.ToolsUnsupported as exc:
             self.text_tools = True
             self.emit("notice", text=f"Model không nhận gọi công cụ kiểu gốc, chuyển sang gọi công cụ bằng văn bản ({exc}).")
-            return self.complete(self.provider, self.api_key, self.model, client.render(self.history, system, True, specs, reasoning=self.echo_reasoning), tools=None)
+            return self._call_model(client.render(self.history, system, True, specs, reasoning=self.echo_reasoning), None)
 
     def _size(self) -> int:
         return sum(len(json.dumps(item, ensure_ascii=False)) for item in self.history)
@@ -1100,20 +1135,36 @@ class AgentSession:
 
     def _run_calls(self, calls: list[dict]) -> None:
         def one(call: dict) -> tuple[str, bool]:
-            return ("Stopped by the user before this call ran.", False) if self._stop else self._run_call(call)
+            if self._stop:
+                return "Stopped by the user before this call ran.", False
+            started = time.time()
+            try:
+                return self._run_call(call)
+            finally:
+                with self._usage_lock:
+                    self.stats["tool_s"] += time.time() - started
 
         def record(call: dict, output: str, ok: bool) -> None:
             self.history.append({"role": "tool", "id": call["id"], "name": call["name"], "content": output})
             self.emit("tool", id=call["id"], name=call["name"], ok=ok, output=output)
 
-        if len(calls) > 1 and all(c["name"] == "task" for c in calls):
-            with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as pool:
-                results = list(pool.map(one, calls))
-            for call, (output, ok) in zip(calls, results):
-                record(call, output, ok)
-            return
-        for call in calls:
-            record(call, *one(call))
+        # Reads that do not depend on each other run together, up to ten at once; anything that changes things runs alone, in order.
+        index = 0
+        while index < len(calls):
+            end = index + 1
+            if calls[index]["name"] in PARALLEL_CALLS:
+                while end < len(calls) and calls[end]["name"] in PARALLEL_CALLS:
+                    end += 1
+            batch = calls[index:end]
+            if len(batch) > 1:
+                workers = MAX_PARALLEL if any(c["name"] == "task" for c in batch) else 10
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    results = list(pool.map(one, batch))
+                for call, (output, ok) in zip(batch, results):
+                    record(call, output, ok)
+            else:
+                record(batch[0], *one(batch[0]))
+            index = end
 
     def _steps(self, max_steps: int) -> None:
         """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
@@ -1123,11 +1174,12 @@ class AgentSession:
                 self.emit("notice", text="Đã dừng.")
                 break
             self._drain()
-            if sum(self.usage.values()) - self._turn_usage > self.profile["token_budget"]:
+            if self._spent() - self._turn_usage > self.profile["token_budget"]:
                 self.emit("error", text=f"Đã dùng quá {self.profile['token_budget']:,} token cho lượt này; dừng. Nhắn tiếp nếu muốn agent làm tiếp.")
                 break
             self._make_room()
             turn = self._turn()
+            self.live = None
             for key in self.usage:
                 self.usage[key] += int(turn["usage"].get(key) or 0)
             calls = turn["calls"]

@@ -116,14 +116,19 @@ def render(history: list[dict], system: str, text_mode: bool, specs: list[dict],
     return messages
 
 
-def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None) -> dict:
-    """One assistant turn: its text, tool calls, reasoning and token usage."""
+def usage_of(raw: dict | None) -> dict:
+    """Token counts from any OpenAI-style usage block, including how much of the prompt came from the provider's cache."""
+    raw = raw or {}
+    cached = ((raw.get("prompt_tokens_details") or {}).get("cached_tokens") or raw.get("prompt_cache_hit_tokens")
+              or raw.get("cache_read_input_tokens") or 0)
+    return {"prompt_tokens": int(raw.get("prompt_tokens") or 0), "completion_tokens": int(raw.get("completion_tokens") or 0),
+            "cached_tokens": int(cached or 0)}
+
+
+def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> requests.Response:
+    """The request, with the shared 429 cooldown and retries."""
     url = chat_url(provider)
     validate_url(url)
-    payload = {"model": model, "messages": messages, "stream": False}
-    payload.update(provider.chat_completion_extras())
-    if tools:
-        payload["tools"] = native_tools(tools)
     for attempt in range(RATE_LIMIT_RETRIES + 1):
         pause = _COOLDOWN.get(provider.id, 0.0) - time.time() if attempt == 0 else 0
         if pause > 0:
@@ -131,11 +136,11 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
         try:
             response = requests.post(url, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                                      json=payload, timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT),
-                                     allow_redirects=False)
+                                     allow_redirects=False, stream=stream)
         except requests.RequestException as exc:
             raise RuntimeError(f"{provider.label} request failed: {type(exc).__name__}") from exc
         if response.status_code != 429 or attempt == RATE_LIMIT_RETRIES:
-            break
+            return response
         # Free tiers allow a few requests a minute; wait as told, or longer each time.
         try:
             wait = float(response.headers.get("Retry-After") or 0)
@@ -143,19 +148,44 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
             wait = 0.0
         wait = min(60.0, wait or 6.0 * 2 ** attempt)
         _COOLDOWN[provider.id] = max(_COOLDOWN.get(provider.id, 0.0), time.time() + wait)
+        response.close()
         time.sleep(wait)
-    if 300 <= response.status_code < 400:
-        raise RuntimeError(f"{provider.label} redirected the request")
-    if not response.ok:
-        detail = _safe_error_detail(response, api_key)
-        if tools and 400 <= response.status_code < 500 and "tool" in detail.lower():
-            raise ToolsUnsupported(detail)
-        raise RuntimeError(f"{provider.label} HTTP {response.status_code}: {detail}")
-    try:
-        body = response.json()
-        message = body["choices"][0]["message"]
-    except (ValueError, KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError(f"{provider.label} returned no message") from exc
+    return response
+
+
+def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, bool]:
+    """Assemble the streamed message; on_delta(live) is called as it grows and returns True to stop early."""
+    text, reasoning, usage, calls, stopped = "", "", {}, {}, False
+    for raw in response.iter_lines(decode_unicode=True):
+        if not raw or not raw.startswith("data:"):
+            continue
+        data = raw[5:].strip()
+        if data == "[DONE]":
+            break
+        try:
+            chunk = json.loads(data)
+        except ValueError:
+            continue
+        usage = chunk.get("usage") or usage
+        for choice in chunk.get("choices") or []:
+            delta = choice.get("delta") or {}
+            text += delta.get("content") or ""
+            reasoning += delta.get("reasoning_content") or delta.get("reasoning") or ""
+            for part in delta.get("tool_calls") or []:
+                slot = calls.setdefault(part.get("index", len(calls)), {"id": "", "name": "", "arguments": ""})
+                slot["id"] = part.get("id") or slot["id"]
+                function = part.get("function") or {}
+                slot["name"] += function.get("name") or ""
+                slot["arguments"] += function.get("arguments") or ""
+        if on_delta({"text": text, "reasoning": reasoning, "tools": [c["name"] for c in calls.values() if c["name"]]}):
+            stopped = True
+            break
+    message = {"content": text, "reasoning_content": reasoning,
+               "tool_calls": [{"id": c["id"], "function": {"name": c["name"], "arguments": c["arguments"]}} for _, c in sorted(calls.items())]}
+    return message, usage, stopped
+
+
+def _build(message: dict, usage: dict) -> dict:
     calls = []
     for call in message.get("tool_calls") or []:
         function = call.get("function") or {}
@@ -186,4 +216,40 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
                     call.pop("error", None)
                     spare.remove(match)
     reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
-    return {"text": str(text).strip(), "calls": calls, "reasoning": str(reasoning), "usage": body.get("usage") or {}}
+    return {"text": str(text).strip(), "calls": calls, "reasoning": str(reasoning), "usage": usage_of(usage)}
+
+
+def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None) -> dict:
+    """One assistant turn: its text, tool calls, reasoning and token usage; streamed when on_delta is given."""
+    payload = {"model": model, "messages": messages, "stream": bool(on_delta)}
+    payload.update(provider.chat_completion_extras())
+    if tools:
+        payload["tools"] = native_tools(tools)
+    if on_delta:
+        payload["stream_options"] = {"include_usage": True}
+    response = _post(provider, api_key, payload, bool(on_delta))
+    if on_delta and response.status_code == 400 and "stream_options" in response.text.lower():
+        payload.pop("stream_options")
+        response.close()
+        response = _post(provider, api_key, payload, True)
+    if 300 <= response.status_code < 400:
+        raise RuntimeError(f"{provider.label} redirected the request")
+    if not response.ok:
+        detail = _safe_error_detail(response, api_key)
+        if tools and 400 <= response.status_code < 500 and "tool" in detail.lower():
+            raise ToolsUnsupported(detail)
+        raise RuntimeError(f"{provider.label} HTTP {response.status_code}: {detail}")
+    if on_delta:
+        try:
+            message, usage, _ = _read_stream(response, on_delta)
+        except requests.RequestException as exc:
+            raise RuntimeError(f"{provider.label} stream broke: {type(exc).__name__}") from exc
+        finally:
+            response.close()
+        return _build(message, usage)
+    try:
+        body = response.json()
+        message = body["choices"][0]["message"]
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError(f"{provider.label} returned no message") from exc
+    return _build(message, body.get("usage") or {})
