@@ -5,12 +5,13 @@
   const VERBS = {
     list_dir: "Xem", read_file: "Đọc", search: "Tìm", glob: "Tìm file", write_file: "Tạo", edit_file: "Sửa",
     apply_patch: "Vá", edit_lines: "Sửa dòng", run_command: "Chạy", web_fetch: "Mở trang", skill: "Mở skill", todo_write: "Kế hoạch",
-    task: "Agent phụ", memory: "Ghi nhớ", ask_user: "Hỏi bạn", exit_plan_mode: "Kế hoạch", goal_done: "Xong mục tiêu",
+    task: "Agent phụ", spawn_agent: "Giao việc", wait_agent: "Đợi agent", send_input: "Nhắn agent", close_agent: "Đóng agent", memory: "Ghi nhớ", ask_user: "Hỏi bạn", exit_plan_mode: "Kế hoạch", goal_done: "Xong mục tiêu",
   };
   // How each kind of call is counted in a group's one-line summary.
   const TALLY = {
     run_command: ["chạy", "lệnh"], read_file: ["đọc", "file"], edit_file: ["sửa", "file"], write_file: ["sửa", "file"],
-    apply_patch: ["sửa", "file"], edit_lines: ["sửa", "file"], memory: ["ghi", "nhớ"], list_dir: ["tìm", "lần"], search: ["tìm", "lần"], glob: ["tìm", "lần"],
+    apply_patch: ["sửa", "file"], edit_lines: ["sửa", "file"], spawn_agent: ["giao", "việc cho agent phụ"], wait_agent: ["đợi", "agent phụ"],
+    send_input: ["nhắn", "agent phụ"], close_agent: ["đóng", "agent phụ"], memory: ["ghi", "nhớ"], list_dir: ["tìm", "lần"], search: ["tìm", "lần"], glob: ["tìm", "lần"],
     web_fetch: ["đọc", "trang web"], skill: ["mở", "skill"], task: ["giao", "việc cho agent phụ"], mcp: ["gọi", "công cụ MCP"],
   };
   const SANDBOX_TEXT = {
@@ -122,6 +123,10 @@
     if (c.name === "search" || c.name === "glob") return `${a.pattern || ""}${a.path && a.path !== "." ? `  (${a.path})` : ""}`;
     if (c.name === "web_fetch") return a.url || "";
     if (c.name === "task") return a.description || "";
+    if (c.name === "spawn_agent") return `${a.agent || "explore"}: ${String(a.message || "").slice(0, 80)}`;
+    if (c.name === "wait_agent") return (a.ids || []).join(", ") || "tất cả";
+    if (c.name === "send_input") return `${a.id || ""}: ${String(a.message || "").slice(0, 60)}`;
+    if (c.name === "close_agent") return a.id || "";
     if (c.name === "skill") return a.name || "";
     if (c.name === "todo_write") return `${(a.items || []).length} việc`;
     if (c.name === "ask_user") return a.question || "";
@@ -198,6 +203,7 @@
     else if (c.name === "apply_patch") body.append(patchView(a.patch));
     else if (c.name === "edit_lines") body.append(editLinesView(a.edits));
     else if (c.name === "task") body.append(el("pre", "agent-pre", a.prompt || ""));
+    else if (c.name === "spawn_agent" || c.name === "send_input") body.append(el("pre", "agent-pre", a.message || ""));
     else if (isMcp(c.name)) body.append(el("pre", "agent-pre", JSON.stringify(a, null, 2)));
     row.append(body);
     g.list.append(row);
@@ -317,7 +323,7 @@
     if (c.name === "exit_plan_mode") return planCard(c);
     const card = el("div", "agent-approval");
     const title = el("p", "agent-approval-title");
-    title.append(document.createTextNode("Cho phép "), el("strong", "", (isMcp(c.name) ? "gọi MCP" : VERBS[c.name] || c.name).toLowerCase()),
+    title.append(document.createTextNode(c.agent ? `Agent phụ ${c.agent} muốn ` : "Cho phép "), el("strong", "", (isMcp(c.name) ? "gọi MCP" : VERBS[c.name] || c.name).toLowerCase()),
       document.createTextNode(" "), el("code", "", target(c)), document.createTextNode("?"));
     const note = el("input", "agent-approval-note");
     note.placeholder = "Lý do từ chối (tùy chọn)";

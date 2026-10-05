@@ -20,6 +20,12 @@ from app.logging_config import logger
 MODES = ("ask", "edits", "auto")
 MAX_STEPS = 80
 SUBAGENT_STEPS = 30
+MAX_AGENT_THREADS = 6
+MAX_CHILDREN = 24
+WAIT_DEFAULT = 120
+WAIT_MAX = 900
+NICKNAMES = ("ash", "birch", "cedar", "elm", "fern", "hazel", "ivy", "juniper", "maple", "oak", "pine", "rowan", "sage", "willow",
+             "alder", "beech", "clover", "dahlia", "fir", "holly", "iris", "laurel", "moss", "nettle")
 COMPACT_AT = 300_000
 MAX_HISTORY_CHARS = 450_000
 MAX_SESSIONS = 50
@@ -28,14 +34,15 @@ MAX_REFS = 6
 MAX_PARALLEL = 3
 DOOM_LOOP = 3
 GOAL_TURNS = 8
-PLAN_TOOLS = agents.READ_TOOLS | {"todo_write", "task", "ask_user", "memory"}
+PLAN_TOOLS = agents.READ_TOOLS | {"todo_write", "task", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
 SYSTEM_PROMPT = """You are a coding agent inside the Manga Translator app, working like Claude Code or Codex.
 Workspace root: {root} on {system}. Paths are relative to it.
 {sandbox}
 Work in small verified steps: look first (list_dir, glob, search, read_file), then change files with apply_patch or edit_file
 (or edit_lines after read_file with anchors=true), then run the project's tests or the command that proves the change works.
-Use todo_write to plan work with several steps and keep it current. Use task to hand a helper agent a separate job; several
-task calls in one reply run in parallel. Use ask_user when a decision is the user's, and memory to keep a lasting fact for later sessions.
+Use todo_write to plan work with several steps and keep it current. Use task for one job you need answered now. To run
+several jobs at once call spawn_agent once per job (never the same job twice), then wait_agent; a finished agent also reports to
+you by itself. Use ask_user when a decision is the user's, and memory to keep a lasting fact for later sessions.
 Do not re-read a file you just changed; the tool reports failure and syntax errors. Fix root causes; keep changes minimal and in the code's style.
 End with a short report of what changed, how you checked it, and anything left. Reply in the language the user writes in."""
 SESSION_SPECS = {
@@ -51,6 +58,18 @@ SESSION_SPECS = {
              "parameters": {"type": "object", "required": ["description", "prompt"], "properties": {
                  "description": {"type": "string", "description": "A few words naming the job."}, "prompt": {"type": "string"},
                  "agent": {"type": "string", "description": "Which agent; explore by default."}}}},
+    "spawn_agent": {"name": "spawn_agent", "description": "Start a helper agent on one job and return at once with its name; it keeps working while you do other "
+                                                         "things. Collect its report with wait_agent.\nAgents:\n{agents}",
+                    "parameters": {"type": "object", "required": ["message"], "properties": {
+                        "message": {"type": "string", "description": "A complete, standalone instruction."}, "agent": {"type": "string"}}}},
+    "wait_agent": {"name": "wait_agent", "description": "Wait until the named agents (all unfinished ones when ids is empty) finish and return their reports; "
+                                                       "after timeout_s the ones still running are listed as running.",
+                   "parameters": {"type": "object", "properties": {"ids": {"type": "array", "items": {"type": "string"}},
+                                                                    "timeout_s": {"type": "integer"}}}},
+    "send_input": {"name": "send_input", "description": "Send a follow-up message to an agent; a finished agent wakes up and works on it.",
+                   "parameters": {"type": "object", "required": ["id", "message"], "properties": {"id": {"type": "string"}, "message": {"type": "string"}}}},
+    "close_agent": {"name": "close_agent", "description": "Stop an agent and release it once you no longer need it.",
+                    "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
     "ask_user": {"name": "ask_user", "description": "Ask the user a question when a decision is theirs; optional answer choices.",
                  "parameters": {"type": "object", "required": ["question"], "properties": {
                      "question": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}}}},
@@ -114,7 +133,12 @@ class AgentSession:
         self.plan_mode = False
         self.goal: dict | None = None
         self._recent: list[str] = []
-        self._approval_lock = threading.Lock()
+        self._approval_lock = threading.RLock()
+        self._spawn_lock = threading.Lock()
+        self.children: dict[str, AgentSession] = {}
+        self.nick, self.job, self.closed, self.reported = "", None, False, False
+        self.counted = {"prompt_tokens": 0, "completion_tokens": 0}
+        self.max_steps = SUBAGENT_STEPS if depth else MAX_STEPS
         self._usage_lock = threading.Lock()
         self.agents = agents.discover(workspace.root, home_path) if not depth else {}
         self.rules = rules.load(workspace.root, home_path) if not depth else parent.rules
@@ -225,7 +249,8 @@ class AgentSession:
         self.emit("user", text=text, refs=names, queued=queued)
         if queued:
             return True
-        self.checkpoints.begin()
+        if not self.depth:
+            self.checkpoints.begin()
         self.history.append({"role": "user", "content": text + extra})
         threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
         return False
@@ -325,9 +350,13 @@ class AgentSession:
             self.queue.clear()
             self.goal = None
             self._lock.notify_all()
+        for child in list(self.children.values()):
+            child.stop()
 
     def close(self) -> None:
         self.stop()
+        for child in list(self.children.values()):
+            child.close()
         for server in self.mcp_servers.values():
             server.close()
         self.mcp_servers.clear()
@@ -414,11 +443,13 @@ class AgentSession:
             allowed = self.agent.allowed(every) if self.agent else agents.READ_TOOLS
             rows = [s for s in SPECS if s["name"] in allowed]
             return rows + ([SESSION_SPECS["skill"]] if self.skills and "skill" in allowed else [])
-        task = {**SESSION_SPECS["task"], "description": SESSION_SPECS["task"]["description"].format(agents=agents.catalog(self.agents))}
+        listing = agents.catalog(self.agents)
+        task, spawn = (({**SESSION_SPECS[n], "description": SESSION_SPECS[n]["description"].format(agents=listing)}) for n in ("task", "spawn_agent"))
         rows = list(SPECS)
         if self.skills:
             rows.append(SESSION_SPECS["skill"])
-        rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task]
+        rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn,
+                 SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         if self.plan_mode:
             return [r for r in rows if r["name"] in PLAN_TOOLS] + [SESSION_SPECS["exit_plan_mode"]]
         if self.goal:
@@ -452,17 +483,18 @@ class AgentSession:
 
     def _wait_for_decision(self, call: dict) -> dict:
         if self.parent is not None:
-            with self.parent._approval_lock:
-                return self.parent._wait_for_decision(call)
-        with self._lock:
-            self.pending, self._decision, self.status = call, None, "waiting"
-        self.emit("approval", call=call)
-        with self._lock:
-            while self._decision is None and not self._stop:
-                self._lock.wait(timeout=1.0)
-            decision = self._decision or {"decision": "deny", "note": "stopped"}
-            self.pending, self.status = None, "running"
-        return decision
+            return self.parent._wait_for_decision({**call, "agent": self.nick or (self.agent.name if self.agent else "")})
+        with self._approval_lock:
+            with self._lock:
+                previous = self.status
+                self.pending, self._decision, self.status = call, None, "waiting"
+            self.emit("approval", call=call)
+            with self._lock:
+                while self._decision is None and not self._stop:
+                    self._lock.wait(timeout=1.0)
+                decision = self._decision or {"decision": "deny", "note": "stopped"}
+                self.pending, self.status = None, previous
+            return decision
 
     def _session_tool(self, call: dict) -> str:
         args = call["args"]
@@ -500,6 +532,23 @@ class AgentSession:
             return "Goal marked done."
         if call["name"] == "memory":
             return self._memory_tool(args)
+        if call["name"] == "spawn_agent":
+            nick = self._spawn(str(args.get("message") or ""), str(args.get("agent") or "explore"))
+            return f"Started {nick}. Do other work, then call wait_agent with ids [\"{nick}\"]; it also reports to you by itself when done."
+        if call["name"] == "wait_agent":
+            return self._wait_agents(args.get("ids"), args.get("timeout_s"))
+        if call["name"] == "send_input":
+            child = self._child(str(args.get("id") or ""))
+            child.reported = False
+            child.send(str(args.get("message") or ""))
+            return f"Sent to {child.nick}; call wait_agent to get its answer."
+        if call["name"] == "close_agent":
+            child = self._child(str(args.get("id") or ""))
+            state = self._state(child)
+            self._collect(child)
+            child.close()
+            child.closed = True
+            return f"Closed {child.nick} (it was {state})."
         return self._subagent(str(args.get("description") or "task"), str(args.get("prompt") or ""), str(args.get("agent") or "explore"))
 
     def _memory_tool(self, args: dict) -> str:
@@ -515,33 +564,112 @@ class AgentSession:
             raise ToolError(str(exc)) from exc
         return memory.prompt(home, root) or "No notes."
 
-    def _subagent(self, description: str, prompt: str, agent_name: str = "explore") -> str:
-        if not prompt.strip():
-            raise ToolError("task needs a prompt")
+    def _child(self, nick: str) -> "AgentSession":
+        child = self.children.get(nick.strip().lower())
+        if child is None or child.closed:
+            raise ToolError(f"No open agent named {nick!r}; open: {', '.join(n for n, c in self.children.items() if not c.closed) or 'none'}")
+        return child
+
+    @staticmethod
+    def _state(child: "AgentSession") -> str:
+        if child.closed:
+            return "closed"
+        if child.status != "idle":
+            return "running"
+        return "errored" if any(e["type"] == "error" for e in child.events[-3:]) else "completed"
+
+    @staticmethod
+    def _result(child: "AgentSession") -> str:
+        errors = [e["text"] for e in child.events if e["type"] == "error"]
+        text = next((e["text"] for e in reversed(child.events) if e["type"] == "assistant" and e["text"]), "")
+        return text or (errors[-1] if errors else "The agent finished without a report.")
+
+    def _collect(self, child: "AgentSession") -> None:
+        """Fold a finished helper's tokens into this session once and tell the page it is done."""
+        if child.reported or child.status != "idle":
+            return
+        child.reported = True
+        with self._usage_lock:
+            for key in self.usage:
+                self.usage[key] += child.usage[key] - child.counted[key]
+                child.counted[key] = child.usage[key]
+        self.emit("subagent", description=child.job[1][:80] if child.job else "", agent=child.agent.name, id=child.nick,
+                  state="done", tools=sum(1 for e in child.events if e["type"] == "tool"))
+
+    def _spawn(self, message: str, agent_name: str, dedupe: bool = True) -> str:
+        with self._spawn_lock:
+            return self._spawn_locked(message, agent_name, dedupe)
+
+    def _spawn_locked(self, message: str, agent_name: str, dedupe: bool) -> str:
+        if not message.strip():
+            raise ToolError("The agent needs a message")
         agent = self.agents.get(agent_name)
         if agent is None:
             raise ToolError(f"No agent named {agent_name!r}; known: {', '.join(self.agents)}")
+        job = (agent.name, " ".join(message.split()))
+        for nick, other in self.children.items():
+            if dedupe and not other.closed and other.job == job:
+                raise ToolError(f"{nick} already has this exact job ({self._state(other)}); call wait_agent instead of starting it again")
+        running = sum(1 for c in self.children.values() if self._state(c) == "running")
+        if running >= MAX_AGENT_THREADS:
+            raise ToolError(f"{running} agents are already running (limit {MAX_AGENT_THREADS}); call wait_agent for some of them first")
+        if len(self.children) >= MAX_CHILDREN:
+            raise ToolError(f"This session already started {MAX_CHILDREN} agents; close finished ones and continue yourself")
         allowed = agent.allowed({s["name"] for s in SPECS} | {"skill"})
         mutating = bool(allowed & (agents.EDIT_TOOLS | {"run_command"}))
         if self.plan_mode and mutating:
             raise ToolError("In plan mode only read-only agents may run")
+        nick = next((n for n in NICKNAMES if n not in self.children), f"agent{len(self.children) + 1}")
         helper = Workspace(self.workspace.root, self.workspace.policy if mutating else sandbox.Policy("read-only", False),
                            read_roots=self.workspace.read_roots)
-        child = AgentSession(f"{self.id}-{uuid.uuid4().hex[:6]}", self.provider, self.api_key, agent.model or self.model, helper,
+        child = AgentSession(f"{self.id}-{nick}", self.provider, self.api_key, agent.model or self.model, helper,
                              self.mode if mutating else "auto", complete=self.complete, depth=self.depth + 1, home=self.home,
                              trust=self.trust, parent=self, agent=agent)
-        child.text_tools = self.text_tools
-        self.emit("subagent", description=description, agent=agent.name, state="started")
-        child.history.append({"role": "user", "content": prompt})
-        child.status = "running"
-        child._loop(max_steps=SUBAGENT_STEPS)
-        with self._usage_lock:
-            for key in self.usage:
-                self.usage[key] += child.usage[key]
-        answer = next((e["text"] for e in reversed(child.events) if e["type"] == "assistant" and e["text"]), "")
-        tools_used = sum(1 for e in child.events if e["type"] == "tool")
-        self.emit("subagent", description=description, agent=agent.name, state="done", tools=tools_used)
-        return answer or "The helper finished without a report."
+        child.text_tools, child.nick, child.job = self.text_tools, nick, job
+        self.children[nick] = child
+        self.emit("subagent", description=message[:80], agent=agent.name, id=nick, state="started")
+        child.send(message)
+        return nick
+
+    def _wait_agents(self, ids, timeout) -> str:
+        names = [str(i).strip().lower() for i in ids] if isinstance(ids, list) and ids else []
+        targets = [self._child(n) for n in names] or [c for c in self.children.values() if not c.closed]
+        if not targets:
+            return "No agents to wait for."
+        limit = max(1, min(WAIT_MAX, int(timeout or WAIT_DEFAULT)))
+        end = time.time() + limit
+        while time.time() < end and not self._stop and any(self._state(c) == "running" for c in targets):
+            time.sleep(0.25)
+        rows, waiting = [], False
+        for child in targets:
+            state = self._state(child)
+            if state == "running":
+                waiting = True
+                rows.append(f"{child.nick} ({child.agent.name}): still running")
+                continue
+            self._collect(child)
+            rows.append(f"{child.nick} ({child.agent.name}): {state}\n{self._result(child)}")
+        return "\n\n".join(rows) + ("\n\n[timed out; call wait_agent again to keep waiting]" if waiting else "")
+
+    def _notifications(self) -> None:
+        """Tell the model about helpers that finished on their own, as Codex does with a notification message."""
+        for child in list(self.children.values()):
+            if not child.closed and not child.reported and child.status == "idle":
+                self._collect(child)
+                note = {"agent_id": child.nick, "agent": child.agent.name, "status": self._state(child), "result": self._result(child)}
+                self.history.append({"role": "user", "content": f"<subagent_notification>{json.dumps(note, ensure_ascii=False)}</subagent_notification>"})
+
+    def _subagent(self, description: str, prompt: str, agent_name: str = "explore") -> str:
+        """One job, started and waited for at once; the helper is closed afterwards."""
+        nick = self._spawn(prompt, agent_name, dedupe=False)
+        child = self.children[nick]
+        while self._state(child) == "running" and not self._stop:
+            time.sleep(0.2)
+        self._collect(child)
+        answer = self._result(child)
+        child.close()
+        child.closed = True
+        return answer
 
     def _run_call(self, call: dict) -> tuple[str, bool]:
         if call.get("error"):
@@ -551,7 +679,7 @@ class AgentSession:
             return f"Unknown tool {call['name']!r}; available: {', '.join(sorted(known))}", False
         signature = call["name"] + json.dumps(call["args"], sort_keys=True, default=str)
         self._recent = (self._recent + [signature])[-DOOM_LOOP:]
-        if len(self._recent) == DOOM_LOOP and len(set(self._recent)) == 1:
+        if len(self._recent) == DOOM_LOOP and len(set(self._recent)) == 1 and call["name"] != "wait_agent":
             self._recent = []
             self.emit("notice", text=f"Agent gọi lặp {call['name']} {DOOM_LOOP} lần giống hệt; đã chặn.")
             return (f"Blocked: you made this exact {call['name']} call {DOOM_LOOP} times in a row. "
@@ -683,12 +811,20 @@ class AgentSession:
             queued, self.queue = self.queue, []
         for text in queued:
             self.history.append({"role": "user", "content": text})
+        self._notifications()
 
     def _more_work(self) -> bool:
         """True when a queued message or an unfinished goal means the turn should go on."""
         with self._lock:
             if self.queue or self._stop:
                 return bool(self.queue)
+        # Helpers still working: wait for one to finish, then the model reads its report.
+        while any(self._state(c) == "running" for c in self.children.values()) and not self._stop and not self.queue:
+            if any(not c.closed and not c.reported and c.status == "idle" for c in self.children.values()):
+                break
+            time.sleep(0.25)
+        if any(not c.closed and not c.reported and c.status == "idle" for c in self.children.values()):
+            return True
         if self.goal and self.goal["turns"] < GOAL_TURNS and not self.depth:
             self.goal["turns"] += 1
             self.history.append({"role": "user", "content": GOAL_NUDGE})
@@ -713,7 +849,8 @@ class AgentSession:
         for call in calls:
             record(call, *one(call))
 
-    def _loop(self, max_steps: int = MAX_STEPS) -> None:
+    def _loop(self, max_steps: int | None = None) -> None:
+        max_steps = max_steps or self.max_steps
         again = False
         try:
             self._ensure_mcp()
@@ -742,7 +879,7 @@ class AgentSession:
             self.emit("error", text=str(exc)[:1000])
         finally:
             with self._lock:
-                again = bool(self.queue) and not self._stop and not self.depth
+                again = bool(self.queue) and not self._stop
                 if not again:
                     self.status = "idle"
                 self._lock.notify_all()

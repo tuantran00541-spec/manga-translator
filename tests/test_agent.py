@@ -720,3 +720,95 @@ def test_rules_also_catch_shell_commands_that_name_a_denied_path():
     for command in ("cat .env", "echo hi > secret/key.txt", "tee secret/a.txt < x"):
         assert rules.check(deny, "run_command", {"command": command}, path_of) == "deny", command
     assert rules.check(deny, "run_command", {"command": "ls -la"}, path_of) is None
+
+
+# Codex-style helper agents: spawn, wait, send_input, close.
+
+def routed(parent_turns, child_reply):
+    """One fake model for a session and its helpers: helpers are told apart by having no spawn_agent tool."""
+    state = {"parent": 0}
+    lock = __import__("threading").Lock()
+
+    def complete(provider, key, model, messages, *, tools):
+        if "spawn_agent" not in {t["name"] for t in tools}:
+            return child_reply(messages, tools) if callable(child_reply) else turn(child_reply)
+        with lock:
+            step = parent_turns[min(state["parent"], len(parent_turns) - 1)]
+            state["parent"] += 1
+        return step(messages, tools) if callable(step) else step
+
+    return complete
+
+
+def test_spawn_wait_and_the_duplicate_and_thread_guards(ws, home):
+    spawn = lambda m, **kw: {"id": f"s-{m}", "name": "spawn_agent", "args": {"message": m, **kw}}
+    fake = routed([turn(calls=[spawn("look at A"), spawn("look at B"), spawn("look at A")]),
+                   turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("both seen")],
+                  lambda messages, tools: turn("report for " + messages[1]["content"]))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    out = [(n, ok, o) for n, ok, o in tool_outputs(session)]
+    assert out[0][1] and "ash" in out[0][2] and out[1][1] and "birch" in out[1][2]
+    assert not out[2][1] and "already has this exact job" in out[2][2]
+    waited = out[3][2]
+    assert "ash (explore): completed\nreport for look at A" in waited and "birch (explore): completed\nreport for look at B" in waited
+    assert session.usage["prompt_tokens"] >= 3
+
+
+def test_too_many_running_agents_are_refused(ws, home):
+    import threading
+    release = threading.Event()
+    spawns = [{"id": f"s{i}", "name": "spawn_agent", "args": {"message": f"job {i}"}} for i in range(8)]
+
+    def slow_child(messages, tools):
+        release.wait(5)
+        return turn("done")
+
+    fake = routed([turn(calls=spawns), lambda m, t: (release.set(), turn("ok"))[1]], slow_child)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    refused = [o for _, ok, o in tool_outputs(session) if not ok]
+    assert len(refused) == 2 and "limit 6" in refused[0]
+
+
+def test_a_helper_that_finishes_after_the_final_answer_reports_by_itself(ws, home):
+    fake = routed([turn(calls=[{"id": "s", "name": "spawn_agent", "args": {"message": "slow job"}}]),
+                   turn("I started it and have nothing else."),
+                   lambda messages, tools: turn("The helper said: " + messages[-1]["content"])],
+                  lambda messages, tools: (time.sleep(0.5), turn("slow result"))[1])
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    notes = [m["content"] for m in session.history if m["role"] == "user" and m["content"].startswith("<subagent_notification>")]
+    assert len(notes) == 1 and '"result": "slow result"' in notes[0]
+    assert session.events[-2]["text"].startswith("The helper said: <subagent_notification>")
+
+
+def test_send_input_wakes_a_finished_helper_and_close_agent_releases_it(ws, home):
+    fake = routed([turn(calls=[{"id": "s", "name": "spawn_agent", "args": {"message": "first"}}]),
+                   turn(calls=[{"id": "w1", "name": "wait_agent", "args": {"ids": ["ash"]}}]),
+                   turn(calls=[{"id": "i", "name": "send_input", "args": {"id": "ash", "message": "second"}}]),
+                   turn(calls=[{"id": "w2", "name": "wait_agent", "args": {"ids": ["ash"]}}]),
+                   turn(calls=[{"id": "c", "name": "close_agent", "args": {"id": "ash"}},
+                               {"id": "bad", "name": "wait_agent", "args": {"ids": ["ash"]}}]),
+                   turn("done")],
+                  lambda messages, tools: turn("answer to " + messages[-1]["content"]))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    outputs = [o for _, _, o in tool_outputs(session)]
+    assert "answer to first" in outputs[1] and "answer to second" in outputs[3]
+    assert outputs[4].startswith("Closed ash") and "No open agent named 'ash'" in outputs[5]
+
+
+def test_a_helpers_edit_asks_the_user_even_while_the_parent_waits(ws, home):
+    fake = routed([turn(calls=[{"id": "s", "name": "spawn_agent", "args": {"message": "make it", "agent": "coder"}},
+                               ]),
+                   turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("finished")],
+                  lambda messages, tools: turn("wrote it") if any(m["role"] == "tool" for m in messages)
+                  else turn(calls=[call("write_file", path="helper.txt", content="hi")]))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
+    session.send("go")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "write_file" and session.pending["agent"] == "ash"
+    session.decide("allow")
+    wait_for(session, "idle")
+    assert (ws.root / "helper.txt").read_text() == "hi"
