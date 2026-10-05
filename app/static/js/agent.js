@@ -1,22 +1,33 @@
-// Agent: a coding agent on any configured model, with tool calls, approvals, skills, MCP and hooks shown in the page.
+// Agent: a coding agent on any configured model, read like a conversation with its tool calls folded into one-line groups.
 (() => {
   const POLL_MS = 700;
   const HEAD = { "X-Manga-Agent": "1" };
-  const TOOL_LABELS = {
-    list_dir: "Xem thư mục", read_file: "Đọc file", search: "Tìm", glob: "Tìm file", write_file: "Ghi file",
-    edit_file: "Sửa file", apply_patch: "Vá file", run_command: "Chạy lệnh", web_fetch: "Đọc trang web",
-    skill: "Mở skill", todo_write: "Lập kế hoạch", task: "Giao agent phụ",
+  const VERBS = {
+    list_dir: "Xem", read_file: "Đọc", search: "Tìm", glob: "Tìm file", write_file: "Tạo", edit_file: "Sửa",
+    apply_patch: "Vá", run_command: "Chạy", web_fetch: "Mở trang", skill: "Mở skill", todo_write: "Kế hoạch", task: "Agent phụ",
+  };
+  // How each kind of call is counted in a group's one-line summary.
+  const TALLY = {
+    run_command: ["chạy", "lệnh"], read_file: ["đọc", "file"], edit_file: ["sửa", "file"], write_file: ["sửa", "file"],
+    apply_patch: ["sửa", "file"], list_dir: ["tìm", "lần"], search: ["tìm", "lần"], glob: ["tìm", "lần"],
+    web_fetch: ["đọc", "trang web"], skill: ["mở", "skill"], task: ["giao", "việc cho agent phụ"], mcp: ["gọi", "công cụ MCP"],
   };
   const SANDBOX_TEXT = {
     landlock: "Lệnh chạy trong sandbox Landlock của Linux.", seatbelt: "Lệnh chạy trong sandbox Seatbelt của macOS.",
     none: "Máy này không có sandbox cho lệnh, nên lệnh luôn chờ bạn duyệt (trừ khi chọn Tự làm hết).",
   };
+  const EXAMPLES = [
+    "Đọc app/inpaint/clustering.py rồi viết test cho split_cluster_lines",
+    "Chạy toàn bộ test và sửa những test đang hỏng",
+    "/init",
+  ];
   const $ = (id) => document.getElementById(id);
   let session = null;
   let lastSeq = 0;
   let pollTimer = null;
   let loaded = false;
   let commands = [];
+  let group = null;
 
   function store(action, key, value) {
     try {
@@ -51,111 +62,207 @@
     return node;
   }
 
-  function scrollLog() {
-    const log = $("agent-log");
-    log.scrollTop = log.scrollHeight;
+  function nearBottom() {
+    return window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 160;
   }
 
-  // Plain text with fenced code blocks kept as code.
-  function richText(text) {
-    const wrap = el("div", "agent-text");
+  function follow(stick) {
+    if (stick) window.scrollTo({ top: document.documentElement.scrollHeight });
+  }
+
+  // `code` and **bold** inside a line, built as nodes so model text never becomes markup.
+  function inline(text) {
+    const out = document.createDocumentFragment();
+    String(text).split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/).forEach((part) => {
+      if (/^`[^`]+`$/.test(part)) out.append(el("code", "", part.slice(1, -1)));
+      else if (/^\*\*[^*]+\*\*$/.test(part)) out.append(el("strong", "", part.slice(2, -2)));
+      else if (part) out.append(document.createTextNode(part));
+    });
+    return out;
+  }
+
+  // A small Markdown reading: fenced code, headings, bullet and numbered lists, paragraphs.
+  function prose(text) {
+    const wrap = el("div", "agent-prose");
     String(text || "").split(/```[\w-]*\n?/).forEach((part, i) => {
-      if (!part) return;
-      wrap.append(i % 2 ? el("pre", "agent-code", part.replace(/\n$/, "")) : el("p", "", part.trim()));
+      if (i % 2) {
+        wrap.append(el("pre", "agent-pre", part.replace(/\n$/, "")));
+        return;
+      }
+      part.split(/\n{2,}/).forEach((block) => {
+        const lines = block.split("\n").filter((l) => l.trim());
+        if (!lines.length) return;
+        if (lines.every((l) => /^\s*[-*] /.test(l)) || lines.every((l) => /^\s*\d+[.)] /.test(l))) {
+          const list = el(/^\s*\d/.test(lines[0]) ? "ol" : "ul");
+          lines.forEach((l) => { const item = el("li"); item.append(inline(l.replace(/^\s*(?:[-*]|\d+[.)]) /, ""))); list.append(item); });
+          wrap.append(list);
+        } else if (/^#{1,4} /.test(lines[0]) && lines.length === 1) {
+          const head = el("p", "agent-prose-head");
+          head.append(inline(lines[0].replace(/^#+ /, "")));
+          wrap.append(head);
+        } else {
+          const para = el("p");
+          lines.forEach((l, n) => { if (n) para.append(el("br")); para.append(inline(l)); });
+          wrap.append(para);
+        }
+      });
     });
     return wrap;
   }
 
-  function toolLabel(name) {
-    if (TOOL_LABELS[name]) return TOOL_LABELS[name];
-    const mcp = /^mcp__(.+?)__(.+)$/.exec(name || "");
-    return mcp ? `MCP ${mcp[1]}: ${mcp[2]}` : name || "Công cụ";
+  function isMcp(name) {
+    return /^mcp__/.test(name || "");
   }
 
-  function callSummary(callInfo) {
-    const args = callInfo.args || {};
-    if (callInfo.name === "run_command") return `${args.command || ""}${args.outside_sandbox ? "  (ngoài sandbox)" : ""}`;
-    if (callInfo.name === "search" || callInfo.name === "glob") return `${args.pattern || ""}${args.path ? ` trong ${args.path}` : ""}`;
-    if (callInfo.name === "web_fetch") return args.url || "";
-    if (callInfo.name === "task") return args.description || "";
-    if (callInfo.name === "skill") return args.name || "";
-    if (callInfo.name === "apply_patch") return (String(args.patch || "").match(/^\*\*\* (?:Add|Update|Delete) File: .+$/gm) || []).map((l) => l.split(": ")[1]).join(", ");
-    if (callInfo.name === "todo_write") return `${(args.items || []).length} việc`;
-    return args.path || (String(callInfo.name).startsWith("mcp__") ? JSON.stringify(args).slice(0, 120) : ".");
+  function target(c) {
+    const a = c.args || {};
+    if (c.name === "run_command") return `${a.command || ""}${a.outside_sandbox ? "  (ngoài sandbox)" : ""}`;
+    if (c.name === "search" || c.name === "glob") return `${a.pattern || ""}${a.path && a.path !== "." ? `  (${a.path})` : ""}`;
+    if (c.name === "web_fetch") return a.url || "";
+    if (c.name === "task") return a.description || "";
+    if (c.name === "skill") return a.name || "";
+    if (c.name === "todo_write") return `${(a.items || []).length} việc`;
+    if (c.name === "apply_patch") return (String(a.patch || "").match(/^\*\*\* (?:Add|Update|Delete) File: .+$/gm) || []).map((l) => l.split(": ")[1]).join(", ");
+    if (isMcp(c.name)) return c.name.replace(/^mcp__/, "").replace("__", ": ");
+    return a.path || ".";
   }
 
-  function toolCard(callInfo) {
-    const card = el("details", "agent-tool");
-    card.dataset.callId = callInfo.id;
-    const summary = el("summary");
-    summary.append(el("strong", "", toolLabel(callInfo.name)), el("code", "", callSummary(callInfo)));
-    card.append(summary);
-    const args = callInfo.args || {};
-    if (callInfo.name === "edit_file") {
-      card.append(el("pre", "agent-diff agent-diff-old", args.old_text || ""), el("pre", "agent-diff agent-diff-new", args.new_text || ""));
-    } else if (callInfo.name === "write_file") {
-      card.append(el("pre", "agent-code", args.content || ""));
-    } else if (callInfo.name === "apply_patch") {
-      card.append(el("pre", "agent-code agent-patch", args.patch || ""));
-    } else if (callInfo.name === "task") {
-      card.append(el("pre", "agent-code", args.prompt || ""));
-    } else if (String(callInfo.name).startsWith("mcp__")) {
-      card.append(el("pre", "agent-code", JSON.stringify(args, null, 2)));
+  function diffStats(c) {
+    const a = c.args || {};
+    const count = (s) => (String(s || "").match(/\n/g) || []).length + (s ? 1 : 0);
+    if (c.name === "edit_file") return [count(a.new_text), count(a.old_text)];
+    if (c.name === "write_file") return [count(a.content), 0];
+    if (c.name === "apply_patch") {
+      const lines = String(a.patch || "").split("\n").filter((l) => !l.startsWith("***"));
+      return [lines.filter((l) => l.startsWith("+")).length, lines.filter((l) => l.startsWith("-")).length];
     }
-    return card;
+    return null;
+  }
+
+  function stats(added, removed) {
+    const box = el("span", "agent-stats");
+    box.append(el("span", "agent-add", `+${added}`), el("span", "agent-del", `−${removed}`));
+    return box;
+  }
+
+  function newGroup() {
+    const box = el("details", "agent-group");
+    const summary = el("summary");
+    const label = el("span", "agent-group-label");
+    summary.append(label);
+    const list = el("div", "agent-group-list");
+    box.append(summary, list);
+    $("agent-log").append(box);
+    group = { box, summary, label, list, tally: {}, added: 0, removed: 0, failed: 0 };
+    return group;
+  }
+
+  function refreshGroup() {
+    const parts = Object.entries(group.tally).map(([key, n]) => {
+      const [verb, noun] = TALLY[key] || ["dùng", key];
+      return `${verb} ${n} ${noun}`;
+    });
+    const text = parts.join(", ") || "Cập nhật kế hoạch";
+    group.label.textContent = text.charAt(0).toUpperCase() + text.slice(1);
+    group.summary.querySelector(".agent-stats")?.remove();
+    group.summary.querySelector(".agent-fail")?.remove();
+    if (group.added || group.removed) group.summary.append(stats(group.added, group.removed));
+    if (group.failed) group.summary.append(el("span", "agent-fail", `${group.failed} lỗi`));
+  }
+
+  function addRow(c) {
+    const g = group || newGroup();
+    const key = isMcp(c.name) ? "mcp" : c.name;
+    if (TALLY[key]) g.tally[key] = (g.tally[key] || 0) + 1;
+    const row = el("details", "agent-row");
+    row.dataset.callId = c.id;
+    const head = el("summary");
+    head.append(el("span", "agent-verb", isMcp(c.name) ? "MCP" : VERBS[c.name] || c.name), el("code", "agent-target", target(c)));
+    const diff = diffStats(c);
+    if (diff) {
+      head.append(stats(diff[0], diff[1]));
+      g.added += diff[0];
+      g.removed += diff[1];
+    }
+    row.append(head);
+    const a = c.args || {};
+    const body = el("div", "agent-row-body");
+    if (c.name === "edit_file") body.append(el("pre", "agent-pre agent-old", a.old_text || ""), el("pre", "agent-pre agent-new", a.new_text || ""));
+    else if (c.name === "write_file") body.append(el("pre", "agent-pre agent-new", a.content || ""));
+    else if (c.name === "apply_patch") body.append(patchView(a.patch));
+    else if (c.name === "task") body.append(el("pre", "agent-pre", a.prompt || ""));
+    else if (isMcp(c.name)) body.append(el("pre", "agent-pre", JSON.stringify(a, null, 2)));
+    row.append(body);
+    g.list.append(row);
+    refreshGroup();
+  }
+
+  function patchView(text) {
+    const pre = el("pre", "agent-pre");
+    String(text || "").split("\n").forEach((line, i) => {
+      if (i) pre.append("\n");
+      const cls = line.startsWith("***") ? "agent-patch-file" : line.startsWith("+") ? "agent-patch-add" : line.startsWith("-") ? "agent-patch-del" : "";
+      pre.append(cls ? el("span", cls, line) : document.createTextNode(line));
+    });
+    return pre;
   }
 
   function render(event) {
     const log = $("agent-log");
     log.querySelector(".agent-empty")?.remove();
     if (event.type === "user") {
-      log.append(el("div", "agent-msg agent-user", event.text));
+      group = null;
+      log.append(el("div", "agent-user", event.text));
     } else if (event.type === "assistant") {
-      const msg = el("div", "agent-msg agent-assistant");
       if (event.reasoning) {
-        const think = el("details", "agent-reasoning");
-        think.append(el("summary", "", "Suy nghĩ"), el("pre", "", event.reasoning));
-        msg.append(think);
+        const think = el("details", "agent-think");
+        think.append(el("summary", "", "Suy nghĩ"), el("pre", "agent-pre", event.reasoning));
+        log.append(think);
       }
-      if (event.text) msg.append(richText(event.text));
-      (event.calls || []).forEach((c) => msg.append(toolCard(c)));
-      log.append(msg);
+      if (event.text) {
+        group = null;
+        log.append(prose(event.text));
+      }
+      (event.calls || []).forEach(addRow);
     } else if (event.type === "tool") {
-      const card = log.querySelector(`.agent-tool[data-call-id="${CSS.escape(event.id)}"]`);
-      const output = el("pre", "agent-output", event.output);
-      if (card) {
-        card.classList.add(event.ok ? "agent-tool-ok" : "agent-tool-failed");
-        card.append(output);
-      } else {
-        log.append(output);
+      const row = log.querySelector(`.agent-row[data-call-id="${CSS.escape(event.id)}"]`);
+      if (row) {
+        row.classList.add(event.ok ? "agent-row-ok" : "agent-row-failed");
+        row.querySelector(".agent-row-body").append(el("pre", "agent-pre agent-out", event.output));
+        if (!event.ok && group) {
+          group.failed += 1;
+          refreshGroup();
+        }
       }
     } else if (event.type === "approval") {
       // The change waiting for approval is shown open, so it is read before it is allowed.
-      const card = log.querySelector(`.agent-tool[data-call-id="${CSS.escape(event.call.id)}"]`);
-      if (card) card.open = true;
+      const row = log.querySelector(`.agent-row[data-call-id="${CSS.escape(event.call.id)}"]`);
+      if (row) {
+        row.open = true;
+        row.closest(".agent-group").open = true;
+      }
       log.append(approvalCard(event.call));
-    } else if (event.type === "subagent") {
-      const text = event.state === "started" ? `Agent phụ bắt đầu: ${event.description}` : `Agent phụ xong: ${event.description} (${event.tools} lần gọi công cụ)`;
-      log.append(el("p", "agent-notice", text));
+    } else if (event.type === "subagent" && event.state === "done") {
+      log.append(el("p", "agent-note", `Agent phụ xong: ${event.description} · ${event.tools} lần gọi công cụ`));
     } else if (event.type === "notice" || event.type === "error") {
-      log.append(el("p", `agent-${event.type}`, event.text));
+      log.append(el("p", event.type === "error" ? "agent-note agent-error" : "agent-note", event.text));
     }
-    scrollLog();
   }
 
-  function approvalCard(callInfo) {
+  function approvalCard(c) {
     const card = el("div", "agent-approval");
-    card.append(el("p", "", `Agent muốn ${toolLabel(callInfo.name).toLowerCase()}: ${callSummary(callInfo)}`));
-    const note = el("input", "ui-input");
-    note.placeholder = "Ghi chú khi từ chối (tùy chọn)";
+    const title = el("p", "agent-approval-title");
+    title.append(document.createTextNode("Cho phép "), el("strong", "", (isMcp(c.name) ? "gọi MCP" : VERBS[c.name] || c.name).toLowerCase()),
+      document.createTextNode(" "), el("code", "", target(c)), document.createTextNode("?"));
+    const note = el("input", "agent-approval-note");
+    note.placeholder = "Lý do từ chối (tùy chọn)";
     const actions = el("div", "agent-approval-actions");
-    const choices = [["allow", "Cho phép", "ui-btn ui-btn-primary"], ["allow_all", "Cho phép hết từ giờ", "ui-btn"], ["deny", "Từ chối", "ui-btn ui-btn-ghost"]];
-    choices.forEach(([decision, label, cls]) => {
+    [["allow", "Cho phép", "agent-btn agent-btn-primary"], ["allow_all", "Luôn cho phép", "agent-btn"], ["deny", "Từ chối", "agent-btn"]].forEach(([decision, label, cls]) => {
       actions.append(button(label, cls, async () => {
         actions.querySelectorAll("button").forEach((b) => { b.disabled = true; });
         try {
           await post(`/api/agent/sessions/${session.id}/approval`, { decision, note: note.value });
-          card.replaceWith(el("p", "agent-notice", `${label}.`));
+          card.replaceWith(el("p", "agent-note", decision === "deny" ? "Đã từ chối." : decision === "allow_all" ? "Đã cho phép, từ giờ tự làm hết." : "Đã cho phép."));
           if (decision === "allow_all") $("agent-mode").value = "auto";
           poll();
         } catch (error) {
@@ -164,17 +271,15 @@
         }
       }));
     });
-    card.append(note, actions);
+    actions.append(note);
+    card.append(title, actions);
     return card;
   }
 
   function showTodos(items) {
-    $("agent-todos").hidden = !items?.length;
-    $("agent-todo-list").replaceChildren(...(items || []).map((item) => {
-      const row = el("li", `agent-todo agent-todo-${item.status}`, item.content);
-      row.title = { pending: "Chưa làm", in_progress: "Đang làm", completed: "Xong" }[item.status] || "";
-      return row;
-    }));
+    const done = (items || []).filter((i) => i.status === "completed").length;
+    $("agent-todos").hidden = !items?.length || done === items.length;
+    $("agent-todo-list").replaceChildren(...(items || []).map((item) => el("li", `agent-todo agent-todo-${item.status}`, item.content)));
   }
 
   async function trust(path) {
@@ -186,23 +291,23 @@
   }
 
   function showInfo(snap) {
-    const box = el("div");
-    const sandboxMode = snap.sandbox || {};
-    $("agent-sandbox-info").textContent = sandboxMode.mode === "full-access"
+    const box = el("div", "agent-info");
+    const sb = snap.sandbox || {};
+    $("agent-sandbox-info").textContent = sb.mode === "full-access"
       ? "Sandbox tắt: lệnh có toàn quyền trên máy."
-      : `${SANDBOX_TEXT[sandboxMode.backend] || ""} Mạng ${sandboxMode.network ? "bật" : "tắt"}.`;
+      : `${SANDBOX_TEXT[sb.backend] || ""} Mạng ${sb.network ? "bật" : "tắt"}.`;
     const skills = snap.skills || [];
-    box.append(el("p", "agent-note", skills.length ? `Skill: ${skills.map((s) => s.name).join(", ")}` : "Chưa có skill (thư mục .agents/skills, .claude/skills, .codex/skills)."));
+    box.append(el("p", "agent-muted", skills.length ? `Skill: ${skills.map((s) => s.name).join(", ")}` : "Chưa có skill (.agents/skills, .claude/skills, .codex/skills)."));
     (snap.mcp || []).forEach((server) => {
-      const state = { running: `chạy, ${server.tools} công cụ`, untrusted: "chưa cho phép", failed: `lỗi ${server.error}`, disabled: "tắt" }[server.state] || server.state;
-      const row = el("p", "agent-note agent-mcp-row", `MCP ${server.name}: ${state}`);
-      if (server.state === "untrusted") row.append(button("Cho phép", "ui-btn ui-btn-compact", () => trust(`mcp/${encodeURIComponent(server.name)}`)));
+      const state = { running: `${server.tools} công cụ`, untrusted: "chưa cho phép", failed: `lỗi: ${server.error}`, disabled: "tắt" }[server.state] || server.state;
+      const row = el("p", "agent-muted agent-info-row", `MCP ${server.name} · ${state}`);
+      if (server.state === "untrusted") row.append(button("Cho phép", "agent-btn", () => trust(`mcp/${encodeURIComponent(server.name)}`)));
       box.append(row);
     });
     const hooks = snap.hooks || {};
     if (hooks.user || hooks.workspace) {
-      const row = el("p", "agent-note", `Hook: ${hooks.user} của bạn, ${hooks.workspace} của dự án${hooks.workspace && !hooks.workspace_trusted ? " (chưa cho phép)" : ""}`);
-      if (hooks.workspace && !hooks.workspace_trusted) row.append(button("Cho phép", "ui-btn ui-btn-compact", () => trust("hooks")));
+      const row = el("p", "agent-muted agent-info-row", `Hook · ${hooks.user} của bạn, ${hooks.workspace} của dự án${hooks.workspace && !hooks.workspace_trusted ? " (chưa cho phép)" : ""}`);
+      if (hooks.workspace && !hooks.workspace_trusted) row.append(button("Cho phép", "agent-btn", () => trust("hooks")));
       box.append(row);
     }
     $("agent-tools-info").replaceChildren(box);
@@ -212,13 +317,15 @@
   function showStatus(snap) {
     const busy = snap.status === "running" || snap.status === "waiting";
     $("agent-stop").hidden = !busy;
-    $("agent-send").disabled = busy;
+    $("agent-send").hidden = busy;
     const usage = snap.usage || {};
-    const parts = [`${snap.provider_label} · ${snap.model}`,
-      { idle: "Sẵn sàng", running: "Đang làm…", waiting: "Chờ bạn duyệt" }[snap.status] || snap.status,
-      `${usage.prompt_tokens || 0} token vào · ${usage.completion_tokens || 0} token ra`];
+    const state = { running: "Đang làm", waiting: "Chờ bạn duyệt" }[snap.status];
+    const parts = [snap.title || "Phiên mới", `${usage.prompt_tokens || 0} token vào, ${usage.completion_tokens || 0} ra`];
     if (snap.text_tools) parts.push("gọi công cụ bằng văn bản");
     $("agent-status").textContent = parts.join(" · ");
+    const log = $("agent-log");
+    log.querySelector(".agent-working")?.remove();
+    if (state) log.append(el("p", "agent-working", `${state}…`));
     showTodos(snap.todos);
     showInfo(snap);
   }
@@ -227,9 +334,11 @@
     clearTimeout(pollTimer);
     if (!session) return;
     try {
+      const stick = nearBottom();
       const snap = await call(`/api/agent/sessions/${session.id}?after=${lastSeq}`);
       snap.events.forEach((event) => { render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
+      follow(stick && snap.events.length > 0);
       if (snap.status !== "idle") pollTimer = setTimeout(poll, POLL_MS);
       else loadSessions();
     } catch (error) {
@@ -253,26 +362,25 @@
   async function loadProviders() {
     const response = await fetch("/api/visual_qc/settings");
     const data = await window.parseApiResponse(response);
-    const select = $("agent-provider");
     const ready = Object.values(data.providers || {}).filter((p) => p.configured && p.id !== "manga-cloud");
-    select.replaceChildren(...ready.map((p) => new Option(p.label || p.id, p.id)));
+    $("agent-provider").replaceChildren(...ready.map((p) => new Option(p.label || p.id, p.id)));
     if (!ready.length) {
-      $("agent-status").textContent = "Chưa có dịch vụ nào có API key. Mở Cài đặt, mục Dịch vụ AI để thêm (mọi API chuẩn OpenAI đều dùng được).";
+      $("agent-status").textContent = "Chưa có dịch vụ nào có API key: mở Cài đặt, mục Dịch vụ AI để thêm (mọi API chuẩn OpenAI đều dùng được).";
       return;
     }
     const saved = store("get", "manga_agent_provider");
-    if (ready.some((p) => p.id === saved)) select.value = saved;
+    if (ready.some((p) => p.id === saved)) $("agent-provider").value = saved;
     await loadModels();
   }
 
   async function loadSessions() {
     try {
       const data = await call("/api/agent/sessions");
-      const rows = (data.sessions || []).slice(0, 20).map((row) => {
+      const rows = (data.sessions || []).slice(0, 30).map((row) => {
         const item = el("li", row.id === session?.id ? "agent-session-current" : "");
         const open = button(row.title || "(chưa có tin nhắn)", "agent-session-open", () => resume(row.id));
         open.title = `${row.model} · ${row.workspace}`;
-        const remove = button("Xoá", "ui-btn ui-btn-ghost ui-btn-compact", async () => {
+        const remove = button("Xoá", "agent-session-del", async () => {
           await call(`/api/agent/sessions/${row.id}`, { method: "DELETE" }).catch(() => {});
           if (row.id === session?.id) resetLog();
           loadSessions();
@@ -280,7 +388,7 @@
         item.append(open, remove);
         return item;
       });
-      $("agent-sessions").replaceChildren(...(rows.length ? rows : [el("li", "agent-note", "Chưa có phiên nào.")]));
+      $("agent-sessions").replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", "Chưa có phiên nào.")]));
     } catch (_) {}
   }
 
@@ -297,19 +405,32 @@
       $("agent-model").value = snap.model;
       snap.events.forEach((event) => { if (event.type !== "approval") render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
+      document.querySelectorAll(".agent-menu[open]").forEach((menu) => { menu.open = false; });
+      follow(true);
       loadSessions();
     } catch (error) {
       window.showToast?.(error.message, "error");
     }
   }
 
+  function emptyState() {
+    const box = el("div", "agent-empty");
+    box.append(el("h1", "", "Agent"), el("p", "agent-muted", "Đọc code, sửa file và chạy test trong sandbox bằng bất kỳ model nào bạn đã thêm. Gõ / để xem lệnh."));
+    const examples = el("div", "agent-examples");
+    EXAMPLES.forEach((text) => examples.append(button(text, "agent-chip", () => { $("agent-input").value = text; autosize(); $("agent-input").focus(); })));
+    box.append(examples);
+    return box;
+  }
+
   function resetLog() {
     clearTimeout(pollTimer);
     session = null;
     lastSeq = 0;
-    $("agent-log").replaceChildren(el("p", "agent-empty", "Phiên mới. Nhắn việc cần làm cho agent, gõ / để xem lệnh."));
+    group = null;
+    $("agent-log").replaceChildren(emptyState());
     $("agent-stop").hidden = true;
-    $("agent-send").disabled = false;
+    $("agent-send").hidden = false;
+    $("agent-status").textContent = "";
     showTodos([]);
   }
 
@@ -323,8 +444,13 @@
     store("set", "manga_agent_provider", body.provider);
     store("set", `manga_agent_model_${body.provider}`, body.model);
     store("set", "manga_agent_workspace", body.workspace);
-    showStatus(session);
     return session;
+  }
+
+  function autosize() {
+    const input = $("agent-input");
+    input.style.height = "auto";
+    input.style.height = `${Math.min(240, input.scrollHeight)}px`;
   }
 
   function showHints() {
@@ -335,7 +461,7 @@
     hints.replaceChildren(...rows.map((c) => {
       const item = el("li");
       item.append(button(`/${c.name}`, "agent-hint", () => { $("agent-input").value = `/${c.name} `; $("agent-input").focus(); showHints(); }),
-        el("span", "", c.description || ""));
+        el("span", "agent-muted", c.description || ""));
       return item;
     }));
   }
@@ -360,15 +486,17 @@
       await ensureSession();
       const reply = await post(`/api/agent/sessions/${session.id}/messages`, { text });
       input.value = "";
+      autosize();
       showHints();
       if (reply.message) {
         $("agent-log").querySelector(".agent-empty")?.remove();
-        $("agent-log").append(el("pre", "agent-output agent-command", reply.message));
-        scrollLog();
+        $("agent-log").append(el("pre", "agent-pre agent-command", reply.message));
       }
+      follow(true);
       poll();
     } catch (error) {
       window.showToast?.(error.message, "error");
+    } finally {
       $("agent-send").disabled = false;
     }
   }
@@ -399,11 +527,13 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     if (!$("agent-view")) return;
+    resetLog();
     $("agent-composer").addEventListener("submit", send);
     $("agent-input").addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) send(event);
+      // Enter sends, Shift+Enter breaks the line, as in chat apps.
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) send(event);
     });
-    $("agent-input").addEventListener("input", showHints);
+    $("agent-input").addEventListener("input", () => { autosize(); showHints(); });
     $("agent-stop").addEventListener("click", () => session && post(`/api/agent/sessions/${session.id}/stop`).then(poll).catch(() => {}));
     $("agent-new").addEventListener("click", () => { resetLog(); loadSessions(); });
     $("agent-provider").addEventListener("change", () => { resetLog(); loadModels(); });
@@ -412,6 +542,8 @@
     $("agent-mode").addEventListener("change", () => syncSession({ mode: $("agent-mode").value }));
     $("agent-sandbox").addEventListener("change", () => syncSession({ sandbox: $("agent-sandbox").value }));
     $("agent-network").addEventListener("change", () => syncSession({ network: $("agent-network").checked }));
-    $("agent-setup").addEventListener("submit", (event) => event.preventDefault());
+    document.querySelectorAll(".agent-menu").forEach((menu) => menu.addEventListener("toggle", () => {
+      if (menu.open) document.querySelectorAll(".agent-menu[open]").forEach((other) => { if (other !== menu) other.open = false; });
+    }));
   });
 })();

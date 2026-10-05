@@ -78,32 +78,36 @@
           </section>
         </section>
       </div>
-      <div id="agent-view" class="landing-page agent-view" hidden>
-        <div class="page-intro"><span class="ui-eyebrow">Agent</span><h1>Agent</h1><p>Giao việc cho bất kỳ model nào bạn đã thêm trong Cài đặt, mục Dịch vụ AI. Agent đọc code, sửa file, chạy lệnh trong sandbox, dùng skill, MCP và hook giống Claude Code hay Codex.</p></div>
-        <form id="agent-setup" class="agent-setup">
-          <label class="ui-field" for="agent-provider"><span>Dịch vụ</span><select id="agent-provider"></select></label>
-          <label class="ui-field" for="agent-model"><span>Model</span><input id="agent-model" class="ui-input" list="agent-model-list" placeholder="Tên model" autocomplete="off" required><datalist id="agent-model-list"></datalist></label>
-          <label class="ui-field" for="agent-mode"><span>Duyệt</span><select id="agent-mode"><option value="ask">Hỏi trước mọi thay đổi và lệnh</option><option value="edits" selected>Tự sửa file và chạy lệnh trong sandbox</option><option value="auto">Tự làm hết</option></select></label>
-          <label class="ui-field" for="agent-sandbox"><span>Sandbox</span><select id="agent-sandbox"><option value="read-only">Chỉ đọc</option><option value="workspace-write" selected>Chỉ ghi trong thư mục làm việc</option><option value="full-access">Toàn quyền, không sandbox</option></select></label>
-          <label class="ui-field agent-workspace" for="agent-workspace"><span>Thư mục làm việc</span><input id="agent-workspace" class="ui-input" autocomplete="off" spellcheck="false"></label>
-          <label class="agent-check" for="agent-network"><input type="checkbox" id="agent-network"><span>Cho lệnh dùng mạng</span></label>
-          <button id="agent-new" class="ui-btn" type="button">Phiên mới</button>
-        </form>
-        <p id="agent-status" class="agent-status" aria-live="polite"></p>
-        <div class="agent-body">
-          <div class="agent-main">
-            <div id="agent-log" class="agent-log" aria-live="polite"><p class="agent-empty">Nhắn việc cần làm, ví dụ: “Đọc app/inpaint/clustering.py và viết test cho split_cluster_lines”. Gõ / để xem lệnh.</p></div>
-            <form id="agent-composer" class="agent-composer">
-              <label class="ui-field" for="agent-input"><span class="sr-only">Tin nhắn cho agent</span><textarea id="agent-input" rows="3" placeholder="Nhắn cho agent… (Ctrl+Enter để gửi, / để xem lệnh)" required></textarea></label>
-              <div class="agent-composer-actions"><button id="agent-send" class="ui-btn ui-btn-primary" type="submit">Gửi</button><button id="agent-stop" class="ui-btn" type="button" hidden>Dừng</button></div>
-              <ul id="agent-hints" class="agent-hints" hidden></ul>
-            </form>
+      <div id="agent-view" class="agent-view" hidden>
+        <div class="agent-top">
+          <p id="agent-status" class="agent-status" aria-live="polite"></p>
+          <div class="agent-top-actions">
+            <details class="agent-menu"><summary class="agent-chip">Lịch sử</summary><div class="agent-pop agent-pop-right"><ul id="agent-sessions" class="agent-sessions"><li class="agent-muted">Chưa có phiên nào.</li></ul></div></details>
+            <details class="agent-menu"><summary class="agent-chip">Thiết lập</summary><div class="agent-pop agent-pop-right">
+              <label class="agent-field" for="agent-workspace"><span>Thư mục làm việc</span><input id="agent-workspace" autocomplete="off" spellcheck="false"></label>
+              <p id="agent-sandbox-info" class="agent-muted"></p><div id="agent-tools-info"></div>
+            </div></details>
+            <button id="agent-new" class="agent-chip" type="button">Phiên mới</button>
           </div>
-          <aside class="agent-side" aria-label="Trạng thái agent">
-            <section id="agent-todos" class="agent-panel" hidden><h2>Kế hoạch</h2><ol id="agent-todo-list"></ol></section>
-            <section class="agent-panel"><h2>Công cụ</h2><p id="agent-sandbox-info" class="agent-note"></p><div id="agent-tools-info"></div></section>
-            <section class="agent-panel"><h2>Phiên trước</h2><ul id="agent-sessions" class="agent-sessions"><li class="agent-note">Chưa có phiên nào.</li></ul></section>
-          </aside>
+        </div>
+        <div id="agent-log" class="agent-log" aria-live="polite"></div>
+        <div class="agent-dock">
+          <section id="agent-todos" class="agent-todos" hidden><ol id="agent-todo-list"></ol></section>
+          <form id="agent-composer" class="agent-composer">
+            <ul id="agent-hints" class="agent-hints" hidden></ul>
+            <label class="sr-only" for="agent-input">Tin nhắn cho agent</label>
+            <textarea id="agent-input" rows="1" placeholder="Giao việc cho agent… (/ để xem lệnh)" required></textarea>
+            <div class="agent-bar">
+              <label class="agent-pick" title="Dịch vụ"><span class="sr-only">Dịch vụ</span><select id="agent-provider"></select></label>
+              <label class="agent-pick agent-pick-model" title="Model"><span class="sr-only">Model</span><input id="agent-model" list="agent-model-list" placeholder="model" autocomplete="off" required><datalist id="agent-model-list"></datalist></label>
+              <label class="agent-pick" title="Duyệt: agent hỏi bạn trước những gì"><span class="sr-only">Duyệt</span><select id="agent-mode"><option value="ask">Hỏi mọi thứ</option><option value="edits" selected>Tự sửa và chạy</option><option value="auto">Tự làm hết</option></select></label>
+              <label class="agent-pick" title="Sandbox: lệnh được ghi vào đâu"><span class="sr-only">Sandbox</span><select id="agent-sandbox"><option value="read-only">Chỉ đọc</option><option value="workspace-write" selected>Ghi trong thư mục</option><option value="full-access">Không sandbox</option></select></label>
+              <label class="agent-pick agent-toggle" title="Cho lệnh dùng mạng"><input type="checkbox" id="agent-network"><span>Mạng</span></label>
+              <span class="agent-bar-gap"></span>
+              <button id="agent-stop" class="agent-round" type="button" aria-label="Dừng" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg></button>
+              <button id="agent-send" class="agent-round agent-round-primary" type="submit" aria-label="Gửi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg></button>
+            </div>
+          </form>
         </div>
       </div>
     </section>
