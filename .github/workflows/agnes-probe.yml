@@ -1,0 +1,86 @@
+name: Agnes probe
+
+# One-off: can agnes-3.0-flash read manga lettering from a base64 image, and how well does it translate it.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/agnes-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      OUT: audit-results/agnes-probe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Two Shadow Slave slices
+        run: |
+          git fetch -q --depth 1 origin audit-evidence
+          mkdir -p "$OUT"
+          for n in 024 094; do
+            git show "origin/audit-evidence:audit-results/ai-cost/agnes/shadow-slave-1/pairs/$n.jpg" > "pair$n.jpg"
+          done
+          python3 -m pip install -q opencv-python-headless requests
+          python3 - <<'PY'
+          import os, cv2
+          for n in ("024", "094"):
+              im = cv2.imread(f"pair{n}.jpg")
+              cv2.imwrite(f"{os.environ['OUT']}/in{n}.jpg", im[:, : im.shape[1] // 2 - 2], [cv2.IMWRITE_JPEG_QUALITY, 92])
+          PY
+
+      - name: Ask Agnes (10 requests a minute, so one every 8 s)
+        env:
+          AGNES_KEY: ${{ secrets.Agnes_key }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, time, requests
+          out = os.environ["OUT"]
+          url = "https://apihub.agnes-ai.com/v1/chat/completions"
+          head = {"Authorization": "Bearer " + os.environ["AGNES_KEY"], "Content-Type": "application/json"}
+          read = ("List every piece of text in this manga page from top to bottom: speech bubbles, captions, "
+                  "sound effects and signs in the art. Reply with JSON only: "
+                  '[{"text": "...", "kind": "dialogue|narration|sfx|sign", "box": [x1, y1, x2, y2]}] '
+                  "with the box in pixels of this image.")
+          log = []
+
+          def ask(name, content):
+              body = {"model": "agnes-3.0-flash", "messages": [{"role": "user", "content": content}], "temperature": 0}
+              start = time.time()
+              r = requests.post(url, headers=head, json=body, timeout=180)
+              row = {"name": name, "status": r.status_code, "seconds": round(time.time() - start, 1)}
+              try:
+                  data = r.json()
+                  row["usage"] = data.get("usage")
+                  row["reply"] = data["choices"][0]["message"].get("content")
+              except Exception:
+                  row["body"] = r.text[:2000]
+              log.append(row)
+              print(json.dumps(row, ensure_ascii=False)[:3000], flush=True)
+              time.sleep(8)
+              return row.get("reply") or ""
+
+          lines = []
+          for n in ("024", "094"):
+              b64 = base64.b64encode(open(f"{out}/in{n}.jpg", "rb").read()).decode()
+              reply = ask(f"read{n}", [{"type": "text", "text": read},
+                                       {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}}])
+              lines.append(reply)
+          ask("translate", "Translate the dialogue and narration in these manga transcripts into natural Vietnamese "
+                           "for a webtoon. Keep sound effects as short Vietnamese onomatopoeia. Reply as JSON "
+                           '[{"en": "...", "vi": "..."}].\n\n' + "\n\n".join(lines))
+          json.dump(log, open(f"{out}/replies.json", "w"), ensure_ascii=False, indent=1)
+          PY
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/agnes-probe
+          message: "audit: Agnes probe (run ${{ github.run_id }})"
