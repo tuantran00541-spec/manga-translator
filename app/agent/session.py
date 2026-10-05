@@ -23,7 +23,7 @@ from app.logging_config import logger
 
 MODES = ("ask", "edits", "review", "auto")
 MAX_STEPS = 300
-SUBAGENT_STEPS = 100
+SUBAGENT_STEPS = 60
 MAX_JOBS = 8
 URL_TOOLS = ("web_fetch", "web_download")
 MASK_KEEP = 12
@@ -1093,12 +1093,13 @@ class AgentSession:
             parts.append(context.instructions(self.workspace.root, self.home))
             parts.append(memory.prompt(self.home if self.home is not None else Path.home(), self.workspace.root))
             parts += [self._hook_call(fn) for fn in self.registry.prompts]
-            if self.quirks.get("prompt_extra"):
-                parts.append(str(self.quirks["prompt_extra"]))
             if self.plan_mode:
                 parts.append(PLAN_PROMPT)
         else:
             parts.append(self.agent.prompt if self.agent else agents.BUILTIN["explore"].prompt)
+            parts.append(f"You have at most {SUBAGENT_STEPS} steps; read only what the job needs and send your report well before they run out.")
+        if self.quirks.get("prompt_extra"):
+            parts.append(str(self.quirks["prompt_extra"]))
         parts.append(skills.catalog(self.skills))
         return "\n\n".join(p for p in parts if p)
 

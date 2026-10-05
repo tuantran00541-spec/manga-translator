@@ -1568,3 +1568,20 @@ def test_a_reply_whose_tool_calls_the_stream_lost_is_asked_again_without_streami
     assert modes == [True, False] and session._plain
     assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Recovered."]
     assert any("không stream" in e.get("text", "") for e in session.events if e["type"] == "notice")
+
+
+def test_tool_calls_with_broken_json_are_recovered_using_the_tools_parameter_names():
+    tools = [{"name": "write_file", "parameters": {"type": "object", "required": ["path", "content"], "properties": {"path": {}, "content": {}}}},
+             {"name": "run_command", "parameters": {"type": "object", "required": ["command"], "properties": {"command": {}, "timeout": {}}}}]
+    rows = [
+        '<tool_call>{"name": "write_file", "arguments": {"path": "a.py", "content": "def f():\n    return "x"\n"}}</tool_call>',
+        '<tool_call>{"name": "write_file", "arguments": {"path": "b.py", "content": \\"\\"\\"Doc\\"\\"\\"\\nprint(\\"hi\\")\\n}}</tool_call>',
+        '<tool_call>{"name": "run_command", "arguments": {"command": "cat > t.py <<\'EOF\'\nd = {"a": 1}\nEOF", "timeout": 30}}</tool_call>',
+    ]
+    got = [client.parse_text_calls(row, tools)[1][0] for row in rows]
+    assert got[0]["args"] == {"path": "a.py", "content": 'def f():\n    return "x"\n'}
+    assert got[1]["args"] == {"path": "b.py", "content": '"""Doc"""\nprint("hi")\n'}
+    assert got[2]["args"] == {"command": "cat > t.py <<'EOF'\nd = {\"a\": 1}\nEOF", "timeout": 30}
+    assert not any(c.get("error") for c in got)
+    _, still = client.parse_text_calls('<tool_call>{"name": "write_file", "arguments": {"content": "has "quotes" but no path"}}</tool_call>', tools)
+    assert still[0].get("error"), "a call missing a required parameter stays unreadable"

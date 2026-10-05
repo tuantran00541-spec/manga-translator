@@ -48,7 +48,36 @@ def text_tools_prompt(specs: list[dict]) -> str:
     )
 
 
-def _read_call(raw: str) -> tuple[str, dict] | None:
+UNESCAPES = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\", "/": "/"}
+
+
+def _lenient_args(raw: str, params: list[str], required: list[str]) -> dict | None:
+    """Arguments from a call whose JSON broke on long text: split at the known parameter names and unescape each value."""
+    start = raw.find('"arguments"')
+    body = raw[raw.find("{", start) + 1:] if start >= 0 else raw
+    body = re.sub(r'\s*\}\s*\}?\s*$', "", body.rstrip())
+    marks = []
+    for name in params:
+        found = re.search(r'(?:^|[,{])\s*"' + re.escape(name) + r'"\s*:\s*', body)
+        if found:
+            marks.append((found.start(), found.end(), name))
+    marks.sort()
+    args: dict = {}
+    for index, (_, end, name) in enumerate(marks):
+        value = body[end:marks[index + 1][0] if index + 1 < len(marks) else len(body)].strip()
+        value = re.sub(r"\s*,\s*$", "", value)
+        try:
+            args[name] = json.loads(value, strict=False)
+            continue
+        except ValueError:
+            pass
+        if len(value) > 1 and value[0] == '"' and value[-1] == '"':
+            value = value[1:-1]
+        args[name] = re.sub(r"\\(.)", lambda m: UNESCAPES.get(m.group(1), m.group(0)), value)
+    return args if args and all(name in args for name in required) else None
+
+
+def _read_call(raw: str, schemas: dict | None = None) -> tuple[str, dict] | None:
     """A call from JSON, from Qwen's <function=...><parameter=...> form, or from the last JSON object in a mangled block."""
     try:
         data = json.loads(raw, strict=False)
@@ -59,6 +88,11 @@ def _read_call(raw: str) -> tuple[str, dict] | None:
     named = re.search(r"function=(\w+)", raw)
     if named:
         return named.group(1), {k: v for k, v in PARAMETER_RE.findall(raw)}
+    called = re.search(r'"name"\s*:\s*"(\w+)"', raw)
+    if called and schemas and called.group(1) in schemas:
+        args = _lenient_args(raw, *schemas[called.group(1)])
+        if args is not None:
+            return called.group(1), args
     for start in reversed([m.start() for m in re.finditer(r"\{", raw)]):
         try:
             data, _ = json.JSONDecoder(strict=False).raw_decode(raw[start:])
@@ -70,11 +104,18 @@ def _read_call(raw: str) -> tuple[str, dict] | None:
     return None
 
 
-def parse_text_calls(text: str) -> tuple[str, list[dict]]:
+def schemas_of(tools: list[dict] | None) -> dict:
+    """Each tool's parameter names and required ones, for reading calls whose JSON is broken."""
+    return {t["name"]: (list((t.get("parameters") or {}).get("properties") or {}), list((t.get("parameters") or {}).get("required") or []))
+            for t in tools or []}
+
+
+def parse_text_calls(text: str, tools: list[dict] | None = None) -> tuple[str, list[dict]]:
     """Tool calls written as <tool_call> blocks, and the reply with those blocks taken out."""
     calls = []
+    schemas = schemas_of(tools)
     for raw in TOOL_CALL_RE.findall(text or ""):
-        found = _read_call(raw)
+        found = _read_call(raw, schemas)
         if found is None:
             calls.append({"id": uuid.uuid4().hex[:12], "name": "", "args": {}, "error": f"Unreadable tool call: {raw[:200]}. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."})
         else:
@@ -198,7 +239,7 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
     return message, usage, stopped
 
 
-def _build(message: dict, usage: dict) -> dict:
+def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
     calls = []
     for call in message.get("tool_calls") or []:
         function = call.get("function") or {}
@@ -216,7 +257,7 @@ def _build(message: dict, usage: dict) -> dict:
         text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
     # Models without native tools, and some with them, write their calls into the text.
     if "<tool_call>" in text:
-        text, written = parse_text_calls(text)
+        text, written = parse_text_calls(text, tools)
         if not calls:
             calls = written
         else:
@@ -262,10 +303,10 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
             raise RuntimeError(f"{provider.label} stream broke: {type(exc).__name__}") from exc
         finally:
             response.close()
-        return _build(message, usage)
+        return _build(message, usage, tools)
     try:
         body = response.json()
         message = {**body["choices"][0]["message"], "_debug": {"finish": body["choices"][0].get("finish_reason") or "", "fields": sorted(body["choices"][0]["message"])}}
     except (ValueError, KeyError, IndexError, TypeError) as exc:
         raise RuntimeError(f"{provider.label} returned no message") from exc
-    return _build(message, body.get("usage") or {})
+    return _build(message, body.get("usage") or {}, tools)
