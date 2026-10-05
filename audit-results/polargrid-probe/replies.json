@@ -1,88 +1,27 @@
 {
  "models": {
-  "yto-01": "error HTTPSConnectionPool(host='api.yto-01.edge.polargrid.ai', port=443): Max retries exceeded with url: /v1/models (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7f684",
-  "yul-01": [
-   "whisper-large-v3-turbo",
-   "kokoro-82m",
-   "cohere-transcribe-03-2026",
-   "qwen-3.8-27b",
-   "tada-3b-ml"
-  ],
   "yvr-02": [
    "gemma-4-31b"
-  ],
-  "nyc-01": "error HTTPSConnectionPool(host='api.nyc-01.edge.polargrid.ai', port=443): Max retries exceeded with url: /v1/models (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f684",
-  "nyc-02": [
-   "qwen-3.8-27b",
-   "tada-3b-ml",
-   "kokoro-82m",
-   "cohere-transcribe-03-2026",
-   "whisper-large-v3-turbo"
-  ],
-  "dfw-01": [
-   "whisper-large-v3-turbo",
-   "tada-3b-ml",
-   "qwen-3.8-27b",
-   "kokoro-82m",
-   "cohere-transcribe-03-2026"
-  ],
-  "dfw-02": [
-   "cohere-transcribe-03-2026",
-   "qwen-3.8-27b",
-   "kokoro-82m",
-   "whisper-large-v3-turbo",
-   "tada-3b-ml"
-  ],
-  "sfo-01": [
-   "kokoro-82m",
-   "qwen-3.8-27b",
-   "cohere-transcribe-03-2026",
-   "tada-3b-ml",
-   "whisper-large-v3-turbo"
-  ],
-  "lax-01": [
-   "whisper-large-v3-turbo",
-   "qwen-3.8-27b",
-   "tada-3b-ml",
-   "cohere-transcribe-03-2026",
-   "kokoro-82m"
-  ],
-  "sea-01": [
-   "tada-3b-ml",
-   "cohere-transcribe-03-2026",
-   "kokoro-82m",
-   "qwen-3.8-27b",
-   "whisper-large-v3-turbo"
-  ],
-  "chi-01": "error HTTPSConnectionPool(host='api.chi-01.edge.polargrid.ai', port=443): Max retries exceeded with url: /v1/models (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f684",
-  "phx-01": [
-   "tada-3b-ml",
-   "qwen-3.8-27b",
-   "cohere-transcribe-03-2026",
-   "kokoro-82m",
-   "whisper-large-v3-turbo"
-  ],
-  "was-01": [
-   "kokoro-82m",
-   "qwen-3.8-27b",
-   "tada-3b-ml",
-   "whisper-large-v3-turbo",
-   "cohere-transcribe-03-2026"
-  ],
-  "mia-01": [
-   "whisper-large-v3-turbo",
-   "qwen-3.8-27b",
-   "kokoro-82m",
-   "cohere-transcribe-03-2026",
-   "tada-3b-ml"
-  ],
-  "sfo-03": [
-   "cohere-transcribe-03-2026",
-   "kokoro-82m",
-   "whisper-large-v3-turbo",
-   "tada-3b-ml",
-   "qwen-3.8-27b"
   ]
  },
- "replies": []
+ "replies": [
+  {
+   "model": "gemma-4-31b",
+   "base": "https://api.yvr-02.edge.polargrid.ai/v1",
+   "image": "024",
+   "status": 400,
+   "seconds": 0.6,
+   "usage": null,
+   "body": "{\"message\":\"model 'gemma-4-31b' does not support image input\",\"detail\":\"model 'gemma-4-31b' does not support image input\",\"error\":{\"message\":\"model 'gemma-4-31b' does not support image input\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  },
+  {
+   "model": "gemma-4-31b",
+   "base": "https://api.yvr-02.edge.polargrid.ai/v1",
+   "image": "094",
+   "status": 400,
+   "seconds": 0.6,
+   "usage": null,
+   "body": "{\"message\":\"model 'gemma-4-31b' does not support image input\",\"detail\":\"model 'gemma-4-31b' does not support image input\",\"error\":{\"message\":\"model 'gemma-4-31b' does not support image input\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  }
+ ]
 }
