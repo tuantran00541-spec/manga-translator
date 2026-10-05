@@ -1,15 +1,15 @@
-    ???
 /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/_pytest/assertion/rewrite.py:176: in exec_module
     source_stat, co = _rewrite_test(fn, self.config)
 /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/_pytest/assertion/rewrite.py:356: in _rewrite_test
     tree = ast.parse(source, filename=strfn)
 /opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/ast.py:52: in parse
     return compile(source, filename, mode, flags,
-E     File "/tmp/agent-work/project/tests/test_itsdangerous/test_extra_encoding.py", line 16
-E       assert want_bytes(b"abc"
-E                        ^
-E   SyntaxError: '(' was never closed
+E     File "/tmp/agent-work/project/tests/test_itsdangerous/test_extra_timed.py", line 13
+E       "from itsdangerous.timed import TimestampSigner
+E       ^
+E   SyntaxError: unterminated string literal (detected at line 13)
 =========================== short test summary info ============================
 ERROR tests/test_itsdangerous/test_extra_encoding.py
-!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
-1 error in 0.29s
+ERROR tests/test_itsdangerous/test_extra_timed.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!
+2 errors in 0.31s
