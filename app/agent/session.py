@@ -48,7 +48,6 @@ MAX_REFS = 6
 MAX_PARALLEL = 3
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
-GOAL_TURNS = 8
 UNREADABLE_TURNS = 4
 TOKEN_BUDGET = 10_000_000
 URL_RE = re.compile(r"https?://([^\s/:?#]+)")
@@ -1227,10 +1226,10 @@ class AgentSession:
             self.history.append({"role": "user", "content": GATE_NUDGE})
             self.emit("notice", text="Đã sửa file mà chưa chạy kiểm tra nào; nhắc agent chạy kiểm tra.")
             return True
-        if self.goal and self.goal["turns"] < GOAL_TURNS and not self.depth:
+        if self.goal and self.goal["turns"] < self.profile["goal_turns"] and not self.depth:
             self.goal["turns"] += 1
             self.history.append({"role": "user", "content": GOAL_NUDGE})
-            self.emit("notice", text=f"Mục tiêu chưa xong, agent làm tiếp ({self.goal['turns']}/{GOAL_TURNS}).")
+            self.emit("notice", text=f"Mục tiêu chưa xong, agent làm tiếp ({self.goal['turns']}/{self.profile['goal_turns']}).")
             return True
         return False
 

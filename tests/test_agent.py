@@ -1609,3 +1609,13 @@ def test_the_output_limit_is_sent_dropped_when_refused_and_a_cut_off_call_gets_a
     turn_ = client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[], max_tokens=8192)
     assert "max_tokens" in sent[0] and "max_tokens" not in sent[1]
     assert turn_["finish"] == "length" and "output length limit" in turn_["calls"][0]["error"]
+
+
+def test_the_number_of_goal_nudges_comes_from_the_profile(ws, home):
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"goal_turns": 2}))
+    fake = scripted(*([turn("Working on it.")] * 6))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session.command("/goal finish everything")
+    wait_for(session, "idle")
+    assert sum("Mục tiêu chưa xong" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2

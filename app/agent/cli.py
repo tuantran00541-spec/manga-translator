@@ -43,7 +43,8 @@ def run(args: argparse.Namespace) -> int:
         workspace = Workspace(args.workspace, sandbox.Policy(args.sandbox, args.network))
         session = manager.create(provider, key, args.model, workspace, args.mode)
     seen = len(session.events)
-    session.send(args.prompt)
+    # A line starting with / is a slash command, such as /goal TEXT to keep going until the goal is done.
+    session.command(args.prompt) if args.prompt.startswith("/") else session.send(args.prompt)
     deadline = time.time() + args.timeout_min * 60
     while True:
         snap = session.snapshot(seen)
