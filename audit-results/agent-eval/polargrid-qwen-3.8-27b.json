@@ -1,0 +1,33 @@
+[
+ {
+  "label": "polargrid",
+  "model": "qwen-3.8-27b",
+  "scenario": "server",
+  "repeat": 0,
+  "ok": true,
+  "timed_out": false,
+  "checks": {
+   "used_background_job": true,
+   "said_hello_agent": true,
+   "server_stopped": true
+  },
+  "seconds": 21,
+  "steps": 5,
+  "usage": {
+   "prompt_tokens": 6017,
+   "completion_tokens": 262
+  },
+  "tools": {
+   "job_stop": 1,
+   "run_command": 2,
+   "write_file": 1
+  },
+  "failed_tools": 0,
+  "helpers": 0,
+  "masked": 0,
+  "offloaded": 0,
+  "skills": [],
+  "errors": [],
+  "notices": []
+ }
+]
