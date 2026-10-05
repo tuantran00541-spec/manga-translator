@@ -1,0 +1,32 @@
+[
+ {
+  "label": "agnes",
+  "model": "agnes-3.0-flash",
+  "scenario": "server",
+  "repeat": 0,
+  "ok": true,
+  "timed_out": false,
+  "checks": {
+   "used_background_job": true,
+   "said_hello_agent": true,
+   "server_stopped": true
+  },
+  "seconds": 73,
+  "steps": 6,
+  "usage": {
+   "prompt_tokens": 25427,
+   "completion_tokens": 456
+  },
+  "tools": {
+   "job_stop": 1,
+   "run_command": 4
+  },
+  "failed_tools": 0,
+  "helpers": 0,
+  "masked": 0,
+  "offloaded": 0,
+  "skills": [],
+  "errors": [],
+  "notices": []
+ }
+]
