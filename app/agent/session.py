@@ -21,8 +21,10 @@ from app.agent.tools import KIND, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
 
 MODES = ("ask", "edits", "auto")
-MAX_STEPS = 80
-SUBAGENT_STEPS = 30
+MAX_STEPS = 300
+SUBAGENT_STEPS = 100
+MAX_JOBS = 8
+URL_TOOLS = ("web_fetch", "web_download")
 MASK_KEEP = 12
 MASK_BATCH = 6
 OFFLOAD_AT = 12_000
@@ -42,7 +44,7 @@ MAX_PARALLEL = 3
 DOOM_LOOP = 3
 GOAL_TURNS = 8
 UNREADABLE_TURNS = 4
-TOKEN_BUDGET = 3_000_000
+TOKEN_BUDGET = 10_000_000
 URL_RE = re.compile(r"https?://([^\s/:?#]+)")
 PLAN_TOOLS = agents.READ_TOOLS | {"todo_write", "task", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
 SYSTEM_PROMPT = """You are a coding agent inside the Manga Translator app, working like Claude Code or Codex.
@@ -87,6 +89,10 @@ SESSION_SPECS = {
                        "parameters": {"type": "object", "required": ["plan"], "properties": {"plan": {"type": "string"}}}},
     "goal_done": {"name": "goal_done", "description": "Mark the user's goal finished and verified, with a short report.",
                   "parameters": {"type": "object", "required": ["summary"], "properties": {"summary": {"type": "string"}}}},
+    "job_output": {"name": "job_output", "description": "Read what a background job printed since the last read (waiting up to wait_s seconds for more), and whether it is still running.",
+                   "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}, "wait_s": {"type": "integer"}}}},
+    "job_stop": {"name": "job_stop", "description": "Stop a background job.",
+                 "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
     "memory": {"name": "memory", "description": "Keep or drop a lasting note for later sessions: action add, remove or list; scope project or user.",
                "parameters": {"type": "object", "required": ["action"], "properties": {
                    "action": {"type": "string", "enum": ["add", "remove", "list"]}, "scope": {"type": "string", "enum": ["project", "user"]},
@@ -166,11 +172,12 @@ class AgentSession:
         self.nick, self.job, self.closed, self.reported, self.mutating = "", None, False, False, False
         self.pending: str | None = None
         self.counted = {"prompt_tokens": 0, "completion_tokens": 0}
-        self.max_steps = SUBAGENT_STEPS if depth else MAX_STEPS
+        self.jobs: dict[str, sandbox.Job] = {}
         self._usage_lock = threading.Lock()
         self.agents = agents.discover(workspace.root, home_path) if not depth else {}
         self.rules = rules.load(workspace.root, home_path) if not depth else parent.rules
         self.profile = registry.load_profile(workspace.root, home_path) if not depth else parent.profile
+        self.max_steps = SUBAGENT_STEPS if depth else self.profile["max_steps"]
         self.disabled = set(self.profile["disable"])
         self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
         self.externals = external.available(self.profile["external_agents"]) if not depth and "external" not in self.disabled else {}
@@ -461,6 +468,9 @@ class AgentSession:
         for child in list(self.children.values()):
             child.pending = None
             child.stop()
+        for job in list(self.jobs.values()):
+            job.stop()
+        self.jobs.clear()
 
     def close(self) -> None:
         self.stop()
@@ -560,6 +570,7 @@ class AgentSession:
         rows = list(SPECS)
         if self.skills:
             rows.append(SESSION_SPECS["skill"])
+        rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_stop"]]
         rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn,
                  SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         rows += [t.spec for t in self.registry.tools.values()]
@@ -587,7 +598,7 @@ class AgentSession:
             return False
         if verdict == "ask":
             return True
-        if name == "web_fetch" and self.mode == "edits" and (urlparse(str(call["args"].get("url") or "")).hostname or "") not in self.web_ok:
+        if name in URL_TOOLS and self.mode == "edits" and (urlparse(str(call["args"].get("url") or "")).hostname or "") not in self.web_ok:
             return True
         if name in self.mcp_tools:
             read_only = (self.mcp_tools[name][1].get("annotations") or {}).get("readOnlyHint")
@@ -596,7 +607,7 @@ class AgentSession:
         if kind == "read":
             return False
         if self.tainted and self.profile["untrusted_guard"] and not (
-                name == "web_fetch" and (urlparse(str(call["args"].get("url") or "")).hostname or "") in self.web_ok):
+                name in URL_TOOLS and (urlparse(str(call["args"].get("url") or "")).hostname or "") in self.web_ok):
             return True
         if self.mode == "ask":
             return True
@@ -661,6 +672,12 @@ class AgentSession:
             return "Goal marked done."
         if call["name"] == "memory":
             return self._memory_tool(args)
+        if call["name"] == "job_output":
+            return self._job_output(str(args.get("id") or ""), args.get("wait_s"))
+        if call["name"] == "job_stop":
+            job = self._job(str(args.get("id") or ""))
+            job.stop()
+            return f"Stopped {args.get('id')}. Last output:\n{clip(job.read(), 4000)}"
         if call["name"] == "spawn_agent":
             nick = self._spawn(str(args.get("message") or ""), str(args.get("agent") or "explore"))
             queued = self.children[nick].pending is not None
@@ -682,6 +699,40 @@ class AgentSession:
             child.closed = True
             return f"Closed {child.nick} (it was {state})."
         return self._subagent(str(args.get("description") or "task"), str(args.get("prompt") or ""), str(args.get("agent") or "explore"))
+
+    def _job(self, name: str) -> "sandbox.Job":
+        job = self.jobs.get(name.strip().lower())
+        if job is None:
+            raise ToolError(f"No job named {name!r}; running: {', '.join(self.jobs) or 'none'}")
+        return job
+
+    def _start_job(self, args: dict) -> str:
+        for name in [n for n, j in self.jobs.items() if j.code is not None and not j.read() and time.time() - j.started > 600]:
+            self.jobs.pop(name).stop()
+        if len(self.jobs) >= MAX_JOBS:
+            raise ToolError(f"{MAX_JOBS} background jobs already; stop some with job_stop")
+        command = str(args.get("command") or "").strip()
+        if not command:
+            raise ToolError("command is empty")
+        policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
+        name = f"job{next(i for i in range(1, 100) if f'job{i}' not in self.jobs)}"
+        self.jobs[name] = sandbox.Job(command, policy, self.workspace.root)
+        time.sleep(1.0)
+        job = self.jobs[name]
+        state = "running" if job.code is None else f"exited with code {job.code}"
+        return f"Started {name} ({state}). Read it with job_output.\n{clip(job.read(), 4000)}".rstrip()
+
+    def _job_output(self, name: str, wait) -> str:
+        job = self._job(name)
+        try:
+            end = time.time() + max(0, min(120, int(wait or 0)))
+        except (TypeError, ValueError) as exc:
+            raise ToolError("wait_s must be a whole number of seconds") from exc
+        while job.code is None and time.time() < end and len(job.out.data) == job.cursor and not self._stop:
+            time.sleep(0.25)
+        text = job.read()
+        state = "running" if job.code is None else f"exited with code {job.code}"
+        return f"[{name} {state}]\n{clip(text, 20000) if text else '(no new output)'}"
 
     def _memory_tool(self, args: dict) -> str:
         home, root, scope = self.home if self.home is not None else Path.home(), self.workspace.root, str(args.get("scope") or "project")
@@ -850,7 +901,7 @@ class AgentSession:
             elif decision["decision"] != "allow":
                 note = f" Note from the user: {decision['note']}" if decision.get("note") else ""
                 return f"The user refused this {call['name']} call.{note}", False
-            if call["name"] == "web_fetch":
+            if call["name"] in URL_TOOLS:
                 self.web_ok.add((urlparse(str(call["args"].get("url") or "")).hostname or "").lower())
         if call["name"] not in SESSION_SPECS:
             allowed, message = self._run_hooks("PreToolUse", call)
@@ -866,6 +917,8 @@ class AgentSession:
             elif call["name"] in self.mcp_tools:
                 server, tool = self.mcp_tools[call["name"]]
                 output, ok = self.mcp_servers[server].call_tool(tool["name"], call["args"])
+            elif call["name"] == "run_command" and call["args"].get("background"):
+                output, ok = self._start_job(call["args"]), True
             elif call["name"] in self.registry.tools:
                 try:
                     output, ok = str(self.registry.tools[call["name"]].handler(self, call["args"])), True
@@ -883,9 +936,9 @@ class AgentSession:
         except (OSError, mcp.MCPError) as exc:
             output, ok = f"Error: {type(exc).__name__}: {exc}", False
         name = call["name"]
-        if name == "web_fetch" or name in self.mcp_tools or name == "delegate":
+        if name in ("web_fetch", "web_search", "web_download", "delegate") or name in self.mcp_tools:
             self.tainted = True
-        if ok and KIND.get(name) == "edit":
+        if ok and KIND.get(name) == "edit" and name != "web_download":
             self._dirty = True
         elif name == "run_command":
             self._dirty = False

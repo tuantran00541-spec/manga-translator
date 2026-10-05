@@ -1256,3 +1256,72 @@ def test_this_process_is_not_readable_by_its_confined_children(home):
     manager(home)
     if platform.system() == "Linux":
         assert ctypes.CDLL(None).prctl(3, 0, 0, 0, 0) == 0
+
+
+# Tools beyond the project: web search, downloads, background jobs.
+
+def test_web_search_reads_duckduckgo_and_keyed_services(monkeypatch):
+    from app.agent import websearch
+    html = ('<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.python.org%2F&rut=x">Python</a>'
+            '<a class="result__snippet">The official home</a></div>')
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    monkeypatch.delenv("BRAVE_API_KEY", raising=False)
+    monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
+    monkeypatch.setattr(websearch, "_duckduckgo", lambda q, n: websearch.parse_duckduckgo(html, n))
+    assert websearch.search("python") == "1. Python\nhttps://www.python.org/\nThe official home"
+    monkeypatch.setenv("TAVILY_API_KEY", "k")
+    monkeypatch.setattr(websearch, "_tavily", lambda q, n, key: [("T", "https://t.example", "snip " + key)])
+    assert "https://t.example" in websearch.search("anything") and "snip k" in websearch.search("anything")
+    with pytest.raises(websearch.SearchError):
+        websearch.search("   ")
+
+
+def test_a_search_is_free_but_marks_what_follows_as_coming_from_untrusted_content(ws, home, monkeypatch):
+    monkeypatch.setattr(Workspace, "_tool_web_search", lambda self, query, count=8: "1. Result\nhttps://x.example\nsnippet")
+    fake = scripted(turn(calls=[call("web_search", query="best parser")]), turn(calls=[call("write_file", path="n.txt", content="n")]), turn("ok"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=fake)
+    session.send("research and write n.txt")
+    wait_for(session, "waiting")
+    assert tool_outputs(session)[0][1] is True and session.pending["name"] == "write_file" and session.pending["why"] == "untrusted"
+    session.decide("deny")
+    wait_for(session, "idle")
+
+
+def test_web_download_saves_a_file_inside_the_workspace_only(ws, monkeypatch):
+    class Reply:
+        def close(self):
+            pass
+
+    monkeypatch.setattr("app.agent.tools.safe_get", lambda url, **kw: Reply())
+    monkeypatch.setattr("app.agent.tools.read_response_limited", lambda response, limit_bytes: b"PK\x03\x04data")
+    assert ws.run("web_download", {"url": "https://example.org/a.zip", "path": "dl/a.zip"}) == "Saved dl/a.zip (8 bytes)"
+    assert (ws.root / "dl" / "a.zip").read_bytes() == b"PK\x03\x04data"
+    with pytest.raises(ToolError, match="outside"):
+        ws.run("web_download", {"url": "https://example.org/a.zip", "path": "../a.zip"})
+    assert ws.targets("web_download", {"path": "dl/b.zip"}) == [(ws.root / "dl" / "b.zip").resolve()]
+
+
+@pytest.mark.skipif(not LANDLOCK, reason="needs Landlock")
+def test_a_background_job_keeps_running_between_calls_and_stops_on_request(ws, home):
+    script = "python3 -u -c \"import time; print('ready', flush=True); time.sleep(300)\""
+    fake = scripted(turn(calls=[call("run_command", command=script, background=True)]),
+                    turn(calls=[call("job_output", id="job1", wait_s=5)]),
+                    turn(calls=[call("job_stop", id="job1"), call("job_output", id="job9")]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    out = [o for _, _, o in tool_outputs(session)]
+    assert out[0].startswith("Started job1") and "ready" in out[0] + out[1] and "[job1 running]" in out[1]
+    assert out[2].startswith("Stopped job1") and "No job named" in out[3]
+    assert session.jobs["job1"].code is not None
+    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")), session_id="o2")
+    other._start_job({"command": "sleep 300"})
+    job = other.jobs["job1"]
+    other.close()
+    assert job.code is not None and not other.jobs, "closing the session ends its jobs"
+
+
+def test_the_explore_helper_can_search_and_the_limits_allow_long_runs(ws, home):
+    from app.agent import agents
+    assert "web_search" in agents.READ_TOOLS
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    assert session.max_steps >= 300 and {"web_search", "web_download", "job_output", "job_stop"} <= tool_names(session)

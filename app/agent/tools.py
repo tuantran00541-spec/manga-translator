@@ -10,7 +10,7 @@ import re
 
 from bs4 import BeautifulSoup
 
-from app.agent import hashline, patch as patches, sandbox
+from app.agent import hashline, patch as patches, sandbox, websearch
 from app.downloader.http import read_response_limited, safe_get
 
 BROAD_FOLDERS = {"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/var", "/boot", "/dev", "/proc", "/sys", "/opt", "/root", "/home", "/Users",
@@ -24,12 +24,13 @@ MAX_SEARCH_HITS = 200
 MAX_LIST_ENTRIES = 500
 MAX_SEARCH_FILE_BYTES = 1_000_000
 MAX_FETCH_BYTES = 5_000_000
+MAX_DOWNLOAD_BYTES = 50_000_000
 COMMAND_TIMEOUT = 120
 MAX_COMMAND_TIMEOUT = 1800
 
 # What each tool can do decides whether it waits for the user: read, edit, exec or net.
 KIND = {"list_dir": "read", "read_file": "read", "search": "read", "glob": "read", "write_file": "edit",
-        "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "run_command": "exec", "web_fetch": "net"}
+        "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "run_command": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
 
 SPECS = [
     {"name": "list_dir", "description": "List files and folders under a path in the workspace.",
@@ -70,10 +71,18 @@ SPECS = [
      "parameters": {"type": "object", "required": ["command"], "properties": {
          "command": {"type": "string"},
          "timeout": {"type": "integer", "description": "Seconds before it is stopped, at most 1800."},
+         "background": {"type": "boolean", "description": "Start it and return a job id at once (a dev server, a watcher); read it with job_output, stop it with job_stop. "
+                                                           "A server needs the network switch on to listen on a port."},
          "outside_sandbox": {"type": "boolean"}}}},
     {"name": "web_fetch", "description": "Fetch a public web page and return its readable text.",
      "parameters": {"type": "object", "required": ["url"], "properties": {
          "url": {"type": "string"}, "max_chars": {"type": "integer"}}}},
+    {"name": "web_search", "description": "Search the web; returns titles, links and snippets. Follow a link with web_fetch.",
+     "parameters": {"type": "object", "required": ["query"], "properties": {
+         "query": {"type": "string"}, "count": {"type": "integer", "description": "How many results, 1 to 15."}}}},
+    {"name": "web_download", "description": "Download a public file (an archive, a PDF, an image, a dataset) into the workspace, up to 50 MB.",
+     "parameters": {"type": "object", "required": ["url", "path"], "properties": {
+         "url": {"type": "string"}, "path": {"type": "string", "description": "Where to save it, relative to the workspace root."}}}},
 ]
 
 
@@ -140,7 +149,7 @@ class Workspace:
         try:
             if name == "apply_patch":
                 return [self.resolve(p, write=True) for h in patches.parse(str(args.get("patch") or "")) for p in (h.path, h.move_to) if p]
-            if name in ("write_file", "edit_file", "edit_lines"):
+            if name in ("write_file", "edit_file", "edit_lines", "web_download"):
                 return [self.resolve(args.get("path"), write=True)]
         except (ToolError, patches.PatchError):
             pass
@@ -279,7 +288,7 @@ class Workspace:
         except patches.PatchError as exc:
             raise ToolError(str(exc)) from exc
 
-    def _tool_run_command(self, command: str, timeout: int = COMMAND_TIMEOUT, outside_sandbox: bool = False) -> str:
+    def _tool_run_command(self, command: str, timeout: int = COMMAND_TIMEOUT, outside_sandbox: bool = False, background: bool = False) -> str:
         if not str(command).strip():
             raise ToolError("command is empty")
         limit = max(1, min(MAX_COMMAND_TIMEOUT, int(timeout)))
@@ -287,6 +296,26 @@ class Workspace:
         code, output = sandbox.run(str(command), policy, self.root, limit)
         status = f"[stopped after {limit} s]" if code is None else f"[exit code {code}]"
         return clip(f"{output.strip()}\n{status}", 400_000)
+
+    def _tool_web_search(self, query: str, count: int = 8) -> str:
+        try:
+            return websearch.search(query, count)
+        except websearch.SearchError as exc:
+            raise ToolError(str(exc)) from exc
+
+    def _tool_web_download(self, url: str, path: str) -> str:
+        target = self.resolve(path, write=True)
+        if target.is_dir():
+            raise ToolError(f"{path!r} is a folder")
+        try:
+            response = safe_get(str(url), timeout=(10, 60), headers={"User-Agent": "Mozilla/5.0 manga-translator-agent"})
+            body = read_response_limited(response, limit_bytes=MAX_DOWNLOAD_BYTES)
+            response.close()
+        except Exception as exc:
+            raise ToolError(f"Could not download {url}: {getattr(exc, 'detail', exc)}") from exc
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(body)
+        return f"Saved {self.rel(target)} ({len(body)} bytes)"
 
     def _tool_web_fetch(self, url: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
         try:

@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 MODES = ("read-only", "workspace-write", "full-access")
 MAX_OUTPUT_BYTES = 8_000_000
@@ -105,6 +106,44 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
     return ["sandbox-exec", "-p", _seatbelt_profile(policy, root, scratch), "/bin/sh", "-c", command], False
 
 
+def _env_for(policy: Policy, scratch: str) -> dict | None:
+    env = None if policy.mode == "full-access" else clean_env()
+    if policy.mode == "read-only":
+        env = {**(env or {}), "TMPDIR": scratch, "TMP": scratch, "TEMP": scratch}
+    return env
+
+
+class Job:
+    """A command left running in the background, under the same policy as any other."""
+
+    def __init__(self, command: str, policy: Policy, root: Path):
+        self.command, self.started = command, time.time()
+        self.scratch = tempfile.mkdtemp(prefix="agent-job-")
+        target, shell = wrap(command, policy, root, os.path.realpath(self.scratch))
+        self.proc = subprocess.Popen(target, shell=shell, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                     start_new_session=os.name == "posix", env=_env_for(policy, self.scratch))
+        self.out = _Capture(self.proc.stdout, lambda: _kill_group(self.proc))
+        self.out.start()
+        self.cursor = 0
+
+    def read(self) -> str:
+        """Output produced since the last read."""
+        data = bytes(self.out.data[self.cursor:])
+        self.cursor += len(data)
+        return data.decode("utf-8", errors="replace")
+
+    @property
+    def code(self) -> int | None:
+        return self.proc.poll()
+
+    def stop(self) -> None:
+        _kill_group(self.proc)
+        self.proc.wait()
+        self.out.join(5)
+        self.proc.stdout.close()
+        shutil.rmtree(self.scratch, ignore_errors=True)
+
+
 def run(command: str, policy: Policy, root: Path, timeout: int, stdin: str | None = None,
         split: bool = False) -> tuple[int | None, str]:
     """Run a shell command under the policy; a None exit code means it timed out, and split returns stderr alone."""
@@ -112,10 +151,7 @@ def run(command: str, policy: Policy, root: Path, timeout: int, stdin: str | Non
     scratch = tempfile.mkdtemp(prefix="agent-run-")
     try:
         target, shell = wrap(command, policy, root, os.path.realpath(scratch))
-        env = None if policy.mode == "full-access" else clean_env()
-        if policy.mode == "read-only":
-            env = {**(env or {}), "TMPDIR": scratch, "TMP": scratch, "TEMP": scratch}
-        return _execute(target, shell, root, timeout, stdin, split, env)
+        return _execute(target, shell, root, timeout, stdin, split, _env_for(policy, scratch))
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
@@ -184,4 +220,7 @@ def _execute(target, shell: bool, root: Path, timeout: int, stdin: str | None, s
     for reader in (out, err):
         if reader:
             reader.join(5)
+    for stream in (proc.stdout, proc.stderr):
+        if stream:
+            stream.close()
     return code, (err if split else out).text()

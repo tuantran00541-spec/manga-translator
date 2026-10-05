@@ -9,11 +9,11 @@ from app.agent.skills import frontmatter
 
 WORKSPACE_DIRS = (".agents/agents", ".claude/agents")
 HOME_DIRS = (".manga-agent/agents", ".claude/agents")
-READ_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "web_fetch", "skill"})
-EDIT_TOOLS = frozenset({"write_file", "edit_file", "edit_lines", "apply_patch"})
+READ_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "web_fetch", "web_search", "skill"})
+EDIT_TOOLS = frozenset({"write_file", "edit_file", "edit_lines", "apply_patch", "web_download"})
 # Claude Code's tool names in an agent file's tools list.
 ALIASES = {"read": {"read_file"}, "grep": {"search"}, "glob": {"glob"}, "ls": {"list_dir"}, "bash": {"run_command"},
-           "edit": EDIT_TOOLS, "write": EDIT_TOOLS, "multiedit": EDIT_TOOLS, "webfetch": {"web_fetch"}, "skill": {"skill"}}
+           "edit": EDIT_TOOLS, "write": EDIT_TOOLS, "multiedit": EDIT_TOOLS, "webfetch": {"web_fetch"}, "websearch": {"web_search"}, "skill": {"skill"}}
 NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$")
 
 

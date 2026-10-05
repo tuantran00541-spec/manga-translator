@@ -11,7 +11,7 @@ from app.agent import patch as patches
 ACTIONS = ("allow", "ask", "deny")
 CATEGORY = {"run_command": "bash", "read_file": "read", "list_dir": "read", "search": "read", "glob": "read",
             "write_file": "edit", "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit",
-            "web_fetch": "webfetch", "task": "task", "spawn_agent": "task", "skill": "skill"}
+            "web_fetch": "webfetch", "web_download": "webfetch", "web_search": "websearch", "task": "task", "spawn_agent": "task", "skill": "skill"}
 # Claude Code's tool names in its settings.json permission lists.
 CLAUDE_CATEGORY = {"Bash": "bash", "Read": "read", "Edit": "edit", "Write": "edit", "WebFetch": "webfetch", "Task": "task"}
 SETTINGS = {"user": (".manga-agent/settings.json", ".claude/settings.json"),
@@ -118,8 +118,10 @@ def subjects(name: str, args: dict, path_of) -> list[str]:
         return [path_of(p) for h in hunks for p in (h.path, h.move_to) if p]
     if name in ("read_file", "list_dir", "search", "glob", "write_file", "edit_file", "edit_lines"):
         return [path_of(args.get("path") or ".")]
-    if name == "web_fetch":
+    if name in ("web_fetch", "web_download"):
         return [str(args.get("url") or "")]
+    if name == "web_search":
+        return [str(args.get("query") or "")]
     if name in ("task", "spawn_agent"):
         return [str(args.get("agent") or "explore")]
     if name == "skill":

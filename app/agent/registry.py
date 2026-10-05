@@ -15,7 +15,7 @@ from app.agent import context
 GROUPS = {
     "list_dir": "files", "read_file": "files", "search": "files", "glob": "files",
     "write_file": "edit", "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit",
-    "run_command": "shell", "web_fetch": "web", "skill": "skills", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
+    "run_command": "shell", "job_output": "shell", "job_stop": "shell", "web_fetch": "web", "web_search": "web", "web_download": "web", "skill": "skills", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
     "task": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
     "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
 }
@@ -33,7 +33,7 @@ def group_of(tool: str) -> str | None:
 def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
-                     "compact_model": "", "untrusted_guard": True, "token_budget": 3_000_000}
+                     "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -53,6 +53,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                 for key in ("subagent_model", "compact_model"):
                     if isinstance(data.get(key), str):
                         profile[key] = data[key].strip()[:100]
+                if isinstance(data.get("max_steps"), int) and data["max_steps"] > 0:
+                    profile["max_steps"] = data["max_steps"]
                 if isinstance(data.get("token_budget"), int) and data["token_budget"] > 0:
                     profile["token_budget"] = data["token_budget"]
                 if isinstance(data.get("untrusted_guard"), bool):
