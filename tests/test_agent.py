@@ -147,7 +147,8 @@ def test_skills_are_found_listed_and_loaded(ws, home):
     write_skill(home / ".agents" / "skills", "pdf-tools", "Shadowed user copy.")
     write_skill(home / ".codex" / "skills", "release", "Cut a release.")
     found = skills.discover(ws.root, home)
-    assert set(found) == {"pdf-tools", "release"} and found["pdf-tools"].description == "Work with PDF files."
+    assert {n for n, k in found.items() if not k.builtin} == {"pdf-tools", "release"}
+    assert found["pdf-tools"].description == "Work with PDF files."
     assert "- release: Cut a release." in skills.catalog(found)
     loaded = skills.load(found["pdf-tools"])
     assert "Do the thing." in loaded and "scripts/run.sh" in loaded
@@ -826,3 +827,62 @@ def test_a_model_that_only_writes_unreadable_calls_is_stopped(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     run_to_idle(session)
     assert len(fake.seen) == 4 and any(e["type"] == "error" for e in session.events)
+
+
+# Bundled skills and the GitHub installer.
+
+BUNDLED = {"systematic-debugging", "verification-before-completion", "test-driven-development", "writing-plans", "receiving-code-review",
+           "requesting-code-review", "dispatching-parallel-agents", "grilling", "handoff", "research", "diagnosing-bugs", "codebase-design",
+           "improve-codebase-architecture", "prototype", "pr", "frontend-design", "webapp-testing", "mcp-builder"}
+
+
+def test_bundled_skills_load_and_a_users_skill_of_the_same_name_wins(ws, home):
+    found = skills.discover(ws.root, home)
+    assert BUNDLED <= {n for n, k in found.items() if k.builtin}
+    assert found["handoff"].manual and found["improve-codebase-architecture"].manual and not found["systematic-debugging"].manual
+    for name in BUNDLED:
+        assert "superpowers:" not in skills.load(found[name])
+    catalog = skills.catalog(found)
+    assert "- systematic-debugging:" in catalog and "- handoff:" not in catalog and "read TodoWrite as todo_write" in catalog
+    write_skill(home / ".agents" / "skills", "grilling", "My own grilling.")
+    assert skills.discover(ws.root, home)["grilling"].description == "My own grilling." and not skills.discover(ws.root, home)["grilling"].builtin
+
+
+def test_manual_skills_run_as_slash_commands(ws, home):
+    fake = scripted(turn("noted"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    assert any(c["name"] == "handoff" for c in session.snapshot()["commands"])
+    session.command("/handoff for the next session")
+    wait_for(session, "idle")
+    sent = session.history[0]["content"]
+    assert "handoff document" in sent and sent.endswith("User input: for the next session")
+
+
+def fake_repo_zip(files):
+    import io
+    import zipfile
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, text in files.items():
+            archive.writestr(name, text)
+    return zipfile.ZipFile(io.BytesIO(buffer.getvalue()))
+
+
+def test_skills_install_from_a_github_zip(ws, home, monkeypatch):
+    from app.agent import skill_install
+    archive = fake_repo_zip({
+        "repo-main/skills/alpha/SKILL.md": "---\nname: alpha\ndescription: First.\n---\nDo alpha.",
+        "repo-main/skills/alpha/notes.md": "extra",
+        "repo-main/skills/alpha/../../../escape.txt": "nope",
+        "repo-main/skills/Bad Name/SKILL.md": "---\nname: Bad Name\ndescription: x\n---\n",
+        "repo-main/other/beta/SKILL.md": "---\nname: beta\ndescription: Second.\n---\n"})
+    monkeypatch.setattr(skill_install, "_fetch", lambda owner, repo, ref: archive)
+    assert skill_install.parse("obra/superpowers@main/skills") == ("obra", "superpowers", "main", "skills")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    assert skill_install.install("o/r/skills", home) == ["alpha"]
+    assert (home / ".manga-agent" / "skills" / "alpha" / "notes.md").read_text() == "extra"
+    assert not (home / ".manga-agent" / "escape.txt").exists() and not (home / "escape.txt").exists()
+    assert "alpha" not in session.skills
+    assert "Đã cài 1 skill" in session.command("/skills add o/r/skills")["message"] and "alpha" in session.skills
+    assert "không thấy SKILL.md" in session.command("/skills add o/r/nothing")["message"]
+    assert "dùng dạng" in session.command("/skills add not a spec")["message"]

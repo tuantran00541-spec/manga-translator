@@ -8,6 +8,8 @@ import re
 # Workspace folders first, so a project's own skill wins over a user one with the same name.
 WORKSPACE_DIRS = (".agents/skills", ".claude/skills", ".codex/skills")
 HOME_DIRS = (".manga-agent/skills", ".agents/skills", ".claude/skills", ".codex/skills")
+# Skills shipped with the app come last, so a project's or user's skill of the same name wins.
+BUILTIN_DIR = Path(__file__).parent / "builtin_skills"
 NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 MAX_SKILLS = 200
 
@@ -17,6 +19,8 @@ class Skill:
     name: str
     description: str
     folder: Path
+    manual: bool = False
+    builtin: bool = False
 
     @property
     def file(self) -> Path:
@@ -53,7 +57,7 @@ def frontmatter(text: str) -> tuple[dict[str, str], str]:
 def discover(workspace: Path, home: Path | None = None) -> dict[str, Skill]:
     home = home if home is not None else Path.home()
     found: dict[str, Skill] = {}
-    roots = [workspace / d for d in WORKSPACE_DIRS] + [home / d for d in HOME_DIRS]
+    roots = [workspace / d for d in WORKSPACE_DIRS] + [home / d for d in HOME_DIRS] + [BUILTIN_DIR]
     for root in roots:
         if not root.is_dir():
             continue
@@ -67,15 +71,20 @@ def discover(workspace: Path, home: Path | None = None) -> dict[str, Skill]:
             name = fields.get("name") or skill_file.parent.name
             description = fields.get("description", "")
             if NAME_RE.match(name) and description and name not in found:
-                found[name] = Skill(name, description[:1024], skill_file.parent.resolve())
+                found[name] = Skill(name, description[:1024], skill_file.parent.resolve(),
+                                    fields.get("disable-model-invocation", "").lower() == "true", root == BUILTIN_DIR)
     return found
 
 
 def catalog(found: dict[str, Skill]) -> str:
-    if not found:
+    """The skills the model may load itself; manual ones are only for the user's /commands."""
+    rows = "\n".join(f"- {s.name}: {s.description}" for s in found.values() if not s.manual)
+    if not rows:
         return ""
-    rows = "\n".join(f"- {s.name}: {s.description}" for s in found.values())
-    return ("Skills you can load with the skill tool when a task matches one; load it before starting that task:\n" + rows)
+    return ("Skills you can load with the skill tool when a task matches one; load it before starting that task. "
+            "Skills are written for other coding agents too: read TodoWrite as todo_write, Task or subagents as task or "
+            "spawn_agent with wait_agent, Bash as run_command, Read, Edit and Write as read_file, edit_file and apply_patch, "
+            "and asking the user as ask_user.\n" + rows)
 
 
 def load(skill: Skill) -> str:

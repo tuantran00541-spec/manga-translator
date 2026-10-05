@@ -12,7 +12,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from app.agent import agents, client, context, mcp, memory, rules, sandbox, skills
+from app.agent import agents, client, context, mcp, memory, rules, sandbox, skill_install, skills
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import KIND, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -85,7 +85,7 @@ SESSION_SPECS = {
 }
 BUILTIN_COMMANDS = {
     "help": "Xem các lệnh", "compact": "Tóm gọn hội thoại để giải phóng chỗ (có thể ghi điều cần giữ)",
-    "init": "Viết AGENTS.md mô tả dự án này", "skills": "Xem các skill tìm thấy",
+    "init": "Viết AGENTS.md mô tả dự án này", "skills": "Xem skill; /skills add CHỦ/REPO[/THƯ-MỤC] cài skill từ GitHub",
     "mcp": "Xem MCP server và công cụ của chúng", "model": "Đổi model: /model TÊN",
     "mode": "Đổi cách duyệt: /mode ask|edits|auto",
     "sandbox": "Đổi sandbox: /sandbox read-only|workspace-write|full-access [net]",
@@ -173,6 +173,7 @@ class AgentSession:
                     "skills": [{"name": s.name, "description": s.description} for s in self.skills.values()],
                     "mcp": list(self.mcp_status.values()), "hooks": self._hook_summary(),
                     "commands": [{"name": k, "description": v} for k, v in BUILTIN_COMMANDS.items()]
+                    + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
                     + [{"name": c["name"], "description": c["description"]} for c in self.commands.values()],
                     "events": [e for e in self.events if e["seq"] > after]}
 
@@ -264,7 +265,10 @@ class AgentSession:
             rows = [f"/{k} — {v}" for k, v in BUILTIN_COMMANDS.items()] + [f"/{c['name']} — {c['description']}" for c in self.commands.values()]
             return {"message": "\n".join(rows)}
         if name == "skills":
-            return {"message": "\n".join(f"{s.name}: {s.description}" for s in self.skills.values()) or "Không có skill nào."}
+            if args.split()[:1] == ["add"]:
+                return {"message": self._install_skills(args[3:].strip())}
+            rows = [f"{'/' if s.manual else ''}{s.name}{' (có sẵn)' if s.builtin else ''}: {s.description[:150]}" for s in self.skills.values()]
+            return {"message": "\n".join(rows) or "Không có skill nào."}
         if name == "mcp":
             self._ensure_mcp()
             rows = [f"{m['name']} ({m['scope']}): {m['state']}" + (f", {m['tools']} công cụ" if m.get("tools") else "")
@@ -321,10 +325,23 @@ class AgentSession:
         if name == "init":
             self.send(INIT_PROMPT)
             return {"sent": True}
+        if name in self.skills and self.skills[name].manual:
+            self.send(skills.load(self.skills[name]) + (f"\n\nUser input: {args}" if args else ""))
+            return {"sent": True}
         if name in self.commands:
             self.send(context.expand_command(self.commands[name]["body"], args))
             return {"sent": True}
         raise ValueError(f"Unknown command /{name}; type /help")
+
+    def _install_skills(self, spec: str) -> str:
+        home = self.home if self.home is not None else Path.home()
+        try:
+            names = skill_install.install(spec, home)
+        except (ValueError, OSError) as exc:
+            return f"Không cài được: {exc}"
+        self.skills = skills.discover(self.workspace.root, self.home)
+        self.workspace.read_roots = [s.folder for s in self.skills.values()]
+        return f"Đã cài {len(names)} skill vào ~/.manga-agent/skills: {', '.join(names)}. Đọc kỹ SKILL.md của chúng trước khi tin."
 
     def _memory_command(self, args: str) -> str:
         home = self.home if self.home is not None else Path.home()
