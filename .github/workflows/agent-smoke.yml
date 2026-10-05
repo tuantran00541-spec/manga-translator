@@ -115,12 +115,14 @@ jobs:
           report.append(row("anchored-edit", s, t, tests_pass=pytest(root), used_edit_lines="edit_lines" in used(s),
                             edit_lines_ok=any(e["type"] == "tool" and e["name"] == "edit_lines" and e["ok"] for e in s.events)))
 
-          # 2. Parallel helpers.
+          # 2. Helpers at the same time: spawn_agent twice, then wait_agent.
           root = project(); s = start(root, home, "auto"); t = time.time()
-          s.send("In ONE reply call the task tool twice at once: one explore helper to say what test_shop.py checks, one to say what shop.py does. Then answer in two sentences.")
+          s.send("Run two helpers at the same time: call spawn_agent once for an explore helper that says what test_shop.py checks and once for an explore helper that says what shop.py does (never the same job twice), then wait_agent for both. Then answer in two sentences.")
           wait(s)
-          two = any(len([c for c in e.get("calls", []) if c["name"] == "task"]) >= 2 for e in s.events if e["type"] == "assistant")
-          report.append(row("parallel-helpers", s, t, two_task_calls_in_one_reply=two, both_reports=sum(1 for e in s.events if e["type"] == "tool" and e["name"] == "task" and e["ok"] and len(e["output"]) > 20) >= 2))
+          tools = used(s)
+          report.append(row("spawned-helpers", s, t, spawned_two=tools.count("spawn_agent") >= 2, waited="wait_agent" in tools or any(m["role"] == "user" and m["content"].startswith("<subagent_notification>") for m in s.history),
+                            both_reports=sum(1 for m in s.history if "report" in m.get("content", "").lower() or "shop.py" in m.get("content", "")) >= 2,
+                            no_duplicate_error=not any(e["type"] == "tool" and "already has this exact job" in e["output"] for e in s.events)))
 
           # 3. Plan, question, implement.
           root = project(); s = start(root, home); t = time.time()

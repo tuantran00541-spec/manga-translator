@@ -812,3 +812,17 @@ def test_a_helpers_edit_asks_the_user_even_while_the_parent_waits(ws, home):
     session.decide("allow")
     wait_for(session, "idle")
     assert (ws.root / "helper.txt").read_text() == "hi"
+
+
+def test_a_tool_call_with_raw_newlines_inside_a_string_is_still_read():
+    raw = '<tool_call>{"name": "exit_plan_mode", "arguments": {"plan": "1. a\n2. b"}}</tool_call>'
+    _, calls = client.parse_text_calls(raw)
+    assert calls[0]["name"] == "exit_plan_mode" and calls[0]["args"] == {"plan": "1. a\n2. b"}
+
+
+def test_a_model_that_only_writes_unreadable_calls_is_stopped(ws, home):
+    junk = turn(calls=[{"id": "x", "name": "", "args": {}, "error": "Unreadable tool call: {"}])
+    fake = scripted(*[junk] * 10)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert len(fake.seen) == 4 and any(e["type"] == "error" for e in session.events)

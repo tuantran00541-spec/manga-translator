@@ -49,7 +49,7 @@ def text_tools_prompt(specs: list[dict]) -> str:
 def _read_call(raw: str) -> tuple[str, dict] | None:
     """A call from JSON, from Qwen's <function=...><parameter=...> form, or from the last JSON object in a mangled block."""
     try:
-        data = json.loads(raw)
+        data = json.loads(raw, strict=False)
         args = data.get("arguments", data.get("args", {}))
         return str(data.get("name") or ""), args if isinstance(args, dict) else {}
     except (ValueError, AttributeError):
@@ -59,7 +59,7 @@ def _read_call(raw: str) -> tuple[str, dict] | None:
         return named.group(1), {k: v for k, v in PARAMETER_RE.findall(raw)}
     for start in reversed([m.start() for m in re.finditer(r"\{", raw)]):
         try:
-            data, _ = json.JSONDecoder().raw_decode(raw[start:])
+            data, _ = json.JSONDecoder(strict=False).raw_decode(raw[start:])
         except ValueError:
             continue
         if isinstance(data, dict) and data.get("name"):
@@ -74,7 +74,7 @@ def parse_text_calls(text: str) -> tuple[str, list[dict]]:
     for raw in TOOL_CALL_RE.findall(text or ""):
         found = _read_call(raw)
         if found is None:
-            calls.append({"id": uuid.uuid4().hex[:12], "name": "", "args": {}, "error": f"Unreadable tool call: {raw[:200]}"})
+            calls.append({"id": uuid.uuid4().hex[:12], "name": "", "args": {}, "error": f"Unreadable tool call: {raw[:200]}. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."})
         else:
             calls.append({"id": uuid.uuid4().hex[:12], "name": found[0], "args": found[1]})
     return TOOL_CALL_RE.sub("", text or "").strip(), calls
@@ -149,7 +149,7 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
     for call in message.get("tool_calls") or []:
         function = call.get("function") or {}
         try:
-            args = json.loads(function.get("arguments") or "{}")
+            args = json.loads(function.get("arguments") or "{}", strict=False)
         except ValueError:
             args = None
         row = {"id": str(call.get("id") or uuid.uuid4().hex[:12]), "name": str(function.get("name") or ""),

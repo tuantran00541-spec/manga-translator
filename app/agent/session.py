@@ -34,6 +34,7 @@ MAX_REFS = 6
 MAX_PARALLEL = 3
 DOOM_LOOP = 3
 GOAL_TURNS = 8
+UNREADABLE_TURNS = 4
 PLAN_TOOLS = agents.READ_TOOLS | {"todo_write", "task", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
 SYSTEM_PROMPT = """You are a coding agent inside the Manga Translator app, working like Claude Code or Codex.
 Workspace root: {root} on {system}. Paths are relative to it.
@@ -851,7 +852,7 @@ class AgentSession:
 
     def _loop(self, max_steps: int | None = None) -> None:
         max_steps = max_steps or self.max_steps
-        again = False
+        again, broken = False, 0
         try:
             self._ensure_mcp()
             for _ in range(max_steps):
@@ -871,6 +872,10 @@ class AgentSession:
                         continue
                     break
                 self._run_calls(calls)
+                broken = broken + 1 if all(c.get("error") or not c["name"] for c in calls) else 0
+                if broken >= UNREADABLE_TURNS:
+                    self.emit("error", text=f"Model viết {broken} lượt liền lệnh gọi công cụ không đọc được; dừng để khỏi tốn token.")
+                    break
                 self.save()
             else:
                 self.emit("notice", text=f"Dừng sau {max_steps} bước; nhắn tiếp để agent làm tiếp.")
