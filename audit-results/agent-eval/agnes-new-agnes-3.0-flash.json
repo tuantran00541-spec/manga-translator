@@ -1,7 +1,7 @@
 [
  {
-  "label": "polargrid-base",
-  "model": "qwen-3.8-27b",
+  "label": "agnes-new",
+  "model": "agnes-3.0-flash",
   "scenario": "bugfix",
   "repeat": 0,
   "ok": true,
@@ -9,121 +9,117 @@
    "tests_pass": true,
    "checked_after_last_edit": true
   },
-  "seconds": 397.5,
-  "steps": 5,
+  "seconds": 17.3,
+  "steps": 6,
   "usage": {
-   "prompt_tokens": 6175,
-   "completion_tokens": 245
+   "prompt_tokens": 23829,
+   "completion_tokens": 313
   },
   "tools": {
    "edit_file": 1,
    "list_dir": 1,
    "read_file": 2,
-   "run_command": 1
+   "run_command": 2
   },
   "errors": [],
   "notices": []
  },
  {
-  "label": "polargrid-base",
-  "model": "qwen-3.8-27b",
+  "label": "agnes-new",
+  "model": "agnes-3.0-flash",
   "scenario": "explore",
   "repeat": 0,
-  "ok": false,
+  "ok": true,
   "checks": {
-   "names_most_files": false,
+   "names_most_files": true,
    "files": 17
+  },
+  "seconds": 59.0,
+  "steps": 5,
+  "usage": {
+   "prompt_tokens": 19632,
+   "completion_tokens": 861
+  },
+  "tools": {
+   "list_dir": 1,
+   "run_command": 3
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "agnes-new",
+  "model": "agnes-3.0-flash",
+  "scenario": "bigout",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "found_code": true,
+   "found_user": true
+  },
+  "seconds": 19.0,
+  "steps": 3,
+  "usage": {
+   "prompt_tokens": 19265,
+   "completion_tokens": 115
+  },
+  "tools": {
+   "run_command": 2
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "agnes-new",
+  "model": "agnes-3.0-flash",
+  "scenario": "helpers",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "spawned_two": true,
+   "answered": true
+  },
+  "seconds": 59.0,
+  "steps": 3,
+  "usage": {
+   "prompt_tokens": 18934,
+   "completion_tokens": 716
+  },
+  "tools": {
+   "spawn_agent": 2,
+   "wait_agent": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "agnes-new",
+  "model": "agnes-3.0-flash",
+  "scenario": "writers",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "a_made": true,
+   "b_made": true,
+   "refused_once": true
   },
   "seconds": 96.0,
-  "steps": 10,
+  "steps": 6,
   "usage": {
-   "prompt_tokens": 14820,
-   "completion_tokens": 1037
+   "prompt_tokens": 44973,
+   "completion_tokens": 882
   },
   "tools": {
-   "": 7,
    "list_dir": 1,
-   "run_command": 2
-  },
-  "errors": [
-   "Model viết 4 lượt liền lệnh gọi công cụ không đọc được; dừng để khỏi tốn token."
-  ],
-  "notices": []
- },
- {
-  "label": "polargrid-base",
-  "model": "qwen-3.8-27b",
-  "scenario": "bigout",
-  "repeat": 0,
-  "ok": true,
-  "checks": {
-   "found_code": true,
-   "found_user": true
-  },
-  "seconds": 8.0,
-  "steps": 3,
-  "usage": {
-   "prompt_tokens": 13455,
-   "completion_tokens": 88
-  },
-  "tools": {
-   "run_command": 2
+   "spawn_agent": 3,
+   "wait_agent": 2
   },
   "errors": [],
   "notices": []
  },
  {
-  "label": "polargrid-base",
-  "model": "qwen-3.8-27b",
-  "scenario": "helpers",
-  "repeat": 0,
-  "ok": true,
-  "checks": {
-   "spawned_two": true,
-   "answered": true
-  },
-  "seconds": 25.0,
-  "steps": 5,
-  "usage": {
-   "prompt_tokens": 16621,
-   "completion_tokens": 799
-  },
-  "tools": {
-   "read_file": 2,
-   "spawn_agent": 2,
-   "wait_agent": 1
-  },
-  "errors": [],
-  "notices": []
- },
- {
-  "label": "polargrid-base",
-  "model": "qwen-3.8-27b",
-  "scenario": "writers",
-  "repeat": 0,
-  "ok": true,
-  "checks": {
-   "a_made": true,
-   "b_made": true,
-   "refused_once": false
-  },
-  "seconds": 16.0,
-  "steps": 4,
-  "usage": {
-   "prompt_tokens": 11115,
-   "completion_tokens": 468
-  },
-  "tools": {
-   "read_file": 2,
-   "spawn_agent": 2,
-   "wait_agent": 1
-  },
-  "errors": [],
-  "notices": []
- },
- {
-  "label": "polargrid-base",
-  "model": "qwen-3.8-27b",
+  "label": "agnes-new",
+  "model": "agnes-3.0-flash",
   "scenario": "bugfix",
   "repeat": 1,
   "ok": true,
@@ -131,11 +127,11 @@
    "tests_pass": true,
    "checked_after_last_edit": true
   },
-  "seconds": 12.2,
+  "seconds": 55.3,
   "steps": 5,
   "usage": {
-   "prompt_tokens": 6175,
-   "completion_tokens": 223
+   "prompt_tokens": 18780,
+   "completion_tokens": 280
   },
   "tools": {
    "edit_file": 1,
@@ -147,33 +143,32 @@
   "notices": []
  },
  {
-  "label": "polargrid-base",
-  "model": "qwen-3.8-27b",
+  "label": "agnes-new",
+  "model": "agnes-3.0-flash",
   "scenario": "explore",
   "repeat": 1,
-  "ok": false,
+  "ok": true,
   "checks": {
-   "names_most_files": false,
+   "names_most_files": true,
    "files": 17
   },
-  "seconds": 37.0,
-  "steps": 11,
+  "seconds": 22.0,
+  "steps": 6,
   "usage": {
-   "prompt_tokens": 16055,
-   "completion_tokens": 777
+   "prompt_tokens": 23451,
+   "completion_tokens": 739
   },
   "tools": {
-   "": 2,
    "glob": 1,
    "list_dir": 2,
-   "run_command": 5
+   "run_command": 2
   },
   "errors": [],
   "notices": []
  },
  {
-  "label": "polargrid-base",
-  "model": "qwen-3.8-27b",
+  "label": "agnes-new",
+  "model": "agnes-3.0-flash",
   "scenario": "bigout",
   "repeat": 1,
   "ok": true,
@@ -184,60 +179,60 @@
   "seconds": 8.0,
   "steps": 3,
   "usage": {
-   "prompt_tokens": 13455,
-   "completion_tokens": 98
-  },
-  "tools": {
-   "run_command": 2
-  },
-  "errors": [],
-  "notices": []
- },
- {
-  "label": "polargrid-base",
-  "model": "qwen-3.8-27b",
-  "scenario": "helpers",
-  "repeat": 1,
-  "ok": true,
-  "checks": {
-   "spawned_two": true,
-   "answered": true
-  },
-  "seconds": 24.0,
-  "steps": 4,
-  "usage": {
-   "prompt_tokens": 16600,
-   "completion_tokens": 745
-  },
-  "tools": {
-   "read_file": 2,
-   "spawn_agent": 2,
-   "wait_agent": 1
-  },
-  "errors": [],
-  "notices": []
- },
- {
-  "label": "polargrid-base",
-  "model": "qwen-3.8-27b",
-  "scenario": "writers",
-  "repeat": 1,
-  "ok": true,
-  "checks": {
-   "a_made": true,
-   "b_made": true,
-   "refused_once": false
-  },
-  "seconds": 21.0,
-  "steps": 5,
-  "usage": {
-   "prompt_tokens": 13664,
-   "completion_tokens": 602
+   "prompt_tokens": 19273,
+   "completion_tokens": 183
   },
   "tools": {
    "run_command": 1,
+   "search": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "agnes-new",
+  "model": "agnes-3.0-flash",
+  "scenario": "helpers",
+  "repeat": 1,
+  "ok": true,
+  "checks": {
+   "spawned_two": true,
+   "answered": true
+  },
+  "seconds": 97.0,
+  "steps": 3,
+  "usage": {
+   "prompt_tokens": 23767,
+   "completion_tokens": 1638
+  },
+  "tools": {
    "spawn_agent": 2,
    "wait_agent": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "agnes-new",
+  "model": "agnes-3.0-flash",
+  "scenario": "writers",
+  "repeat": 1,
+  "ok": true,
+  "checks": {
+   "a_made": true,
+   "b_made": true,
+   "refused_once": true
+  },
+  "seconds": 140.0,
+  "steps": 7,
+  "usage": {
+   "prompt_tokens": 52026,
+   "completion_tokens": 869
+  },
+  "tools": {
+   "read_file": 2,
+   "spawn_agent": 3,
+   "wait_agent": 2
   },
   "errors": [],
   "notices": []
