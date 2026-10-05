@@ -1,0 +1,84 @@
+name: Agent smoke
+
+# One-off: the Agent mode loop on real models fixes a bug in a tiny project until its tests pass.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/agent-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      OUT: audit-results/agent-smoke
+      PYTHONPATH: "."
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -q -r requirements-test.txt
+
+      - name: Each model fixes the same bug in auto mode
+        env:
+          POLARGRID_KEY: ${{ secrets.polagrid_ }}
+          AGNES_KEY: ${{ secrets.Agnes_key }}
+        run: |
+          mkdir -p "$OUT"
+          python - <<'PY'
+          import json, os, subprocess, tempfile, time
+          from pathlib import Path
+          from app.agent.session import AgentSessionManager
+          from app.agent.tools import Workspace
+          from app.ai_providers import resolve_provider
+
+          out = Path(os.environ["OUT"])
+          runs = [
+              ("polargrid", "https://api.mia-01.edge.polargrid.ai/v1", "POLARGRID_KEY", "qwen-3.8-27b"),
+              ("agnes", "https://apihub.agnes-ai.com/v1", "AGNES_KEY", "agnes-3.0-flash"),
+          ]
+          task = ("The tests in this project fail. Find the bug, fix it with the smallest change, "
+                  "then run `python -m pytest -q` to prove the tests pass. Do not edit the tests.")
+          report = []
+          for name, base, key_env, model in runs:
+              root = Path(tempfile.mkdtemp())
+              (root / "shop.py").write_text(
+                  "def total(prices, discount=0.0):\n"
+                  "    \"\"\"Sum of prices after a fractional discount, rounded to cents.\"\"\"\n"
+                  "    subtotal = sum(prices)\n"
+                  "    return round(subtotal * discount, 2)\n", encoding="utf-8")
+              (root / "test_shop.py").write_text(
+                  "from shop import total\n\n"
+                  "def test_no_discount():\n    assert total([1.5, 2.5]) == 4.0\n\n"
+                  "def test_discount():\n    assert total([10, 10], 0.25) == 15.0\n", encoding="utf-8")
+              provider = resolve_provider(name, label=name, protocol="openai", api_base=base)
+              session = AgentSessionManager().create(provider, os.environ[key_env], model, Workspace(root), "auto")
+              start = time.time()
+              session.send(task)
+              while session.status != "idle" and time.time() - start < 600:
+                  time.sleep(1)
+              session.stop()
+              passed = subprocess.run(["python", "-m", "pytest", "-q"], cwd=root, capture_output=True, text=True).returncode == 0
+              row = {"model": model, "tests_pass_after": passed, "seconds": round(time.time() - start, 1),
+                     "text_tools": session.text_tools, "usage": session.usage,
+                     "steps": sum(1 for e in session.events if e["type"] == "assistant"),
+                     "tools": [e["name"] for e in session.events if e["type"] == "tool"],
+                     "shop_py": (root / "shop.py").read_text(), "tests_untouched": "0.25) == 15.0" in (root / "test_shop.py").read_text()}
+              report.append(row)
+              (out / f"{name}-events.json").write_text(json.dumps(session.events, ensure_ascii=False, indent=1), encoding="utf-8")
+              print(json.dumps(row, ensure_ascii=False), flush=True)
+          (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+          PY
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/agent-smoke
+          message: "audit: Agent smoke (run ${{ github.run_id }})"

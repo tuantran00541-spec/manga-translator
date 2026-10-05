@@ -262,4 +262,39 @@
     .review-proof-toggle { width: 30px; padding: 0; justify-content: center; }
     .review-proof-panel { top: calc(var(--review-docbar-height, 38px) + 6px); bottom: auto; left: 54px; right: 6px; width: auto; max-height: 46%; }
   }
+
+  .agent-view { display: grid; gap: 12px; }
+  .agent-view .page-intro { margin-bottom: 8px; }
+  .agent-view [hidden] { display: none !important; }
+  .agent-setup { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items: end; gap: 8px 10px; }
+  .agent-setup .ui-field { gap: 4px; font-size: 12px; }
+  .agent-setup :is(select, input) { width: 100%; min-width: 0; }
+  .agent-setup .agent-workspace { grid-column: span 2; }
+  .agent-status { min-height: 1.2em; margin: 0; color: var(--text-secondary); font-size: 12px; }
+  .agent-log { display: grid; align-content: start; gap: 10px; min-height: 280px; max-height: 62vh; overflow: auto; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface-panel); }
+  .agent-empty { margin: 0; color: var(--text-muted); }
+  .agent-msg { display: grid; gap: 6px; max-width: 100%; min-width: 0; }
+  .agent-user { justify-self: end; max-width: 80%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .agent-text p { margin: 0 0 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .agent-code, .agent-output, .agent-diff, .agent-reasoning pre { margin: 0; max-height: 320px; overflow: auto; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 4px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .agent-tool { border: 1px solid var(--border-subtle); border-radius: 4px; font-size: 12px; }
+  .agent-tool summary { display: flex; min-width: 0; gap: 8px; padding: 6px 8px; cursor: pointer; }
+  .agent-tool summary code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .agent-tool > pre { margin: 0 8px 8px; }
+  .agent-tool-failed summary strong::after { content: " · lỗi"; color: var(--text-secondary); font-weight: 400; }
+  .agent-diff-old { text-decoration: line-through; opacity: .7; }
+  .agent-reasoning summary { cursor: pointer; color: var(--text-muted); font-size: 12px; }
+  .agent-approval { display: grid; gap: 8px; padding: 10px; border: 2px solid var(--border-strong); border-radius: 6px; }
+  .agent-approval p { margin: 0; overflow-wrap: anywhere; }
+  .agent-approval-actions, .agent-composer-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .agent-notice, .agent-error { margin: 0; color: var(--text-secondary); font-size: 12px; }
+  .agent-error { font-weight: 600; }
+  .agent-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+  .agent-composer textarea { width: 100%; resize: vertical; font: inherit; }
+  /* The hidden theme picker fills its 38px icon button on phones and must not widen the page. */
+  @media (max-width: 820px) { .theme-control > select { min-width: 0; } }
+  @media (max-width: 640px) {
+    .agent-setup .agent-workspace { grid-column: auto; }
+    .agent-composer { grid-template-columns: 1fr; }
+  }
 }
