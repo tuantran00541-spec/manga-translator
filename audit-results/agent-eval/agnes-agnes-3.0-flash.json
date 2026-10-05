@@ -2,37 +2,32 @@
  {
   "label": "agnes",
   "model": "agnes-3.0-flash",
-  "scenario": "research",
+  "scenario": "debug",
   "repeat": 0,
   "ok": true,
   "timed_out": false,
   "checks": {
-   "answer_file": true,
-   "has_2008": true,
-   "has_version": true,
-   "has_source_url": true,
-   "used_web": true
+   "tests_pass": true,
+   "tests_untouched": true
   },
-  "seconds": 179,
-  "steps": 7,
+  "seconds": 183,
+  "steps": 6,
   "usage": {
-   "prompt_tokens": 84760,
-   "completion_tokens": 791
+   "prompt_tokens": 30637,
+   "completion_tokens": 665
   },
   "tools": {
-   "read_file": 1,
-   "web_fetch": 2,
-   "web_search": 2,
-   "write_file": 1
+   "apply_patch": 1,
+   "list_dir": 1,
+   "read_file": 2,
+   "run_command": 2
   },
-  "failed_tools": 2,
+  "failed_tools": 0,
   "helpers": 0,
   "masked": 0,
   "offloaded": 0,
   "skills": [],
   "errors": [],
-  "notices": [
-   "Đã sửa file mà chưa chạy kiểm tra nào; nhắc agent chạy kiểm tra."
-  ]
+  "notices": []
  }
 ]
