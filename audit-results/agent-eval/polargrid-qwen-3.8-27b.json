@@ -2,38 +2,34 @@
  {
   "label": "polargrid",
   "model": "qwen-3.8-27b",
-  "scenario": "research",
+  "scenario": "build",
   "repeat": 0,
-  "ok": true,
+  "ok": false,
   "timed_out": false,
   "checks": {
-   "answer_file": true,
-   "has_2008": true,
-   "has_version": true,
-   "has_source_url": true,
-   "used_web": true
+   "tool_exists": false,
+   "tests_pass": false,
+   "enough_tests": false
   },
-  "seconds": 45,
+  "seconds": 54,
   "steps": 8,
   "usage": {
-   "prompt_tokens": 22979,
-   "completion_tokens": 677
+   "prompt_tokens": 11060,
+   "completion_tokens": 946
   },
   "tools": {
-   "": 2,
-   "read_file": 1,
-   "web_fetch": 2,
-   "web_search": 2,
-   "write_file": 1
+   "": 6,
+   "list_dir": 1,
+   "todo_write": 1
   },
-  "failed_tools": 4,
+  "failed_tools": 6,
   "helpers": 0,
   "masked": 0,
   "offloaded": 0,
   "skills": [],
-  "errors": [],
-  "notices": [
-   "Đã sửa file mà chưa chạy kiểm tra nào; nhắc agent chạy kiểm tra."
-  ]
+  "errors": [
+   "Model viết 4 lượt liền lệnh gọi công cụ không đọc được; dừng để khỏi tốn token."
+  ],
+  "notices": []
  }
 ]
