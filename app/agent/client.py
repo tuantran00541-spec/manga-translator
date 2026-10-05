@@ -89,7 +89,12 @@ def render(history: list[dict], system: str, text_mode: bool, specs: list[dict],
     for index, item in enumerate(history):
         role = item["role"]
         if role == "user":
-            messages.append({"role": "user", "content": item["content"]})
+            images = item.get("images") or []
+            if images and not text_mode:
+                parts = [{"type": "text", "text": item["content"]}] + [{"type": "image_url", "image_url": {"url": url}} for url in images]
+                messages.append({"role": "user", "content": parts})
+            else:
+                messages.append({"role": "user", "content": item["content"]})
         elif role == "assistant":
             calls = item.get("calls") or []
             if text_mode:

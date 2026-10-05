@@ -26,6 +26,12 @@ DEFAULT = [("read", ".env", "deny"), ("read", ".env.*", "deny"), ("read", "*.env
         "rm *-r*", "rm *-R*", "rm *--recursive*", "git reset --hard*", "git clean*", "git push*", "git config*", "git checkout -- *",
         "git restore*", "git branch -D*", "git stash drop*", "git stash clear*", "sudo *", "kill *", "pkill*", "killall*", "chmod -R*",
         "chown*", "dd *", "mkfs*", "*secret-tool*", "*find-generic-password*", "*find-internet-password*", "*cmdkey*", "*keyring.get_*")]
+# Commands that only look; one that is a plain call of these never needs asking about.
+SAFE_COMMANDS = {"ls", "cat", "head", "tail", "wc", "pwd", "echo", "grep", "rg", "tree", "stat", "file", "du", "df", "sort", "uniq", "diff",
+                 "which", "whoami", "date", "uname", "basename", "dirname", "realpath", "nl", "cut", "tr", "printf", "true", "id", "env"}
+SAFE_GIT = {"status", "log", "diff", "show", "rev-parse", "ls-files", "blame", "describe", "shortlog"}
+# Interpreters and wrappers run anything, so a saved allow for them is the exact command, never a prefix.
+WRAPPERS = {"python", "python3", "node", "bash", "sh", "zsh", "env", "xargs", "eval", "exec", "ssh", "perl", "ruby", "npx", "uv", "uvx", "pip", "npm", "make", "docker", "find", "time", "nohup", "watch"}
 SPLIT = re.compile(r"&&|\|\||;|\||\n")
 
 Rule = tuple[str, str, str, str]
@@ -146,3 +152,59 @@ def check(rules: list[Rule], name: str, args: dict, path_of) -> str | None:
     if verdicts and all(v == "allow" for v in verdicts):
         return "ask" if shell_tricks else "allow"
     return None
+
+
+def safe_readonly(command: str) -> bool:
+    """True for a command that only reads: plain calls of look-only programs, no redirects, substitutions or compound tricks beyond pipes."""
+    if re.search(r"`|\$\(|<\(|>|<<", command):
+        return False
+    parts = [p.strip() for p in SPLIT.split(command) if p.strip()]
+    for part in parts:
+        words = part.split()
+        if not words:
+            continue
+        if words[0] == "git" and len(words) > 1 and words[1] in SAFE_GIT and not any(w.startswith("--output") for w in words):
+            continue
+        if words[0] == "env" or words[0] not in SAFE_COMMANDS:
+            return False
+    return bool(parts)
+
+
+def remembered(name: str, args: dict, verdict: str | None) -> tuple[str, str] | None:
+    """The (category, pattern) an 'always allow' would save for this call, or None when it must be asked each time."""
+    if verdict in ("ask", "deny") or not isinstance(args, dict):
+        return None
+    if name == "run_command":
+        command = str(args.get("command") or "").strip()
+        words = command.split()
+        if not words or SPLIT.search(command) or re.search(r"`|\$\(|<\(|>\(|>", command) or args.get("outside_sandbox"):
+            return None
+        if words[0] in WRAPPERS:
+            return "bash", command
+        sub = words[1] if len(words) > 1 and re.fullmatch(r"[a-z][\w-]*", words[1]) else ""
+        return "bash", f"{words[0]} {sub} *".replace("  ", " ") if sub else f"{words[0]} *"
+    if name in ("web_fetch", "web_download"):
+        host = re.match(r"https?://([^/\s:?#]+)", str(args.get("url") or ""))
+        return ("webfetch", f"https://{host.group(1)}/*") if host else None
+    return None
+
+
+def save_allow(home: Path, category: str, pattern: str) -> None:
+    """Add an allow rule to the user's own settings file."""
+    path = home / SETTINGS["user"][0]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    table = data.setdefault("permission", {})
+    section = table.get(category)
+    if not isinstance(section, dict):
+        section = {"*": section} if isinstance(section, str) else {}
+    section[pattern] = "allow"
+    table[category] = section
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    tmp.replace(path)

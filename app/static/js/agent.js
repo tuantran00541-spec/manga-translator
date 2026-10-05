@@ -330,11 +330,14 @@
     const note = el("input", "agent-approval-note");
     note.placeholder = "Lý do từ chối (tùy chọn)";
     const actions = el("div", "agent-approval-actions");
-    [["allow", "Cho phép", "agent-btn agent-btn-primary", "Đã cho phép."], ["allow_all", "Luôn cho phép", "agent-btn", "Đã cho phép, từ giờ tự làm hết."],
-      ["deny", "Từ chối", "agent-btn", "Đã từ chối."]].forEach(([decision, label, cls, done]) => {
+    const choices = [["allow", "Cho phép", "agent-btn agent-btn-primary", "Đã cho phép."]];
+    if (c.remember) choices.push(["allow_always", `Luôn cho phép ${c.remember}`, "agent-btn", `Đã lưu luật: ${c.remember}`]);
+    choices.push(["allow_all", "Tự làm hết", "agent-btn", "Đã cho phép, từ giờ tự làm hết."], ["deny", "Từ chối", "agent-btn", "Đã từ chối."]);
+    choices.forEach(([decision, label, cls, done]) => {
       actions.append(button(label, cls, () => decide(card, decision, note.value, done)));
     });
     actions.append(note);
+    if (c.reviewer) card.append(el("p", "agent-muted", `Model duyệt không chắc: ${c.reviewer}`));
     if (c.why === "untrusted") card.append(el("p", "agent-muted", "Agent vừa đọc nội dung từ web hoặc MCP, có thể chứa lệnh giả, nên hỏi lại trước khi hành động."));
     card.append(title, actions);
     return card;
@@ -396,12 +399,22 @@
     const usage = snap.usage || {};
     const state = { running: "Đang làm", waiting: "Chờ bạn duyệt" }[snap.status];
     const parts = [snap.title || "Phiên mới", `${usage.prompt_tokens || 0} token vào, ${usage.completion_tokens || 0} ra`];
+    const stats = snap.stats || {};
+    if (usage.prompt_tokens) parts.push(`cache ${stats.cache_pct || 0}%`);
+    if (stats.cost != null) parts.push(`$${stats.cost}`);
+    if (stats.model_seconds || stats.tool_seconds) parts.push(`model ${stats.model_seconds}s, công cụ ${stats.tool_seconds}s`);
     if (snap.text_tools) parts.push("gọi công cụ bằng văn bản");
     if (snap.plan_mode) parts.push("đang lập kế hoạch");
     if (snap.goal) parts.push(`mục tiêu: ${snap.goal}`);
     $("agent-status").textContent = parts.join(" · ");
     const log = $("agent-log");
     log.querySelector(".agent-working")?.remove();
+    log.querySelector(".agent-live")?.remove();
+    const live = snap.live;
+    if (live && (live.text || live.tools.length)) {
+      const tools = live.tools.length ? `\nGọi: ${live.tools.join(", ")}` : "";
+      log.append(el("pre", "agent-live", live.text + tools));
+    }
     if (state) log.append(el("p", "agent-working", `${state}…`));
     showTodos(snap.todos);
     showInfo(snap);
@@ -416,7 +429,7 @@
       snap.events.forEach((event) => { render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
       follow(stick && snap.events.length > 0);
-      if (snap.status !== "idle") pollTimer = setTimeout(poll, POLL_MS);
+      if (snap.status !== "idle") pollTimer = setTimeout(poll, snap.live ? POLL_MS / 2 : POLL_MS);
       else loadSessions();
     } catch (error) {
       $("agent-status").textContent = error.message;

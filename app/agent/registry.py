@@ -13,11 +13,11 @@ from app.agent import context
 
 # The tool each group switches, so a profile can turn whole features off (shell, web, edits, subagents...).
 GROUPS = {
-    "list_dir": "files", "read_file": "files", "search": "files", "glob": "files",
+    "list_dir": "files", "read_file": "files", "search": "files", "glob": "files", "symbols": "files", "view_image": "files",
     "write_file": "edit", "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit",
     "run_command": "shell", "job_output": "shell", "job_stop": "shell", "web_fetch": "web", "web_search": "web", "web_download": "web", "skill": "skills", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
     "task": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
-    "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
+    "tool_search": "mcp", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
 }
 COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "mcp": "mcp"}
 ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
@@ -34,7 +34,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
-                     "models": {}, "prices": {}, "vision": None, "review_model": ""}
+                     "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -65,6 +65,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["max_steps"] = data["max_steps"]
                 if isinstance(data.get("token_budget"), int) and data["token_budget"] > 0:
                     profile["token_budget"] = data["token_budget"]
+                if isinstance(data.get("isolate_writers"), bool):
+                    profile["isolate_writers"] = data["isolate_writers"]
                 if isinstance(data.get("untrusted_guard"), bool):
                     profile["untrusted_guard"] = data["untrusted_guard"]
     profile["disable"] = sorted(set(profile["disable"]))

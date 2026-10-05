@@ -8,6 +8,7 @@ import os
 import platform
 import re
 import shutil
+import tempfile
 import threading
 import time
 import uuid
@@ -15,12 +16,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import agents, client, context, external, mcp, memory, models, registry, rules, sandbox, skill_install, skills
+from app.agent import agents, client, context, external, guardian, isolate, mcp, memory, models, registry, rules, sandbox, skill_install, skills
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import KIND, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
 
-MODES = ("ask", "edits", "auto")
+MODES = ("ask", "edits", "review", "auto")
 MAX_STEPS = 300
 SUBAGENT_STEPS = 100
 MAX_JOBS = 8
@@ -30,6 +31,8 @@ MASK_BATCH = 6
 OFFLOAD_AT = 12_000
 MAX_SKILLS_PER_TURN = 3
 MAX_AGENT_THREADS = 6
+MAX_IMAGES = 3
+MCP_DEFER = 15
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
 WAIT_MAX = 900
@@ -41,7 +44,7 @@ MAX_SESSIONS = 50
 HOOK_TIMEOUT = 60
 MAX_REFS = 6
 MAX_PARALLEL = 3
-PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "web_fetch", "web_search", "task"})
+PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
 GOAL_TURNS = 8
 UNREADABLE_TURNS = 4
@@ -94,6 +97,8 @@ SESSION_SPECS = {
                    "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}, "wait_s": {"type": "integer"}}}},
     "job_stop": {"name": "job_stop", "description": "Stop a background job.",
                  "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
+    "tool_search": {"name": "tool_search", "description": "Find a connected (MCP) tool by what it does; the matches become callable on your next turn.",
+                    "parameters": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}},
     "memory": {"name": "memory", "description": "Keep or drop a lasting note for later sessions: action add, remove or list; scope project or user.",
                "parameters": {"type": "object", "required": ["action"], "properties": {
                    "action": {"type": "string", "enum": ["add", "remove", "list"]}, "scope": {"type": "string", "enum": ["project", "user"]},
@@ -166,7 +171,6 @@ class AgentSession:
         self._skills_loaded: list[str] = []
         self.web_ok: set[str] = set()
         self._turn_usage = 0
-        self._approval_lock = threading.Lock()
         self.plan_mode = False
         self.goal: dict | None = None
         self._recent: list[str] = []
@@ -174,6 +178,9 @@ class AgentSession:
         self._spawn_lock = threading.Lock()
         self.children: dict[str, AgentSession] = {}
         self.nick, self.job, self.closed, self.reported, self.mutating = "", None, False, False, False
+        self.copy: Path | None = None
+        self.base: dict[str, str] | None = None
+        self.merge_note = ""
         self.pending: str | None = None
         self.counted = {"prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0}
         self.jobs: dict[str, sandbox.Job] = {}
@@ -195,6 +202,7 @@ class AgentSession:
         self.mcp_servers: dict[str, mcp.Server] = {}
         self.mcp_status: dict[str, dict] = {}
         self.mcp_tools: dict[str, tuple[str, dict]] = {}
+        self.mcp_loaded: set[str] = set()
         self._mcp_ready = depth > 0
 
     def _outputs_dir(self) -> Path:
@@ -251,7 +259,7 @@ class AgentSession:
                     "model": self.model, "mode": self.mode, "workspace": str(self.workspace.root), "title": self.title,
                     "sandbox": {"mode": self.workspace.policy.mode, "network": self.workspace.policy.network,
                                 "backend": sandbox.backend()},
-                    "text_tools": self.text_tools, "usage": dict(self.usage), "stats": self._stats(), "live": self.live,
+                    "text_tools": self.text_tools, "usage": dict(self.usage), "stats": self._stats(), "live": self._live_view(),
                     "pending": self.pending, "todos": self.todos,
                     "disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins, "externals": list(self.externals),
                                                                     "needs_trust": any(p["state"] == "untrusted" for p in self.registry.plugins)},
@@ -264,6 +272,12 @@ class AgentSession:
                     + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
                     + [{"name": c["name"], "description": c["description"]} for c in self.commands.values()],
                     "events": [e for e in self.events if e["seq"] > after]}
+
+    def _live_view(self) -> dict | None:
+        live = self.live
+        if not live:
+            return None
+        return {"text": live["text"][-1500:], "reasoning": live["reasoning"][-600:], "tools": live["tools"]}
 
     def _spent(self) -> int:
         """Tokens used so far; cached ones are already part of the prompt."""
@@ -285,7 +299,7 @@ class AgentSession:
                 "workspace": str(self.workspace.root), "sandbox": [self.workspace.policy.mode, self.workspace.policy.network],
                 "created_at": self.created_at, "updated_at": self.updated_at, "usage": self.usage, "todos": self.todos,
                 "text_tools": self.text_tools, "plan_mode": self.plan_mode, "goal": self.goal,
-                "history": self.history, "events": self.events}
+                "history": [{k: v for k, v in h.items() if k != "images"} for h in self.history], "events": self.events}
         tmp = self.store.with_suffix(".tmp")
         try:
             self.store.parent.mkdir(parents=True, exist_ok=True)
@@ -419,6 +433,7 @@ class AgentSession:
                 if self.status != "idle":
                     raise RuntimeError("The agent is still working")
             done = [self.workspace.rel(Path(p)) for p in self.checkpoints.undo()]
+            self.workspace.seen.clear()
             if not done:
                 return {"message": "Không có gì để hoàn tác (chỉ hoàn tác file do công cụ sửa file đã đổi, không gồm lệnh shell)."}
             self.history.append({"role": "user", "content": "[The user undid your last turn's file changes: " + ", ".join(done) + "]"})
@@ -495,6 +510,8 @@ class AgentSession:
         self.stop()
         for child in list(self.children.values()):
             child.close()
+            if child.copy is not None:
+                shutil.rmtree(child.copy, ignore_errors=True)
         for server in self.mcp_servers.values():
             server.close()
         self.mcp_servers.clear()
@@ -576,7 +593,8 @@ class AgentSession:
     # Tools.
 
     def specs(self) -> list[dict]:
-        return [row for row in self._all_specs() if self._enabled(row["name"])]
+        sees = models.sees_images(self.provider.id, self.model, self.profile["vision"])
+        return [row for row in self._all_specs() if self._enabled(row["name"]) and (sees or row["name"] != "view_image")]
 
     def _all_specs(self) -> list[dict]:
         every = {s["name"] for s in SPECS} | {"skill"}
@@ -598,7 +616,13 @@ class AgentSession:
             return [r for r in rows if r["name"] in PLAN_TOOLS or r["name"] in reads] + [SESSION_SPECS["exit_plan_mode"]]
         if self.goal:
             rows.append(SESSION_SPECS["goal_done"])
+        defer = len(self.mcp_tools) > MCP_DEFER
+        if defer:
+            names = ", ".join(self.mcp_tools)[:1500]
+            rows.append({**SESSION_SPECS["tool_search"], "description": SESSION_SPECS["tool_search"]["description"] + f"\nConnected tools: {names}"})
         for name, (server, tool) in self.mcp_tools.items():
+            if defer and name not in self.mcp_loaded:
+                continue
             rows.append({"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
                          "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}}})
         return rows
@@ -628,13 +652,34 @@ class AgentSession:
         if self.tainted and self.profile["untrusted_guard"] and not (
                 name in URL_TOOLS and (urlparse(str(call["args"].get("url") or "")).hostname or "") in self.web_ok):
             return True
-        if self.mode == "ask":
-            return True
+        if self.mode in ("ask", "review"):
+            return not (name == "run_command" and not call["args"].get("outside_sandbox") and rules.safe_readonly(str(call["args"].get("command") or "")))
         if kind == "exec":
             # In edits mode commands run on their own only inside a working OS sandbox.
             confined = sandbox.backend() != "none" and self.workspace.policy.mode != "full-access"
             return bool(call["args"].get("outside_sandbox")) or not confined
         return False
+
+    def _always_ask(self, call: dict) -> bool:
+        plugin = self.registry.tools.get(call["name"])
+        return bool(plugin and plugin.always_ask) or call["name"] == "memory" or bool(
+            call["name"] == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access")
+
+    def _user_messages(self) -> list[str]:
+        root = self
+        while root.parent is not None:
+            root = root.parent
+        return [h["content"] for h in root.history if h["role"] == "user" and not h["content"].startswith(("[", "<"))]
+
+    def _remember(self, category: str, pattern: str) -> None:
+        home_path = self.home if self.home is not None else Path.home()
+        try:
+            rules.save_allow(home_path, category, pattern)
+        except OSError as exc:
+            logger.warning("Agent session {} could not save a rule: {}", self.id, exc)
+            return
+        self.rules = rules.load(self.workspace.root, home_path)
+        self.emit("notice", text=f"Đã lưu luật: luôn cho phép {category} {pattern}")
 
     def _wait_for_decision(self, call: dict) -> dict:
         if self.parent is not None:
@@ -691,6 +736,12 @@ class AgentSession:
             return "Goal marked done."
         if call["name"] == "memory":
             return self._memory_tool(args)
+        if call["name"] == "tool_search":
+            words = [w for w in re.split(r"\W+", str(args.get("query") or "").lower()) if w]
+            found = [n for n, (server, t) in self.mcp_tools.items()
+                     if any(w in f"{n} {t.get('description') or ''}".lower() for w in words)][:8]
+            self.mcp_loaded.update(found)
+            return "\n".join(f"{n}: {(self.mcp_tools[n][1].get('description') or '')[:200]}" for n in found) + "\nThese tools can be called now." if found else "No connected tool matches."
         if call["name"] == "job_output":
             return self._job_output(str(args.get("id") or ""), args.get("wait_s"))
         if call["name"] == "job_stop":
@@ -786,13 +837,14 @@ class AgentSession:
     def _result(child: "AgentSession") -> str:
         errors = [e["text"] for e in child.events if e["type"] == "error"]
         text = next((e["text"] for e in reversed(child.events) if e["type"] == "assistant" and e["text"]), "")
-        return text or (errors[-1] if errors else "The agent finished without a report.")
+        return (text or (errors[-1] if errors else "The agent finished without a report.")) + child.merge_note
 
     def _collect(self, child: "AgentSession") -> None:
         """Fold a finished helper's tokens into this session once and tell the page it is done."""
         if child.reported or child.status != "idle" or child.pending is not None:
             return
         child.reported = True
+        self._merge_copy(child)
         self.tainted = self.tainted or child.tainted
         with self._usage_lock:
             for key in self.usage:
@@ -800,6 +852,20 @@ class AgentSession:
                 child.counted[key] = child.usage[key]
         self.emit("subagent", description=child.job[1][:80] if child.job else "", agent=child.agent.name, id=child.nick,
                   state="done", tools=sum(1 for e in child.events if e["type"] == "tool"))
+
+    def _merge_copy(self, child: "AgentSession") -> None:
+        """Bring a helper's private copy back into the project and describe the result for the model."""
+        if child.copy is None:
+            return
+        applied, conflicts = isolate.merge(self.workspace.root, child.copy, child.base or {}, child.nick, before=self.checkpoints.save)
+        shutil.rmtree(child.copy, ignore_errors=True)
+        child.copy = None
+        note = f"\n\n[Its work ran in a private copy and was merged: {len(applied)} files brought in" + (f" ({', '.join(applied[:12])})" if applied else "") + "."
+        if conflicts:
+            note += (f" {len(conflicts)} changed on both sides and were NOT merged: {', '.join(conflicts[:12])}. Its versions are in "
+                     f"{isolate.CONFLICTS}/{child.nick}/; merge them by hand, then delete that folder.")
+        child.merge_note = note + "]"
+        self.emit("notice", text=f"Đã gộp việc của {child.nick}: {len(applied)} file" + (f", {len(conflicts)} xung đột" if conflicts else ""))
 
     def _spawn(self, message: str, agent_name: str, dedupe: bool = True) -> str:
         with self._spawn_lock:
@@ -826,12 +892,23 @@ class AgentSession:
             raise ToolError("In plan mode only read-only agents may run")
         busy = next((n for n, c in self.children.items() if c.mutating and self._state(c) in ("running", "queued")), "") if mutating else ""
         nick = next((n for n in NICKNAMES if n not in self.children), f"agent{len(self.children) + 1}")
-        helper = Workspace(self.workspace.root, self.workspace.policy if mutating else sandbox.Policy("read-only", False),
+        copy, base = None, None
+        if busy and self.profile["isolate_writers"] and not self.depth:
+            # A second editing helper works in its own copy of the project; its changes are merged when its report is collected.
+            copy = Path(tempfile.mkdtemp(prefix="agent-copy-"))
+            base = isolate.snapshot(self.workspace.root, copy)
+            if base is None:
+                shutil.rmtree(copy, ignore_errors=True)
+                copy = None
+            else:
+                busy = ""
+        helper = Workspace(copy or self.workspace.root, self.workspace.policy if mutating else sandbox.Policy("read-only", False),
                            read_roots=self.workspace.read_roots)
         child = AgentSession(f"{self.id}-{nick}", self.provider, self.api_key, agent.model or self.profile.get("subagent_model") or self.model, helper,
                              self.mode if mutating else "auto", complete=self.complete, depth=self.depth + 1, home=self.home,
                              trust=self.trust, parent=self, agent=agent)
-        child.text_tools, child.nick, child.job, child.mutating = self.text_tools, nick, job, mutating
+        child.text_tools, child.nick, child.job, child.mutating = self.text_tools, nick, job, mutating and copy is None
+        child.copy, child.base = copy, base
         self.children[nick] = child
         self.emit("subagent", description=message[:80], agent=agent.name, id=nick, state="started")
         if busy:
@@ -914,14 +991,31 @@ class AgentSession:
         with self._approval_lock:
             if self._needs_approval(call, verdict):
                 why = "untrusted" if self.tainted and self.mode != "auto" and self.profile["untrusted_guard"] else ""
-                decision = self._wait_for_decision({**call, "why": why} if why else call)
-                if decision["decision"] == "allow_all":
-                    self.mode = "auto"
-                    if self.parent is not None:
-                        self.parent.mode = "auto"
-                elif decision["decision"] != "allow":
-                    note = f" Note from the user: {decision['note']}" if decision.get("note") else ""
-                    return f"The user refused this {call['name']} call.{note}", False
+                reviewed, cleared = "", False
+                if self.mode == "review" and not why and not self._always_ask(call):
+                    started = time.time()
+                    answer, reason = guardian.review(self.complete, self.provider, self.api_key, self.profile["review_model"] or self.model,
+                                                     self._user_messages(), call)
+                    with self._usage_lock:
+                        self.stats["model_s"] += time.time() - started
+                    if answer == "allow":
+                        self.emit("notice", text=f"Người duyệt cho phép {call['name']}: {reason}")
+                        cleared = True
+                    else:
+                        reviewed = reason
+                if not cleared:
+                    saved = None if why else rules.remembered(call["name"], call["args"], verdict)
+                    extra = {**({"why": why} if why else {}), **({"remember": saved[1]} if saved else {}), **({"reviewer": reviewed} if reviewed else {})}
+                    decision = self._wait_for_decision({**call, **extra} if extra else call)
+                    if decision["decision"] == "allow_always" and saved:
+                        self._remember(*saved)
+                    if decision["decision"] == "allow_all":
+                        self.mode = "auto"
+                        if self.parent is not None:
+                            self.parent.mode = "auto"
+                    elif decision["decision"] not in ("allow", "allow_always"):
+                        note = f" Note from the user: {decision['note']}" if decision.get("note") else ""
+                        return f"The user refused this {call['name']} call.{note}", False
                 if call["name"] in URL_TOOLS:
                     self.web_ok.add((urlparse(str(call["args"].get("url") or "")).hostname or "").lower())
         if call["name"] not in SESSION_SPECS:
@@ -1166,6 +1260,16 @@ class AgentSession:
                 record(batch[0], *one(batch[0]))
             index = end
 
+    def _show_images(self) -> None:
+        """Images the agent asked to see go in as one user message after its tool results; only the latest few stay."""
+        images, self.workspace.new_images = self.workspace.new_images, []
+        if not images:
+            return
+        for item in [h for h in self.history if h.get("images")][:-MAX_IMAGES + 1]:
+            item["images"] = []
+        self.history.append({"role": "user", "content": "Images you asked to see: " + ", ".join(name for name, _ in images),
+                             "images": [url for _, url in images]})
+
     def _steps(self, max_steps: int) -> None:
         """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
         broken = 0
@@ -1191,6 +1295,7 @@ class AgentSession:
                     continue
                 break
             self._run_calls(calls)
+            self._show_images()
             broken = broken + 1 if all(c.get("error") or not c["name"] for c in calls) else 0
             if broken >= UNREADABLE_TURNS:
                 self.emit("error", text=f"Model viết {broken} lượt liền lệnh gọi công cụ không đọc được; dừng để khỏi tốn token.")

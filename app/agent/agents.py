@@ -9,7 +9,7 @@ from app.agent.skills import frontmatter
 
 WORKSPACE_DIRS = (".agents/agents", ".claude/agents")
 HOME_DIRS = (".manga-agent/agents", ".claude/agents")
-READ_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "web_fetch", "web_search", "skill"})
+READ_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "view_image", "web_fetch", "web_search", "skill"})
 EDIT_TOOLS = frozenset({"write_file", "edit_file", "edit_lines", "apply_patch", "web_download"})
 # Claude Code's tool names in an agent file's tools list.
 ALIASES = {"read": {"read_file"}, "grep": {"search"}, "glob": {"glob"}, "ls": {"list_dir"}, "bash": {"run_command"},

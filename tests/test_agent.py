@@ -287,7 +287,7 @@ def test_edits_mode_runs_sandboxed_commands_alone_and_asks_to_leave_the_sandbox(
 
 
 def test_denied_calls_reach_the_model(ws, home):
-    fake = scripted(turn(calls=[call("run_command", command="echo hi")]), turn("Ok."))
+    fake = scripted(turn(calls=[call("run_command", command="touch made.txt")]), turn("Ok."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
     session.send("chạy")
     wait_for(session, "waiting")
@@ -1083,7 +1083,7 @@ def test_the_agent_is_nudged_once_when_it_stops_after_editing_without_checking(w
     assert len(quiet.seen) == 2
 
 
-def test_helpers_that_edit_files_run_one_after_the_other(ws, home):
+def test_helpers_that_edit_files_run_one_after_the_other_when_copies_are_off(ws, home):
     import threading
     order = []
 
@@ -1097,6 +1097,7 @@ def test_helpers_that_edit_files_run_one_after_the_other(ws, home):
     fake = routed([turn(calls=[spawn("make file one"), spawn("make file two")]),
                    turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("both done")], child)
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session.profile["isolate_writers"] = False
     run_to_idle(session)
     results = [(ok, o) for _, ok, o in tool_outputs(session)]
     assert results[0][0] and results[1][0] and results[1][1].startswith("Queued birch")
@@ -1391,3 +1392,138 @@ def test_read_only_tool_calls_in_one_reply_run_together_and_writes_stay_in_order
     out = tool_outputs(session)
     assert [n for n, _, _ in out] == ["list_dir"] * 3 + ["write_file", "read_file"]
     assert "1" in out[4][2], "the read after the write sees the write"
+
+
+# Closing the 13 gaps: stale-file guard, symbols, images, saved rules, review mode, CLI, tool search, isolated writers.
+
+def test_overwriting_an_unread_file_or_one_changed_since_reading_is_refused(ws):
+    with pytest.raises(ToolError, match="read_file it first"):
+        ws.run("write_file", {"path": "pkg/a.py", "content": "x"})
+    ws.run("read_file", {"path": "pkg/a.py"})
+    (ws.root / "pkg" / "a.py").write_text("changed outside\n")
+    os.utime(ws.root / "pkg" / "a.py", ns=(1, 1))
+    with pytest.raises(ToolError, match="changed since you last read"):
+        ws.run("edit_file", {"path": "pkg/a.py", "old_text": "changed", "new_text": "x"})
+    ws.run("read_file", {"path": "pkg/a.py"})
+    ws.run("edit_file", {"path": "pkg/a.py", "old_text": "changed", "new_text": "kept"})
+    ws.run("write_file", {"path": "pkg/a.py", "content": "again\n"})
+    ws.run("write_file", {"path": "brand_new.txt", "content": "fine"})
+
+
+def test_symbols_outline_a_file_and_find_a_name_anywhere(ws):
+    (ws.root / "pkg" / "b.js").write_text("export function hello() {}\nclass Widget {}\n")
+    (ws.root / "pkg" / "c.py").write_text("class A:\n    def run(self):\n        pass\n\nasync def go():\n    pass\n")
+    assert ws.run("symbols", {"path": "pkg/c.py"}).splitlines() == ["1: class A", "2:   def run", "5: def go"]
+    assert "2: function hello" not in ws.run("symbols", {"path": "pkg/b.js"}) and "1: function hello" in ws.run("symbols", {"path": "pkg/b.js"})
+    found = ws.run("symbols", {"name": "run"})
+    assert "pkg/c.py:2: def A.run" in found and "a.py" not in found
+
+
+def test_view_image_is_offered_only_to_models_that_can_see_and_reaches_them_as_an_image(ws, home):
+    png = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082")
+    (ws.root / "dot.png").write_bytes(png)
+    blind = manager(home).create(PROVIDERS["openai"], "k", "plain-model", ws, "auto", complete=scripted())
+    sighted = manager(home).create(PROVIDERS["openai"], "k", "gpt-4o", ws, "auto", session_id="seeing", complete=scripted(
+        turn(calls=[call("view_image", path="dot.png")]), turn("A dot."), ))
+    assert "view_image" not in {s["name"] for s in blind.specs()} and "view_image" in {s["name"] for s in sighted.specs()}
+    run_to_idle(sighted)
+    sent = sighted.complete.seen[1][0]
+    parts = next(m["content"] for m in sent if m["role"] == "user" and isinstance(m["content"], list))
+    assert parts[1]["type"] == "image_url" and parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
+    saved = [{k: v for k, v in h.items() if k != "images"} for h in sighted.history]
+    assert not any("images" in h for h in saved)
+
+
+def test_look_only_commands_never_ask_and_saved_rules_allow_a_command_prefix(ws, home):
+    from app.agent import rules
+    assert rules.safe_readonly("ls -la | head") and rules.safe_readonly("git status && git log --oneline")
+    assert not rules.safe_readonly("cat a > b") and not rules.safe_readonly("rm x") and not rules.safe_readonly("echo $(id)") and not rules.safe_readonly("find . -delete")
+    assert rules.remembered("run_command", {"command": "pytest -q"}, None) == ("bash", "pytest *")
+    assert rules.remembered("run_command", {"command": "git commit -m x"}, None) == ("bash", "git commit *")
+    assert rules.remembered("run_command", {"command": "python3 x.py"}, None) == ("bash", "python3 x.py"), "interpreters are saved exactly"
+    assert rules.remembered("run_command", {"command": "git push"}, "ask") is None and rules.remembered("run_command", {"command": "a && b"}, None) is None
+    fake = scripted(turn(calls=[call("run_command", command="ls")]), turn(calls=[call("run_command", command="pytest -q")]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
+    session.send("go")
+    wait_for(session, "waiting")
+    assert session.pending["args"]["command"] == "pytest -q" and session.pending["remember"] == "pytest *"
+    session.decide("allow_always")
+    wait_for(session, "idle")
+    assert json.loads((home / ".manga-agent" / "settings.json").read_text())["permission"]["bash"] == {"pytest *": "allow"}
+    assert rules.check(session.rules, "run_command", {"command": "pytest tests"}, lambda p: p) == "allow"
+
+
+def test_review_mode_lets_a_second_model_clear_a_call_and_asks_the_user_when_it_is_unsure(ws, home):
+    cleared = scripted(turn(calls=[call("write_file", path="a.txt", content="1")]), turn('{"verdict": "allow", "reason": "what was asked"}'),
+                       turn("Done."), turn(calls=[call("run_command", command="true")]), turn("Checked."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "review", complete=cleared)
+    run_to_idle(session, "create a.txt")
+    assert (ws.root / "a.txt").read_text() == "1" and any("Người duyệt cho phép" in e.get("text", "") for e in session.events)
+    seen_by_reviewer = cleared.seen[1][0]
+    assert "create a.txt" in seen_by_reviewer[1]["content"] and "tools" not in str(cleared.seen[1][1] or "")
+    unsure = scripted(turn(calls=[call("write_file", path="b.txt", content="1")]), turn('{"verdict": "ask", "reason": "not requested"}'), turn("ok"), turn("ok"))
+    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "review", session_id="unsure", complete=unsure)
+    other.send("look around")
+    wait_for(other, "waiting")
+    assert other.pending["reviewer"] == "not requested" and not (ws.root / "b.txt").exists()
+    other.decide("deny")
+    wait_for(other, "idle")
+
+
+def test_the_command_line_runs_a_task_and_prints_json_events(ws, home, monkeypatch, capsys):
+    from app.agent import cli
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENT_API_KEY", "k")
+    fake = scripted(turn(calls=[call("list_dir")]), turn("All listed."))
+    original = AgentSessionManager.create
+    monkeypatch.setattr(AgentSessionManager, "create", lambda self, *a, **kw: original(self, *a, **{**kw, "complete": fake}))
+    code = cli.main(["exec", "list it", "--base", "https://api.example.com/v1", "--model", "m", "--workspace", str(ws.root), "--json"])
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert code == 0 and [r["type"] for r in rows if r["type"] in ("assistant", "tool", "result")] == ["assistant", "tool", "assistant", "result"]
+    assert rows[-1]["status"] == "idle" and rows[-1]["usage"]["prompt_tokens"] == 2
+    session_id = rows[-1]["session"]
+    assert (home / ".manga-agent" / "sessions" / f"{session_id}.json").is_file()
+
+
+def test_many_connected_tools_are_found_by_search_instead_of_listed(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted())
+    session.mcp_tools = {f"mcp__s__tool{i}": ("s", {"name": f"tool{i}", "description": "makes tickets" if i == 3 else "does thing"}) for i in range(20)}
+    names = {s["name"] for s in session.specs()}
+    assert "tool_search" in names and not any(n.startswith("mcp__s__") for n in names)
+    found = session._session_tool({"name": "tool_search", "args": {"query": "tickets"}})
+    assert "mcp__s__tool3" in found and "mcp__s__tool3" in {s["name"] for s in session.specs()}
+
+
+def test_a_second_editing_helper_works_in_a_copy_and_its_changes_are_merged_back(ws, home):
+    import threading
+    gate = threading.Event()
+    spawn = lambda n, text: {"id": f"s{n}", "name": "spawn_agent", "args": {"message": text, "agent": "coder"}}
+
+    def team(provider, key, model, messages, *, tools):
+        first = next(m["content"] for m in messages if m["role"] == "user")
+        done = any(m["role"] == "tool" for m in messages)
+        if first == "go":
+            step = sum(1 for m in messages if m["role"] == "assistant")
+            return [turn(calls=[spawn(1, "write one"), spawn(2, "write two")]), turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("all done")][min(step, 2)]
+        if first == "write one":
+            if not done:
+                gate.wait(10)
+                return turn(calls=[{"id": "a", "name": "write_file", "args": {"path": "one.txt", "content": "1"}},
+                                   {"id": "b", "name": "write_file", "args": {"path": "shared.txt", "content": "from one"}}])
+            return turn("one finished")
+        if not done:
+            gate.set()
+            return turn(calls=[{"id": "a", "name": "write_file", "args": {"path": "two.txt", "content": "2"}},
+                               {"id": "b", "name": "write_file", "args": {"path": "shared.txt", "content": "from two"}}])
+        return turn("two finished")
+
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=team)
+    run_to_idle(session)
+    root = ws.root
+    assert (root / "one.txt").read_text() == "1" and (root / "two.txt").read_text() == "2", "both helpers' files are in the project"
+    assert (root / "shared.txt").read_text() == "from one", "the file both changed keeps the project's version"
+    second = list(session.children)[1]
+    assert (root / ".agent-conflicts" / second / "shared.txt").read_text() == "from two"
+    waited = next(o for n, _, o in tool_outputs(session) if n == "wait_agent")
+    assert "merged" in waited and "NOT merged" in waited and "shared.txt" in waited
+    assert not any(Path(tempfile.gettempdir()).glob("agent-copy-*/two.txt"))

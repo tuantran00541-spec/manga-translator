@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import base64
 import fnmatch
 import json
 import os
@@ -25,11 +26,15 @@ MAX_LIST_ENTRIES = 500
 MAX_SEARCH_FILE_BYTES = 1_000_000
 MAX_FETCH_BYTES = 5_000_000
 MAX_DOWNLOAD_BYTES = 50_000_000
+MAX_IMAGE_BYTES = 4_000_000
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+SYMBOL_LINE = re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:(?:public|private|protected|static|final|abstract|pub|override)\s+)*"
+                         r"(def|class|function|func|fn|struct|enum|interface|trait|type|impl|module|object)\s+\*?([A-Za-z_$][\w$]*)")
 COMMAND_TIMEOUT = 120
 MAX_COMMAND_TIMEOUT = 1800
 
 # What each tool can do decides whether it waits for the user: read, edit, exec or net.
-KIND = {"list_dir": "read", "read_file": "read", "search": "read", "glob": "read", "write_file": "edit",
+KIND = {"list_dir": "read", "read_file": "read", "symbols": "read", "view_image": "read", "search": "read", "glob": "read", "write_file": "edit",
         "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "run_command": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
 
 SPECS = [
@@ -43,6 +48,12 @@ SPECS = [
          "offset": {"type": "integer", "description": "First line to read, from 1."},
          "limit": {"type": "integer", "description": "How many lines to read, at most 2000."},
          "anchors": {"type": "boolean", "description": "Show each line as N#hh|text so edit_lines can point at it."}}}},
+    {"name": "symbols", "description": "Outline a file's classes and functions with line numbers, or find where a name is defined across the workspace.",
+     "parameters": {"type": "object", "properties": {
+         "path": {"type": "string", "description": "A file to outline, or a folder to search; '.' by default."},
+         "name": {"type": "string", "description": "Find definitions whose name contains this text."}}}},
+    {"name": "view_image", "description": "Look at an image file (png, jpg, gif, webp, up to 4 MB); it appears in your next turn.",
+     "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
     {"name": "search", "description": "Search file contents with a regular expression; returns file:line: text.",
      "parameters": {"type": "object", "required": ["pattern"], "properties": {
          "pattern": {"type": "string"}, "path": {"type": "string"},
@@ -109,6 +120,9 @@ class Workspace:
         self.root = root
         self.policy = policy or sandbox.Policy()
         self.read_roots = [Path(p).resolve() for p in read_roots or []]
+        # Files the agent has read or written, with their modification time then; an edit over a newer one is refused.
+        self.seen: dict[Path, int] = {}
+        self.new_images: list[tuple[str, str]] = []
 
     def resolve(self, path: str | None, *, write: bool = False) -> Path:
         target = (self.root / (path or ".")).resolve()
@@ -139,7 +153,10 @@ class Workspace:
         except TypeError as exc:
             raise ToolError(f"Bad arguments for {name}: {exc}") from exc
         if KIND.get(name) == "edit":
-            problems = self.diagnose(self.targets(name, args))
+            changed = self.targets(name, args)
+            for path in changed:
+                self._stamp(path)
+            problems = self.diagnose(changed)
             if problems:
                 output += f"\nSyntax check failed:\n{problems}"
         return output
@@ -154,6 +171,23 @@ class Workspace:
         except (ToolError, patches.PatchError):
             pass
         return []
+
+    def _stamp(self, path: Path) -> None:
+        try:
+            self.seen[path] = path.stat().st_mtime_ns
+        except OSError:
+            self.seen.pop(path, None)
+
+    def _fresh(self, target: Path, shown: str, overwrite: bool = False) -> None:
+        """Refuse to change a file that was never read (when overwriting) or that changed after the agent last saw it."""
+        if not target.is_file():
+            return
+        if target not in self.seen:
+            if overwrite:
+                raise ToolError(f"{shown} already exists; read_file it first, or use edit_file to change part of it")
+            return
+        if target.stat().st_mtime_ns != self.seen[target]:
+            raise ToolError(f"{shown} changed since you last read it; read it again before changing it")
 
     def diagnose(self, paths: list[Path]) -> str:
         """Syntax errors in changed Python and JSON files, so the model sees them at once."""
@@ -209,6 +243,7 @@ class Workspace:
         data = target.read_bytes()
         if b"\0" in data[:8192]:
             raise ToolError(f"{path!r} is a binary file")
+        self._stamp(target)
         lines = data.decode("utf-8", errors="replace").splitlines()
         start = max(1, int(offset))
         count = max(1, min(MAX_READ_LINES, int(limit)))
@@ -217,6 +252,66 @@ class Workspace:
         more = len(lines) - (start - 1 + len(chunk))
         tail = f"\n… {more} more lines" if more > 0 else ""
         return clip(body + tail) if chunk else f"(file has {len(lines)} lines)"
+
+    def _tool_symbols(self, path: str = ".", name: str | None = None) -> str:
+        top = self.resolve(path)
+        if top.is_file() and not name:
+            rows = self._outline(top)
+            return "\n".join(rows) or "No definitions found"
+        needle = (name or "").lower()
+        hits: list[str] = []
+        for file in self._files(top):
+            if file.suffix in IMAGE_TYPES or file.stat().st_size > MAX_SEARCH_FILE_BYTES:
+                continue
+            for row in self._outline(file, flat=True):
+                if not needle or needle in row.split(" ", 2)[-1].lower():
+                    hits.append(f"{self.rel(file)}:{row}")
+                    if len(hits) >= MAX_SEARCH_HITS:
+                        return "\n".join(hits) + f"\n… stopped at {MAX_SEARCH_HITS} matches"
+        return "\n".join(hits) or "No definitions found"
+
+    def _outline(self, file: Path, flat: bool = False) -> list[str]:
+        """Definitions in a file as 'line kind name'; indented by nesting unless flat."""
+        try:
+            data = file.read_bytes()
+        except OSError:
+            return []
+        if b"\0" in data[:8192]:
+            return []
+        source = data.decode("utf-8", errors="replace")
+        rows: list[str] = []
+        if file.suffix == ".py":
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:
+                tree = None
+            if tree is not None:
+                def walk(node: ast.AST, prefix: str, level: int) -> None:
+                    for child in ast.iter_child_nodes(node):
+                        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                            kind = "class" if isinstance(child, ast.ClassDef) else "def"
+                            rows.append(f"{child.lineno}: {kind} {prefix}{child.name}" if flat else f"{child.lineno}: {'  ' * level}{kind} {child.name}")
+                            walk(child, f"{prefix}{child.name}.", level + 1)
+                        else:
+                            walk(child, prefix, level)
+                walk(tree, "", 0)
+                return rows
+        for number, line in enumerate(source.splitlines(), 1):
+            found = SYMBOL_LINE.match(line)
+            if found:
+                indent = 0 if flat else (len(line) - len(line.lstrip())) // 2
+                rows.append(f"{number}: {'  ' * indent}{found.group(1)} {found.group(2)}")
+        return rows
+
+    def _tool_view_image(self, path: str) -> str:
+        target = self.resolve(path)
+        kind = IMAGE_TYPES.get(target.suffix.lower())
+        if not target.is_file() or kind is None:
+            raise ToolError(f"{path!r} is not a png, jpg, gif or webp image")
+        if target.stat().st_size > MAX_IMAGE_BYTES:
+            raise ToolError(f"{path!r} is larger than {MAX_IMAGE_BYTES // 1_000_000} MB; make a smaller copy with a command first")
+        self.new_images.append((self.rel(target), f"data:{kind};base64,{base64.b64encode(target.read_bytes()).decode()}"))
+        return f"Image {self.rel(target)} loaded; it is shown to you in the next message."
 
     def _tool_search(self, pattern: str, path: str = ".", glob: str | None = None, ignore_case: bool = False) -> str:
         try:
@@ -254,6 +349,7 @@ class Workspace:
         target = self.resolve(path, write=True)
         if target.is_dir():
             raise ToolError(f"{path!r} is a folder")
+        self._fresh(target, path, overwrite=True)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(str(content), encoding="utf-8")
         return f"Wrote {self.rel(target)} ({len(str(content).splitlines())} lines)"
@@ -262,6 +358,7 @@ class Workspace:
         target = self.resolve(path, write=True)
         if not target.is_file():
             raise ToolError(f"{path!r} is not a file")
+        self._fresh(target, path)
         text = target.read_text(encoding="utf-8")
         count = text.count(old_text) if old_text else 0
         if count == 0:
@@ -276,6 +373,7 @@ class Workspace:
         target = self.resolve(path, write=True)
         if not target.is_file():
             raise ToolError(f"{path!r} is not a file")
+        self._fresh(target, path)
         try:
             target.write_text(hashline.apply(target.read_bytes().decode("utf-8"), edits), encoding="utf-8", newline="")
         except hashline.HashlineError as exc:
@@ -283,6 +381,8 @@ class Workspace:
         return f"Edited {self.rel(target)} ({len(edits)} edits)"
 
     def _tool_apply_patch(self, patch: str) -> str:
+        for path in self.targets("apply_patch", {"patch": patch}):
+            self._fresh(path, self.rel(path))
         try:
             return patches.apply(patch, lambda p: self.resolve(p, write=True), self.rel)
         except patches.PatchError as exc:

@@ -213,7 +213,7 @@ def check_python_module_reachability() -> None:
                 if candidate in existing:
                     incoming[candidate].append(f"{path}:{node.lineno}")
 
-    entrypoints = {"app.main"}
+    entrypoints = {"app.main", "app.agent.cli"}
     failures = [
         f"{module} has no incoming runtime import"
         for module in sorted(existing)

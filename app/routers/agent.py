@@ -155,8 +155,8 @@ def send_message(session_id: str, req: MessageRequest) -> dict:
 
 @router.post("/sessions/{session_id}/approval")
 def approve(session_id: str, req: ApprovalRequest) -> dict:
-    if req.decision not in {"allow", "allow_all", "deny"}:
-        raise HTTPException(400, "decision must be allow, allow_all or deny")
+    if req.decision not in {"allow", "allow_always", "allow_all", "deny"}:
+        raise HTTPException(400, "decision must be allow, allow_always, allow_all or deny")
     try:
         _session(session_id).decide(req.decision, req.note)
     except RuntimeError as exc:
