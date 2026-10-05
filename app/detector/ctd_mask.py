@@ -94,32 +94,41 @@ def _distance(a: np.ndarray, centers: np.ndarray) -> np.ndarray:
     return np.sqrt(nearest)
 
 
-def _plate(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, bg: np.ndarray, inner: tuple[bool, bool, bool, bool]):
-    """A dark plate the letters sit on, such as a scanlator badge, closed inside the crop; None for bubbles and art."""
-    if len(bg) < 20 or not seed.any():
+def _plate(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, bg: np.ndarray, size: int,
+           inner: tuple[bool, bool, bool, bool]):
+    """A dark one-line plate the letters sit on, such as a scanlator badge, closed inside the crop; None for bubbles and art."""
+    if len(bg) < 20 or not seed.any() or size < 4:
         return None
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
     centers = _centres(bg)
     unlike = _distance(lab, centers) > np.percentile(_distance(bg.astype(np.float32), centers), 95) + PLATE_MARGIN
     unlike = cv2.morphologyEx(unlike.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8),
-                              borderType=cv2.BORDER_CONSTANT, borderValue=0) > 0
-    _, labels = cv2.connectedComponents((unlike | grown).astype(np.uint8))
-    ids = np.unique(labels[seed])
+                              borderType=cv2.BORDER_CONSTANT, borderValue=0)
+    # Thin panel lines touching the plate are not part of it.
+    thin = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (max(3, size // 2) | 1,) * 2)
+    raw = (unlike | grown.astype(np.uint8)) > 0
+    body = cv2.morphologyEx(raw.astype(np.uint8), cv2.MORPH_OPEN, thin) > 0
+    _, labels = cv2.connectedComponents(body.astype(np.uint8))
+    ids = np.unique(labels[seed & body])
     part = np.isin(labels, ids[ids > 0])
+    if not part.any():
+        return None
     left, top, right, bottom = inner
     if (top and part[0].any()) or (bottom and part[-1].any()) or (left and part[:, 0].any()) or (right and part[:, -1].any()):
         return None
     under = part & ~grown
-    # A plate is more than the letters, and darker than paper: bubbles and caption boxes keep their shape.
-    if under.sum() < PLATE_AREA * part.sum() or np.median(lab[..., 0][under]) > PLATE_LIGHT:
+    # Darker than paper, so bubbles and caption boxes keep their shape.
+    if under.any() and np.median(lab[..., 0][under]) > PLATE_LIGHT:
         return None
     ys, xs = np.nonzero(part)
-    sy, sx = np.nonzero(seed)
+    sx = np.nonzero(seed)[1]
     height, width = ys.max() - ys.min() + 1, xs.max() - xs.min() + 1
-    if height > PLATE_TALL * (sy.max() - sy.min() + 1) or width > PLATE_WIDE * (sx.max() - sx.min() + 1):
+    if height > PLATE_TALL * size or width > PLATE_WIDE * (sx.max() - sx.min() + 1):
         return None
     if part.sum() < PLATE_SOLID * height * width:
         return None
+    # The plate's own thin rim, shaved off with the panel lines, comes back.
+    part |= (cv2.dilate(part.astype(np.uint8), thin) > 0) & raw
     outline, _ = cv2.findContours(part.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     return cv2.drawContours(np.zeros(part.shape, np.uint8), outline, -1, 1, -1) > 0
 
@@ -198,9 +207,8 @@ def _fringe(lab: np.ndarray, seed: np.ndarray, region: np.ndarray, reach: int) -
 
 
 PLATE_MARGIN = 8  # Lab distance past the background's own spread that marks a plate pixel
-PLATE_AREA = 0.15  # share of a plate its letters' mask must leave uncovered
 PLATE_LIGHT = 200  # Lab lightness above which the plate is paper (a bubble or caption box), never erased
-PLATE_TALL = 2.0  # a plate is at most this many times the letters' height
+PLATE_TALL = 4.0  # a plate is at most this many letter heights tall: one line of text
 PLATE_WIDE = 1.6  # and this many times their width
 PLATE_SOLID = 0.6  # share of its bounding box a plate fills
 
@@ -329,8 +337,9 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_lette
     ring = np.ones((ey2 - ey1, ex2 - ex1), bool)
     ring[by1 - ey1:by2 - ey1, bx1 - ex1:bx2 - ex1] = False
     bg = cv2.cvtColor(image[ey1:ey2, ex1:ex2], cv2.COLOR_BGR2LAB)[ring]
-    grown = grow(crop, seed, bg, int(text_size(seed, prob) * REACH))
-    plate = _plate(crop, seed, grown, bg, (bx1 > 0, by1 > 0, bx2 < w, by2 < h))
+    size = text_size(seed, prob)
+    grown = grow(crop, seed, bg, int(size * REACH))
+    plate = _plate(crop, seed, grown, bg, size, (bx1 > 0, by1 > 0, bx2 < w, by2 < h))
     if plate is not None:
         grown = grown | plate
     return ((bx1, by1, bx2, by2), grown, seed) if with_letters else ((bx1, by1, bx2, by2), grown)
