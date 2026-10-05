@@ -1,0 +1,134 @@
+[
+ {
+  "model": "qwen-3.8-27b",
+  "status": "running",
+  "usage": {
+   "prompt_tokens": 120898,
+   "completion_tokens": 1918
+  },
+  "steps": 16,
+  "tool_counts": {
+   "": 6,
+   "list_dir": 1,
+   "read_file": 1,
+   "spawn_agent": 6,
+   "todo_write": 1,
+   "wait_agent": 1
+  },
+  "failed_tools": 6,
+  "helpers": [],
+  "errors": [],
+  "notices": []
+ },
+ {
+  "model": "agnes-3.0-flash",
+  "status": "running",
+  "usage": {
+   "prompt_tokens": 7141563,
+   "completion_tokens": 22569
+  },
+  "steps": 15,
+  "tool_counts": {
+   "list_dir": 1,
+   "read_file": 1,
+   "send_input": 3,
+   "spawn_agent": 9,
+   "wait_agent": 3
+  },
+  "failed_tools": 0,
+  "helpers": [
+   {
+    "seq": 24,
+    "type": "subagent",
+    "time": 1791213621.412,
+    "description": "Đọc kỹ bộ test của dự án Manga Translator (workspace /tmp/agent-work/project): t",
+    "agent": "explore",
+    "id": "elm",
+    "state": "done",
+    "tools": 16
+   },
+   {
+    "seq": 25,
+    "type": "subagent",
+    "time": 1791213621.412,
+    "description": "Đọc kỹ agent harness của dự án Manga Translator (workspace /tmp/agent-work/proje",
+    "agent": "explore",
+    "id": "fern",
+    "state": "done",
+    "tools": 12
+   },
+   {
+    "seq": 26,
+    "type": "subagent",
+    "time": 1791213621.412,
+    "description": "Đọc kỹ A.I mode và các nhà cung cấp AI của dự án Manga Translator (workspace /tm",
+    "agent": "explore",
+    "id": "hazel",
+    "state": "done",
+    "tools": 14
+   },
+   {
+    "seq": 29,
+    "type": "subagent",
+    "time": 1791213970.257,
+    "description": "Đọc kỹ pipeline detect, mask và inpaint của dự án Manga Translator (workspace /t",
+    "agent": "explore",
+    "id": "ash",
+    "state": "done",
+    "tools": 46
+   },
+   {
+    "seq": 30,
+    "type": "subagent",
+    "time": 1791213970.257,
+    "description": "Đọc kỹ các router API FastAPI trong app/routers của dự án Manga Translator (work",
+    "agent": "explore",
+    "id": "birch",
+    "state": "done",
+    "tools": 45
+   },
+   {
+    "seq": 31,
+    "type": "subagent",
+    "time": 1791213970.257,
+    "description": "Đọc kỹ frontend của dự án Manga Translator (workspace /tmp/agent-work/project): ",
+    "agent": "explore",
+    "id": "cedar",
+    "state": "done",
+    "tools": 35
+   },
+   {
+    "seq": 38,
+    "type": "subagent",
+    "time": 1791214078.763,
+    "description": "Đọc kỹ pipeline detect, mask và inpaint của dự án Manga Translator (workspace /t",
+    "agent": "explore",
+    "id": "ash",
+    "state": "done",
+    "tools": 48
+   },
+   {
+    "seq": 39,
+    "type": "subagent",
+    "time": 1791214078.763,
+    "description": "Đọc kỹ các router API FastAPI trong app/routers của dự án Manga Translator (work",
+    "agent": "explore",
+    "id": "birch",
+    "state": "done",
+    "tools": 45
+   },
+   {
+    "seq": 40,
+    "type": "subagent",
+    "time": 1791214078.763,
+    "description": "Đọc kỹ frontend của dự án Manga Translator (workspace /tmp/agent-work/project): ",
+    "agent": "explore",
+    "id": "cedar",
+    "state": "done",
+    "tools": 35
+   }
+  ],
+  "errors": [],
+  "notices": []
+ }
+]

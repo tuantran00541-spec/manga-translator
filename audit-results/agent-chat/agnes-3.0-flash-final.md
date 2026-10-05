@@ -1,0 +1,1 @@
+Ba báo cáo chính về pipeline, router và frontend đã sẵn sàng. Ba agent còn lại (bộ test, agent harness, AI mode) gặp rate limit khi spawn ban đầu; tôi đã spawn lại chúng. Trong khi chờ, tôi sẽ tự đọc nhanh các phần còn thiếu để không phụ thuộc hoàn toàn vào agent.

@@ -1,0 +1,33 @@
+Hãy đi xem code của dự án này. Đọc README.md rồi duyệt cấu trúc thư mục. Sau đó dùng spawn_agent giao việc cho nhiều agent con chạy song song, mỗi agent đọc kỹ một phần: (1) pipeline detect, mask và inpaint trong app/detector và app/inpaint, (2) các router API trong app/routers, (3) frontend app/static/js, (4) bộ test trong tests, (5) agent harness trong app/agent, (6) A.I mode và các nhà cung cấp AI. Dùng wait_agent lấy báo cáo của từng agent. Cuối cùng tổng hợp một bản đồ kiến trúc ngắn gọn và nêu 5 điểm đáng ngờ hoặc có thể là bug, kèm đường dẫn file và dòng.
+Đọc 1 file, tìm 1 lần, giao 6 việc cho agent phụ, đợi 2 agent phụ
+6 lỗi
+Đọc
+README.md
+Xem
+.
+Kế hoạch
+4 việc
+.
+.
+.
+Giao việc
+explore: Read-only research in the workspace (paths relative to root). Study the detect/m
+Giao việc
+explore: Read-only research in the workspace (paths relative to root). Study all FastAPI
+Giao việc
+explore: Read-only research in the workspace (paths relative to root). Study the frontend
+Giao việc
+explore: Read-only research in the workspace (paths relative to root). Study the test sui
+Giao việc
+explore: Read-only research in the workspace (paths relative to root). Study the agent ha
+.
+.
+.
+Giao việc
+explore: Read-only research in the workspace (paths relative to root). Study A.I mode and
+Đợi agent
+ash, birch, cedar, elm, fern, hazel
+Đợi agent
+ash, birch, cedar, elm, fern, hazel
+
+Đang làm…

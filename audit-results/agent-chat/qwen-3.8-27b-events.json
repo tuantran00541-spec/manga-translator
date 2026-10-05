@@ -1,0 +1,528 @@
+[
+ {
+  "seq": 1,
+  "type": "user",
+  "time": 1791213084.389,
+  "text": "Hãy đi xem code của dự án này. Đọc README.md rồi duyệt cấu trúc thư mục. Sau đó dùng spawn_agent giao việc cho nhiều agent con chạy song song, mỗi agent đọc kỹ một phần: (1) pipeline detect, mask và inpaint trong app/detector và app/inpaint, (2) các router API trong app/routers, (3) frontend app/static/js, (4) bộ test trong tests, (5) agent harness trong app/agent, (6) A.I mode và các nhà cung cấp AI. Dùng wait_agent lấy báo cáo của từng agent. Cuối cùng tổng hợp một bản đồ kiến trúc ngắn gọn và nêu 5 điểm đáng ngờ hoặc có thể là bug, kèm đường dẫn file và dòng.",
+  "refs": [],
+  "queued": false
+ },
+ {
+  "seq": 2,
+  "type": "assistant",
+  "time": 1791213086.435,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "call_e3470d384ed84698814e5902",
+    "name": "read_file",
+    "args": {
+     "path": "README.md"
+    }
+   },
+   {
+    "id": "call_7ae78fc8fe294535868cf593",
+    "name": "list_dir",
+    "args": {
+     "path": ".",
+     "depth": 3
+    }
+   }
+  ]
+ },
+ {
+  "seq": 3,
+  "type": "tool",
+  "time": 1791213086.436,
+  "id": "call_e3470d384ed84698814e5902",
+  "name": "read_file",
+  "ok": true,
+  "output": "     1\t# Manga & Webtoon Translator Studio\n     2\t\n     3\t[![Release Gate](https://github.com/tuantran00541-spec/manga-translator/actions/workflows/release-gate.yml/badge.svg)](https://github.com/tuantran00541-spec/manga-translator/actions/workflows/release-gate.yml)\n     4\t[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)\n     5\t[![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)\n     6\t[![CPU First](https://img.shields.io/badge/runtime-CPU--first-222222)](#cpu-first-design)\n     7\t\n     8\t**Translate a manga, manhwa or webtoon chapter on your own computer, with no GPU.**\n     9\t\n    10\tGive it a chapter URL or a folder of images. It erases the original lettering, translates it and letters the translation back, and leaves every step open to the editor: nothing becomes the final chapter until you say so.\n    11\t\n    12\t**Import → Slice → Detect → Clean → Review → OCR → Translate → Letter → Render → Export**\n    13\t\n    14\t<p align=\"center\">\n    15\t  <img src=\"docs/images/demo-raw.jpg\" alt=\"Original English page with two speech balloons\" width=\"32%\">\n    16\t  <img src=\"docs/images/demo-clean.jpg\" alt=\"The same page after cleanup, balloons empty\" width=\"32%\">\n    17\t  <img src=\"docs/images/demo-translated.jpg\" alt=\"The page translated to Vietnamese by A.I mode\" width=\"32%\">\n    18\t</p>\n    19\t\n    20\t<p align=\"center\"><sub>RAW → CLEAN → translated to Vietnamese by A.I mode, cropped from page 3 of <a href=\"https://www.peppercarrot.com/en/webcomic/ep38_The-Healer.html\">Pepper&amp;Carrot episode 38, “The Healer”</a> by David Revoy, <a href=\"https://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a>. The lettering was erased and the translation lettered by this app.</sub></p>\n    21\t\n    22\t> **Automation proposes. Editorial state decides. Published artifacts must match the current state.**\n    23\t\n    24\t## What it does well\n    25\t\n    26\t### It erases text without wrecking the art\n    27\t\n    28\tCleanup runs on a mask of the letters themselves, not on detector rectangles. A comic-text-detector mask head reads the letters; the app adds a thin outline round every letter, then grows into the glow and shadow round it. Art that touches the letters stays.\n    29\t\n    30\tTwo whole webtoon chapters on a 4-core GitHub runner, real models, 2 page workers (evidence on the `audit-evidence` branch):\n    31\t\n    32\t| Chapter | Slices | Text blocks | Time | Text left |\n    33\t| --- | --- | --- | --- | --- |\n    34\t| The World After the End, ch. 254 | 68 | 167 | 418 s | **0** |\n    35\t| Youngest Scion of the Mages, ch. 137 | 52 | 145 | 332 s | **0** |\n    36\t\n    37\tTimes move with the runner's CPU: the first chapter took 418 s and 446 s on two different CPU models.\n    38\t\n    39\tOn labelled synthetic text, the mask erases 73.7 % of what has to go at 73.1 % precision; the hand-tuned rules it replaced managed 65.4 % at 43.1 %.\n    40\t\n    41\t### The same image always gives the same result\n    42\t\n    43\tA page cleaned twice gives the same pixels, on any CPU: the sampled slices of a whole chapter came out pixel-identical on two different CPU models. The one source of run-to-run drift, a random seed in the background-colour clustering, is fixed.\n    44\t\n    45\t### It is fast where it matters\n    46\t\n    47\t- A 2.4 M-parameter detector finds the text of a slice in a few packed passes (halves side by side, near-native bands, page-scale columns for big captions), on the OpenVINO runtime when available.\n    48\t- The letter-mask model runs about 40× faster than the released one with identical masks.\n    49\t- LaMa fills each region in one downscaled pass (512 px long side), and only where a fill is needed: a hole ringed by one colour, of any shade, is filled flat with no model run.\n    50\t\n    51\t### The whole chapter runs on a laptop\n    52\t\n    53\tEverything on the cleanup path is a small ONNX model on the CPU. Nothing needs a GPU or a cloud account; OCR and AI translation are optional layers around that.\n    54\t\n    55\t## Two ways to work\n    56\t\n    57\t**By hand.** Import a chapter and clean it, then correct, OCR, translate and letter it in the browser workbench. Every step can be redone.\n    58\t\n    59\t**A.I mode.** Paste a chapter URL with an AI key (or use Manga Cloud) and pick the target language: Vietnamese, English, Indonesian, Spanish, Portuguese, French or German. Four checkpoints run the chapter, and the lettered result opens in the same editor:\n    60\t\n    61\t1. **Scan** the raw slices: skip credit and textless slices, keep series logos untouched.\n    62\t2. **Clean** the text (Kiuyha + LaMa). Meanwhile the chapter's names and terms are read into a glossary.\n    63\t3. **Review** each raw and clean slice pair: erase missed text, repaint leftovers, restore art erased by mistake.\n    64\t4. **Translate** each slice from its raw image with the glossary, naming each text's role and container; the font follows them, so one kind of text always looks the same.\n    65\t\n    66\tAn optional **Jev** pass grades every translated line and rewrites the weak ones.\n    67\t\n    68\tAcross five chapters of five series, A.I mode cost about **$0.07** of model calls per chapter.\n    69\t\n    70\t## The workflow\n    71\t\n    72\t| Stage | What happens |\n    73\t| --- | --- |\n    74\t| **1. Import** | Images, ZIP/CBZ archives, or chapter URLs |\n    75\t| **2. Slice** | Long webtoon pages become processing-friendly slices |\n    76\t| **3. Detect** | Text blocks and a letter mask for each (letters, outlines, glow) |\n    77\t| **4. Clean** | LaMa inpainting on letter masks, leftover passes, manual repair |\n    78\t| **5. Review** | Unified canvas workspace and editorial corrections |\n    79\t| **6. OCR** | MangaOCR + PP-OCRv6 hybrid recognition |\n    80\t| **7. Translate** | Batch text translation or two-image vision translation |\n    81\t| **8. Letter** | Text objects, geometry, typography, fonts by text role |\n    82\t| **9. Render** | Revision-safe page publication |\n    83\t| **10. Export** | Stitched chapter ZIP |\n    84\t\n    85\t## Features\n    86\t\n    87\t### Import and slicing\n    88\t\n    89\t- PNG, JPEG, WEBP and BMP; ZIP and CBZ chapters\n    90\t- The browser extension: open the chapter in your own Chrome or Edge, click once, and its images go into the app. Sites behind Cloudflare that block Playwright work, because your browser has already loaded the pages.\n    91\t- Chapter URLs through HTTP and Playwright: relative URLs, srcset, lazy-load attributes and scroll-based discovery, with site adapters where a fast path is stable\n    92\t- Bounded downloads and upload validation\n    93\t- Long pages are cut in low-content bands, never at a fixed height. Source-page identity and stitch ownership are recorded, so the chapter is rebuilt with no duplicated or missing pixels.\n    94\t\n    95\t### Detection\n    96\t\n    97\tThe Kiuyha ONNX text detector (`models/kiuyha_text_1280.onnx`) finds the text blocks of a slice. Each block gets an erase mask:\n    98\t\n    99\t- letters read by the mask head of comic-text-detector (`models/ctd_seg.onnx`), at full and half size\n   100\t- a thin outline round every letter, even one the same colour as the background\n   101\t- glow and shadow: smooth pixels unlike the colours round the block, grown out from the letters\n   102\t- art touching the letters stays: growth that runs off the block is dropped\n   103\t- a box holding two separate captions becomes two texts\n   104\t- text across a slice seam is detected once on a strip over the cut and joins the block it belongs to\n   105\t\n   106\tDetection records keep their source model and review state. [docs/detection.md](docs/detection.md) explains how and why.\n   107\t\n   108\t### Artwork-safe cleanup\n   109\t\n   110\t- LaMa inpainting with a zeroed hole, and nearby text not erased yet hidden from its context\n   111\t- leftover passes only where the letter model still reads text after cleanup\n   112\t- flat fill instead of LaMa where a hole is ringed by one colour\n   113\t- dynamic and fixed LaMa backends, with tiling for the fixed 512 model\n   114\t- manual repaint, mask reset, and preserve/skip regions\n   115\t- a restore brush that puts the original page back where the cleanup went too far; the page keeps it through later repaints\n   116\t\n   117\tUncertain detections, watermarks and review-only regions are not silently promoted to destructive cleanup.\n   118\t\n   119\t### OCR\n   120\t\n   121\t- **PP-OCRv6 / PaddleOCR** for Japanese, Chinese, Korean and English. On 110 Black Jack text boxes it missed 3.2% of the dialogue characters, against 13% for MangaOCR, which the app used before.\n   122\t\n   123\tOCR is chapter-aware and revision-safe, and keeps the source lettering's colour, position and size as hints for typesetting.\n   124\t\n   125\t### Translation\n   126\t\n   127\t**Text translation.** Batch existing text objects through configured OpenAI-compatible providers, with stable IDs, stale-write protection and budget controls where pricing is known.\n   128\t\n   129\t**Vision translation.** Send the **ORIGINAL** and **CLEAN** versions of a slice together with the existing text-object IDs and their regions. The model translates only objects that already exist; geometry, placement, colour and size stay editor-owned.\n   130\t\n   131\t### Lettering and fonts\n   132\t\n   133\tThe browser workbench edits translated text, font, size, weight, stroke, background, alignment, region geometry and manual text objects in one Review workspace.\n   134\t\n   135\t- **Undo and redo** (Ctrl+Z, Ctrl+Y) for text edits, moves, resizes, styles, new and deleted text objects, and whole find-and-replace or preset runs.\n   136\t- **Keyboard proofreading**: A/D move between slices, Alt+Up/Down between text objects, Enter edits the translation, Ctrl+Enter saves and goes to the next one, Esc returns to the page; `?` lists every shortcut.\n   137\t- **Proofreading panel** (Ctrl+F, Ctrl+H): every source line and translatio\n… [13811 characters cut] …\nsts its limits and admin commands.\n   291\t\n   292\t| Area | Variables |\n   293\t| --- | --- |\n   294\t| A.I upstream | `GATEWAY_UPSTREAM_BASE`, `GATEWAY_UPSTREAM_KEY`, `GATEWAY_UPSTREAM_MODEL`, `GATEWAY_PRICE_INPUT_PER_M`, `GATEWAY_PRICE_OUTPUT_PER_M`; for Azure OpenAI also `GATEWAY_UPSTREAM_AUTH=api-key` and `GATEWAY_UPSTREAM_MAX_TOKENS_FIELD=max_completion_tokens` |\n   295\t| Login email | `GATEWAY_RESEND_API_KEY`, `GATEWAY_MAIL_FROM`, `GATEWAY_DEV_LOGIN=1` (shows the code instead of mailing it, local testing only) |\n   296\t| Wallet | `GATEWAY_FEE_PERCENT` (5), `GATEWAY_CHAPTER_ESTIMATE_USD` (0.30), `GATEWAY_VND_PER_USD` (26000), `GATEWAY_TOPUPS_VND`, `GATEWAY_TOPUPS_USD` |\n   297\t| payOS (VietQR) | `GATEWAY_PAYOS_CLIENT_ID`, `GATEWAY_PAYOS_API_KEY`, `GATEWAY_PAYOS_CHECKSUM_KEY`, `GATEWAY_PAYOS_FEE_PERCENT` (0); webhook `/v1/billing/payos/webhook` |\n   298\t| Lemon Squeezy (cards) | `GATEWAY_LS_API_KEY`, `GATEWAY_LS_STORE_ID`, `GATEWAY_LS_VARIANT`, `GATEWAY_LS_WEBHOOK_SECRET`, `GATEWAY_LS_FEE_PERCENT` (5), `GATEWAY_LS_FEE_FIXED_USD` (0.50); webhook `/v1/billing/lemonsqueezy/webhook` |\n   299\t| Other | `GATEWAY_DB`, `GATEWAY_ADMIN_KEY`, `GATEWAY_RETURN_URL`, `GATEWAY_HOST`, `GATEWAY_PORT`, `GATEWAY_TRUSTED_PROXIES` |\n   300\t\n   301\tSigned-in users see their balance and every top-up and chapter charge, and can sign out on every device or delete their account from the A.I mode panel. A payOS top-up is credited once, when its webhook reports the exact amount. A Lemon Squeezy top-up is a one-time order at a custom price on one product variant; a refund takes the credit back.\n   302\t\n   303\t## Runtime settings\n   304\t\n   305\tDetection, inpainting, OCR and rendering thresholds are fixed constants in `app/parameters.py`. Only operational settings read environment variables:\n   306\t\n   307\t| Area | Variables |\n   308\t| --- | --- |\n   309\t| Processing | `MANGA_PIPELINE_DEFAULT_WORKERS`, `MANGA_PIPELINE_SLICE_WORKER_LIMIT`, `MANGA_USE_DYNAMIC_LAMA`, `MANGA_INPAINT_PRELOAD`, `MANGA_FIXED_LAMA_*` |\n   310\t| ONNX Runtime | `MANGA_ORT_PROVIDER`, `MANGA_ORT_REQUIRE_PROVIDER`, `MANGA_ORT_INTRA_OP_THREADS`, `MANGA_ORT_OPENVINO_*`, `MANGA_ORT_CPU_MEM_ARENA`, `MANGA_ORT_MEM_PATTERN`, `MANGA_ORT_SERIALIZE_INFERENCE` |\n   311\t| OCR | `MANGA_PPOCRV6_TIER`, `MANGA_PPOCRV6_TEXTLINE_ORIENTATION`, `MANGA_OCR_TARGET_SELECTION`, `MANGA_OCR_IMAGE_CACHE_MB`, `MANGA_OCR_JOB_CONCURRENCY_LIMIT`, `MANGA_OCR_JOB_ACTIVE_LIMIT` |\n   312\t| Agent | `MANGA_AGENT_MODE=0` turns the Agent screen's routes off |\n   313\t| Access | `MANGA_ALLOWED_HOSTS`: extra host names the app answers to, comma separated (loopback always works; add the machine's LAN name or IP to open it from another device) |\n   314\t| Network and AI | `MANGA_DOWNLOAD_WORKERS`, `MANGA_DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS`, `MANGA_REMOTE_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_READ_TIMEOUT_SECONDS` |\n   315\t\n   316\t## CPU-first design\n   317\t\n   318\tThe supported baseline is CPU execution, tuned for bounded desktop-class workloads instead of a GPU:\n   319\t\n   320\t- two page workers by default, small enough that heavy inference kernels do not fight for the same memory bandwidth\n   321\t- conservative ONNX Runtime threading\n   322\t- OpenVINO for the text detector on x86-64 Windows and Linux; standard ONNX Runtime elsewhere and for the letter mask and LaMa, whose input sizes vary\n   323\t- decoded-page caching for repeated OCR work\n   324\t- bounded downloads with transient retries\n   325\t- short manifest lock windows\n   326\t\n   327\t## Safety by design\n   328\t\n   329\tSafety is part of the processing model, not only of deployment. The app protects:\n   330\t\n   331\t- remote URL imports against SSRF and unsafe address ranges\n   332\t- managed files against path escape\n   333\t- uploads and archives against oversized payloads\n   334\t- decoded images against excessive pixel counts\n   335\t- browser requests against unsafe remote targets\n   336\t- custom AI endpoints against invalid or untrusted URLs\n   337\t- rendered and exported artifacts against stale editor state\n   338\t\n   339\tA deployment that faces the network still needs normal firewall and authentication controls.\n   340\t\n   341\t## Architecture\n   342\t\n   343\t~~~text\n   344\t                    Browser Workbench\n   345\t                          │\n   346\t                       FastAPI\n   347\t                          │\n   348\t        ┌─────────────────┼─────────────────┐\n   349\t        │                 │                 │\n   350\t        ▼                 ▼                 ▼\n   351\t   Processing         Editorial           AI\n   352\t    Pipeline            State          Providers\n   353\t        │                 │                 │\n   354\t Detect · OCR ·      Text · Geometry    Translate · QC\n   355\t Inpaint · Render    · Typography\n   356\t        └─────────────────┼─────────────────┘\n   357\t                          ▼\n   358\t                  Revision-safe artifacts\n   359\t                          │\n   360\t                          ▼\n   361\t                   Stitched ZIP export\n   362\t~~~\n   363\t\n   364\tFor implementation details see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).\n   365\t\n   366\t## Documentation\n   367\t\n   368\t- [Architecture](docs/ARCHITECTURE.md)\n   369\t- [Text detection](docs/detection.md)\n   370\t- [Comic font library](docs/comic-fonts.md)\n   371\t- [Deploying the gateway](docs/DEPLOY.md)\n   372\t- [UI guidelines](docs/UI_GUIDELINES.md)\n   373\t- [Security history](docs/SECURITY_HISTORY.md)\n   374\t\n   375\t## Development\n   376\t\n   377\t~~~bash\n   378\tpython -m pip install -r requirements-test.txt\n   379\tmake test            # regression tests\n   380\tmake test-browser    # browser and runtime checks\n   381\tmake health\n   382\tmake release-check   # the full release gate\n   383\tmake docker-up\n   384\t~~~\n   385\t\n   386\tThe release path covers source compilation, regression tests, browser and runtime checks, OCR and provider contracts, mask authority, geometry and revision safety, long-image behaviour, and the connected product flow: **processed page → OCR/text object → translation → render → chapter ZIP**. Production ONNX binaries are not in Git, so model-dependent checks run separately.\n   387\t\n   388\tTo clean a whole real chapter with the real models and see the speed and the text left behind, run the **Chapter run** workflow from the Actions tab. To run A.I mode on a chapter and get every page image and its cost, run **A.I cost**. Both save their results to the `audit-evidence` branch, with a side-by-side image per text block.\n   389\t\n   390\t## Project layout\n   391\t\n   392\t~~~text\n   393\tapp/\n   394\t  detector/       text detection (Kiuyha) and letter masks\n   395\t  downloader/     HTTP, Playwright, adapters and slicing\n   396\t  inpaint/        LaMa, flat fill and mask geometry safety\n   397\t  ocr/            MangaOCR + PP-OCRv6\n   398\t  translation/    text and two-image vision translation\n   399\t  ai_mode/        the A.I checkpoints, glossary and Jev pass\n   400\t  render/         typography, font catalog and lettering fonts\n   401\t  visual_qc/      Gemini and DeepSeek image helpers used by A.I mode\n   402\t  routers/        FastAPI API surface\n   403\t  static/         browser workbench\n   404\t  pipeline*.py    chapter processing and runtime coordination\n   405\tgateway/          Manga Cloud: accounts, wallet, metered A.I upstream\n   406\ttests/            correctness and release regressions\n   407\tmodels/           local model artifacts\n   408\tdata/             runtime chapter data\n   409\tdocs/             engineering documentation\n   410\tscripts/          release, browser and benchmark tooling\n   411\t~~~\n   412\t\n   413\t## Current limitations\n   414\t\n   415\tThe project speeds up chapter production; it does not replace professional redraw and lettering.\n   416\t\n   417\t- **Stylised sound effects are mostly left as art**: the letter model reads story lettering, not drawn SFX, and Korean SFX and props text can stay in a machine-only run.\n   418\t- **A glowing title can leave a faint smear** where the glow was erased.\n   419\t- **Text painted into the art** (signs, screens) may be translated as plain text and lettered over it.\n   420\t- **Vietnamese compound words** can split across two lines.\n   421\t- **Watermarks and site banners** are only partly erased.\n   422\t- On large manga pages with heavy black art, the cleanup can take a stroke of art that the detector boxed as text; the restore brush puts it back.\n   423\t- **Western comic pages are not the target**: the tool is tuned for webtoons. Small balloons that hug their text can be erased whole, and the text of balloons standing close together is joined into one block, so its translation runs over the art.\n   424\t- Perspective or warped lettering, curved text, hand-drawn SFX recreation, ambiguous OCR, heavily protected reader sites and typography that needs artistic judgment still need a person.\n   425\t\n   426\tThe strongest use is a **reviewable production workstation with automation**, not a black-box batch converter.\n   427\t\n   428\t## Philosophy\n   429\t\n   430\tDetection, cleanup, OCR, translation, typography and AI help are all allowed to make mistakes. The editor can inspect, correct, reject, repaint, resize, retranslate or restyle any of them before anything becomes the published chapter.\n   431\t\n   432\t> **The page belongs to the editor.**\n   433\t\n   434\t## License\n   435\t\n   436\tCopyright (C) 2026 tuantran00541-spec. The code is licensed under the [GNU Affero General Public License v3.0](LICENSE): you may use, change and share it, and anyone who runs a changed version as a network service must offer its source to that service's users.\n   437\t\n   438\tBundled third-party parts keep their own licenses:\n   439\t\n   440\t- **Fonts:** SIL Open Font License, see `app/static/fonts/licenses/`.\n   441\t- **Vietnamese word list:** MIT, see `app/render/vi_words.LICENSE.txt`.\n   442\t- **Models:** downloaded at install time, under their own authors' terms."
+ },
+ {
+  "seq": 4,
+  "type": "tool",
+  "time": 1791213086.439,
+  "id": "call_7ae78fc8fe294535868cf593",
+  "name": "list_dir",
+  "ok": true,
+  "output": ".claude/\n  settings.json\n.github/\n  actions/\n    build-ctd/\n    load-evidence/\n    save-evidence/\n  workflows/\n    agent-chat.yml\n    ai-cost.yml\n    chapter-run.yml\n    desktop-setup.yml\n    installer.yml\n    kiuyha-onnx.yml\n    live-ui-smoke.yml\n    qwen21-smoke.yml\n    release-gate.yml\n  ai-cost.txt\n  ai-mode-dry-run.txt\n  refactor-parity.txt\napp/\n  agent/\n    builtin_skills/\n    __init__.py\n    agents.py\n    checkpoint.py\n    client.py\n    context.py\n    hashline.py\n    landlock_run.py\n    mcp.py\n    memory.py\n    patch.py\n    rules.py\n    sandbox.py\n    session.py\n    skill_install.py\n    skills.py\n    tools.py\n  ai_mode/\n    __init__.py\n    checkpoints.py\n    glossary.py\n    job.py\n    page_scan.py\n    polish.py\n    seams.py\n    vision_json.py\n  detector/\n    __init__.py\n    boxes.py\n    ctd_mask.py\n    kiuyha_detector.py\n    mask_builder.py\n  downloader/\n    __init__.py\n    asura.py\n    base.py\n    generic_js.py\n    http.py\n    image_urls.py\n    registry.py\n    slicer.py\n  inpaint/\n    __init__.py\n    clustering.py\n    lama_inpainter.py\n    mask_geometry.py\n  ocr/\n    __init__.py\n    crop_geometry.py\n    identity.py\n    jobs.py\n    language_detect.py\n    multi_lang_ocr.py\n    paddle_v6.py\n    quality.py\n    reading_order.py\n    schemas.py\n    service.py\n    targeting.py\n    visual_metadata.py\n  render/\n    __init__.py\n    font_catalog.py\n    font_guide.py\n    font_selection.py\n    identity.py\n    page_renderer.py\n    source_size.py\n    text_renderer.py\n    vi_words.LICENSE.txt\n    vi_words.txt\n  routers/\n    __init__.py\n    account.py\n    agent.py\n    ai_mode.py\n    automation.py\n    chapters.py\n    editor.py\n    export.py\n    image.py\n    ocr.py\n    render.py\n    render_commit.py\n    translation.py\n    visual_qc.py\n  static/\n    css/\n    fonts/\n    js/\n    favicon.ico\n    icons.svg\n  templates/\n    index.html\n  translation/\n    __init__.py\n    context.py\n    cost.py\n    vision.py\n  visual_qc/\n    __init__.py\n    deepseek_region_client.py\n    gemini.py\n    gemini_interactions.py\n  __init__.py\n  ai_providers.py\n  box_format.py\n  cloud.py\n  config.py\n  dependencies.py\n  editorial_gate.py\n  env_utils.py\n  image_io.py\n  knobs.py\n  logging_config.py\n  main.py\n  manifest_utils.py\n  mask_store.py\n  model_contracts.py\n  optimized_pipeline.py\n  ort_utils.py\n  page_processing.py\n  page_processing_jobs.py\n  parameters.py\n  pipeline.py\n  pipeline_editing.py\n  processing_pipeline_factory.py\n  region_policy.py\n  runtime_responsiveness.py\n  schemas.py\n  secret_store.py\n  security.py\n  text_objects.py\n  upload_utils.py\n  vc_runtime.py\naudit-results/\n  agent-chat/\ndeploy/\n  Caddyfile\n  docker-compose.yml\n  gateway.Dockerfile\n  gateway.env.example\ndocs/\n  images/\n    demo-clean.jpg\n    demo-raw.jpg\n    demo-translated.jpg\n  ARCHITECTURE.md\n  comic-fonts.md\n  DEPLOY.md\n  detection.md\n  SECURITY_HISTORY.md\n  UI_GUIDELINES.md\nextension/\n  background.js\n  icon128.png\n  manifest.json\n  popup.html\n  popup.js\ngateway/\n  __init__.py\n  __main__.py\n  app.py\n  billing.py\n  mailer.py\n  store.py\ninstaller/\n  MangaTranslator.iss\nscripts/\n  ai_cost_run.py\n  audit_processed_bundle.py\n  browser_sanity.py\n  build_font_catalog.py\n  chapter_run.py\n  create_ui_smoke_fixture.py\n  export_ctd_onnx.py\n  export_kiuyha_onnx.py\n  inpaint_authority_sanity.py\n  install.py\n  live_ui_smoke.py\n  process_responsiveness_sanity.py\n  release_sanity.py\n  scorecard.py\n  studio_runtime_sanity.js\n  theme_runtime_sanity.js\n  verify.py\ntests/\n  conftest.py\n  ctd_fake.py\n  test_agent.py\n  test_ai_checkpoints.py\n  test_ai_mode.py\n  test_ai_polish.py\n  test_ai_provider_configuration.py\n  test_ai_render_restore.py\n  test_ai_repair_controls.py\n  test_ai_seams.py\n  test_ai_verify.py\n  test_box_format.py\n  test_cleanup_safety_regressions.py\n  test_cloud_tiers.py\n  test_ctd_mask.py\n  test_download_pinning.py\n  test_download_rate_limit.py\n  test_downloader_retry.py\n  test_editorial_gate.py\n  test_export_gate.py\n  test_font_api.py\n  test_font_catalog.py\n  test_font_selection.py\n  test_gateway_auth_billing.py\n  test_gateway_upstream_retry.py\n  test_host_guard.py\n  test_image_pixel_limit.py\n  test_inpaint_context.py\n  test_inpaint_preload.py\n  test_install_launcher.py\n  test_kiuyha_detector.py\n  test_knobs.py\n  test_lama_padding_mask.py\n  test_language_detect.py\n  test_multi_lang_ocr.py\n  test_ocr_pipeline_regressions.py\n  test_ocr_render_metadata.py\n  test_optimized_pipeline.py\n  test_ort_provider.py\n  test_page_processing_jobs.py\n  test_pipeline_module_boundaries.py\n  test_processed_bundle_audit.py\n  test_processing_pipeline_factory.py\n  test_processing_refresh_ui_contract.py\n  test_render_regions.py\n  test_repaint_original_context.py\n  test_restore_brush.py\n  test_slicer_scores.py\n  test_smart_fill_gradient.py\n  test_source_size.py\n  test_static_mime.py\n  test_style_presets.py\n  test_theme_picker_contract.py\n  test_upload_archive.py\n  test_v01_product_closure.py\n  test_vision_translation.py\n.dockerignore\n.gitignore\nCLAUDE.md\ndocker-compose.yml\nDockerfile\ninstall.bat\ninstall.ps1\ninstall.sh\nLICENSE\nMakefile\nREADME.md\nrequirements-test.txt\nrequirements.txt\nrun.py"
+ },
+ {
+  "seq": 5,
+  "type": "assistant",
+  "time": 1791213092.84,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "call_0b8acde8fb1f4646a46e3e23",
+    "name": "todo_write",
+    "args": {
+     "items": [
+      {
+       "content": "Đọc README và duyệt cấu trúc thư mục",
+       "status": "completed"
+      },
+      {
+       "content": "Spawn 6 agent con đọc song song: pipeline detect/mask/inpaint, routers, frontend JS, tests, agent harness, AI mode & providers",
+       "status": "in_progress"
+      },
+      {
+       "content": "wait_agent thu báo cáo từng agent",
+       "status": "pending"
+      },
+      {
+       "content": "Tổng hợp bản đồ kiến trúc + 5 điểm đáng ngờ/bug kèm file:dòng",
+       "status": "pending"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "seq": 6,
+  "type": "todos",
+  "time": 1791213092.84,
+  "items": [
+   {
+    "content": "Đọc README và duyệt cấu trúc thư mục",
+    "status": "completed"
+   },
+   {
+    "content": "Spawn 6 agent con đọc song song: pipeline detect/mask/inpaint, routers, frontend JS, tests, agent harness, AI mode & providers",
+    "status": "in_progress"
+   },
+   {
+    "content": "wait_agent thu báo cáo từng agent",
+    "status": "pending"
+   },
+   {
+    "content": "Tổng hợp bản đồ kiến trúc + 5 điểm đáng ngờ/bug kèm file:dòng",
+    "status": "pending"
+   }
+  ]
+ },
+ {
+  "seq": 7,
+  "type": "tool",
+  "time": 1791213092.84,
+  "id": "call_0b8acde8fb1f4646a46e3e23",
+  "name": "todo_write",
+  "ok": true,
+  "output": "Plan saved: 1/4 done."
+ },
+ {
+  "seq": 8,
+  "type": "assistant",
+  "time": 1791213099.131,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "cd83527b71d8",
+    "name": "",
+    "args": {},
+    "error": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Bạn là agent explore read-only trong workspace /tmp/agent-work/project (dùng đường dẫn tương đối). Nhiệm vụ: đọc KỸ pipeline detec. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+   }
+  ]
+ },
+ {
+  "seq": 9,
+  "type": "tool",
+  "time": 1791213099.131,
+  "id": "cd83527b71d8",
+  "name": "",
+  "ok": false,
+  "output": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Bạn là agent explore read-only trong workspace /tmp/agent-work/project (dùng đường dẫn tương đối). Nhiệm vụ: đọc KỸ pipeline detec. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+ },
+ {
+  "seq": 10,
+  "type": "assistant",
+  "time": 1791213105.489,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "1e6695858888",
+    "name": "",
+    "args": {},
+    "error": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Read-only research in the workspace (paths relative to root). Study the detect/mask/inpaint pipeline in detail: app/detector/ (box. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+   }
+  ]
+ },
+ {
+  "seq": 11,
+  "type": "tool",
+  "time": 1791213105.489,
+  "id": "1e6695858888",
+  "name": "",
+  "ok": false,
+  "output": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Read-only research in the workspace (paths relative to root). Study the detect/mask/inpaint pipeline in detail: app/detector/ (box. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+ },
+ {
+  "seq": 12,
+  "type": "assistant",
+  "time": 1791213111.785,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "555fe82d3e3c",
+    "name": "",
+    "args": {},
+    "error": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Read-only research in the workspace (paths relative to root). Study the detect/mask/inpaint pipeline in detail: app/detector/ (box. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+   }
+  ]
+ },
+ {
+  "seq": 13,
+  "type": "tool",
+  "time": 1791213111.785,
+  "id": "555fe82d3e3c",
+  "name": "",
+  "ok": false,
+  "output": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Read-only research in the workspace (paths relative to root). Study the detect/mask/inpaint pipeline in detail: app/detector/ (box. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+ },
+ {
+  "seq": 14,
+  "type": "assistant",
+  "time": 1791213117.707,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "call_4e1cd45a262943adaa134434",
+    "name": "spawn_agent",
+    "args": {
+     "agent": "explore",
+     "message": "Read-only research in the workspace (paths relative to root). Study the detect/mask/inpaint pipeline in detail: app/detector/ (boxes.py, ctd_mask.py, kiuyha_detector.py, mask_builder.py) and app/inpaint/ (clustering.py, lama_inpainter.py, mask_geometry.py). Trace how a slice becomes text blocks and erase masks, then how inpainting fills them. Report: module responsibilities, key functions with file:line, data flow, and any suspicious code or potential bugs with file:line."
+    }
+   }
+  ]
+ },
+ {
+  "seq": 15,
+  "type": "subagent",
+  "time": 1791213117.71,
+  "description": "Read-only research in the workspace (paths relative to root). Study the detect/m",
+  "agent": "explore",
+  "id": "ash",
+  "state": "started"
+ },
+ {
+  "seq": 16,
+  "type": "tool",
+  "time": 1791213117.71,
+  "id": "call_4e1cd45a262943adaa134434",
+  "name": "spawn_agent",
+  "ok": true,
+  "output": "Started ash. Do other work, then call wait_agent with ids [\"ash\"]; it also reports to you by itself when done."
+ },
+ {
+  "seq": 17,
+  "type": "assistant",
+  "time": 1791213123.739,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "call_d4c1e9401f3b4d64b6cb8249",
+    "name": "spawn_agent",
+    "args": {
+     "agent": "explore",
+     "message": "Read-only research in the workspace (paths relative to root). Study all FastAPI routers in app/routers/ (account.py, agent.py, ai_mode.py, automation.py, chapters.py, editor.py, export.py, image.py, ocr.py, render.py, render_commit.py, translation.py, visual_qc.py). Report: what each router exposes (key endpoints with file:line), auth/input validation patterns, error handling, and any suspicious code or potential bugs with file:line."
+    }
+   }
+  ]
+ },
+ {
+  "seq": 18,
+  "type": "subagent",
+  "time": 1791213123.742,
+  "description": "Read-only research in the workspace (paths relative to root). Study all FastAPI ",
+  "agent": "explore",
+  "id": "birch",
+  "state": "started"
+ },
+ {
+  "seq": 19,
+  "type": "tool",
+  "time": 1791213123.742,
+  "id": "call_d4c1e9401f3b4d64b6cb8249",
+  "name": "spawn_agent",
+  "ok": true,
+  "output": "Started birch. Do other work, then call wait_agent with ids [\"birch\"]; it also reports to you by itself when done."
+ },
+ {
+  "seq": 20,
+  "type": "assistant",
+  "time": 1791213132.059,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "call_50241028f95f46aeb506addb",
+    "name": "spawn_agent",
+    "args": {
+     "agent": "explore",
+     "message": "Read-only research in the workspace (paths relative to root). Study the frontend JavaScript in app/static/js/ (list the files first, then read the important ones). Report: overall structure, main modules and their responsibilities with file:line, how the UI talks to the API, state management, and any suspicious code or potential bugs with file:line."
+    }
+   }
+  ]
+ },
+ {
+  "seq": 21,
+  "type": "subagent",
+  "time": 1791213132.062,
+  "description": "Read-only research in the workspace (paths relative to root). Study the frontend",
+  "agent": "explore",
+  "id": "cedar",
+  "state": "started"
+ },
+ {
+  "seq": 22,
+  "type": "tool",
+  "time": 1791213132.062,
+  "id": "call_50241028f95f46aeb506addb",
+  "name": "spawn_agent",
+  "ok": true,
+  "output": "Started cedar. Do other work, then call wait_agent with ids [\"cedar\"]; it also reports to you by itself when done."
+ },
+ {
+  "seq": 23,
+  "type": "assistant",
+  "time": 1791213146.043,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "call_2586cdb18cd149ed9d73b98d",
+    "name": "spawn_agent",
+    "args": {
+     "agent": "explore",
+     "message": "Read-only research in the workspace (paths relative to root). Study the test suite in tests/ (conftest.py and all test_*.py files; there are ~50). Report: what areas are covered, how fixtures work (conftest.py, ctd_fake.py), test patterns, which critical paths are well tested vs thinly tested, and any suspicious tests or potential bugs in test code with file:line."
+    }
+   }
+  ]
+ },
+ {
+  "seq": 24,
+  "type": "subagent",
+  "time": 1791213146.045,
+  "description": "Read-only research in the workspace (paths relative to root). Study the test sui",
+  "agent": "explore",
+  "id": "elm",
+  "state": "started"
+ },
+ {
+  "seq": 25,
+  "type": "tool",
+  "time": 1791213146.045,
+  "id": "call_2586cdb18cd149ed9d73b98d",
+  "name": "spawn_agent",
+  "ok": true,
+  "output": "Started elm. Do other work, then call wait_agent with ids [\"elm\"]; it also reports to you by itself when done."
+ },
+ {
+  "seq": 26,
+  "type": "assistant",
+  "time": 1791213166.972,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "call_b719d305379c4438b75ed1bd",
+    "name": "spawn_agent",
+    "args": {
+     "agent": "explore",
+     "message": "Read-only research in the workspace (paths relative to root). Study the agent harness in app/agent/ (agents.py, checkpoint.py, client.py, context.py, hashline.py, landlock_run.py, mcp.py, memory.py, patch.py, rules.py, sandbox.py, session.py, skill_install.py, skills.py, tools.py, builtin_skills/). Report: how the agent system works (session lifecycle, tools, sandboxing, skills), key functions with file:line, and any suspicious code or potential bugs with file:line."
+    }
+   }
+  ]
+ },
+ {
+  "seq": 27,
+  "type": "subagent",
+  "time": 1791213166.975,
+  "description": "Read-only research in the workspace (paths relative to root). Study the agent ha",
+  "agent": "explore",
+  "id": "fern",
+  "state": "started"
+ },
+ {
+  "seq": 28,
+  "type": "tool",
+  "time": 1791213166.975,
+  "id": "call_b719d305379c4438b75ed1bd",
+  "name": "spawn_agent",
+  "ok": true,
+  "output": "Started fern. Do other work, then call wait_agent with ids [\"fern\"]; it also reports to you by itself when done."
+ },
+ {
+  "seq": 29,
+  "type": "assistant",
+  "time": 1791213227.079,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "0408b8c7817f",
+    "name": "",
+    "args": {},
+    "error": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Read-only research in the workspace (paths relative to root). Study A.I mode and AI providers in detail: app/ai_mode/ (checkpoints. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+   }
+  ]
+ },
+ {
+  "seq": 30,
+  "type": "tool",
+  "time": 1791213227.079,
+  "id": "0408b8c7817f",
+  "name": "",
+  "ok": false,
+  "output": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Read-only research in the workspace (paths relative to root). Study A.I mode and AI providers in detail: app/ai_mode/ (checkpoints. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+ },
+ {
+  "seq": 31,
+  "type": "assistant",
+  "time": 1791213281.972,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "6f39215e5780",
+    "name": "",
+    "args": {},
+    "error": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Read-only research in the workspace (paths relative to root). Study A.I mode and AI providers in detail: app/ai_mode/ (checkpoints. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+   }
+  ]
+ },
+ {
+  "seq": 32,
+  "type": "tool",
+  "time": 1791213281.972,
+  "id": "6f39215e5780",
+  "name": "",
+  "ok": false,
+  "output": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Read-only research in the workspace (paths relative to root). Study A.I mode and AI providers in detail: app/ai_mode/ (checkpoints. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+ },
+ {
+  "seq": 33,
+  "type": "assistant",
+  "time": 1791213378.209,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "e26680db9a73",
+    "name": "",
+    "args": {},
+    "error": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Read-only research in the workspace (paths relative to root). Study A.I mode and AI providers: app/ai_mode/ (checkpoints.py, gloss. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+   }
+  ]
+ },
+ {
+  "seq": 34,
+  "type": "tool",
+  "time": 1791213378.209,
+  "id": "e26680db9a73",
+  "name": "",
+  "ok": false,
+  "output": "Unreadable tool call: {\"name\": \"spawn_agent\", \"arguments\": {\"agent\": \"explore\", \"message\": \"Read-only research in the workspace (paths relative to root). Study A.I mode and AI providers: app/ai_mode/ (checkpoints.py, gloss. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+ },
+ {
+  "seq": 35,
+  "type": "assistant",
+  "time": 1791213472.612,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "c2f9cc86035d",
+    "name": "spawn_agent",
+    "args": {
+     "agent": "explore",
+     "message": "Read-only research in the workspace (paths relative to root). Study A.I mode and AI providers: app/ai_mode/ (checkpoints.py, glossary.py, job.py, page_scan.py, polish.py, seams.py, vision_json.py), app/ai_providers.py, app/translation/ (context.py, cost.py, vision.py), app/visual_qc/ (gemini.py, gemini_interactions.py, deepseek_region_client.py). Report: how A.I mode checkpoints work, how providers are configured and called, cost tracking, and any suspicious code or potential bugs with file:line."
+    }
+   }
+  ]
+ },
+ {
+  "seq": 36,
+  "type": "subagent",
+  "time": 1791213472.614,
+  "description": "Read-only research in the workspace (paths relative to root). Study A.I mode and",
+  "agent": "explore",
+  "id": "hazel",
+  "state": "started"
+ },
+ {
+  "seq": 37,
+  "type": "tool",
+  "time": 1791213472.615,
+  "id": "c2f9cc86035d",
+  "name": "spawn_agent",
+  "ok": true,
+  "output": "Started hazel. Do other work, then call wait_agent with ids [\"hazel\"]; it also reports to you by itself when done."
+ },
+ {
+  "seq": 38,
+  "type": "assistant",
+  "time": 1791213535.251,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "call_e9c2a54cc21649b893b56cab",
+    "name": "wait_agent",
+    "args": {
+     "ids": [
+      "ash",
+      "birch",
+      "cedar",
+      "elm",
+      "fern",
+      "hazel"
+     ],
+     "timeout_s": 600
+    }
+   }
+  ]
+ },
+ {
+  "seq": 39,
+  "type": "tool",
+  "time": 1791214135.281,
+  "id": "call_e9c2a54cc21649b893b56cab",
+  "name": "wait_agent",
+  "ok": true,
+  "output": "ash (explore): still running\n\nbirch (explore): still running\n\ncedar (explore): still running\n\nelm (explore): still running\n\nfern (explore): still running\n\nhazel (explore): still running\n\n[timed out; call wait_agent again to keep waiting]"
+ },
+ {
+  "seq": 40,
+  "type": "assistant",
+  "time": 1791214207.348,
+  "text": "",
+  "reasoning": "",
+  "calls": [
+   {
+    "id": "call_1083b300ab2145a6b99f7264",
+    "name": "wait_agent",
+    "args": {
+     "ids": [
+      "ash",
+      "birch",
+      "cedar",
+      "elm",
+      "fern",
+      "hazel"
+     ],
+     "timeout_s": 600
+    }
+   }
+  ]
+ }
+]
