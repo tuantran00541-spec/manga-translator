@@ -265,7 +265,7 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
         return _build(message, usage)
     try:
         body = response.json()
-        message = body["choices"][0]["message"]
+        message = {**body["choices"][0]["message"], "_debug": {"finish": body["choices"][0].get("finish_reason") or "", "fields": sorted(body["choices"][0]["message"])}}
     except (ValueError, KeyError, IndexError, TypeError) as exc:
         raise RuntimeError(f"{provider.label} returned no message") from exc
     return _build(message, body.get("usage") or {})

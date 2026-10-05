@@ -205,6 +205,7 @@ class AgentSession:
         self.mcp_status: dict[str, dict] = {}
         self.mcp_tools: dict[str, tuple[str, dict]] = {}
         self.mcp_loaded: set[str] = set()
+        self._plain = False
         self._mcp_ready = depth > 0
 
     def _outputs_dir(self) -> Path:
@@ -1106,7 +1107,7 @@ class AgentSession:
         return self._stop
 
     def _call_model(self, messages: list[dict], tools: list[dict] | None) -> dict:
-        streams = self.complete is client.complete or getattr(self.complete, "streams", False)
+        streams = (self.complete is client.complete or getattr(self.complete, "streams", False)) and not self._plain
         started = time.time()
         try:
             return self.complete(self.provider, self.api_key, self.model, messages, tools=tools, **({"on_delta": self._on_delta} if streams else {}))
@@ -1292,13 +1293,19 @@ class AgentSession:
             if not turn["text"] and not calls:
                 empties += 1
                 used = turn["usage"].get("completion_tokens") or 0
-                self.emit("notice", text=f"Model trả lời rỗng ({used} token, {turn.get('debug') or 'không có chi tiết'}); thử lại {empties}/{EMPTY_RETRIES}.")
-                if empties <= EMPTY_RETRIES:
+                debug = turn.get("debug") or {}
+                if empties > EMPTY_RETRIES:
+                    self.emit("error", text=f"Model trả lời rỗng {empties} lần liền ({debug}); dừng.")
+                    break
+                # The model wrote tool calls the server's stream parser lost; a reply without streaming carries them whole.
+                if debug.get("finish") == "tool_calls" and not self._plain and self.complete is client.complete:
+                    self._plain = True
+                    self.emit("notice", text=f"Máy chủ làm mất lệnh gọi công cụ khi stream ({used} token); chuyển sang không stream cho phiên này.")
+                else:
+                    self.emit("notice", text=f"Model trả lời rỗng ({used} token, {debug}); thử lại {empties}/{EMPTY_RETRIES}.")
                     if empties == 2:
                         self.history.append({"role": "user", "content": EMPTY_NUDGE})
-                    continue
-                self.emit("error", text="Model trả lời rỗng nhiều lần liền; dừng.")
-                break
+                continue
             empties = 0
             self.history.append({"role": "assistant", "content": turn["text"], "calls": calls,
                                  **({"reasoning": turn["reasoning"][-20000:]} if self.echo_reasoning and turn["reasoning"] else {})})

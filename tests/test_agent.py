@@ -1549,3 +1549,22 @@ def test_a_stream_that_puts_its_reply_in_an_unknown_field_is_not_lost():
     message, _, _ = client._read_stream(FakeResponse(200, lines), lambda live: False)
     assert message["reasoning_content"] == "step one" and message["_debug"] == {"finish": "stop", "fields": ["thinking"]}
     assert client._build(message, {})["debug"]["finish"] == "stop"
+
+
+def test_a_reply_whose_tool_calls_the_stream_lost_is_asked_again_without_streaming(ws, home, monkeypatch):
+    modes = []
+
+    def fake_complete(provider, key, model, messages, *, tools, on_delta=None):
+        modes.append(on_delta is not None)
+        if on_delta is not None:
+            lost = turn("")
+            lost["debug"] = {"finish": "tool_calls", "fields": []}
+            return lost
+        return turn("Recovered.")
+
+    monkeypatch.setattr(client, "complete", fake_complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=client.complete)
+    run_to_idle(session)
+    assert modes == [True, False] and session._plain
+    assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Recovered."]
+    assert any("không stream" in e.get("text", "") for e in session.events if e["type"] == "notice")
