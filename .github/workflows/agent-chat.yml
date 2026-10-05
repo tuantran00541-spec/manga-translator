@@ -1,0 +1,168 @@
+name: Agent chat
+
+# One-off: the app's server runs on the runner, and Playwright chats with two real models on the Agent screen, asking each to read the project with many helper agents.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/agent-chat.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  chat:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      OUT: audit-results/agent-chat
+      WORK: /tmp/agent-work
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install -q -r requirements-test.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Start the server with an in-memory key store
+        run: |
+          mkdir -p "$WORK/keyring" "$OUT"
+          cat > "$WORK/keyring/memkeyring.py" <<'PY'
+          from keyring.backend import KeyringBackend
+
+
+          class MemoryKeyring(KeyringBackend):
+              priority = 1
+              _data = {}
+
+              def get_password(self, service, username):
+                  return self._data.get((service, username))
+
+              def set_password(self, service, username, password):
+                  self._data[(service, username)] = password
+
+              def delete_password(self, service, username):
+                  self._data.pop((service, username), None)
+          PY
+          # The agents read a copy of the project without .git, so they never see git credentials.
+          rm -rf "$WORK/project" && mkdir -p "$WORK/project"
+          tar --exclude=.git -cf - . | tar -xf - -C "$WORK/project"
+          PYTHONPATH="$PWD:$WORK/keyring" PYTHON_KEYRING_BACKEND=memkeyring.MemoryKeyring \
+            python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > "$OUT/server.log" 2>&1 &
+          echo $! > "$WORK/server.pid"
+          for i in $(seq 60); do curl -fs http://127.0.0.1:8000/api/agent/config -H "X-Manga-Agent: 1" > /dev/null && exit 0; sleep 1; done
+          cat "$OUT/server.log"; exit 1
+
+      - name: Add the two providers to the running server
+        env:
+          POLARGRID_KEY: ${{ secrets.polagrid_ }}
+          AGNES_KEY: ${{ secrets.Agnes_key }}
+        run: |
+          python - <<'PY'
+          import os, requests
+          for pid, label, base, env in (("polargrid", "PolarGrid", "https://api.mia-01.edge.polargrid.ai/v1", "POLARGRID_KEY"),
+                                        ("agnes", "Agnes", "https://apihub.agnes-ai.com/v1", "AGNES_KEY")):
+              r = requests.post(f"http://127.0.0.1:8000/api/visual_qc/providers/{pid}/key", timeout=60,
+                                json={"api_key": os.environ[env], "provider_label": label, "provider_protocol": "openai", "provider_api_base": base})
+              print(pid, r.status_code, r.text[:120].replace(os.environ[env], "***"))
+              r.raise_for_status()
+          PY
+
+      - name: Chat with both models on the Agent screen
+        run: |
+          cat > "$WORK/chat.py" <<'PY'
+          import json, sys, time
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+
+          provider, model, out = sys.argv[1], sys.argv[2], Path(sys.argv[3])
+          PROMPT = ("Hãy đi xem code của dự án này. Đọc README.md rồi duyệt cấu trúc thư mục. Sau đó dùng spawn_agent giao việc cho "
+                    "nhiều agent con chạy song song, mỗi agent đọc kỹ một phần: (1) pipeline detect, mask và inpaint trong app/detector "
+                    "và app/inpaint, (2) các router API trong app/routers, (3) frontend app/static/js, (4) bộ test trong tests, "
+                    "(5) agent harness trong app/agent, (6) A.I mode và các nhà cung cấp AI. Dùng wait_agent lấy báo cáo của từng agent. "
+                    "Cuối cùng tổng hợp một bản đồ kiến trúc ngắn gọn và nêu 5 điểm đáng ngờ hoặc có thể là bug, kèm đường dẫn file và dòng.")
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page(viewport={"width": 1280, "height": 900})
+              errors = []
+              page.on("pageerror", lambda e: errors.append(str(e)))
+              page.goto("http://127.0.0.1:8000/")
+              page.click('.sidebar-link[data-route="agent"]')
+              page.wait_for_function(f"[...document.querySelector('#agent-provider').options].some(o => o.value === '{provider}')", timeout=30000)
+              page.select_option("#agent-provider", provider)
+              page.wait_for_timeout(1500)
+              page.fill("#agent-model", model)
+              page.select_option("#agent-mode", "auto")
+              page.select_option("#agent-sandbox", "read-only")
+              page.evaluate("w => { document.querySelector('#agent-workspace').value = w; }", "/tmp/agent-work/project")
+              page.fill("#agent-input", PROMPT)
+              page.press("#agent-input", "Enter")
+              start = time.time()
+              shots = 0
+              while time.time() - start < 1500:
+                  page.wait_for_timeout(60000)
+                  shots += 1
+                  page.screenshot(path=str(out / f"{provider}-progress-{shots}.png"))
+                  if not page.query_selector(".agent-working"):
+                      break
+              page.locator(".agent-group").evaluate_all("gs => gs.forEach(g => { g.open = true; })") if page.query_selector(".agent-group") else None
+              page.screenshot(path=str(out / f"{provider}-final.png"), full_page=True)
+              (out / f"{provider}-page.txt").write_text(page.inner_text("#agent-log"), encoding="utf-8")
+              (out / f"{provider}-pageerrors.json").write_text(json.dumps(errors))
+              print(provider, "done in", round(time.time() - start), "s; page errors:", errors)
+              browser.close()
+          PY
+          python "$WORK/chat.py" polargrid qwen-3.8-27b "$OUT" > "$OUT/polargrid-chat.log" 2>&1 &
+          P1=$!
+          python "$WORK/chat.py" agnes agnes-3.0-flash "$OUT" > "$OUT/agnes-chat.log" 2>&1 &
+          P2=$!
+          wait $P1 || true
+          wait $P2 || true
+          cat "$OUT"/*-chat.log
+
+      - name: Count what the agents did
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, requests
+          h = {"X-Manga-Agent": "1"}
+          rows = requests.get("http://127.0.0.1:8000/api/agent/sessions", headers=h, timeout=30).json()["sessions"]
+          report = []
+          for row in rows:
+              snap = requests.get(f"http://127.0.0.1:8000/api/agent/sessions/{row['id']}", headers=h, timeout=30).json()
+              events = snap["events"]
+              tools = [e["name"] for e in events if e["type"] == "tool"]
+              final = next((e["text"] for e in reversed(events) if e["type"] == "assistant" and e["text"]), "")
+              report.append({"model": snap["model"], "status": snap["status"], "usage": snap["usage"], "steps": sum(e["type"] == "assistant" for e in events),
+                             "tool_counts": {n: tools.count(n) for n in sorted(set(tools))}, "failed_tools": sum(1 for e in events if e["type"] == "tool" and not e["ok"]),
+                             "helpers": [e for e in events if e["type"] == "subagent" and e["state"] == "done"],
+                             "errors": [e["text"] for e in events if e["type"] == "error"], "notices": [e["text"] for e in events if e["type"] == "notice"]})
+              open(f"{os.environ['OUT']}/{snap['model']}-final.md", "w", encoding="utf-8").write(final)
+              open(f"{os.environ['OUT']}/{snap['model']}-events.json", "w", encoding="utf-8").write(json.dumps(events, ensure_ascii=False, indent=1))
+          open(f"{os.environ['OUT']}/report.json", "w", encoding="utf-8").write(json.dumps(report, ensure_ascii=False, indent=1))
+          for r in report:
+              print(json.dumps({k: v for k, v in r.items() if k not in ("helpers",)}, ensure_ascii=False), "helpers:", len(r["helpers"]))
+          PY
+
+      - name: Stop the server
+        if: always()
+        run: kill "$(cat "$WORK/server.pid")" 2>/dev/null || true
+
+      - name: Give git access only now that the agents are done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/agent-chat
+          message: "audit: Agent chat on PolarGrid and Agnes (run ${{ github.run_id }})"
