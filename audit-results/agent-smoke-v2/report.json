@@ -1,0 +1,83 @@
+[
+ {
+  "model": "qwen-3.8-27b",
+  "sandbox_backend": "landlock",
+  "tests_pass_after": true,
+  "pytest": "...                                                                      [100%]\n3 passed in 0.00s\n",
+  "seconds": 22.3,
+  "text_tools": false,
+  "usage": {
+   "prompt_tokens": 3034,
+   "completion_tokens": 436
+  },
+  "steps": 6,
+  "tools": [
+   "list_dir",
+   "mcp__prices__price_list",
+   "skill",
+   "read_file",
+   "read_file",
+   "edit_file",
+   "edit_file",
+   "run_command"
+  ],
+  "denied": [],
+  "mcp": {
+   "prices": {
+    "name": "prices",
+    "scope": "workspace",
+    "source": ".mcp.json",
+    "digest": "8b1c6fdf558f6561",
+    "tools": 1,
+    "error": "",
+    "state": "running"
+   }
+  },
+  "todos": [],
+  "shop_py": "def total(prices, discount=0.0):\n    \"\"\"Sum of prices after a fractional discount, rounded to cents.\"\"\"\n    subtotal = sum(prices)\n    return round(subtotal * (1 - discount), 2)\n",
+  "new_test_uses_prices": true,
+  "old_tests_untouched": true,
+  "final": "All 3 tests pass. Here's a summary:\n\n## Bug\nIn `shop.py`, `total()` multiplied the subtotal **by** the discount fraction instead of by `(1 - discount)`:\n\n```python\n# before\nreturn round(subtotal * discount, 2)\n# after\nreturn round(subtotal * (1 - discount), 2)\n```\n\n## New test\nAdded `test_tea_cake_half_discount` to `test_shop.py`, using the official prices from the price list (tea = 3.5, cake = 4.25) with a 0.5 discount:\n\n```python\ndef test_tea_cake_half_discount():\n    assert total([3."
+ },
+ {
+  "model": "agnes-3.0-flash",
+  "sandbox_backend": "landlock",
+  "tests_pass_after": true,
+  "pytest": "...                                                                      [100%]\n3 passed in 0.00s\n",
+  "seconds": 28.1,
+  "text_tools": false,
+  "usage": {
+   "prompt_tokens": 20750,
+   "completion_tokens": 702
+  },
+  "steps": 8,
+  "tools": [
+   "list_dir",
+   "mcp__prices__price_list",
+   "read_file",
+   "read_file",
+   "run_command",
+   "skill",
+   "edit_file",
+   "edit_file",
+   "run_command"
+  ],
+  "denied": [],
+  "mcp": {
+   "prices": {
+    "name": "prices",
+    "scope": "workspace",
+    "source": ".mcp.json",
+    "digest": "8b1c6fdf558f6561",
+    "tools": 1,
+    "error": "",
+    "state": "running"
+   }
+  },
+  "todos": [],
+  "shop_py": "def total(prices, discount=0.0):\n    \"\"\"Sum of prices after a fractional discount, rounded to cents.\"\"\"\n    subtotal = sum(prices)\n    return round(subtotal * (1 - discount), 2)\n",
+  "new_test_uses_prices": true,
+  "old_tests_untouched": true,
+  "final": "All tests pass.\n\n## What changed\n**Bug in `shop.py`** — `total()` applied the discount as `subtotal * discount` instead of `subtotal * (1 - discount)`. A 0.25 discount returned 25% of the price (5.0) rather than the price *after* the discount (15.0), and the default `discount=0.0` made everything zero. One-line fix:\n\n```python\nreturn round(subtotal * (1 - discount), 2)\n```\n\n**New test in `test_shop.py`** — pulled official prices from the price list tool (tea = 3.5, cake = 4.25) and checks a 0.5 discount:\n```python\ndef test_official_prices_half_discount():\n    assert total([3.5, 4.25], 0.5) == 3.88\n```\n(7.75 total × 0.5 = 3.875, rounded to 3.88.)\n\n## Verification\nRan `python -m pytest -q -p no:cacheprovider` — **3 passed**.\n\nNothing left over."
+ }
+]
