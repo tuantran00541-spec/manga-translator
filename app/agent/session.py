@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+import ctypes
 import json
 import os
 import platform
@@ -12,6 +13,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urlparse
 
 from app.agent import agents, client, context, external, mcp, memory, registry, rules, sandbox, skill_install, skills
 from app.agent.checkpoint import Checkpoints
@@ -40,6 +42,8 @@ MAX_PARALLEL = 3
 DOOM_LOOP = 3
 GOAL_TURNS = 8
 UNREADABLE_TURNS = 4
+TOKEN_BUDGET = 3_000_000
+URL_RE = re.compile(r"https?://([^\s/:?#]+)")
 PLAN_TOOLS = agents.READ_TOOLS | {"todo_write", "task", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
 SYSTEM_PROMPT = """You are a coding agent inside the Manga Translator app, working like Claude Code or Codex.
 Workspace root: {root} on {system}. Paths are relative to it.
@@ -115,6 +119,15 @@ GATE_NUDGE = ("You changed files but have not run anything since. Run the projec
               "and read the result, or say plainly why no check applies.")
 
 
+def _harden_process() -> None:
+    """Other processes of this user, including a confined command, cannot read this process's memory or environment."""
+    if platform.system() == "Linux":
+        try:
+            ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE
+        except (OSError, AttributeError):
+            pass
+
+
 class AgentSession:
     """One conversation with one model in one workspace."""
 
@@ -142,6 +155,8 @@ class AgentSession:
         self.queue: list[str] = []
         self._dirty = self._gated = self.tainted = False
         self._skills_loaded: list[str] = []
+        self.web_ok: set[str] = set()
+        self._turn_usage = 0
         self.plan_mode = False
         self.goal: dict | None = None
         self._recent: list[str] = []
@@ -248,6 +263,7 @@ class AgentSession:
         try:
             self.store.parent.mkdir(parents=True, exist_ok=True)
             tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            os.chmod(tmp, 0o600)
             os.replace(tmp, self.store)
         except OSError:
             logger.opt(exception=True).warning("Could not save agent session {}", self.id)
@@ -317,6 +333,8 @@ class AgentSession:
             self.checkpoints.begin()
         self._dirty = self._gated = self.tainted = False
         self._skills_loaded = []
+        self._turn_usage = sum(self.usage.values())
+        self.web_ok |= {h.lower() for h in URL_RE.findall(text)}
         self.history.append({"role": "user", "content": text + extra})
         threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
         return False
@@ -555,22 +573,28 @@ class AgentSession:
 
     def _needs_approval(self, call: dict, verdict: str | None = None) -> bool:
         name = call["name"]
+        plugin = self.registry.tools.get(name)
+        if plugin and plugin.always_ask:
+            return True
+        # Leaving the sandbox is never the model's call: it asks even when everything else is automatic.
+        if name == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access":
+            return True
         if name == "memory":
             return self.mode != "auto" and call["args"].get("action") != "list"
         if self.mode == "auto" or name in SESSION_SPECS or verdict == "allow":
             return False
         if verdict == "ask":
             return True
+        if name == "web_fetch" and self.mode == "edits" and (urlparse(str(call["args"].get("url") or "")).hostname or "") not in self.web_ok:
+            return True
         if name in self.mcp_tools:
             read_only = (self.mcp_tools[name][1].get("annotations") or {}).get("readOnlyHint")
             return not (self.mode == "edits" and read_only)
-        plugin = self.registry.tools.get(name)
-        if plugin and plugin.always_ask:
-            return True
         kind = plugin.kind if plugin else KIND.get(name, "exec")
         if kind == "read":
             return False
-        if self.tainted and self.profile["untrusted_guard"]:
+        if self.tainted and self.profile["untrusted_guard"] and not (
+                name == "web_fetch" and (urlparse(str(call["args"].get("url") or "")).hostname or "") in self.web_ok):
             return True
         if self.mode == "ask":
             return True
@@ -804,6 +828,8 @@ class AgentSession:
             elif decision["decision"] != "allow":
                 note = f" Note from the user: {decision['note']}" if decision.get("note") else ""
                 return f"The user refused this {call['name']} call.{note}", False
+            if call["name"] == "web_fetch":
+                self.web_ok.add((urlparse(str(call["args"].get("url") or "")).hostname or "").lower())
         if call["name"] not in SESSION_SPECS:
             allowed, message = self._run_hooks("PreToolUse", call)
             if not allowed:
@@ -1020,6 +1046,9 @@ class AgentSession:
                 self.emit("notice", text="Đã dừng.")
                 break
             self._drain()
+            if sum(self.usage.values()) - self._turn_usage > self.profile["token_budget"]:
+                self.emit("error", text=f"Đã dùng quá {self.profile['token_budget']:,} token cho lượt này; dừng. Nhắn tiếp nếu muốn agent làm tiếp.")
+                break
             self._make_room()
             turn = self._turn()
             for key in self.usage:
@@ -1072,6 +1101,9 @@ class AgentSessionManager:
         self.store_dir, self.home = store_dir, home
         self.trust = trust or context.TrustStore(store_dir / "trust.json" if store_dir else None)
         self.sessions: dict[str, AgentSession] = {}
+        _harden_process()
+        if store_dir is not None:
+            sandbox.EXTRA_DENY.append(str(store_dir))
         atexit.register(self.close_all)
 
     def _path(self, session_id: str) -> Path | None:

@@ -13,6 +13,8 @@ from bs4 import BeautifulSoup
 from app.agent import hashline, patch as patches, sandbox
 from app.downloader.http import read_response_limited, safe_get
 
+BROAD_FOLDERS = {"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/var", "/boot", "/dev", "/proc", "/sys", "/opt", "/root", "/home", "/Users",
+                 "/System", "/Library", "/Applications", "/private", "/mnt", "/media"}
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache"}
 # Chapter images, model weights and logs at the app's root would drown every listing and search.
 ROOT_SKIP_DIRS = {"data", "models", "logs"}
@@ -93,6 +95,8 @@ class Workspace:
         root = Path(root).expanduser().resolve()
         if not root.is_dir():
             raise ValueError(f"Workspace folder does not exist: {root}")
+        if root == Path(root.anchor) or root == Path.home().resolve() or str(root) in BROAD_FOLDERS:
+            raise ValueError(f"Pick a project folder, not {root}: the agent could read and change everything in it")
         self.root = root
         self.policy = policy or sandbox.Policy()
         self.read_roots = [Path(p).resolve() for p in read_roots or []]

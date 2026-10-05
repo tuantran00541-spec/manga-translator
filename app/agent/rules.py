@@ -18,7 +18,14 @@ SETTINGS = {"user": (".manga-agent/settings.json", ".claude/settings.json"),
             "workspace": (".agents/settings.json", ".claude/settings.json", ".claude/settings.local.json")}
 DEFAULT = [("read", ".env", "deny"), ("read", ".env.*", "deny"), ("read", "*.env", "deny"),
            ("edit", ".env", "deny"), ("edit", ".env.*", "deny"), ("edit", "*.env", "deny"),
-           ("read", ".env.example", "allow"), ("read", ".env.sample", "allow")]
+           ("read", ".env.example", "allow"), ("read", ".env.sample", "allow"),
+           # Git's hooks and config run commands later, outside any sandbox.
+           ("edit", ".git/*", "deny"), ("edit", "*/.git/*", "deny")] + [
+    # What can destroy work or leave the project: asked for unless the user's own rules or Auto mode say otherwise.
+    ("bash", pattern, "ask") for pattern in (
+        "rm *-r*", "rm *-R*", "rm *--recursive*", "git reset --hard*", "git clean*", "git push*", "git config*", "git checkout -- *",
+        "git restore*", "git branch -D*", "git stash drop*", "git stash clear*", "sudo *", "kill *", "pkill*", "killall*", "chmod -R*",
+        "chown*", "dd *", "mkfs*", "*secret-tool*", "*find-generic-password*", "*find-internet-password*", "*cmdkey*", "*keyring.get_*")]
 SPLIT = re.compile(r"&&|\|\||;|\||\n")
 
 Rule = tuple[str, str, str, str]
