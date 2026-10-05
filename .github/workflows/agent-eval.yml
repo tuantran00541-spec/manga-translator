@@ -1,0 +1,67 @@
+name: Agent eval
+
+# Repeatable Agent scenarios on real models, the code before the research changes (base) against the code after (new).
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Commit to compare against
+        default: acfebc32
+      repeats:
+        description: Runs per scenario
+        default: "2"
+
+permissions:
+  contents: write
+
+jobs:
+  eval:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: polargrid, base_url: "https://api.mia-01.edge.polargrid.ai/v1", model: qwen-3.8-27b, secret: polargrid}
+          - {name: agnes, base_url: "https://apihub.agnes-ai.com/v1", model: agnes-3.0-flash, secret: agnes}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 100
+    env:
+      OUT: audit-results/agent-eval
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -q -r requirements-test.txt
+
+      - name: Run every scenario on the base and the new code
+        env:
+          POLARGRID_KEY: ${{ secrets.polagrid_ }}
+          AGNES_KEY: ${{ secrets.Agnes_key }}
+          BASE: ${{ inputs.base }}
+          REPEATS: ${{ inputs.repeats }}
+        run: |
+          mkdir -p "$OUT"
+          git worktree add "$RUNNER_TEMP/base" "$BASE"
+          KEY_ENV=$([ "${{ matrix.secret }}" = polargrid ] && echo POLARGRID_KEY || echo AGNES_KEY)
+          for variant in base new; do
+            DIR=$([ $variant = base ] && echo "$RUNNER_TEMP/base" || echo "$PWD")
+            python scripts/agent_eval.py --app-dir "$DIR" --corpus "$PWD" --base "${{ matrix.base_url }}" --model "${{ matrix.model }}" \
+              --key-env "$KEY_ENV" --label "${{ matrix.name }}-$variant" --out "$OUT" --repeats "$REPEATS" | cut -c1-400
+          done
+
+      - name: Give git access only now that the agents are done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/agent-eval
+          message: "audit: Agent eval ${{ matrix.name }} (run ${{ github.run_id }})"
