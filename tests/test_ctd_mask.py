@@ -191,3 +191,11 @@ def test_welded_glowing_letters_still_get_a_letter_tall_reach():
     for top in (50, 130, 210):
         prob[top:top + 40, 60:540] = 1.0  # the surest pixels show the lines
     assert ctd_mask.text_size(seed, prob) == 40
+
+
+def test_lines_set_close_together_are_not_read_as_one_tall_line():
+    prob = np.zeros((200, 600), np.float32)
+    for top in (20, 70, 120):
+        prob[top:top + 44, 60:540] = 1.0  # lines 44 px tall with 6 px leading
+        prob[top + 44:top + 50, 100:104] = 1.0  # one stroke bridges each gap
+    assert ctd_mask.text_size(prob > 0.3, prob) == 44

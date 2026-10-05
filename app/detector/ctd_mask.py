@@ -12,6 +12,7 @@ from app.knobs import knob
 
 THRESHOLD = knob("mask.ink_threshold")
 FAINT = 0.12  # letter probability of marks that join the text only beside its letters
+LINE_GAP = 0.15  # a row with less than this share of the fullest row's sure ink is between lines
 CORE = 0.8  # letter probability of the surest pixels; glow and blur that weld letters into one blob fall below it
 SCALES = (1.0, 0.5)  # the half-size pass catches very large lettering
 STRIDE = 64  # the model's input sides must be multiples of this
@@ -64,7 +65,9 @@ def probability(img: np.ndarray) -> np.ndarray:
 def text_size(part: np.ndarray, prob: np.ndarray | None = None) -> int:
     """Letter height: the median line height of the model's surest pixels, else the median letter of a mask."""
     if prob is not None and prob.shape == part.shape:
-        rows = (prob > CORE).any(axis=1)
+        ink = (prob > CORE).sum(axis=1)
+        # Lines set close together touch through a few strokes; a row that thin is the gap between them.
+        rows = ink > LINE_GAP * ink.max()
         edges = np.flatnonzero(np.diff(np.concatenate(([0], rows.astype(np.int8), [0]))))
         lines = [end - start for start, end in zip(edges[::2], edges[1::2]) if end - start >= 6]
         if lines:
