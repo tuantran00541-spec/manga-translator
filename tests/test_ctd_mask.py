@@ -199,3 +199,16 @@ def test_lines_set_close_together_are_not_read_as_one_tall_line():
         prob[top:top + 44, 60:540] = 1.0  # lines 44 px tall with 6 px leading
         prob[top + 44:top + 50, 100:104] = 1.0  # one stroke bridges each gap
     assert ctd_mask.text_size(prob > 0.3, prob) == 44
+
+
+def test_letter_tops_cut_by_the_image_edge_are_erased():
+    full = np.full((300, 700, 3), 250, np.uint8)
+    cv2.ellipse(full, (350, 160), (320, 140), 0, 0, 360, (0, 0, 0), 4)  # a balloon outline in the ring
+    for y in (60, 130, 200):
+        cv2.putText(full, "WHETHER WORLD", (110, y), cv2.FONT_HERSHEY_DUPLEX, 1.6, (10, 10, 10), 4)
+    image = np.ascontiguousarray(full[48:])  # the page starts through the first line
+    box, mask = ctd_mask.letter_mask(image, (100, 0, 600, 170))
+    ink = image.max(axis=2) < 60
+    ink[:, :40] = ink[:, 660:] = False  # leave the outline out
+    top = ink[:6]
+    assert (_full(image, box, mask)[:6] & top).sum() >= 0.9 * top.sum(), "letter parts at the edge go too"

@@ -11,6 +11,7 @@ from app.config import CTD_MODEL
 from app.knobs import knob
 
 THRESHOLD = knob("mask.ink_threshold")
+EDGE_FRAGMENT = 40.0  # Lab distance from the paper of a letter part cut by the image edge
 FAINT = 0.12  # letter probability of marks that join the text only beside its letters
 LINE_GAP = 0.15  # a row with less than this share of the fullest row's sure ink is between lines
 CORE = 0.8  # letter probability of the surest pixels; glow and blur that weld letters into one blob fall below it
@@ -326,6 +327,37 @@ def _faint_letters(seed: np.ndarray, prob: np.ndarray) -> np.ndarray:
     return seed | np.isin(labels, keep)
 
 
+def _edge_fragments(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, size: int,
+                    at_edge: tuple[bool, bool]) -> np.ndarray:
+    """Letter parts cut by the top or bottom of the image, too short for the model to read, join the mask."""
+    if size < 4 or not seed.any() or not any(at_edge):
+        return grown
+    depth = max(3, size // 2)
+    cols = np.flatnonzero(seed.any(axis=0))
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
+    # The colour the letters sit on, not every colour round the box, as a balloon outline is one of those.
+    around = ~grown & (cv2.dilate(grown.astype(np.uint8), np.ones((9, 9), np.uint8)) > 0)
+    if not around.any():
+        return grown
+    bins, counts = np.unique(np.round(lab[around] / 4).astype(np.int32), axis=0, return_counts=True)
+    paper = bins[counts.argmax()].astype(np.float32) * 4
+    unlike = np.linalg.norm(lab - paper, axis=-1) > EDGE_FRAGMENT
+    area = np.zeros(seed.shape, bool)
+    left, right = max(0, cols[0] - size), cols[-1] + 1 + size
+    rows = np.flatnonzero(seed.any(axis=1))
+    if at_edge[0] and rows[0] < depth:
+        area[:depth, left:right] = True
+    if at_edge[1] and rows[-1] >= seed.shape[0] - depth:
+        area[-depth:, left:right] = True
+    _, labels = cv2.connectedComponents((unlike & area).astype(np.uint8))
+    touching = np.unique(np.concatenate([labels[0][area[0]], labels[-1][area[-1]]]))
+    touching = touching[touching > 0]
+    if not len(touching):
+        return grown
+    pad = cv2.dilate(np.isin(labels, touching).astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+    return grown | (pad & area)
+
+
 def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_letters: bool = False):
     """Padded box, grown over letters its edge cuts, and the erase mask of its letters, outline and glow.
 
@@ -347,6 +379,7 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_lette
     bg = cv2.cvtColor(image[ey1:ey2, ex1:ex2], cv2.COLOR_BGR2LAB)[ring]
     size = text_size(seed, prob)
     grown = grow(crop, seed, bg, int(size * REACH))
+    grown = _edge_fragments(crop, seed, grown, size, (by1 == 0, by2 == h))
     plate = _plate(crop, seed, grown, bg, size, (bx1 > 0, by1 > 0, bx2 < w, by2 < h))
     if plate is not None:
         grown = grown | plate
