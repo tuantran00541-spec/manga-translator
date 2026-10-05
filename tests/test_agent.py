@@ -216,6 +216,12 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     monkeypatch.setattr(client.requests, "post", lambda url, **kw: replies.pop(0))
     assert client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)["calls"][0]["name"] == "list_dir"
     assert waits == [6.0], "a rate-limited request waits and is sent again"
+    client._COOLDOWN["openai"] = time.time() + 5
+    waits.clear()
+    monkeypatch.setattr(client.requests, "post", lambda url, **kw: FakeResponse(200, reply))
+    client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
+    assert len(waits) == 1 and 3 < waits[0] <= 5, "another session waits out the cooldown a 429 set"
+    client._COOLDOWN.clear()
     monkeypatch.setattr(client.requests, "post", lambda url, **kw: FakeResponse(400, {"error": {"message": "tools are not supported"}}))
     with pytest.raises(client.ToolsUnsupported):
         client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)

@@ -3,6 +3,7 @@
   const POLL_MS = 700;
   const HEAD = { "X-Manga-Agent": "1" };
   const VERBS = {
+    "": "Lệnh không đọc được",
     list_dir: "Xem", read_file: "Đọc", search: "Tìm", glob: "Tìm file", write_file: "Tạo", edit_file: "Sửa",
     apply_patch: "Vá", edit_lines: "Sửa dòng", run_command: "Chạy", web_fetch: "Mở trang", skill: "Mở skill", todo_write: "Kế hoạch",
     task: "Agent phụ", spawn_agent: "Giao việc", wait_agent: "Đợi agent", send_input: "Nhắn agent", close_agent: "Đóng agent", delegate: "Agent ngoài", memory: "Ghi nhớ", ask_user: "Hỏi bạn", exit_plan_mode: "Kế hoạch", goal_done: "Xong mục tiêu",

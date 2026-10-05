@@ -15,6 +15,8 @@ from app.visual_qc.deepseek_region_client import _safe_error_detail
 
 READ_TIMEOUT = 600
 RATE_LIMIT_RETRIES = 4
+# When a provider says "slow down", every session using it waits, not just the one that was told.
+_COOLDOWN: dict[str, float] = {}
 # A block may lack its closing tag when the model stops early or opens the next call.
 TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*(?:</tool_call>|(?=<tool_call>)|\Z)", re.S)
 PARAMETER_RE = re.compile(r"<parameter=(\w+)>\s*(.*?)\s*</parameter>", re.S)
@@ -123,6 +125,9 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
     if tools:
         payload["tools"] = native_tools(tools)
     for attempt in range(RATE_LIMIT_RETRIES + 1):
+        pause = _COOLDOWN.get(provider.id, 0.0) - time.time() if attempt == 0 else 0
+        if pause > 0:
+            time.sleep(min(pause, 60.0))
         try:
             response = requests.post(url, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                                      json=payload, timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT),
@@ -136,7 +141,9 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
             wait = float(response.headers.get("Retry-After") or 0)
         except ValueError:
             wait = 0.0
-        time.sleep(min(60.0, wait or 6.0 * 2 ** attempt))
+        wait = min(60.0, wait or 6.0 * 2 ** attempt)
+        _COOLDOWN[provider.id] = max(_COOLDOWN.get(provider.id, 0.0), time.time() + wait)
+        time.sleep(wait)
     if 300 <= response.status_code < 400:
         raise RuntimeError(f"{provider.label} redirected the request")
     if not response.ok:
