@@ -1,11 +1,11 @@
-name: Agnes probe
+name: PolarGrid probe
 
-# One-off: can agnes-3.0-flash read manga lettering from a base64 image, and how well does it translate it.
+# One-off: can qwen3.8-27b on PolarGrid read manga lettering from a base64 image, and how well does it translate it.
 on:
   push:
     branches-ignore: [main]
     paths:
-      - ".github/workflows/agnes-probe.yml"
+      - ".github/workflows/polargrid-probe.yml"
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     env:
-      OUT: audit-results/agnes-probe
+      OUT: audit-results/polargrid-probe
     steps:
       - uses: actions/checkout@v4
 
@@ -35,15 +35,25 @@ jobs:
               cv2.imwrite(f"{os.environ['OUT']}/in{n}.jpg", im[:, : im.shape[1] // 2 - 2], [cv2.IMWRITE_JPEG_QUALITY, 92])
           PY
 
-      - name: Ask Agnes (10 requests a minute, so one every 8 s)
+      - name: Ask qwen3.8-27b on PolarGrid
         env:
-          AGNES_KEY: ${{ secrets.Agnes_key }}
+          POLARGRID_KEY: ${{ secrets.polagrid_ }}
         run: |
           python3 - <<'PY'
           import base64, json, os, time, requests
           out = os.environ["OUT"]
-          url = "https://apihub.agnes-ai.com/v1/chat/completions"
-          head = {"Authorization": "Bearer " + os.environ["AGNES_KEY"], "Content-Type": "application/json"}
+          base = "https://api.mia-01.edge.polargrid.ai/v1"
+          head = {"Authorization": "Bearer " + os.environ["POLARGRID_KEY"], "Content-Type": "application/json"}
+          url = base + "/chat/completions"
+          listed = requests.get(base + "/models", headers=head, timeout=60)
+          print("models", listed.status_code, listed.text[:3000], flush=True)
+          try:
+              ids = [m["id"] for m in listed.json().get("data", [])]
+          except Exception:
+              ids = []
+          model = next((i for i in ids if "3.8" in i and "27" in i.lower()), None) or next((i for i in ids if "qwen" in i.lower()), "qwen3.8-27b")
+          print("model", model, flush=True)
+          open(f"{out}/models.txt", "w").write(f"{listed.status_code}\n{listed.text[:20000]}")
           read = ("List every piece of text in this manga page from top to bottom: speech bubbles, captions, "
                   "sound effects and signs in the art. Reply with JSON only: "
                   '[{"text": "...", "kind": "dialogue|narration|sfx|sign", "box": [x1, y1, x2, y2]}] '
@@ -51,10 +61,15 @@ jobs:
           log = []
 
           def ask(name, content):
-              body = {"model": "agnes-3.0-flash", "messages": [{"role": "user", "content": content}], "temperature": 0}
+              body = {"model": model, "messages": [{"role": "user", "content": content}], "temperature": 0,
+                      "chat_template_kwargs": {"enable_thinking": False}}
               start = time.time()
               r = requests.post(url, headers=head, json=body, timeout=180)
-              row = {"name": name, "status": r.status_code, "seconds": round(time.time() - start, 1)}
+              if 400 <= r.status_code < 500:
+                  print("retry without thinking switch:", r.status_code, r.text[:500], flush=True)
+                  body.pop("chat_template_kwargs")
+                  r = requests.post(url, headers=head, json=body, timeout=180)
+              row = {"name": name, "model": model, "status": r.status_code, "seconds": round(time.time() - start, 1)}
               try:
                   data = r.json()
                   row["usage"] = data.get("usage")
@@ -63,7 +78,7 @@ jobs:
                   row["body"] = r.text[:2000]
               log.append(row)
               print(json.dumps(row, ensure_ascii=False)[:3000], flush=True)
-              time.sleep(8)
+              time.sleep(2)
               return row.get("reply") or ""
 
           lines = []
@@ -82,5 +97,5 @@ jobs:
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/agnes-probe
-          message: "audit: Agnes probe (run ${{ github.run_id }})"
+          paths: audit-results/polargrid-probe
+          message: "audit: PolarGrid probe (run ${{ github.run_id }})"
