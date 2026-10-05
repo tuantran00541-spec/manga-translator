@@ -41,7 +41,7 @@ _ALL = (
     Knob("mask.left_share", 0.004, 0.001, 0.02, "share of an erased block still read as text before another pass"),
     Knob("mask.reach_rounds", 3, 0, 6, "times a box grows toward letters its edge still cuts"),
     Knob("mask.chain", 0.6, 0.2, 1.5, "widest gap, in letter heights, between letters of one text"),
-    Knob("mask.fringe", 0.25, 0.0, 0.6, "how far, in letter heights, a soft shadow may fade from the letters"),
+    Knob("mask.fringe", 0.5, 0.0, 1.0, "how far, in letter heights, a soft shadow or blur may fade from the letters"),
     Knob("mask.fringe_tolerance", 5.0, 2.0, 12.0, "Lab distance within which a pixel is the flat background"),
     Knob("mask.fringe_flat_share", 0.6, 0.3, 0.9, "share of the band round the letters that must be that background"),
     Knob("mask.fringe_ink_share", 0.8, 0.5, 0.95, "a shadow pixel stays this much lighter than the ink"),

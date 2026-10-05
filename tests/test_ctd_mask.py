@@ -162,3 +162,53 @@ def test_a_soft_drop_shadow_on_a_flat_balloon_is_erased_but_the_outline_stays():
     grey[:, :100] = grey[:, 900:] = False
     assert (full & grey).sum() >= 0.95 * grey.sum(), "the shadow goes with the letters"
     assert not full[88:93, 60:940].any(), "the outline stays"
+
+
+def test_letters_on_a_dark_badge_are_erased_with_the_badge():
+    ctd_mask._session = InkModel(light_above=200)
+    image = np.full((300, 900, 3), (25, 15, 20), np.uint8)
+    cv2.rectangle(image, (60, 128), (420, 176), (150, 40, 120), -1)  # a purple scanlator badge
+    cv2.putText(image, "SCANS.COM", (75, 165), cv2.FONT_HERSHEY_DUPLEX, 1.4, (230, 230, 230), 3)
+    box, mask = ctd_mask.letter_mask(image, (70, 125, 410, 175))
+    badge = np.zeros(image.shape[:2], bool)
+    badge[128:177, 60:421] = True
+    assert (_full(image, box, mask) & badge).sum() >= 0.95 * badge.sum(), "the badge goes with its letters"
+
+
+def test_a_white_bubble_round_the_letters_stays():
+    image = np.full((400, 900, 3), (60, 70, 90), np.uint8)
+    cv2.ellipse(image, (450, 200), (300, 120), 0, 0, 360, (255, 255, 255), -1)
+    cv2.putText(image, "HELLO", (300, 225), cv2.FONT_HERSHEY_DUPLEX, 2.0, (20, 20, 20), 5)
+    box, mask = ctd_mask.letter_mask(image, (290, 160, 610, 240))
+    paper = (image.min(axis=2) > 250)
+    assert (_full(image, box, mask) & paper).sum() < 0.2 * paper.sum(), "the bubble keeps its paper"
+
+
+def test_welded_glowing_letters_still_get_a_letter_tall_reach():
+    seed = np.zeros((300, 600), bool)
+    seed[40:260, 50:550] = True  # glow welds three lines into one blob
+    prob = np.zeros(seed.shape, np.float32)
+    for top in (50, 130, 210):
+        prob[top:top + 40, 60:540] = 1.0  # the surest pixels show the lines
+    assert ctd_mask.text_size(seed, prob) == 40
+
+
+def test_lines_set_close_together_are_not_read_as_one_tall_line():
+    prob = np.zeros((200, 600), np.float32)
+    for top in (20, 70, 120):
+        prob[top:top + 44, 60:540] = 1.0  # lines 44 px tall with 6 px leading
+        prob[top + 44:top + 50, 100:104] = 1.0  # one stroke bridges each gap
+    assert ctd_mask.text_size(prob > 0.3, prob) == 44
+
+
+def test_letter_tops_cut_by_the_image_edge_are_erased():
+    full = np.full((300, 700, 3), 250, np.uint8)
+    cv2.ellipse(full, (350, 160), (320, 140), 0, 0, 360, (0, 0, 0), 4)  # a balloon outline in the ring
+    for y in (60, 130, 200):
+        cv2.putText(full, "WHETHER WORLD", (110, y), cv2.FONT_HERSHEY_DUPLEX, 1.6, (10, 10, 10), 4)
+    image = np.ascontiguousarray(full[48:])  # the page starts through the first line
+    box, mask = ctd_mask.letter_mask(image, (100, 0, 600, 170))
+    ink = image.max(axis=2) < 60
+    ink[:, :40] = ink[:, 660:] = False  # leave the outline out
+    top = ink[:6]
+    assert (_full(image, box, mask)[:6] & top).sum() >= 0.9 * top.sum(), "letter parts at the edge go too"
