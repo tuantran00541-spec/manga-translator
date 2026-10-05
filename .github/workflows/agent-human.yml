@@ -1,0 +1,217 @@
+name: Agent human chat
+
+# One-off: a scripted "person" chats with PolarGrid Qwen on the real Agent screen about a small public repo, with steering, stops, approvals and many helper agents.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/agent-human.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  chat:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 170
+    env:
+      OUT: audit-results/agent-human
+      WORK: /tmp/agent-work
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install -q -r requirements-test.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Clone the repo the person will work on
+        run: |
+          mkdir -p "$WORK" "$OUT"
+          git clone --depth 1 https://github.com/pallets/itsdangerous "$WORK/project"
+          python -m pip install -q -e "$WORK/project"
+          (cd "$WORK/project" && python -m pytest -q -p no:cacheprovider | tail -2)
+
+      - name: Start the server with an in-memory key store
+        run: |
+          mkdir -p "$WORK/keyring"
+          cat > "$WORK/keyring/memkeyring.py" <<'PY'
+          from keyring.backend import KeyringBackend
+
+
+          class MemoryKeyring(KeyringBackend):
+              priority = 1
+              _data = {}
+
+              def get_password(self, service, username):
+                  return self._data.get((service, username))
+
+              def set_password(self, service, username, password):
+                  self._data[(service, username)] = password
+
+              def delete_password(self, service, username):
+                  self._data.pop((service, username), None)
+          PY
+          PYTHONPATH="$PWD:$WORK/keyring" PYTHON_KEYRING_BACKEND=memkeyring.MemoryKeyring \
+            python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > "$OUT/server.log" 2>&1 &
+          echo $! > "$WORK/server.pid"
+          for i in $(seq 60); do curl -fs http://127.0.0.1:8000/api/agent/config -H "X-Manga-Agent: 1" > /dev/null && exit 0; sleep 1; done
+          cat "$OUT/server.log"; exit 1
+
+      - name: Add PolarGrid to the running server
+        env:
+          POLARGRID_KEY: ${{ secrets.polagrid_ }}
+        run: |
+          python - <<'PY'
+          import os, requests
+          r = requests.post("http://127.0.0.1:8000/api/visual_qc/providers/polargrid/key", timeout=60,
+                            json={"api_key": os.environ["POLARGRID_KEY"], "provider_label": "PolarGrid", "provider_protocol": "openai",
+                                  "provider_api_base": "https://api.mia-01.edge.polargrid.ai/v1"})
+          print(r.status_code, r.text[:120].replace(os.environ["POLARGRID_KEY"], "***"))
+          r.raise_for_status()
+          PY
+
+      - name: Chat as a person would
+        run: |
+          cat > "$WORK/human.py" <<'PY'
+          import json, sys, time
+          from pathlib import Path
+          import requests
+          from playwright.sync_api import sync_playwright
+
+          out = Path(sys.argv[1])
+          API, H = "http://127.0.0.1:8000/api/agent", {"X-Manga-Agent": "1"}
+          TURNS = [
+              {"say": "Chào, repo này là itsdangerous. Xem qua cấu trúc rồi giải thích ngắn gọn nó làm gì và các file chính nhé.",
+               "interject": [(25, "à đọc cả thư mục tests luôn nha")]},
+              {"say": "Giờ spawn 5 agent chạy song song, mỗi agent review một module trong src/itsdangerous (signer, serializer, timed, url_safe, encoding), "
+                      "tìm bug, thiếu type hint hoặc edge case chưa có test. Mỗi agent báo cáo 5 dòng. Cứ làm liên tục đừng hỏi tôi."},
+              {"say": "Chạy toàn bộ test cho tôi, cho biết pass bao nhiêu"},
+              {"say": "Tốt. Giờ giao 3 agent làm cùng lúc, mỗi agent viết một file test mới riêng trong tests/: test_extra_encoding.py (encoding.py), "
+                      "test_extra_timed.py (timed.py: max_age=0, timestamp tương lai), test_extra_url_safe.py (url_safe nén). Xong thì chạy pytest."},
+              {"say": "Nếu có test fail thì sửa test hoặc code cho đúng rồi chạy lại đến khi xanh hết."},
+              {"say": "Tìm trên web changelog mới nhất của itsdangerous rồi so với CHANGES.rst trong repo, có chỗ nào lệch không?"},
+              {"say": "Viết script bench_sign.py đo tốc độ sign/unsign 100000 lần rồi chạy cho tôi xem số liệu", "stop_after": 40},
+              {"say": "thôi dừng cái bench đi, không cần nữa. Xoá file bench_sign.py giúp tôi"},
+              {"say": "Cuối cùng cho tôi xem git status và diff stat, rồi tóm tắt cả buổi vừa làm gì."},
+          ]
+          MAX_TURN_S = 900
+
+
+          def session_id():
+              rows = requests.get(f"{API}/sessions", headers=H, timeout=30).json()["sessions"]
+              return rows[0]["id"] if rows else None
+
+
+          def snapshot(sid, after=0):
+              return requests.get(f"{API}/sessions/{sid}?after={after}", headers=H, timeout=30).json()
+
+
+          log, approvals = [], []
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page(viewport={"width": 1280, "height": 900})
+              errors = []
+              page.on("pageerror", lambda e: errors.append(str(e)))
+              page.goto("http://127.0.0.1:8000/")
+              page.click('.sidebar-link[data-route="agent"]')
+              page.wait_for_function("[...document.querySelector('#agent-provider').options].some(o => o.value === 'polargrid')", timeout=30000)
+              page.select_option("#agent-provider", "polargrid")
+              page.wait_for_timeout(1500)
+              page.fill("#agent-model", "qwen-3.8-27b")
+              page.select_option("#agent-mode", "edits")
+              page.select_option("#agent-sandbox", "workspace-write")
+              page.evaluate("w => { document.querySelector('#agent-workspace').value = w; }", "/tmp/agent-work/project")
+              last_seq, sid = 0, None
+              for number, turn in enumerate(TURNS, 1):
+                  page.fill("#agent-input", turn["say"])
+                  page.press("#agent-input", "Enter")
+                  started = time.time()
+                  stopped = False
+                  pending_interjections = list(turn.get("interject", []))
+                  shot_mid = False
+                  while True:
+                      time.sleep(1)
+                      sid = sid or session_id()
+                      elapsed = time.time() - started
+                      card = page.query_selector(".agent-approval .agent-btn-primary")
+                      if card:
+                          time.sleep(2)
+                          try:
+                              title = page.inner_text(".agent-approval-title")
+                              card.click()
+                              approvals.append({"turn": number, "what": title[:160], "at": round(elapsed)})
+                          except Exception:
+                              pass
+                      if pending_interjections and elapsed >= pending_interjections[0][0]:
+                          page.fill("#agent-input", pending_interjections.pop(0)[1])
+                          page.press("#agent-input", "Enter")
+                      if not shot_mid and elapsed >= 12:
+                          page.screenshot(path=str(out / f"turn{number}-midway.png"))
+                          shot_mid = True
+                      if turn.get("stop_after") and not stopped and elapsed >= turn["stop_after"]:
+                          if page.query_selector("#agent-stop:not([hidden])"):
+                              page.click("#agent-stop")
+                              stopped = True
+                      snap = snapshot(sid, last_seq) if sid else None
+                      if snap and elapsed > 5 and snap["status"] == "idle":
+                          break
+                      if elapsed > MAX_TURN_S:
+                          requests.post(f"{API}/sessions/{sid}/stop", headers=H, timeout=30)
+                          break
+                  snap = snapshot(sid, last_seq)
+                  events = snap["events"]
+                  last_seq = max([last_seq] + [e["seq"] for e in events])
+                  tools = [e["name"] for e in events if e["type"] == "tool"]
+                  final = next((e["text"] for e in reversed(events) if e["type"] == "assistant" and e["text"]), "")
+                  row = {"turn": number, "said": turn["say"][:90], "seconds": round(time.time() - started), "status": snap["status"],
+                         "steps": sum(e["type"] == "assistant" for e in events), "tools": {n: tools.count(n) for n in sorted(set(tools))},
+                         "failed_tools": [(e["name"], e["output"][:120]) for e in events if e["type"] == "tool" and not e["ok"]],
+                         "helpers_started": sum(1 for e in events if e["type"] == "subagent" and e["state"] == "started"),
+                         "helpers_done": sum(1 for e in events if e["type"] == "subagent" and e["state"] == "done"),
+                         "errors": [e["text"][:160] for e in events if e["type"] == "error"], "notices": [e["text"][:160] for e in events if e["type"] == "notice"],
+                         "stopped_by_me": stopped, "usage": snap["usage"], "stats": snap["stats"], "status_line": page.inner_text("#agent-status")[:200],
+                         "answer": final[:1800]}
+                  log.append(row)
+                  page.screenshot(path=str(out / f"turn{number}-end.png"), full_page=False)
+                  print(json.dumps({k: v for k, v in row.items() if k != "answer"}, ensure_ascii=False), flush=True)
+              page.locator(".agent-group").evaluate_all("gs => gs.forEach(g => { g.open = true; })") if page.query_selector(".agent-group") else None
+              page.screenshot(path=str(out / "final-full.png"), full_page=True)
+              (out / "page.txt").write_text(page.inner_text("#agent-log"), encoding="utf-8")
+              (out / "pageerrors.json").write_text(json.dumps(errors))
+              (out / "turns.json").write_text(json.dumps({"turns": log, "approvals": approvals}, ensure_ascii=False, indent=1), encoding="utf-8")
+              if sid:
+                  (out / "events.json").write_text(json.dumps(snapshot(sid)["events"], ensure_ascii=False, indent=1), encoding="utf-8")
+              browser.close()
+          PY
+          python "$WORK/human.py" "$OUT" 2>&1 | tee "$OUT/human.log" | cut -c1-1200
+
+      - name: Check the work the agent left behind
+        if: always()
+        run: |
+          cd "$WORK/project"
+          git status --short | tee "$OUT/project-status.txt"
+          python -m pytest -q -p no:cacheprovider 2>&1 | tail -15 | tee "$OUT/project-pytest.txt"
+          ls "$WORK" | head; ls -a "$WORK/project" | grep -i conflict || true
+
+      - name: Stop the server
+        if: always()
+        run: kill "$(cat "$WORK/server.pid")" 2>/dev/null || true
+
+      - name: Give git access only now that the agents are done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/agent-human
+          message: "audit: Agent human chat on PolarGrid Qwen (run ${{ github.run_id }})"
