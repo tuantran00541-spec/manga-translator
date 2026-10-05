@@ -1,6 +1,6 @@
 name: PolarGrid probe
 
-# One-off: does any PolarGrid region serve a Qwen model (such as qwen3.5) that reads manga lettering from an image.
+# One-off: can gemma-4-31b on PolarGrid yvr-02 read manga lettering from an image.
 on:
   push:
     branches-ignore: [main]
@@ -43,7 +43,7 @@ jobs:
           import base64, json, os, time, requests
           out = os.environ["OUT"]
           head = {"Authorization": "Bearer " + os.environ["POLARGRID_KEY"], "Content-Type": "application/json"}
-          regions = "yto-01 yul-01 yvr-02 nyc-01 nyc-02 dfw-01 dfw-02 sfo-01 lax-01 sea-01 chi-01 phx-01 was-01 mia-01 sfo-03".split()
+          regions = ["yvr-02"]
           found, listing = {}, {}
           for region in regions:
               base = f"https://api.{region}.edge.polargrid.ai/v1"
@@ -54,7 +54,7 @@ jobs:
               except Exception as exc:
                   listing[region] = f"error {exc}"[:200]; ids = []
               for i in ids:
-                  if "qwen" in i.lower() and i != "qwen-3.8-27b":
+                  if ("qwen" in i.lower() and i != "qwen-3.8-27b") or "gemma" in i.lower():
                       found.setdefault(i, base)
               print(region, listing[region], flush=True)
           read = ("List every piece of text in this manga page from top to bottom: speech bubbles, captions, "
