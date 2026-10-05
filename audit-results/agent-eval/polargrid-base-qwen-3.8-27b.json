@@ -1,0 +1,245 @@
+[
+ {
+  "label": "polargrid-base",
+  "model": "qwen-3.8-27b",
+  "scenario": "bugfix",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "tests_pass": true,
+   "checked_after_last_edit": true
+  },
+  "seconds": 397.5,
+  "steps": 5,
+  "usage": {
+   "prompt_tokens": 6175,
+   "completion_tokens": 245
+  },
+  "tools": {
+   "edit_file": 1,
+   "list_dir": 1,
+   "read_file": 2,
+   "run_command": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-base",
+  "model": "qwen-3.8-27b",
+  "scenario": "explore",
+  "repeat": 0,
+  "ok": false,
+  "checks": {
+   "names_most_files": false,
+   "files": 17
+  },
+  "seconds": 96.0,
+  "steps": 10,
+  "usage": {
+   "prompt_tokens": 14820,
+   "completion_tokens": 1037
+  },
+  "tools": {
+   "": 7,
+   "list_dir": 1,
+   "run_command": 2
+  },
+  "errors": [
+   "Model viết 4 lượt liền lệnh gọi công cụ không đọc được; dừng để khỏi tốn token."
+  ],
+  "notices": []
+ },
+ {
+  "label": "polargrid-base",
+  "model": "qwen-3.8-27b",
+  "scenario": "bigout",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "found_code": true,
+   "found_user": true
+  },
+  "seconds": 8.0,
+  "steps": 3,
+  "usage": {
+   "prompt_tokens": 13455,
+   "completion_tokens": 88
+  },
+  "tools": {
+   "run_command": 2
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-base",
+  "model": "qwen-3.8-27b",
+  "scenario": "helpers",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "spawned_two": true,
+   "answered": true
+  },
+  "seconds": 25.0,
+  "steps": 5,
+  "usage": {
+   "prompt_tokens": 16621,
+   "completion_tokens": 799
+  },
+  "tools": {
+   "read_file": 2,
+   "spawn_agent": 2,
+   "wait_agent": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-base",
+  "model": "qwen-3.8-27b",
+  "scenario": "writers",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "a_made": true,
+   "b_made": true,
+   "refused_once": false
+  },
+  "seconds": 16.0,
+  "steps": 4,
+  "usage": {
+   "prompt_tokens": 11115,
+   "completion_tokens": 468
+  },
+  "tools": {
+   "read_file": 2,
+   "spawn_agent": 2,
+   "wait_agent": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-base",
+  "model": "qwen-3.8-27b",
+  "scenario": "bugfix",
+  "repeat": 1,
+  "ok": true,
+  "checks": {
+   "tests_pass": true,
+   "checked_after_last_edit": true
+  },
+  "seconds": 12.2,
+  "steps": 5,
+  "usage": {
+   "prompt_tokens": 6175,
+   "completion_tokens": 223
+  },
+  "tools": {
+   "edit_file": 1,
+   "list_dir": 1,
+   "read_file": 2,
+   "run_command": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-base",
+  "model": "qwen-3.8-27b",
+  "scenario": "explore",
+  "repeat": 1,
+  "ok": false,
+  "checks": {
+   "names_most_files": false,
+   "files": 17
+  },
+  "seconds": 37.0,
+  "steps": 11,
+  "usage": {
+   "prompt_tokens": 16055,
+   "completion_tokens": 777
+  },
+  "tools": {
+   "": 2,
+   "glob": 1,
+   "list_dir": 2,
+   "run_command": 5
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-base",
+  "model": "qwen-3.8-27b",
+  "scenario": "bigout",
+  "repeat": 1,
+  "ok": true,
+  "checks": {
+   "found_code": true,
+   "found_user": true
+  },
+  "seconds": 8.0,
+  "steps": 3,
+  "usage": {
+   "prompt_tokens": 13455,
+   "completion_tokens": 98
+  },
+  "tools": {
+   "run_command": 2
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-base",
+  "model": "qwen-3.8-27b",
+  "scenario": "helpers",
+  "repeat": 1,
+  "ok": true,
+  "checks": {
+   "spawned_two": true,
+   "answered": true
+  },
+  "seconds": 24.0,
+  "steps": 4,
+  "usage": {
+   "prompt_tokens": 16600,
+   "completion_tokens": 745
+  },
+  "tools": {
+   "read_file": 2,
+   "spawn_agent": 2,
+   "wait_agent": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-base",
+  "model": "qwen-3.8-27b",
+  "scenario": "writers",
+  "repeat": 1,
+  "ok": true,
+  "checks": {
+   "a_made": true,
+   "b_made": true,
+   "refused_once": false
+  },
+  "seconds": 21.0,
+  "steps": 5,
+  "usage": {
+   "prompt_tokens": 13664,
+   "completion_tokens": 602
+  },
+  "tools": {
+   "run_command": 1,
+   "spawn_agent": 2,
+   "wait_agent": 1
+  },
+  "errors": [],
+  "notices": []
+ }
+]

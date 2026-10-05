@@ -1,0 +1,242 @@
+[
+ {
+  "label": "polargrid-new",
+  "model": "qwen-3.8-27b",
+  "scenario": "bugfix",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "tests_pass": true,
+   "checked_after_last_edit": true
+  },
+  "seconds": 12.2,
+  "steps": 5,
+  "usage": {
+   "prompt_tokens": 6210,
+   "completion_tokens": 234
+  },
+  "tools": {
+   "edit_file": 1,
+   "list_dir": 1,
+   "read_file": 2,
+   "run_command": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-new",
+  "model": "qwen-3.8-27b",
+  "scenario": "explore",
+  "repeat": 0,
+  "ok": false,
+  "checks": {
+   "names_most_files": false,
+   "files": 17
+  },
+  "seconds": 13.0,
+  "steps": 3,
+  "usage": {
+   "prompt_tokens": 3839,
+   "completion_tokens": 225
+  },
+  "tools": {
+   "list_dir": 1,
+   "run_command": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-new",
+  "model": "qwen-3.8-27b",
+  "scenario": "bigout",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "found_code": true,
+   "found_user": true
+  },
+  "seconds": 6.0,
+  "steps": 3,
+  "usage": {
+   "prompt_tokens": 8566,
+   "completion_tokens": 80
+  },
+  "tools": {
+   "run_command": 2
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-new",
+  "model": "qwen-3.8-27b",
+  "scenario": "helpers",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "spawned_two": true,
+   "answered": true
+  },
+  "seconds": 21.0,
+  "steps": 3,
+  "usage": {
+   "prompt_tokens": 13752,
+   "completion_tokens": 667
+  },
+  "tools": {
+   "spawn_agent": 2,
+   "wait_agent": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-new",
+  "model": "qwen-3.8-27b",
+  "scenario": "writers",
+  "repeat": 0,
+  "ok": true,
+  "checks": {
+   "a_made": true,
+   "b_made": true,
+   "refused_once": true
+  },
+  "seconds": 34.0,
+  "steps": 9,
+  "usage": {
+   "prompt_tokens": 24511,
+   "completion_tokens": 887
+  },
+  "tools": {
+   "": 1,
+   "read_file": 2,
+   "spawn_agent": 3,
+   "wait_agent": 2
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-new",
+  "model": "qwen-3.8-27b",
+  "scenario": "bugfix",
+  "repeat": 1,
+  "ok": true,
+  "checks": {
+   "tests_pass": true,
+   "checked_after_last_edit": true
+  },
+  "seconds": 12.2,
+  "steps": 6,
+  "usage": {
+   "prompt_tokens": 8076,
+   "completion_tokens": 227
+  },
+  "tools": {
+   "edit_file": 1,
+   "list_dir": 1,
+   "read_file": 2,
+   "run_command": 2
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-new",
+  "model": "qwen-3.8-27b",
+  "scenario": "explore",
+  "repeat": 1,
+  "ok": false,
+  "checks": {
+   "names_most_files": false,
+   "files": 17
+  },
+  "seconds": 24.0,
+  "steps": 6,
+  "usage": {
+   "prompt_tokens": 7714,
+   "completion_tokens": 554
+  },
+  "tools": {
+   "": 4,
+   "glob": 1,
+   "list_dir": 1
+  },
+  "errors": [
+   "Model viết 4 lượt liền lệnh gọi công cụ không đọc được; dừng để khỏi tốn token."
+  ],
+  "notices": []
+ },
+ {
+  "label": "polargrid-new",
+  "model": "qwen-3.8-27b",
+  "scenario": "bigout",
+  "repeat": 1,
+  "ok": true,
+  "checks": {
+   "found_code": true,
+   "found_user": true
+  },
+  "seconds": 7.0,
+  "steps": 3,
+  "usage": {
+   "prompt_tokens": 8566,
+   "completion_tokens": 95
+  },
+  "tools": {
+   "run_command": 2
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-new",
+  "model": "qwen-3.8-27b",
+  "scenario": "helpers",
+  "repeat": 1,
+  "ok": true,
+  "checks": {
+   "spawned_two": true,
+   "answered": true
+  },
+  "seconds": 19.0,
+  "steps": 3,
+  "usage": {
+   "prompt_tokens": 12590,
+   "completion_tokens": 620
+  },
+  "tools": {
+   "spawn_agent": 2,
+   "wait_agent": 1
+  },
+  "errors": [],
+  "notices": []
+ },
+ {
+  "label": "polargrid-new",
+  "model": "qwen-3.8-27b",
+  "scenario": "writers",
+  "repeat": 1,
+  "ok": true,
+  "checks": {
+   "a_made": true,
+   "b_made": true,
+   "refused_once": true
+  },
+  "seconds": 27.0,
+  "steps": 6,
+  "usage": {
+   "prompt_tokens": 15075,
+   "completion_tokens": 648
+  },
+  "tools": {
+   "run_command": 1,
+   "spawn_agent": 3,
+   "wait_agent": 2
+  },
+  "errors": [],
+  "notices": []
+ }
+]
