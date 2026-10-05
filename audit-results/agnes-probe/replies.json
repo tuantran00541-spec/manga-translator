@@ -1,0 +1,43 @@
+[
+ {
+  "name": "read024",
+  "status": 200,
+  "seconds": 4.4,
+  "usage": {
+   "completion_tokens": 201,
+   "prompt_tokens": 857,
+   "total_tokens": 1058,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "image_tokens": 702
+   }
+  },
+  "reply": "[{\"text\": \"WELL... IT'S GOING TO KEEP ME AWAKE, AT LEAST.\", \"kind\": \"dialogue\", \"box\": [0, 73, 998, 335]}, {\"text\": \"POLICE\", \"kind\": \"sign\", \"box\": [411, 418, 732, 478]}, {\"text\": \"GULP\", \"kind\": \"sfx\", \"box\": [274, 553, 383, 618]}, {\"text\": \"GULP\", \"kind\": \"sfx\", \"box\": [713, 548, 826, 602]}, {\"text\": \"GULP\", \"kind\": \"sfx\", \"box\": [307, 671, 467, 748]}]"
+ },
+ {
+  "name": "read094",
+  "status": 200,
+  "seconds": 3.7,
+  "usage": {
+   "completion_tokens": 177,
+   "prompt_tokens": 893,
+   "total_tokens": 1070,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "image_tokens": 738
+   }
+  },
+  "reply": "[\n  {\"text\": \"ALRIGHT, SUNNY.\", \"kind\": \"dialogue\", \"box\": [197, 113, 423, 174]},\n  {\"text\": \"HOW MUCH LONGER CAN YOU STAY AWAKE?\", \"kind\": \"dialogue\", \"box\": [423, 179, 804, 255]},\n  {\"text\": \"NOD... NOD...\", \"kind\": \"sfx\", \"box\": [90, 341, 298, 493]},\n  {\"text\": \"UM... NOT MUCH LONGER.\", \"kind\": \"dialogue\", \"box\": [282, 841, 540, 929]}\n]"
+ },
+ {
+  "name": "translate",
+  "status": 200,
+  "seconds": 2.5,
+  "usage": {
+   "completion_tokens": 70,
+   "prompt_tokens": 495,
+   "total_tokens": 565
+  },
+  "reply": "{\n  \"en\": \"WELL... IT'S GOING TO KEEP ME AWAKE, AT LEAST.\",\n  \"vi\": \"Mà... ít nhất là mấy chuyện này cũng giúp tao tỉnh táo được.\",\n  \"context_note\": \"Translated to match a casual first-person tone common in webtoons.\"\n}"
+ }
+]
