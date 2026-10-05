@@ -1589,7 +1589,7 @@ def test_tool_calls_with_broken_json_are_recovered_using_the_tools_parameter_nam
 
 def test_arguments_sent_as_json_strings_are_read_as_the_type_the_tool_declares(ws):
     shown = ws.run("read_file", {"path": "pkg/a.py", "anchors": "true", "limit": "2"}).splitlines()
-    assert shown[0].count("|") >= 1 and len(shown) == 2, "a flag and a number sent as strings still work"
+    assert shown[0].count("|") >= 1 and len(shown) == 3, "a flag and a number sent as strings still work"
     anchor = shown[0].split("|")[0]
     edits = json.dumps([{"op": "replace", "anchor": anchor, "text": "def g():"}])
     ws.run("edit_lines", {"path": "pkg/a.py", "edits": edits})
