@@ -1,33 +1,61 @@
 {
- "status": "idle",
+ "status": "running",
  "usage": {
-  "prompt_tokens": 3194,
-  "completion_tokens": 305,
+  "prompt_tokens": 12621970,
+  "completion_tokens": 203464,
   "cached_tokens": 0
  },
  "stats": {
-  "model_seconds": 817.3,
-  "tool_seconds": 0.1,
+  "model_seconds": 14673.5,
+  "tool_seconds": 4064.2,
   "cache_pct": 0,
   "cost": null
  },
- "events": 8,
- "assistant_steps": 1,
+ "events": 1418,
+ "assistant_steps": 562,
  "steps_per_hour": {
-  "0": 1
+  "0": 42,
+  "1": 170,
+  "2": 155,
+  "3": 102,
+  "4": 71,
+  "5": 22
  },
  "tool_counts": {
+  "run_command": 222,
+  "edit_file": 130,
+  "read_file": 88,
+  "write_file": 47,
+  "apply_patch": 40,
+  "search": 10,
+  "todo_write": 9,
+  "spawn_agent": 7,
+  "wait_agent": 7,
   "list_dir": 1,
-  "run_command": 1
+  "": 1
  },
- "failed_tools": 0,
- "helpers_started": 0,
- "errors": [
-  "polargrid request failed: ReadTimeout"
- ],
+ "failed_tools": 29,
+ "helpers_started": 7,
+ "errors": [],
  "notices": [
   [
-   "Máy chủ làm mất lệnh gọi công cụ khi stream (256 token); chuyển sang k",
+   "Đã tóm gọn 2 mục hội thoại cũ.",
+   264
+  ],
+  [
+   "Agent gọi lặp run_command 3 lần giống hệt; đã chặn.",
+   2
+  ],
+  [
+   "Mục tiêu chưa xong, agent làm tiếp (1/1000000).",
+   1
+  ],
+  [
+   "Đã tóm gọn 289 mục hội thoại cũ.",
+   1
+  ],
+  [
+   "Máy chủ làm mất lệnh gọi công cụ khi stream (112 token); chuyển sang k",
    1
   ]
  ],

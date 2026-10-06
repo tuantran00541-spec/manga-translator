@@ -1,0 +1,1 @@
+The README is complete. Let me update PROGRESS.md for M38-40 and do a final full test run:
