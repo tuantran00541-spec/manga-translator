@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
 import re
@@ -135,6 +134,8 @@ class Registry:
         self.loops: dict[str, Callable] = {}
         self.providers: dict[str, dict[str, Callable]] = {}
         self.plugins: list[dict] = []
+        # Plugin files written for the kernel (apply(ctx, config)) rather than register(api).
+        self.kernel_modules: list[tuple[str, str, object]] = []
         self._current = ""
 
     def tool(self, spec: dict, handler: Callable, kind: str = "exec", group: str | None = None, always_ask: bool = False) -> None:
@@ -200,11 +201,39 @@ def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.Trus
             continue
         reg._current = path.stem
         try:
-            spec = importlib.util.spec_from_file_location(f"manga_agent_plugin_{scope}_{path.stem}", path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            module.register(reg)
+            from app.agent.kernel import load_module
+
+            module = load_module(path, f"manga_agent_plugin_{scope}_{path.stem}")
+            if callable(getattr(module, "apply", None)) and not callable(getattr(module, "register", None)):
+                reg.kernel_modules.append((scope, path.stem, module))
+                row["state"] = "kernel"
+            else:
+                module.register(reg)
         except Exception as exc:
             row.update(state="failed", error=f"{type(exc).__name__}: {exc}"[:300])
         finally:
             reg._current = ""
+
+
+class KernelTools:
+    """The "tools" service of the kernel: a plugin's tools go into the registry and leave with the plugin."""
+
+    def __init__(self, ctx, reg: Registry):
+        self.ctx, self.reg = ctx, reg
+
+    def register(self, spec: dict, handler: Callable, kind: str = "exec", always_ask: bool = False) -> None:
+        """handler(session, args) returns the text the model reads; kind is read, edit, exec or net."""
+        self.reg.tool(spec, handler, kind=kind, group=self.ctx._owner or None, always_ask=always_ask)
+        name = spec["name"]
+        self.ctx.effect(lambda: self.reg.tools.pop(name, None))
+
+
+class KernelCommands:
+    """The "commands" service: a plugin's slash commands leave with the plugin."""
+
+    def __init__(self, ctx, reg: Registry):
+        self.ctx, self.reg = ctx, reg
+
+    def register(self, name: str, description: str, handler: Callable) -> None:
+        self.reg.command(name, description, handler)
+        self.ctx.effect(lambda: self.reg.commands.pop(name, None))

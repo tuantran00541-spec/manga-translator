@@ -12,7 +12,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from app.agent import client, context, mcp, patch, sandbox, skills
+from app.agent import client, context, kernel, mcp, patch, sandbox, skills
 from app.agent.session import AgentSession, AgentSessionManager
 from app.agent.tools import ToolError, Workspace
 from app.ai_providers import PROVIDERS
@@ -2767,3 +2767,117 @@ def test_web_reading_keeps_github_index_pages_reuses_a_fetched_page_and_points_t
     assert tips == [False, False, True]
     ws._tool_web_fetch("https://github.com/o/r", find="needle")
     assert "[Tip:" not in ws._tool_web_search("again"), "a fetch resets the streak"
+
+
+# The plugin kernel: services, reversible effects, waterfalls, and the plugin tree inside a session.
+
+def kplugin(apply, inject=()):
+    return kernel.Plugin(apply, tuple(inject))
+
+
+def test_plugins_start_when_their_services_exist_and_stop_when_they_go():
+    ctx, log = kernel.Context(), []
+    ctx.rows["user"] = kernel.Row("user", kplugin(lambda c, cfg: log.append("user up") or c.provide("greeting", c.get("name") + "!"), ["name"]))
+    ctx.rows["name"] = kernel.Row("name", kernel.provider("name", "Kai"))
+    ctx.settle()
+    assert ctx.get("greeting") == "Kai!" and log == ["user up"], "order of rows does not matter"
+    ctx.set_disabled("name", True)
+    assert "greeting" not in ctx and ctx.rows["user"].state == "waiting", "a plugin stops when a service it needs leaves, and its effects go"
+    ctx.set_disabled("name", False)
+    assert ctx.get("greeting") == "Kai!" and log == ["user up", "user up"]
+
+
+def test_effects_unwind_on_unmount_and_after_a_failed_start():
+    ctx = kernel.Context()
+    ctx.mount(kernel.Row("a", kplugin(lambda c, cfg: (c.provide("x", 1), c.on("ping", lambda p: None)))))
+    assert ctx.subscribers("ping") == 1 and "x" in ctx
+    ctx.unmount("a")
+    assert ctx.subscribers("ping") == 0 and "x" not in ctx
+
+    def broken(c, cfg):
+        c.provide("half", 1)
+        raise RuntimeError("boom")
+    ctx.mount(kernel.Row("b", kplugin(broken)))
+    assert ctx.rows["b"].state == "failed" and "half" not in ctx and "boom" in ctx.rows["b"].error
+    ctx.mount(kernel.Row("c", kernel.provider("y", 1)))
+    with pytest.raises(ValueError, match="already provided by c"):
+        ctx._owner = "d"
+        ctx.provide("y", 2)
+    ctx._owner = ""
+
+
+def test_waterfalls_run_in_order_and_can_answer_themselves():
+    ctx = kernel.Context()
+    ctx.rows["double"] = kernel.Row("double", kplugin(lambda c, cfg: c.on("calc", lambda v, nxt: nxt(v * 2))))
+    ctx.rows["plus"] = kernel.Row("plus", kplugin(lambda c, cfg: c.on("calc", lambda v, nxt: nxt(v + 1))))
+    ctx.rows["guard"] = kernel.Row("guard", kplugin(lambda c, cfg: c.on("calc", lambda v, nxt: "no negatives" if v < 0 else nxt(v))))
+    ctx.settle()
+    assert ctx.waterfall("calc", 3, lambda v: v * 10) == 70
+    assert ctx.waterfall("calc", -5, lambda v: v) == "no negatives"
+
+
+GREETER = textwrap.dedent('''
+    inject = ["tools", "session"]
+    defaults = {"greeting": "hi"}
+
+    def apply(ctx, config):
+        ctx.get("tools").register({"name": "greet", "description": "Greet someone.",
+                                   "parameters": {"type": "object", "properties": {"name": {"type": "string"}}}},
+                                  lambda session, args: config["greeting"] + " " + args.get("name", ""), kind="read")
+
+        def guard(call, next):
+            if call["name"] == "read_file" and call["args"].get("path") == "secret.txt":
+                return "[blocked by greeter]", False
+            output, ok = next(call)
+            return output.replace("TOKEN", "*****"), ok
+        ctx.on("tool/execute", guard)
+        ctx.on("model/request", lambda request, next: next({**request, "messages": request["messages"] + [{"role": "user", "content": "[greeter was here]"}]}))
+        seen = []
+        ctx.on("session/event", seen.append)
+        ctx.provide("greeter.seen", seen)
+''')
+
+
+def test_a_kernel_plugin_adds_tools_wraps_calls_and_model_requests_and_switches_off_live(ws, home, tmp_path):
+    folder = home / ".manga-agent"
+    (folder / "plugins").mkdir(parents=True, exist_ok=True)
+    (folder / "plugins" / "greeter.py").write_text(GREETER, encoding="utf-8")
+    (folder / "plugins.json").write_text(json.dumps({"rows": [{"id": "greeter", "config": {"greeting": "chào"}},
+                                                              {"id": "web-search-tinyfish", "disabled": True},
+                                                              {"id": "ghost", "plugin": "../../evil.py"}]}))
+    (ws.root / "secret.txt").write_text("nope")
+    (ws.root / "notes.txt").write_text("key TOKEN here")
+    fake = scripted(turn("ok"))
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    tree = session.command("/plugins")["message"]
+    assert "greeter [user] active (cần tools, session)" in tree and "web-search-tinyfish [builtin] disabled" in tree
+    assert "ghost needs a .py file inside ~/.manga-agent/plugins" in tree, "a row cannot load a file outside the plugins folder"
+    assert session._run_call({"id": "1", "name": "greet", "args": {"name": "Kai"}}) == ("chào Kai", True)
+    assert session._run_call({"id": "2", "name": "read_file", "args": {"path": "secret.txt"}}) == ("[blocked by greeter]", False)
+    assert "key ***** here" in session._run_call({"id": "3", "name": "read_file", "args": {"path": "notes.txt"}})[0]
+    assert session.workspace.services.active("web.search") == ["tavily", "duckduckgo"]
+    session.send("hello")
+    wait_for(session, "idle")
+    assert fake.seen[0][0][-1]["content"] == "[greeter was here]", "a model/request listener rewrote the request"
+    assert any(e["type"] == "assistant" for e in session.kernel.get("greeter.seen")), "session events reach plugins"
+
+    assert "greeter [user] disabled" in session.command("/plugins disable greeter")["message"]
+    assert "greet" not in {s["name"] for s in session.specs()}, "a plugin's tool leaves with it"
+    assert "nope" in session._run_call({"id": "4", "name": "read_file", "args": {"path": "secret.txt"}})[0], "and so does its wrapper"
+    session.command("/plugins enable greeter")
+    assert session._run_call({"id": "5", "name": "greet", "args": {"name": "Mai"}}) == ("chào Mai", True)
+
+    (folder / "plugins" / "greeter.py").write_text(GREETER.replace('"hi"', '"yo"'), encoding="utf-8")
+    (folder / "plugins.json").write_text(json.dumps({"rows": []}))
+    session.command("/plugins reload")
+    assert session._run_call({"id": "6", "name": "greet", "args": {"name": "Lan"}}) == ("yo Lan", True), "reload reads the files again"
+
+
+def test_switching_off_every_shell_provider_stops_commands_cleanly(ws, home, tmp_path):
+    folder = home / ".manga-agent"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "plugins.json").write_text(json.dumps({"rows": [{"id": "shell-local", "disabled": True}]}))
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    output, ok = session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo hi"}})
+    assert not ok and "no provider for shell" in output
+    assert "shell: no provider for shell" in session.command("/services")["message"]

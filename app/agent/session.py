@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, mcp, memory, models, registry, rules, sandbox, schema as schemas, services, skill_install, skills
+from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, kernel, mcp, memory, models, registry, rules, sandbox, schema as schemas, services, skill_install, skills
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -303,7 +303,11 @@ class AgentSession:
         self.disabled = set(self.profile["disable"])
         self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
         self.externals = external.available(self.profile["external_agents"]) if not depth and "external" not in self.disabled else {}
-        self.registry = self._build_registry(home_path) if not depth else parent.registry
+        self.kernel_problems: list[str] = []
+        if depth:
+            self.registry, self.kernel = parent.registry, parent.kernel
+        else:
+            self.registry = self._build_registry(home_path)
         self.checkpoints = parent.checkpoints if depth else Checkpoints()
         self.skills = skills.discover(workspace.root, home)
         self._set_read_roots()
@@ -330,7 +334,22 @@ class AgentSession:
             reg.tool(external.spec(list(self.externals)), lambda session, args: external.run(session, args, self.externals),
                      kind="exec", group="external", always_ask=True)
         registry.load_plugins(reg, self.workspace.root, home_path, self.trust)
-        self.workspace.services = services.Services(self.profile["services"], reg.providers)
+        # The plugin tree: built-in providers are rows like any other, plugin files join it, plugins.json changes it.
+        old_kernel = getattr(self, "kernel", None)
+        if old_kernel is not None:
+            old_kernel.close()
+        ctx = kernel.Context()
+        ctx.provide("session", self)
+        ctx.provide("tools", registry.KernelTools(ctx, reg))
+        ctx.provide("commands", registry.KernelCommands(ctx, reg))
+        for row in services.builtin_rows():
+            ctx.rows[row.id] = row
+        for scope, stem, module in reg.kernel_modules:
+            ctx.rows[stem] = kernel.Row(stem, module, {}, False, scope)
+        self.kernel_problems = kernel.patch_rows(ctx, home_path)
+        ctx.settle()
+        self.kernel = ctx
+        self.workspace.services = services.Services(self.profile["services"], reg.providers, ctx)
         return reg
 
     def _enabled(self, name: str) -> bool:
@@ -343,8 +362,26 @@ class AgentSession:
         self.trust.allow(self.workspace.root, "plugins", registry.workspace_digest(files))
         self.registry = self._build_registry(home_path)
 
+    def _plugins_command(self, args: str) -> str:
+        """/plugins shows the tree; reload rebuilds it from the files; disable ID and enable ID switch one row live."""
+        parts = args.split()
+        if parts[:1] == ["reload"]:
+            home_path = self.home if self.home is not None else Path.home()
+            self.registry = self._build_registry(home_path)
+            for child in self.children.values():
+                child.registry, child.kernel = self.registry, self.kernel
+                child.workspace.services = self.workspace.services
+        elif len(parts) == 2 and parts[0] in ("disable", "enable"):
+            if parts[1] not in self.kernel.rows:
+                return f"Không có plugin {parts[1]}; gõ /plugins để xem cây."
+            self.kernel.set_disabled(parts[1], parts[0] == "disable")
+        elif parts:
+            return "Dùng: /plugins, /plugins reload, /plugins disable ID, /plugins enable ID"
+        return self._plugins_report()
+
     def _plugins_report(self) -> str:
-        rows = [f"{p['name']} ({p['scope']}): {p['state']}" + (f" — {p['error']}" if p["error"] else "") for p in self.registry.plugins]
+        rows = ["Cây plugin:"] + [f"  {line}" for line in self.kernel.tree()] + [f"  {p}" for p in self.kernel_problems]
+        rows += [f"{p['name']} ({p['scope']}): {p['state']}" + (f" — {p['error']}" if p["error"] else "") for p in self.registry.plugins if p["state"] != "kernel"]
         rows += [f"Agent ngoài: {', '.join(self.externals) or 'không tìm thấy codex hay claude'}",
                  f"Tính năng đã tắt: {', '.join(sorted(self.disabled)) or 'không'}", f"Vòng lặp: {self.profile['loop']}",
                  f"Nhóm có thể tắt trong profile.json: {', '.join(registry.ALL_GROUPS)}"]
@@ -361,9 +398,13 @@ class AgentSession:
 
     def emit(self, kind: str, **data) -> None:
         with self._lock:
-            self.events.append({"seq": len(self.events) + 1, "type": kind, "time": round(time.time(), 3), **data})
+            event = {"seq": len(self.events) + 1, "type": kind, "time": round(time.time(), 3), **data}
+            self.events.append(event)
             self.updated_at = time.time()
             self._lock.notify_all()
+        kern = getattr(self, "kernel", None)
+        if kern is not None and kern.subscribers("session/event"):
+            kern.emit("session/event", {**event, "session": self.id})
 
     def snapshot(self, after: int = 0) -> dict:
         with self._lock:
@@ -517,7 +558,7 @@ class AgentSession:
             rows = [f"/{k} — {v}" for k, v in self._builtin_commands().items()] + [f"/{k} — {d}" for k, (d, _) in self.registry.commands.items()]
             return {"message": "\n".join(rows + [f"/{c['name']} — {c['description']}" for c in self.commands.values()])}
         if name == "plugins":
-            return {"message": self._plugins_report()}
+            return {"message": self._plugins_command(args)}
         if name in self.registry.commands:
             result = self.registry.commands[name][1](self, args)
             return result if isinstance(result, dict) else {"message": str(result)}
@@ -659,6 +700,8 @@ class AgentSession:
                 shutil.rmtree(child.copy, ignore_errors=True)
         for server in self.mcp_servers.values():
             server.close()
+        if not self.depth and getattr(self, "kernel", None) is not None:
+            self.kernel.close()
         self.mcp_servers.clear()
 
     # MCP servers.
@@ -1398,42 +1441,47 @@ class AgentSession:
                 blocked = self._hook_call(fn, call)
                 if blocked:
                     return blocked, False
-        try:
-            if call["name"] in SESSION_SPECS:
-                output, ok = self._session_tool(call), True
-            elif call["name"] in self.replaced:
-                root = self._mcp_root()
-                server, tool = root.mcp_tools[self.replaced[call["name"]]]
-                if KIND.get(call["name"]) == "edit" and isinstance(call["args"], dict) and call["args"].get("path"):
-                    self.checkpoints.save(self.workspace.resolve(str(call["args"]["path"]), write=True))
-                output, ok = root.mcp_servers[server].call_tool(tool["name"], call["args"])
-            elif call["name"] in self.mcp_tools:
-                if self._role(call["name"]) == "edit" and isinstance(call["args"], dict) and call["args"].get("path"):
-                    self.checkpoints.save(self.workspace.resolve(str(call["args"]["path"]), write=True))
-                server, tool = self.mcp_tools[call["name"]]
-                output, ok = self.mcp_servers[server].call_tool(tool["name"], call["args"])
-            elif call["name"] == "run_command" and call["args"].get("background"):
-                output, ok = self._start_job(call["args"]), True
-            elif call["name"] == "run_command" and self.profile["timeout_to_background"]:
-                output, ok = self._run_foreground(call["args"]), True
-            elif call["name"] == "run_script":
-                output, ok = self._run_script(call["args"]), True
-            elif call["name"] in self.registry.tools:
-                try:
-                    output, ok = str(self.registry.tools[call["name"]].handler(self, call["args"])), True
-                except ToolError:
-                    raise
-                except Exception as exc:
-                    output, ok = f"Error: {type(exc).__name__}: {exc}", False
-            else:
-                if KIND.get(call["name"]) == "edit" and isinstance(call["args"], dict):
-                    for path in self.workspace.targets(call["name"], call["args"]):
-                        self.checkpoints.save(path)
-                output, ok = self.workspace.run(call["name"], call["args"]), True
-        except ToolError as exc:
-            output, ok = f"Error: {exc}", False
-        except (OSError, mcp.MCPError) as exc:
-            output, ok = f"Error: {type(exc).__name__}: {exc}", False
+        def execute(call: dict) -> tuple[str, bool]:
+            try:
+                if call["name"] in SESSION_SPECS:
+                    output, ok = self._session_tool(call), True
+                elif call["name"] in self.replaced:
+                    root = self._mcp_root()
+                    server, tool = root.mcp_tools[self.replaced[call["name"]]]
+                    if KIND.get(call["name"]) == "edit" and isinstance(call["args"], dict) and call["args"].get("path"):
+                        self.checkpoints.save(self.workspace.resolve(str(call["args"]["path"]), write=True))
+                    output, ok = root.mcp_servers[server].call_tool(tool["name"], call["args"])
+                elif call["name"] in self.mcp_tools:
+                    if self._role(call["name"]) == "edit" and isinstance(call["args"], dict) and call["args"].get("path"):
+                        self.checkpoints.save(self.workspace.resolve(str(call["args"]["path"]), write=True))
+                    server, tool = self.mcp_tools[call["name"]]
+                    output, ok = self.mcp_servers[server].call_tool(tool["name"], call["args"])
+                elif call["name"] == "run_command" and call["args"].get("background"):
+                    output, ok = self._start_job(call["args"]), True
+                elif call["name"] == "run_command" and self.profile["timeout_to_background"]:
+                    output, ok = self._run_foreground(call["args"]), True
+                elif call["name"] == "run_script":
+                    output, ok = self._run_script(call["args"]), True
+                elif call["name"] in self.registry.tools:
+                    try:
+                        output, ok = str(self.registry.tools[call["name"]].handler(self, call["args"])), True
+                    except ToolError:
+                        raise
+                    except Exception as exc:
+                        output, ok = f"Error: {type(exc).__name__}: {exc}", False
+                else:
+                    if KIND.get(call["name"]) == "edit" and isinstance(call["args"], dict):
+                        for path in self.workspace.targets(call["name"], call["args"]):
+                            self.checkpoints.save(path)
+                    output, ok = self.workspace.run(call["name"], call["args"]), True
+            except ToolError as exc:
+                output, ok = f"Error: {exc}", False
+            except (OSError, mcp.MCPError) as exc:
+                output, ok = f"Error: {type(exc).__name__}: {exc}", False
+            return output, ok
+
+        # Plugins may wrap every tool call: tool/execute listeners get (call, next) and return (output, ok).
+        output, ok = self.kernel.waterfall("tool/execute", call, execute) if self.kernel.subscribers("tool/execute") else execute(call)
         name = call["name"]
         role = self._role(name)
         if name in ("web_fetch", "web_search", "web_download", "delegate") or (name in self.mcp_tools and role in (None, "net")):
@@ -1555,7 +1603,12 @@ class AgentSession:
             chain = [self.profile["prewalk_model"] if self._prewalk else self.model] + self.profile["fallback_models"]
             while True:
                 try:
-                    return self.complete(self.provider, self.api_key, chain[self._fallback_at], messages, tools=tools, **extra)
+                    request = {"model": chain[self._fallback_at], "messages": messages, "tools": tools}
+                    if not self.kernel.subscribers("model/request"):
+                        return self.complete(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
+                    # Plugins may rewrite a model request or answer it themselves: (request, next) -> the model's turn.
+                    return self.kernel.waterfall("model/request", request, lambda r: self.complete(
+                        self.provider, self.api_key, r["model"], r["messages"], tools=r["tools"], **extra))
                 except client.TransientError as exc:
                     # Retries are used up: the next configured model takes over for the rest of this turn (free-claude-code).
                     if self._fallback_at + 1 >= len(chain):
