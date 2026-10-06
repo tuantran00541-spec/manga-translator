@@ -252,6 +252,14 @@ def test_manga_typed_in_a_folder_hands_it_to_the_agent_tab(tmp_path, monkeypatch
     assert run._launch_dir() is None
 
 
+def test_the_app_is_recognised_even_when_models_are_missing(monkeypatch):
+    replies = {"ok": {"status": "ok", "models_missing": []}, "degraded": {"status": "degraded", "models_missing": ["lama.onnx"]},
+               "other": {"status": "ok"}}
+    for name, body in replies.items():
+        monkeypatch.setattr(run, "_health", lambda url, body=body: body)
+        assert run._is_ours("http://127.0.0.1:8000") is (name != "other")
+
+
 def test_another_program_on_the_port_moves_the_app_to_the_next_free_one(monkeypatch):
     monkeypatch.setattr(run, "_is_ours", lambda url: False)
     with socket.socket() as squatter:

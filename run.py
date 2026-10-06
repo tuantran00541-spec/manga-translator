@@ -50,9 +50,9 @@ def _health(url: str) -> dict | None:
 
 
 def _is_ours(url: str) -> bool:
-    """True when this app answers at ``url``, not some other program on the port."""
+    """True when this app answers at ``url``, even degraded by missing models, not some other program on the port."""
     body = _health(url)
-    return bool(body) and body.get("status") == "ok" and "models_missing" in body
+    return bool(body) and body.get("status") in ("ok", "degraded") and "models_missing" in body
 
 
 def _port_free(port: int) -> bool:
