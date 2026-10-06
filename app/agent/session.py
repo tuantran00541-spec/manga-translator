@@ -597,14 +597,18 @@ class AgentSession:
             return {"sent": True}
         raise ValueError(f"Unknown command /{name}; type /help")
 
+    def reload_skills(self) -> None:
+        """Pick up skills added, written or removed since the session started; the model sees the change on its next turn."""
+        self.skills = skills.discover(self.workspace.root, self.home)
+        self._set_read_roots()
+
     def _install_skills(self, spec: str) -> str:
         home = self.home if self.home is not None else Path.home()
         try:
             names = skill_install.install(spec, home)
         except (ValueError, OSError) as exc:
             return f"Không cài được: {exc}"
-        self.skills = skills.discover(self.workspace.root, self.home)
-        self._set_read_roots()
+        self.reload_skills()
         return f"Đã cài {len(names)} skill vào ~/.manga-agent/skills: {', '.join(names)}. Đọc kỹ SKILL.md của chúng trước khi tin."
 
     def _memory_command(self, args: str) -> str:

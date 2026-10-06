@@ -82,6 +82,19 @@
         <div class="agent-top">
           <p id="agent-status" class="agent-status" aria-live="polite"></p>
           <div class="agent-top-actions">
+            <details id="agent-skills-menu" class="agent-menu"><summary class="agent-chip">Skill</summary><div class="agent-pop agent-pop-right agent-pop-wide">
+              <p class="agent-skill-head">Nạp skill</p>
+              <div class="agent-skill-row"><input id="agent-skill-source" class="agent-skill-input" placeholder="CHỦ/REPO hoặc CHỦ/REPO/thư-mục trên GitHub" autocomplete="off" spellcheck="false"><button id="agent-skill-install" class="agent-btn" type="button">Cài</button></div>
+              <label class="agent-btn agent-skill-file">Tải lên .zip hoặc SKILL.md<input id="agent-skill-file" type="file" accept=".zip,.md,text/markdown,application/zip" hidden></label>
+              <details id="agent-skill-new" class="agent-skill-new"><summary class="agent-skill-head">Tạo skill mới</summary>
+                <label class="agent-field"><span>Tên (chữ thường, số, gạch ngang)</span><input id="agent-skill-name" autocomplete="off" spellcheck="false" placeholder="viet-bao-cao"></label>
+                <label class="agent-field"><span>Mô tả: skill làm gì và khi nào agent nên dùng</span><textarea id="agent-skill-desc" rows="2"></textarea></label>
+                <label class="agent-field"><span>Hướng dẫn (Markdown)</span><textarea id="agent-skill-body" rows="9"></textarea></label>
+                <div class="agent-skill-row"><button id="agent-skill-save" class="agent-btn agent-btn-primary" type="button">Lưu skill</button><button id="agent-skill-draft" class="agent-btn" type="button">Nhờ agent soạn</button></div>
+              </details>
+              <p class="agent-skill-head">Skill agent dùng được ở đây</p>
+              <ul id="agent-skill-list" class="agent-skill-list"><li class="agent-muted">Đang tải…</li></ul>
+            </div></details>
             <details class="agent-menu"><summary class="agent-chip">Lịch sử</summary><div class="agent-pop agent-pop-right"><ul id="agent-sessions" class="agent-sessions"><li class="agent-muted">Chưa có phiên nào.</li></ul></div></details>
             <details class="agent-menu"><summary class="agent-chip">Thiết lập</summary><div class="agent-pop agent-pop-right">
               <label class="agent-field" for="agent-workspace"><span>Thư mục làm việc</span><input id="agent-workspace" autocomplete="off" spellcheck="false"></label>

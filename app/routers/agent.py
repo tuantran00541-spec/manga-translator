@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import ipaddress
 import os
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from app.agent import sandbox
+from app.agent import sandbox, skill_install, skills
 from app.agent.session import MODES, AgentSessionManager
 from app.agent.tools import Workspace
 from app.ai_providers import CLOUD_PROVIDER_ID, validate_model_name
@@ -53,6 +54,17 @@ class SessionRequest(BaseModel):
     network: bool = False
 
 
+class SkillSource(BaseModel):
+    source: str = Field(min_length=3, max_length=300)
+
+
+class SkillDraft(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    description: str = Field(min_length=1, max_length=2000)
+    body: str = Field(min_length=1, max_length=200_000)
+    replace: bool = False
+
+
 class MessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
 
@@ -94,6 +106,75 @@ async def _provider_and_key(provider_id: str):
 @router.get("/config")
 def agent_config() -> dict:
     return {"workspace": str(BASE_DIR), "modes": list(MODES), "sandboxes": list(sandbox.MODES), "sandbox_backend": sandbox.backend()}
+
+
+def _skill_home() -> Path:
+    return agent_sessions.home if agent_sessions.home is not None else Path.home()
+
+
+def _skills_changed(names: list[str]) -> dict:
+    for session in list(agent_sessions.sessions.values()):
+        session.reload_skills()
+    return {"skills": names}
+
+
+@router.get("/skills")
+def list_skills(workspace: str = "") -> dict:
+    """Every skill the agent can load here: the project's, the user's, then the bundled ones."""
+    home, root = _skill_home(), Path(workspace.strip() or BASE_DIR)
+    found = skills.discover(root, agent_sessions.home)
+    mine = skill_install.user_dir(home).resolve()
+    rows = [{"name": s.name, "description": s.description, "manual": s.manual, "path": str(s.folder),
+             "scope": "builtin" if s.builtin else "user" if s.folder.parent == mine else "project"} for s in found.values()]
+    return {"skills": rows, "folder": str(mine)}
+
+
+@router.post("/skills/install")
+async def install_skills(req: SkillSource) -> dict:
+    try:
+        names = await run_in_threadpool(skill_install.install, req.source, _skill_home())
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return _skills_changed(names)
+
+
+@router.post("/skills/upload")
+async def upload_skills(file: UploadFile = File(...)) -> dict:
+    data = await file.read(skill_install.MAX_ZIP_BYTES + 1)
+    try:
+        if (file.filename or "").lower().endswith(".zip") or data[:4] == b"PK\x03\x04":
+            names = await run_in_threadpool(skill_install.install_zip, data, _skill_home())
+        else:
+            names = [skill_install.install_file(data.decode("utf-8", errors="replace"), _skill_home())]
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return _skills_changed(names)
+
+
+@router.post("/skills")
+def create_skill(req: SkillDraft) -> dict:
+    try:
+        name = skill_install.create(_skill_home(), req.name, req.description, req.body, req.replace)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return _skills_changed([name])
+
+
+@router.get("/skills/{name}")
+def read_skill(name: str) -> dict:
+    try:
+        return {"name": name, "text": skill_install.read(_skill_home(), name)}
+    except (ValueError, OSError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.delete("/skills/{name}")
+def delete_skill(name: str) -> dict:
+    try:
+        skill_install.remove(_skill_home(), name)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return _skills_changed([])
 
 
 @router.post("/sessions")

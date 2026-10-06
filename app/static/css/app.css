@@ -280,6 +280,19 @@
   .agent-menu { position: relative; }
   .agent-pop { position: absolute; z-index: 8; top: calc(100% + 6px); display: grid; gap: 8px; width: min(340px, 86vw); max-height: 60vh; overflow: auto; padding: 12px; border: 0; border-radius: 12px; background: var(--surface-raised); box-shadow: var(--shadow-lift); font-size: 13px; }
   .agent-pop-right { right: 0; }
+  .agent-pop-wide { width: min(460px, 92vw); max-height: 75vh; }
+  .agent-skill-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .agent-skill-list li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: start; }
+  .agent-skill-list b { font-weight: 600; overflow-wrap: anywhere; }
+  .agent-skill-list .agent-muted { grid-column: 1; font-size: 12px; }
+  .agent-skill-tag { color: var(--text-quiet); font-size: 11.5px; }
+  .agent-skill-head { margin: 4px 0 0; font-weight: 600; cursor: pointer; }
+  .agent-skill-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .agent-skill-input { flex: 1; min-width: 0; padding: 6px 8px; border: 0; border-radius: 8px; background: var(--surface-quiet); color: var(--text-primary); font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .agent-skill-file { justify-self: start; }
+  .agent-skill-new { display: grid; gap: 8px; }
+  .agent-skill-new[open] { display: grid; }
+  .agent-field textarea { width: 100%; min-width: 0; padding: 6px 8px; border: 0; border-radius: 8px; background: var(--surface-quiet); color: var(--text-primary); font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
   .agent-field { display: grid; gap: 4px; color: var(--text-quiet); font-size: 12px; }
   .agent-field input { width: 100%; min-width: 0; padding: 6px 8px; border: 0; border-radius: 8px; background: var(--surface-quiet); color: var(--text-primary); font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .agent-muted { margin: 0; color: var(--text-quiet); font-size: 12.5px; overflow-wrap: anywhere; }

@@ -655,6 +655,103 @@
     $("agent-input").title = folder;
   }
 
+  const SKILL_SCOPE = { builtin: "có sẵn", user: "của bạn", project: "của dự án" };
+  const SKILL_TEMPLATE = "## Steps\n\n1. \n2. \n\n## Check before you finish\n\n- \n";
+  let editingSkill = "";
+
+  // The skills panel: what the agent can load here, plus loading, writing and removing your own.
+  async function loadSkills() {
+    const list = $("agent-skill-list");
+    try {
+      const data = await call(`/api/agent/skills?workspace=${encodeURIComponent($("agent-workspace").value.trim())}`);
+      const rows = (data.skills || []).map((skill) => {
+        const item = el("li");
+        const title = el("span");
+        title.append(el("b", "", skill.name), el("span", "agent-skill-tag", ` · ${SKILL_SCOPE[skill.scope] || skill.scope}`));
+        const actions = el("span", "agent-skill-row");
+        if (skill.scope === "user") actions.append(button("Sửa", "agent-btn", () => editSkill(skill.name)), button("Xóa", "agent-btn", () => removeSkill(skill.name)));
+        const about = el("span", "agent-muted", skill.description.length > 180 ? `${skill.description.slice(0, 180)}…` : skill.description);
+        about.title = skill.path;
+        item.append(title, actions, about);
+        return item;
+      });
+      list.replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", "Chưa có skill nào.")]));
+    } catch (error) {
+      list.replaceChildren(el("li", "agent-muted", error.message));
+    }
+  }
+
+  async function skillsChanged(promise, done) {
+    try {
+      const data = await promise;
+      window.showToast?.(done(data.skills || []), "success");
+      await loadSkills();
+      return true;
+    } catch (error) {
+      window.showToast?.(error.message, "error");
+      return false;
+    }
+  }
+
+  function installSkills() {
+    const source = $("agent-skill-source").value.trim();
+    if (!source) return;
+    skillsChanged(post("/api/agent/skills/install", { source }), (names) => `Đã cài ${names.join(", ")}. Đọc SKILL.md của chúng trước khi tin.`)
+      .then((ok) => { if (ok) $("agent-skill-source").value = ""; });
+  }
+
+  function uploadSkills(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const form = new FormData();
+    form.append("file", file);
+    skillsChanged(call("/api/agent/skills/upload", { method: "POST", body: form }), (names) => `Đã nạp ${names.join(", ")}.`);
+  }
+
+  async function editSkill(name) {
+    try {
+      const { text } = await call(`/api/agent/skills/${encodeURIComponent(name)}`);
+      const parts = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(text) || ["", "", text];
+      const head = parts[1];
+      const desc = /^description:\s*(?:>-?|\|-?)?\s*\n?((?:[ \t].*\n?)*|.*)$/m.exec(head);
+      editingSkill = name;
+      $("agent-skill-name").value = name;
+      $("agent-skill-desc").value = desc ? desc[1].split("\n").map((l) => l.trim()).join(" ").replace(/^["']|["']$/g, "").trim() : "";
+      $("agent-skill-body").value = parts[2].trim();
+      $("agent-skill-new").open = true;
+      $("agent-skill-name").focus();
+    } catch (error) {
+      window.showToast?.(error.message, "error");
+    }
+  }
+
+  function removeSkill(name) {
+    if (!window.confirm(`Xóa skill ${name}?`)) return;
+    skillsChanged(call(`/api/agent/skills/${encodeURIComponent(name)}`, { method: "DELETE" }), () => `Đã xóa ${name}.`);
+  }
+
+  function saveSkill() {
+    const name = $("agent-skill-name").value.trim();
+    const body = { name, description: $("agent-skill-desc").value.trim(), body: $("agent-skill-body").value.trim(), replace: editingSkill === name };
+    skillsChanged(post("/api/agent/skills", body), () => `Đã lưu skill ${name}; agent dùng được ngay.`).then((ok) => {
+      if (!ok) return;
+      editingSkill = "";
+      $("agent-skill-name").value = $("agent-skill-desc").value = "";
+      $("agent-skill-body").value = SKILL_TEMPLATE;
+    });
+  }
+
+  function draftSkill() {
+    const name = $("agent-skill-name").value.trim() || "ten-skill";
+    const about = $("agent-skill-desc").value.trim() || "(mô tả việc skill này giúp làm)";
+    $("agent-input").value = `Dùng skill writing-skills để soạn một skill tên ${name}: ${about}. `
+      + `Ghi nó vào .agents/skills/${name}/SKILL.md trong thư mục làm việc, với phần đầu name và description, rồi thử nó trên một ví dụ thật.`;
+    $("agent-skills-menu").open = false;
+    autosize();
+    $("agent-input").focus();
+  }
+
   window.openAgentView = async () => {
     if (loaded) return;
     loaded = true;
@@ -685,6 +782,13 @@
     $("agent-new").addEventListener("click", () => { resetLog(); loadSessions(); });
     $("agent-provider").addEventListener("change", () => { resetLog(); loadModels(); });
     $("agent-workspace").addEventListener("change", () => { resetLog(); showFolder(); });
+    $("agent-skill-body").value = SKILL_TEMPLATE;
+    $("agent-skills-menu").addEventListener("toggle", () => { if ($("agent-skills-menu").open) loadSkills(); });
+    $("agent-skill-install").addEventListener("click", installSkills);
+    $("agent-skill-source").addEventListener("keydown", (event) => { if (event.key === "Enter") installSkills(); });
+    $("agent-skill-file").addEventListener("change", uploadSkills);
+    $("agent-skill-save").addEventListener("click", saveSkill);
+    $("agent-skill-draft").addEventListener("click", draftSkill);
     $("agent-model").addEventListener("change", () => syncSession({ model: $("agent-model").value.trim() }));
     $("agent-mode").addEventListener("change", () => syncSession({ mode: $("agent-mode").value }));
     $("agent-sandbox").addEventListener("change", () => syncSession({ sandbox: $("agent-sandbox").value }));

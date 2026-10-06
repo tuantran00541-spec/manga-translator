@@ -1,4 +1,4 @@
-"""Install Agent Skills from a public GitHub repository into the user's skills folder."""
+"""Install Agent Skills from GitHub, a zip or a SKILL.md into the user's skills folder, and write new ones."""
 from __future__ import annotations
 
 import io
@@ -37,28 +37,100 @@ def _fetch(owner: str, repo: str, ref: str) -> zipfile.ZipFile:
         response.close()
 
 
+MAX_SKILL_BYTES = 200_000
+
+
+def user_dir(home: Path) -> Path:
+    return home / ".manga-agent" / "skills"
+
+
 def install(spec: str, home: Path) -> list[str]:
     """Copy every skill folder found under the repo path; returns their names."""
     owner, repo, ref, sub = parse(spec)
-    archive = _fetch(owner, repo, ref)
+    return _install_archive(_fetch(owner, repo, ref), sub, home, spec)
+
+
+def install_zip(data: bytes, home: Path) -> list[str]:
+    """Every skill folder inside an uploaded zip, wherever it sits."""
+    if len(data) > MAX_ZIP_BYTES:
+        raise ValueError("file zip quá lớn (tối đa 40 MB)")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("không đọc được file zip") from exc
+    return _install_archive(archive, "", home, "file zip", wrapped=False)
+
+
+def install_file(text: str, home: Path) -> str:
+    """A lone SKILL.md becomes a skill folder named by its front matter."""
+    head, _ = frontmatter(text[:20_000])
+    name = head.get("name", "")
+    if not NAME_RE.match(name) or not head.get("description"):
+        raise ValueError("SKILL.md cần phần đầu có name (chữ thường, số, gạch ngang) và description")
+    _write(home, name, text)
+    return name
+
+
+def create(home: Path, name: str, description: str, body: str, replace: bool = False) -> str:
+    """Write a new SKILL.md from a name, a one-paragraph description and its instructions."""
+    name, description, body = name.strip(), " ".join(description.split()), body.strip()
+    if not NAME_RE.match(name):
+        raise ValueError("tên skill chỉ gồm chữ thường, số và gạch ngang, tối đa 64 ký tự")
+    if not description or len(description) > 1024:
+        raise ValueError("cần mô tả 1–1024 ký tự: skill làm gì và khi nào dùng")
+    if not body:
+        raise ValueError("cần nội dung hướng dẫn")
+    if not replace and (user_dir(home) / name).exists():
+        raise ValueError(f"đã có skill {name}")
+    _write(home, name, f"---\nname: {name}\ndescription: >-\n  {description}\n---\n\n{body}\n")
+    return name
+
+
+def read(home: Path, name: str) -> str:
+    path = user_dir(home) / name / "SKILL.md"
+    if not NAME_RE.match(name) or not path.is_file():
+        raise ValueError(f"không có skill {name} của bạn")
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def remove(home: Path, name: str) -> None:
+    folder = user_dir(home) / name
+    if not NAME_RE.match(name) or not (folder / "SKILL.md").is_file():
+        raise ValueError(f"không có skill {name} của bạn")
+    shutil.rmtree(folder)
+
+
+def _write(home: Path, name: str, text: str) -> None:
+    if len(text.encode("utf-8")) > MAX_SKILL_BYTES:
+        raise ValueError("SKILL.md quá dài (tối đa 200 KB)")
+    folder = user_dir(home) / name
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "SKILL.md").write_text(text, encoding="utf-8")
+
+
+def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str, wrapped: bool = True) -> list[str]:
+    """Copy the skill folders of an archive; GitHub zips wrap everything in one top folder."""
     entries = [i for i in archive.infolist() if not i.is_dir()]
-    root = entries[0].filename.split("/", 1)[0] if entries else ""
-    prefix = f"{root}/{sub}/" if sub else f"{root}/"
-    folders = sorted({i.filename.rsplit("/", 1)[0] for i in entries if i.filename.startswith(prefix) and i.filename.endswith("/SKILL.md")})
+    root = entries[0].filename.split("/", 1)[0] if entries and wrapped else ""
+    prefix = "/".join(p for p in (root, sub) if p) + "/" if root or sub else ""
+    found = {i.filename.rsplit("/", 1)[0] if "/" in i.filename else "" for i in entries
+             if i.filename.startswith(prefix) and (i.filename == "SKILL.md" or i.filename.endswith("/SKILL.md"))}
+    folders = sorted(found)
     if not folders:
-        raise ValueError(f"không thấy SKILL.md nào trong {spec}")
-    target = home / ".manga-agent" / "skills"
+        raise ValueError(f"không thấy SKILL.md nào trong {source}")
+    target = user_dir(home)
     done = []
     for folder in folders[:MAX_SKILLS]:
-        files = [i for i in entries if i.filename.startswith(folder + "/")][:MAX_FILES]
-        head, _ = frontmatter(archive.read(f"{folder}/SKILL.md")[:20_000].decode("utf-8", errors="replace"))
+        lead = folder + "/" if folder else ""
+        files = [i for i in entries if i.filename.startswith(lead)][:MAX_FILES]
+        head, _ = frontmatter(archive.read(f"{lead}SKILL.md")[:20_000].decode("utf-8", errors="replace"))
         name = head.get("name") or folder.rsplit("/", 1)[-1]
         if not NAME_RE.match(name):
             continue
         with tempfile.TemporaryDirectory() as temp:
             staging = Path(temp) / name
             for info in files:
-                relative = Path(info.filename[len(folder) + 1:])
+                relative = Path(info.filename[len(lead):])
                 if relative.is_absolute() or ".." in relative.parts or info.file_size > MAX_FILE_BYTES:
                     continue
                 destination = staging / relative

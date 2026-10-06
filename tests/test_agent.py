@@ -513,6 +513,43 @@ def test_a_session_runs_is_saved_and_resumes_through_the_api(api):
     assert http.post(f"/api/agent/sessions/{sid}/resume", headers=head).status_code == 404
 
 
+def test_skills_are_written_uploaded_listed_and_removed_through_the_api(api, home):
+    import io
+    import zipfile
+
+    http, root, agents = api
+    head = {"X-Manga-Agent": "1"}
+    session = http.post("/api/agent/sessions", json={"provider": "openai", "model": "m", "workspace": root}, headers=head).json()
+    made = http.post("/api/agent/skills", json={"name": "release-notes", "description": "Write release notes. Use when tagging.",
+                                                "body": "1. Read the log.\n2. Group by area."}, headers=head)
+    assert made.status_code == 200, made.text
+    assert "release-notes" in agents.get(session["id"]).skills, "a live session sees the new skill"
+    assert http.post("/api/agent/skills", json={"name": "release-notes", "description": "x", "body": "y"}, headers=head).status_code == 400
+    assert http.post("/api/agent/skills", json={"name": "Bad Name", "description": "x", "body": "y"}, headers=head).status_code == 400
+    text = http.get("/api/agent/skills/release-notes", headers=head).json()["text"]
+    assert text.startswith("---\nname: release-notes\n") and "Group by area." in text
+
+    packed = io.BytesIO()
+    with zipfile.ZipFile(packed, "w") as archive:
+        archive.writestr("pack/slides/SKILL.md", "---\nname: slides\ndescription: Build decks.\n---\nUse python-pptx.")
+        archive.writestr("pack/slides/scripts/make.py", "print(1)")
+        archive.writestr("pack/../../evil.txt", "x")
+    up = http.post("/api/agent/skills/upload", files={"file": ("pack.zip", packed.getvalue(), "application/zip")}, headers=head)
+    assert up.status_code == 200 and up.json()["skills"] == ["slides"], up.text
+    folder = home / ".manga-agent" / "skills"
+    assert (folder / "slides" / "scripts" / "make.py").is_file() and not (home / "evil.txt").exists()
+    single = http.post("/api/agent/skills/upload", files={"file": ("SKILL.md", b"---\nname: sheets\ndescription: Edit xlsx.\n---\nUse openpyxl.")},
+                       headers=head)
+    assert single.json()["skills"] == ["sheets"]
+    assert http.post("/api/agent/skills/upload", files={"file": ("SKILL.md", b"no front matter")}, headers=head).status_code == 400
+
+    listed = {r["name"]: r for r in http.get("/api/agent/skills", params={"workspace": root}, headers=head).json()["skills"]}
+    assert listed["slides"]["scope"] == "user" and listed["test-driven-development"]["scope"] == "builtin"
+    assert http.delete("/api/agent/skills/slides", headers=head).status_code == 200
+    assert http.delete("/api/agent/skills/test-driven-development", headers=head).status_code == 404, "bundled skills stay"
+    assert "slides" not in agents.get(session["id"]).skills
+
+
 # Harness v3: hashline edits, rules, undo, agents, queue, references, memory, plan, goal.
 
 def run_to_idle(session, text="go"):
