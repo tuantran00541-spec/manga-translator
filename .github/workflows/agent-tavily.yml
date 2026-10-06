@@ -25,9 +25,9 @@ jobs:
       - run: python -m pip install -q -r requirements-test.txt
       - name: Search and fetch
         env:
-          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY }}
         run: |
-          [ -n "$TAVILY_API_KEY" ] || { echo "::error::secret TAVILY_API_KEY is not set"; exit 1; }
+          [ -n "$TAVILY_API_KEY" ] || { echo "::error::secret TAVILY is not set"; exit 1; }
           python - <<'PY'
           import tempfile
           from app.agent import websearch
