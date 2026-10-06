@@ -1928,3 +1928,15 @@ def test_prewalk_plans_on_the_strong_model_and_hands_over_at_the_first_edit(ws, 
     texts = [h["content"] for h in session.history if h["role"] == "user"]
     assert session_module.PREWALK_PLAN in texts and session_module.PREWALK_CHECKLIST in texts
     assert texts.index(session_module.PREWALK_PLAN) < texts.index(session_module.PREWALK_CHECKLIST)
+
+
+def test_a_garbled_final_reply_after_long_work_is_sent_back_once(ws, home):
+    reads = [turn(calls=[call("list_dir", path=f"d{n}")]) for n in range(5)]
+    fake = scripted(*reads, turn("Lbtag"), turn("## Report\nThe audit found two issues."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert session.history[-1]["content"].startswith("## Report") and "'Lbtag'" in session.history[-2]["content"]
+    fake = scripted(*reads, turn("Done."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert session.history[-1]["content"] == "Done.", "a short reply that ends like a sentence stands"

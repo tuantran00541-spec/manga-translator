@@ -50,6 +50,8 @@ PREWALK_CHECKLIST = ("[Before you call it done] Consistency: a pattern, signatur
                      "Scope: outside the asked change, behaviour stays the same; prefer the smallest correct diff. "
                      "Verification: run the whole affected test file or module, not only the test you expect to flip. Claim done only after all three.")
 ADVISED = "[Advisor] A second model reviewing your recent steps says the following. Weigh it; you decide, and say briefly if you disagree.\n"
+GARBLED_NUDGE = ("[Your last reply ({text!r}) does not read as an answer after this much work. Write the final answer to the user's request now, "
+                 "from what the tool results showed; do not claim anything they did not show.]")
 EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -1681,7 +1683,8 @@ class AgentSession:
 
     def _steps(self, max_steps: int) -> None:
         """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
-        broken = empties = 0
+        broken = empties = worked = 0
+        garbled = False
         for _ in range(max_steps):
             if self._stop:
                 self.emit("notice", text="Đã dừng.")
@@ -1727,9 +1730,17 @@ class AgentSession:
                                  **({"reasoning": turn["reasoning"][-20000:]} if self.echo_reasoning and turn["reasoning"] else {})})
             self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)
             if not calls:
+                # A one-word reply without punctuation after many steps is a model that lost the thread, not a report.
+                words = turn["text"].split()
+                if worked >= 5 and not garbled and len(words) < 3 and not re.search(r"[.!?。…:)\]`*]\s*$", turn["text"].strip()):
+                    garbled = True
+                    self.history.append({"role": "user", "content": GARBLED_NUDGE.format(text=turn["text"].strip()[:80])})
+                    self.emit("notice", text="Câu trả lời cuối trông như bị hỏng; nhắc agent viết lại câu trả lời.")
+                    continue
                 if self._final_advice() or self._more_work():
                     continue
                 break
+            worked += 1
             self._run_calls(calls)
             self._show_images()
             self._advance_prewalk()
