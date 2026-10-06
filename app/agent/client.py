@@ -240,7 +240,9 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
                 function = part.get("function") or {}
                 slot["name"] += function.get("name") or ""
                 slot["arguments"] += function.get("arguments") or ""
-        if on_delta({"text": text, "reasoning": reasoning, "tools": [c["name"] for c in calls.values() if c["name"]]}):
+        arg_text = "".join(c["arguments"] for c in calls.values())
+        if on_delta({"text": text, "reasoning": reasoning, "tools": [c["name"] for c in calls.values() if c["name"]],
+                     "args": arg_text[-4000:], "arg_chars": len(arg_text)}):
             stopped = True
             break
     if other and not (text or reasoning or calls):

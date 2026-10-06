@@ -1754,3 +1754,28 @@ def test_a_command_cannot_leave_a_git_hook_behind_and_receipts_list_what_was_don
     run_to_idle(session)
     receipts = session.command("/receipts")["message"]
     assert "sửa    r.txt" in receipts and "chạy   echo hi" in receipts
+
+
+def test_a_stream_rule_stops_a_reply_midway_reminds_the_model_and_asks_again(ws, home):
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"max_output_tokens": 100, "stream_rules": [
+        {"name": "no-drop", "pattern": "DROP TABLE", "message": "Never write destructive SQL; use a migration file."}]}))
+    sent = []
+
+    def streaming(provider, key, model, messages, *, tools, on_delta=None, max_tokens=None):
+        sent.append(messages)
+        wrote = ""
+        plan = {1: [("text", "Cleaning up: DROP TABLE users;" + " more" * 5)], 2: [("args", "x" * 400)]}.get(len(sent), [])
+        for kind, chunk in plan:
+            for i in range(0, len(chunk), 20):
+                wrote += chunk[i:i + 20]
+                live = {"text": wrote if kind == "text" else "", "reasoning": "", "tools": [], "args": wrote if kind == "args" else "", "arg_chars": len(wrote) if kind == "args" else 0}
+                if on_delta(live):
+                    return {"text": "partial", "calls": [], "reasoning": "", "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+        return turn("Done safely.") if len(sent) >= 3 else turn("never kept")
+    streaming.streams = True
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=streaming)
+    run_to_idle(session, "tidy the db")
+    reminders = [m["content"] for m in session.history if m["role"] == "user" and m["content"].startswith("[Reminder]")]
+    assert len(reminders) == 2 and "destructive SQL" in reminders[0] and "too long for one reply" in reminders[1]
+    assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Done safely."], "the interrupted replies were dropped"

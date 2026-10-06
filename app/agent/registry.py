@@ -34,7 +34,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
-                     "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8}
+                     "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": []}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -65,6 +65,13 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["max_steps"] = data["max_steps"]
                 if isinstance(data.get("token_budget"), int) and data["token_budget"] > 0:
                     profile["token_budget"] = data["token_budget"]
+                if isinstance(data.get("stream_rules"), list):
+                    for rule in data["stream_rules"][:10]:
+                        try:
+                            if isinstance(rule, dict) and isinstance(rule.get("message"), str) and re.compile(str(rule.get("pattern"))):
+                                profile["stream_rules"].append({"name": str(rule.get("name") or rule["pattern"])[:40], "pattern": str(rule["pattern"]), "message": rule["message"][:1000]})
+                        except re.error:
+                            continue
                 if isinstance(data.get("goal_turns"), int) and data["goal_turns"] > 0:
                     profile["goal_turns"] = data["goal_turns"]
                 if isinstance(data.get("max_output_tokens"), int) and data["max_output_tokens"] > 0:

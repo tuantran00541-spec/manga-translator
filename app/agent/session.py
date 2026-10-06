@@ -35,6 +35,8 @@ MAX_IMAGES = 3
 MCP_DEFER = 15
 MAX_FAN_OUT = 12
 EMPTY_RETRIES = 3
+LONG_CALL = ("[Reminder] The tool call you were writing was getting too long for one reply and would be cut off. Send it in pieces: create the file "
+             "with a short write_file, then add the rest with edit_file or run_command (cat >> file <<'EOF').")
 WRAP_UP = "[The token budget for this turn is used up. Do not call tools. Report in a few paragraphs what you found or built, what is not finished, and what you would do next.]"
 EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
 MAX_CHILDREN = 24
@@ -187,6 +189,8 @@ class AgentSession:
         self.web_ok: set[str] = set()
         self._turn_usage = 0
         self._denials: list[bool] = []
+        self._interrupt: dict | None = None
+        self._fired: dict[str, int] = {}
         self.plan_mode = False
         self.goal: dict | None = None
         self._recent: list[str] = []
@@ -392,6 +396,7 @@ class AgentSession:
         self._dirty = self._gated = self.tainted = False
         self._skills_loaded = []
         self._turn_usage = self._spent()
+        self._fired = {}
         self.web_ok |= {h.lower() for h in URL_RE.findall(text)}
         self.history.append({"role": "user", "content": text + extra})
         threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
@@ -1185,9 +1190,24 @@ class AgentSession:
         parts.append(skills.catalog(self.skills))
         return "\n\n".join(p for p in parts if p)
 
+    def _match_rule(self, live: dict) -> dict | None:
+        """A stream rule the reply being written has just run into, if any; each fires a limited number of times per user message."""
+        if live.get("arg_chars", 0) > self.profile["max_output_tokens"] * 3 and self._fired.get("long_call", 0) < 3:
+            return {"name": "long_call", "message": LONG_CALL}
+        for rule in self.profile["stream_rules"]:
+            if self._fired.get(rule["name"], 0) < 1 and re.search(rule["pattern"], f"{live.get('text', '')}\n{live.get('args', '')}"):
+                return rule
+        return None
+
     def _on_delta(self, live: dict) -> bool:
+        if self._stop:
+            return True
+        if self._interrupt is None:
+            self._interrupt = self._match_rule(live)
+        if self._interrupt is not None:
+            return True
         self.live = live
-        return self._stop
+        return False
 
     def _call_model(self, messages: list[dict], tools: list[dict] | None) -> dict:
         streams = (self.complete is client.complete or getattr(self.complete, "streams", False)) and not self._plain
@@ -1433,6 +1453,14 @@ class AgentSession:
             self.live = None
             for key in self.usage:
                 self.usage[key] += int(turn["usage"].get(key) or 0)
+            if self._interrupt is not None:
+                # A stream rule stopped this reply: what was written is dropped, the reminder goes in, and the model is asked again.
+                rule, self._interrupt = self._interrupt, None
+                self._fired[rule["name"]] = self._fired.get(rule["name"], 0) + 1
+                note = rule["message"] if rule["message"].startswith("[") else f"[Reminder] {rule['message']}"
+                self.history.append({"role": "user", "content": note})
+                self.emit("notice", text=f"Quy tắc dừng luồng '{rule['name']}': bỏ phần đang viết và nhắc model.")
+                continue
             calls = turn["calls"]
             if not turn["text"] and not calls:
                 empties += 1
