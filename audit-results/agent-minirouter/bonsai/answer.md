@@ -1,0 +1,1 @@
+Đúng là artifact từ smoke test của agent storage. Xóa để giữ root sạch.
