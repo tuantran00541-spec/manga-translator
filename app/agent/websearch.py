@@ -156,6 +156,12 @@ def search(query: str, count: int = 8, recency: str = "", providers: list[tuple[
         except Exception as exc:  # a plugin's provider fails like any other
             failures.append(f"{name}: {type(exc).__name__}: {exc}"[:200])
             continue
+        if isinstance(found, str):
+            # A provider that answers in prose (an MCP tool) is passed through as it is.
+            if found.strip():
+                return found.strip()
+            answered = True
+            continue
         wanted = constraints(query)
         found, dropped = filter_results(found, wanted) if found else (found, [])
         if not found:

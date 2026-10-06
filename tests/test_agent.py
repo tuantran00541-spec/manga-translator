@@ -442,7 +442,8 @@ SWAP_SERVER = textwrap.dedent('''
     import json, sys
     tools = [{"name": "read_text", "description": "Read a file over MCP", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}}},
              {"name": "write_text", "description": "Write a file over MCP", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}}},
-             {"name": "sh", "description": "Run a command over MCP", "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}}}}]
+             {"name": "sh", "description": "Run a command over MCP", "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}}}},
+             {"name": "find", "description": "Search the web over MCP", "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}, "max_results": {"type": "integer"}}}}]
     for line in sys.stdin:
         msg = json.loads(line)
         if "id" not in msg:
@@ -2881,3 +2882,79 @@ def test_switching_off_every_shell_provider_stops_commands_cleanly(ws, home, tmp
     output, ok = session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo hi"}})
     assert not ok and "no provider for shell" in output
     assert "shell: no provider for shell" in session.command("/services")["message"]
+
+
+def test_the_agent_writes_a_plugin_that_mounts_after_approval_even_in_auto_mode(ws, home, tmp_path):
+    code = textwrap.dedent('''
+        inject = ["tools"]
+
+        def apply(ctx, config):
+            ctx.get("tools").register({"name": "shout", "description": "Shout.", "parameters": {"type": "object", "properties": {"text": {"type": "string"}}}},
+                                      lambda session, args: args.get("text", "").upper() + config.get("tail", ""), kind="read")
+    ''')
+    fake = scripted(turn(calls=[call("plugin_write", id="shouter", code=code, config={"tail": "!"})]),
+                    turn(calls=[call("shout", text="hi")]), turn("done"))
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session.send("make yourself a shout tool")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "plugin_write", "writing code into the harness asks even in auto mode"
+    session.decide("allow")
+    wait_for(session, "idle")
+    outputs = [e["output"] for e in session.events if e["type"] == "tool"]
+    assert "mounted it: active" in outputs[0] and outputs[1] == "HI!", outputs
+    assert (home / ".manga-agent" / "plugins" / "shouter.py").is_file()
+    assert "shouter [agent] active" in session.command("/plugins")["message"]
+    with pytest.raises(ToolError, match="No plugin nope"):
+        session._self_extend({"name": "plugin_remove", "args": {"id": "nope"}})
+    with pytest.raises(ToolError, match="lower_case"):
+        session._self_extend({"name": "plugin_write", "args": {"id": "../evil", "code": "x = 1"}})
+    assert session._self_extend({"name": "plugin_remove", "args": {"id": "shouter"}}).startswith("Plugin shouter unmounted")
+    assert "shout" not in {s["name"] for s in session.specs()} and not (home / ".manga-agent" / "plugins" / "shouter.py").exists()
+
+
+def test_core_seams_take_plugin_providers_for_the_model_compaction_and_approvals(ws, home, tmp_path):
+    folder = home / ".manga-agent"
+    (folder / "plugins").mkdir(parents=True, exist_ok=True)
+    (folder / "plugins" / "core.py").write_text(textwrap.dedent('''
+        def echo_model(provider, key, model, messages, tools=None, **extra):
+            return {"text": "echo: " + messages[-1]["content"], "calls": [], "reasoning": "", "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+        def apply(ctx, config):
+            ctx.provide("model/echo", echo_model)
+            ctx.provide("compact/short", lambda session, messages: "SHORT SUMMARY")
+
+            def approve(payload, next):
+                if payload["call"]["name"] == "run_command" and payload["call"]["args"].get("command", "").startswith("echo "):
+                    return False
+                return next(payload)
+            ctx.on("tool/approve", approve)
+    '''), encoding="utf-8")
+    (folder / "profile.json").write_text(json.dumps({"services": {"model": "echo", "compact": "short"}}))
+    unused = scripted()
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=unused)
+    session.send("ping")
+    wait_for(session, "idle")
+    assert [e["text"] for e in session.events if e["type"] == "assistant"][-1] == "echo: ping" and not unused.seen
+    session.send("again")
+    wait_for(session, "idle")
+    assert session.compact() and "SHORT SUMMARY" in json.dumps(session.history)
+    assert session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo approved-by-plugin"}})[1], \
+        "the plugin's approval policy let a harmless echo run in ask mode"
+    assert "model: echo (còn có: default)" in session.command("/services")["message"]
+
+
+def test_an_mcp_tool_can_be_the_provider_behind_a_seam(ws, home, tmp_path):
+    (tmp_path / "swap.py").write_text(SWAP_SERVER, encoding="utf-8")
+    folder = home / ".manga-agent"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "mcp.json").write_text(json.dumps({"mcpServers": {"fs": {"command": sys.executable, "args": [str(tmp_path / "swap.py")]}}}))
+    (folder / "profile.json").write_text(json.dumps({"services": {"web.search": ["mcp__fs__find", "duckduckgo"], "shell": "mcp__fs__sh"}}))
+    agents = manager(home, tmp_path / "store")
+    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    output, ok = session._run_call({"id": "1", "name": "web_search", "args": {"query": "manga fonts", "count": 3}})
+    assert ok and output == 'mcp find {"max_results": 3, "q": "manga fonts"}', output
+    output, ok = session._run_call({"id": "2", "name": "run_command", "args": {"command": "ls -la"}})
+    assert ok and 'mcp sh {"command": "ls -la"}' in output and "[exit code 0]" in output, output
+    assert not session.workspace.services.is_local_shell()
+    assert "shell: mcp__fs__sh (còn có: local)" in session.command("/services")["message"]
+    agents.close_all()

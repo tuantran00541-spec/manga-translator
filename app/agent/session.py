@@ -89,6 +89,8 @@ MAX_SESSIONS = 50
 HOOK_TIMEOUT = 60
 MAX_REFS = 6
 MAX_PARALLEL = 3
+# Tools with which the agent changes its own plugin tree; they ask the user in every mode.
+SELF_EXTEND = ("plugin_write", "plugin_remove")
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
 UNREADABLE_TURNS = 4
@@ -146,6 +148,19 @@ SESSION_SPECS = {
                      "question": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}}}},
     "exit_plan_mode": {"name": "exit_plan_mode", "description": "Present your finished plan for the user's approval; editing starts only after they approve.",
                        "parameters": {"type": "object", "required": ["plan"], "properties": {"plan": {"type": "string"}}}},
+    "plugin_write": {"name": "plugin_write", "description": (
+        "Write a Python plugin that extends you, save it to ~/.manga-agent/plugins/ID.py and mount it now (the user approves every time). "
+        "It defines inject = [service names it needs, e.g. \"tools\", \"commands\", \"session\"], optional defaults = {config}, and "
+        "apply(ctx, config). ctx.get(\"tools\").register(spec, handler(session, args) -> str, kind=\"read\"|\"edit\"|\"exec\"|\"net\") adds a tool; "
+        "ctx.get(\"commands\").register(name, description, handler(session, args)) adds a slash command; ctx.on(\"tool/execute\", fn(call, next)) "
+        "wraps every tool call (return next(call) or your own (output, ok)); ctx.on(\"model/request\", fn(request, next)) wraps model calls; "
+        "ctx.on(\"tool/approve\", fn({call, ask, mode}, next)) adjusts approvals; ctx.provide(\"web.search/NAME\", fn) adds a provider "
+        "(web.search, web.fetch, shell, model, compact). Everything it registers is undone when it is removed."),
+        "parameters": {"type": "object", "required": ["id", "code"], "properties": {
+            "id": {"type": "string", "description": "lower_case name, also the file name"}, "code": {"type": "string"},
+            "config": {"type": "object"}}}},
+    "plugin_remove": {"name": "plugin_remove", "description": "Unmount a plugin you or the user wrote and delete its file (the user approves).",
+                      "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
     "goal_done": {"name": "goal_done", "description": "Mark the user's goal finished and verified, with a short report.",
                   "parameters": {"type": "object", "required": ["summary"], "properties": {"summary": {"type": "string"}}}},
     "job_output": {"name": "job_output", "description": "Read what a background job printed since the last read (waiting up to wait_s seconds for more), and whether it is still running.",
@@ -349,7 +364,7 @@ class AgentSession:
         self.kernel_problems = kernel.patch_rows(ctx, home_path)
         ctx.settle()
         self.kernel = ctx
-        self.workspace.services = services.Services(self.profile["services"], reg.providers, ctx)
+        self.workspace.services = services.Services(self.profile["services"], reg.providers, ctx, mcp=_McpBridge(self))
         return reg
 
     def _enabled(self, name: str) -> bool:
@@ -828,6 +843,7 @@ class AgentSession:
             rows.append(SESSION_SPECS["oracle"])
         if not self.depth:
             rows += [SESSION_SPECS["schedule_create"], SESSION_SPECS["schedule_list"], SESSION_SPECS["schedule_delete"]]
+        rows += [SESSION_SPECS["plugin_write"], SESSION_SPECS["plugin_remove"]]
         rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn, fan,
                  SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         rows += [t.spec for t in self.registry.tools.values()]
@@ -851,6 +867,8 @@ class AgentSession:
 
     def _needs_approval(self, call: dict, verdict: str | None = None) -> bool:
         name = call["name"]
+        if name in SELF_EXTEND:
+            return True
         plugin = self.registry.tools.get(name)
         if plugin and plugin.always_ask:
             return True
@@ -901,7 +919,7 @@ class AgentSession:
 
     def _always_ask(self, call: dict) -> bool:
         plugin = self.registry.tools.get(call["name"])
-        return bool(plugin and plugin.always_ask) or call["name"] == "memory" or self._typing_outside(call) or bool(
+        return bool(plugin and plugin.always_ask) or call["name"] in ("memory", *SELF_EXTEND) or self._typing_outside(call) or bool(
             call["name"] == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access")
 
     def _user_messages(self) -> list[str]:
@@ -956,8 +974,47 @@ class AgentSession:
                 self.pending, self.status = None, previous
             return decision
 
+    def _self_extend(self, call: dict) -> str:
+        """plugin_write and plugin_remove: the agent changes its own plugin tree, always with the user's approval."""
+        args = call["args"]
+        pid = str(args.get("id") or "").strip()
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,40}", pid):
+            raise ToolError("id must be lower_case letters, digits and _, starting with a letter")
+        row = self.kernel.rows.get(pid)
+        if row is not None and row.source == "builtin":
+            raise ToolError(f"{pid} is a built-in row; pick another id (switch built-ins off with /plugins disable)")
+        folder = (self.home if self.home is not None else Path.home()) / ".manga-agent" / "plugins"
+        path = folder / f"{pid}.py"
+        if call["name"] == "plugin_remove":
+            if row is None and not path.exists():
+                raise ToolError(f"No plugin {pid}; mounted: {', '.join(r.id for r in self.kernel.rows.values() if r.source != 'builtin') or 'none'}")
+            self.kernel.unmount(pid)
+            path.unlink(missing_ok=True)
+            return f"Plugin {pid} unmounted and its file deleted."
+        code = str(args.get("code") or "")
+        try:
+            compile(code, str(path), "exec")
+        except SyntaxError as exc:
+            raise ToolError(f"Syntax error in the plugin: {exc}") from exc
+        folder.mkdir(parents=True, exist_ok=True)
+        path.write_text(code, encoding="utf-8")
+        try:
+            module = kernel.load_module(path, f"manga_agent_agent_{pid}")
+        except Exception as exc:
+            raise ToolError(f"The plugin file was saved but failed to load: {type(exc).__name__}: {exc}") from exc
+        if not callable(getattr(module, "apply", None)):
+            raise ToolError("The plugin needs a function apply(ctx, config)")
+        config = args.get("config") if isinstance(args.get("config"), dict) else {}
+        self.kernel.mount(kernel.Row(pid, module, config, False, "agent"))
+        mounted = self.kernel.rows[pid]
+        detail = f" — {mounted.error}" if mounted.error else ""
+        self.emit("notice", text=f"Plugin {pid} mounted: {mounted.state}{detail}")
+        return f"Saved {path} and mounted it: {mounted.state}{detail}. It loads again in every new session; /plugins shows the tree."
+
     def _session_tool(self, call: dict) -> str:
         args = call["args"]
+        if call["name"] in SELF_EXTEND:
+            return self._self_extend(call)
         if call["name"] == "skill":
             found = self.skills.get(str(args.get("name") or ""))
             if found is None:
@@ -1397,7 +1454,11 @@ class AgentSession:
             return f"Denied by a permission rule for {call['name']}. Do not retry it; use another way or ask the user.", False
         # One question at a time: a parallel call on the same host sees the answer instead of asking again.
         with self._approval_lock:
-            if self._needs_approval(call, verdict):
+            ask = self._needs_approval(call, verdict)
+            if self.kernel.subscribers("tool/approve"):
+                # A plugin may change the approval policy; what must always ask still asks.
+                ask = bool(self.kernel.waterfall("tool/approve", {"call": call, "ask": ask, "mode": self.mode}, lambda p: p["ask"])) or self._always_ask(call)
+            if ask:
                 why = "untrusted" if self.tainted and self.mode != "auto" and self.profile["untrusted_guard"] else ""
                 reviewed, cleared = "", False
                 if self.mode == "review" and not why and not self._always_ask(call):
@@ -1593,6 +1654,13 @@ class AgentSession:
         self.live = live
         return False
 
+    def _core(self, name: str):
+        """A plugin or MCP provider chosen for a core seam (model, compact), or None for the harness's own."""
+        try:
+            return self.workspace.services.chosen_fn(name)
+        except services.NoProvider:
+            return None
+
     def _call_model(self, messages: list[dict], tools: list[dict] | None) -> dict:
         streams = (self.complete is client.complete or getattr(self.complete, "streams", False)) and not self._plain
         started = time.time()
@@ -1604,10 +1672,11 @@ class AgentSession:
             while True:
                 try:
                     request = {"model": chain[self._fallback_at], "messages": messages, "tools": tools}
+                    model = self._core("model") or self.complete
                     if not self.kernel.subscribers("model/request"):
-                        return self.complete(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
+                        return model(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
                     # Plugins may rewrite a model request or answer it themselves: (request, next) -> the model's turn.
-                    return self.kernel.waterfall("model/request", request, lambda r: self.complete(
+                    return self.kernel.waterfall("model/request", request, lambda r: model(
                         self.provider, self.api_key, r["model"], r["messages"], tools=r["tools"], **extra))
                 except client.TransientError as exc:
                     # Retries are used up: the next configured model takes over for the rest of this turn (free-claude-code).
@@ -1735,7 +1804,9 @@ class AgentSession:
         ask = SUMMARY_PROMPT + (f"\nFocus on: {focus}" if focus else "")
         messages = [{"role": "system", "content": "You write precise handover summaries."},
                     {"role": "user", "content": f"{ask}\n\n<conversation>\n{self._transcript(head)}\n</conversation>"}]
-        summary = self.complete(self.provider, self.api_key, self.profile.get("compact_model") or self.model, messages, tools=None)["text"]
+        summarize = self._core("compact")
+        summary = str(summarize(self, messages) or "") if summarize else self.complete(
+            self.provider, self.api_key, self.profile.get("compact_model") or self.model, messages, tools=None)["text"]
         if not summary:
             return False
         summary = FILE_BLOCK.sub("", summary).rstrip()
@@ -2225,6 +2296,23 @@ class AgentSession:
             else:
                 self.emit("done")
             self.save()
+
+
+class _McpBridge:
+    """The session's connected MCP tools, offered to the service seams as providers."""
+
+    def __init__(self, session: "AgentSession"):
+        self.session = session
+
+    def tools(self) -> dict:
+        root = self.session._mcp_root()
+        root._ensure_mcp()
+        return root.mcp_tools
+
+    def call(self, name: str, arguments: dict) -> tuple[str, bool]:
+        root = self.session._mcp_root()
+        server, tool = root.mcp_tools[name]
+        return root.mcp_servers[server].call_tool(tool["name"], arguments)
 
 
 class AgentSessionManager:
