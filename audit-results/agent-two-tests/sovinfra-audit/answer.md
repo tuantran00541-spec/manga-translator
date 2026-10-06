@@ -1,1 +1,1 @@
-Lbtag
+Tôi bắt đầu khảo sát cấu trúc dự án.
