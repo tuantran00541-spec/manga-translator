@@ -67,7 +67,7 @@ class MangaAgent(BaseInstalledAgent):
             environment,
             command=(f"mkdir -p {HOME}/home/.manga-agent {EnvironmentPaths.agent_dir} && printf '%s' {shlex.quote(profile)} > {HOME}/home/.manga-agent/profile.json; "
                      f'INSTR="${var}"; unset {var}; '
-                     f"{HOME}/venv/bin/python -m app.agent.cli exec \"$INSTR\" --base {shlex.quote(base)} --model {shlex.quote(model)} --provider polargrid "
+                     f"{HOME}/venv/bin/python -m app.agent.cli exec \"$INSTR\" --base {shlex.quote(base)} --model {shlex.quote(model)} --provider polargrid --allow-private-base "
                      f'--workspace "$PWD" --mode auto --sandbox full-access --timeout-min {minutes} --json '
                      f"> {OUTPUT} 2> {STDERR} < /dev/null"),
             env=env,

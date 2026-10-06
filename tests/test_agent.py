@@ -2176,3 +2176,24 @@ def test_a_text_only_reply_with_todo_items_left_is_sent_back_and_a_finished_list
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     run_to_idle(session)
     assert sum(h["content"].startswith("[Your todo list still has") for h in session.history if h["role"] == "user") == 3, "at most three nudges, then the turn ends"
+
+
+def test_the_cli_takes_an_http_relay_only_on_a_private_address_and_streams_are_read_as_utf8():
+    import pytest
+    from app.agent import cli
+    assert cli._private_base("http://172.17.0.1:18080/v1/") == "http://172.17.0.1:18080/v1"
+    assert cli._private_base("http://127.0.0.1:9/v1") == "http://127.0.0.1:9/v1"
+    for bad in ("https://172.17.0.1/v1", "http://example.com/v1", "http://8.8.8.8/v1", "http://user:pw@10.0.0.1/v1", "http://10.0.0.1/v1?x=1"):
+        with pytest.raises(SystemExit):
+            cli._private_base(bad)
+
+    class Response:
+        encoding = None
+
+        def iter_lines(self, decode_unicode=False):
+            assert self.encoding == "utf-8"
+            return iter(['data: {"choices": [{"delta": {"content": "Báo cáo"}}]}', "data: [DONE]"])
+
+    from app.agent import client
+    message, usage, debug = client._read_stream(Response(), lambda live: None)
+    assert message["content"] == "Báo cáo"

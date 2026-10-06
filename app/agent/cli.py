@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import ipaddress
 import json
 import os
 from pathlib import Path
 import sys
 import time
+from urllib.parse import urlparse
 
 from app.agent import sandbox
 from app.agent.session import AgentSessionManager, MODES
@@ -25,6 +28,18 @@ def _show(event: dict, as_json: bool) -> None:
         print(event["text"], file=sys.stderr, flush=True)
 
 
+def _private_base(base: str) -> str:
+    """An http base URL on a loopback or private address, for a relay that holds the key (benchmarks); anything else is refused."""
+    parsed = urlparse(base)
+    try:
+        address = ipaddress.ip_address(parsed.hostname or "")
+    except ValueError as exc:
+        raise SystemExit("--allow-private-base needs an IP address in the base URL") from exc
+    if parsed.scheme != "http" or not (address.is_private or address.is_loopback) or parsed.username or parsed.query:
+        raise SystemExit("--allow-private-base takes only http://<private or loopback IP>[:port]/path")
+    return base.rstrip("/")
+
+
 def run(args: argparse.Namespace) -> int:
     home = Path.home()
     manager = AgentSessionManager(home / ".manga-agent", home=home)
@@ -32,7 +47,10 @@ def run(args: argparse.Namespace) -> int:
     if not key:
         print(f"Set {args.key_env} to the provider's API key.", file=sys.stderr)
         return 2
-    provider = resolve_provider(args.provider, label=args.provider, protocol="openai", api_base=args.base)
+    if args.allow_private_base:
+        provider = dataclasses.replace(resolve_provider(args.provider, label=args.provider, protocol="openai", api_base="https://relay.invalid"), api_base=_private_base(args.base))
+    else:
+        provider = resolve_provider(args.provider, label=args.provider, protocol="openai", api_base=args.base)
     if args.command == "resume":
         data = manager.saved(args.session)
         mode, network = (data.get("sandbox") or ["workspace-write", False])[:2]
@@ -90,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         one.add_argument("--sandbox", choices=sandbox.MODES, default="workspace-write")
         one.add_argument("--network", action="store_true")
         one.add_argument("--timeout-min", type=int, default=60)
+        one.add_argument("--allow-private-base", action="store_true", help="allow an http base URL on a private or loopback IP (a local relay)")
         one.add_argument("--json", action="store_true", help="print one JSON event per line")
     return run(parser.parse_args(argv))
 

@@ -215,6 +215,7 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
     """Assemble the streamed message; on_delta(live) is called as it grows and returns True to stop early."""
     text, reasoning, usage, calls, stopped = "", "", {}, {}, False
     finish, other = "", {}
+    response.encoding = "utf-8"  # An event stream without a charset is otherwise read as Latin-1 and Vietnamese text turns into mojibake.
     for raw in response.iter_lines(decode_unicode=True):
         if not raw or not raw.startswith("data:"):
             continue
