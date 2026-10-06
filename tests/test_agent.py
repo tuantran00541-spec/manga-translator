@@ -550,6 +550,17 @@ def test_skills_are_written_uploaded_listed_and_removed_through_the_api(api, hom
     assert "slides" not in agents.get(session["id"]).skills
 
 
+def test_tool_names_from_other_harnesses_run_as_ours(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    output, ok = session._run_call({"id": "1", "name": "grep_files", "args": {"path": "pkg", "pattern": "return"}})
+    assert ok and output.startswith("[grep_files is called search here") and "pkg/a.py:2" in output
+    ws.run("write_file", {"path": "n.txt", "content": "one\n"})
+    output, ok = session._run_call({"id": "2", "name": "str_replace", "args": {"file_path": "n.txt", "old_str": "one", "new_str": "two"}})
+    assert ok, output
+    assert "two" in ws.run("read_file", {"path": "n.txt"})
+    assert session._run_call({"id": "3", "name": "teleport", "args": {}})[0].startswith("Unknown tool 'teleport'")
+
+
 # Harness v3: hashline edits, rules, undo, agents, queue, references, memory, plan, goal.
 
 def run_to_idle(session, text="go"):

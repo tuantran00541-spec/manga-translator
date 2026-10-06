@@ -89,6 +89,15 @@ MAX_SESSIONS = 50
 HOOK_TIMEOUT = 60
 MAX_REFS = 6
 MAX_PARALLEL = 3
+# Tool names other harnesses use, run as ours when the model reaches for them out of habit.
+TOOL_ALIASES = {"grep": "search", "grep_files": "search", "rg": "search", "ripgrep": "search", "search_files": "search",
+                "find_files": "glob", "file_search": "glob", "read": "read_file", "view": "read_file", "cat": "read_file",
+                "ls": "list_dir", "list_files": "list_dir", "list_directory": "list_dir", "bash": "run_command",
+                "shell": "run_command", "exec_command": "run_command", "write": "write_file", "create_file": "write_file",
+                "edit": "edit_file", "str_replace": "edit_file"}
+ARG_ALIASES = {"file_path": "path", "filePath": "path", "filename": "path", "directory": "path", "dir": "path",
+               "old_str": "old_text", "new_str": "new_text", "old_string": "old_text", "new_string": "new_text",
+               "cmd": "command", "regex": "pattern", "query": "pattern"}
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
 UNREADABLE_TURNS = 4
@@ -1288,6 +1297,15 @@ class AgentSession:
         if call.get("error"):
             return call["error"], False
         known = {s["name"] for s in self.specs()}
+        if call["name"] not in known and TOOL_ALIASES.get(call["name"]) in known:
+            real = TOOL_ALIASES[call["name"]]
+            props = next(s for s in self.specs() if s["name"] == real).get("parameters", {}).get("properties", {})
+            args = call["args"]
+            if isinstance(args, dict):
+                args = {(ARG_ALIASES[k] if k not in props and ARG_ALIASES.get(k) in props and ARG_ALIASES[k] not in args else k): v
+                        for k, v in args.items()}
+            output, ok = self._run_call({**call, "name": real, "args": args})
+            return f"[{call['name']} is called {real} here; ran it as {real}.]\n{output}", ok
         if call["name"] not in known:
             return f"Unknown tool {call['name']!r}; available: {', '.join(sorted(known))}", False
         signature = call["name"] + json.dumps(call["args"], sort_keys=True, default=str)
