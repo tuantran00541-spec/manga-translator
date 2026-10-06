@@ -1289,7 +1289,9 @@ class AgentSession:
             return call["error"], False
         known = {s["name"] for s in self.specs()}
         props = {s["name"]: s.get("parameters", {}).get("properties", {}) for s in self.specs()}
-        if isinstance(call["args"], dict) and (call["name"] not in known or any(k not in props[call["name"]] for k in call["args"])):
+        # Calls a script makes go through as written: they carry internal flags such as as_data.
+        if isinstance(call["args"], dict) and not str(call.get("id", "")).startswith("script-") and (
+                call["name"] not in known or any(k not in props[call["name"]] for k in call["args"])):
             fixed = aliases.resolve(call["name"], call["args"], props)
             if fixed and fixed[2]:
                 output, ok = self._run_call({**call, "name": fixed[0], "args": fixed[1]})
