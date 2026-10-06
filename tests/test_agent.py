@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.agent import client, context, mcp, patch, sandbox, skills
-from app.agent.session import AgentSessionManager
+from app.agent.session import AgentSession, AgentSessionManager
 from app.agent.tools import ToolError, Workspace
 from app.ai_providers import PROVIDERS
 from app.routers.agent import is_loopback
@@ -2131,3 +2131,32 @@ def test_a_script_can_run_rounds_of_helpers_and_use_their_reports_as_data(ws, ho
     out = tool_outputs(session)[0][2]
     assert "rounds 3 left []" in out and "[exit code 0]" in out, out
     assert calls_seen == {"a": 1, "b": 1, "c": 3}, "only the failing job is run again"
+
+
+def test_a_session_schedules_prompts_for_itself_asks_before_it_outside_auto_and_keeps_them_across_a_restart(ws, home, tmp_path):
+    fake = scripted(turn(calls=[call("schedule_create", prompt="check the deploy", in_minutes=1, every_minutes=5)]), turn("scheduled"),
+                    turn("deploy fine"), turn(calls=[{"id": "d", "name": "schedule_list", "args": {}}]), turn("listed"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session, "watch the deploy")
+    assert "Scheduled" in tool_outputs(session)[0][2] and len(session.schedules) == 1
+    task = session.schedules[0]
+    task["next_at"] = time.time() - 1
+    session._tick()
+    wait_for(session, "idle")
+    assert any(h["role"] == "user" and h["content"] == "[Scheduled by you] check the deploy" for h in session.history)
+    assert task["next_at"] > time.time() + 200, "a recurring prompt waits a full period"
+    session.send("what is scheduled?")
+    wait_for(session, "idle")
+    assert "every 5 min" in tool_outputs(session)[-1][2]
+    ask = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted(turn("x")))
+    assert ask._needs_approval(call("schedule_create", prompt="p", in_minutes=1)) and not ask._needs_approval(call("schedule_list"))
+    store = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    store._schedule("schedule_create", {"prompt": "later", "in_minutes": 10})
+    store.save()
+    again = AgentSession("again", PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    again.restore(json.loads(store.store.read_text(encoding="utf-8")))
+    assert [t["prompt"] for t in again.schedules] == ["later"]
+    for s in (session, ask, store, again):
+        s.close()
+    with pytest.raises(Exception):
+        session._schedule("schedule_create", {"prompt": "x", "in_minutes": 0})

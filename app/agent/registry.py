@@ -17,7 +17,7 @@ GROUPS = {
     "write_file": "edit", "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit",
     "run_command": "shell", "run_script": "shell", "job_output": "shell", "job_input": "shell", "job_stop": "shell", "web_fetch": "web", "web_search": "web", "web_download": "web", "skill": "skills", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
     "task": "subagents", "fan_out": "subagents", "oracle": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
-    "tool_search": "mcp", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
+    "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "tool_search": "mcp", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
 }
 COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "mcp": "mcp"}
 ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})

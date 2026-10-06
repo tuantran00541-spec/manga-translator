@@ -26,6 +26,7 @@ from app.logging_config import logger
 MODES = ("ask", "edits", "review", "auto")
 MAX_STEPS = 300
 MAX_JOBS = 8
+MAX_SCHEDULES = 10
 URL_TOOLS = ("web_fetch", "web_download")
 MASK_KEEP = 12
 MASK_BATCH = 6
@@ -140,6 +141,15 @@ SESSION_SPECS = {
     "job_input": {"name": "job_input", "description": "Type into a background job's input (a REPL, a prompt asking y/n, a debugger); end a line with \\n. "
                                             "Returns what it printed after waiting up to wait_s seconds (default 2). Start the job with tty for programs that want a terminal.",
                   "parameters": {"type": "object", "required": ["id", "chars"], "properties": {"id": {"type": "string"}, "chars": {"type": "string"}, "wait_s": {"type": "integer"}}}},
+    "schedule_create": {"name": "schedule_create", "description": "Have this session send itself a prompt later: once after in_minutes, or again every every_minutes (at least 1) for polling, deploy checks or daily reports. "
+                                                                  "It fires into this conversation, also after the session is reopened; at most 10 at a time. Needs the user's approval unless in auto mode.",
+                        "parameters": {"type": "object", "required": ["prompt", "in_minutes"], "properties": {
+                            "prompt": {"type": "string", "description": "The message to send yourself, written as a complete instruction."},
+                            "in_minutes": {"type": "integer", "description": "Minutes until the first time, at least 1."},
+                            "every_minutes": {"type": "integer", "description": "Repeat this often afterwards; leave out for a one-time reminder."}}}},
+    "schedule_list": {"name": "schedule_list", "description": "List the scheduled prompts with their ids and next time.", "parameters": {"type": "object", "properties": {}}},
+    "schedule_delete": {"name": "schedule_delete", "description": "Cancel a scheduled prompt by id.",
+                        "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
     "oracle": {"name": "oracle", "description": "Ask a second, stronger model for advice: to review a plan before a big change, to check your own work, to understand tricky code, or when a fix keeps failing. "
                                               "It sees the recent conversation and answers your question; it cannot run tools. Say why you are asking.",
                "parameters": {"type": "object", "required": ["question"], "properties": {"question": {"type": "string", "description": "What you want its opinion on, with the context it needs."}}}},
@@ -236,6 +246,9 @@ class AgentSession:
         self._turn_usage = 0
         self._denials: list[bool] = []
         self._fallback_at = 0
+        self.schedules: list[dict] = []
+        self._scheduler: threading.Thread | None = None
+        self._closing = False
         self._advice: list[tuple[str, str]] = []
         self._advice_given: list[str] = []
         self._advised_upto = self._advise_steps = 0
@@ -378,7 +391,7 @@ class AgentSession:
         data = {"id": self.id, "provider": self.provider.id, "model": self.model, "mode": self.mode, "title": self.title,
                 "workspace": str(self.workspace.root), "sandbox": [self.workspace.policy.mode, self.workspace.policy.network],
                 "created_at": self.created_at, "updated_at": self.updated_at, "usage": self.usage, "todos": self.todos, "notes": self.notes,
-                "text_tools": self.text_tools, "plan_mode": self.plan_mode, "goal": self.goal,
+                "text_tools": self.text_tools, "plan_mode": self.plan_mode, "goal": self.goal, "schedules": self.schedules,
                 "history": [{k: v for k, v in h.items() if k != "images"} for h in self.history], "events": self.events}
         tmp = self.store.with_suffix(".tmp")
         try:
@@ -393,6 +406,9 @@ class AgentSession:
         self.history, self.events = list(data.get("history") or []), list(data.get("events") or [])
         self.todos, self.title = list(data.get("todos") or []), str(data.get("title") or "")
         self.notes = str(data.get("notes") or "")
+        self.schedules = [t for t in (data.get("schedules") or []) if isinstance(t, dict) and {"id", "prompt", "next_at", "every"} <= set(t)][:MAX_SCHEDULES]
+        if self.schedules:
+            self._start_scheduler()
         self.usage.update(data.get("usage") or {})
         self.text_tools = bool(data.get("text_tools"))
         self.plan_mode = bool(data.get("plan_mode"))
@@ -602,6 +618,7 @@ class AgentSession:
         self.jobs.clear()
 
     def close(self) -> None:
+        self._closing = True
         self.stop()
         for child in list(self.children.values()):
             child.close()
@@ -705,6 +722,8 @@ class AgentSession:
         rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"]]
         if self.profile["oracle"] and not self.depth:
             rows.append(SESSION_SPECS["oracle"])
+        if not self.depth:
+            rows += [SESSION_SPECS["schedule_create"], SESSION_SPECS["schedule_list"], SESSION_SPECS["schedule_delete"]]
         rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn, fan,
                  SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         rows += [t.spec for t in self.registry.tools.values()]
@@ -736,6 +755,8 @@ class AgentSession:
             return True
         if name == "job_input" and self._typing_outside(call):
             return True
+        if name == "schedule_create":
+            return self.mode != "auto"
         if name == "memory":
             return self.mode != "auto" and call["args"].get("action") != "list"
         if self.mode == "auto" or name in SESSION_SPECS or verdict == "allow":
@@ -882,6 +903,8 @@ class AgentSession:
             return "\n".join(f"{n}: {(self.mcp_tools[n][1].get('description') or '')[:200]}" for n in found) + "\nThese tools can be called now." if found else "No connected tool matches."
         if call["name"] == "job_output":
             return self._job_output(str(args.get("id") or ""), args.get("wait_s"))
+        if call["name"] in ("schedule_create", "schedule_list", "schedule_delete"):
+            return self._schedule(call["name"], args)
         if call["name"] == "oracle":
             return self._oracle(str(args.get("question") or ""))
         if call["name"] == "job_input":
@@ -1642,6 +1665,54 @@ class AgentSession:
             self._advised_upto = max(0, len(self.history) - 6)
         items, self._advised_upto = self.history[self._advised_upto:], len(self.history)
         return self._transcript(items)
+
+    def _schedule(self, name: str, args: dict) -> str:
+        """Prompts the session sends itself later (Kimi Code's cron tools, with minutes instead of cron fields)."""
+        if name == "schedule_list":
+            now = time.time()
+            return "\n".join(f"{t['id']}: in {max(0, int((t['next_at'] - now) / 60))} min" + (f", every {t['every'] // 60} min" if t["every"] else ", once") + f" - {t['prompt'][:80]}"
+                             for t in self.schedules) or "Nothing is scheduled."
+        if name == "schedule_delete":
+            before = len(self.schedules)
+            self.schedules = [t for t in self.schedules if t["id"] != str(args.get("id") or "").strip()]
+            return "Cancelled." if len(self.schedules) < before else f"No schedule with id {args.get('id')!r}."
+        prompt = str(args.get("prompt") or "").strip()
+        try:
+            first, every = int(args.get("in_minutes") or 0), int(args.get("every_minutes") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ToolError("in_minutes and every_minutes must be whole numbers") from exc
+        if not prompt or len(prompt.encode()) > 8192:
+            raise ToolError("prompt must be 1 to 8192 bytes")
+        if first < 1 or every < 0 or 0 < every < 1:
+            raise ToolError("in_minutes must be at least 1 and every_minutes at least 1 when given")
+        if len(self.schedules) >= MAX_SCHEDULES:
+            raise ToolError(f"{MAX_SCHEDULES} schedules already; cancel one with schedule_delete")
+        task = {"id": uuid.uuid4().hex[:8], "prompt": prompt, "next_at": time.time() + first * 60, "every": every * 60}
+        self.schedules.append(task)
+        self._start_scheduler()
+        return f"Scheduled {task['id']}: in {first} min" + (f", then every {every} min." if every else ", once.")
+
+    def _start_scheduler(self) -> None:
+        if self._scheduler is None or not self._scheduler.is_alive():
+            self._scheduler = threading.Thread(target=self._tick_loop, name=f"agent-schedule-{self.id}", daemon=True)
+            self._scheduler.start()
+
+    def _tick_loop(self) -> None:
+        while self.schedules and not self.closed and not self._closing:
+            self._tick()
+            time.sleep(1.0)
+
+    def _tick(self) -> None:
+        """Send every prompt that is due; a recurring one waits a full period after a missed time instead of firing in a burst."""
+        now = time.time()
+        due = [t for t in self.schedules if t["next_at"] <= now]
+        for task in due:
+            if task["every"]:
+                task["next_at"] = now + task["every"]
+            else:
+                self.schedules.remove(task)
+            self.send(f"[Scheduled by you] {task['prompt']}")
+            self.save()
 
     def _oracle(self, question: str) -> str:
         """The agent asks the advisor model for a second opinion on the recent conversation (Amp's oracle)."""
