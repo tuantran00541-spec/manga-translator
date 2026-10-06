@@ -1,0 +1,14 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-8.3.5, pluggy-1.6.0
+rootdir: /tmp/agent-work/project
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.15.1
+collected 51 items
+
+tests/test_cli.py ...........                                            [ 21%]
+tests/test_manager.py ...................                                [ 58%]
+tests/test_note.py ...........                                           [ 80%]
+tests/test_storage.py ..........                                         [100%]
+
+============================== 51 passed in 0.10s ==============================

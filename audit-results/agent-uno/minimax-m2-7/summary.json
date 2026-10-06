@@ -1,0 +1,32 @@
+{
+ "model": "minimax-m2.7:free",
+ "status": "idle",
+ "usage": {
+  "prompt_tokens": 246237,
+  "completion_tokens": 11621,
+  "cached_tokens": 0
+ },
+ "stats": {
+  "model_seconds": 1423.0,
+  "tool_seconds": 12.1,
+  "cache_pct": 0,
+  "cost": null
+ },
+ "steps": 20,
+ "tool_counts": {
+  "edit_file": 1,
+  "run_command": 8,
+  "todo_write": 5,
+  "write_file": 14
+ },
+ "failed_tools": [
+  [
+   "write_file",
+   "Tool arguments were not a JSON object"
+  ]
+ ],
+ "errors": [],
+ "notices": [
+  "Hết giờ của lượt chạy; agent viết báo cáo cuối."
+ ]
+}
