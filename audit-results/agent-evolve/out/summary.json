@@ -1,0 +1,72 @@
+{
+ "model": "agnes-3.0-flash",
+ "vision": true,
+ "sandbox": "landlock",
+ "task1": {
+  "minutes": 24.1,
+  "status": "idle",
+  "approvals": [],
+  "tool_counts": {
+   "edit_file": 24,
+   "read_file": 2,
+   "run_command": 38,
+   "todo_write": 3,
+   "view_image": 21,
+   "write_file": 7
+  },
+  "failed_tools": 3,
+  "errors": [],
+  "final": "Done. All three decks check clean and render correctly.\n\n## What was learned and where it lives\n\n**Three decks in `deck-lab/`** (each 6 slides, 16:9, all `check_deck.py` clean and visually verified via LibreOffice → PDF → PNG):\n1. `remember.pptx` — *How Does the Brain Remember?* (built from scratch, generated the lessons)\n2. `attention.pptx` — *You Are More Productive Than You Think* (built strictly from the skill)\n3. `coffee.pptx` — *Why Coffee Actually Works* (built strictly from the skill)\n\n**The skill, `.agents/skills/pptx/SKILL.md`**, written after deck 1 and upgraded twice:\n- After deck 2: accent-text contrast rule — mid orange (`#D95A1E`, 3.9:1) fails WCAG for <18 pt text; dark accent `#B5450D` is the safe choice; card category labels in caps must be ink, not accent; chart third-series gray too light (`#8A93A8` → `#6E788C`).\n- After deck 3: bar value-label color must branch on bar height (white inside tall bars, ink above short ones — white-on-light-panel is a 1.1:1 failure); tallest bar at 100% panel height collides with the chart's title line, so cap bars ~90% or reserve the title strip.\n\n**Supporting scripts:**\n- `.agents/skills/pptx/check_deck.py` — static checker that reopens the .pptx: out-of-bounds text, footer-zone violations, fonts <10 pt, WCAG contrast (resolves the panel behind each textbox, not just the slide background), and overflow estimation (chars/line = width/(size × 0.55), 12% tolerance).\n- `deck-lab/deck_helpers.py` — verified palette (contrast-verified pairs) + grid primitives: `new_deck`, `blank`, `text`, `panel`, `title_bar`, `footer`, `rule`.\n- `deck-lab/render.sh` — one-shot `soffice` + `pdftoppm`.\n\n**Key principles baked into the skill:**\n1. One palette dict, contrast-verified before building, WCAG thresholds enforced (≥4.5:1 for <18 pt, ≥3.0:1 for ≥18 pt) — dark slides get a separate lightened palette.\n2. Strict grid: 0.5 in margins, footer zone from y=7.0 in, content top returned by `title_bar()`; card math `(10.3 - (N-1)·gap)/N`.\n3. Never trust the estimator alone — render with LibreOffice + `pdftoppm -r 50` and look at every page; the checker catches most issues but a 12% tolerance means near-misses show up in the render, not the check.\n4. Hand-rolled shapes beat real chart XML: rectangles for bars, `RIGHT_ARROW` for flow, `ROUNDED_RECTANGLE` panels, and `shadow.inherit = False` on every decorative shape (otherwise LibreOffice adds default drop shadows that look broken).",
+  "usage": {
+   "prompt_tokens": 3040128,
+   "completion_tokens": 40721,
+   "cached_tokens": 2626560
+  }
+ },
+ "task2": {
+  "minutes": 9.4,
+  "status": "idle",
+  "approvals": [
+   "plugin_write",
+   "plugin_remove",
+   "plugin_write",
+   "plugin_write",
+   "plugin_write",
+   "plugin_write"
+  ],
+  "tool_counts": {
+   "plugin_remove": 1,
+   "plugin_write": 5,
+   "read_file": 2,
+   "run_command": 7,
+   "skill": 1,
+   "todo_write": 1
+  },
+  "failed_tools": 1,
+  "errors": [
+   "'parameters'"
+  ],
+  "final": "Signature is `register(spec: dict, handler: Callable, kind: str = 'exec')` — but my earlier call passed 3 positional args where the 3rd was `kind`, so it clashed with keyword. Actually the issue was I passed `kind` as positional AND the spec dict. Let me check — the spec is a dict, handler is callable. The `register` takes `(spec, handler, kind)`. My call was `t.register(spec_dict, make_deck, kind=\"edit\")` — that's 2 positional + keyword, should be fine. But the error said \"got multiple values for argument 'kind'\" — meaning the spec dict might already have a `kind` key collision? No... Let me look: the spec dict I built has no `kind`. Wait — the real issue: `register(spec, handler, kind)` — I passed `make_deck` as handler, but maybe handler signature. Let me just probe the register more and test a real registration:",
+  "usage": {
+   "prompt_tokens": 4136588,
+   "completion_tokens": 49459,
+   "cached_tokens": 3570176
+  }
+ },
+ "task3": {
+  "minutes": 0.2,
+  "status": "idle",
+  "approvals": [],
+  "tool_counts": {},
+  "failed_tools": 0,
+  "errors": [
+   "'parameters'"
+  ],
+  "final": "",
+  "usage": {
+   "prompt_tokens": 4136588,
+   "completion_tokens": 49459,
+   "cached_tokens": 3570176
+  }
+ }
+}
