@@ -56,6 +56,8 @@ RULINGS = ("Nobody is watching this run, so do not stop to ask what you can deci
            "'Ruling: <what you decided> - <why> - <what it costs if wrong>', and carry on; a wrong ruling is cheap to undo, a parked run is not. "
            "Stop and ask only for: an irreversible or destructive operation, a security-sensitive action, a side effect outside this workspace that is normally asked first "
            "(a push, a merge, a publish), or a task so broken that every way forward is a guess.")
+ORACLE_PROMPT = ("You are a senior engineer a coding agent consults. You see its recent conversation and its question. Answer directly and concretely: name the risk, the cause or the better approach, "
+                 "and what to check. Cite only what the conversation shows; say so when something you would need is not visible. No preamble, no restating the question.")
 EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -80,7 +82,7 @@ DOOM_LOOP = 3
 UNREADABLE_TURNS = 4
 TOKEN_BUDGET = 10_000_000
 URL_RE = re.compile(r"https?://([^\s/:?#]+)")
-PLAN_TOOLS = agents.READ_TOOLS | {"todo_write", "task", "fan_out", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
+PLAN_TOOLS = agents.READ_TOOLS | {"oracle", "todo_write", "task", "fan_out", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
 SYSTEM_PROMPT = """You are a coding agent inside the Manga Translator app, working like Claude Code or Codex.
 Workspace root: {root} on {system}. Paths are relative to it.
 {sandbox}
@@ -137,6 +139,9 @@ SESSION_SPECS = {
     "job_input": {"name": "job_input", "description": "Type into a background job's input (a REPL, a prompt asking y/n, a debugger); end a line with \\n. "
                                             "Returns what it printed after waiting up to wait_s seconds (default 2). Start the job with tty for programs that want a terminal.",
                   "parameters": {"type": "object", "required": ["id", "chars"], "properties": {"id": {"type": "string"}, "chars": {"type": "string"}, "wait_s": {"type": "integer"}}}},
+    "oracle": {"name": "oracle", "description": "Ask a second, stronger model for advice: to review a plan before a big change, to check your own work, to understand tricky code, or when a fix keeps failing. "
+                                              "It sees the recent conversation and answers your question; it cannot run tools. Say why you are asking.",
+               "parameters": {"type": "object", "required": ["question"], "properties": {"question": {"type": "string", "description": "What you want its opinion on, with the context it needs."}}}},
     "job_stop": {"name": "job_stop", "description": "Stop a background job.",
                  "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
     "context_notes": {"name": "context_notes", "description": "Read or replace your working notebook for this task (at most 16 KB): goal, decisions, what is done, "
@@ -229,6 +234,7 @@ class AgentSession:
         self.web_ok: set[str] = set()
         self._turn_usage = 0
         self._denials: list[bool] = []
+        self._fallback_at = 0
         self._advice: list[tuple[str, str]] = []
         self._advice_given: list[str] = []
         self._advised_upto = self._advise_steps = 0
@@ -448,6 +454,7 @@ class AgentSession:
             self.checkpoints.begin()
         self._dirty = self._gated = self.tainted = False
         self._final_advised = self._edited = self._plan_nudged = self._continued = False
+        self._fallback_at = 0
         self._prewalk = bool(self.profile["prewalk_model"]) and self.profile["prewalk_model"] != self.model and not self.depth
         self._skills_loaded = []
         self._turn_usage = self._spent()
@@ -695,6 +702,8 @@ class AgentSession:
         if self.skills:
             rows.append(SESSION_SPECS["skill"])
         rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"]]
+        if self.profile["oracle"] and not self.depth:
+            rows.append(SESSION_SPECS["oracle"])
         rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn, fan,
                  SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         rows += [t.spec for t in self.registry.tools.values()]
@@ -872,6 +881,8 @@ class AgentSession:
             return "\n".join(f"{n}: {(self.mcp_tools[n][1].get('description') or '')[:200]}" for n in found) + "\nThese tools can be called now." if found else "No connected tool matches."
         if call["name"] == "job_output":
             return self._job_output(str(args.get("id") or ""), args.get("wait_s"))
+        if call["name"] == "oracle":
+            return self._oracle(str(args.get("question") or ""))
         if call["name"] == "job_input":
             job = self._job(str(args.get("id") or ""))
             try:
@@ -1418,8 +1429,16 @@ class AgentSession:
             extra = {"on_delta": self._on_delta} if streams else {}
             if self.complete is client.complete:
                 extra["max_tokens"] = self.profile["max_output_tokens"]
-            model = self.profile["prewalk_model"] if self._prewalk else self.model
-            return self.complete(self.provider, self.api_key, model, messages, tools=tools, **extra)
+            chain = [self.profile["prewalk_model"] if self._prewalk else self.model] + self.profile["fallback_models"]
+            while True:
+                try:
+                    return self.complete(self.provider, self.api_key, chain[self._fallback_at], messages, tools=tools, **extra)
+                except client.TransientError as exc:
+                    # Retries are used up: the next configured model takes over for the rest of this turn (free-claude-code).
+                    if self._fallback_at + 1 >= len(chain):
+                        raise
+                    self._fallback_at += 1
+                    self.emit("notice", text=f"Model {chain[self._fallback_at - 1]} không trả lời được ({exc}); chuyển sang {chain[self._fallback_at]}.")
         finally:
             self.stats["model_s"] += time.time() - started
 
@@ -1610,6 +1629,18 @@ class AgentSession:
             self._advised_upto = max(0, len(self.history) - 6)
         items, self._advised_upto = self.history[self._advised_upto:], len(self.history)
         return self._transcript(items)
+
+    def _oracle(self, question: str) -> str:
+        """The agent asks the advisor model for a second opinion on the recent conversation (Amp's oracle)."""
+        if not question.strip():
+            raise ToolError("question is empty")
+        messages = [{"role": "system", "content": ORACLE_PROMPT},
+                    {"role": "user", "content": f"The user asked:\n{self._last_request[:4000]}\n\nRecent conversation:\n{self._transcript(self.history[-30:])[-50000:]}\n\nThe agent asks you:\n{question[:6000]}"}]
+        reply = self.complete(self.provider, self.api_key, self.profile["advisor_model"] or self.profile["review_model"] or self.model, messages, tools=None)
+        with self._usage_lock:
+            for key in self.usage:
+                self.usage[key] += int(reply.get("usage", {}).get(key) or 0)
+        return reply["text"].strip() or "The oracle gave no answer."
 
     def _ask_advisor(self, steps: str, finishing: bool) -> None:
         notes, usage = advisor.advise(self.complete, self.provider, self.api_key, self.profile["advisor_model"] or self.profile["review_model"] or self.model,

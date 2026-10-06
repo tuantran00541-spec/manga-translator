@@ -2060,3 +2060,49 @@ def test_edits_to_different_files_run_together_and_overlapping_ones_stay_in_orde
     order = [h["id"] for h in session.history if h["role"] == "tool"]
     assert order[-5:] == ["ea", "eb", "ec", "w1", "r1"], order
     assert session._footprint(call("run_command", command="ls")) is None
+
+
+def test_a_model_that_keeps_failing_hands_the_turn_to_the_next_configured_model(ws, home):
+    from app.agent import client
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"fallback_models": ["backup-1", "backup-2"]}))
+    used = []
+
+    def complete(provider, key, model, messages, *, tools):
+        used.append(model)
+        if model in ("m", "backup-1"):
+            raise client.TransientError("ReadTimeout")
+        return turn("answered by " + model)
+
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    run_to_idle(session)
+    assert used == ["m", "backup-1", "backup-2"] and session.history[-1]["content"] == "answered by backup-2"
+    assert sum(e["type"] == "notice" and "chuyển sang" in e["text"] for e in session.events) == 2
+    run_to_idle(session, "again")
+    assert used[3] == "m", "the next request tries the first model again"
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=lambda *a, **k: (_ for _ in ()).throw(client.TransientError("down")))
+    session.profile["fallback_models"] = []
+    run_to_idle(session)
+    assert any(e["type"] == "error" for e in session.events), "with no fallback the failure surfaces as before"
+
+
+def test_the_oracle_tool_asks_the_advisor_model_and_is_offered_only_when_switched_on(ws, home):
+    from app.agent import session as session_module
+    plain = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    assert "oracle" not in {t["name"] for t in plain.specs()}
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"oracle": True, "advisor_model": "big"}))
+    seen = []
+
+    def complete(provider, key, model, messages, *, tools):
+        if messages[0]["content"] == session_module.ORACLE_PROMPT:
+            seen.append((model, messages[1]["content"]))
+            return {**turn("Check the lock ordering first."), "usage": {"prompt_tokens": 50, "completion_tokens": 5}}
+        return [turn(calls=[call("oracle", question="Why would the deadlock appear only under load?")]), turn("Thanks.")][min(len([m for m in messages if m["role"] == "tool"]), 1)]
+
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    assert "oracle" in {t["name"] for t in session.specs()}
+    run_to_idle(session, "debug the hang")
+    assert tool_outputs(session)[0][2] == "Check the lock ordering first."
+    assert seen[0][0] == "big" and "debug the hang" in seen[0][1] and "deadlock appear only under load" in seen[0][1]
+    assert session.usage["prompt_tokens"] >= 50

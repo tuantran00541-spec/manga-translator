@@ -16,7 +16,7 @@ GROUPS = {
     "list_dir": "files", "read_file": "files", "search": "files", "glob": "files", "symbols": "files", "view_image": "files",
     "write_file": "edit", "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit",
     "run_command": "shell", "run_script": "shell", "job_output": "shell", "job_input": "shell", "job_stop": "shell", "web_fetch": "web", "web_search": "web", "web_download": "web", "skill": "skills", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
-    "task": "subagents", "fan_out": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
+    "task": "subagents", "fan_out": "subagents", "oracle": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
     "tool_search": "mcp", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
 }
 COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "mcp": "mcp"}
@@ -35,7 +35,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
-                     "timeout_to_background": True, "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": ""}
+                     "timeout_to_background": True, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": ""}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -73,6 +73,10 @@ def load_profile(workspace: Path, home: Path) -> dict:
                                 profile["stream_rules"].append({"name": str(rule.get("name") or rule["pattern"])[:40], "pattern": str(rule["pattern"]), "message": rule["message"][:1000]})
                         except re.error:
                             continue
+                if isinstance(data.get("fallback_models"), list):
+                    profile["fallback_models"] = [m.strip()[:100] for m in data["fallback_models"][:4] if isinstance(m, str) and m.strip()]
+                if isinstance(data.get("oracle"), bool):
+                    profile["oracle"] = data["oracle"]
                 if isinstance(data.get("timeout_to_background"), bool):
                     profile["timeout_to_background"] = data["timeout_to_background"]
                 if isinstance(data.get("advisor"), bool):
