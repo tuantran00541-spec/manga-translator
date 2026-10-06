@@ -34,8 +34,8 @@ jobs:
       - name: Prepare the project the agent works in
         run: |
           mkdir -p "$OUT" "$WORK/project" "$HOME/.manga-agent"
-          # Bounded: at most 12M tokens (cached ones not counted) and 300 steps per turn.
-          echo '{"token_budget": 12000000, "max_steps": 300}' > "$HOME/.manga-agent/profile.json"
+          # Round 3: advisor on; bounded at 12M tokens (cached ones not counted) and 300 steps per turn.
+          echo '{"token_budget": 12000000, "max_steps": 300, "advisor": true}' > "$HOME/.manga-agent/profile.json"
           if [ "${{ matrix.scenario }}" = audit ]; then
             # A copy without .git, so the agent never sees repository credentials.
             tar --exclude=.git --exclude=audit-results -cf - . | tar -xf - -C "$WORK/project"
