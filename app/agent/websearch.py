@@ -1,7 +1,8 @@
-"""Web search for the agent: Tavily or Brave when a key is set in the environment, else DuckDuckGo's plain HTML page."""
+"""Web search for the agent: Tavily, then Brave when a key is set in the environment, then DuckDuckGo's plain HTML page; the next one answers when one fails or finds nothing."""
 from __future__ import annotations
 
 import os
+import re
 from urllib.parse import parse_qs, quote_plus, urlparse
 
 from bs4 import BeautifulSoup
@@ -23,15 +24,20 @@ def _rows(results: list[tuple[str, str, str]]) -> str:
     return "\n\n".join(f"{i}. {title}\n{url}\n{snippet}".rstrip() for i, (title, url, snippet) in enumerate(results, 1))
 
 
-def _tavily(query: str, count: int, key: str) -> list[tuple[str, str, str]]:
-    reply = requests.post("https://api.tavily.com/search", json={"query": query, "max_results": count}, timeout=TIMEOUT,
+RECENCY = {"day": ("day", "pd", "d"), "week": ("week", "pw", "w"), "month": ("month", "pm", "m"), "year": ("year", "py", "y")}
+
+
+def _tavily(query: str, count: int, key: str, recency: str = "") -> list[tuple[str, str, str]]:
+    body = {"query": query, "max_results": count, **({"time_range": RECENCY[recency][0]} if recency else {})}
+    reply = requests.post("https://api.tavily.com/search", json=body, timeout=TIMEOUT,
                           headers={"Authorization": f"Bearer {key}"})
     reply.raise_for_status()
     return [(r.get("title", ""), r.get("url", ""), (r.get("content") or "")[:400]) for r in reply.json().get("results", [])]
 
 
-def _brave(query: str, count: int, key: str) -> list[tuple[str, str, str]]:
-    reply = requests.get("https://api.search.brave.com/res/v1/web/search", params={"q": query, "count": count}, timeout=TIMEOUT,
+def _brave(query: str, count: int, key: str, recency: str = "") -> list[tuple[str, str, str]]:
+    params = {"q": query, "count": count, **({"freshness": RECENCY[recency][1]} if recency else {})}
+    reply = requests.get("https://api.search.brave.com/res/v1/web/search", params=params, timeout=TIMEOUT,
                          headers={"X-Subscription-Token": key, "Accept": "application/json"})
     reply.raise_for_status()
     return [(r.get("title", ""), r.get("url", ""), BeautifulSoup(r.get("description", ""), "lxml").get_text()[:400])
@@ -53,8 +59,9 @@ def parse_duckduckgo(html: str, count: int) -> list[tuple[str, str, str]]:
     return out
 
 
-def _duckduckgo(query: str, count: int) -> list[tuple[str, str, str]]:
-    response = safe_get(f"https://html.duckduckgo.com/html/?q={quote_plus(query)}", timeout=TIMEOUT, headers={"User-Agent": UA})
+def _duckduckgo(query: str, count: int, recency: str = "") -> list[tuple[str, str, str]]:
+    when = f"&df={RECENCY[recency][2]}" if recency else ""
+    response = safe_get(f"https://html.duckduckgo.com/html/?q={quote_plus(query)}{when}", timeout=TIMEOUT, headers={"User-Agent": UA})
     try:
         html = read_response_limited(response, limit_bytes=2_000_000).decode(response.encoding or "utf-8", errors="replace")
     finally:
@@ -65,17 +72,69 @@ def _duckduckgo(query: str, count: int) -> list[tuple[str, str, str]]:
     return found
 
 
-def search(query: str, count: int = 8) -> str:
+def constraints(query: str) -> dict:
+    """The site:, -site: and filetype: words of a query; a search engine may ignore them, so the results are checked against them too (from omp)."""
+    found = {"sites": [], "not_sites": [], "types": []}
+    for sign, word, value in re.findall(r"(?<!\S)(-?)(site|filetype|ext):([^\s]+)", query, re.I):
+        value = value.lower().strip("\"'")
+        key = "types" if word.lower() != "site" else ("not_sites" if sign else "sites")
+        found[key].append(value.lstrip(".") if key == "types" else re.sub(r"^https?://", "", value).rstrip("/"))
+    return found
+
+
+def _on_site(url: str, site: str) -> bool:
+    """The host (or a subdomain of it) matches, and the path starts with the site's own path when it has one."""
+    host, _, path = site.partition("/")
+    parts = urlparse(url)
+    name = parts.netloc.lower().removeprefix("www.")
+    return (name == host or name.endswith("." + host)) and parts.path.lstrip("/").lower().startswith(path)
+
+
+def filter_results(results: list[tuple[str, str, str]], wanted: dict) -> tuple[list[tuple[str, str, str]], list[str]]:
+    """Keep what matches each constraint; a constraint that would leave nothing is dropped and named, not applied."""
+    dropped = []
+    checks = (("sites", "site:", lambda url, values: any(_on_site(url, v) for v in values)),
+              ("not_sites", "-site:", lambda url, values: not any(_on_site(url, v) for v in values)),
+              ("types", "filetype:", lambda url, values: any(urlparse(url).path.lower().endswith("." + v) for v in values)))
+    for key, label, match in checks:
+        values = wanted.get(key) or []
+        if not values:
+            continue
+        kept = [row for row in results if match(row[1], values)]
+        if kept:
+            results = kept
+        else:
+            dropped.append(f"{label}{','.join(values)}")
+    return results, dropped
+
+
+def search(query: str, count: int = 8, recency: str = "") -> str:
     query = " ".join(str(query).split())[:300]
     if not query:
         raise SearchError("query is empty")
     count = max(1, min(15, int(count)))
-    try:
-        if os.environ.get("TAVILY_API_KEY"):
-            return _rows(_tavily(query, count, os.environ["TAVILY_API_KEY"]))
-        brave = os.environ.get("BRAVE_API_KEY") or os.environ.get("BRAVE_SEARCH_API_KEY")
-        if brave:
-            return _rows(_brave(query, count, brave))
-        return _rows(_duckduckgo(query, count))
-    except requests.RequestException as exc:
-        raise SearchError(f"search failed: {type(exc).__name__}") from exc
+    extra = {"recency": recency} if recency in RECENCY else {}
+    chain = []
+    if os.environ.get("TAVILY_API_KEY"):
+        chain.append(("Tavily", lambda: _tavily(query, count, os.environ["TAVILY_API_KEY"], **extra)))
+    brave = os.environ.get("BRAVE_API_KEY") or os.environ.get("BRAVE_SEARCH_API_KEY")
+    if brave:
+        chain.append(("Brave", lambda: _brave(query, count, brave, **extra)))
+    chain.append(("DuckDuckGo", lambda: _duckduckgo(query, count, **extra)))
+    failures, answered = [], False
+    for name, run in chain:
+        try:
+            found = run()
+        except (requests.RequestException, SearchError) as exc:
+            failures.append(f"{name}: {exc if isinstance(exc, SearchError) else type(exc).__name__}")
+            continue
+        wanted = constraints(query)
+        found, dropped = filter_results(found, wanted) if found else (found, [])
+        if not found:
+            answered = True
+            continue
+        notes = "".join(f"Note: no result matched `{label}`; that constraint was not applied\n" for label in dropped)
+        return notes + _rows(found)
+    if answered:
+        return "No results"
+    raise SearchError("search failed: " + "; ".join(failures))

@@ -6,6 +6,7 @@ import random
 import re
 import time
 import uuid
+from email.utils import parsedate_to_datetime
 
 import requests
 
@@ -18,6 +19,20 @@ from app.visual_qc.deepseek_region_client import _safe_error_detail
 READ_TIMEOUT = 600
 STREAM_IDLE_TIMEOUT = 120
 NETWORK_RETRIES = 10
+# How providers word a full context window (pi's list), and the words that look the same but are rate limits.
+OVERFLOW_PATTERNS = [re.compile(p, re.I) for p in (
+    r"prompt (?:is )?too long", r"prompt exceeds max length", r"request_too_large", r"input is too long for requested model", r"exceeds the context window",
+    r"exceeds (?:the )?(?:model'?s )?maximum context length", r"input token count.*exceeds the maximum", r"maximum prompt length is \d+",
+    r"reduce the length of the messages", r"maximum context length is \d+ tokens", r"exceeds (?:the )?maximum allowed input length", r"is longer than the model'?s context length",
+    r"exceeds the limit of \d+", r"exceeds the available context size", r"greater than the context length", r"context window exceeds limit", r"exceeded model token limit",
+    r"too large for model with \d+ maximum context length", r"configured context size is", r"model_context_window_exceeded", r"prompt too long; exceeded",
+    r"range of input length should be", r"context[_ ]length[_ ]exceeded", r"too many tokens", r"token limit exceeded", r"context.{0,20}(?:length|window)", r"maximum context")]
+NOT_OVERFLOW = re.compile(r"rate limit|too many requests|throttl", re.I)
+# Each finds the model's window in the message; the first that matches wins.
+WINDOW_PATTERNS = [re.compile(p, re.I) for p in (
+    r"maximum context length (?:is|of)? ?\(?([\d,]{4,})", r"maximum prompt length is ([\d,]{4,})", r"context (?:window|length|size|limit) (?:of|is) \(?([\d,]{4,})",
+    r"context (?:length|size) \(([\d,]{4,})", r"maximum number of tokens allowed \(([\d,]{4,})", r"maximum allowed input length of ([\d,]{4,})",
+    r"limit of ([\d,]{4,})", r"> ([\d,]{4,}) maximum", r"configured context size is ([\d,]{4,})")]
 RATE_LIMIT_RETRIES = 4
 # When a provider says "slow down", every session using it waits, not just the one that was told.
 _COOLDOWN: dict[str, float] = {}
@@ -183,6 +198,34 @@ def usage_of(raw: dict | None) -> dict:
             "cached_tokens": int(cached or 0)}
 
 
+def is_overflow(message: str) -> bool:
+    return any(p.search(message) for p in OVERFLOW_PATTERNS) and not NOT_OVERFLOW.search(message)
+
+
+def context_window(message: str) -> int:
+    """The model's window in tokens when the error names it, else 0."""
+    for pattern in WINDOW_PATTERNS:
+        found = pattern.search(message)
+        if found:
+            return int(found.group(1).replace(",", ""))
+    return 0
+
+
+def _retry_after(response: requests.Response) -> float:
+    """Seconds the server asked to wait: retry-after-ms, retry-after as seconds, or retry-after as a date."""
+    try:
+        millis = response.headers.get("retry-after-ms")
+        if millis:
+            return float(millis) / 1000
+        value = response.headers.get("Retry-After") or ""
+        try:
+            return float(value)
+        except ValueError:
+            return max(0.0, parsedate_to_datetime(value).timestamp() - time.time()) if value else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> requests.Response:
     """The request, with the shared 429 cooldown and retries."""
     url = chat_url(provider)
@@ -200,11 +243,7 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
         if response.status_code != 429 or attempt == RATE_LIMIT_RETRIES:
             return response
         # Free tiers allow a few requests a minute; wait as told, or longer each time.
-        try:
-            wait = float(response.headers.get("Retry-After") or 0)
-        except ValueError:
-            wait = 0.0
-        wait = min(60.0, wait or 6.0 * 2 ** attempt)
+        wait = min(60.0, _retry_after(response) or 6.0 * 2 ** attempt)
         _COOLDOWN[provider.id] = max(_COOLDOWN.get(provider.id, 0.0), time.time() + wait)
         response.close()
         time.sleep(wait)
@@ -341,7 +380,8 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
             raise ToolsUnsupported(detail)
         # A busy model ("at capacity, retry in a few seconds") is waited out like a server error; a spent quota or balance is not.
         busy = response.status_code == 429 and not re.search(r"quota|billing|insufficient|balance|credit", detail, re.I)
-        error = TransientError if response.status_code >= 500 or response.status_code == 408 or busy else RuntimeError
+        retry = response.headers.get("x-should-retry", "").lower()
+        error = TransientError if (response.status_code >= 500 or response.status_code in (408, 409) or busy or retry == "true") and retry != "false" else RuntimeError
         raise error(f"{provider.label} HTTP {response.status_code}: {detail}")
     if on_delta:
         try:

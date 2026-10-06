@@ -11,9 +11,8 @@ from pathlib import Path
 import re
 import unicodedata
 
-from bs4 import BeautifulSoup
 
-from app.agent import gitguard, hashline, patch as patches, sandbox, websearch
+from app.agent import gitguard, hashline, patch as patches, sandbox, webread, websearch
 from app.downloader.http import read_response_limited, safe_get
 
 BROAD_FOLDERS = {"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/var", "/boot", "/dev", "/proc", "/sys", "/opt", "/root", "/home", "/Users",
@@ -100,12 +99,16 @@ SPECS = [
                                           "(report is null when a helper failed), so a script can fan out, check the reports, and run another round on what is left (at most 40 helpers per script; timeout up to 3600).",
      "parameters": {"type": "object", "required": ["code"], "properties": {
          "code": {"type": "string"}, "timeout": {"type": "integer", "description": "Seconds, at most 3600."}}}},
-    {"name": "web_fetch", "description": "Fetch a public web page and return its readable text.",
+    {"name": "web_fetch", "description": "Fetch a public web page and return it as Markdown (headings, links, code kept); a GitHub file or repository page is read as raw text. "
+                                         "A long page is cut with a note giving the offset to continue from; find= returns only the matching lines.",
      "parameters": {"type": "object", "required": ["url"], "properties": {
-         "url": {"type": "string"}, "max_chars": {"type": "integer"}}}},
-    {"name": "web_search", "description": "Search the web; returns titles, links and snippets. Follow a link with web_fetch.",
+         "url": {"type": "string"}, "max_chars": {"type": "integer"}, "offset": {"type": "integer", "description": "Character to start from, to read on in a long page."},
+         "find": {"type": "string", "description": "A word or regular expression; returns the matching lines with a little around each instead of the page."}}}},
+    {"name": "web_search", "description": "Search the web; returns titles, links and snippets. Follow a link with web_fetch. The query may use site:, -site:, filetype:, \"phrases\" and -words. "
+                                          "Prefer primary sources (official docs, the project's own repository) and cite the links you used.",
      "parameters": {"type": "object", "required": ["query"], "properties": {
-         "query": {"type": "string"}, "count": {"type": "integer", "description": "How many results, 1 to 15."}}}},
+         "query": {"type": "string"}, "count": {"type": "integer", "description": "How many results, 1 to 15."},
+         "recency": {"type": "string", "enum": ["day", "week", "month", "year"], "description": "Only results from this long ago."}}}},
     {"name": "web_download", "description": "Download a public file (an archive, a PDF, an image, a dataset) into the workspace, up to 50 MB.",
      "parameters": {"type": "object", "required": ["url", "path"], "properties": {
          "url": {"type": "string"}, "path": {"type": "string", "description": "Where to save it, relative to the workspace root."}}}},
@@ -489,12 +492,6 @@ class Workspace:
         warning = f"\n[blocked: the command changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]" if undone else ""
         return clip(f"{output.strip()}\n{status}{warning}", 400_000)
 
-    def _tool_web_search(self, query: str, count: int = 8) -> str:
-        try:
-            return websearch.search(query, count)
-        except websearch.SearchError as exc:
-            raise ToolError(str(exc)) from exc
-
     def _tool_web_download(self, url: str, path: str) -> str:
         target = self.resolve(path, write=True)
         if target.is_dir():
@@ -509,18 +506,27 @@ class Workspace:
         target.write_bytes(body)
         return f"Saved {self.rel(target)} ({len(body)} bytes)"
 
-    def _tool_web_fetch(self, url: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
+    def _tool_web_fetch(self, url: str, max_chars: int = MAX_OUTPUT_CHARS, offset: int = 0, find: str = "") -> str:
+        url = webread.rewrite(str(url))
         try:
-            response = safe_get(str(url), timeout=(10, 30), headers={"User-Agent": "Mozilla/5.0 manga-translator-agent"})
+            response = safe_get(url, timeout=(10, 30), headers={"User-Agent": "Mozilla/5.0 manga-translator-agent", "Accept": "text/markdown, text/html;q=0.9, */*;q=0.8"})
             body = read_response_limited(response, limit_bytes=MAX_FETCH_BYTES)
             kind = response.headers.get("Content-Type", "")
             response.close()
         except Exception as exc:
             raise ToolError(f"Could not fetch {url}: {getattr(exc, 'detail', exc)}") from exc
-        text = body.decode(response.encoding or "utf-8", errors="replace")
-        if "html" in kind or text.lstrip()[:15].lower().startswith(("<!doctype", "<html")):
-            soup = BeautifulSoup(text, "lxml")
-            for tag in soup(["script", "style", "noscript", "svg"]):
-                tag.decompose()
-            text = re.sub(r"\n{3,}", "\n\n", soup.get_text("\n"))
-        return clip(text.strip(), max(1000, min(100_000, int(max_chars))))
+        text, notes = webread.readable(body, kind, response.encoding, url)
+        text = text.strip()
+        head = "".join(f"[{note}]\n" for note in notes)
+        if find:
+            return head + webread.find(text, str(find))
+        limit, start = max(1000, min(100_000, int(max_chars))), max(0, int(offset))
+        more = len(text) - start - limit
+        footer = f"\n[{more} more characters; call again with offset={start + limit}, or find=... to search the page]" if more > 0 else ""
+        return head + text[start:start + limit] + footer
+
+    def _tool_web_search(self, query: str, count: int = 8, recency: str = "") -> str:
+        try:
+            return websearch.search(query, count, recency)
+        except websearch.SearchError as exc:
+            raise ToolError(str(exc)) from exc

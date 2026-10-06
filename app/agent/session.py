@@ -75,10 +75,8 @@ KEEP_RECENT_CHARS = 60_000
 COMPACT_REARM = 1.25  # After a compaction, the context must grow by this factor before the next one.
 ROLLOVER_KEEP_CHARS = 15_000
 WINDOW_SHARE = 0.8  # Compact at this share of the model's real window, leaving room for the reply (pi keeps a reserve the same way).
-WINDOW_RE = re.compile(r"(?:maximum context length is|context (?:window|length|limit) (?:of|is)|limit of|>)\s*(\d[\d,]{3,})", re.I)
 TIME_GRACE_S = 180  # The agent writes its report this long before a run's clock stops it.
 TIME_NOTICE = "[Time notice] About {minutes} minutes are left. Finish the step you are on, then stop calling tools and report what you did, what is not finished, and what you would do next."
-OVERFLOW_RE = re.compile(r"context.{0,20}(length|window)|maximum context|too many tokens|prompt is too long|reduce the length", re.I)
 FILE_BLOCK = re.compile(r"<(read|modified)-files>\n(.*?)\n</\1-files>", re.S)
 SUMMARY_PROMPT = """Write a handover summary of this conversation between a user and a coding agent, so the agent can continue without it.
 Use exactly these sections: Goal; Constraints and preferences; Progress (done, in progress); Key decisions and why; Critical context (exact names, paths, commands, error messages and results that are still needed); Next steps.
@@ -1500,7 +1498,7 @@ class AgentSession:
             return self._turn_once()
         except RuntimeError as exc:
             # A full context window is recovered from, not fatal: summarise the older part and ask again.
-            if not OVERFLOW_RE.search(str(exc)):
+            if not client.is_overflow(str(exc)):
                 raise
             self._learn_window(str(exc))
             self.emit("notice", text="Vượt giới hạn ngữ cảnh của model; tóm gọn phần cũ rồi thử lại.")
@@ -1520,8 +1518,7 @@ class AgentSession:
 
     def _learn_window(self, message: str) -> None:
         """A context error often names the model's real window; the auto-compaction mark moves under it so the next overflow does not happen."""
-        found = WINDOW_RE.search(message)
-        window = int(found.group(1).replace(",", "")) if found else 0
+        window = client.context_window(message)
         if self.compact_at and 4_000 <= window <= 10_000_000 and int(window * WINDOW_SHARE) < self.compact_at:
             self.compact_at = int(window * WINDOW_SHARE)
             self.emit("notice", text=f"Cửa sổ ngữ cảnh của model là {window:,} token; sẽ tự tóm gọn từ {self.compact_at:,} token.")

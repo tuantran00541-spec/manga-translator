@@ -2306,3 +2306,91 @@ def test_a_busy_model_429_is_waited_out_but_a_spent_quota_is_not(monkeypatch):
     with pytest.raises(RuntimeError) as spent:
         client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[])
     assert not isinstance(spent.value, client.TransientError), "a spent quota fails at once"
+
+
+def test_web_search_falls_through_the_providers_filters_by_site_and_names_a_constraint_it_dropped(monkeypatch):
+    from app.agent import websearch
+    monkeypatch.setenv("TAVILY_API_KEY", "t")
+    monkeypatch.delenv("BRAVE_API_KEY", raising=False)
+    monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
+    rows = [("Repo", "https://github.com/anthropics/claude-code", "code"), ("Talk", "https://www.reddit.com/r/x", "chat"), ("Paper", "https://docs.example.org/a.pdf", "pdf")]
+    seen = {}
+
+    def tavily(q, n, key, recency=""):
+        seen["recency"] = recency
+        raise websearch.SearchError("quota")
+
+    monkeypatch.setattr(websearch, "_tavily", tavily)
+    monkeypatch.setattr(websearch, "_duckduckgo", lambda q, n, recency="": rows)
+    text = websearch.search("claude site:github.com", recency="week")
+    assert "Repo" in text and "Talk" not in text and seen["recency"] == "week", "the next provider answered and the site: word was applied"
+    assert "Talk" not in websearch.search("claude -site:reddit.com") and "Paper" in websearch.search("claude filetype:pdf")
+    assert "Note: no result matched `site:nowhere.org`" in websearch.search("claude site:nowhere.org") and "Repo" in websearch.search("claude site:nowhere.org")
+    monkeypatch.setattr(websearch, "_duckduckgo", lambda q, n, recency="": [])
+    assert websearch.search("nothing") == "No results"
+    monkeypatch.setattr(websearch, "_duckduckgo", lambda q, n, recency="": (_ for _ in ()).throw(websearch.SearchError("refused")))
+    with pytest.raises(websearch.SearchError, match="Tavily: quota; DuckDuckGo: refused"):
+        websearch.search("anything")
+
+
+def test_a_web_page_is_read_as_markdown_with_offset_find_and_github_raw_files(ws, monkeypatch):
+    from app.agent import tools as agent_tools
+    asked = []
+
+    class Page:
+        encoding = "utf-8"
+        headers = {"Content-Type": "text/html"}
+
+        def close(self):
+            pass
+
+    html = ("<html><body><nav>Menu</nav><main><h1>Guide</h1><p>See <a href='/docs'>the docs</a>.</p><pre>x = 1</pre>" + "<p>filler line</p>" * 400 +
+            "<p>the needle is here</p></main><footer>Foot</footer></body></html>").encode()
+    monkeypatch.setattr(agent_tools, "safe_get", lambda url, **kw: asked.append((url, kw["headers"]["Accept"])) or Page())
+    monkeypatch.setattr(agent_tools, "read_response_limited", lambda response, limit_bytes: html)
+    page = ws._tool_web_fetch("https://docs.example.org/guide/", max_chars=1000)
+    assert page.startswith("# Guide\n\nSee [the docs](https://docs.example.org/docs).") and "```\nx = 1\n```" in page and "Menu" not in page
+    assert "call again with offset=1000" in page and asked[0][1].startswith("text/markdown")
+    assert "filler line" in ws._tool_web_fetch("https://docs.example.org/guide/", max_chars=1000, offset=1000)
+    found = ws._tool_web_fetch("https://docs.example.org/guide/", find="needle")
+    assert "the needle is here" in found and "Guide" not in found
+    ws._tool_web_fetch("https://github.com/o/r/blob/main/src/a.py")
+    ws._tool_web_fetch("https://github.com/o/r")
+    assert asked[-2][0] == "https://raw.githubusercontent.com/o/r/main/src/a.py" and asked[-1][0].endswith("/o/r/HEAD/README.md")
+    monkeypatch.setattr(agent_tools, "read_response_limited", lambda response, limit_bytes: b"<html><body>Please enable JavaScript to continue</body></html>")
+    assert "needs JavaScript" in ws._tool_web_fetch("https://spa.example.org/")
+    menu = ("<html><body><div>" + "".join(f"<p><a href='/p{i}'>Page {i}</a></p>" for i in range(15)) + "</div></body></html>").encode()
+    monkeypatch.setattr(agent_tools, "read_response_limited", lambda response, limit_bytes: menu)
+    assert "mostly menus" in ws._tool_web_fetch("https://menu.example.org/")
+
+
+def test_context_overflow_wordings_are_recognised_and_name_the_window_but_rate_limits_are_not_overflow():
+    for message, window in (("This model's maximum context length is 32768 tokens. However, you requested 40000", 32768),
+                            ("prompt is too long: 213462 tokens > 200000 maximum", 200000),
+                            ("Requested token count exceeds the model's maximum context length of 131072 tokens", 131072),
+                            ("This model's maximum prompt length is 131072 but the request contains 537812 tokens", 131072),
+                            ("The input token count (1196265) exceeds the maximum number of tokens allowed (1048575)", 1048575),
+                            ("Prompt has 9000 tokens, but the configured context size is 8,192 tokens", 8192),
+                            ("Input length (265330) exceeds model's maximum context length (262144).", 262144)):
+        assert client.is_overflow(message) and client.context_window(message) == window, message
+    assert client.is_overflow("the request exceeds the available context size, try increasing it") and client.context_window("try increasing it") == 0
+    assert not client.is_overflow("ThrottlingException: Too many tokens, please wait before trying again.") and not client.is_overflow("429 rate limit reached")
+
+
+def test_a_server_retry_hint_in_milliseconds_or_as_a_date_is_obeyed_and_should_retry_false_stops(monkeypatch):
+    class Hinted(FakeResponse):
+        def __init__(self, status, headers):
+            super().__init__(status, {"error": {"message": "busy"}})
+            self.headers = headers
+
+    assert client._retry_after(Hinted(429, {"retry-after-ms": "1500"})) == 1.5 and client._retry_after(Hinted(429, {"Retry-After": "7"})) == 7.0
+    assert client._retry_after(Hinted(429, {})) == 0.0 and client._retry_after(Hinted(429, {"Retry-After": "garbage"})) == 0.0
+    monkeypatch.setattr(client, "_post", lambda *a: Hinted(503, {"x-should-retry": "false"}))
+    with pytest.raises(RuntimeError) as stopped:
+        client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[])
+    assert not isinstance(stopped.value, client.TransientError)
+    calls = []
+    monkeypatch.setattr(client.time, "sleep", lambda s: None)
+    ok = {"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+    monkeypatch.setattr(client, "_post", lambda *a: calls.append(1) or (Hinted(409, {}) if len(calls) == 1 else FakeResponse(200, ok)))
+    assert client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[])["text"] == "done"
