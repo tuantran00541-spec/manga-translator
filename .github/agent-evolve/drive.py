@@ -1,4 +1,4 @@
-"""One-off: a long PolarGrid run that learns slides from zero, turns its skill into a plugin, evolves it, serves it over MCP, then uses it."""
+"""One-off: a long run that learns slides from zero, turns its skill into a plugin, evolves it, serves it over MCP, then uses it."""
 import base64
 import json
 import os
@@ -110,7 +110,8 @@ def main() -> None:
     folder = HOME / ".manga-agent"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "profile.json").write_text(json.dumps({"token_budget": 10 ** 12, "max_steps": 5000, "goal_turns": 300, "vision": vision}))
-    provider = resolve_provider("polargrid", label="PolarGrid", protocol="openai", api_base=BASE)
+    label = os.environ.get("AGENT_LABEL", "Provider")
+    provider = resolve_provider(label.lower(), label=label, protocol="openai", api_base=BASE)
     manager = AgentSessionManager(OUT.parent / "store", home=HOME)
     policy = sandbox.Policy("workspace-write", True)
     report = {"model": MODEL, "vision": vision, "sandbox": sandbox.backend()}

@@ -1,6 +1,6 @@
 name: Agent evolves a slide skill into a plugin and an MCP server
 
-# One-off: PolarGrid learns PowerPoint from zero, turns its skill into a plugin it evolves, serves it over MCP, then answers about this repo with it.
+# One-off: Agnes (agnes-3.0-flash, it reads images; PolarGrid's qwen-3.8-27b does not) learns PowerPoint from zero, turns its skill into a plugin it evolves, serves it over MCP, then answers about this repo with it.
 on:
   push:
     branches-ignore: [main]
@@ -33,14 +33,15 @@ jobs:
           soffice --version || true
       - name: Learn, evolve, serve over MCP, answer
         env:
-          AGENT_API_KEY: ${{ secrets.polagrid_ }}
-          AGENT_BASE: https://api.mia-01.edge.polargrid.ai/v1
-          AGENT_MODEL: qwen-3.8-27b
+          AGENT_API_KEY: ${{ secrets.Agnes_key }}
+          AGENT_BASE: https://apihub.agnes-ai.com/v1
+          AGENT_MODEL: agnes-3.0-flash
+          AGENT_LABEL: Agnes
           TINYFISH_API_KEY: ${{ secrets.TINYFISH }}
           TAVILY_API_KEY: ${{ secrets.TAVILY }}
         run: |
-          [ -n "$AGENT_API_KEY" ] || { echo "::error::secret polagrid_ is not set"; exit 1; }
-          python .github/agent-evolve/drive.py "$OUT" 2>&1 | tail -c 60000 || true
+          [ -n "$AGENT_API_KEY" ] || { echo "::error::secret Agnes_key is not set"; exit 1; }
+          python -u .github/agent-evolve/drive.py "$OUT" 2>&1 || true
       - name: Pictures of every deck the agent made
         if: always()
         run: |
