@@ -160,8 +160,15 @@ def _safe_console() -> None:
 
 def main(argv: list[str] | None = None) -> None:
     _safe_console()
+    words = [w for w in (sys.argv[1:] if argv is None else argv) if w != "--open"]
+    if words[:1] == ["mcp"]:
+        # `manga mcp`: serve the agent's tools to another MCP client over stdio instead of opening the app.
+        from app.agent.mcp_server import main as serve_mcp
+
+        serve_mcp(words[1:])
+        return
     parser = argparse.ArgumentParser(prog="manga", description="Manga Translator")
-    parser.add_argument("command", nargs="?", choices=["update"], help="update: get the latest version")
+    parser.add_argument("command", nargs="?", choices=["update", "mcp"], help="update: get the latest version; mcp: serve the agent's tools over MCP (stdio)")
     parser.add_argument("--open", action="store_true", help="open the app in the browser once it is up")
     parser.add_argument("--window", action="store_true", help="show the app in its own window instead of the browser")
     parser.add_argument("--version", action="version", version=f"Manga Translator {VERSION} ({BASE_DIR})")

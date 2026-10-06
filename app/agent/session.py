@@ -383,10 +383,15 @@ class AgentSession:
         if parts[:1] == ["reload"]:
             home_path = self.home if self.home is not None else Path.home()
             self.registry = self._build_registry(home_path)
+            self._mcp_ready = False
+            self.mcp_status.clear()
+            self._ensure_mcp()
             for child in self.children.values():
                 child.registry, child.kernel = self.registry, self.kernel
                 child.workspace.services = self.workspace.services
         elif len(parts) == 2 and parts[0] in ("disable", "enable"):
+            if parts[1].startswith("mcp:"):
+                self._ensure_mcp()
             if parts[1] not in self.kernel.rows:
                 return f"Không có plugin {parts[1]}; gõ /plugins để xem cây."
             self.kernel.set_disabled(parts[1], parts[0] == "disable")
@@ -713,10 +718,10 @@ class AgentSession:
             child.close()
             if child.copy is not None:
                 shutil.rmtree(child.copy, ignore_errors=True)
-        for server in self.mcp_servers.values():
-            server.close()
         if not self.depth and getattr(self, "kernel", None) is not None:
             self.kernel.close()
+        for server in self.mcp_servers.values():
+            server.close()
         self.mcp_servers.clear()
 
     # MCP servers.
@@ -738,41 +743,63 @@ class AgentSession:
         return self.profile["roles"].get(name)
 
     def _ensure_mcp(self) -> None:
+        """Mount every configured MCP server as a row of the plugin tree; starting one is its plugin's apply, closing it the undo."""
         if self._mcp_ready:
             return
         self._mcp_ready = True
         for row in mcp.configured(self.workspace.root, self.home):
             name, digest = row["name"], mcp.config_hash(row["config"])
-            status = {"name": name, "scope": row["scope"], "source": row["source"], "digest": digest, "tools": 0, "error": ""}
+            status = {"name": name, "scope": row["scope"], "source": row["source"], "digest": digest, "tools": 0, "error": "", "state": "waiting"}
             self.mcp_status[name] = status
-            if row["config"].get("disabled") or row["config"].get("enabled") is False:
+            off = bool(row["config"].get("disabled") or row["config"].get("enabled") is False)
+            self.kernel.rows[f"mcp:{name}"] = kernel.Row(f"mcp:{name}", self._mcp_plugin(row), {}, off, "mcp")
+            if off:
                 status["state"] = "disabled"
-            elif row["scope"] == "workspace" and not self.trust.trusted(self.workspace.root, f"mcp:{name}", digest):
-                status["state"] = "untrusted"
-            else:
-                self._start_mcp(name, row["config"])
+        self.kernel.settle()
+        for name, status in self.mcp_status.items():
+            mounted = self.kernel.rows.get(f"mcp:{name}")
+            if mounted is not None and mounted.state == "failed" and status["state"] != "untrusted":
+                status.update(state="failed", error=mounted.error)
 
-    def _start_mcp(self, name: str, config: dict) -> None:
-        status = self.mcp_status[name]
-        try:
+    def _mcp_plugin(self, row: dict) -> kernel.Plugin:
+        """An MCP server as a kernel plugin: apply starts it and adds its tools, the undo removes them and stops it."""
+        name, config = row["name"], row["config"]
+
+        def apply(ctx, _config):
+            status = self.mcp_status[name]
+            if row["scope"] == "workspace" and not self.trust.trusted(self.workspace.root, f"mcp:{name}", status["digest"]):
+                status["state"] = "untrusted"
+                raise PermissionError("the project declares this server; allow it first")
             server = mcp.Server(name, config, self.workspace.root)
-        except Exception as exc:
-            status.update(state="failed", error=str(exc)[:300])
-            return
-        self.mcp_servers[name] = server
-        for tool in server.tools:
-            self.mcp_tools[mcp.tool_name(name, tool["name"])] = (name, tool)
-        status.update(state="running", tools=len(server.tools), error="")
+            self.mcp_servers[name] = server
+            added = [mcp.tool_name(name, tool["name"]) for tool in server.tools]
+            for tool_name, tool in zip(added, server.tools):
+                self.mcp_tools[tool_name] = (name, tool)
+            status.update(state="running", tools=len(server.tools), error="")
+            ctx.provide(f"mcp/{name}", server)
+
+            def stop():
+                for tool_name in added:
+                    self.mcp_tools.pop(tool_name, None)
+                self.mcp_loaded.difference_update(added)
+                if self.mcp_servers.pop(name, None) is not None:
+                    server.close()
+                status.update(state="stopped", tools=0)
+            return stop
+        return kernel.Plugin(apply)
 
     def trust_mcp(self, name: str) -> None:
         self._ensure_mcp()
         status = self.mcp_status.get(name)
         if status is None:
             raise KeyError(name)
-        row = next(r for r in mcp.configured(self.workspace.root, self.home) if r["name"] == name)
-        self.trust.allow(self.workspace.root, f"mcp:{name}", mcp.config_hash(row["config"]))
-        if status["state"] != "running":
-            self._start_mcp(name, row["config"])
+        self.trust.allow(self.workspace.root, f"mcp:{name}", status["digest"])
+        mounted = self.kernel.rows[f"mcp:{name}"]
+        if mounted.state != "active":
+            mounted.state, mounted.disabled = "waiting", False
+            self.kernel.settle()
+            if mounted.state == "failed":
+                status.update(state="failed", error=mounted.error)
 
     # Hooks.
 

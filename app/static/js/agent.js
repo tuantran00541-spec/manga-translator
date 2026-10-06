@@ -404,7 +404,7 @@
     const skills = snap.skills || [];
     box.append(el("p", "agent-muted", skills.length ? `Skill: ${skills.map((s) => s.name).join(", ")}` : "Chưa có skill (.agents/skills, .claude/skills, .codex/skills)."));
     (snap.mcp || []).forEach((server) => {
-      const state = { running: `${server.tools} công cụ`, untrusted: "chưa cho phép", failed: `lỗi: ${server.error}`, disabled: "tắt" }[server.state] || server.state;
+      const state = { running: `${server.tools} công cụ`, untrusted: "chưa cho phép", failed: `lỗi: ${server.error}`, disabled: "tắt", stopped: "đã dừng (/plugins enable mcp:" + server.name + ")" }[server.state] || server.state;
       const row = el("p", "agent-muted agent-info-row", `MCP ${server.name} · ${state}`);
       if (server.state === "untrusted") row.append(button("Cho phép", "agent-btn", () => trust(`mcp/${encodeURIComponent(server.name)}`)));
       box.append(row);

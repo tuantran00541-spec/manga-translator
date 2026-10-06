@@ -189,9 +189,11 @@ def patch_rows(ctx: Context, home: Path) -> list[str]:
         return [f"plugins.json: {exc}"]
     folder = (home / ".manga-agent" / "plugins").resolve()
     for entry in (data.get("rows") if isinstance(data, dict) else None) or []:
-        if not isinstance(entry, dict) or not ID_RE.match(str(entry.get("id", ""))):
+        if not isinstance(entry, dict) or not ID_RE.match(str(entry.get("id", "")).lower()):
             problems.append(f"plugins.json: bad row {entry!r}"[:200])
             continue
+        if isinstance(entry.get("mcp"), dict):
+            continue  # an MCP server row; the session mounts it as mcp:ID
         row_id, config = entry["id"], entry.get("config") if isinstance(entry.get("config"), dict) else None
         if row_id in ctx.rows and not entry.get("plugin"):
             row = ctx.rows[row_id]

@@ -260,6 +260,16 @@ def test_the_app_is_recognised_even_when_models_are_missing(monkeypatch):
         assert run._is_ours("http://127.0.0.1:8000") is (name != "other")
 
 
+def test_manga_mcp_serves_the_agent_tools_instead_of_opening_the_app(monkeypatch):
+    import app.agent.mcp_server as served
+
+    seen = []
+    monkeypatch.setattr(served, "main", seen.append)
+    monkeypatch.setattr(run, "_serve", lambda *a, **k: pytest.fail("the app was started"))
+    run.main(["--open", "mcp", "--write", "--folder", "/tmp/x"])
+    assert seen == [["--write", "--folder", "/tmp/x"]]
+
+
 def test_another_program_on_the_port_moves_the_app_to_the_next_free_one(monkeypatch):
     monkeypatch.setattr(run, "_is_ours", lambda url: False)
     with socket.socket() as squatter:

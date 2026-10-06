@@ -2958,3 +2958,79 @@ def test_an_mcp_tool_can_be_the_provider_behind_a_seam(ws, home, tmp_path):
     assert not session.workspace.services.is_local_shell()
     assert "shell: mcp__fs__sh (còn có: local)" in session.command("/services")["message"]
     agents.close_all()
+
+
+# Everything is MCP: servers are rows of the plugin tree, and the harness is a server itself.
+
+def test_mcp_servers_are_rows_of_the_plugin_tree_that_stop_and_start_live(ws, home, tmp_path):
+    (tmp_path / "swap.py").write_text(SWAP_SERVER, encoding="utf-8")
+    (tmp_path / "fake.py").write_text(FAKE_SERVER, encoding="utf-8")
+    folder = home / ".manga-agent"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "mcp.json").write_text(json.dumps({"mcpServers": {"fs": {"command": sys.executable, "args": [str(tmp_path / "swap.py")]}}}))
+    (folder / "plugins.json").write_text(json.dumps({"rows": [{"id": "calc", "mcp": {"command": sys.executable, "args": [str(tmp_path / "fake.py")]}}]}))
+    agents = manager(home, tmp_path / "store")
+    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session._ensure_mcp()
+    tree = session.command("/plugins")["message"]
+    assert "mcp:fs [mcp] active" in tree and "mcp:calc [mcp] active" in tree, tree
+    assert session._run_call({"id": "1", "name": "mcp__calc__add", "args": {"a": 2, "b": 2}}) == ("4", True)
+    process = session.mcp_servers["calc"].transport.proc
+    session.command("/plugins disable mcp:calc")
+    assert "mcp__calc__add" not in session.mcp_tools and "calc" not in session.mcp_servers
+    assert process.wait(timeout=10) is not None, "switching the row off stops the server process"
+    assert session.mcp_status["calc"]["state"] == "stopped"
+    session.command("/plugins enable mcp:calc")
+    assert session._run_call({"id": "2", "name": "mcp__calc__add", "args": {"a": 1, "b": 5}}) == ("6", True)
+    agents.close_all()
+
+
+def test_a_project_server_switched_on_by_hand_still_needs_trust(ws, home, tmp_path):
+    (tmp_path / "fake.py").write_text(FAKE_SERVER, encoding="utf-8")
+    (ws.root / ".mcp.json").write_text(json.dumps({"mcpServers": {"calc": {"command": sys.executable, "args": [str(tmp_path / "fake.py")]}}}))
+    agents = manager(home, tmp_path / "store")
+    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session.command("/plugins enable mcp:calc")
+    assert "calc" not in session.mcp_servers and session.mcp_status["calc"]["state"] == "untrusted"
+    session.trust_mcp("calc")
+    assert session.mcp_status["calc"]["state"] == "running"
+    agents.close_all()
+
+
+def _serve(ws, home, *flags):
+    import site
+
+    paths = [str(Path(__file__).resolve().parents[1]), site.getusersitepackages(), os.environ.get("PYTHONPATH", "")]
+    config = {"command": sys.executable, "args": ["-m", "app.agent.mcp_server", "--folder", str(ws.root), *flags],
+              "env": {"HOME": str(home), "PYTHONPATH": os.pathsep.join(p for p in paths if p)}}
+    return mcp.Server("self", config, Path(__file__).resolve().parents[1])
+
+
+def test_the_harness_serves_its_own_tools_and_its_plugins_tools_over_mcp(ws, home):
+    folder = home / ".manga-agent"
+    (folder / "plugins").mkdir(parents=True, exist_ok=True)
+    (folder / "plugins" / "greeter.py").write_text(GREETER, encoding="utf-8")
+    server = _serve(ws, home)
+    try:
+        names = {t["name"]: t for t in server.tools}
+        assert {"read_file", "search", "glob", "list_dir", "greet"} <= set(names), sorted(names)
+        assert not {"write_file", "run_command", "ask_user", "plugin_write", "web_fetch"} & set(names), "read-only by default"
+        assert names["read_file"]["annotations"]["readOnlyHint"] is True
+        text, ok = server.call_tool("read_file", {"path": "pkg/a.py"})
+        assert ok and "def" in text
+        assert server.call_tool("greet", {"name": "Kai"}) == ("hi Kai", True), "a kernel plugin's tool is served too"
+        text, ok = server.call_tool("write_file", {"path": "x.txt", "content": "x"})
+        assert not ok and "Unknown tool" in text and not (ws.root / "x.txt").exists()
+    finally:
+        server.close()
+    writer = _serve(ws, home, "--write")
+    try:
+        names = {t["name"]: t for t in writer.tools}
+        assert "write_file" in names and "outside_sandbox" not in names["run_command"]["inputSchema"]["properties"]
+        assert names["run_command"]["annotations"]["destructiveHint"] is True
+        text, ok = writer.call_tool("write_file", {"path": "made.txt", "content": "over mcp\n"})
+        assert ok and (ws.root / "made.txt").read_text() == "over mcp\n"
+        text, ok = writer.call_tool("write_file", {"path": "../escape.txt", "content": "x"})
+        assert not ok and "outside the workspace" in text
+    finally:
+        writer.close()

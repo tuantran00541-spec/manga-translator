@@ -55,6 +55,17 @@ def _json_servers(path: Path, key: str = "mcpServers") -> dict:
     return servers if isinstance(servers, dict) else {}
 
 
+def _plugin_rows(path: Path) -> dict:
+    """MCP servers written as rows of the plugin tree: {"id": "github", "mcp": {...}, "disabled": false}."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    rows = data.get("rows") if isinstance(data, dict) else None
+    return {str(r["id"]): {**r["mcp"], **({"disabled": True} if r.get("disabled") else {})}
+            for r in rows or [] if isinstance(r, dict) and isinstance(r.get("mcp"), dict) and r.get("id")}
+
+
 def configured(workspace: Path, home: Path | None = None) -> list[dict]:
     """Every configured server with where it came from; workspace ones need the user's trust before they start."""
     home = home if home is not None else Path.home()
@@ -67,6 +78,7 @@ def configured(workspace: Path, home: Path | None = None) -> list[dict]:
 
     add(_json_servers(workspace / ".mcp.json"), ".mcp.json", "workspace")
     add(_json_servers(home / ".manga-agent" / "mcp.json"), "~/.manga-agent/mcp.json", "user")
+    add(_plugin_rows(home / ".manga-agent" / "plugins.json"), "~/.manga-agent/plugins.json", "user")
     add(_json_servers(home / ".claude.json"), "~/.claude.json", "user")
     try:
         codex = tomllib.loads((home / ".codex" / "config.toml").read_text(encoding="utf-8")).get("mcp_servers", {}) if tomllib else {}
