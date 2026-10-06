@@ -1,0 +1,1 @@
+Python 3.12 available. Let me build the project structure from scratch.

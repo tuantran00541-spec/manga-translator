@@ -1,0 +1,27 @@
+{
+ "model": "deepseek-v4-flash:free",
+ "status": "idle",
+ "usage": {
+  "prompt_tokens": 27635,
+  "completion_tokens": 1133,
+  "cached_tokens": 0
+ },
+ "stats": {
+  "model_seconds": 705.8,
+  "tool_seconds": 0.3,
+  "cache_pct": 0,
+  "cost": null
+ },
+ "steps": 5,
+ "tool_counts": {
+  "list_dir": 1,
+  "run_command": 1,
+  "todo_write": 1,
+  "write_file": 2
+ },
+ "failed_tools": [],
+ "errors": [
+  "uno HTTP 503: All providers for model \"deepseek-v4-flash:free\" are busy right now (they hit their rate limit). This is not a spelling error. Please try again in a little while, or switch to another mo"
+ ],
+ "notices": []
+}
