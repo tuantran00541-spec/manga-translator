@@ -1,28 +1,28 @@
 {
  "status": "idle",
  "usage": {
-  "prompt_tokens": 5629932,
-  "completion_tokens": 8378,
+  "prompt_tokens": 13199540,
+  "completion_tokens": 21409,
   "cached_tokens": 0
  },
  "stats": {
-  "model_seconds": 435.7,
-  "tool_seconds": 1500.3,
+  "model_seconds": 3563.5,
+  "tool_seconds": 0.2,
   "cache_pct": 0,
   "cost": null
  },
- "steps": 12,
+ "steps": 14,
  "tool_counts": {
-  "list_dir": 2,
-  "run_command": 1,
-  "spawn_agent": 6,
+  "list_dir": 1,
+  "run_command": 2,
+  "spawn_agent": 8,
   "todo_write": 1,
-  "wait_agent": 2
+  "wait_agent": 1
  },
  "failed_tools": [],
- "helpers_started": 6,
+ "helpers_started": 8,
  "errors": [
-  "Đã dùng quá 4,000,000 token cho lượt này; dừng. Nhắn tiếp nếu muốn agent làm tiếp."
+  "Đã dùng quá 12,000,000 token cho lượt này; dừng. Nhắn tiếp nếu muốn agent làm tiếp."
  ],
  "notices": []
 }
