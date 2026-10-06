@@ -1,0 +1,35 @@
+{
+ "status": "idle",
+ "usage": {
+  "prompt_tokens": 3194,
+  "completion_tokens": 305,
+  "cached_tokens": 0
+ },
+ "stats": {
+  "model_seconds": 817.3,
+  "tool_seconds": 0.1,
+  "cache_pct": 0,
+  "cost": null
+ },
+ "events": 8,
+ "assistant_steps": 1,
+ "steps_per_hour": {
+  "0": 1
+ },
+ "tool_counts": {
+  "list_dir": 1,
+  "run_command": 1
+ },
+ "failed_tools": 0,
+ "helpers_started": 0,
+ "errors": [
+  "polargrid request failed: ReadTimeout"
+ ],
+ "notices": [
+  [
+   "Máy chủ làm mất lệnh gọi công cụ khi stream (256 token); chuyển sang k",
+   1
+  ]
+ ],
+ "goal_done": false
+}
