@@ -438,6 +438,56 @@ def test_mcp_servers_need_trust_in_the_workspace_and_their_tools_run(ws, home, t
     assert mcp.tool_name("my server", "x" * 80) == ("mcp__my_server__" + "x" * 80)[:64]
 
 
+SWAP_SERVER = textwrap.dedent('''
+    import json, sys
+    tools = [{"name": "read_text", "description": "Read a file over MCP", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}}},
+             {"name": "write_text", "description": "Write a file over MCP", "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}}},
+             {"name": "sh", "description": "Run a command over MCP", "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}}}}]
+    for line in sys.stdin:
+        msg = json.loads(line)
+        if "id" not in msg:
+            continue
+        if msg["method"] == "initialize":
+            result = {"protocolVersion": msg["params"]["protocolVersion"], "capabilities": {"tools": {}}, "serverInfo": {"name": "swap"}}
+        elif msg["method"] == "tools/list":
+            result = {"tools": tools}
+        else:
+            p = msg["params"]
+            result = {"content": [{"type": "text", "text": f"mcp {p['name']} {json.dumps(p['arguments'], sort_keys=True)}"}]}
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": result}), flush=True)
+''')
+
+
+def test_profile_swaps_built_in_tools_for_mcp_tools_and_gives_them_roles(ws, home, tmp_path, monkeypatch):
+    (tmp_path / "swap.py").write_text(SWAP_SERVER, encoding="utf-8")
+    folder = home / ".manga-agent"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "mcp.json").write_text(json.dumps({"mcpServers": {"fs": {"command": sys.executable, "args": [str(tmp_path / "swap.py")]}}}))
+    (folder / "profile.json").write_text(json.dumps({
+        "replace": {"read_file": "mcp__fs__read_text", "run_command": "mcp__fs__sh", "web_search": "mcp__gone__search", "todo_write": "mcp__fs__sh"},
+        "roles": {"mcp__fs__write_text": "edit", "mcp__fs__bogus": "root"}}))
+    monkeypatch.setattr(sandbox, "backend", lambda: "landlock")
+    agents = manager(home, tmp_path / "store")
+    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=scripted(turn("x")))
+    session._ensure_mcp()
+    assert session.profile["replace"] == {"read_file": "mcp__fs__read_text", "run_command": "mcp__fs__sh", "web_search": "mcp__gone__search"}, \
+        "only built-in file, command and web tools can be swapped"
+    assert session.profile["roles"] == {"mcp__fs__write_text": "edit"}
+    specs = {s["name"]: s for s in session.specs()}
+    assert specs["read_file"]["description"].startswith("[MCP fs] Read a file over MCP"), "the model keeps the familiar name"
+    assert "mcp__fs__read_text" not in specs and "mcp__fs__sh" not in specs, "a swapped-in tool is not listed twice"
+    assert "count" in specs["web_search"]["parameters"]["properties"], "an unconnected server leaves our tool in place"
+    output, ok = session._run_call({"id": "1", "name": "read_file", "args": {"path": "pkg/a.py"}})
+    assert ok and output.startswith('mcp read_text {"path": "pkg/a.py"}')
+    assert not session.tainted, "a swapped built-in is the user's own choice, not untrusted content"
+    assert session._needs_approval(call("run_command", command="ls")), "a command an MCP server runs is outside our sandbox, so it asks"
+    assert not session._needs_approval(call("mcp__fs__write_text", path="pkg/new.txt", content="x")), "an edit-role tool inside the folder runs"
+    assert session._needs_approval(call("mcp__fs__write_text", path="../outside.txt", content="x")), "outside the folder it asks"
+    assert "read_file → mcp__fs__read_text" in session.command("/mcp")["message"]
+    assert "mcp__gone__search (chưa kết nối" in session.command("/mcp")["message"]
+    agents.close_all()
+
+
 def test_mcp_config_from_codex_and_claude_files(ws, home):
     (home / ".codex").mkdir()
     (home / ".codex" / "config.toml").write_text('[mcp_servers.docs]\ncommand = "npx"\nargs = ["-y", "docs-mcp"]\n', encoding="utf-8")

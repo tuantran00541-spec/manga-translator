@@ -21,6 +21,9 @@ GROUPS = {
 }
 COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "mcp": "mcp"}
 ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
+REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file", "edit_lines",
+                         "apply_patch", "run_command", "web_fetch", "web_search", "web_download"})
+ROLES = ("read", "edit", "exec", "net")
 PROFILE_FILES = {"user": (".manga-agent/profile.json",), "workspace": (".agents/profile.json",)}
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
 EVENTS = ("pre_tool", "post_tool")
@@ -35,7 +38,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
-                     "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": ""}
+                     "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": "",
+                     "replace": {}, "roles": {}}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -97,6 +101,12 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["isolate_writers"] = data["isolate_writers"]
                 if isinstance(data.get("untrusted_guard"), bool):
                     profile["untrusted_guard"] = data["untrusted_guard"]
+                # Any built-in tool can be served by an MCP tool instead, and an MCP tool can be given a role.
+                if isinstance(data.get("replace"), dict):
+                    profile["replace"].update({k: v for k, v in data["replace"].items()
+                                               if k in REPLACEABLE and isinstance(v, str) and v.startswith("mcp__")})
+                if isinstance(data.get("roles"), dict):
+                    profile["roles"].update({k: v for k, v in data["roles"].items() if str(k).startswith("mcp__") and v in ROLES})
     profile["disable"] = sorted(set(profile["disable"]))
     return profile
 

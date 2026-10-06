@@ -377,7 +377,7 @@ class AgentSession:
                     "plan_mode": self.plan_mode, "goal": self.goal and self.goal["text"], "queued": len(self.queue),
                     "agents": [{"name": a.name, "description": a.description} for a in self.agents.values()],
                     "skills": [{"name": s.name, "description": s.description} for s in self.skills.values()],
-                    "mcp": list(self.mcp_status.values()), "hooks": self._hook_summary(),
+                    "mcp": list(self.mcp_status.values()), "replaced": self.replaced, "hooks": self._hook_summary(),
                     "commands": [{"name": k, "description": v} for k, v in self._builtin_commands().items()]
                     + [{"name": k, "description": d} for k, (d, _) in self.registry.commands.items()]
                     + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
@@ -529,6 +529,9 @@ class AgentSession:
             self._ensure_mcp()
             rows = [f"{m['name']} ({m['scope']}): {m['state']}" + (f", {m['tools']} công cụ" if m.get("tools") else "")
                     + (f" — {m['error']}" if m.get("error") else "") for m in self.mcp_status.values()]
+            configured = self.profile["replace"]
+            rows += [f"{name} → {target}" + ("" if target in self.mcp_tools else " (chưa kết nối, đang dùng tool có sẵn)") for name, target in configured.items()]
+            rows += [f"{name}: vai {role}" for name, role in self.profile["roles"].items()]
             return {"message": "\n".join(rows) or "Chưa cấu hình MCP server nào (.mcp.json, ~/.claude.json, ~/.codex/config.toml)."}
         if name == "model" and args:
             self.model = args
@@ -656,6 +659,22 @@ class AgentSession:
 
     # MCP servers.
 
+    def _mcp_root(self) -> "AgentSession":
+        root = self
+        while root.parent is not None:
+            root = root.parent
+        return root
+
+    @property
+    def replaced(self) -> dict[str, str]:
+        """Built-in tools served by a connected MCP tool, from "replace" in profile.json; an unconnected one falls back to ours."""
+        tools = self._mcp_root().mcp_tools
+        return {name: target for name, target in self.profile["replace"].items() if target in tools}
+
+    def _role(self, name: str) -> str | None:
+        """The role a profile gives an MCP tool (read, edit, exec, net), which decides approvals like a built-in of that kind."""
+        return self.profile["roles"].get(name)
+
     def _ensure_mcp(self) -> None:
         if self._mcp_ready:
             return
@@ -732,7 +751,19 @@ class AgentSession:
 
     def specs(self) -> list[dict]:
         sees = models.sees_images(self.provider.id, self.model, self.profile["vision"])
-        return [row for row in self._all_specs() if self._enabled(row["name"]) and (sees or row["name"] != "view_image")]
+        swap = self.replaced
+        tools = self._mcp_root().mcp_tools
+        rows = []
+        for row in self._all_specs():
+            if row["name"] in swap.values():
+                continue
+            if row["name"] in swap:
+                server, tool = tools[swap[row["name"]]]
+                row = {"name": row["name"], "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
+                       "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}}}
+            if self._enabled(row["name"]) and (sees or row["name"] != "view_image"):
+                rows.append(row)
+        return rows
 
     def _all_specs(self) -> list[dict]:
         every = {s["name"] for s in SPECS} | {"skill"}
@@ -791,21 +822,28 @@ class AgentSession:
             return True
         if name in URL_TOOLS and self.mode == "edits" and (urlparse(str(call["args"].get("url") or "")).hostname or "") not in self.web_ok:
             return True
-        if name in self.mcp_tools:
+        if name in self.mcp_tools and not self._role(name):
             read_only = (self.mcp_tools[name][1].get("annotations") or {}).get("readOnlyHint")
             return not (self.mode == "edits" and read_only)
-        kind = plugin.kind if plugin else KIND.get(name, "exec")
+        kind = plugin.kind if plugin else self._role(name) or KIND.get(name, "exec")
         if kind == "read":
             return False
         if self.tainted and self.profile["untrusted_guard"] and not (
                 name in URL_TOOLS and (urlparse(str(call["args"].get("url") or "")).hostname or "") in self.web_ok):
             return True
+        # A tool an MCP server runs is outside our sandbox and our path checks.
+        via_mcp = name in self.replaced or name in self.mcp_tools
         if self.mode in ("ask", "review"):
-            return not (name == "run_command" and not call["args"].get("outside_sandbox") and rules.safe_readonly(str(call["args"].get("command") or "")))
+            return via_mcp or not (name == "run_command" and not call["args"].get("outside_sandbox") and rules.safe_readonly(str(call["args"].get("command") or "")))
         if kind == "exec":
             # In edits mode commands run on their own only inside a working OS sandbox.
-            confined = sandbox.backend() != "none" and self.workspace.policy.mode != "full-access"
+            confined = sandbox.backend() != "none" and self.workspace.policy.mode != "full-access" and not via_mcp
             return bool(call["args"].get("outside_sandbox")) or not confined
+        if kind == "edit" and via_mcp:
+            try:
+                self.workspace.resolve(str(call["args"]["path"]), write=True)
+            except (KeyError, ToolError):
+                return True
         return False
 
     def _typing_outside(self, call: dict) -> bool:
@@ -1357,7 +1395,15 @@ class AgentSession:
         try:
             if call["name"] in SESSION_SPECS:
                 output, ok = self._session_tool(call), True
+            elif call["name"] in self.replaced:
+                root = self._mcp_root()
+                server, tool = root.mcp_tools[self.replaced[call["name"]]]
+                if KIND.get(call["name"]) == "edit" and isinstance(call["args"], dict) and call["args"].get("path"):
+                    self.checkpoints.save(self.workspace.resolve(str(call["args"]["path"]), write=True))
+                output, ok = root.mcp_servers[server].call_tool(tool["name"], call["args"])
             elif call["name"] in self.mcp_tools:
+                if self._role(call["name"]) == "edit" and isinstance(call["args"], dict) and call["args"].get("path"):
+                    self.checkpoints.save(self.workspace.resolve(str(call["args"]["path"]), write=True))
                 server, tool = self.mcp_tools[call["name"]]
                 output, ok = self.mcp_servers[server].call_tool(tool["name"], call["args"])
             elif call["name"] == "run_command" and call["args"].get("background"):
@@ -1383,13 +1429,14 @@ class AgentSession:
         except (OSError, mcp.MCPError) as exc:
             output, ok = f"Error: {type(exc).__name__}: {exc}", False
         name = call["name"]
-        if name in ("web_fetch", "web_search", "web_download", "delegate") or name in self.mcp_tools:
+        role = self._role(name)
+        if name in ("web_fetch", "web_search", "web_download", "delegate") or (name in self.mcp_tools and role in (None, "net")):
             self.tainted = True
-        if ok and KIND.get(name) == "edit" and name != "web_download":
+        if ok and (KIND.get(name) == "edit" or role == "edit") and name != "web_download":
             self._dirty = self._edited = True
-        elif name == "run_command":
+        elif name == "run_command" or role == "exec":
             self._dirty = False
-        if name == "run_command" or name in self.mcp_tools or name in self.registry.tools:
+        if name == "run_command" or name in self.mcp_tools or name in self.replaced or name in self.registry.tools:
             output = self._offload(call, output)
         if call["name"] not in SESSION_SPECS:
             _, notes = self._run_hooks("PostToolUse", call, output)
