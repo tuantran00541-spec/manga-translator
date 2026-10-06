@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import advisor, agents, client, codemode, context, external, guardian, isolate, mcp, memory, models, registry, rules, sandbox, skill_install, skills
+from app.agent import advisor, agents, client, codemode, context, external, guardian, isolate, mcp, memory, models, registry, rules, sandbox, schema as schemas, skill_install, skills
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import KIND, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -105,11 +105,14 @@ SESSION_SPECS = {
                     "parameters": {"type": "object", "required": ["message"], "properties": {
                         "message": {"type": "string", "description": "A complete, standalone instruction."}, "agent": {"type": "string"}}}},
     "fan_out": {"name": "fan_out", "description": "Run several independent jobs on helper agents at once and get every report back in this one call; use it instead of "
-                                                  "spawn_agent and wait_agent when you only need the answers. At most 12 jobs, 6 at a time.\nAgents:\n{agents}",
+                                                  "spawn_agent and wait_agent when you only need the answers. At most 12 jobs, 6 at a time. "
+                                                  "With schema, each helper must end with a JSON object of that shape; one that does not is asked once to fix it, "
+                                                  "and a helper that still fails is reported as null instead of a vague answer.\nAgents:\n{agents}",
                 "parameters": {"type": "object", "required": ["jobs"], "properties": {
                     "jobs": {"type": "array", "items": {"type": "object", "required": ["prompt"], "properties": {
                         "description": {"type": "string", "description": "A few words naming the job."}, "prompt": {"type": "string", "description": "A complete, standalone instruction."}}}},
-                    "agent": {"type": "string", "description": "Which agent runs them all; explore by default."}}}},
+                    "agent": {"type": "string", "description": "Which agent runs them all; explore by default."},
+                    "schema": {"type": "object", "description": "Optional JSON Schema (type, properties, required, items, enum) every report must fit."}}}},
     "wait_agent": {"name": "wait_agent", "description": "Wait until the named agents (all unfinished ones when ids is empty) finish and return their reports; "
                                                        "after timeout_s the ones still running are listed as running.",
                    "parameters": {"type": "object", "properties": {"ids": {"type": "array", "items": {"type": "string"}},
@@ -882,7 +885,7 @@ class AgentSession:
             lead = f"Queued {nick}: helpers that edit files run one at a time, so it starts when the one before it is done." if queued else f"Started {nick}."
             return f"{lead} Do other work, then call wait_agent with ids [\"{nick}\"]; it also reports to you by itself when done."
         if call["name"] == "fan_out":
-            return self._fan_out(args.get("jobs"), str(args.get("agent") or "explore"))
+            return self._fan_out(args.get("jobs"), str(args.get("agent") or "explore"), args.get("schema") if isinstance(args.get("schema"), dict) else None)
         if call["name"] == "wait_agent":
             return self._wait_agents(args.get("ids"), args.get("timeout_s"))
         if call["name"] == "send_input":
@@ -1081,7 +1084,7 @@ class AgentSession:
                 child.send(message)
                 return
 
-    def _fan_out(self, jobs, agent_name: str) -> str:
+    def _fan_out(self, jobs, agent_name: str, schema: dict | None = None) -> str:
         """Start the jobs as helpers, six at a time, and return every report in the order the jobs were given."""
         if not isinstance(jobs, list) or not jobs:
             raise ToolError("jobs must be a non-empty list of {description, prompt}")
@@ -1089,9 +1092,12 @@ class AgentSession:
                 for i, j in enumerate(jobs[:MAX_FAN_OUT]) if isinstance(j, dict)]
         running: dict[str, tuple[int, str]] = {}
         done: dict[int, str] = {}
+        repaired: set[str] = set()
         while (todo or running) and not self._stop:
             while todo:
                 index, title, prompt = todo[0]
+                if schema:
+                    prompt += f"\n\nEnd your final reply with one JSON object of this shape and nothing after it:\n{json.dumps(schema)}"
                 try:
                     nick = self._spawn(prompt, agent_name)
                 except ToolError as exc:
@@ -1107,9 +1113,19 @@ class AgentSession:
                 child = self.children[nick]
                 if self._state(child) in ("running", "queued"):
                     continue
-                index, title = running.pop(nick)
+                index, title = running[nick]
                 self._collect(child)
-                done[index] = f"### {title} ({nick})\n{self._result(child)}"
+                result = self._result(child)
+                if schema:
+                    value, why = schemas.report(result, schema)
+                    if why and nick not in repaired:
+                        repaired.add(nick)
+                        child.reported = False
+                        child.send(f"Your report does not fit the required shape: {why}. Reply again ending with one JSON object of this shape and nothing after it:\n{json.dumps(schema)}")
+                        continue
+                    result = json.dumps(value, ensure_ascii=False) if value is not None else f"null (invalid report: {why})"
+                running.pop(nick)
+                done[index] = f"### {title} ({nick})\n{result}"
                 child.close()
                 child.closed = True
             time.sleep(0.25)

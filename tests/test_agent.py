@@ -1966,3 +1966,30 @@ def test_helpers_get_the_full_step_budget_and_compact_keeping_their_job(ws, home
     child.history += [{"role": "assistant", "content": "x" * 5000, "calls": []}, {"role": "user", "content": "go on"}]
     assert child.compact()
     assert child.history[0]["content"].startswith("[Your job, as the parent gave it]\naudit the routers in depth")
+
+
+def test_fan_out_with_a_schema_asks_once_to_fix_a_report_and_reports_null_when_it_still_fails(ws, home):
+    schema = {"type": "object", "required": ["findings"], "properties": {"findings": {"type": "array", "items": {"type": "object", "required": ["file"]}}}}
+    jobs = [{"description": "good", "prompt": "good job"}, {"description": "fixable", "prompt": "fixable job"}, {"description": "hopeless", "prompt": "hopeless job"}]
+
+    def child(messages, tools):
+        first = messages[1]["content"]
+        fixing = "does not fit the required shape" in messages[-1]["content"]
+        if "good job" in first or ("fixable job" in first and fixing):
+            return turn('Done. {"findings": [{"file": "a.py"}]}')
+        return turn("I looked around and everything seems fine.")
+
+    fake = routed([turn(calls=[{"id": "f", "name": "fan_out", "args": {"jobs": jobs, "schema": schema}}]), turn("ok")], child)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    out = tool_outputs(session)[0][2]
+    assert out.count('{"findings": [{"file": "a.py"}]}') == 2 and "null (invalid report: the reply holds no JSON object)" in out, out
+
+
+def test_the_schema_check_covers_types_required_items_and_enums():
+    from app.agent import schema
+    shape = {"type": "object", "required": ["sev", "n"], "properties": {"sev": {"enum": ["high", "low"]}, "n": {"type": "integer"}, "tags": {"type": "array", "items": {"type": "string"}}}}
+    assert schema.report('x {"sev": "high", "n": 2, "tags": ["a"]}', shape)[1] is None
+    assert "sev must be one of" in schema.report('{"sev": "mid", "n": 2}', shape)[1]
+    assert "n is missing" in schema.report('{"sev": "low"}', shape)[1]
+    assert "tags[1] must be a string" in schema.report('{"sev": "low", "n": 1, "tags": ["a", 2]}', shape)[1]
