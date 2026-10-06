@@ -9,7 +9,8 @@ import install  # noqa: E402
 OUT = Path(os.environ["OUT"]).resolve()
 FOLDERS = {"codex": Path(os.environ["CODEX"]).resolve(), "omp": Path(os.environ["OMP"]).resolve()}
 MODEL, KEY = os.environ["AGENT_MODEL"], os.environ["AGENT_API_KEY"]
-BASE = "https://api.minirouter.sh/v1"
+BASE = os.environ.get("AGENT_BASE", "https://api.minirouter.sh/v1")
+PROVIDER = os.environ.get("AGENT_PROVIDER", "minirouter")
 MINUTES = float(os.environ.get("MINUTES_EACH", "20"))
 HEAD = {"X-Manga-Agent": "1"}
 OUT.mkdir(parents=True, exist_ok=True)
@@ -81,8 +82,8 @@ with sync_playwright() as p:
         if index == 1:
             page.click("#settings-toggle")
             page.locator(".ai-custom-provider-form > summary").click()
-            page.get_by_label("Tên provider tùy chỉnh").fill("minirouter")
-            page.get_by_label("Mã provider tùy chỉnh").fill("minirouter")
+            page.get_by_label("Tên provider tùy chỉnh").fill(PROVIDER)
+            page.get_by_label("Mã provider tùy chỉnh").fill(PROVIDER)
             page.get_by_label("API root HTTPS của provider").fill(BASE)
             page.get_by_label("Model vision của provider tùy chỉnh").fill(MODEL)
             page.get_by_label("API key của provider tùy chỉnh").fill(KEY)
@@ -96,12 +97,12 @@ with sync_playwright() as p:
         report["launch"][name].update(workspace=seen_folder, matches=Path(seen_folder) == folder,
                                       placeholder=page.eval_on_selector("#agent-input", "e => e.placeholder"))
         try:
-            page.wait_for_selector('#agent-provider option[value="minirouter"]', state="attached", timeout=30000)
+            page.wait_for_selector(f'#agent-provider option[value="{PROVIDER}"]', state="attached", timeout=30000)
         except Exception:
             shot(page, f"{name}-no-provider")
             report["launch"][name]["status"] = page.inner_text("#agent-status")
             continue
-        page.select_option("#agent-provider", "minirouter")
+        page.select_option("#agent-provider", PROVIDER)
         page.fill("#agent-model", MODEL)
         page.select_option("#agent-mode", "auto")
         page.select_option("#agent-sandbox", "read-only")
