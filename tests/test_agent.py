@@ -2106,3 +2106,28 @@ def test_the_oracle_tool_asks_the_advisor_model_and_is_offered_only_when_switche
     assert tool_outputs(session)[0][2] == "Check the lock ordering first."
     assert seen[0][0] == "big" and "debug the hang" in seen[0][1] and "deadlock appear only under load" in seen[0][1]
     assert session.usage["prompt_tokens"] >= 50
+
+
+def test_a_script_can_run_rounds_of_helpers_and_use_their_reports_as_data(ws, home):
+    schema = {"type": "object", "required": ["ok"], "properties": {"ok": {"type": "boolean"}}}
+    code = ("import json\n"
+            "jobs = [{'description': n, 'prompt': 'check ' + n} for n in ('a', 'b', 'c')]\n"
+            "todo, rounds = jobs, 0\n"
+            "while todo and rounds < 3:\n"
+            "    rounds += 1\n"
+            "    got = json.loads(tools.fan_out(jobs=todo, schema=" + json.dumps(schema) + "))\n"
+            "    todo = [j for j, r in zip(todo, got) if r['report'] is None or not r['report']['ok']]\n"
+            "print('rounds', rounds, 'left', [j['description'] for j in todo])\n")
+    calls_seen = {}
+
+    def child(messages, tools):
+        name = re.search(r"check (\w)", messages[1]["content"]).group(1)
+        calls_seen[name] = calls_seen.get(name, 0) + 1
+        return turn('{"ok": %s}' % ("true" if name != "c" or calls_seen[name] > 2 else "false"))
+
+    fake = routed([turn(calls=[call("run_script", code=code, timeout=300)]), turn("done")], child)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    out = tool_outputs(session)[0][2]
+    assert "rounds 3 left []" in out and "[exit code 0]" in out, out
+    assert calls_seen == {"a": 1, "b": 1, "c": 3}, "only the failing job is run again"

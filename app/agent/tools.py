@@ -96,9 +96,10 @@ SPECS = [
                                           "tools.read_file(path=...), tools.search(pattern=...), tools.glob(pattern=...), tools.list_dir(path=...), "
                                           "tools.symbols(path=..., name=...), tools.web_fetch(url=...), tools.web_search(query=...). Each returns the tool's text "
                                           "and raises on error. Use it to look through many files or results in one step instead of many calls; only what the "
-                                          "script prints comes back.",
+                                          "script prints comes back. tools.fan_out(jobs=[{\"prompt\": ...}], schema={...}) runs helper agents and returns a JSON list of {job, report} "
+                                          "(report is null when a helper failed), so a script can fan out, check the reports, and run another round on what is left (at most 40 helpers per script; timeout up to 3600).",
      "parameters": {"type": "object", "required": ["code"], "properties": {
-         "code": {"type": "string"}, "timeout": {"type": "integer", "description": "Seconds, at most 600."}}}},
+         "code": {"type": "string"}, "timeout": {"type": "integer", "description": "Seconds, at most 3600."}}}},
     {"name": "web_fetch", "description": "Fetch a public web page and return its readable text.",
      "parameters": {"type": "object", "required": ["url"], "properties": {
          "url": {"type": "string"}, "max_chars": {"type": "integer"}}}},

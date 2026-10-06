@@ -35,7 +35,8 @@ MAX_AGENT_THREADS = 6
 MAX_IMAGES = 3
 MCP_DEFER = 15
 MAX_FAN_OUT = 12
-SCRIPT_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search"})
+SCRIPT_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "fan_out"})
+SCRIPT_AGENTS = 40
 MAX_NOTES = 16_000
 EMPTY_RETRIES = 3
 LONG_CALL = ("[Reminder] The tool call you were writing was getting too long for one reply and would be cut off. Send it in pieces: create the file "
@@ -900,7 +901,7 @@ class AgentSession:
             lead = f"Queued {nick}: helpers that edit files run one at a time, so it starts when the one before it is done." if queued else f"Started {nick}."
             return f"{lead} Do other work, then call wait_agent with ids [\"{nick}\"]; it also reports to you by itself when done."
         if call["name"] == "fan_out":
-            return self._fan_out(args.get("jobs"), str(args.get("agent") or "explore"), args.get("schema") if isinstance(args.get("schema"), dict) else None)
+            return self._fan_out(args.get("jobs"), str(args.get("agent") or "explore"), args.get("schema") if isinstance(args.get("schema"), dict) else None, bool(args.get("as_data")))
         if call["name"] == "wait_agent":
             return self._wait_agents(args.get("ids"), args.get("timeout_s"))
         if call["name"] == "send_input":
@@ -923,11 +924,18 @@ class AgentSession:
         code = str(args.get("code") or "")
         if not code.strip():
             raise ToolError("code is empty")
-        limit = max(1, min(600, int(args.get("timeout") or 120)))
+        limit = max(1, min(3600, int(args.get("timeout") or 120)))
+        started_agents = [0]
 
         def call_tool(name: str, tool_args: dict) -> tuple[str, bool]:
             if name not in SCRIPT_TOOLS:
                 return f"{name} cannot be called from a script; allowed: {', '.join(sorted(SCRIPT_TOOLS))}", False
+            if name == "fan_out":
+                jobs = tool_args.get("jobs") if isinstance(tool_args.get("jobs"), list) else []
+                if started_agents[0] + min(len(jobs), MAX_FAN_OUT) > SCRIPT_AGENTS:
+                    return f"a script may start at most {SCRIPT_AGENTS} helper agents in all", False
+                started_agents[0] += min(len(jobs), MAX_FAN_OUT)
+                tool_args = {**tool_args, "as_data": True}
             output, ok = self._run_call({"id": f"script-{uuid.uuid4().hex[:8]}", "name": name, "args": tool_args})
             return output, ok
 
@@ -1130,7 +1138,7 @@ class AgentSession:
                 child.send(message)
                 return
 
-    def _fan_out(self, jobs, agent_name: str, schema: dict | None = None) -> str:
+    def _fan_out(self, jobs, agent_name: str, schema: dict | None = None, as_data: bool = False) -> str:
         """Start the jobs as helpers, six at a time, and return every report in the order the jobs were given."""
         if not isinstance(jobs, list) or not jobs:
             raise ToolError("jobs must be a non-empty list of {description, prompt}")
@@ -1170,13 +1178,18 @@ class AgentSession:
                         child.send(f"Your report does not fit the required shape: {why}. Reply again ending with one JSON object of this shape and nothing after it:\n{json.dumps(schema)}")
                         continue
                     result = json.dumps(value, ensure_ascii=False) if value is not None else f"null (invalid report: {why})"
+                    data = value
+                else:
+                    data = result
                 running.pop(nick)
-                done[index] = f"### {title} ({nick})\n{result}"
+                done[index] = {"job": title, "report": data} if as_data else f"### {title} ({nick})\n{result}"
                 child.close()
                 child.closed = True
             time.sleep(0.25)
         for nick in running:
             self.children[nick].close()
+        if as_data:
+            return json.dumps([done.get(i) or {"job": f"job {i + 1}", "report": None} for i in range(len(jobs[:MAX_FAN_OUT]))], ensure_ascii=False)
         return "\n\n".join(done[i] for i in sorted(done)) or "Stopped before any job finished."
 
     def _wait_agents(self, ids, timeout) -> str:
