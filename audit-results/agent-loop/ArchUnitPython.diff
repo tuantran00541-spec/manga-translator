@@ -1,0 +1,104 @@
+diff --git a/src/archunitpython/common/extraction/extract_graph.py b/src/archunitpython/common/extraction/extract_graph.py
+index 80a397b..5e4947c 100644
+--- a/src/archunitpython/common/extraction/extract_graph.py
++++ b/src/archunitpython/common/extraction/extract_graph.py
+@@ -514,13 +514,17 @@ def _find_conditional_import_ranges(tree: ast.Module) -> list[tuple[int, int]]:
+     ranges: list[tuple[int, int]] = []
+ 
+     for node in ast.walk(tree):
+-        if not isinstance(node, ast.Try):
++        if isinstance(node, ast.Try):
++            handlers = node.handlers
++        elif hasattr(ast, "TryStar") and isinstance(node, ast.TryStar):
++            handlers = node.handlers
++        else:
+             continue
+-        if not any(_handles_import_error(handler.type) for handler in node.handlers):
++        if not any(_handles_import_error(handler.type) for handler in handlers):
+             continue
+ 
+         ranges.extend(_statement_ranges(node.body))
+-        for handler in node.handlers:
++        for handler in handlers:
+             if _handles_import_error(handler.type):
+                 ranges.extend(_statement_ranges(handler.body))
+ 
+diff --git a/tests/common/test_extract_graph.py b/tests/common/test_extract_graph.py
+index f0b25cb..34e5b26 100644
+--- a/tests/common/test_extract_graph.py
++++ b/tests/common/test_extract_graph.py
+@@ -2,6 +2,7 @@
+ 
+ import os
+ import shutil
++import sys
+ from pathlib import Path
+ from uuid import uuid4
+ 
+@@ -908,6 +909,66 @@ class TestConditionalImportGraphHandling:
+             for edge in ignored_graph
+         )
+ 
++    @pytest.mark.skipif(sys.version_info < (3, 11), reason="except* requires Python 3.11+")
++    def test_try_star_import_error_marks_fallback_conditional(self):
++        project_root = self._build_conditional_project(
++            "\n".join(
++                [
++                    "try:",
++                    "    from . import fast_model",
++                    "except* ImportError:",
++                    "    from . import fallback_model",
++                    "",
++                ]
++            )
++        )
++
++        edges = self._conditional_edges(project_root)
++
++        assert len(edges) == 2
++        assert all(ImportKind.CONDITIONAL_IMPORT in edge.import_kinds for edge in edges)
++
++    @pytest.mark.skipif(sys.version_info < (3, 11), reason="except* requires Python 3.11+")
++    def test_try_star_module_not_found_error_marks_fallback_conditional(self):
++        project_root = self._build_conditional_project(
++            "\n".join(
++                [
++                    "try:",
++                    "    from . import fast_model",
++                    "except* ModuleNotFoundError:",
++                    "    from . import fallback_model",
++                    "",
++                ]
++            )
++        )
++
++        edges = self._conditional_edges(project_root)
++
++        assert len(edges) == 2
++        assert all(ImportKind.CONDITIONAL_IMPORT in edge.import_kinds for edge in edges)
++
++    @pytest.mark.skipif(sys.version_info < (3, 11), reason="except* requires Python 3.11+")
++    def test_try_star_non_import_error_does_not_mark_conditional(self):
++        project_root = self._build_conditional_project(
++            "\n".join(
++                [
++                    "try:",
++                    "    from sample_project.fast_model import FastUser",
++                    "except* OSError:",
++                    "    from sample_project.fallback_model import FallbackUser",
++                    "",
++                ]
++            )
++        )
++
++        edges = self._conditional_edges(project_root)
++
++        assert len(edges) == 2
++        assert all(ImportKind.FROM_IMPORT in edge.import_kinds for edge in edges)
++        assert all(
++            ImportKind.CONDITIONAL_IMPORT not in edge.import_kinds for edge in edges
++        )
++
+ 
+ class TestIgnoreDirectives:
+     def setup_method(self):
