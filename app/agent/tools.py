@@ -11,7 +11,7 @@ import re
 
 from bs4 import BeautifulSoup
 
-from app.agent import hashline, patch as patches, sandbox, websearch
+from app.agent import gitguard, hashline, patch as patches, sandbox, websearch
 from app.downloader.http import read_response_limited, safe_get
 
 BROAD_FOLDERS = {"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/var", "/boot", "/dev", "/proc", "/sys", "/opt", "/root", "/home", "/Users",
@@ -412,9 +412,12 @@ class Workspace:
             raise ToolError("command is empty")
         limit = max(1, min(MAX_COMMAND_TIMEOUT, int(timeout)))
         policy = sandbox.Policy("full-access", True) if outside_sandbox else self.policy
+        guard = gitguard.snapshot(self.root)
         code, output = sandbox.run(str(command), policy, self.root, limit)
         status = f"[stopped after {limit} s]" if code is None else f"[exit code {code}]"
-        return clip(f"{output.strip()}\n{status}", 400_000)
+        undone = gitguard.restore(self.root, guard)
+        warning = f"\n[blocked: the command changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]" if undone else ""
+        return clip(f"{output.strip()}\n{status}{warning}", 400_000)
 
     def _tool_web_search(self, query: str, count: int = 8) -> str:
         try:

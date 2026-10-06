@@ -33,6 +33,7 @@ MAX_SKILLS_PER_TURN = 3
 MAX_AGENT_THREADS = 6
 MAX_IMAGES = 3
 MCP_DEFER = 15
+MAX_FAN_OUT = 12
 EMPTY_RETRIES = 3
 WRAP_UP = "[The token budget for this turn is used up. Do not call tools. Report in a few paragraphs what you found or built, what is not finished, and what you would do next.]"
 EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
@@ -58,7 +59,7 @@ DOOM_LOOP = 3
 UNREADABLE_TURNS = 4
 TOKEN_BUDGET = 10_000_000
 URL_RE = re.compile(r"https?://([^\s/:?#]+)")
-PLAN_TOOLS = agents.READ_TOOLS | {"todo_write", "task", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
+PLAN_TOOLS = agents.READ_TOOLS | {"todo_write", "task", "fan_out", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
 SYSTEM_PROMPT = """You are a coding agent inside the Manga Translator app, working like Claude Code or Codex.
 Workspace root: {root} on {system}. Paths are relative to it.
 {sandbox}
@@ -86,6 +87,12 @@ SESSION_SPECS = {
                                                          "things. Collect its report with wait_agent.\nAgents:\n{agents}",
                     "parameters": {"type": "object", "required": ["message"], "properties": {
                         "message": {"type": "string", "description": "A complete, standalone instruction."}, "agent": {"type": "string"}}}},
+    "fan_out": {"name": "fan_out", "description": "Run several independent jobs on helper agents at once and get every report back in this one call; use it instead of "
+                                                  "spawn_agent and wait_agent when you only need the answers. At most 12 jobs, 6 at a time.\nAgents:\n{agents}",
+                "parameters": {"type": "object", "required": ["jobs"], "properties": {
+                    "jobs": {"type": "array", "items": {"type": "object", "required": ["prompt"], "properties": {
+                        "description": {"type": "string", "description": "A few words naming the job."}, "prompt": {"type": "string", "description": "A complete, standalone instruction."}}}},
+                    "agent": {"type": "string", "description": "Which agent runs them all; explore by default."}}}},
     "wait_agent": {"name": "wait_agent", "description": "Wait until the named agents (all unfinished ones when ids is empty) finish and return their reports; "
                                                        "after timeout_s the ones still running are listed as running.",
                    "parameters": {"type": "object", "properties": {"ids": {"type": "array", "items": {"type": "string"}},
@@ -121,7 +128,7 @@ BUILTIN_COMMANDS = {
     "clear": "Mở phiên mới", "plan": "Chế độ lập kế hoạch (chỉ đọc đến khi bạn duyệt): /plan [việc] hoặc /plan off",
     "goal": "Giao mục tiêu để agent tự làm nhiều lượt: /goal MỤC TIÊU hoặc /goal off",
     "undo": "Hoàn tác file agent đã sửa ở lượt gần nhất", "memory": "Xem ghi nhớ: /memory, /memory add NỘI DUNG, /memory rm project|user SỐ",
-    "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn",
+    "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn", "receipts": "Xem mọi file đã sửa, lệnh đã chạy và lần duyệt của phiên này",
     "plugins": "Xem plugin, tính năng đã tắt và agent ngoài (Codex, Claude Code)",
 }
 GOAL_PROMPT = ("Goal: {text}\nWork on it across as many steps as needed until it is fully done and verified. "
@@ -179,6 +186,7 @@ class AgentSession:
         self._skills_loaded: list[str] = []
         self.web_ok: set[str] = set()
         self._turn_usage = 0
+        self._denials: list[bool] = []
         self.plan_mode = False
         self.goal: dict | None = None
         self._recent: list[str] = []
@@ -437,6 +445,8 @@ class AgentSession:
             self.goal = {"text": args[:2000], "turns": 0}
             self.send(GOAL_PROMPT.format(text=args))
             return {"sent": True}
+        if name == "receipts":
+            return {"message": self._receipts()}
         if name == "undo":
             with self._lock:
                 if self.status != "idle":
@@ -612,12 +622,12 @@ class AgentSession:
             rows = [s for s in SPECS if s["name"] in allowed]
             return rows + ([SESSION_SPECS["skill"]] if self.skills and "skill" in allowed else [])
         listing = agents.catalog(self.agents)
-        task, spawn = (({**SESSION_SPECS[n], "description": SESSION_SPECS[n]["description"].format(agents=listing)}) for n in ("task", "spawn_agent"))
+        task, spawn, fan = (({**SESSION_SPECS[n], "description": SESSION_SPECS[n]["description"].format(agents=listing)}) for n in ("task", "spawn_agent", "fan_out"))
         rows = list(SPECS)
         if self.skills:
             rows.append(SESSION_SPECS["skill"])
         rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_stop"]]
-        rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn,
+        rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn, fan,
                  SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         rows += [t.spec for t in self.registry.tools.values()]
         if self.plan_mode:
@@ -679,6 +689,27 @@ class AgentSession:
         while root.parent is not None:
             root = root.parent
         return [h["content"] for h in root.history if h["role"] == "user" and not h["content"].startswith(("[", "<"))]
+
+    def _receipts(self) -> str:
+        """What this session actually did, one line each: files changed, commands run, pages fetched and what was approved."""
+        calls = {c["id"]: c for e in self.events if e["type"] == "assistant" for c in e.get("calls") or []}
+        rows = []
+        for e in self.events:
+            stamp = time.strftime("%H:%M:%S", time.localtime(e["time"]))
+            if e["type"] == "tool":
+                call = calls.get(e["id"], {"args": {}})
+                args, kind = call.get("args") or {}, KIND.get(e["name"])
+                if e["name"] == "run_command":
+                    first = str(e["output"]).rsplit("[", 1)[-1].rstrip("]\n")
+                    rows.append(f"{stamp} chạy   {str(args.get('command', ''))[:100]}  [{first}]")
+                elif kind == "edit":
+                    paths = ", ".join(self.workspace.rel(p) for p in self.workspace.targets(e["name"], args)) or "?"
+                    rows.append(f"{stamp} sửa    {paths}" + ("" if e["ok"] else "  [lỗi]"))
+                elif kind == "net" or e["name"].startswith("mcp__"):
+                    rows.append(f"{stamp} mạng   {e['name']} {str(args.get('url') or args.get('query') or '')[:80]}")
+            elif e["type"] == "approval":
+                rows.append(f"{stamp} duyệt  {e['call']['name']}")
+        return "\n".join(rows[-200:]) or "Chưa có file nào được sửa, lệnh nào được chạy."
 
     def _remember(self, category: str, pattern: str) -> None:
         home_path = self.home if self.home is not None else Path.home()
@@ -762,6 +793,8 @@ class AgentSession:
             queued = self.children[nick].pending is not None
             lead = f"Queued {nick}: helpers that edit files run one at a time, so it starts when the one before it is done." if queued else f"Started {nick}."
             return f"{lead} Do other work, then call wait_agent with ids [\"{nick}\"]; it also reports to you by itself when done."
+        if call["name"] == "fan_out":
+            return self._fan_out(args.get("jobs"), str(args.get("agent") or "explore"))
         if call["name"] == "wait_agent":
             return self._wait_agents(args.get("ids"), args.get("timeout_s"))
         if call["name"] == "send_input":
@@ -937,6 +970,42 @@ class AgentSession:
                 child.send(message)
                 return
 
+    def _fan_out(self, jobs, agent_name: str) -> str:
+        """Start the jobs as helpers, six at a time, and return every report in the order the jobs were given."""
+        if not isinstance(jobs, list) or not jobs:
+            raise ToolError("jobs must be a non-empty list of {description, prompt}")
+        todo = [(i, str(j.get("description") or f"job {i + 1}")[:60], str(j.get("prompt") or j.get("message") or ""))
+                for i, j in enumerate(jobs[:MAX_FAN_OUT]) if isinstance(j, dict)]
+        running: dict[str, tuple[int, str]] = {}
+        done: dict[int, str] = {}
+        while (todo or running) and not self._stop:
+            while todo:
+                index, title, prompt = todo[0]
+                try:
+                    nick = self._spawn(prompt, agent_name)
+                except ToolError as exc:
+                    if "already running" in str(exc):
+                        break
+                    todo.pop(0)
+                    done[index] = f"### {title}\nNot started: {exc}"
+                    continue
+                todo.pop(0)
+                running[nick] = (index, title)
+            self._start_queued()
+            for nick in list(running):
+                child = self.children[nick]
+                if self._state(child) in ("running", "queued"):
+                    continue
+                index, title = running.pop(nick)
+                self._collect(child)
+                done[index] = f"### {title} ({nick})\n{self._result(child)}"
+                child.close()
+                child.closed = True
+            time.sleep(0.25)
+        for nick in running:
+            self.children[nick].close()
+        return "\n\n".join(done[i] for i in sorted(done)) or "Stopped before any job finished."
+
     def _wait_agents(self, ids, timeout) -> str:
         names = [str(i).strip().lower() for i in ids] if isinstance(ids, list) and ids else []
         targets = [self._child(n) for n in names] or [c for c in self.children.values() if not c.closed]
@@ -1007,9 +1076,16 @@ class AgentSession:
                                                      self._user_messages(), call)
                     with self._usage_lock:
                         self.stats["model_s"] += time.time() - started
+                    self._denials.append(answer == "deny")
                     if answer == "allow":
                         self.emit("notice", text=f"Người duyệt cho phép {call['name']}: {reason}")
                         cleared = True
+                    elif answer == "deny":
+                        self.emit("notice", text=f"Người duyệt từ chối {call['name']}: {reason}")
+                        if guardian.tripped(self._denials):
+                            self.emit("error", text="Người duyệt từ chối liên tiếp quá nhiều lần; dừng lượt này để bạn xem lại.")
+                            self._stop = True
+                        return guardian.DENIED.format(name=call["name"], reason=reason), False
                     else:
                         reviewed = reason
                 if not cleared:

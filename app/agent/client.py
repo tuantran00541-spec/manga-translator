@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import random
 import re
 import time
 import uuid
@@ -302,7 +303,7 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
         except TransientError as exc:
             if attempt == NETWORK_RETRIES:
                 raise
-            wait = min(60.0, 2.0 * 2 ** attempt)
+            wait = min(60.0, 2.0 * 2 ** attempt) * random.uniform(0.75, 1.0)
             logger.warning("{} ({}); asking again in {:.0f}s", exc, provider.label, wait)
             time.sleep(wait)
     raise AssertionError("unreachable")

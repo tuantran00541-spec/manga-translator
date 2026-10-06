@@ -1624,6 +1624,7 @@ def test_the_number_of_goal_nudges_comes_from_the_profile(ws, home):
 def test_timeouts_dropped_connections_and_server_errors_are_asked_again_with_a_pause(monkeypatch):
     waits, calls = [], []
     monkeypatch.setattr(client.time, "sleep", lambda s: waits.append(s))
+    monkeypatch.setattr(client.random, "uniform", lambda a, b: b)
     ok = {"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
 
     def fake_post(provider, key, payload, stream):
@@ -1701,3 +1702,55 @@ def test_a_context_length_error_is_recovered_by_summarising_and_asking_again(ws,
     run_to_idle(session, "continue")
     assert [e["text"] for e in session.events if e["type"] == "assistant"][-1] == "Carried on."
     assert any("Vượt giới hạn ngữ cảnh" in e.get("text", "") for e in session.events if e["type"] == "notice")
+
+
+def test_the_reviewer_can_deny_with_a_reason_and_repeated_denials_stop_the_turn(ws, home):
+    from app.agent import guardian
+    assert guardian.tripped([True, True, True]) and not guardian.tripped([True, True, False, True])
+    assert guardian.tripped([True] * 10 + [False] * 40) and not guardian.tripped(([True] + [False] * 5) * 8)
+    deny = lambda: turn('{"verdict": "deny", "reason": "sends a secret out"}')
+    fake = scripted(turn(calls=[call("write_file", path="a.txt", content="1")]), deny(),
+                    turn(calls=[call("write_file", path="b.txt", content="1")]), deny(),
+                    turn(calls=[call("write_file", path="c.txt", content="1")]), deny(), turn("never reached"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "review", complete=fake)
+    run_to_idle(session, "tidy up")
+    refusals = [o for n, ok, o in tool_outputs(session) if not ok]
+    assert len(refusals) == 3 and "Do not pursue the same outcome" in refusals[0] and "sends a secret out" in refusals[0]
+    assert not (ws.root / "a.txt").exists() and any(e["type"] == "error" and "từ chối liên tiếp" in e["text"] for e in session.events)
+
+
+def test_fan_out_runs_many_jobs_and_returns_every_report_in_one_call(ws, home):
+    import threading
+    running, peak, lock = [0], [0], threading.Lock()
+
+    def child(messages, tools):
+        with lock:
+            running[0] += 1
+            peak[0] = max(peak[0], running[0])
+        time.sleep(0.3)
+        with lock:
+            running[0] -= 1
+        return turn("report on " + messages[1]["content"])
+
+    jobs = [{"description": f"module {n}", "prompt": f"look at module {n}"} for n in range(9)]
+    fake = routed([turn(calls=[{"id": "f", "name": "fan_out", "args": {"jobs": jobs}}]), turn("all in")], child)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    out = tool_outputs(session)[0][2]
+    assert [out.index(f"report on look at module {n}") for n in range(9)] == sorted(out.index(f"report on look at module {n}") for n in range(9)), "reports come back in the order given"
+    assert "### module 0" in out and "### module 8" in out and 2 <= peak[0] <= 6, "several ran together, never more than six"
+    assert all(c.closed for c in session.children.values())
+
+
+def test_a_command_cannot_leave_a_git_hook_behind_and_receipts_list_what_was_done(ws, home):
+    import subprocess
+    subprocess.run(["git", "init", "-q"], cwd=ws.root, check=True)
+    config_before = (ws.root / ".git" / "config").read_bytes()
+    out = ws.run("run_command", {"command": "printf '#!/bin/sh\\necho pwned' > .git/hooks/pre-commit && echo '[x]' >> .git/config"})
+    assert "[blocked:" in out and ".git/hooks/pre-commit" in out and ".git/config" in out
+    assert not (ws.root / ".git" / "hooks" / "pre-commit").exists() and (ws.root / ".git" / "config").read_bytes() == config_before
+    fake = scripted(turn(calls=[call("write_file", path="r.txt", content="1"), call("run_command", command="echo hi")]), turn("done"), turn(calls=[call("run_command", command="true")]), turn("ok"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    receipts = session.command("/receipts")["message"]
+    assert "sửa    r.txt" in receipts and "chạy   echo hi" in receipts
