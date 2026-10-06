@@ -1,6 +1,6 @@
 name: Agent uno bench
 
-# One-off: try the free models on api.unorouter.com with the key, then a small build-from-scratch task on each.
+# One-off: a small build-from-scratch task on six free chat models of api.unorouter.com (the list came from /v1/models).
 on:
   push:
     branches-ignore: [main]
@@ -12,69 +12,17 @@ permissions:
   contents: write
 
 jobs:
-  discover:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-    outputs:
-      matrix: ${{ steps.pick.outputs.matrix }}
-    env:
-      OUT: audit-results/agent-uno/models
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: List models and pick the free ones
-        id: pick
-        env:
-          UNO_KEY: ${{ secrets.UNO_ROUTER }}
-        run: |
-          mkdir -p "$OUT"
-          [ -n "$UNO_KEY" ] || { echo "::error::secret UNO_ROUTER is not set"; exit 1; }
-          code=$(curl -sS -m 30 -o /tmp/models.json -w '%{http_code}' -H "Authorization: Bearer $UNO_KEY" https://api.unorouter.com/v1/models || true)
-          echo "GET /v1/models -> HTTP $code"
-          python - <<'PY'
-          import json, os, re
-          out = os.environ["OUT"]
-          try:
-              rows = json.load(open("/tmp/models.json"))["data"]
-          except Exception as exc:
-              print("could not read the model list:", type(exc).__name__)
-              open(os.environ["GITHUB_OUTPUT"], "a").write("matrix=[]\n")
-              raise SystemExit(1)
-
-          def free(row):
-              price = row.get("pricing")
-              zero = isinstance(price, dict) and price and all(str(v).strip() in ("0", "0.0", "0.00", "") for k, v in price.items() if k in ("prompt", "completion", "input", "output"))
-              return bool(zero) or ":free" in row["id"].lower() or row["id"].lower().endswith("-free")
-
-          ids = [r["id"] for r in rows if isinstance(r, dict) and "id" in r]
-          hits = [r["id"] for r in rows if isinstance(r, dict) and "id" in r and free(r)]
-          open(f"{out}/all-models.txt", "w").write("\n".join(ids))
-          open(f"{out}/free-models.txt", "w").write("\n".join(hits) or "(none)")
-          open(f"{out}/first-entry.json", "w").write(json.dumps(rows[0] if rows else {}, indent=1))
-          print(f"{len(ids)} models, {len(hits)} look free:", hits[:12])
-          picked = [{"id": i, "slug": re.sub(r"[^a-z0-9]+", "-", i.lower()).strip("-")[:60]} for i in hits[:4]]
-          open(os.environ["GITHUB_OUTPUT"], "a").write("matrix=" + json.dumps(picked) + "\n")
-          PY
-      - name: Give git access only now
-        if: always()
-        env:
-          TOKEN: ${{ github.token }}
-        run: |
-          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
-      - uses: ./.github/actions/save-evidence
-        if: always()
-        with:
-          paths: audit-results/agent-uno/models
-          message: "audit: Agent uno model list (run ${{ github.run_id }})"
-
   test:
-    needs: discover
-    if: needs.discover.outputs.matrix != '[]'
     strategy:
       fail-fast: false
       matrix:
-        model: ${{ fromJSON(needs.discover.outputs.matrix) }}
+        model:
+          - {id: "glm-5.3-flash:free", slug: glm-5-3-flash}
+          - {id: "glm-5.3:free", slug: glm-5-3}
+          - {id: "deepseek-v4-flash:free", slug: deepseek-v4-flash}
+          - {id: "qwen3.5-122b-a10b:free", slug: qwen3-5-122b}
+          - {id: "gemini-3.6-flash:free", slug: gemini-3-6-flash}
+          - {id: "minimax-m2.7:free", slug: minimax-m2-7}
     runs-on: ubuntu-22.04
     timeout-minutes: 40
     env:
