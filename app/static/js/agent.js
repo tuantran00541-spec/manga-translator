@@ -16,7 +16,7 @@
     run_command: ["ran", "command", "commands"], read_file: ["read", "file", "files"], edit_file: ["edited", "file", "files"], write_file: ["edited", "file", "files"],
     apply_patch: ["edited", "file", "files"], edit_lines: ["edited", "file", "files"], spawn_agent: ["started", "helper", "helpers"], wait_agent: ["waited on", "helper", "helpers"],
     send_input: ["messaged", "helper", "helpers"], delegate: ["delegated", "job", "jobs"], close_agent: ["closed", "helper", "helpers"], memory: ["saved", "memory", "memories"],
-    list_dir: ["searched", "time", "times"], search: ["searched", "time", "times"], glob: ["searched", "time", "times"], symbols: ["searched", "time", "times"],
+    list_dir: ["listed", "folder", "folders"], search: ["searched", "time", "times"], glob: ["searched", "time", "times"], symbols: ["searched", "time", "times"],
     web_fetch: ["fetched", "page", "pages"], skill: ["opened", "skill", "skills"], task: ["ran", "helper", "helpers"], mcp: ["called", "MCP tool", "MCP tools"],
     run_script: ["ran", "script", "scripts"], fan_out: ["fanned out", "batch", "batches"], job_input: ["typed into", "job", "jobs"], job_output: ["read", "job", "jobs"], job_stop: ["stopped", "job", "jobs"],
     oracle: ["asked", "oracle", "oracles"], schedule_create: ["scheduled", "run", "runs"], web_search: ["searched the web", "time", "times"],
@@ -199,10 +199,14 @@
   }
 
   function refreshGroup() {
-    const parts = Object.entries(group.tally).map(([key, n]) => {
-      const [verb, one, many] = TALLY[key] || ["used", key, key];
-      return `${verb} ${n} ${n === 1 ? one : many}`;
+    // Tools that read the same way (search, glob, symbols) add up into one phrase.
+    const merged = new Map();
+    Object.entries(group.tally).forEach(([key, n]) => {
+      const words = TALLY[key] || ["used", key, key];
+      const id = words.join("|");
+      merged.set(id, { words, n: (merged.get(id)?.n || 0) + n });
     });
+    const parts = [...merged.values()].map(({ words: [verb, one, many], n }) => `${verb} ${n} ${n === 1 ? one : many}`);
     const text = parts.join(", ") || "Updated the plan";
     group.label.textContent = text.charAt(0).toUpperCase() + text.slice(1);
     group.summary.querySelector(".agent-stats")?.remove();
