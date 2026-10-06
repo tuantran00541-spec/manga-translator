@@ -25,7 +25,6 @@ from app.logging_config import logger
 
 MODES = ("ask", "edits", "review", "auto")
 MAX_STEPS = 300
-SUBAGENT_STEPS = 60
 MAX_JOBS = 8
 URL_TOOLS = ("web_fetch", "web_download")
 MASK_KEEP = 12
@@ -254,7 +253,7 @@ class AgentSession:
         self.agents = agents.discover(workspace.root, home_path) if not depth else {}
         self.rules = rules.load(workspace.root, home_path) if not depth else parent.rules
         self.profile = registry.load_profile(workspace.root, home_path) if not depth else parent.profile
-        self.max_steps = SUBAGENT_STEPS if depth else self.profile["max_steps"]
+        self.max_steps = self.profile["max_steps"]
         self.quirks = models.quirks(model, self.profile["models"])
         self.disabled = set(self.profile["disable"])
         self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
@@ -1295,7 +1294,7 @@ class AgentSession:
                 parts.append(PLAN_PROMPT)
         else:
             parts.append(self.agent.prompt if self.agent else agents.BUILTIN["explore"].prompt)
-            parts.append(f"You have at most {SUBAGENT_STEPS} steps; read only what the job needs and send your report well before they run out.")
+            parts.append("Work until the job is done, then end with a complete report: the parent sees only your final reply.")
         if self.quirks.get("prompt_extra"):
             parts.append(str(self.quirks["prompt_extra"]))
         parts.append(self._pinned.get("Skills", ""))
@@ -1374,7 +1373,7 @@ class AgentSession:
             return self._turn_once()
         except RuntimeError as exc:
             # A full context window is recovered from, not fatal: summarise the older part and ask again.
-            if not OVERFLOW_RE.search(str(exc)) or self.depth:
+            if not OVERFLOW_RE.search(str(exc)):
                 raise
             self.emit("notice", text="Vượt giới hạn ngữ cảnh của model; tóm gọn phần cũ rồi thử lại.")
             if not self.compact(keep=KEEP_RECENT_CHARS // 3):
@@ -1472,7 +1471,8 @@ class AgentSession:
         if not summary:
             return False
         summary = FILE_BLOCK.sub("", summary).rstrip()
-        marker = [{"role": "user", "content": f"[Summary of the earlier conversation]\n{summary}{self._file_lists(head)}"}]
+        job = f"[Your job, as the parent gave it]\n{self._last_request[:8000]}\n\n" if self.depth and self._last_request else ""
+        marker = [{"role": "user", "content": f"{job}[Summary of the earlier conversation]\n{summary}{self._file_lists(head)}"}]
         # Two user messages in a row are fine; an acknowledgement is only needed so the next message is not an assistant one.
         ack = [{"role": "assistant", "content": "Understood; continuing from that summary.", "calls": []}] if not tail or tail[0]["role"] == "user" else []
         self.history = marker + ack + tail
@@ -1510,7 +1510,7 @@ class AgentSession:
         self._mask_old()
         if self._size() > COMPACT_AT and not self.depth and self.notes and (self.goal or self.profile["notes_context"]):
             self._roll_over()
-        if self._size() > COMPACT_AT and not self.depth:
+        if self._size() > COMPACT_AT:
             try:
                 self.compact(keep=KEEP_RECENT_CHARS)
             except Exception as exc:

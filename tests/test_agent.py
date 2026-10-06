@@ -1954,3 +1954,15 @@ def test_a_reply_that_announces_a_step_continues_and_a_step_limit_still_reports(
     run_to_idle(session)
     assert "step limit" in session.history[-2]["content"] and session.history[-1]["content"] == "Read three folders; nothing else done."
     assert fake.seen[-1][1] is None, "the wrap-up offers no tools"
+
+
+def test_helpers_get_the_full_step_budget_and_compact_keeping_their_job(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    nick = session._spawn("audit the routers in depth", "explore")
+    child = session.children[nick]
+    assert child.max_steps == session.max_steps and "read only what the job needs" not in child.system_prompt()
+    wait_for(child, "idle")
+    child.complete = lambda *a, **k: turn("Read three routers so far.")
+    child.history += [{"role": "assistant", "content": "x" * 5000, "calls": []}, {"role": "user", "content": "go on"}]
+    assert child.compact()
+    assert child.history[0]["content"].startswith("[Your job, as the parent gave it]\naudit the routers in depth")
