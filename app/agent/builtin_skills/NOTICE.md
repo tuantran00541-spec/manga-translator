@@ -6,7 +6,7 @@ files and `mcp-builder`'s TypeScript guide were left out. Project or user skills
 
 | Skill | Source | License |
 |---|---|---|
-| systematic-debugging, verification-before-completion, test-driven-development, writing-plans, receiving-code-review, requesting-code-review, dispatching-parallel-agents | [obra/superpowers](https://github.com/obra/superpowers) @ 8ca22dba9a94 | MIT, Jesse Vincent |
+| systematic-debugging, verification-before-completion, test-driven-development, writing-plans, receiving-code-review, requesting-code-review, dispatching-parallel-agents, subagent-driven-development, executing-plans, brainstorming (without its browser visual companion), finishing-a-development-branch, using-git-worktrees, writing-skills | [obra/superpowers](https://github.com/obra/superpowers) @ 8ca22dba9a94 | MIT, Jesse Vincent |
 | grilling, handoff, research, diagnosing-bugs, codebase-design, improve-codebase-architecture, prototype, pr | [mattpocock/skills](https://github.com/mattpocock/skills) @ 4588b32ecab9 | MIT, Matt Pocock (`pr` credits Dex Horthy's show-me, see its CREDITS.md) |
 | frontend-design, webapp-testing, mcp-builder | [anthropics/skills](https://github.com/anthropics/skills) @ 683bc88e56f3 | Apache-2.0, each folder keeps its LICENSE.txt |
 
