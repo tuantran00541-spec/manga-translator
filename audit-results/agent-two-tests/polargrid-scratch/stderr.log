@@ -1,0 +1,78 @@
+[32m2026-10-06 00:07:56[0m | [33m[1mWARNING [0m | [36mapp.agent.session[0m:[36m1340[0m - [33m[1mAgent session 4881069bfdc74790 failed[0m
+[33m[1mTraceback (most recent call last):[0m
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/urllib3/connectionpool.py", line 540, in _make_request
+    response = conn.getresponse()
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/urllib3/connection.py", line 638, in getresponse
+    httplib_response = super().getresponse()
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/http/client.py", line 1478, in getresponse
+    response.begin()
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/http/client.py", line 343, in begin
+    version, status, reason = self._read_status()
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/http/client.py", line 304, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/ssl.py", line 1251, in recv_into
+    return self.read(nbytes, buffer)
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/ssl.py", line 1103, in read
+    return self._sslobj.read(len, buffer)
+[31m[1mTimeoutError[0m:[1m The read operation timed out[0m
+
+[1mThe above exception was the direct cause of the following exception:[0m
+
+[33m[1mTraceback (most recent call last):[0m
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/urllib3/connectionpool.py", line 847, in urlopen
+    retries = retries.increment(
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/urllib3/util/retry.py", line 510, in increment
+    raise reraise(type(error), error, _stacktrace)
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/urllib3/util/util.py", line 39, in reraise
+    raise value
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/urllib3/connectionpool.py", line 793, in urlopen
+    response = self._make_request(
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/urllib3/connectionpool.py", line 542, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/urllib3/connectionpool.py", line 373, in _raise_timeout
+    raise ReadTimeoutError(
+[31m[1murllib3.exceptions.ReadTimeoutError[0m:[1m HTTPSConnectionPool(host='api.mia-01.edge.polargrid.ai', port=443): Read timed out. (read timeout=600)[0m
+
+[1mDuring handling of the above exception, another exception occurred:[0m
+
+[33m[1mTraceback (most recent call last):[0m
+  File "[32m/home/runner/work/manga-translator/manga-translator/app/agent/[0m[32m[1mclient.py[0m", line [33m187[0m, in [35m_post[0m
+    [1mresponse[0m [35m[1m=[0m [1mrequests[0m[35m[1m.[0m[1mpost[0m[1m([0m[1murl[0m[1m,[0m [1mheaders[0m[35m[1m=[0m[1m{[0m[36m"Authorization"[0m[1m:[0m [36mf"[0m[36mBearer [0m[1m{[0m[1mapi_key[0m[1m}[0m[36m"[0m[1m,[0m [36m"Content-Type"[0m[1m:[0m [36m"application/json"[0m[1m}[0m[1m,[0m
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/requests/api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/site-packages/requests/adapters.py", line 713, in send
+    raise ReadTimeout(e, request=request)
+[31m[1mrequests.exceptions.ReadTimeout[0m:[1m HTTPSConnectionPool(host='api.mia-01.edge.polargrid.ai', port=443): Read timed out. (read timeout=600)[0m
+
+[1mThe above exception was the direct cause of the following exception:[0m
+
+[33m[1mTraceback (most recent call last):[0m
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/threading.py", line 1032, in _bootstrap
+    self._bootstrap_inner()
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+> File "[32m/home/runner/work/manga-translator/manga-translator/app/agent/[0m[32m[1msession.py[0m", line [33m1338[0m, in [35m_loop[0m
+    [1m([0m[1mcustom[0m [35m[1mor[0m [1mAgentSession[0m[35m[1m.[0m[1m_steps[0m[1m)[0m[1m([0m[1mself[0m[1m,[0m [1mmax_steps[0m[1m)[0m
+  File "[32m/home/runner/work/manga-translator/manga-translator/app/agent/[0m[32m[1msession.py[0m", line [33m1292[0m, in [35m_steps[0m
+    [1mturn[0m [35m[1m=[0m [1mself[0m[35m[1m.[0m[1m_turn[0m[1m([0m[1m)[0m
+  File "[32m/home/runner/work/manga-translator/manga-translator/app/agent/[0m[32m[1msession.py[0m", line [33m1124[0m, in [35m_turn[0m
+    [35m[1mreturn[0m [1mself[0m[35m[1m.[0m[1m_call_model[0m[1m([0m[1mclient[0m[35m[1m.[0m[1mrender[0m[1m([0m[1mself[0m[35m[1m.[0m[1mhistory[0m[1m,[0m [1msystem[0m[1m,[0m [1mself[0m[35m[1m.[0m[1mtext_tools[0m[1m,[0m [1mspecs[0m[1m,[0m [1mreasoning[0m[35m[1m=[0m[1mself[0m[35m[1m.[0m[1mecho_reasoning[0m[1m)[0m[1m,[0m
+  File "[32m/home/runner/work/manga-translator/manga-translator/app/agent/[0m[32m[1msession.py[0m", line [33m1117[0m, in [35m_call_model[0m
+    [35m[1mreturn[0m [1mself[0m[35m[1m.[0m[1mcomplete[0m[1m([0m[1mself[0m[35m[1m.[0m[1mprovider[0m[1m,[0m [1mself[0m[35m[1m.[0m[1mapi_key[0m[1m,[0m [1mself[0m[35m[1m.[0m[1mmodel[0m[1m,[0m [1mmessages[0m[1m,[0m [1mtools[0m[35m[1m=[0m[1mtools[0m[1m,[0m [35m[1m**[0m[1mextra[0m[1m)[0m
+  File "[32m/home/runner/work/manga-translator/manga-translator/app/agent/[0m[32m[1mclient.py[0m", line [33m300[0m, in [35mcomplete[0m
+    [1mresponse[0m [35m[1m=[0m [1m_post[0m[1m([0m[1mprovider[0m[1m,[0m [1mapi_key[0m[1m,[0m [1mpayload[0m[1m,[0m [1mbool[0m[1m([0m[1mon_delta[0m[1m)[0m[1m)[0m
+  File "[32m/home/runner/work/manga-translator/manga-translator/app/agent/[0m[32m[1mclient.py[0m", line [33m191[0m, in [35m_post[0m
+    [35m[1mraise[0m [1mRuntimeError[0m[1m([0m[36mf"[0m[1m{[0m[1mprovider[0m[35m[1m.[0m[1mlabel[0m[1m}[0m[36m request failed: [0m[1m{[0m[1mtype[0m[1m([0m[1mexc[0m[1m)[0m[35m[1m.[0m[1m__name__[0m[1m}[0m[36m"[0m[1m)[0m [35m[1mfrom[0m [1mexc[0m
+[31m[1mRuntimeError[0m:[1m polargrid request failed: ReadTimeout[0m

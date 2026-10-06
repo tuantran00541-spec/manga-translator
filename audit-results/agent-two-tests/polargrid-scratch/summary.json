@@ -1,0 +1,39 @@
+{
+ "status": "idle",
+ "usage": {
+  "prompt_tokens": 12257,
+  "completion_tokens": 2053,
+  "cached_tokens": 0
+ },
+ "stats": {
+  "model_seconds": 1149.0,
+  "tool_seconds": 0.0,
+  "cache_pct": 0,
+  "cost": null
+ },
+ "steps": 8,
+ "tool_counts": {
+  "": 1,
+  "list_dir": 1,
+  "spawn_agent": 1,
+  "todo_write": 2,
+  "write_file": 4
+ },
+ "failed_tools": [
+  [
+   "write_file",
+   "Error: Bad arguments for write_file: Workspace._tool_write_file() missing 1 required positional argument: 'path'"
+  ],
+  [
+   "",
+   "Unreadable tool call: {\"function_results>\n<invoke name=\"write_file\">\n<parameter name=\"path\">README.md</parameter>\n<parameter name=\"content\">"
+  ]
+ ],
+ "helpers_started": 1,
+ "errors": [
+  "polargrid request failed: ReadTimeout"
+ ],
+ "notices": [
+  "Máy chủ làm mất lệnh gọi công cụ khi stream (151 token); chuyển sang không stream cho phiên này."
+ ]
+}
