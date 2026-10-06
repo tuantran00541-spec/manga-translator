@@ -9,11 +9,14 @@ import uuid
 import requests
 
 from app.ai_providers import AIProvider
+from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.visual_qc.deepseek_region_client import _safe_error_detail
 
 READ_TIMEOUT = 600
+STREAM_IDLE_TIMEOUT = 120
+NETWORK_RETRIES = 6
 RATE_LIMIT_RETRIES = 4
 # When a provider says "slow down", every session using it waits, not just the one that was told.
 _COOLDOWN: dict[str, float] = {}
@@ -28,6 +31,10 @@ Results come back in <tool_result> blocks. Stop after your tool calls and wait f
 
 CUT_OFF = ("Your reply hit the output length limit and this call was cut off before it ended. Send it in smaller pieces: "
            "create the file with a short write_file, then add the rest with edit_file or run_command (cat >> file <<'EOF').")
+
+
+class TransientError(RuntimeError):
+    """A failure worth asking again: a timeout, a dropped connection or a 5xx from the provider."""
 
 
 class ToolsUnsupported(RuntimeError):
@@ -185,10 +192,10 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
             time.sleep(min(pause, 60.0))
         try:
             response = requests.post(url, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                                     json=payload, timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT),
+                                     json=payload, timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, STREAM_IDLE_TIMEOUT if stream else READ_TIMEOUT),
                                      allow_redirects=False, stream=stream)
         except requests.RequestException as exc:
-            raise RuntimeError(f"{provider.label} request failed: {type(exc).__name__}") from exc
+            raise TransientError(f"{provider.label} request failed: {type(exc).__name__}") from exc
         if response.status_code != 429 or attempt == RATE_LIMIT_RETRIES:
             return response
         # Free tiers allow a few requests a minute; wait as told, or longer each time.
@@ -288,7 +295,21 @@ def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
 
 def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None,
              max_tokens: int | None = None) -> dict:
-    """One assistant turn: its text, tool calls, reasoning and token usage; streamed when on_delta is given."""
+    """One assistant turn: its text, tool calls, reasoning and token usage; streamed when on_delta is given. Transient failures are retried."""
+    for attempt in range(NETWORK_RETRIES + 1):
+        try:
+            return _complete_once(provider, api_key, model, messages, tools=tools, on_delta=on_delta, max_tokens=max_tokens)
+        except TransientError as exc:
+            if attempt == NETWORK_RETRIES:
+                raise
+            wait = min(60.0, 2.0 * 2 ** attempt)
+            logger.warning("{} ({}); asking again in {:.0f}s", exc, provider.label, wait)
+            time.sleep(wait)
+    raise AssertionError("unreachable")
+
+
+def _complete_once(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None,
+                   max_tokens: int | None = None) -> dict:
     payload = {"model": model, "messages": messages, "stream": bool(on_delta)}
     payload.update(provider.chat_completion_extras())
     if tools:
@@ -314,12 +335,13 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
         detail = _safe_error_detail(response, api_key)
         if tools and 400 <= response.status_code < 500 and "tool" in detail.lower():
             raise ToolsUnsupported(detail)
-        raise RuntimeError(f"{provider.label} HTTP {response.status_code}: {detail}")
+        error = TransientError if response.status_code >= 500 or response.status_code == 408 else RuntimeError
+        raise error(f"{provider.label} HTTP {response.status_code}: {detail}")
     if on_delta:
         try:
             message, usage, _ = _read_stream(response, on_delta)
         except requests.RequestException as exc:
-            raise RuntimeError(f"{provider.label} stream broke: {type(exc).__name__}") from exc
+            raise TransientError(f"{provider.label} stream broke: {type(exc).__name__}") from exc
         finally:
             response.close()
         return _build(message, usage, tools)

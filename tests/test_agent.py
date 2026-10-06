@@ -1619,3 +1619,23 @@ def test_the_number_of_goal_nudges_comes_from_the_profile(ws, home):
     session.command("/goal finish everything")
     wait_for(session, "idle")
     assert sum("Mục tiêu chưa xong" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
+
+
+def test_timeouts_dropped_connections_and_server_errors_are_asked_again_with_a_pause(monkeypatch):
+    waits, calls = [], []
+    monkeypatch.setattr(client.time, "sleep", lambda s: waits.append(s))
+    ok = {"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+    def fake_post(provider, key, payload, stream):
+        calls.append(1)
+        if len(calls) == 1:
+            raise client.TransientError("PolarGrid request failed: ReadTimeout")
+        return FakeResponse(503, {"error": "overloaded"}) if len(calls) == 2 else FakeResponse(200, ok)
+
+    monkeypatch.setattr(client, "_post", fake_post)
+    result = client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[])
+    assert result["text"] == "done" and len(calls) == 3 and waits == [2.0, 4.0]
+    monkeypatch.setattr(client, "_post", lambda *a: FakeResponse(400, {"error": "bad request"}))
+    with pytest.raises(RuntimeError) as bad:
+        client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[])
+    assert not isinstance(bad.value, client.TransientError), "a refused request is not retried"
