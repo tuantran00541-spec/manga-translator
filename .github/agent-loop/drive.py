@@ -13,7 +13,7 @@ from app.main import app
 
 OUT, WORK = Path(sys.argv[1]), Path(sys.argv[2])
 MINUTES = float(sys.argv[3])
-BASE, MODEL = "https://api.mia-01.edge.polargrid.ai/v1", "qwen-3.8-27b"
+BASE, MODEL, LABEL = os.environ["AGENT_BASE"], os.environ["AGENT_MODEL"], os.environ.get("AGENT_LABEL", "Provider")
 OUT.mkdir(parents=True, exist_ok=True)
 (WORK / "project").mkdir(parents=True, exist_ok=True)
 PROMPT = ("/goal Dùng web_search tìm một dự án Python mã nguồn mở đang hot trên GitHub dạo gần đây (trending), có test bằng pytest và đủ nhỏ để chạy trong vài phút. "
@@ -26,7 +26,7 @@ home = Path.home()
 (home / ".manga-agent" / "profile.json").write_text(json.dumps({"token_budget": 10 ** 12, "max_steps": 3000}))
 mgr = AgentSessionManager(home / ".manga-agent", home=home)
 router.agent_sessions = mgr
-provider = resolve_provider("polargrid", label="PolarGrid", protocol="openai", api_base=BASE)
+provider = resolve_provider("polargrid", label=LABEL, protocol="openai", api_base=BASE)
 key = os.environ["AGENT_API_KEY"]
 
 
@@ -52,7 +52,7 @@ with sync_playwright() as p:
     local = os.environ.get("CHROMIUM_PATH")
     browser = p.chromium.launch(executable_path=local, headless=False, args=["--headless=new"]) if local else p.chromium.launch()
     page = browser.new_page(viewport={"width": 1366, "height": 1000})
-    page.route("**/api/visual_qc/settings", lambda r: r.fulfill(json={"providers": {"polargrid": {"id": "polargrid", "label": "PolarGrid", "configured": True}}}))
+    page.route("**/api/visual_qc/settings", lambda r: r.fulfill(json={"providers": {"polargrid": {"id": "polargrid", "label": LABEL, "configured": True}}}))
     page.route("**/api/visual_qc/providers/*/models", lambda r: r.fulfill(json={"models": [MODEL]}))
     page.goto("http://127.0.0.1:8766/")
     page.click('.sidebar-link[data-route="agent"]')
@@ -76,10 +76,13 @@ with sync_playwright() as p:
             page.wait_for_timeout(1200)
             row = page.locator(f'.agent-row[data-call-id="{call_id}"]') if call_id else None
             if row is not None and row.count():
-                row.first.evaluate("e => { e.open = true; e.scrollIntoView({block: 'center'}); }")
-                page.wait_for_timeout(500)
+                row.first.evaluate("e => { const g = e.closest('.agent-group'); if (g) g.open = true; e.open = true; e.scrollIntoView({block: 'center'}); }")
             else:
-                page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                page.evaluate("""() => { document.querySelectorAll('*').forEach(e => {
+                    const y = getComputedStyle(e).overflowY;
+                    if ((y === 'auto' || y === 'scroll') && e.scrollHeight > e.clientHeight + 10) e.scrollTop = e.scrollHeight; });
+                    window.scrollTo(0, document.body.scrollHeight); }""")
+            page.wait_for_timeout(500)
             page.screenshot(path=str(OUT / f"{shots:02d}-{name}.png"))
         except Exception as exc:
             print("screenshot failed:", exc)
