@@ -3,22 +3,23 @@
   const POLL_MS = 700;
   const HEAD = { "X-Manga-Agent": "1" };
   const VERBS = {
-    "": "Lệnh không đọc được",
-    list_dir: "Xem", read_file: "Đọc", search: "Tìm", glob: "Tìm file", write_file: "Tạo", edit_file: "Sửa",
-    apply_patch: "Vá", edit_lines: "Sửa dòng", run_command: "Chạy", web_fetch: "Mở trang", skill: "Mở skill", todo_write: "Kế hoạch",
-    task: "Agent phụ", spawn_agent: "Giao việc", wait_agent: "Đợi agent", send_input: "Nhắn agent", close_agent: "Đóng agent", delegate: "Agent ngoài", memory: "Ghi nhớ", ask_user: "Hỏi bạn", exit_plan_mode: "Kế hoạch", goal_done: "Xong mục tiêu",
-    symbols: "Ký hiệu", web_search: "Tìm web", web_download: "Tải", view_image: "Xem ảnh", tool_search: "Tìm công cụ", run_script: "Script", fan_out: "Chia việc",
-    job_output: "Đọc job", job_input: "Gõ vào job", job_stop: "Dừng job", oracle: "Hỏi oracle", context_notes: "Sổ ghi chú", new_context: "Ngữ cảnh mới",
-    schedule_create: "Hẹn giờ", schedule_list: "Xem hẹn giờ", schedule_delete: "Huỷ hẹn giờ",
+    "": "Unreadable call",
+    list_dir: "List", read_file: "Read", search: "Search", glob: "Find files", write_file: "Write", edit_file: "Edit",
+    apply_patch: "Patch", edit_lines: "Edit lines", run_command: "Run", web_fetch: "Fetch", skill: "Skill", todo_write: "Plan",
+    task: "Helper", spawn_agent: "Spawn agent", wait_agent: "Wait for agents", send_input: "Message agent", close_agent: "Close agent", delegate: "External agent", memory: "Memory", ask_user: "Ask you", exit_plan_mode: "Plan", goal_done: "Goal done",
+    symbols: "Symbols", web_search: "Web search", web_download: "Download", view_image: "View image", tool_search: "Find tools", run_script: "Script", fan_out: "Fan out",
+    job_output: "Job output", job_input: "Type into job", job_stop: "Stop job", oracle: "Ask oracle", context_notes: "Notes", new_context: "New context",
+    schedule_create: "Schedule", schedule_list: "Schedules", schedule_delete: "Cancel schedule",
   };
-  // How each kind of call is counted in a group's one-line summary.
+  // How each kind of call is counted in a group's one-line summary: verb, one, many.
   const TALLY = {
-    run_command: ["chạy", "lệnh"], read_file: ["đọc", "file"], edit_file: ["sửa", "file"], write_file: ["sửa", "file"],
-    apply_patch: ["sửa", "file"], edit_lines: ["sửa", "file"], spawn_agent: ["giao", "việc cho agent phụ"], wait_agent: ["đợi", "agent phụ"],
-    send_input: ["nhắn", "agent phụ"], delegate: ["giao", "việc cho agent ngoài"], close_agent: ["đóng", "agent phụ"], memory: ["ghi", "nhớ"], list_dir: ["tìm", "lần"], search: ["tìm", "lần"], glob: ["tìm", "lần"],
-    web_fetch: ["đọc", "trang web"], skill: ["mở", "skill"], task: ["giao", "việc cho agent phụ"], mcp: ["gọi", "công cụ MCP"],
-    run_script: ["chạy", "script"], fan_out: ["chia", "đợt việc cho agent phụ"], job_input: ["gõ vào", "job"], job_output: ["đọc", "job"], job_stop: ["dừng", "job"],
-    oracle: ["hỏi", "oracle"], schedule_create: ["hẹn", "giờ"], web_search: ["tìm", "trên web"], symbols: ["tìm", "lần"],
+    run_command: ["ran", "command", "commands"], read_file: ["read", "file", "files"], edit_file: ["edited", "file", "files"], write_file: ["edited", "file", "files"],
+    apply_patch: ["edited", "file", "files"], edit_lines: ["edited", "file", "files"], spawn_agent: ["started", "helper", "helpers"], wait_agent: ["waited on", "helper", "helpers"],
+    send_input: ["messaged", "helper", "helpers"], delegate: ["delegated", "job", "jobs"], close_agent: ["closed", "helper", "helpers"], memory: ["saved", "memory", "memories"],
+    list_dir: ["searched", "time", "times"], search: ["searched", "time", "times"], glob: ["searched", "time", "times"], symbols: ["searched", "time", "times"],
+    web_fetch: ["fetched", "page", "pages"], skill: ["opened", "skill", "skills"], task: ["ran", "helper", "helpers"], mcp: ["called", "MCP tool", "MCP tools"],
+    run_script: ["ran", "script", "scripts"], fan_out: ["fanned out", "batch", "batches"], job_input: ["typed into", "job", "jobs"], job_output: ["read", "job", "jobs"], job_stop: ["stopped", "job", "jobs"],
+    oracle: ["asked", "oracle", "oracles"], schedule_create: ["scheduled", "run", "runs"], web_search: ["searched the web", "time", "times"],
   };
   const SANDBOX_TEXT = {
     landlock: "Lệnh chạy trong sandbox Landlock của Linux.", seatbelt: "Lệnh chạy trong sandbox Seatbelt của macOS.",
@@ -125,31 +126,31 @@
 
   function target(c) {
     const a = c.args || {};
-    if (c.name === "run_command") return `${a.command || ""}${a.outside_sandbox ? "  (ngoài sandbox)" : ""}`;
+    if (c.name === "run_command") return `${a.command || ""}${a.outside_sandbox ? "  (outside the sandbox)" : ""}`;
     if (c.name === "search" || c.name === "glob") return `${a.pattern || ""}${a.path && a.path !== "." ? `  (${a.path})` : ""}`;
     if (c.name === "web_fetch") return a.url || "";
     if (c.name === "web_search") return a.query || "";
-    if (c.name === "web_download") return `${a.url || ""} vào ${a.path || ""}`;
+    if (c.name === "web_download") return `${a.url || ""} to ${a.path || ""}`;
     if (c.name === "symbols") return a.name || a.path || ".";
     if (c.name === "view_image") return a.path || "";
     if (c.name === "tool_search") return a.query || "";
     if (c.name === "task") return a.description || "";
     if (c.name === "spawn_agent") return `${a.agent || "explore"}: ${String(a.message || "").slice(0, 80)}`;
-    if (c.name === "wait_agent") return (a.ids || []).join(", ") || "tất cả";
+    if (c.name === "wait_agent") return (a.ids || []).join(", ") || "all";
     if (c.name === "send_input") return `${a.id || ""}: ${String(a.message || "").slice(0, 60)}`;
     if (c.name === "close_agent") return a.id || "";
     if (c.name === "skill") return a.name || "";
-    if (c.name === "todo_write") return `${(a.items || []).length} việc`;
+    if (c.name === "todo_write") return `${(a.items || []).length} items`;
     if (c.name === "ask_user") return a.question || "";
     if (c.name === "delegate") return `${a.agent || ""}: ${String(a.prompt || "").slice(0, 80)}`;
     if (c.name === "memory") return `${a.action || ""} ${a.text || ""}`.trim();
     if (c.name === "goal_done") return a.summary || "";
     if (c.name === "run_script") return String(a.code || "").split("\n").find((l) => l.trim()) || "";
-    if (c.name === "fan_out") return `${(a.jobs || []).length} việc${a.schema ? " có schema" : ""}`;
+    if (c.name === "fan_out") return `${(a.jobs || []).length} jobs${a.schema ? " with a schema" : ""}`;
     if (c.name === "job_input") return `${a.id || ""}: ${JSON.stringify(String(a.chars || "")).slice(0, 60)}`;
     if (c.name === "job_output" || c.name === "job_stop" || c.name === "schedule_delete") return a.id || "";
     if (c.name === "oracle") return String(a.question || "").slice(0, 80);
-    if (c.name === "schedule_create") return `sau ${a.in_minutes || "?"} phút${a.every_minutes ? `, lặp mỗi ${a.every_minutes} phút` : ""}: ${String(a.prompt || "").slice(0, 50)}`;
+    if (c.name === "schedule_create") return `in ${a.in_minutes || "?"} min${a.every_minutes ? `, every ${a.every_minutes} min` : ""}: ${String(a.prompt || "").slice(0, 50)}`;
     if (c.name === "apply_patch") return (String(a.patch || "").match(/^\*\*\* (?:Add|Update|Delete) File: .+$/gm) || []).map((l) => l.split(": ")[1]).join(", ");
     if (isMcp(c.name)) return c.name.replace(/^mcp__/, "").replace("__", ": ");
     return a.path || ".";
@@ -187,15 +188,15 @@
 
   function refreshGroup() {
     const parts = Object.entries(group.tally).map(([key, n]) => {
-      const [verb, noun] = TALLY[key] || ["dùng", key];
-      return `${verb} ${n} ${noun}`;
+      const [verb, one, many] = TALLY[key] || ["used", key, key];
+      return `${verb} ${n} ${n === 1 ? one : many}`;
     });
-    const text = parts.join(", ") || "Cập nhật kế hoạch";
+    const text = parts.join(", ") || "Updated the plan";
     group.label.textContent = text.charAt(0).toUpperCase() + text.slice(1);
     group.summary.querySelector(".agent-stats")?.remove();
     group.summary.querySelector(".agent-fail")?.remove();
     if (group.added || group.removed) group.summary.append(stats(group.added, group.removed));
-    if (group.failed) group.summary.append(el("span", "agent-fail", `${group.failed} lỗi`));
+    if (group.failed) group.summary.append(el("span", "agent-fail", `${group.failed} failed`));
   }
 
   function addRow(c) {
@@ -263,7 +264,7 @@
     } else if (event.type === "assistant") {
       if (event.reasoning) {
         const think = el("details", "agent-think");
-        think.append(el("summary", "", "Suy nghĩ"), el("pre", "agent-pre", event.reasoning));
+        think.append(el("summary", "", "Thinking"), el("pre", "agent-pre", event.reasoning));
         log.append(think);
       }
       if (event.text) {
@@ -290,7 +291,7 @@
       }
       log.append(approvalCard(event.call));
     } else if (event.type === "subagent" && event.state === "done") {
-      log.append(el("p", "agent-note", `Agent phụ ${event.agent || ""} xong: ${event.description} · ${event.tools} lần gọi công cụ`));
+      log.append(el("p", "agent-note", `Helper ${event.agent || ""} done: ${event.description} · ${event.tools} tool calls`));
     } else if (event.type === "notice" || event.type === "error") {
       log.append(el("p", event.type === "error" ? "agent-note agent-error" : "agent-note", event.text));
     }
@@ -416,22 +417,22 @@
     $("agent-stop").hidden = !busy;
     $("agent-send").hidden = false;
     const usage = snap.usage || {};
-    const state = { running: "Đang làm", waiting: "Chờ bạn duyệt" }[snap.status];
-    const parts = [snap.title || "Phiên mới", `${usage.prompt_tokens || 0} token vào, ${usage.completion_tokens || 0} ra`];
+    const state = { running: "Working", waiting: "Waiting for you" }[snap.status];
+    const parts = [snap.title || "New session", `${usage.prompt_tokens || 0} in, ${usage.completion_tokens || 0} out`];
     const stats = snap.stats || {};
     if (usage.prompt_tokens) parts.push(`cache ${stats.cache_pct || 0}%`);
     if (stats.cost != null) parts.push(`$${stats.cost}`);
-    if (stats.model_seconds || stats.tool_seconds) parts.push(`model ${stats.model_seconds}s, công cụ ${stats.tool_seconds}s`);
-    if (snap.text_tools) parts.push("gọi công cụ bằng văn bản");
-    if (snap.plan_mode) parts.push("đang lập kế hoạch");
-    if (snap.goal) parts.push(`mục tiêu: ${snap.goal}`);
+    if (stats.model_seconds || stats.tool_seconds) parts.push(`model ${stats.model_seconds}s, tools ${stats.tool_seconds}s`);
+    if (snap.text_tools) parts.push("text tool calls");
+    if (snap.plan_mode) parts.push("planning");
+    if (snap.goal) parts.push(`goal: ${snap.goal}`);
     $("agent-status").textContent = parts.join(" · ");
     const log = $("agent-log");
     log.querySelector(".agent-working")?.remove();
     log.querySelector(".agent-live")?.remove();
     const live = snap.live;
     if (live && (live.text || live.tools.length)) {
-      const tools = live.tools.length ? `\nGọi: ${live.tools.join(", ")}` : "";
+      const tools = live.tools.length ? `\nCalling: ${live.tools.join(", ")}` : "";
       log.append(el("pre", "agent-live", live.text + tools));
     }
     if (state) log.append(el("p", "agent-working", `${state}…`));

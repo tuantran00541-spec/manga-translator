@@ -1460,7 +1460,7 @@ def test_review_mode_lets_a_second_model_clear_a_call_and_asks_the_user_when_it_
                        turn("Done."), turn(calls=[call("run_command", command="true")]), turn("Checked."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "review", complete=cleared)
     run_to_idle(session, "create a.txt")
-    assert (ws.root / "a.txt").read_text() == "1" and any("Người duyệt cho phép" in e.get("text", "") for e in session.events)
+    assert (ws.root / "a.txt").read_text() == "1" and any("Reviewer allowed" in e.get("text", "") for e in session.events)
     seen_by_reviewer = cleared.seen[1][0]
     assert "create a.txt" in seen_by_reviewer[1]["content"] and "tools" not in str(cleared.seen[1][1] or "")
     unsure = scripted(turn(calls=[call("write_file", path="b.txt", content="1")]), turn('{"verdict": "ask", "reason": "not requested"}'), turn("ok"), turn("ok"))
@@ -1538,12 +1538,12 @@ def test_an_empty_model_reply_is_retried_with_a_nudge_instead_of_ending_the_turn
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     run_to_idle(session)
     assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Now I answer."]
-    assert sum("trả lời rỗng" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
+    assert sum("Empty reply" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
     assert any(m["role"] == "user" and "reply was empty" in m["content"] for m in session.history)
     gives_up = scripted(*[turn("")] * 5)
     other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", session_id="empty", complete=gives_up)
     run_to_idle(other)
-    assert any(e["type"] == "error" and "rỗng" in e["text"] for e in other.events)
+    assert any(e["type"] == "error" and "replied empty" in e["text"] for e in other.events)
 
 
 def test_a_stream_that_puts_its_reply_in_an_unknown_field_is_not_lost():
@@ -1569,7 +1569,7 @@ def test_a_reply_whose_tool_calls_the_stream_lost_is_asked_again_without_streami
     run_to_idle(session)
     assert modes == [True, False] and session._plain
     assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Recovered."]
-    assert any("không stream" in e.get("text", "") for e in session.events if e["type"] == "notice")
+    assert any("turning streaming off" in e.get("text", "") for e in session.events if e["type"] == "notice")
 
 
 def test_tool_calls_with_broken_json_are_recovered_using_the_tools_parameter_names():
@@ -1620,7 +1620,7 @@ def test_the_number_of_goal_nudges_comes_from_the_profile(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     session.command("/goal finish everything")
     wait_for(session, "idle")
-    assert sum("Mục tiêu chưa xong" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
+    assert sum("Goal not done yet" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
 
 
 def test_timeouts_dropped_connections_and_server_errors_are_asked_again_with_a_pause(monkeypatch):
@@ -1703,7 +1703,7 @@ def test_a_context_length_error_is_recovered_by_summarising_and_asking_again(ws,
     session.history = long_history(80)
     run_to_idle(session, "continue")
     assert [e["text"] for e in session.events if e["type"] == "assistant"][-1] == "Carried on."
-    assert any("Vượt giới hạn ngữ cảnh" in e.get("text", "") for e in session.events if e["type"] == "notice")
+    assert any("Context window exceeded" in e.get("text", "") for e in session.events if e["type"] == "notice")
 
 
 def test_the_reviewer_can_deny_with_a_reason_and_repeated_denials_stop_the_turn(ws, home):
@@ -1718,7 +1718,7 @@ def test_the_reviewer_can_deny_with_a_reason_and_repeated_denials_stop_the_turn(
     run_to_idle(session, "tidy up")
     refusals = [o for n, ok, o in tool_outputs(session) if not ok]
     assert len(refusals) == 3 and "Do not pursue the same outcome" in refusals[0] and "sends a secret out" in refusals[0]
-    assert not (ws.root / "a.txt").exists() and any(e["type"] == "error" and "từ chối liên tiếp" in e["text"] for e in session.events)
+    assert not (ws.root / "a.txt").exists() and any(e["type"] == "error" and "denied too many calls" in e["text"] for e in session.events)
 
 
 def test_fan_out_runs_many_jobs_and_returns_every_report_in_one_call(ws, home):
@@ -2076,7 +2076,7 @@ def test_a_model_that_keeps_failing_hands_the_turn_to_the_next_configured_model(
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
     run_to_idle(session)
     assert used == ["m", "backup-1", "backup-2"] and session.history[-1]["content"] == "answered by backup-2"
-    assert sum(e["type"] == "notice" and "chuyển sang" in e["text"] for e in session.events) == 2
+    assert sum(e["type"] == "notice" and "switching to" in e["text"] for e in session.events) == 2
     run_to_idle(session, "again")
     assert used[3] == "m", "the next request tries the first model again"
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=lambda *a, **k: (_ for _ in ()).throw(client.TransientError("down")))
@@ -2474,7 +2474,7 @@ def test_a_reply_that_spent_its_whole_budget_on_reasoning_is_asked_again_with_a_
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=client.complete)
     run_to_idle(session, "go")
     assert sizes == [8192, 16384, 32768] and session.history[-1]["content"] == "Done."
-    assert sum("nâng giới hạn" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
+    assert sum("raising the reply limit" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
 
 
 def test_a_turn_that_dies_after_changing_files_says_what_it_changed_and_what_is_left(ws, home):
@@ -2489,7 +2489,7 @@ def test_a_turn_that_dies_after_changing_files_says_what_it_changed_and_what_is_
 
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
     run_to_idle(session, "make a.txt and test it")
-    note = next(e["text"] for e in session.events if e["type"] == "notice" and "dừng giữa chừng" in e.get("text", ""))
+    note = next(e["text"] for e in session.events if e["type"] == "notice" and "stopped on an error" in e.get("text", ""))
     assert "a.txt" in note and "test it" in note
 
 
