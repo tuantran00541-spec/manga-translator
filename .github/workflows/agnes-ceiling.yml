@@ -1,0 +1,47 @@
+name: Agnes free-tier ceiling
+
+# One-off: tiny requests in a burst, at 10 RPM for an hour, then at 20 RPM, to find the real free-tier limits.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/agnes-ceiling.yml"
+      - ".github/agnes-ceiling/probe.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      OUT: audit-results/agnes-ceiling/out
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe
+        env:
+          AGENT_API_KEY: ${{ secrets.Agnes_key }}
+          AGENT_BASE: https://apihub.agnes-ai.com/v1
+          AGENT_MODEL: agnes-3.0-flash
+        run: |
+          [ -n "$AGENT_API_KEY" ] || { echo "::error::secret Agnes_key is not set"; exit 1; }
+          python -m pip install -q requests
+          python -u .github/agnes-ceiling/probe.py "$OUT" || true
+      - name: Give git access only now
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - uses: ./.github/actions/save-evidence
+        if: always()
+        with:
+          paths: audit-results/agnes-ceiling/out
+          message: "audit: Agnes free-tier ceiling (run ${{ github.run_id }})"
