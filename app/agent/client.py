@@ -339,7 +339,9 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
         detail = _safe_error_detail(response, api_key)
         if tools and 400 <= response.status_code < 500 and "tool" in detail.lower():
             raise ToolsUnsupported(detail)
-        error = TransientError if response.status_code >= 500 or response.status_code == 408 else RuntimeError
+        # A busy model ("at capacity, retry in a few seconds") is waited out like a server error; a spent quota or balance is not.
+        busy = response.status_code == 429 and not re.search(r"quota|billing|insufficient|balance|credit", detail, re.I)
+        error = TransientError if response.status_code >= 500 or response.status_code == 408 or busy else RuntimeError
         raise error(f"{provider.label} HTTP {response.status_code}: {detail}")
     if on_delta:
         try:

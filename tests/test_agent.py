@@ -2286,3 +2286,23 @@ def test_a_run_with_a_clock_gets_a_time_notice_then_a_final_report_without_tools
     run_to_idle(late, "work")
     assert "time limit" in late.history[-2]["content"] and late.history[-1]["content"].startswith("Report:")
     assert fake.seen[-1][1] is None, "the final report offers no tools"
+
+
+def test_a_busy_model_429_is_waited_out_but_a_spent_quota_is_not(monkeypatch):
+    waits, calls = [], []
+    monkeypatch.setattr(client.time, "sleep", lambda s: waits.append(s))
+    monkeypatch.setattr(client.random, "uniform", lambda a, b: b)
+    ok = {"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+    def fake_post(provider, key, payload, stream):
+        calls.append(1)
+        busy = {"error": {"message": "This model is at capacity right now. Please retry in a few seconds."}}
+        return FakeResponse(429, busy) if len(calls) < 4 else FakeResponse(200, ok)
+
+    monkeypatch.setattr(client, "_post", fake_post)
+    assert client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[])["text"] == "done"
+    assert len(calls) == 4 and waits == [2.0, 4.0, 8.0]
+    monkeypatch.setattr(client, "_post", lambda *a: FakeResponse(429, {"error": {"message": "You exceeded your current quota"}}))
+    with pytest.raises(RuntimeError) as spent:
+        client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[])
+    assert not isinstance(spent.value, client.TransientError), "a spent quota fails at once"
