@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "deck": {
+      "command": "python3",
+      "args": ["deck-lab/mcp_server.py"],
+      "env": {}
+    }
+  }
+}

@@ -1,100 +1,202 @@
-# PPTX generation with python-pptx — deck-lab field notes
-
+# pptx
 name: pptx
-description: Build clean 16:9 PowerPoint decks with python-pptx from scratch (no template): layout grid, palette, fonts/sizes, transitions, charts, and a render-then-measure QA loop that catches text overflow, overlapping boxes, tiny fonts and low-contrast colors. Use when creating or fixing a .pptx deck.
+description: Build PowerPoint decks from zero with python-pptx — layout grid, palette, typography, shapes, transitions, charts, QC. Use when asked to create or edit a .pptx file in this repo.
 
-## Workflow (the loop that actually worked)
+Create presentation decks programmatically with `python-pptx` (installed, v1.0.2).
+The target of every deck is: it must survive the QC pipeline below with zero issues.
 
-1. Write the generator script in one pass with a **fixed canvas** and **helper functions** (below). Do not hand-place every shape with raw `Inches()` — centralize the grid.
-2. Save the `.pptx`, then render and *measure*, don't just eyeball:
-   ```bash
-   soffice -env:UserInstallation=file:///tmp/lo_profile --headless --convert-to pdf --outdir out deck.pptx
-   pdftoppm -png -r 50 out/deck.pdf out/slide      # 50 dpi is enough to spot overflow
-   ```
-   The `-env:UserInstallation` flag is required in this sandbox (otherwise LibreOffice's profile write fails).
-3. Run `check_deck.py` on the pptx: it flags text that likely overflows its box, textboxes overlapping other text, fonts under 12pt, and contrast ratios under 3.0 (WCAG large-text minimum).
-4. Open 2-3 rendered slides with view_image to confirm the checker's flags match what the eye sees (the checker is a heuristic — char-width estimate — so a false positive is possible; a true visual clip is not).
-5. Fix in the generator, not the pptx; rerun 2-4 until `check_deck.py` prints "clean".
+## Pipeline (always, in this order)
 
-## Layout: 16:9 grid
+```bash
+# 1. build
+python3 make_deck.py          # writes OUT.pptx
+# 2. render
+soffice -env:UserInstallation=file:///tmp/lo_profile --headless \
+  --convert-to pdf --outdir out/ OUT.pptx
+pdftoppm -png -r 50 out/OUT.pdf out/pg
+# 3. static + render QC (from deck-lab/check_deck.py, copied next to this skill)
+python3 check_deck.py OUT.pptx out/pg
+# 4. eyeball the pages with view_image; fix and re-run until CLEAN
+```
 
-- Slide is **13.333 × 7.5 in** (set `prs.slide_width`/`slide_height` — never trust the template).
-- One **margin** of 0.6in on all sides → content width 12.13in. All x-coordinates come from `MARGIN` + column offsets; all y from a running cursor or named zones.
-- Named zones (16:9, top→bottom): title band 0.4–1.5in (kicker + title + accent rule), content 1.8–6.8in, footer/page 6.9–7.3in. Never start content above 1.8in — the header zone owns 0.4–1.6in.
-- For card grids: 3 cards = 3.8in wide × 4.17in pitch (0.37in gutter); 4 stats = 2.85in wide × 3.13in pitch. Row height ≤ 1.0in for list items, ≤ 2.4in for cards with a title + 3 lines of body.
-- A slide with more than ~5 text blocks is too dense: split it. Six to eight slides total is the target for a short deck; each slide gets ONE idea.
+`-env:UserInstallation=file:///tmp/lo_profile` is mandatory in the sandbox, otherwise
+LibreOffice fails on the profile lock.
 
-## Colors
+## The 10 rules
 
-- Light theme: bg `#F7F9FC`, ink `#1F2430`, accent `#0F62FE`, muted `#5B6474`, panel `#E8EEF9`. Dark theme: invert — bg `#0F1420`, ink `#E8EDF5`, accent `#4D9FFF`, panel `#1B2436`.
-- **Contrast is a hard rule, not taste**: body text ≥ 4.5:1, large text (≥18pt) ≥ 3:1 against the background it actually sits on. The checker computes this — let it. Common failure: white text on a panel that is "almost white" (contrast 1.0–1.5, invisible). If text sits on a filled panel, contrast is text-vs-panel, not text-vs-slide.
-- Muted/secondary text: never go lighter than `#5B6474` on light bg (`#7a7a7a` is the practical floor; `#9aa` fails for body size).
-- One accent per deck, max two colors of accent (accent + a success/warn if needed). Do not introduce a third hue per slide.
+1. **Canvas**: 16:9 = 13.333in × 7.5in. Set it explicitly on the Presentation:
+   `prs.slide_width = int(13.333 * 914400)` etc. All coordinates in inches.
+2. **Backgrounds**: LibreOffice ignores slide-level `<p:bg>` in files produced by
+   python-pptx. Use a **full-bleed rectangle** instead: `add_shape(MSO_SHAPE.RECTANGLE, 0, 0,
+   int(13.333*EMU), int(7.5*EMU))`, solid fill, `line.fill.background()`.
+3. **Fonts**: use `DejaVu Sans` (available; Liberation Sans also works). Set the font
+   name on every run — never rely on theme defaults.
+4. **Type scale**: titles 26–42pt bold, card titles 15–20pt bold, body 13–17pt,
+   footnotes/sources 13pt bold. Never ship non-bold text under 13pt; nothing under 11pt.
+   Body ≥ 13pt or it reads as a footnote and fails the QC floor.
+5. **Line height**: python-pptx does not expose spacing well — budget `size * 1.2`
+   EMU per line plus `space_after` when estimating.
+6. **Grid**: 0.5in page margins; content starts at x=0.5 or 0.9 (card-inset);
+   card pitch = card width + 0.2in gap. A 5-card row on 16:9 = 2.35in cards.
+   Numbered-list rows: pitch = title box + 0.05 gap + desc box + 0.5in; for 4 items
+   in a 6.5in card that's a pitch of ~1.25in (0.6in title + 0.6in desc + 0.05 gap).
+7. **Contrast**: WCAG AA = 4.5:1 for text. On a dark deck (bg #14122B),
+   near-white #F4F1FF and lavender #B8AEE6 pass; mid-grays and dark accents do not.
+   Keep accent text ≥ 5.5:1 or make it large (≥ 24pt, then 3:1 suffices).
+8. **No overflow**: `word_wrap = True` always. Estimate each paragraph's height
+   (lines × 1.2 × size × EMU_PER_PT + space_after) and keep total ≤ box height.
+   When a line must not wrap (a single-line label), set `word_wrap = False` and
+   check width yourself.
+9. **Overlap**: the checker only flags overlap between *fill* shapes. A card
+   (fill rect) under text boxes is the intended pattern; card-to-card overlap is not.
+10. **Transitions/animations**: python-pptx has no API. Inject
+    `<p:transition>` via lxml **after the `p:cSld` child** (schema order:
+    `cSld, clrMapOvr, transition`), or LibreOffice silently drops it:
+    ```python
+    el = etree.fromstring(f'<p:transition xmlns:p="{P}" spd="med"><p:fade/></p:transition>')
+    slide._element.insert(2, el)
+    ```
+    Valid children: `push fade wipe blinds dissolve`. Animations: unsupported,
+    skip — the render pipeline only shows static frames anyway.
 
-## Fonts & sizes (what fits on 13.33in at 16:9)
+## Building blocks
 
-| Role | Size | Notes |
+```python
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.dml.color import RGBColor
+
+EMU = 914400  # per inch
+
+def slide(prs, bg):
+    s = prs.slides.add_slide(prs.slide_layouts[6])  # Blank
+    r = s.shapes.add_shape(1, 0, 0, 13_333_000, 6_858_000)  # full-bleed bg
+    r.fill.solid(); r.fill.fore_color.rgb = bg
+    r.line.fill.background()
+    return s
+
+def card(s, x, y, w, h, color):
+    r = s.shapes.add_shape(1, int(x*EMU), int(y*EMU), int(w*EMU), int(h*EMU))
+    r.fill.solid(); r.fill.fore_color.rgb = color
+    r.line.fill.background()
+    return r
+
+def text(s, x, y, w, h, lines, space_after=6):
+    """lines: [(text, pt, color, bold), ...] one paragraph each."""
+    tb = s.shapes.add_textbox(int(x*EMU), int(y*EMU), int(w*EMU), int(h*EMU))
+    tf = tb.text_frame; tf.word_wrap = True
+    for i, (t, pt, col, bold) in enumerate(lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.space_after = Pt(space_after)
+        r = p.add_run(); r.text = t
+        r.font.size = Pt(pt); r.font.name = "DejaVu Sans"
+        r.font.color.rgb = col; r.font.bold = bold
+    return tb
+```
+
+Rounded rectangles: `add_shape(5, ...)` and set `shape.adjustments[0] = 0.05`.
+
+## Palettes (proven to pass QC)
+
+### Dark deck
+
+| role | hex | notes |
 |---|---|---|
-| Kicker/eyebrow | 13–14, bold, accent color, ALL CAPS | one line max |
-| Slide title | 30–34 | one line max; keep under 34 or it wraps |
-| Card/section heading | 18–20 | |
-| Body | 15–16 | 15pt is the smallest comfortable body size at 50% zoom |
-| Big stat number | 28–32 | |
-| Caption under stat | 12–13 | |
+| bg | `#14122B` | deep indigo |
+| card | `#231F42` | one step lighter |
+| ink | `#F4F1FF` | body, headings |
+| muted | `#B8AEE6` | secondary text, captions |
+| accent | `#9F7AF0` | titles, numerals |
+| accent2 | `#5EE6C8` | highlights, labels |
 
-- Hard floor 12pt for anything; floor 14pt for body. If you need more than one caption line, widen the box before shrinking the font.
-- A line of 16pt Segoe UI holds roughly 100–110 chars across the full 12.1in content width. Bold is ~8% wider than regular — estimate with the checker, not by eye.
-- Set `font.name` on every run; mixed fonts within a slide look broken. "Segoe UI" is safe cross-platform for generated decks; "Arial" is the conservative fallback.
-- `word_wrap = True` and zero text-frame margins (inset) are non-negotiable for precise sizing; the default insets are 0.1in all around and silently steal width.
+### Light deck (ship30, measured)
 
-(see "Transitions (working recipe, verified)" section below for the concrete zip patch)
+| role | hex | measured on card/bg |
+|---|---|---|
+| bg | `#F6F4FB` | — |
+| card | `#FFFFFF` | — |
+| ink | `#241E3C` | 15.8:1 on card |
+| muted | `#5A5378` | 6.5:1 on bg, 7.1:1 on card |
+| accent | `#6E46E0` | 5.3:1 on bg |
+| accent2 | `#0A6B55` | 6.0:1 on bg |
 
-## Charts
+**Lesson**: green accents look great in dark decks and fail contrast on light
+ones. Re-derive accent2 per theme — don't reuse the dark-deck hex verbatim.
+Rounded cards on light: `add_shape(5, ...)`, `adjustments[0] = 0.04`, 1pt border
+`#DDD8F0` — the border is what separates white cards from a near-white bg.
 
-- `from pptx.chart.data import CategoryChartData` + `slide.shapes.add_chart(chart_type, x, y, cx, cy, chart_data)`.
-- 16:9: a column/bar chart needs at least 4.5in × 3.5in; a line chart 5in wide. Put a caption below it (13pt, muted), not inside it.
-- Style the chart with `chart.font` / per-series `format.fill` to match the palette; default Office charts are blue-and-dirty-gray and clash with custom palettes.
-- For a "stat row" (numbers + label), plain rounded-rectangle cards beat a real chart — a chart implies trend, a stat row implies magnitudes.
+## Charts (native, not images)
 
-## Errors this deck hit, and the fix
+`slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, x, y, w, h, category_data)`
+where `category_data` is `CategoryChartData` with one series per bar group.
+After adding: style each series' `fill.solid().fore_color.rgb`; keep
+`has_legend = True` — the QC script can't measure chart text, so the legend is
+your only QC-safe place to name the series. One accent + one gray is usually
+legible; still, name them.
+**Legend text is real text.** The QC script ignores it, but a wrapped label
+like "Interruptions per day" wraps onto two lines in the legend and collides
+with the bars on a 7.5in-wide chart. Keep each series name ≤ 12 characters
+("Interruptions" + a sub-note, not "Interruptions per day").
+Charts are XML — keep axis labels short (W1..W5, not full words) and cap
+the category count at ~6. Pair every chart with a side-note box (4in wide,
+start x=9.0) so the takeaway is prose, not bar-reading.
 
-1. **Text overflow that looks fine at 100%**: 54pt two-line title in a 1.6in box rendered OK but left no headroom; the checker flagged it. Fix: give title boxes the height of *max possible lines × size × 1.3*, not the current text. Budget per line: `size_pt × 1.3 / 72` inches.
-2. **White checkmark on a light rounded-rect**: I drew the white ✓ in a box that had a light fill; contrast 1.05. Fix: the ✓ sits on the *accent* chip — make the chip the accent fill (0.4×0.4in rounded) with white text; the checker only trusts the panel it finds *under* the text, so the chip must actually be drawn before the text and fully contain it.
-3. **Checker false negative — text on slide bg**: `bg_of()` returned the slide background instead of the card the text sat on, flagging every card text as low-contrast. Fix: pick the **smallest** filled shape that contains the text box; fall back to slide bg. (This is a checker bug, not a deck bug — but the fix matters because an always-red checker stops being trusted.)
-4. **Save path**: `prs.save("deck1.pptx")` fails when run from the wrong cwd; save via `os.path.join(os.path.dirname(os.path.abspath(__file__)), name)`.
+## Pitfalls collected from real failures
 
-## Checklist before calling a deck done
+- **`RGBColor(0x333333)` does not work** — it takes three 8-bit args:
+  `RGBColor(0x33, 0x33, 0x33)`.
+- **Never trust "saved"** — `make_deck` once returned a success string with no
+  `prs.save(path)` call. After any build, `os.path.exists(path)` before QC.
+- **Glyph boxes overflow**: a `>` or `★` at 22pt inside a 0.5in box fails the
+  `size*1.2` budget. Keep single-glyph runs ≤ 18pt in boxes ≤ 0.5in.
+- **Pitch formula bug**: `min(1.25, 4.6/n)` is valid; `min(1.25, 4.6)/n` is not.
+  Write `4.6/max(n,1)` explicitly; for n>4 rows use `4.6/n`, cap at 1.25.
+- **Checker false positives on bg**: a 0,0,full-size rectangle is a background,
+  not text — exempt by geometry, never by shape name.
+- **`MSO_AUTO_SIZE`** — never set `TEXT_TO_FIT_SHAPE` on a box the checker measures;
+  it changes geometry silently. Keep sizes static and predictable.
+- **Placeholder layouts (0–5) carry a title box you didn't ask for.** Use layout 6
+  (Blank) and place everything yourself.
+- **`space_before`/`space_after` in `text()`**: the checker only counts `space_after`;
+  keep it ≤ 6pt on dense slides or budget the extra.
+- **One slide, one message.** If a slide needs two, split it.
+- **Numbers**: use bold accent numerals (22pt+) for step lists — they pass size floors
+  and read as structure.
 
-- [ ] `check_deck.py` prints "clean" (no overflow flags, no overlaps, no <12pt, no contrast <3.0).
-- [ ] `soffice` conversion produces a PDF with the same page count as the slide count.
-- [ ] Every content slide has a header zone (kicker + title + rule) and nothing starts above 1.8in.
-- [ ] Each slide states one idea; body text ≤ ~3 short lines per card.
-- [ ] No shape exceeds slide bounds; text never within 0.15in of the slide edge.
-- [ ] A second generator run reproduces the file (no nondeterminism).
+## QC script
 
-## Helpers
+`check_deck.py` (copied into this skill folder alongside the deck source) flags:
+1. Estimated text overflow vs box height (TTF-measured, DejaVu).
+2. Non-bold text < 13pt anywhere; any text < 11pt.
+3. Fill-shape overlap > 30% of the smaller shape.
+4. Text/bg contrast < 4.5:1 (relative luminance).
+5. Shapes extending past the slide bounds in the rendered PNG.
+6. Uneven corner pixels on a rendered page (broken bg).
 
-- `make_deck_template.py` — working generator skeleton: helpers `rect()`, `text()`, `header()`, `blank_slide()`, `card_row()`, `build()` plus the light palette constants. Start new decks from it and swap the palette.
-- `check_deck.py` — the QA checker described above.
-- `add_fade_transitions.py` — post-save zip patch that adds a uniform fade transition to every slide; run it on the finished pptx.
+Run it; when it prints `=== CLEAN ===` and the `view_image` pages agree, ship it.
 
-## Transitions (working recipe, verified)
+## Deck anatomy that works (deck 1: agents_2025)
 
-python-pptx has no public transition API. A deck-wide fade works by editing the **saved** file — copy every slide XML, insert `<p:transition><p:fade/></p:transition>` directly before `</p:sld>`, rezip. Use `add_fade_transitions.py deck.pptx` for it. Keep one transition for the whole deck.
+S1 title (big type, 3 lines) · S2 context (one card, 4 bullets) · S3 shortlist
+(5 cards in a row) · S4–S5 deep dives (two-panel) · S6 numbered checklist ·
+S7 decision rows (row cards, 3 columns) · S8 closer + sources.
 
-## Theme learnings (decks 2 & 3)
+## Deck 3 (deepwork) — numbered-row audit variant
 
-- Invert the palette: bg `#0F1420`, ink `#E8EDF5`, accent `#4D9FFF`, panel `#1B2436`, muted `#A8B4C8`. The checker's contrast rule applies the same way — check text against the **panel**, not the slide bg.
-- Dark bg bullets: draw the accent chip **before** the text, and draw the bullet glyph (●) in the *background* color on top of the chip — on dark slides "white on accent" reads better than "accent-on-panel".
-- `card_row()` (template helper) takes `y, n, height, titles, bodies` — no extra kwargs; passing `bodies=` as a keyword raises `TypeError`.
+Same shape, but S6 is the daily-audit table: 4 numbered rows at the skill's
+1.25in pitch (0.6in number + 0.6in title + 0.6in desc + 0.05in gap). Pitch
+anything tighter and the desc box overflows ~0.03in — the number column is
+the tell: if the numeral's box starts eating the title's space, pitch is too
+small. The lesson: numbered-list rows are the most pitch-sensitive layout in
+the skill; 1.25in is the proven number, don't tune it per-deck.
 
-**Warm light theme (deck 3)** — a third palette to prove the system is not tied to blue: bg `#FBF7EF` cream, ink `#2A231C` warm brown, accent `#C4571A` burnt orange, panel `#EFE6D8` sand, muted `#5C4F3E`. The accent must clear 4.5:1 on the panel, not just the bg — orange-family accents are the ones that usually fail there.
+Same shape, plus: rounded card with hairline border, native clustered column
+chart paired with a 4-column side-note box, numbered rows with a 1.25in pitch
+(0.6in title + 0.6in desc + 0.05in gap — anything less and the desc box
+overflows by ~0.03in, the most common off-skill failure).
 
-## Card titles: one line, no line breaks
+S1 title (big type, 3 lines) · S2 context (one card, 4 bullets) · S3 shortlist
+(5 cards in a row) · S4–S5 deep dives (two-panel) · S6 numbered checklist ·
+S7 decision rows (row cards, 3 columns) · S8 closer + sources.
 
-- `card_row()` puts each title in a fixed 0.5in band, and the checker estimates lines from length: a 30-char title at 20pt bold wraps to 2 lines on a 3.8in card → overflow flag. Keep card titles **under ~22 characters** or drop `title_size` to 16. Code-like titles (e.g. `Decimal("0.1") + …`) count characters the same way — abbreviate rather than shrink.
-
-## Checker behavior (read the flags carefully)
-
-- "Textboxes overlap" fires for any two *non-empty* text shapes whose rectangles intersect by more than 0.15in × 0.15in — including a caption placed near a panel that has text on it. Stacking a caption *inside* a panel that carries its own text box is the usual cause: give each panel its own single text frame, or separate the boxes.
-- "Low contrast" picks the **smallest filled shape containing the text** as the background; if it reports contrast 1.05 for white text, look for a light panel that actually sits under that box (it was not necessarily the one you intended).
+That's the default shape; deviate when the content needs it.
