@@ -72,6 +72,14 @@ def test_edit_needs_one_exact_match(ws):
     assert ws.run("read_file", {"path": "pkg/b.py"}).count("b") == 2
 
 
+def test_edit_with_an_empty_edits_list_uses_old_and_new_text(ws):
+    ws.run("write_file", {"path": "pkg/c.py", "content": "a = 1\n"})
+    ws.run("edit_file", {"path": "pkg/c.py", "old_text": "a = 1", "new_text": "a = 2", "edits": []})
+    assert "a = 2" in ws.run("read_file", {"path": "pkg/c.py"})
+    with pytest.raises(ToolError, match="non-empty"):
+        ws.run("edit_file", {"path": "pkg/c.py", "edits": []})
+
+
 def test_read_only_sessions_refuse_edits(ws):
     ws.policy = sandbox.Policy("read-only")
     with pytest.raises(ToolError, match="read-only"):

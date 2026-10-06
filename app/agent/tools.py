@@ -480,6 +480,8 @@ class Workspace:
         if not target.is_file():
             raise ToolError(f"{path!r} is not a file")
         self._fresh(target, path)
+        if not edits and old_text is not None:
+            edits = None
         if edits is None:
             if old_text is None or new_text is None:
                 raise ToolError("give old_text and new_text, or edits")

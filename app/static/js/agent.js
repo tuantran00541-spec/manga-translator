@@ -80,13 +80,20 @@
     if (stick) window.scrollTo({ top: document.documentElement.scrollHeight });
   }
 
-  // `code` and **bold** inside a line, built as nodes so model text never becomes markup.
+  // `code`, **bold** and [web links](https://…) inside a line, built as nodes so model text never becomes markup.
   function inline(text) {
     const out = document.createDocumentFragment();
-    String(text).split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/).forEach((part) => {
+    String(text).split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/).forEach((part) => {
+      const link = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
       if (/^`[^`]+`$/.test(part)) out.append(el("code", "", part.slice(1, -1)));
       else if (/^\*\*[^*]+\*\*$/.test(part)) out.append(el("strong", "", part.slice(2, -2)));
-      else if (part) out.append(document.createTextNode(part));
+      else if (link) {
+        const a = el("a", "", link[1]);
+        a.href = link[2];
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        out.append(a);
+      } else if (part) out.append(document.createTextNode(part));
     });
     return out;
   }
@@ -156,10 +163,15 @@
     return a.path || ".";
   }
 
+  // An edit_file call as old/new pairs, whether it used old_text/new_text or an edits list.
+  function editPairs(a) {
+    return Array.isArray(a.edits) && a.edits.length ? a.edits : [{ old_text: a.old_text, new_text: a.new_text }];
+  }
+
   function diffStats(c) {
     const a = c.args || {};
     const count = (s) => (String(s || "").match(/\n/g) || []).length + (s ? 1 : 0);
-    if (c.name === "edit_file") return [count(a.new_text), count(a.old_text)];
+    if (c.name === "edit_file") return editPairs(a).reduce((t, e) => [t[0] + count((e || {}).new_text), t[1] + count((e || {}).old_text)], [0, 0]);
     if (c.name === "write_file") return [count(a.content), 0];
     if (c.name === "apply_patch") {
       const lines = String(a.patch || "").split("\n").filter((l) => !l.startsWith("***"));
@@ -217,7 +229,7 @@
     row.append(head);
     const a = c.args || {};
     const body = el("div", "agent-row-body");
-    if (c.name === "edit_file") body.append(el("pre", "agent-pre agent-old", a.old_text || ""), el("pre", "agent-pre agent-new", a.new_text || ""));
+    if (c.name === "edit_file") editPairs(a).forEach((e) => body.append(el("pre", "agent-pre agent-old", (e && e.old_text) || ""), el("pre", "agent-pre agent-new", (e && e.new_text) || "")));
     else if (c.name === "write_file") body.append(el("pre", "agent-pre agent-new", a.content || ""));
     else if (c.name === "apply_patch") body.append(patchView(a.patch));
     else if (c.name === "edit_lines") body.append(editLinesView(a.edits));
