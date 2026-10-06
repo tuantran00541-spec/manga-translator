@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import urllib.request
 import webbrowser
 from pathlib import Path
@@ -80,10 +81,29 @@ def _running_port() -> int | None:
     return None
 
 
+def _launch_dir() -> Path | None:
+    """The folder `manga` was typed in, for the Agent tab; None from an icon, home, a drive root or the app's own folder."""
+    if not (sys.stdin and sys.stdin.isatty()):
+        return None
+    try:
+        here = Path.cwd().resolve()
+    except OSError:
+        return None
+    if here in (Path.home().resolve(), Path(here.anchor)) or here == BASE_DIR or BASE_DIR in here.parents:
+        return None
+    return here
+
+
+def _page(url: str) -> str:
+    """The app URL, carrying the launch folder for the Agent tab when there is one."""
+    folder = _launch_dir()
+    return f"{url}/?workspace={urllib.parse.quote(str(folder))}" if folder else url
+
+
 def _open_when_up(url: str) -> None:
     for _ in range(240):
         if _is_ours(url):
-            webbrowser.open(url)
+            webbrowser.open(_page(url))
             return
         time.sleep(0.5)
 
@@ -154,8 +174,8 @@ def main(argv: list[str] | None = None) -> None:
     if port is None:
         url = _url(_running_port() or PORT)
         logger.info(f"Manga Translator is already running at {url}")
-        if not (args.window and _show_window(url)):
-            webbrowser.open(url)
+        if not (args.window and _show_window(_page(url))):
+            webbrowser.open(_page(url))
         return
     if port != PORT:
         logger.warning(f"Port {PORT} is used by another program; using {port}")
@@ -224,7 +244,7 @@ def _serve_in_window(port: int) -> None:
         while thread.is_alive() and not _is_ours(url):
             time.sleep(0.3)
 
-    if _show_window(url, on_ready=wait_until_up):
+    if _show_window(_page(url), on_ready=wait_until_up):
         server.should_exit = True
         thread.join(timeout=10)
         return

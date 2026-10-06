@@ -524,6 +524,7 @@
       $("agent-sandbox").value = snap.sandbox.mode;
       $("agent-network").checked = Boolean(snap.sandbox.network);
       $("agent-workspace").value = snap.workspace;
+      showFolder();
       $("agent-model").value = snap.model;
       snap.events.forEach((event) => { if (event.type !== "approval") render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
@@ -632,12 +633,32 @@
     }
   }
 
+  // The folder `manga` was typed in, handed over once in the page URL.
+  const launchFolder = (() => {
+    const url = new URL(window.location.href);
+    const folder = url.searchParams.get("workspace");
+    if (folder === null) return "";
+    url.searchParams.delete("workspace");
+    history.replaceState(history.state, "", url);
+    return folder.trim();
+  })();
+
+  // The composer names the folder the agent works in.
+  function showFolder() {
+    const folder = $("agent-workspace").value.trim();
+    const name = folder.split(/[\\/]/).filter(Boolean).pop() || folder;
+    $("agent-input").placeholder = name ? `Giao việc cho agent trong ${name}… (/ để xem lệnh)` : "Giao việc cho agent… (/ để xem lệnh)";
+    $("agent-input").title = folder;
+  }
+
   window.openAgentView = async () => {
     if (loaded) return;
     loaded = true;
     try {
       const config = await call("/api/agent/config");
-      $("agent-workspace").value = store("get", "manga_agent_workspace") || config.workspace;
+      $("agent-workspace").value = launchFolder || store("get", "manga_agent_workspace") || config.workspace;
+      if (launchFolder) store("set", "manga_agent_workspace", launchFolder);
+      showFolder();
       $("agent-sandbox-info").textContent = SANDBOX_TEXT[config.sandbox_backend] || "";
       await loadProviders();
       loadSessions();
@@ -659,7 +680,7 @@
     $("agent-stop").addEventListener("click", () => session && post(`/api/agent/sessions/${session.id}/stop`).then(poll).catch(() => {}));
     $("agent-new").addEventListener("click", () => { resetLog(); loadSessions(); });
     $("agent-provider").addEventListener("change", () => { resetLog(); loadModels(); });
-    $("agent-workspace").addEventListener("change", resetLog);
+    $("agent-workspace").addEventListener("change", () => { resetLog(); showFolder(); });
     $("agent-model").addEventListener("change", () => syncSession({ model: $("agent-model").value.trim() }));
     $("agent-mode").addEventListener("change", () => syncSession({ mode: $("agent-mode").value }));
     $("agent-sandbox").addEventListener("change", () => syncSession({ sandbox: $("agent-sandbox").value }));
