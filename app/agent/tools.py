@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import ast
 import base64
+import difflib
 import fnmatch
 import json
 import os
 from pathlib import Path
 import re
+import unicodedata
 
 from bs4 import BeautifulSoup
 
@@ -65,10 +67,14 @@ SPECS = [
     {"name": "write_file", "description": "Create or overwrite a file with the given content.",
      "parameters": {"type": "object", "required": ["path", "content"], "properties": {
          "path": {"type": "string"}, "content": {"type": "string"}}}},
-    {"name": "edit_file", "description": "Replace old_text with new_text in a file; old_text must match exactly once unless replace_all.",
-     "parameters": {"type": "object", "required": ["path", "old_text", "new_text"], "properties": {
+    {"name": "edit_file", "description": "Replace old_text with new_text in a file; old_text must match once unless replace_all. "
+                                         "For several changes to one file pass edits, a list of {old_text, new_text}, applied in order and saved together. "
+                                         "Whole lines that differ only in trailing spaces, quote style or indentation still match.",
+     "parameters": {"type": "object", "required": ["path"], "properties": {
          "path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"},
-         "replace_all": {"type": "boolean"}}}},
+         "replace_all": {"type": "boolean"},
+         "edits": {"type": "array", "items": {"type": "object", "required": ["old_text", "new_text"], "properties": {
+             "old_text": {"type": "string"}, "new_text": {"type": "string"}}}}}}},
     {"name": "edit_lines", "description": hashline.GUIDE,
      "parameters": {"type": "object", "required": ["path", "edits"], "properties": {
          "path": {"type": "string"}, "edits": {"type": "array", "items": {"type": "object", "required": ["op", "anchor"], "properties": {
@@ -99,6 +105,54 @@ SPECS = [
 
 class ToolError(Exception):
     """A tool call the agent made wrongly; its message goes back to the model."""
+
+
+LOOSE = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-", "\u00a0": " "})
+
+
+def _loose(line: str, level: int) -> str:
+    line = unicodedata.normalize("NFKC", line).translate(LOOSE).rstrip()
+    return line.strip() if level == 2 else line
+
+
+def _replace(text: str, old: str, new: str, replace_all: bool, where: str = "") -> tuple[str, int]:
+    """One replacement: exact first, then whole lines compared loosely (trailing spaces, quotes, then indentation), as Codex and pi do."""
+    count = text.count(old) if old else 0
+    if count == 1 or (count > 1 and replace_all):
+        return text.replace(old, new), count
+    if count > 1:
+        raise ToolError(f"{where}old_text matches {count} places; add more surrounding lines or set replace_all")
+    lines = text.splitlines(keepends=True)
+    want = old.strip("\r\n").splitlines()
+    for level in (1, 2):
+        wanted = [_loose(line, level) for line in want]
+        have = [_loose(line, level) for line in lines]
+        hits = [i for i in range(len(lines) - len(wanted) + 1) if wanted and have[i:i + len(wanted)] == wanted]
+        if len(hits) == 1:
+            start, end = hits[0], hits[0] + len(wanted)
+            ending = "\r\n" if lines[end - 1].endswith("\r\n") else "\n" if lines[end - 1].endswith("\n") else ""
+            body = new.strip("\r\n")
+            replacement = (body.replace("\n", "\r\n") if ending == "\r\n" else body) + (ending if body or not ending else "")
+            return "".join(lines[:start]) + replacement + "".join(lines[end:]), 1
+        if len(hits) > 1:
+            raise ToolError(f"{where}old_text matches {len(hits)} places once spacing is ignored; add more surrounding lines")
+    raise ToolError(f"{where}old_text was not found; read the file again and copy it exactly" + _closest(lines, want))
+
+
+def _closest(lines: list[str], want: list[str]) -> str:
+    """Where the file has text most like what the model was looking for, so it can copy the real lines."""
+    if not want or len(lines) > 20_000:
+        return ""
+    size, target, best = len(want), "\n".join(line.strip() for line in want), (0.0, 0)
+    for i in range(0, max(1, len(lines) - size + 1)):
+        ratio = difflib.SequenceMatcher(None, target, "\n".join(line.strip() for line in lines[i:i + size])).quick_ratio()
+        if ratio > best[0]:
+            best = (ratio, i)
+    if best[0] < 0.6:
+        return ""
+    start = best[1]
+    snippet = "".join(lines[start:start + size]).rstrip("\n")
+    return f". The closest text is at lines {start + 1}-{start + size}:\n{snippet[:1500]}"
 
 
 def clip(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
@@ -373,20 +427,27 @@ class Workspace:
         target.write_text(str(content), encoding="utf-8")
         return f"Wrote {self.rel(target)} ({len(str(content).splitlines())} lines)"
 
-    def _tool_edit_file(self, path: str, old_text: str, new_text: str, replace_all: bool = False) -> str:
+    def _tool_edit_file(self, path: str, old_text: str | None = None, new_text: str | None = None, replace_all: bool = False,
+                        edits: list | None = None) -> str:
         target = self.resolve(path, write=True)
         if not target.is_file():
             raise ToolError(f"{path!r} is not a file")
         self._fresh(target, path)
-        text = target.read_text(encoding="utf-8")
-        count = text.count(old_text) if old_text else 0
-        if count == 0:
-            raise ToolError("old_text was not found; read the file again and copy it exactly")
-        if count > 1 and not replace_all:
-            raise ToolError(f"old_text matches {count} places; add more surrounding lines or set replace_all")
-        target.write_text(text.replace(old_text, new_text) if replace_all else text.replace(old_text, new_text, 1),
-                          encoding="utf-8")
-        return f"Edited {self.rel(target)} ({count if replace_all else 1} change)"
+        if edits is None:
+            if old_text is None or new_text is None:
+                raise ToolError("give old_text and new_text, or edits")
+            edits = [{"old_text": old_text, "new_text": new_text}]
+        if not isinstance(edits, list) or not edits:
+            raise ToolError("edits must be a non-empty list of {old_text, new_text}")
+        text, changes = target.read_text(encoding="utf-8"), 0
+        for number, edit in enumerate(edits, 1):
+            where = f"edit {number}: " if len(edits) > 1 else ""
+            if not isinstance(edit, dict) or "old_text" not in edit or "new_text" not in edit:
+                raise ToolError(f"{where}each edit needs old_text and new_text")
+            text, count = _replace(text, str(edit["old_text"]), str(edit["new_text"]), bool(replace_all), where)
+            changes += count
+        target.write_text(text, encoding="utf-8")
+        return f"Edited {self.rel(target)} ({changes} change{'s' if changes != 1 else ''})"
 
     def _tool_edit_lines(self, path: str, edits: list) -> str:
         target = self.resolve(path, write=True)

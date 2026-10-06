@@ -1799,3 +1799,19 @@ def test_the_request_prefix_stays_the_same_across_steps_and_each_change_is_count
     wait_for(session, "idle")
     assert any("+goal_done" in k for k in session.cache_log), "a declared change is counted with its cause"
     assert "Token lấy từ cache" in session.command("/cache")["message"]
+
+
+def test_edits_match_loosely_take_several_changes_and_point_at_the_closest_text_when_missing(ws):
+    (ws.root / "q.py").write_text("def greet(name):  \n    print(“hello”, name)\n    return name\n\nx = 1\n")
+    ws.run("read_file", {"path": "q.py"})
+    ws.run("edit_file", {"path": "q.py", "old_text": 'def greet(name):\n    print("hello", name)', "new_text": 'def greet(name):\n    print("hi", name)'})
+    assert ws.root.joinpath("q.py").read_text() == 'def greet(name):\n    print("hi", name)\n    return name\n\nx = 1\n'
+    ws.run("edit_file", {"path": "q.py", "old_text": "return name", "new_text": "return name.upper()"})
+    ws.run("edit_file", {"path": "q.py", "edits": [{"old_text": "x = 1", "new_text": "x = 2"}, {"old_text": "x = 2", "new_text": "x = 3"}]})
+    assert ws.root.joinpath("q.py").read_text().endswith("x = 3\n") and "name.upper()" in ws.root.joinpath("q.py").read_text()
+    with pytest.raises(ToolError) as missing:
+        ws.run("edit_file", {"path": "q.py", "old_text": "def greet(nam):\n    print('hi', name)", "new_text": "pass"})
+    assert "closest text is at lines 1-2" in str(missing.value) and 'print("hi", name)' in str(missing.value)
+    with pytest.raises(ToolError, match="edit 2"):
+        ws.run("edit_file", {"path": "q.py", "edits": [{"old_text": "x = 3", "new_text": "x = 4"}, {"old_text": "nope", "new_text": ""}]})
+    assert ws.root.joinpath("q.py").read_text().endswith("x = 3\n"), "a failing batch saves nothing"
