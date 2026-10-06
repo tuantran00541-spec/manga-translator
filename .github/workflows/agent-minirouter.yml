@@ -1,6 +1,6 @@
 name: Agent minirouter bench
 
-# One-off: the build-from-scratch task on our agent with cheap minirouter models (gpt-6-luna and bonsai).
+# One-off: the build-from-scratch task on our agent with cheap minirouter models (alibaba/qwen3.8-flash).
 on:
   push:
     branches-ignore: [main]
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [luna, bonsai]
+        model: [qwen3.8-flash]
     runs-on: ubuntu-22.04
     timeout-minutes: 75
     env:
@@ -46,7 +46,7 @@ jobs:
               ids = [r["id"] for r in json.load(open("/tmp/models.json"))["data"] if isinstance(r, dict) and "id" in r]
           except Exception as exc:
               print("could not list models:", type(exc).__name__)
-          hits = sorted((i for i in ids if pattern in i.lower()), key=lambda i: ("27" not in i, "2" not in i, i))
+          hits = sorted((i for i in ids if pattern in i.lower()), key=lambda i: (not i.startswith("alibaba/"), i))
           open(f"{os.environ['OUT']}/models-matching.txt", "w").write("\n".join(hits) or "(none)")
           print(f"{len(ids)} models listed; matching {pattern!r}:", hits[:8])
           if not hits:
