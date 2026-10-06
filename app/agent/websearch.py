@@ -1,4 +1,4 @@
-"""Web search for the agent: Tavily, then Brave when a key is set in the environment, then DuckDuckGo's plain HTML page; the next one answers when one fails or finds nothing."""
+"""Web search for the agent: Tavily when a key is set in the environment, else DuckDuckGo's plain HTML page; DuckDuckGo answers when Tavily fails or finds nothing."""
 from __future__ import annotations
 
 import os
@@ -24,7 +24,7 @@ def _rows(results: list[tuple[str, str, str]]) -> str:
     return "\n\n".join(f"{i}. {title}\n{url}\n{snippet}".rstrip() for i, (title, url, snippet) in enumerate(results, 1))
 
 
-RECENCY = {"day": ("day", "pd", "d"), "week": ("week", "pw", "w"), "month": ("month", "pm", "m"), "year": ("year", "py", "y")}
+RECENCY = {"day": ("day", "d"), "week": ("week", "w"), "month": ("month", "m"), "year": ("year", "y")}
 
 
 def _tavily(query: str, count: int, key: str, recency: str = "") -> list[tuple[str, str, str]]:
@@ -33,15 +33,6 @@ def _tavily(query: str, count: int, key: str, recency: str = "") -> list[tuple[s
                           headers={"Authorization": f"Bearer {key}"})
     reply.raise_for_status()
     return [(r.get("title", ""), r.get("url", ""), (r.get("content") or "")[:400]) for r in reply.json().get("results", [])]
-
-
-def _brave(query: str, count: int, key: str, recency: str = "") -> list[tuple[str, str, str]]:
-    params = {"q": query, "count": count, **({"freshness": RECENCY[recency][1]} if recency else {})}
-    reply = requests.get("https://api.search.brave.com/res/v1/web/search", params=params, timeout=TIMEOUT,
-                         headers={"X-Subscription-Token": key, "Accept": "application/json"})
-    reply.raise_for_status()
-    return [(r.get("title", ""), r.get("url", ""), BeautifulSoup(r.get("description", ""), "lxml").get_text()[:400])
-            for r in reply.json().get("web", {}).get("results", [])]
 
 
 def parse_duckduckgo(html: str, count: int) -> list[tuple[str, str, str]]:
@@ -60,7 +51,7 @@ def parse_duckduckgo(html: str, count: int) -> list[tuple[str, str, str]]:
 
 
 def _duckduckgo(query: str, count: int, recency: str = "") -> list[tuple[str, str, str]]:
-    when = f"&df={RECENCY[recency][2]}" if recency else ""
+    when = f"&df={RECENCY[recency][1]}" if recency else ""
     response = safe_get(f"https://html.duckduckgo.com/html/?q={quote_plus(query)}{when}", timeout=TIMEOUT, headers={"User-Agent": UA})
     try:
         html = read_response_limited(response, limit_bytes=2_000_000).decode(response.encoding or "utf-8", errors="replace")
@@ -68,7 +59,7 @@ def _duckduckgo(query: str, count: int, recency: str = "") -> list[tuple[str, st
         response.close()
     found = parse_duckduckgo(html, count)
     if not found and ("anomaly" in html.lower() or "captcha" in html.lower()):
-        raise SearchError("DuckDuckGo refused this machine; set TAVILY_API_KEY or BRAVE_API_KEY for a search service")
+        raise SearchError("DuckDuckGo refused this machine; set TAVILY_API_KEY for a search service")
     return found
 
 
@@ -117,9 +108,6 @@ def search(query: str, count: int = 8, recency: str = "") -> str:
     chain = []
     if os.environ.get("TAVILY_API_KEY"):
         chain.append(("Tavily", lambda: _tavily(query, count, os.environ["TAVILY_API_KEY"], **extra)))
-    brave = os.environ.get("BRAVE_API_KEY") or os.environ.get("BRAVE_SEARCH_API_KEY")
-    if brave:
-        chain.append(("Brave", lambda: _brave(query, count, brave, **extra)))
     chain.append(("DuckDuckGo", lambda: _duckduckgo(query, count, **extra)))
     failures, answered = [], False
     for name, run in chain:

@@ -1271,13 +1271,11 @@ def test_this_process_is_not_readable_by_its_confined_children(home):
 
 # Tools beyond the project: web search, downloads, background jobs.
 
-def test_web_search_reads_duckduckgo_and_keyed_services(monkeypatch):
+def test_web_search_reads_duckduckgo_and_tavily(monkeypatch):
     from app.agent import websearch
     html = ('<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.python.org%2F&rut=x">Python</a>'
             '<a class="result__snippet">The official home</a></div>')
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-    monkeypatch.delenv("BRAVE_API_KEY", raising=False)
-    monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
     monkeypatch.setattr(websearch, "_duckduckgo", lambda q, n: websearch.parse_duckduckgo(html, n))
     assert websearch.search("python") == "1. Python\nhttps://www.python.org/\nThe official home"
     monkeypatch.setenv("TAVILY_API_KEY", "k")
@@ -2311,8 +2309,6 @@ def test_a_busy_model_429_is_waited_out_but_a_spent_quota_is_not(monkeypatch):
 def test_web_search_falls_through_the_providers_filters_by_site_and_names_a_constraint_it_dropped(monkeypatch):
     from app.agent import websearch
     monkeypatch.setenv("TAVILY_API_KEY", "t")
-    monkeypatch.delenv("BRAVE_API_KEY", raising=False)
-    monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
     rows = [("Repo", "https://github.com/anthropics/claude-code", "code"), ("Talk", "https://www.reddit.com/r/x", "chat"), ("Paper", "https://docs.example.org/a.pdf", "pdf")]
     seen = {}
 
