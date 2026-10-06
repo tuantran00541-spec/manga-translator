@@ -1,0 +1,14 @@
+
+==================================== ERRORS ====================================
+___________________ ERROR collecting tests/test_notebook.py ____________________
+ImportError while importing test module '/tmp/agent-work/project/tests/test_notebook.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+tests/test_notebook.py:3: in <module>
+    from notekeeper.notebook import NoteBook
+E   ModuleNotFoundError: No module named 'notekeeper.notebook'
+=========================== short test summary info ============================
+ERROR tests/test_notebook.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
