@@ -71,7 +71,7 @@ def native_tools(specs: list[dict]) -> list[dict]:
 
 def text_tools_prompt(specs: list[dict]) -> str:
     return TEXT_TOOLS_GUIDE + "\n".join(
-        f"- {s['name']}: {s['description']} Arguments: {json.dumps(s['parameters'].get('properties', {}))}"
+        f"- {s['name']}: {s['description']} Arguments: {json.dumps((s.get('parameters') or {}).get('properties', {}))}"
         for s in specs
     )
 

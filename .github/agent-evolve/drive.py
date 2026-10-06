@@ -71,7 +71,7 @@ def run_phase(session, name: str, prompt: str) -> dict:
     session.set_deadline(LIMITS[name] * 60)
     first = len(session.events)
     session.send(prompt)
-    seen, approvals, last_print = first, [], start
+    seen, approvals, last_print, nudges = first, [], start, 0
     while True:
         time.sleep(3)
         for event in session.events[seen:]:
@@ -85,6 +85,13 @@ def run_phase(session, name: str, prompt: str) -> dict:
             print(f"[{name}] approving {session.pending['name']}", flush=True)
             session.decide("allow")
         if session.status == "idle" and time.time() - start > 10:
+            # A turn that stopped on an error is nudged on while the phase has time, as a person watching would.
+            stopped = any(e["type"] == "error" for e in session.events[first:][-3:])
+            if stopped and nudges < 3 and time.time() - start < (LIMITS[name] - 5) * 60:
+                nudges += 1
+                print(f"[{name}] stopped on an error; nudge {nudges}", flush=True)
+                session.send("Tiếp tục nhiệm vụ từ chỗ đang dừng.")
+                continue
             break
         if time.time() - start > (LIMITS[name] + 10) * 60:
             session.stop()

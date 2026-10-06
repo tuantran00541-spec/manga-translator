@@ -142,9 +142,21 @@ class Registry:
     def tool(self, spec: dict, handler: Callable, kind: str = "exec", group: str | None = None, always_ask: bool = False) -> None:
         """handler(session, args) returns the text the model reads; kind is read, edit, exec or net."""
         name = str(spec.get("name") or "")
-        if not NAME_RE.match(name) or name in self.reserved or name in self.tools or kind not in ("read", "edit", "exec", "net"):
-            raise ValueError(f"tool {name!r} cannot be registered")
-        self.tools[name] = ToolDef(spec, handler, kind, group or self._current or name, always_ask)
+        kind = spec.get("kind", kind) if kind == "exec" else kind
+        if not NAME_RE.match(name):
+            raise ValueError(f"tool {name!r} cannot be registered: a name is lower_case letters, digits and _, starting with a letter")
+        if name in self.reserved:
+            raise ValueError(f"tool {name!r} cannot be registered: a built-in tool has that name")
+        if name in self.tools:
+            raise ValueError(f"tool {name!r} cannot be registered: plugin {self.tools[name].group} already registered it")
+        if kind not in ("read", "edit", "exec", "net"):
+            raise ValueError(f"tool {name!r} cannot be registered: kind must be read, edit, exec or net, got {kind!r}; call register(spec, handler, kind)")
+        if not callable(handler):
+            raise ValueError(f"tool {name!r} cannot be registered: its handler is not a function")
+        # The model only takes name, description and a JSON schema; a spec without parameters breaks the request.
+        parameters = spec.get("parameters") if isinstance(spec.get("parameters"), dict) else {"type": "object", "properties": {}}
+        clean = {"name": name, "description": str(spec.get("description") or name), "parameters": parameters}
+        self.tools[name] = ToolDef(clean, handler, kind, group or self._current or name, always_ask)
 
     def command(self, name: str, description: str, handler: Callable) -> None:
         """handler(session, args) returns a message string or a dict like command() does."""

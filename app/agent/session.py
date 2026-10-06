@@ -151,13 +151,15 @@ SESSION_SPECS = {
     "plugin_write": {"name": "plugin_write", "description": (
         "Write a Python plugin that extends you, save it to ~/.manga-agent/plugins/ID.py and mount it now (the user approves every time). "
         "It defines inject = [service names it needs, e.g. \"tools\", \"commands\", \"session\"], optional defaults = {config}, and "
-        "apply(ctx, config). ctx.get(\"tools\").register(spec, handler(session, args) -> str, kind=\"read\"|\"edit\"|\"exec\"|\"net\") adds a tool; "
+        "apply(ctx, config). ctx.get(\"tools\").register({name, description, parameters: JSON schema}, handler(session, args) -> str, "
+        "kind=\"read\"|\"edit\"|\"exec\"|\"net\") adds a tool; "
         "ctx.get(\"commands\").register(name, description, handler(session, args)) adds a slash command; ctx.on(\"tool/execute\", fn(call, next)) "
         "wraps every tool call (return next(call) or your own (output, ok)); ctx.on(\"model/request\", fn(request, next)) wraps model calls; "
         "ctx.on(\"tool/approve\", fn({call, ask, mode}, next)) adjusts approvals; ctx.provide(\"web.search/NAME\", fn) adds a provider "
         "(web.search, web.fetch, shell, model, compact). Everything it registers is undone when it is removed."),
-        "parameters": {"type": "object", "required": ["id", "code"], "properties": {
+        "parameters": {"type": "object", "required": ["id"], "properties": {
             "id": {"type": "string", "description": "lower_case name, also the file name"}, "code": {"type": "string"},
+            "path": {"type": "string", "description": "a workspace file holding the code, instead of code (better for a long plugin)"},
             "config": {"type": "object"}}}},
     "plugin_remove": {"name": "plugin_remove", "description": "Unmount a plugin you or the user wrote and delete its file (the user approves).",
                       "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
@@ -1019,24 +1021,43 @@ class AgentSession:
             self.kernel.unmount(pid)
             path.unlink(missing_ok=True)
             return f"Plugin {pid} unmounted and its file deleted."
-        code = str(args.get("code") or "")
+        if args.get("path"):
+            # A long plugin is written to a workspace file first; one huge code argument is easily cut or garbled on the way.
+            source = self.workspace.resolve(str(args["path"]))
+            if not source.is_file():
+                raise ToolError(f"No file {args['path']}")
+            code = source.read_text(encoding="utf-8")
+        else:
+            code = str(args.get("code") or "")
+        if not code.strip():
+            raise ToolError("plugin_write needs the plugin's code in code, or the path of a workspace file holding it")
         try:
             compile(code, str(path), "exec")
         except SyntaxError as exc:
             raise ToolError(f"Syntax error in the plugin: {exc}") from exc
+        before = path.read_text(encoding="utf-8") if path.is_file() else None
         folder.mkdir(parents=True, exist_ok=True)
         path.write_text(code, encoding="utf-8")
         try:
             module = kernel.load_module(path, f"manga_agent_agent_{pid}")
+            if not callable(getattr(module, "apply", None)):
+                raise ToolError("The plugin needs a function apply(ctx, config); nothing was saved")
         except Exception as exc:
-            raise ToolError(f"The plugin file was saved but failed to load: {type(exc).__name__}: {exc}") from exc
-        if not callable(getattr(module, "apply", None)):
-            raise ToolError("The plugin needs a function apply(ctx, config)")
+            # A file that cannot load is not kept, so the next session does not trip on it.
+            if before is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_text(before, encoding="utf-8")
+            if isinstance(exc, ToolError):
+                raise
+            raise ToolError(f"The plugin failed to load, nothing was saved: {type(exc).__name__}: {exc}") from exc
         config = args.get("config") if isinstance(args.get("config"), dict) else {}
         self.kernel.mount(kernel.Row(pid, module, config, False, "agent"))
         mounted = self.kernel.rows[pid]
         detail = f" — {mounted.error}" if mounted.error else ""
         self.emit("notice", text=f"Plugin {pid} mounted: {mounted.state}{detail}")
+        if mounted.state == "failed":
+            raise ToolError(f"Saved {path} but it failed to start{detail}. Fix it and call plugin_write again.")
         return f"Saved {path} and mounted it: {mounted.state}{detail}. It loads again in every new session; /plugins shows the tree."
 
     def _session_tool(self, call: dict) -> str:
@@ -1470,6 +1491,13 @@ class AgentSession:
                 return f"[{fixed[2]}.]\n{output}", ok
         if call["name"] not in known:
             return f"Unknown tool {call['name']!r}; available: {', '.join(sorted(known))}", False
+        required = next((s.get("parameters", {}).get("required") or [] for s in self.specs() if s["name"] == call["name"]), [])
+        missing = [k for k in required if isinstance(call["args"], dict) and k not in call["args"]]
+        if missing and not str(call.get("id", "")).startswith("script-"):
+            # Checked before approval, so nobody is asked to approve a call that cannot run.
+            got = ", ".join(call["args"]) if call["args"] else "no arguments at all"
+            return (f"{call['name']} needs {', '.join(missing)}; this call arrived with {got}. A very long argument can be cut or garbled "
+                    "on the way: write long content to a file first and pass its path where the tool takes one."), False
         signature = call["name"] + json.dumps(call["args"], sort_keys=True, default=str)
         self._recent = (self._recent + [signature])[-DOOM_LOOP:]
         if len(self._recent) == DOOM_LOOP and len(set(self._recent)) == 1 and call["name"] != "wait_agent":

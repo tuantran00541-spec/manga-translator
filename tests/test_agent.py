@@ -2914,6 +2914,35 @@ def test_the_agent_writes_a_plugin_that_mounts_after_approval_even_in_auto_mode(
     assert "shout" not in {s["name"] for s in session.specs()} and not (home / ".manga-agent" / "plugins" / "shouter.py").exists()
 
 
+def test_plugin_write_failures_from_the_evolve_run_say_what_is_wrong(ws, home, tmp_path):
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    plugins = home / ".manga-agent" / "plugins"
+    output, ok = session._run_call({"id": "1", "name": "plugin_write", "args": {}})
+    assert not ok and "needs id" in output and "no arguments at all" in output and session.pending is None, "an empty call never reaches approval"
+    with pytest.raises(ToolError, match="apply"):
+        session._self_extend({"name": "plugin_write", "args": {"id": "x", "code": "print('ok')"}})
+    assert not (plugins / "x.py").exists(), "a plugin that cannot load is not kept for the next session"
+    # The tool spec had no parameters and kind went in as the third argument: the session crashed on 'parameters'.
+    (ws.root / "big.py").write_text(textwrap.dedent('''
+        inject = ["tools"]
+
+        def apply(ctx, config):
+            ctx.get("tools").register(dict(name="make_pptx", description="Make a deck.", kind="edit"), lambda s, a: "made")
+            ctx.get("tools").register(dict(name="check_pptx", description="Check a deck."), lambda s, a: "clean", "check_pptx")
+    '''))
+    with pytest.raises(ToolError, match="kind must be read, edit, exec or net, got 'check_pptx'"):
+        session._self_extend({"name": "plugin_write", "args": {"id": "deck", "path": "big.py"}})
+    (ws.root / "big.py").write_text((ws.root / "big.py").read_text().replace(', "check_pptx")', ', "read")'))
+    assert "active" in session._self_extend({"name": "plugin_write", "args": {"id": "deck", "path": "big.py"}})
+    specs = {s["name"]: s for s in session.specs()}
+    assert specs["make_pptx"]["parameters"] == {"type": "object", "properties": {}} and "kind" not in specs["make_pptx"]
+    assert session.registry.tools["make_pptx"].kind == "edit", "a kind given inside the spec is honoured"
+    with pytest.raises(ValueError, match="plugin deck already registered it"):
+        session.registry.tool({"name": "make_pptx"}, lambda s, a: "", "read")
+    with pytest.raises(ValueError, match="a built-in tool has that name"):
+        session.registry.tool({"name": "read_file"}, lambda s, a: "", "read")
+
+
 def test_core_seams_take_plugin_providers_for_the_model_compaction_and_approvals(ws, home, tmp_path):
     folder = home / ".manga-agent"
     (folder / "plugins").mkdir(parents=True, exist_ok=True)
