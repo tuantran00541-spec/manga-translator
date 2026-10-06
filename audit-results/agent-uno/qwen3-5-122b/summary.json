@@ -1,0 +1,26 @@
+{
+ "model": "qwen3.5-122b-a10b:free",
+ "status": "idle",
+ "usage": {
+  "prompt_tokens": 205017,
+  "completion_tokens": 8315,
+  "cached_tokens": 138752
+ },
+ "stats": {
+  "model_seconds": 1202.6,
+  "tool_seconds": 11.8,
+  "cache_pct": 68,
+  "cost": null
+ },
+ "steps": 21,
+ "tool_counts": {
+  "edit_file": 3,
+  "list_dir": 1,
+  "run_command": 6,
+  "todo_write": 1,
+  "write_file": 9
+ },
+ "failed_tools": [],
+ "errors": [],
+ "notices": []
+}
