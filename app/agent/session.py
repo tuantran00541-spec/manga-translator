@@ -42,6 +42,12 @@ WAIT_MAX = 900
 NICKNAMES = ("ash", "birch", "cedar", "elm", "fern", "hazel", "ivy", "juniper", "maple", "oak", "pine", "rowan", "sage", "willow",
              "alder", "beech", "clover", "dahlia", "fir", "holly", "iris", "laurel", "moss", "nettle")
 COMPACT_AT = 200_000
+KEEP_RECENT_CHARS = 60_000
+OVERFLOW_RE = re.compile(r"context.{0,20}(length|window)|maximum context|too many tokens|prompt is too long|reduce the length", re.I)
+FILE_BLOCK = re.compile(r"<(read|modified)-files>\n(.*?)\n</\1-files>", re.S)
+SUMMARY_PROMPT = """Write a handover summary of this conversation between a user and a coding agent, so the agent can continue without it.
+Use exactly these sections: Goal; Constraints and preferences; Progress (done, in progress); Key decisions and why; Critical context (exact names, paths, commands, error messages and results that are still needed); Next steps.
+Be specific. If the conversation already starts with an earlier summary, fold it in and keep what is still true."""
 MAX_HISTORY_CHARS = 450_000
 MAX_SESSIONS = 50
 HOOK_TIMEOUT = 60
@@ -1119,6 +1125,18 @@ class AgentSession:
             self.stats["model_s"] += time.time() - started
 
     def _turn(self) -> dict:
+        try:
+            return self._turn_once()
+        except RuntimeError as exc:
+            # A full context window is recovered from, not fatal: summarise the older part and ask again.
+            if not OVERFLOW_RE.search(str(exc)) or self.depth:
+                raise
+            self.emit("notice", text="Vượt giới hạn ngữ cảnh của model; tóm gọn phần cũ rồi thử lại.")
+            if not self.compact(keep=KEEP_RECENT_CHARS // 3):
+                raise
+            return self._turn_once()
+
+    def _turn_once(self) -> dict:
         system, specs = self.system_prompt(), self.specs()
         try:
             return self._call_model(client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
@@ -1143,22 +1161,54 @@ class AgentSession:
                 rows.append(f"TOOL {item['name']}: {item['content'][:1500]}")
         return clip("\n\n".join(rows), 200_000)
 
-    def compact(self, focus: str = "") -> bool:
-        """Replace everything before the latest user message with a summary the model writes."""
-        last_user = max((i for i, item in enumerate(self.history) if item["role"] == "user"), default=0)
-        head, tail = self.history[:last_user], self.history[last_user:]
+    def _cut_point(self, keep: int | None) -> int:
+        """Where the kept recent part starts: about `keep` characters from the end, at a user or assistant message, never inside a call's results."""
+        if keep is None:
+            return max((i for i, item in enumerate(self.history) if item["role"] == "user"), default=0)
+        total = 0
+        for i in range(len(self.history) - 1, -1, -1):
+            total += len(json.dumps(self.history[i], ensure_ascii=False))
+            if total >= keep:
+                j = i
+                while j < len(self.history) and self.history[j]["role"] == "tool":
+                    j += 1
+                return j if j < len(self.history) else 0
+        return 0
+
+    def _file_lists(self, head: list[dict]) -> str:
+        """Files read and changed in the part being summarised, carried over from earlier summaries too."""
+        read, changed = set(), set()
+        for item in head:
+            if item["role"] == "user":
+                for kind, body in FILE_BLOCK.findall(item["content"]):
+                    (read if kind == "read" else changed).update(line for line in body.splitlines() if line)
+            for call in item.get("calls") or []:
+                if not isinstance(call.get("args"), dict):
+                    continue
+                if call["name"] == "read_file" and call["args"].get("path"):
+                    read.add(str(call["args"]["path"]))
+                elif KIND.get(call["name"]) == "edit":
+                    changed.update(self.workspace.rel(path) for path in self.workspace.targets(call["name"], call["args"]))
+        read -= changed
+        return "".join(f"\n\n<{tag}-files>\n" + "\n".join(sorted(names)[:80]) + f"\n</{tag}-files>" for tag, names in (("read", read), ("modified", changed)) if names)
+
+    def compact(self, focus: str = "", keep: int | None = None) -> bool:
+        """Replace the older part of the conversation with a summary the model writes; keep=None summarises up to the latest user message."""
+        cut = self._cut_point(keep)
+        head, tail = self.history[:cut], self.history[cut:]
         if not head:
             return False
-        ask = ("Summarise this conversation between a user and a coding agent so the agent can continue without it: "
-               "the goals, decisions, files read and changed with key details, commands run and results, open problems "
-               "and next steps. Be specific and complete." + (f" Focus on: {focus}" if focus else ""))
+        ask = SUMMARY_PROMPT + (f"\nFocus on: {focus}" if focus else "")
         messages = [{"role": "system", "content": "You write precise handover summaries."},
                     {"role": "user", "content": f"{ask}\n\n<conversation>\n{self._transcript(head)}\n</conversation>"}]
         summary = self.complete(self.provider, self.api_key, self.profile.get("compact_model") or self.model, messages, tools=None)["text"]
         if not summary:
             return False
-        self.history = [{"role": "user", "content": f"[Summary of the earlier conversation]\n{summary}"},
-                        {"role": "assistant", "content": "Understood; continuing from that summary.", "calls": []}] + tail
+        summary = FILE_BLOCK.sub("", summary).rstrip()
+        marker = [{"role": "user", "content": f"[Summary of the earlier conversation]\n{summary}{self._file_lists(head)}"}]
+        # Two user messages in a row are fine; an acknowledgement is only needed so the next message is not an assistant one.
+        ack = [{"role": "assistant", "content": "Understood; continuing from that summary.", "calls": []}] if not tail or tail[0]["role"] == "user" else []
+        self.history = marker + ack + tail
         self.emit("notice", text=f"Đã tóm gọn {len(head)} mục hội thoại cũ.")
         return True
 
@@ -1190,7 +1240,7 @@ class AgentSession:
         self._mask_old()
         if self._size() > COMPACT_AT and not self.depth:
             try:
-                self.compact()
+                self.compact(keep=KEEP_RECENT_CHARS)
             except Exception as exc:
                 logger.warning("Agent session {} could not compact: {}", self.id, exc)
         size = self._size()

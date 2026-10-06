@@ -1654,3 +1654,50 @@ def test_when_the_token_budget_runs_out_the_agent_still_reports_what_it_has(ws, 
     cached = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", session_id="cache", complete=scripted())
     cached.usage.update({"prompt_tokens": 1000, "cached_tokens": 900, "completion_tokens": 10})
     assert cached._spent() == 110, "cached prompt tokens are not counted again"
+
+
+def long_history(n, size=2000):
+    items = [{"role": "user", "content": "build the thing"}]
+    for i in range(n):
+        items.append({"role": "assistant", "content": "", "calls": [{"id": f"c{i}", "name": "read_file", "args": {"path": f"src/f{i}.py"}}]})
+        items.append({"role": "tool", "id": f"c{i}", "name": "read_file", "content": "x" * size})
+    return items
+
+
+def test_one_long_turn_is_compacted_in_the_middle_keeping_the_recent_part_and_the_file_lists(ws, home):
+    summaries = []
+
+    def summarise(provider, key, model, messages, *, tools):
+        summaries.append(messages[1]["content"])
+        return turn("## Goal\nbuild the thing\n## Progress\nread many files")
+
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=summarise)
+    session.history = long_history(60)
+    session.history.insert(5, {"role": "assistant", "content": "", "calls": [{"id": "w", "name": "write_file", "args": {"path": "out.txt", "content": "z"}}]})
+    session.history.insert(6, {"role": "tool", "id": "w", "name": "write_file", "content": "Wrote out.txt"})
+    assert session.compact(keep=30_000)
+    first = session.history[0]["content"]
+    assert first.startswith("[Summary of the earlier conversation]") and "<modified-files>\nout.txt\n</modified-files>" in first and "src/f0.py" in first
+    assert session.history[1]["role"] == "assistant" and session.history[1].get("calls"), "the kept part starts at an assistant call, with its results after it"
+    assert all(item["role"] != "tool" or any(c["id"] == item["id"] for prev in session.history[:session.history.index(item)] for c in prev.get("calls") or []) for item in session.history)
+    assert len(session.history) < 40 and "THE_PREVIOUS" not in first
+    # A second compaction folds the first summary in and keeps the earlier file lists.
+    session.history += long_history(40)[1:]
+    assert session.compact(keep=30_000)
+    assert "src/f0.py" in session.history[0]["content"] and "out.txt" in session.history[0]["content"] and "[Summary of the earlier conversation]" in summaries[1]
+
+
+def test_a_context_length_error_is_recovered_by_summarising_and_asking_again(ws, home):
+    seen = []
+
+    def complete(provider, key, model, messages, *, tools):
+        seen.append(tools)
+        if tools and len(seen) == 1:
+            raise RuntimeError("polargrid HTTP 400: This model's maximum context length is 32768 tokens")
+        return turn("## Goal\nx") if tools is None else turn("Carried on.")
+
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    session.history = long_history(80)
+    run_to_idle(session, "continue")
+    assert [e["text"] for e in session.events if e["type"] == "assistant"][-1] == "Carried on."
+    assert any("Vượt giới hạn ngữ cảnh" in e.get("text", "") for e in session.events if e["type"] == "notice")
