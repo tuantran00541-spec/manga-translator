@@ -7,6 +7,9 @@
     list_dir: "Xem", read_file: "Đọc", search: "Tìm", glob: "Tìm file", write_file: "Tạo", edit_file: "Sửa",
     apply_patch: "Vá", edit_lines: "Sửa dòng", run_command: "Chạy", web_fetch: "Mở trang", skill: "Mở skill", todo_write: "Kế hoạch",
     task: "Agent phụ", spawn_agent: "Giao việc", wait_agent: "Đợi agent", send_input: "Nhắn agent", close_agent: "Đóng agent", delegate: "Agent ngoài", memory: "Ghi nhớ", ask_user: "Hỏi bạn", exit_plan_mode: "Kế hoạch", goal_done: "Xong mục tiêu",
+    symbols: "Ký hiệu", web_search: "Tìm web", web_download: "Tải", view_image: "Xem ảnh", tool_search: "Tìm công cụ", run_script: "Script", fan_out: "Chia việc",
+    job_output: "Đọc job", job_input: "Gõ vào job", job_stop: "Dừng job", oracle: "Hỏi oracle", context_notes: "Sổ ghi chú", new_context: "Ngữ cảnh mới",
+    schedule_create: "Hẹn giờ", schedule_list: "Xem hẹn giờ", schedule_delete: "Huỷ hẹn giờ",
   };
   // How each kind of call is counted in a group's one-line summary.
   const TALLY = {
@@ -14,6 +17,8 @@
     apply_patch: ["sửa", "file"], edit_lines: ["sửa", "file"], spawn_agent: ["giao", "việc cho agent phụ"], wait_agent: ["đợi", "agent phụ"],
     send_input: ["nhắn", "agent phụ"], delegate: ["giao", "việc cho agent ngoài"], close_agent: ["đóng", "agent phụ"], memory: ["ghi", "nhớ"], list_dir: ["tìm", "lần"], search: ["tìm", "lần"], glob: ["tìm", "lần"],
     web_fetch: ["đọc", "trang web"], skill: ["mở", "skill"], task: ["giao", "việc cho agent phụ"], mcp: ["gọi", "công cụ MCP"],
+    run_script: ["chạy", "script"], fan_out: ["chia", "đợt việc cho agent phụ"], job_input: ["gõ vào", "job"], job_output: ["đọc", "job"], job_stop: ["dừng", "job"],
+    oracle: ["hỏi", "oracle"], schedule_create: ["hẹn", "giờ"], web_search: ["tìm", "trên web"], symbols: ["tìm", "lần"],
   };
   const SANDBOX_TEXT = {
     landlock: "Lệnh chạy trong sandbox Landlock của Linux.", seatbelt: "Lệnh chạy trong sandbox Seatbelt của macOS.",
@@ -139,6 +144,12 @@
     if (c.name === "delegate") return `${a.agent || ""}: ${String(a.prompt || "").slice(0, 80)}`;
     if (c.name === "memory") return `${a.action || ""} ${a.text || ""}`.trim();
     if (c.name === "goal_done") return a.summary || "";
+    if (c.name === "run_script") return String(a.code || "").split("\n").find((l) => l.trim()) || "";
+    if (c.name === "fan_out") return `${(a.jobs || []).length} việc${a.schema ? " có schema" : ""}`;
+    if (c.name === "job_input") return `${a.id || ""}: ${JSON.stringify(String(a.chars || "")).slice(0, 60)}`;
+    if (c.name === "job_output" || c.name === "job_stop" || c.name === "schedule_delete") return a.id || "";
+    if (c.name === "oracle") return String(a.question || "").slice(0, 80);
+    if (c.name === "schedule_create") return `sau ${a.in_minutes || "?"} phút${a.every_minutes ? `, lặp mỗi ${a.every_minutes} phút` : ""}: ${String(a.prompt || "").slice(0, 50)}`;
     if (c.name === "apply_patch") return (String(a.patch || "").match(/^\*\*\* (?:Add|Update|Delete) File: .+$/gm) || []).map((l) => l.split(": ")[1]).join(", ");
     if (isMcp(c.name)) return c.name.replace(/^mcp__/, "").replace("__", ": ");
     return a.path || ".";
@@ -210,6 +221,9 @@
     else if (c.name === "apply_patch") body.append(patchView(a.patch));
     else if (c.name === "edit_lines") body.append(editLinesView(a.edits));
     else if (c.name === "task") body.append(el("pre", "agent-pre", a.prompt || ""));
+    else if (c.name === "run_script") body.append(el("pre", "agent-pre", a.code || ""));
+    else if (c.name === "fan_out") body.append(el("pre", "agent-pre", (Array.isArray(a.jobs) ? a.jobs : []).map((j, n) => `${n + 1}. ${j.description || ""}\n${j.prompt || ""}`).join("\n\n") + (a.schema ? `\n\nschema: ${JSON.stringify(a.schema)}` : "")));
+    else if (c.name === "oracle") body.append(el("pre", "agent-pre", a.question || ""));
     else if (c.name === "spawn_agent" || c.name === "send_input") body.append(el("pre", "agent-pre", a.message || ""));
     else if (isMcp(c.name)) body.append(el("pre", "agent-pre", JSON.stringify(a, null, 2)));
     row.append(body);
