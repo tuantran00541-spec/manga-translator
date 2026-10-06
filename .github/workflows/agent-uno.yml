@@ -1,0 +1,150 @@
+name: Agent uno bench
+
+# One-off: try the free models on api.unorouter.com with the key, then a small build-from-scratch task on each.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/agent-uno.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  discover:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    env:
+      OUT: audit-results/agent-uno/models
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: List models and pick the free ones
+        id: pick
+        env:
+          UNO_KEY: ${{ secrets.UNO_ROUTER }}
+        run: |
+          mkdir -p "$OUT"
+          [ -n "$UNO_KEY" ] || { echo "::error::secret UNO_ROUTER is not set"; exit 1; }
+          code=$(curl -sS -m 30 -o /tmp/models.json -w '%{http_code}' -H "Authorization: Bearer $UNO_KEY" https://api.unorouter.com/v1/models || true)
+          echo "GET /v1/models -> HTTP $code"
+          python - <<'PY'
+          import json, os, re
+          out = os.environ["OUT"]
+          try:
+              rows = json.load(open("/tmp/models.json"))["data"]
+          except Exception as exc:
+              print("could not read the model list:", type(exc).__name__)
+              open(os.environ["GITHUB_OUTPUT"], "a").write("matrix=[]\n")
+              raise SystemExit(1)
+
+          def free(row):
+              price = row.get("pricing")
+              zero = isinstance(price, dict) and price and all(str(v).strip() in ("0", "0.0", "0.00", "") for k, v in price.items() if k in ("prompt", "completion", "input", "output"))
+              return bool(zero) or ":free" in row["id"].lower() or row["id"].lower().endswith("-free")
+
+          ids = [r["id"] for r in rows if isinstance(r, dict) and "id" in r]
+          hits = [r["id"] for r in rows if isinstance(r, dict) and "id" in r and free(r)]
+          open(f"{out}/all-models.txt", "w").write("\n".join(ids))
+          open(f"{out}/free-models.txt", "w").write("\n".join(hits) or "(none)")
+          open(f"{out}/first-entry.json", "w").write(json.dumps(rows[0] if rows else {}, indent=1))
+          print(f"{len(ids)} models, {len(hits)} look free:", hits[:12])
+          picked = [{"id": i, "slug": re.sub(r"[^a-z0-9]+", "-", i.lower()).strip("-")[:60]} for i in hits[:4]]
+          open(os.environ["GITHUB_OUTPUT"], "a").write("matrix=" + json.dumps(picked) + "\n")
+          PY
+      - name: Give git access only now
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - uses: ./.github/actions/save-evidence
+        if: always()
+        with:
+          paths: audit-results/agent-uno/models
+          message: "audit: Agent uno model list (run ${{ github.run_id }})"
+
+  test:
+    needs: discover
+    if: needs.discover.outputs.matrix != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        model: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      OUT: audit-results/agent-uno/${{ matrix.model.slug }}
+      WORK: /tmp/agent-work
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -q -r requirements-test.txt
+
+      - name: Run the task
+        env:
+          AGENT_API_KEY: ${{ secrets.UNO_ROUTER }}
+          MODEL_ID: ${{ matrix.model.id }}
+        run: |
+          mkdir -p "$OUT" "$WORK/project" "$HOME/.manga-agent"
+          echo '{"token_budget": 1500000, "max_steps": 120}' > "$HOME/.manga-agent/profile.json"
+          PROMPT='Hãy tạo từ con số 0 một dự án Python nhỏ tên notekeeper: ứng dụng dòng lệnh quản lý ghi chú (thêm, liệt kê, tìm, xóa, gắn tag), lưu bằng file JSON. Có pyproject.toml, bố cục src, test pytest đầy đủ và README. Chạy test cho đến khi xanh hết rồi báo cáo.'
+          python -m app.agent.cli exec "$PROMPT" --base "https://api.unorouter.com/v1" --model "$MODEL_ID" \
+            --provider uno --workspace "$WORK/project" --mode auto --sandbox workspace-write \
+            --timeout-min 25 --json > "$OUT/events.jsonl" 2> "$OUT/stderr.log" || true
+          tail -c 600 "$OUT/stderr.log"
+
+      - name: Summarize what happened
+        if: always()
+        env:
+          MODEL_ID: ${{ matrix.model.id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          out = os.environ["OUT"]
+          rows = []
+          for line in open(f"{out}/events.jsonl", encoding="utf-8"):
+              try:
+                  rows.append(json.loads(line))
+              except ValueError:
+                  pass
+          tools = [r["name"] for r in rows if r.get("type") == "tool"]
+          result = next((r for r in reversed(rows) if r.get("type") == "result"), {})
+          final = next((r["text"] for r in reversed(rows) if r.get("type") == "assistant" and r.get("text")), "")
+          summary = {"model": os.environ.get("MODEL_ID"), "status": result.get("status"), "usage": result.get("usage"), "stats": result.get("stats"),
+                     "steps": sum(r.get("type") == "assistant" for r in rows), "tool_counts": {n: tools.count(n) for n in sorted(set(tools))},
+                     "failed_tools": [(r["name"], r["output"][:140]) for r in rows if r.get("type") == "tool" and not r.get("ok")][:30],
+                     "errors": [r["text"][:200] for r in rows if r.get("type") == "error"],
+                     "notices": [r["text"][:160] for r in rows if r.get("type") == "notice"][:40]}
+          open(f"{out}/summary.json", "w", encoding="utf-8").write(json.dumps(summary, ensure_ascii=False, indent=1))
+          open(f"{out}/answer.md", "w", encoding="utf-8").write(final)
+          print(json.dumps({k: v for k, v in summary.items() if k not in ("notices", "failed_tools")}, ensure_ascii=False))
+          PY
+
+      - name: Check the project the agent built
+        if: always()
+        run: |
+          cd "$WORK/project"
+          find . -type f -not -path './.git/*' -not -path '*/__pycache__/*' | sort | tee "$GITHUB_WORKSPACE/$OUT/files.txt" | head -40
+          (python -m pip install -q -e . pytest && python -m pytest -q -p no:cacheprovider 2>&1 | tail -15) | tee "$GITHUB_WORKSPACE/$OUT/project-pytest.txt" || true
+
+      - name: Give git access only now that the agent is done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+
+      - uses: ./.github/actions/save-evidence
+        if: always()
+        with:
+          paths: audit-results/agent-uno/${{ matrix.model.slug }}
+          message: "audit: Agent uno ${{ matrix.model.slug }} (run ${{ github.run_id }})"
