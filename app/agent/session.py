@@ -1701,14 +1701,16 @@ class AgentSession:
             self.history.append({"role": "tool", "id": call["id"], "name": call["name"], "content": output})
             self.emit("tool", id=call["id"], name=call["name"], ok=ok, output=output)
 
-        # Reads that do not depend on each other run together, up to ten at once; anything that changes things runs alone, in order.
+        # Calls whose files do not overlap run together, up to ten at once; anything else runs alone, in order, and results are always recorded in the order given (Kimi Code).
         index = 0
         while index < len(calls):
-            end = index + 1
-            if calls[index]["name"] in PARALLEL_CALLS:
-                while end < len(calls) and calls[end]["name"] in PARALLEL_CALLS:
-                    end += 1
-            batch = calls[index:end]
+            batch, seen = [calls[index]], self._footprint(calls[index])
+            while seen is not None and index + len(batch) < len(calls) and len(batch) < 10:
+                nxt = self._footprint(calls[index + len(batch)])
+                if nxt is None or self._conflict(seen, nxt):
+                    break
+                seen = (seen[0] | nxt[0], seen[1] | nxt[1])
+                batch.append(calls[index + len(batch)])
             if len(batch) > 1:
                 workers = MAX_PARALLEL if any(c["name"] == "task" for c in batch) else 10
                 with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -1717,7 +1719,25 @@ class AgentSession:
                     record(call, output, ok)
             else:
                 record(batch[0], *one(batch[0]))
-            index = end
+            index += len(batch)
+
+    @staticmethod
+    def _footprint(call: dict) -> tuple[frozenset, frozenset] | None:
+        """(paths read, paths written) for a call that touches only files, or None when it must run alone."""
+        name, args = call["name"], call["args"] if isinstance(call["args"], dict) else {}
+        path = os.path.normpath(str(args.get("path") or ".")).lstrip("/")
+        if name in PARALLEL_CALLS:
+            return (frozenset({path}) if name in ("list_dir", "read_file", "search", "glob", "symbols") else frozenset()), frozenset()
+        if name in ("write_file", "edit_file", "edit_lines") and args.get("path"):
+            return frozenset(), frozenset({path})
+        return None
+
+    @staticmethod
+    def _conflict(a: tuple[frozenset, frozenset], b: tuple[frozenset, frozenset]) -> bool:
+        """True when one side writes a path the other reads or writes, a folder counting as everything inside it."""
+        def overlap(x: frozenset, y: frozenset) -> bool:
+            return any(i == j or i == "." or j == "." or i.startswith(j + "/") or j.startswith(i + "/") for i in x for j in y)
+        return overlap(a[1], b[0] | b[1]) or overlap(b[1], a[0])
 
     def _wrap_up(self, limit: str = "token budget") -> None:
         """One last reply without tools, so work already done is reported instead of lost."""

@@ -2026,3 +2026,37 @@ def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     run_to_idle(session)
     assert "[stopped after 1 s]" in tool_outputs(session)[0][2] and not session.jobs
+
+
+def test_edits_to_different_files_run_together_and_overlapping_ones_stay_in_order(ws, home):
+    import threading
+    running, peak, lock = [0], [0], threading.Lock()
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    real = session._run_call
+
+    def slow(call):
+        with lock:
+            running[0] += 1
+            peak[0] = max(peak[0], running[0])
+        time.sleep(0.3)
+        out = real(call)
+        with lock:
+            running[0] -= 1
+        return out
+
+    session._run_call = slow
+    for name in ("a", "b", "c"):
+        (ws.root / f"{name}.txt").write_text("one\n")
+    reads = [call("read_file", path=f"{n}.txt") for n in "abc"]
+    session._run_calls(reads)
+    peak[0] = 0
+    edits = [{"id": f"e{n}", "name": "write_file", "args": {"path": f"{n}.txt", "content": "two\n"}} for n in "abc"]
+    session._run_calls(edits)
+    assert peak[0] == 3, "writes to different files overlap"
+    peak[0] = 0
+    same = [{"id": "w1", "name": "write_file", "args": {"path": "a.txt", "content": "3\n"}}, {"id": "r1", "name": "read_file", "args": {"path": "a.txt"}}]
+    session._run_calls(same)
+    assert peak[0] == 1, "a read of a file being written waits for it"
+    order = [h["id"] for h in session.history if h["role"] == "tool"]
+    assert order[-5:] == ["ea", "eb", "ec", "w1", "r1"], order
+    assert session._footprint(call("run_command", command="ls")) is None
