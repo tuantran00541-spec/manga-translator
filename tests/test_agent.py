@@ -671,7 +671,10 @@ def test_memory_notes_persist_into_the_next_session(ws, home):
     assert "1. Tests run with pytest -q" in later.system_prompt()
     assert "pytest" in later.command("/memory")["message"]
     later.command("/memory rm project 1")
-    assert "Tests run" not in later.system_prompt()
+    assert "Tests run" in later.system_prompt(), "the system prompt is kept so the provider's cached prefix still matches"
+    run_to_idle(later, "next")
+    update = [m["content"] for m in later.history if m["role"] == "user" and m["content"].startswith("<context_update>")]
+    assert update and "- 1. Tests run with pytest -q" in update[0] and later.cache_log["context updates"] == 1
 
 
 def test_plan_mode_is_read_only_until_the_plan_is_approved(ws, home):
@@ -1779,3 +1782,20 @@ def test_a_stream_rule_stops_a_reply_midway_reminds_the_model_and_asks_again(ws,
     reminders = [m["content"] for m in session.history if m["role"] == "user" and m["content"].startswith("[Reminder]")]
     assert len(reminders) == 2 and "destructive SQL" in reminders[0] and "too long for one reply" in reminders[1]
     assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Done safely."], "the interrupted replies were dropped"
+
+
+def test_the_request_prefix_stays_the_same_across_steps_and_each_change_is_counted(ws, home):
+    seen = []
+
+    def complete(provider, key, model, messages, *, tools):
+        seen.append((messages[0]["content"], [t["name"] for t in tools or []]))
+        return [turn(calls=[call("memory", action="add", scope="project", text="Use tabs")]), turn(calls=[call("list_dir")]), turn("done")][len(seen) - 1]
+
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    run_to_idle(session)
+    assert len({system for system, _ in seen}) == 1, "a memory note added mid-turn does not change the system prompt"
+    assert session.cache_log["requests"] == 3 and not [k for k in session.cache_log if k.startswith("header changed")]
+    session.command("/goal finish it")
+    wait_for(session, "idle")
+    assert any("+goal_done" in k for k in session.cache_log), "a declared change is counted with its cause"
+    assert "Token lấy từ cache" in session.command("/cache")["message"]

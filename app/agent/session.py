@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import atexit
+import collections
+import difflib
 import ctypes
 import json
 import os
@@ -130,7 +132,7 @@ BUILTIN_COMMANDS = {
     "clear": "Mở phiên mới", "plan": "Chế độ lập kế hoạch (chỉ đọc đến khi bạn duyệt): /plan [việc] hoặc /plan off",
     "goal": "Giao mục tiêu để agent tự làm nhiều lượt: /goal MỤC TIÊU hoặc /goal off",
     "undo": "Hoàn tác file agent đã sửa ở lượt gần nhất", "memory": "Xem ghi nhớ: /memory, /memory add NỘI DUNG, /memory rm project|user SỐ",
-    "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn", "receipts": "Xem mọi file đã sửa, lệnh đã chạy và lần duyệt của phiên này",
+    "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn", "cache": "Xem tỉ lệ cache và những lần tiền tố yêu cầu bị đổi", "receipts": "Xem mọi file đã sửa, lệnh đã chạy và lần duyệt của phiên này",
     "plugins": "Xem plugin, tính năng đã tắt và agent ngoài (Codex, Claude Code)",
 }
 GOAL_PROMPT = ("Goal: {text}\nWork on it across as many steps as needed until it is fully done and verified. "
@@ -190,6 +192,9 @@ class AgentSession:
         self._turn_usage = 0
         self._denials: list[bool] = []
         self._interrupt: dict | None = None
+        self._pinned: dict[str, str] | None = None
+        self._last_header: tuple | None = None
+        self.cache_log: collections.Counter = collections.Counter()
         self._fired: dict[str, int] = {}
         self.plan_mode = False
         self.goal: dict | None = None
@@ -398,6 +403,10 @@ class AgentSession:
         self._turn_usage = self._spent()
         self._fired = {}
         self.web_ok |= {h.lower() for h in URL_RE.findall(text)}
+        update = self._context_update()
+        if update:
+            self.history.append({"role": "user", "content": update})
+            self.cache_log["context updates"] += 1
         self.history.append({"role": "user", "content": text + extra})
         threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
         return False
@@ -450,6 +459,9 @@ class AgentSession:
             self.goal = {"text": args[:2000], "turns": 0}
             self.send(GOAL_PROMPT.format(text=args))
             return {"sent": True}
+        if name == "cache":
+            rows = [f"{k}: {v}" for k, v in sorted(self.cache_log.items())]
+            return {"message": f"Token lấy từ cache: {self._stats()['cache_pct']}%\n" + ("\n".join(rows) or "Chưa có yêu cầu nào.")}
         if name == "receipts":
             return {"message": self._receipts()}
         if name == "undo":
@@ -1176,9 +1188,11 @@ class AgentSession:
     def system_prompt(self) -> str:
         parts = [SYSTEM_PROMPT.format(root=self.workspace.root, system=platform.system(),
                                       sandbox=self.workspace.policy.describe(self.workspace.root))]
+        if self._pinned is None:
+            self._pinned = self._volatile()
         if not self.depth:
-            parts.append(context.instructions(self.workspace.root, self.home))
-            parts.append(memory.prompt(self.home if self.home is not None else Path.home(), self.workspace.root))
+            parts.append(self._pinned.get("Project instructions", ""))
+            parts.append(self._pinned.get("Memory", ""))
             parts += [self._hook_call(fn) for fn in self.registry.prompts]
             if self.plan_mode:
                 parts.append(PLAN_PROMPT)
@@ -1187,8 +1201,45 @@ class AgentSession:
             parts.append(f"You have at most {SUBAGENT_STEPS} steps; read only what the job needs and send your report well before they run out.")
         if self.quirks.get("prompt_extra"):
             parts.append(str(self.quirks["prompt_extra"]))
-        parts.append(skills.catalog(self.skills))
+        parts.append(self._pinned.get("Skills", ""))
         return "\n\n".join(p for p in parts if p)
+
+    def _volatile(self) -> dict[str, str]:
+        """The parts of the system prompt that files on disk can change: read once and kept, so the cached prefix stays the same."""
+        home = self.home if self.home is not None else Path.home()
+        rows = {"Skills": skills.catalog(self.skills)}
+        if not self.depth:
+            rows["Project instructions"] = context.instructions(self.workspace.root, self.home)
+            rows["Memory"] = memory.prompt(home, self.workspace.root)
+        return rows
+
+    def _context_update(self) -> str:
+        """Changes to instructions, memory or skills since the model last saw them, as one appended message instead of a new system prompt."""
+        if self._pinned is None:
+            return ""
+        fresh, blocks = self._volatile(), []
+        for name, text in fresh.items():
+            old = self._pinned.get(name, "")
+            if text == old:
+                continue
+            delta = [line for line in difflib.ndiff(old.splitlines(), text.splitlines()) if line[:2] in ("+ ", "- ")]
+            blocks.append(f"{name}:\n" + "\n".join(delta[:40]) + (f"\n… {len(delta) - 40} more lines" if len(delta) > 40 else ""))
+            self._pinned[name] = text
+        return "<context_update>\n" + "\n\n".join(blocks) + "\n</context_update>" if blocks else ""
+
+    def _header(self) -> tuple[str, list[dict]]:
+        """The system prompt and tools for this request; every change to them, which costs the provider's prompt cache, is counted with its cause."""
+        system, specs = self.system_prompt(), self.specs()
+        names = [s["name"] for s in specs]
+        if self._last_header is not None and (system, names) != self._last_header[:2] or (self._last_header and json.dumps(specs) != self._last_header[2]):
+            old_system, old_names, _ = self._last_header
+            causes = [f"+{n}" for n in names if n not in old_names] + [f"-{n}" for n in old_names if n not in names]
+            if system != old_system:
+                causes.append("system prompt")
+            self.cache_log["header changed: " + (", ".join(causes) or "tool details")] += 1
+        self._last_header = (system, names, json.dumps(specs))
+        self.cache_log["requests"] += 1
+        return system, specs
 
     def _match_rule(self, live: dict) -> dict | None:
         """A stream rule the reply being written has just run into, if any; each fires a limited number of times per user message."""
@@ -1233,7 +1284,7 @@ class AgentSession:
             return self._turn_once()
 
     def _turn_once(self) -> dict:
-        system, specs = self.system_prompt(), self.specs()
+        system, specs = self._header()
         try:
             return self._call_model(client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
                                     None if self.text_tools else specs)
@@ -1305,6 +1356,8 @@ class AgentSession:
         # Two user messages in a row are fine; an acknowledgement is only needed so the next message is not an assistant one.
         ack = [{"role": "assistant", "content": "Understood; continuing from that summary.", "calls": []}] if not tail or tail[0]["role"] == "user" else []
         self.history = marker + ack + tail
+        self._pinned = None
+        self.cache_log["compactions"] += 1
         self.emit("notice", text=f"Đã tóm gọn {len(head)} mục hội thoại cũ.")
         return True
 
@@ -1331,6 +1384,7 @@ class AgentSession:
             saved = re.search(r"full output saved to (\S+?):", item["content"])
             item["content"] = f"[older {item['name']} output removed to save room" + (f"; the full text is in {saved.group(1)}" if saved else "; run it again if needed") + "]"
             item["masked"] = True
+        self.cache_log["older outputs masked"] += 1
 
     def _make_room(self) -> None:
         self._mask_old()
