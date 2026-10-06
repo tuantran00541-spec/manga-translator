@@ -1,0 +1,1 @@
+Bây giờ viết lại `tests/test_cli.py` để test tích hợp với `Storage` thật:

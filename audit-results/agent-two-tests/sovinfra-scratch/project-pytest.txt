@@ -1,0 +1,15 @@
+  ?     -
+  +   2%
+FAILED tests/test_cli.py::test_delete_missing - FileNotFoundError: [Errno 2] No such file or directory: '/tmp/pytest-of-runner/pytest-1/test_delete_missing0/notes.json'
+FAILED tests/test_storage.py::test_list_sorts_created_desc_id_asc - AssertionError: assert ['c1', 'b1', 'a1'] == ['c1', 'a1', 'b1']
+  
+  At index 1 diff: 'b1' != 'a1'
+  
+  Full diff:
+    [
+        'c1',
+  +     'b1',
+        'a1',
+  -     'b1',
+    ]
+4 failed, 25 passed in 0.13s
