@@ -24,7 +24,9 @@ OUT.mkdir(parents=True, exist_ok=True)
 HOME = Path.home()
 LIMITS = {"task1": 95, "task2": 125, "task3": 45, "final": 60}
 
-TASK1 = ("/goal Học làm PowerPoint từ con số 0. Trong thư mục deck-lab/ của thư mục làm việc, tự viết code Python tạo một bộ slide 6–8 trang về một "
+PREFACE = ("Hãy dùng mcp tinyfish (các tool mcp__tinyfish__search và mcp__tinyfish__fetch) để tìm hiểu cách làm slide chuyên nghiệp như một người "
+           "có kinh nghiệm lâu năm. ")
+TASK1 = ("/goal " + PREFACE + "Học làm PowerPoint từ con số 0. Trong thư mục deck-lab/ của thư mục làm việc, tự viết code Python tạo một bộ slide 6–8 trang về một "
          "chủ đề bạn tự chọn. Đã cài sẵn python-pptx; LibreOffice và poppler có sẵn để xem kết quả: `soffice -env:UserInstallation=file:///tmp/lo_profile "
          "--headless --convert-to pdf --outdir OUT FILE.pptx` rồi `pdftoppm -png -r 50 FILE.pdf PREFIX` (dưới sandbox phải có -env:UserInstallation như vậy). "
          "Tự kiểm tra thật: mở lại file bằng python-pptx để đo chữ tràn khung, khung chồng nhau, cỡ chữ quá nhỏ, độ tương phản màu chữ và nền; "
@@ -116,6 +118,9 @@ def main() -> None:
     vision = probe_vision()
     folder = HOME / ".manga-agent"
     folder.mkdir(parents=True, exist_ok=True)
+    # TinyFish search and fetch as a user-scope MCP server, so every session sees mcp__tinyfish__* tools.
+    server = {"command": sys.executable, "args": [str(Path(__file__).with_name("tinyfish_mcp.py"))]}
+    (HOME / ".claude.json").write_text(json.dumps({"mcpServers": {"tinyfish": server}}))
     (folder / "profile.json").write_text(json.dumps({"token_budget": 10 ** 12, "max_steps": 5000, "goal_turns": 300, "vision": vision}))
     label = os.environ.get("AGENT_LABEL", "Provider")
     provider = resolve_provider(label.lower(), label=label, protocol="openai", api_base=BASE)
@@ -124,10 +129,14 @@ def main() -> None:
     report = {"model": MODEL, "vision": vision, "sandbox": sandbox.backend()}
 
     session = manager.create(provider, KEY, MODEL, Workspace(ROOT, policy), "auto")
+    session._ensure_mcp()
+    report["mcp_at_start"] = {"status": session.command("/mcp")["message"], "tools": sorted(session.mcp_tools)}
+    print("mcp at start:", json.dumps(report["mcp_at_start"], ensure_ascii=False), flush=True)
     for name, prompt in (("task1", TASK1), ("task2", TASK2), ("task3", TASK3)):
         report[name] = run_phase(session, name, prompt)
         report[name]["usage"] = dict(session.usage)
         report[name]["rate_limited"] = dict(session.rate_limited)
+        report[name]["tinyfish_calls"] = sum(v for k, v in report[name]["tool_counts"].items() if k.startswith("mcp__tinyfish__"))
         (OUT / "summary.json").write_text(json.dumps(report, ensure_ascii=False, indent=1))
     report["plugins_after_task3"] = session.command("/plugins")["message"]
     agent_rows = [r.id for r in session.kernel.rows.values() if r.source == "agent"]
