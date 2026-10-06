@@ -34,6 +34,7 @@ MAX_AGENT_THREADS = 6
 MAX_IMAGES = 3
 MCP_DEFER = 15
 EMPTY_RETRIES = 3
+WRAP_UP = "[The token budget for this turn is used up. Do not call tools. Report in a few paragraphs what you found or built, what is not finished, and what you would do next.]"
 EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -282,8 +283,8 @@ class AgentSession:
         return {"text": live["text"][-1500:], "reasoning": live["reasoning"][-600:], "tools": live["tools"]}
 
     def _spent(self) -> int:
-        """Tokens used so far; cached ones are already part of the prompt."""
-        return self.usage["prompt_tokens"] + self.usage["completion_tokens"]
+        """Tokens used so far; ones served from the provider's cache are not counted again."""
+        return self.usage["prompt_tokens"] - self.usage["cached_tokens"] + self.usage["completion_tokens"]
 
     def _stats(self) -> dict:
         prompt, cached = self.usage["prompt_tokens"], self.usage["cached_tokens"]
@@ -1266,6 +1267,19 @@ class AgentSession:
                 record(batch[0], *one(batch[0]))
             index = end
 
+    def _wrap_up(self) -> None:
+        """One last reply without tools, so work already done is reported instead of lost."""
+        self.history.append({"role": "user", "content": WRAP_UP})
+        try:
+            turn = self._call_model(client.render(self.history, self.system_prompt(), self.text_tools, [], reasoning=self.echo_reasoning), None)
+        except Exception as exc:
+            logger.warning("Agent session {} could not wrap up: {}", self.id, exc)
+            return
+        for key in self.usage:
+            self.usage[key] += int(turn["usage"].get(key) or 0)
+        self.history.append({"role": "assistant", "content": turn["text"], "calls": []})
+        self.emit("assistant", text=turn["text"], reasoning="", calls=[])
+
     def _show_images(self) -> None:
         """Images the agent asked to see go in as one user message after its tool results; only the latest few stay."""
         images, self.workspace.new_images = self.workspace.new_images, []
@@ -1286,6 +1300,7 @@ class AgentSession:
             self._drain()
             if self._spent() - self._turn_usage > self.profile["token_budget"]:
                 self.emit("error", text=f"Đã dùng quá {self.profile['token_budget']:,} token cho lượt này; dừng. Nhắn tiếp nếu muốn agent làm tiếp.")
+                self._wrap_up()
                 break
             self._make_room()
             turn = self._turn()

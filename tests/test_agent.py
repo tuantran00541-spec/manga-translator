@@ -1639,3 +1639,18 @@ def test_timeouts_dropped_connections_and_server_errors_are_asked_again_with_a_p
     with pytest.raises(RuntimeError) as bad:
         client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[])
     assert not isinstance(bad.value, client.TransientError), "a refused request is not retried"
+
+
+def test_when_the_token_budget_runs_out_the_agent_still_reports_what_it_has(ws, home):
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"token_budget": 50}))
+    big = {"text": "", "calls": [call("list_dir")], "reasoning": "", "usage": {"prompt_tokens": 40, "completion_tokens": 30, "cached_tokens": 0}}
+    wrapped = scripted(big, turn("Report: I listed the folder; nothing else done."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=wrapped)
+    run_to_idle(session)
+    texts = [e.get("text") for e in session.events if e["type"] == "assistant"]
+    assert texts[-1].startswith("Report:") and any(e["type"] == "error" and "token" in e["text"] for e in session.events)
+    assert wrapped.seen[-1][1] is None or not wrapped.seen[-1][1], "the last reply is asked for without tools"
+    cached = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", session_id="cache", complete=scripted())
+    cached.usage.update({"prompt_tokens": 1000, "cached_tokens": 900, "completion_tokens": 10})
+    assert cached._spent() == 110, "cached prompt tokens are not counted again"
