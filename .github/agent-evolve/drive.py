@@ -42,8 +42,8 @@ TASK3 = ("/goal Biến plugin slide đó thành một MCP server. Có hai cách:
          "cho các tool make_deck và check_deck, hoặc dùng `python run.py mcp --folder . --write`, lệnh này phục vụ tool của mọi plugin qua MCP. "
          "Khai báo server trong .mcp.json của thư mục làm việc với tên deck. Tự kiểm tra thật: gửi initialize, tools/list và tools/call tới server, và "
          "tạo được một file .pptx qua MCP. Báo cáo cách cấu hình.")
-FINAL = ("repo manga-translator có những thư mục file nào kiến trúc tổng quát sao và đi sâu vào từng lớp kiến trúc. "
-         "Trình bày câu trả lời thành một bộ slide PowerPoint.")
+FINAL = ("repo manga-translator có những thư mục file nào kiến trúc tổng quát sao và đi sâu vào từng lớp kiến trúc "
+         "sau đó tạo slide pptx và xuất thành bài cuối cùng")
 
 
 def probe_vision() -> bool:
@@ -120,6 +120,7 @@ def main() -> None:
     for name, prompt in (("task1", TASK1), ("task2", TASK2), ("task3", TASK3)):
         report[name] = run_phase(session, name, prompt)
         report[name]["usage"] = dict(session.usage)
+        report[name]["rate_limited"] = dict(session.rate_limited)
         (OUT / "summary.json").write_text(json.dumps(report, ensure_ascii=False, indent=1))
     report["plugins_after_task3"] = session.command("/plugins")["message"]
     agent_rows = [r.id for r in session.kernel.rows.values() if r.source == "agent"]
@@ -138,6 +139,9 @@ def main() -> None:
     print("final setup:", json.dumps(report["final_setup"], ensure_ascii=False)[:2000], flush=True)
     report["final"] = run_phase(final, "final", FINAL)
     report["final"]["usage"] = dict(final.usage)
+    report["final"]["rate_limited"] = dict(final.rate_limited)
+    from app.agent import client
+    report["rate_limits_total"] = client.RATE_LIMITS
     report["final"]["mcp_calls"] = sum(1 for e in final.events if e["type"] == "tool" and e["name"].startswith("mcp__"))
     (OUT / "summary.json").write_text(json.dumps(report, ensure_ascii=False, indent=1))
     manager.close_all()
@@ -151,6 +155,12 @@ def main() -> None:
         elif path.is_file():
             (keep / source).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, keep / source)
+    for deck in ROOT.rglob("*.pptx"):
+        # Every deck the agent wrote, wherever it saved it, including the final one.
+        if "audit-results" not in deck.parts and ".git" not in deck.parts:
+            target = keep / "all-pptx" / str(deck.relative_to(ROOT)).replace("/", "__")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(deck, target)
     if (folder / "plugins").is_dir():
         shutil.copytree(folder / "plugins", keep / "plugins", dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
     print(json.dumps({k: (v if not isinstance(v, dict) else {x: y for x, y in v.items() if x != "final"}) for k, v in report.items()},

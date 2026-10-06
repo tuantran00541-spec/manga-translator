@@ -46,8 +46,8 @@ jobs:
         if: always()
         run: |
           mkdir -p "$OUT/previews"
-          find "$OUT/made" -name '*.pptx' 2>/dev/null | head -40 | while read -r deck; do
-            name=$(echo "${deck#$OUT/made/}" | tr '/' '_' | sed 's/\.pptx$//')
+          find "$OUT/made/all-pptx" -name "*.pptx" 2>/dev/null | head -60 | while read -r deck; do
+            name=$(basename "${deck%.pptx}")
             timeout 120 soffice -env:UserInstallation=file:///tmp/lo_ci --headless --convert-to pdf --outdir /tmp/pdf "$deck" > /dev/null 2>&1 || continue
             pdftoppm -png -r 40 "/tmp/pdf/$(basename "${deck%.pptx}").pdf" "$OUT/previews/$name" || true
           done
