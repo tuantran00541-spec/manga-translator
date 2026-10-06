@@ -83,6 +83,9 @@ jobs:
               path = getattr(mod, "__file__", None)
               if name.split(".")[0] == "app" and path and path.endswith(".py"):
                   files.add(os.path.relpath(path))
+          for root, dirs, names in os.walk("app/agent"):
+              dirs[:] = [d for d in dirs if d != "__pycache__"]
+              files.update(os.path.join(root, n) for n in names if not n.endswith(".pyc"))
           with tarfile.open("/tmp/manga-agent.tgz", "w:gz") as tar:
               for f in sorted(files):
                   tar.add(f)
