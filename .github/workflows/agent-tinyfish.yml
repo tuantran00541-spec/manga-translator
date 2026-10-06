@@ -1,0 +1,80 @@
+name: Agent tinyfish check
+
+# One-off: does the TinyFish key work for search and fetch (api.search.tinyfish.ai, api.fetch.tinyfish.ai).
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/agent-tinyfish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -q requests
+      - name: Search and fetch
+        env:
+          TINYFISH_API_KEY: ${{ secrets.TINYFISH }}
+        run: |
+          [ -n "$TINYFISH_API_KEY" ] || { echo "::error::secret TINYFISH is not set"; exit 1; }
+          python - <<'PY'
+          import json, os, time
+          import requests
+
+          key = os.environ["TINYFISH_API_KEY"]
+          head = {"X-API-Key": key, "Accept": "application/json"}
+
+          def show(reply, took):
+              limits = {k: v for k, v in reply.headers.items() if "limit" in k.lower() or "remaining" in k.lower() or "retry" in k.lower()}
+              print(f"HTTP {reply.status_code} in {took:.1f}s; limit headers: {limits}")
+
+          def search(label, params):
+              print(f"--- search: {label}")
+              start = time.time()
+              reply = requests.get("https://api.search.tinyfish.ai", params=params, headers=head, timeout=40)
+              show(reply, time.time() - start)
+              try:
+                  body = reply.json()
+              except ValueError:
+                  print(reply.text[:300]); return
+              if reply.status_code != 200:
+                  print(json.dumps(body)[:300]); return
+              print("keys:", list(body))
+              for row in (body.get("results") or [])[:4]:
+                  print("-", (row.get("title") or "")[:80], "|", row.get("url"), "|", (row.get("snippet") or "")[:100].replace("\n", " "))
+
+          search("plain", {"query": "pytest fixtures scope", "num_results": 5})
+          search("include_domains + recency", {"query": "pytest fixtures", "include_domains": "docs.pytest.org", "recency_minutes": 525600, "num_results": 5})
+          search("exclude_domains", {"query": "pytest fixtures scope", "exclude_domains": "reddit.com,medium.com", "num_results": 5})
+
+          for label, urls in (("docs page", ["https://docs.pytest.org/en/stable/how-to/fixtures.html"]),
+                              ("JS-heavy home page and a missing page", ["https://www.tinyfish.ai", "https://docs.pytest.org/en/stable/does-not-exist-xyz.html"])):
+              print(f"--- fetch: {label}")
+              start = time.time()
+              reply = requests.post("https://api.fetch.tinyfish.ai", json={"urls": urls, "format": "markdown"}, headers={**head, "Content-Type": "application/json"}, timeout=90)
+              show(reply, time.time() - start)
+              try:
+                  body = reply.json()
+              except ValueError:
+                  print(reply.text[:300]); continue
+              print("top-level keys:", list(body))
+              items = body.get("results") or body.get("data") or []
+              for item in items[:3]:
+                  text = item.get("text") or item.get("content") or item.get("markdown") or ""
+                  print("item keys:", sorted(item))
+                  print("url:", item.get("url"), "| title:", item.get("title"), "| chars:", len(text))
+                  print(text[:350].replace("\n", " ⏎ "))
+              for bad in (body.get("errors") or body.get("failed") or [])[:3]:
+                  print("failed:", json.dumps(bad)[:200])
+          PY
