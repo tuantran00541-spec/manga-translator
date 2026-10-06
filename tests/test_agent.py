@@ -2239,3 +2239,50 @@ def test_compact_auto_sets_shows_and_turns_off_the_threshold_and_it_is_saved(ws,
         with pytest.raises(ValueError):
             store.command(f"/compact auto {bad}")
     assert store.context_tokens() >= 0
+
+
+def test_a_context_error_that_names_the_window_moves_the_compaction_mark_under_it(ws, home):
+    calls = []
+
+    def complete(provider, key, model, messages, *, tools):
+        if messages[0]["content"] == "You write precise handover summaries.":
+            return turn("Summary.")
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("This model's maximum context length is 32768 tokens. However, your messages resulted in 40000 tokens.")
+        return turn("Done.")
+
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    assert session.compact_at == 900_000
+    session.history = [{"role": "user" if i % 2 == 0 else "assistant", "content": "x" * 9_000, **({"calls": []} if i % 2 else {})} for i in range(24)]
+    run_to_idle(session, "go on")
+    assert session.compact_at == int(32768 * 0.8) and session.history[-1]["content"] == "Done."
+    assert session._keep_chars() <= int(session.compact_at * 3.5 / 3)
+    session._learn_window("prompt is too long: 210000 tokens > 200000 maximum")
+    assert session.compact_at == int(32768 * 0.8), "a larger window never raises the mark"
+    session.compact_at = 0
+    session._learn_window("maximum context length is 8192 tokens")
+    assert session.compact_at == 0, "auto-compaction turned off stays off"
+
+
+def test_context_window_in_the_profile_sets_the_compaction_mark(ws, home):
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"context_window": 128_000}))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    assert session.compact_at == 102_400
+
+
+def test_a_run_with_a_clock_gets_a_time_notice_then_a_final_report_without_tools(ws, home):
+    fake = scripted(turn(calls=[call("list_dir", path="pkg")]), turn("Report: read pkg; the rest is not done."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session.set_deadline(1200)
+    assert session._deadline - time.time() == pytest.approx(1200 - 120, abs=2) and session._notice_at < session._deadline
+    session._notice_at = time.time() - 1
+    run_to_idle(session, "work")
+    assert any("[Time notice]" in str(h["content"]) for h in session.history if h["role"] == "user")
+    fake = scripted(turn("Report: nothing could be done in time."))
+    late = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    late._deadline = time.time() - 1
+    run_to_idle(late, "work")
+    assert "time limit" in late.history[-2]["content"] and late.history[-1]["content"].startswith("Report:")
+    assert fake.seen[-1][1] is None, "the final report offers no tools"

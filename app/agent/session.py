@@ -74,6 +74,10 @@ CHARS_PER_TOKEN = 3.5
 KEEP_RECENT_CHARS = 60_000
 COMPACT_REARM = 1.25  # After a compaction, the context must grow by this factor before the next one.
 ROLLOVER_KEEP_CHARS = 15_000
+WINDOW_SHARE = 0.8  # Compact at this share of the model's real window, leaving room for the reply (pi keeps a reserve the same way).
+WINDOW_RE = re.compile(r"(?:maximum context length is|context (?:window|length|limit) (?:of|is)|limit of|>)\s*(\d[\d,]{3,})", re.I)
+TIME_GRACE_S = 180  # The agent writes its report this long before a run's clock stops it.
+TIME_NOTICE = "[Time notice] About {minutes} minutes are left. Finish the step you are on, then stop calling tools and report what you did, what is not finished, and what you would do next."
 OVERFLOW_RE = re.compile(r"context.{0,20}(length|window)|maximum context|too many tokens|prompt is too long|reduce the length", re.I)
 FILE_BLOCK = re.compile(r"<(read|modified)-files>\n(.*?)\n</\1-files>", re.S)
 SUMMARY_PROMPT = """Write a handover summary of this conversation between a user and a coding agent, so the agent can continue without it.
@@ -252,6 +256,7 @@ class AgentSession:
         self._fallback_at = 0
         self._last_prompt = (0, 0)
         self._after_compact = 0
+        self._deadline = self._notice_at = 0.0
         self.schedules: list[dict] = []
         self._scheduler: threading.Thread | None = None
         self._closing = False
@@ -286,7 +291,8 @@ class AgentSession:
         self.agents = agents.discover(workspace.root, home_path) if not depth else {}
         self.rules = rules.load(workspace.root, home_path) if not depth else parent.rules
         self.profile = registry.load_profile(workspace.root, home_path) if not depth else parent.profile
-        self.compact_at = int(self.profile["compact_at_tokens"])
+        window = int(self.profile["context_window"])
+        self.compact_at = int(window * WINDOW_SHARE) if window else int(self.profile["compact_at_tokens"])
         self.max_steps = self.profile["max_steps"]
         self.quirks = models.quirks(model, self.profile["models"])
         self.disabled = set(self.profile["disable"])
@@ -1496,6 +1502,7 @@ class AgentSession:
             # A full context window is recovered from, not fatal: summarise the older part and ask again.
             if not OVERFLOW_RE.search(str(exc)):
                 raise
+            self._learn_window(str(exc))
             self.emit("notice", text="Vượt giới hạn ngữ cảnh của model; tóm gọn phần cũ rồi thử lại.")
             if not self.compact(keep=KEEP_RECENT_CHARS // 3):
                 raise
@@ -1510,6 +1517,20 @@ class AgentSession:
             self.text_tools = True
             self.emit("notice", text=f"Model không nhận gọi công cụ kiểu gốc, chuyển sang gọi công cụ bằng văn bản ({exc}).")
             return self._call_model(client.render(self.history, system, True, specs, reasoning=self.echo_reasoning), None)
+
+    def _learn_window(self, message: str) -> None:
+        """A context error often names the model's real window; the auto-compaction mark moves under it so the next overflow does not happen."""
+        found = WINDOW_RE.search(message)
+        window = int(found.group(1).replace(",", "")) if found else 0
+        if self.compact_at and 4_000 <= window <= 10_000_000 and int(window * WINDOW_SHARE) < self.compact_at:
+            self.compact_at = int(window * WINDOW_SHARE)
+            self.emit("notice", text=f"Cửa sổ ngữ cảnh của model là {window:,} token; sẽ tự tóm gọn từ {self.compact_at:,} token.")
+
+    def set_deadline(self, seconds: float) -> None:
+        """A run with a clock (the CLI's --timeout-min): the agent is warned, then asked for its report before the clock stops it (omp's forced final report)."""
+        grace = min(TIME_GRACE_S, seconds * 0.1)
+        self._deadline = time.time() + seconds - grace
+        self._notice_at = self._deadline - grace * 2
 
     def _size(self) -> int:
         return sum(len(json.dumps(item, ensure_ascii=False)) for item in self.history)
@@ -1684,7 +1705,7 @@ class AgentSession:
 
     def _keep_chars(self) -> int:
         """How much recent conversation stays verbatim: a sixth of the window the trigger implies, never less than 60k characters."""
-        return max(KEEP_RECENT_CHARS, int(self.compact_at * CHARS_PER_TOKEN / 6))
+        return max(min(KEEP_RECENT_CHARS, int(self.compact_at * CHARS_PER_TOKEN / 3)), int(self.compact_at * CHARS_PER_TOKEN / 6))
 
     def _drain(self) -> None:
         with self._lock:
@@ -1935,6 +1956,14 @@ class AgentSession:
                 break
             self._drain()
             self._take_advice()
+            if self._deadline and not self.depth:
+                if time.time() >= self._deadline:
+                    self.emit("notice", text="Hết giờ của lượt chạy; agent viết báo cáo cuối.")
+                    self._wrap_up("time limit")
+                    break
+                if self._notice_at and time.time() >= self._notice_at:
+                    self.history.append({"role": "user", "content": TIME_NOTICE.format(minutes=max(1, round((self._deadline - time.time()) / 60)))})
+                    self._notice_at = 0.0
             if self._spent() - self._turn_usage > self.profile["token_budget"]:
                 self.emit("error", text=f"Đã dùng quá {self.profile['token_budget']:,} token cho lượt này; dừng. Nhắn tiếp nếu muốn agent làm tiếp.")
                 self._wrap_up()
