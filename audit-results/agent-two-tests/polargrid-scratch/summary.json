@@ -1,39 +1,56 @@
 {
  "status": "idle",
  "usage": {
-  "prompt_tokens": 12257,
-  "completion_tokens": 2053,
+  "prompt_tokens": 92844,
+  "completion_tokens": 9034,
   "cached_tokens": 0
  },
  "stats": {
-  "model_seconds": 1149.0,
-  "tool_seconds": 0.0,
+  "model_seconds": 1597.4,
+  "tool_seconds": 1442.6,
   "cache_pct": 0,
   "cost": null
  },
- "steps": 8,
+ "steps": 30,
  "tool_counts": {
-  "": 1,
-  "list_dir": 1,
-  "spawn_agent": 1,
-  "todo_write": 2,
-  "write_file": 4
+  "": 2,
+  "close_agent": 1,
+  "edit_file": 2,
+  "list_dir": 2,
+  "read_file": 1,
+  "run_command": 4,
+  "send_input": 1,
+  "spawn_agent": 3,
+  "todo_write": 3,
+  "wait_agent": 5,
+  "write_file": 6
  },
  "failed_tools": [
+  [
+   "",
+   "Unreadable tool call: {\"function}. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."
+  ],
+  [
+   "",
+   "Unreadable tool call: {\"function=\">\n<parameter=\n</invoke>\n</function>. Write one valid JSON object: escape newlines as \\n and quotes as \\\", "
+  ],
+  [
+   "list_dir",
+   "Error: 'tests' is not a folder"
+  ],
   [
    "write_file",
    "Error: Bad arguments for write_file: Workspace._tool_write_file() missing 1 required positional argument: 'path'"
   ],
   [
-   "",
-   "Unreadable tool call: {\"function_results>\n<invoke name=\"write_file\">\n<parameter name=\"path\">README.md</parameter>\n<parameter name=\"content\">"
+   "edit_file",
+   "Error: old_text was not found; read the file again and copy it exactly"
   ]
  ],
- "helpers_started": 1,
- "errors": [
-  "polargrid request failed: ReadTimeout"
- ],
+ "helpers_started": 3,
+ "errors": [],
  "notices": [
-  "Máy chủ làm mất lệnh gọi công cụ khi stream (151 token); chuyển sang không stream cho phiên này."
+  "Máy chủ làm mất lệnh gọi công cụ khi stream (163 token); chuyển sang không stream cho phiên này.",
+  "Đã gộp việc của birch: 1 file"
  ]
 }
