@@ -41,7 +41,7 @@ MAX_NOTES = 16_000
 EMPTY_RETRIES = 3
 LONG_CALL = ("[Reminder] The tool call you were writing was getting too long for one reply and would be cut off. Send it in pieces: create the file "
              "with a short write_file, then add the rest with edit_file or run_command (cat >> file <<'EOF').")
-WRAP_UP = "[The token budget for this turn is used up. Do not call tools. Report in a few paragraphs what you found or built, what is not finished, and what you would do next.]"
+WRAP_UP = "[The {limit} for this turn is used up. Do not call tools. Report in a few paragraphs what you found or built, what is not finished, and what you would do next.]"
 PREWALK_PLAN = ("[Plan now] Before exploring further, write the complete plan in your next reply: the remaining steps in order with exact files, "
                 "symbols and commands; risks and edge cases with the check that proves each one landed (never change tests or checks to make them pass); "
                 "what is already done. Then record 5-9 concrete steps with todo_write and carry on with the task; the plan is a checkpoint, not the answer.")
@@ -52,6 +52,7 @@ PREWALK_CHECKLIST = ("[Before you call it done] Consistency: a pattern, signatur
 ADVISED = "[Advisor] A second model reviewing your recent steps says the following. Weigh it; you decide, and say briefly if you disagree.\n"
 GARBLED_NUDGE = ("[Your last reply ({text!r}) does not read as an answer after this much work. Write the final answer to the user's request now, "
                  "from what the tool results showed; do not claim anything they did not show.]")
+ANNOUNCED_NUDGE = "[You wrote what you would do next but called no tool. Make that call now; if you are finished, write your final report instead.]"
 EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -1658,9 +1659,9 @@ class AgentSession:
                 record(batch[0], *one(batch[0]))
             index = end
 
-    def _wrap_up(self) -> None:
+    def _wrap_up(self, limit: str = "token budget") -> None:
         """One last reply without tools, so work already done is reported instead of lost."""
-        self.history.append({"role": "user", "content": WRAP_UP})
+        self.history.append({"role": "user", "content": WRAP_UP.format(limit=limit)})
         try:
             turn = self._call_model(client.render(self.history, self.system_prompt(), self.text_tools, [], reasoning=self.echo_reasoning), None)
         except Exception as exc:
@@ -1684,7 +1685,7 @@ class AgentSession:
     def _steps(self, max_steps: int) -> None:
         """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
         broken = empties = worked = 0
-        garbled = False
+        garbled = announced = False
         for _ in range(max_steps):
             if self._stop:
                 self.emit("notice", text="Đã dừng.")
@@ -1737,6 +1738,12 @@ class AgentSession:
                     self.history.append({"role": "user", "content": GARBLED_NUDGE.format(text=turn["text"].strip()[:80])})
                     self.emit("notice", text="Câu trả lời cuối trông như bị hỏng; nhắc agent viết lại câu trả lời.")
                     continue
+                # "Now let me read X:" with no call is a step the model meant to take, not its report.
+                if not announced and turn["text"].rstrip().endswith(":") and len(turn["text"]) < 600:
+                    announced = True
+                    self.history.append({"role": "user", "content": ANNOUNCED_NUDGE})
+                    self.emit("notice", text="Agent báo sẽ làm tiếp nhưng không gọi công cụ; nhắc nó làm tiếp.")
+                    continue
                 if self._final_advice() or self._more_work():
                     continue
                 break
@@ -1754,6 +1761,8 @@ class AgentSession:
             self.save()
         else:
             self.emit("notice", text=f"Dừng sau {max_steps} bước; nhắn tiếp để agent làm tiếp.")
+            if not self._stop:
+                self._wrap_up("step limit")
 
     def _loop(self, max_steps: int | None = None) -> None:
         max_steps = max_steps or self.max_steps

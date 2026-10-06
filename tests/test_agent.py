@@ -1940,3 +1940,17 @@ def test_a_garbled_final_reply_after_long_work_is_sent_back_once(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     run_to_idle(session)
     assert session.history[-1]["content"] == "Done.", "a short reply that ends like a sentence stands"
+
+
+def test_a_reply_that_announces_a_step_continues_and_a_step_limit_still_reports(ws, home):
+    fake = scripted(turn("Now let me read the job file in full:"), turn(calls=[call("read_file", path="pkg/a.py")]), turn("Report: f returns 1."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert session.history[-1]["content"] == "Report: f returns 1." and len(fake.seen) == 3
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"max_steps": 3}))
+    fake = scripted(*[turn(calls=[call("list_dir", path=f"d{n}")]) for n in range(3)], turn("Read three folders; nothing else done."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert "step limit" in session.history[-2]["content"] and session.history[-1]["content"] == "Read three folders; nothing else done."
+    assert fake.seen[-1][1] is None, "the wrap-up offers no tools"
