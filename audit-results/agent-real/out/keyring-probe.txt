@@ -1,0 +1,2 @@
+backend: keyring.backends.fail.Keyring (priority: 0)
+fails: NoKeyringError No recommended backend was available. Install a recommended 3rd party backend package; or, install the keyrings.alt package if you want to use the non-recommended backends. See https://pypi.org/project/keyring for details.
