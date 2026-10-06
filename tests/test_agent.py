@@ -1,4 +1,5 @@
 import json
+import re
 import os
 import platform
 from pathlib import Path
@@ -1815,3 +1816,22 @@ def test_edits_match_loosely_take_several_changes_and_point_at_the_closest_text_
     with pytest.raises(ToolError, match="edit 2"):
         ws.run("edit_file", {"path": "q.py", "edits": [{"old_text": "x = 3", "new_text": "x = 4"}, {"old_text": "nope", "new_text": ""}]})
     assert ws.root.joinpath("q.py").read_text().endswith("x = 3\n"), "a failing batch saves nothing"
+
+
+def test_the_agent_can_keep_a_notebook_and_start_a_fresh_context_window_from_it(ws, home):
+    fake = scripted(turn(calls=[call("read_file", path="pkg/a.py")]),
+                    turn(calls=[call("context_notes", text="Goal: rename f. Done: read pkg/a.py. Next: edit it.")]),
+                    turn(calls=[call("new_context")]),
+                    lambda messages, tools: turn("Fresh: " + messages[1]["content"][:40]),
+                    turn(calls=[call("goal_done", report="ok")]), turn("finished"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    names = {s["name"] for s in session.specs()}
+    assert "new_context" not in names, "offered only for goals or when the profile asks for it"
+    session.command("/goal rename f everywhere")
+    wait_for(session, "idle")
+    first = session.history[0]["content"]
+    assert first.startswith("[New context window]") and "<notebook>\nGoal: rename f." in first and "rename f everywhere" in first
+    saved = Path(re.search(r"saved in (\S+?\.json)", first).group(1))
+    assert saved.is_file() and "pkg/a.py" in saved.read_text()
+    assert not any(h.get("calls") and h["calls"][0]["name"] == "read_file" for h in session.history), "the old steps are gone from the window"
+    assert session.cache_log["context rollovers"] == 1 and session.notes.startswith("Goal: rename f")
