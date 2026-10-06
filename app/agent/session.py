@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import agents, client, context, external, guardian, isolate, mcp, memory, models, registry, rules, sandbox, skill_install, skills
+from app.agent import agents, client, codemode, context, external, guardian, isolate, mcp, memory, models, registry, rules, sandbox, skill_install, skills
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import KIND, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -36,6 +36,7 @@ MAX_AGENT_THREADS = 6
 MAX_IMAGES = 3
 MCP_DEFER = 15
 MAX_FAN_OUT = 12
+SCRIPT_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search"})
 MAX_NOTES = 16_000
 EMPTY_RETRIES = 3
 LONG_CALL = ("[Reminder] The tool call you were writing was getting too long for one reply and would be cut off. Send it in pieces: create the file "
@@ -864,6 +865,23 @@ class AgentSession:
             return f"Closed {child.nick} (it was {state})."
         return self._subagent(str(args.get("description") or "task"), str(args.get("prompt") or ""), str(args.get("agent") or "explore"))
 
+    def _run_script(self, args: dict) -> str:
+        """Code mode: the script's tool calls go through the same rules and approvals as the model's own."""
+        code = str(args.get("code") or "")
+        if not code.strip():
+            raise ToolError("code is empty")
+        limit = max(1, min(600, int(args.get("timeout") or 120)))
+
+        def call_tool(name: str, tool_args: dict) -> tuple[str, bool]:
+            if name not in SCRIPT_TOOLS:
+                return f"{name} cannot be called from a script; allowed: {', '.join(sorted(SCRIPT_TOOLS))}", False
+            output, ok = self._run_call({"id": f"script-{uuid.uuid4().hex[:8]}", "name": name, "args": tool_args})
+            return output, ok
+
+        code_out, output, calls = codemode.run(code, self.workspace.policy, self.workspace.root, limit, call_tool)
+        status = f"[stopped after {limit} s]" if code_out is None else f"[exit code {code_out}]"
+        return clip(f"{output.strip()}\n{status} [{calls} tool call{'s' if calls != 1 else ''}]", 400_000)
+
     def _job(self, name: str) -> "sandbox.Job":
         job = self.jobs.get(name.strip().lower())
         if job is None:
@@ -1171,6 +1189,8 @@ class AgentSession:
                 output, ok = self.mcp_servers[server].call_tool(tool["name"], call["args"])
             elif call["name"] == "run_command" and call["args"].get("background"):
                 output, ok = self._start_job(call["args"]), True
+            elif call["name"] == "run_script":
+                output, ok = self._run_script(call["args"]), True
             elif call["name"] in self.registry.tools:
                 try:
                     output, ok = str(self.registry.tools[call["name"]].handler(self, call["args"])), True

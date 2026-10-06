@@ -37,7 +37,7 @@ MAX_COMMAND_TIMEOUT = 1800
 
 # What each tool can do decides whether it waits for the user: read, edit, exec or net.
 KIND = {"list_dir": "read", "read_file": "read", "symbols": "read", "view_image": "read", "search": "read", "glob": "read", "write_file": "edit",
-        "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "run_command": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
+        "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "run_command": "exec", "run_script": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
 
 SPECS = [
     {"name": "list_dir", "description": "List files and folders under a path in the workspace.",
@@ -91,6 +91,13 @@ SPECS = [
          "background": {"type": "boolean", "description": "Start it and return a job id at once (a dev server, a watcher); read it with job_output, stop it with job_stop. "
                                                            "A server needs the network switch on to listen on a port."},
          "outside_sandbox": {"type": "boolean"}}}},
+    {"name": "run_script", "description": "Run a Python script in the sandbox that can call read-only tools as functions and print what you need: "
+                                          "tools.read_file(path=...), tools.search(pattern=...), tools.glob(pattern=...), tools.list_dir(path=...), "
+                                          "tools.symbols(path=..., name=...), tools.web_fetch(url=...), tools.web_search(query=...). Each returns the tool's text "
+                                          "and raises on error. Use it to look through many files or results in one step instead of many calls; only what the "
+                                          "script prints comes back.",
+     "parameters": {"type": "object", "required": ["code"], "properties": {
+         "code": {"type": "string"}, "timeout": {"type": "integer", "description": "Seconds, at most 600."}}}},
     {"name": "web_fetch", "description": "Fetch a public web page and return its readable text.",
      "parameters": {"type": "object", "required": ["url"], "properties": {
          "url": {"type": "string"}, "max_chars": {"type": "integer"}}}},

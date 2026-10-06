@@ -1835,3 +1835,22 @@ def test_the_agent_can_keep_a_notebook_and_start_a_fresh_context_window_from_it(
     assert saved.is_file() and "pkg/a.py" in saved.read_text()
     assert not any(h.get("calls") and h["calls"][0]["name"] == "read_file" for h in session.history), "the old steps are gone from the window"
     assert session.cache_log["context rollovers"] == 1 and session.notes.startswith("Goal: rename f")
+
+
+def test_a_script_calls_read_tools_as_functions_and_cannot_write(ws, home):
+    code = ("files = tools.glob(pattern='**/*.py')\n"
+            "print('found', files.strip())\n"
+            "print(tools.read_file(path='pkg/a.py').count('return'))\n"
+            "try:\n    tools.write_file(path='x.txt', content='no')\nexcept RuntimeError as error:\n    print('refused:', error)\n")
+    fake = scripted(turn(calls=[call("run_script", code=code)]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    name, ok, out = tool_outputs(session)[0]
+    assert name == "run_script" and ok, out
+    assert "found" in out and "pkg/a.py" in out and "\n1\n" in out
+    assert "refused: write_file cannot be called from a script" in out and not (ws.root / "x.txt").exists()
+    assert "[exit code 0] [3 tool calls]" in out
+    fake = scripted(turn(calls=[call("run_script", code="import time\ntime.sleep(30)", timeout=1)]), turn("ok"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert "[stopped after 1 s]" in tool_outputs(session)[0][2]
