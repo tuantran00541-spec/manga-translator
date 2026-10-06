@@ -1872,3 +1872,59 @@ def test_a_background_job_takes_typed_input_on_a_pipe_or_a_terminal(ws, home):
     assert session._needs_approval({"name": "job_input", "args": {"id": "job9", "chars": "x"}}), "typing into an unsandboxed job asks"
     assert not session._needs_approval({"name": "job_input", "args": {"id": "job1", "chars": "x"}})
     session.jobs.pop("job9").stop()
+
+
+def advised(agent_turns, advice):
+    """A fake model whose advisor calls (no tools, the advisor prompt) get their own scripted replies."""
+    from app.agent import advisor
+    state, models, lock = {"agent": 0, "advisor": 0}, [], __import__("threading").Lock()
+
+    def complete(provider, key, model, messages, *, tools):
+        with lock:
+            if messages[0]["content"] == advisor.PROMPT:
+                reply = advice[min(state["advisor"], len(advice) - 1)]
+                state["advisor"] += 1
+                complete.asked.append(messages[1]["content"])
+                return {**turn(json.dumps({"advice": reply})), "usage": {"prompt_tokens": 100, "completion_tokens": 10}}
+            models.append(model)
+            step = agent_turns[min(state["agent"], len(agent_turns) - 1)]
+            state["agent"] += 1
+        return step(messages, tools) if callable(step) else step
+
+    complete.models, complete.asked = models, []
+    return complete
+
+
+def test_the_advisor_speaks_up_in_the_background_and_checks_a_claim_of_done(ws, home):
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"advisor": True, "advisor_every": 1, "advisor_model": "big"}))
+    def slow(messages, tools):
+        time.sleep(0.3)
+        return turn(calls=[call("read_file", path="pkg/a.py")])
+    fake = advised([turn(calls=[call("list_dir", path=".")]), slow, turn("All done."), turn("Fixed for real.")],
+                   [[{"severity": "concern", "text": "You never read pkg/a.py before planning the change."}], [],
+                    [{"severity": "blocker", "text": "Nothing was edited, yet the reply claims done."}, {"severity": "nit", "text": "style"}], []])
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    advice = [h["content"] for h in session.history if h["role"] == "user" and h["content"].startswith("[Advisor]")]
+    assert any("concern: You never read pkg/a.py" in a for a in advice), session.history
+    assert any("blocker: Nothing was edited" in a and "style" not in a for a in advice), "a claim of done is checked; nits do not reopen it"
+    assert session.history[-1]["content"] == "Fixed for real." and len(fake.asked) == 3, "two background looks, then one final check per request"
+    assert "You never read pkg/a.py" in fake.asked[-1], "earlier advice is shown so it is not repeated"
+    assert session.usage["prompt_tokens"] >= 300, "advisor tokens count toward the budget"
+
+
+def test_prewalk_plans_on_the_strong_model_and_hands_over_at_the_first_edit(ws, home):
+    from app.agent import session as session_module
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"prewalk_model": "big"}))
+    fake = advised([turn(calls=[call("read_file", path="pkg/a.py")]),
+                    turn("Plan: change f to return 2, then run the tests.", calls=[call("todo_write", items=[{"text": "edit f", "status": "in_progress"}])]),
+                    turn(calls=[call("edit_file", path="pkg/a.py", old_text="return 1", new_text="return 2")]),
+                    turn(calls=[call("run_command", command="python -c 'import pkg.a'")]), turn("Done.")], [[]])
+    session = manager(home).create(PROVIDERS["openai"], "k", "small", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert fake.models == ["big", "big", "big", "small", "small"], fake.models
+    texts = [h["content"] for h in session.history if h["role"] == "user"]
+    assert session_module.PREWALK_PLAN in texts and session_module.PREWALK_CHECKLIST in texts
+    assert texts.index(session_module.PREWALK_PLAN) < texts.index(session_module.PREWALK_CHECKLIST)

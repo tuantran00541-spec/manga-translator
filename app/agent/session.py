@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import agents, client, codemode, context, external, guardian, isolate, mcp, memory, models, registry, rules, sandbox, skill_install, skills
+from app.agent import advisor, agents, client, codemode, context, external, guardian, isolate, mcp, memory, models, registry, rules, sandbox, skill_install, skills
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import KIND, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -42,6 +42,14 @@ EMPTY_RETRIES = 3
 LONG_CALL = ("[Reminder] The tool call you were writing was getting too long for one reply and would be cut off. Send it in pieces: create the file "
              "with a short write_file, then add the rest with edit_file or run_command (cat >> file <<'EOF').")
 WRAP_UP = "[The token budget for this turn is used up. Do not call tools. Report in a few paragraphs what you found or built, what is not finished, and what you would do next.]"
+PREWALK_PLAN = ("[Plan now] Before exploring further, write the complete plan in your next reply: the remaining steps in order with exact files, "
+                "symbols and commands; risks and edge cases with the check that proves each one landed (never change tests or checks to make them pass); "
+                "what is already done. Then record 5-9 concrete steps with todo_write and carry on with the task; the plan is a checkpoint, not the answer.")
+PREWALK_CONTINUE = "[Continue] The plan is written; carry on with the task now, do not end the turn here."
+PREWALK_CHECKLIST = ("[Before you call it done] Consistency: a pattern, signature or check changed in one place is changed at every call site and copy (search for them). "
+                     "Scope: outside the asked change, behaviour stays the same; prefer the smallest correct diff. "
+                     "Verification: run the whole affected test file or module, not only the test you expect to flip. Claim done only after all three.")
+ADVISED = "[Advisor] A second model reviewing your recent steps says the following. Weigh it; you decide, and say briefly if you disagree.\n"
 EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -212,6 +220,12 @@ class AgentSession:
         self.web_ok: set[str] = set()
         self._turn_usage = 0
         self._denials: list[bool] = []
+        self._advice: list[tuple[str, str]] = []
+        self._advice_given: list[str] = []
+        self._advised_upto = self._advise_steps = 0
+        self._advisor_thread: threading.Thread | None = None
+        self._final_advised = self._edited = self._plan_nudged = self._continued = False
+        self._prewalk = False
         self._interrupt: dict | None = None
         self._pinned: dict[str, str] | None = None
         self.notes = ""
@@ -424,6 +438,8 @@ class AgentSession:
         if not self.depth:
             self.checkpoints.begin()
         self._dirty = self._gated = self.tainted = False
+        self._final_advised = self._edited = self._plan_nudged = self._continued = False
+        self._prewalk = bool(self.profile["prewalk_model"]) and self.profile["prewalk_model"] != self.model and not self.depth
         self._skills_loaded = []
         self._turn_usage = self._spent()
         self._fired = {}
@@ -1234,7 +1250,7 @@ class AgentSession:
         if name in ("web_fetch", "web_search", "web_download", "delegate") or name in self.mcp_tools:
             self.tainted = True
         if ok and KIND.get(name) == "edit" and name != "web_download":
-            self._dirty = True
+            self._dirty = self._edited = True
         elif name == "run_command":
             self._dirty = False
         if name == "run_command" or name in self.mcp_tools or name in self.registry.tools:
@@ -1345,7 +1361,8 @@ class AgentSession:
             extra = {"on_delta": self._on_delta} if streams else {}
             if self.complete is client.complete:
                 extra["max_tokens"] = self.profile["max_output_tokens"]
-            return self.complete(self.provider, self.api_key, self.model, messages, tools=tools, **extra)
+            model = self.profile["prewalk_model"] if self._prewalk else self.model
+            return self.complete(self.provider, self.api_key, model, messages, tools=tools, **extra)
         finally:
             self.stats["model_s"] += time.time() - started
 
@@ -1510,6 +1527,69 @@ class AgentSession:
             self.history.append({"role": "user", "content": text})
         self._notifications()
 
+    def _advance_prewalk(self) -> None:
+        """Prewalk: the strong model explores and plans, and the session's own model takes over at the first edit (from omp)."""
+        if not self._prewalk:
+            return
+        if self._edited and self._plan_nudged:
+            self._prewalk = False
+            self.history.append({"role": "user", "content": PREWALK_CHECKLIST})
+            self.emit("notice", text=f"Prewalk: {self.profile['prewalk_model']} đã lập kế hoạch; {self.model} làm tiếp từ lần sửa đầu tiên.")
+        elif not self._plan_nudged:
+            self._plan_nudged = True
+            self.history.append({"role": "user", "content": PREWALK_PLAN})
+
+    def _advisor_on(self) -> bool:
+        return bool(self.profile["advisor"]) and not self.depth
+
+    def _advisor_steps(self) -> str:
+        if self._advised_upto > len(self.history):
+            self._advised_upto = max(0, len(self.history) - 6)
+        items, self._advised_upto = self.history[self._advised_upto:], len(self.history)
+        return self._transcript(items)
+
+    def _ask_advisor(self, steps: str, finishing: bool) -> None:
+        notes, usage = advisor.advise(self.complete, self.provider, self.api_key, self.profile["advisor_model"] or self.profile["review_model"] or self.model,
+                                      self._user_messages(), steps, list(self._advice_given), finishing)
+        with self._usage_lock:
+            for key in self.usage:
+                self.usage[key] += int(usage.get(key) or 0)
+            self._advice += notes
+            self._advice_given += [f"{sev}: {text}" for sev, text in notes]
+
+    def _start_advisor(self) -> None:
+        """Every few steps the advisor reads what happened since its last look, in the background so the agent never waits."""
+        if not self._advisor_on():
+            return
+        self._advise_steps += 1
+        if self._advise_steps % self.profile["advisor_every"] or (self._advisor_thread and self._advisor_thread.is_alive()):
+            return
+        steps = self._advisor_steps()
+        self._advisor_thread = threading.Thread(target=self._ask_advisor, args=(steps, False), name=f"advisor-{self.id}", daemon=True)
+        self._advisor_thread.start()
+
+    def _take_advice(self) -> bool:
+        with self._usage_lock:
+            notes, self._advice = self._advice, []
+        if not notes:
+            return False
+        notes.sort(key=lambda n: advisor.SEVERITIES.index(n[0]))
+        self.history.append({"role": "user", "content": ADVISED + "\n".join(f"- {sev}: {text}" for sev, text in notes)})
+        self.emit("notice", text="Advisor: " + " | ".join(f"{sev}: {text}" for sev, text in notes)[:800])
+        return True
+
+    def _final_advice(self) -> bool:
+        """Once per request, the advisor checks a claim of done before the turn ends; a concern or blocker sends the agent back."""
+        if not self._advisor_on() or self._final_advised or self._stop:
+            return False
+        self._final_advised = True
+        if self._advisor_thread and self._advisor_thread.is_alive():
+            self._advisor_thread.join(120)
+        self._ask_advisor(self._advisor_steps(), True)
+        with self._usage_lock:
+            self._advice = [n for n in self._advice if n[0] != "nit"]
+        return self._take_advice()
+
     def _more_work(self) -> bool:
         """True when a queued message or an unfinished goal means the turn should go on."""
         with self._lock:
@@ -1523,6 +1603,10 @@ class AgentSession:
                 break
             time.sleep(0.25)
         if done():
+            return True
+        if self._prewalk and self._plan_nudged and not self._continued:
+            self._continued = True
+            self.history.append({"role": "user", "content": PREWALK_CONTINUE})
             return True
         if self._dirty and not self._gated and self.workspace.policy.mode != "read-only" and any(r["name"] == "run_command" for r in self.specs()):
             self._gated = True
@@ -1603,6 +1687,7 @@ class AgentSession:
                 self.emit("notice", text="Đã dừng.")
                 break
             self._drain()
+            self._take_advice()
             if self._spent() - self._turn_usage > self.profile["token_budget"]:
                 self.emit("error", text=f"Đã dùng quá {self.profile['token_budget']:,} token cho lượt này; dừng. Nhắn tiếp nếu muốn agent làm tiếp.")
                 self._wrap_up()
@@ -1642,11 +1727,13 @@ class AgentSession:
                                  **({"reasoning": turn["reasoning"][-20000:]} if self.echo_reasoning and turn["reasoning"] else {})})
             self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)
             if not calls:
-                if self._more_work():
+                if self._final_advice() or self._more_work():
                     continue
                 break
             self._run_calls(calls)
             self._show_images()
+            self._advance_prewalk()
+            self._start_advisor()
             if self._rollover:
                 self._roll_over()
             broken = broken + 1 if all(c.get("error") or not c["name"] for c in calls) else 0

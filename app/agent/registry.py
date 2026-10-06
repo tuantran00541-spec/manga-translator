@@ -34,7 +34,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
-                     "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False}
+                     "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
+                     "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": ""}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -51,7 +52,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["external_agents"].update(data["external_agents"])
                 if isinstance(data.get("echo_reasoning"), bool):
                     profile["echo_reasoning"] = data["echo_reasoning"]
-                for key in ("subagent_model", "compact_model"):
+                for key in ("subagent_model", "compact_model", "advisor_model", "prewalk_model"):
                     if isinstance(data.get(key), str):
                         profile[key] = data[key].strip()[:100]
                 for key in ("models", "prices"):
@@ -72,6 +73,10 @@ def load_profile(workspace: Path, home: Path) -> dict:
                                 profile["stream_rules"].append({"name": str(rule.get("name") or rule["pattern"])[:40], "pattern": str(rule["pattern"]), "message": rule["message"][:1000]})
                         except re.error:
                             continue
+                if isinstance(data.get("advisor"), bool):
+                    profile["advisor"] = data["advisor"]
+                if isinstance(data.get("advisor_every"), int) and data["advisor_every"] > 0:
+                    profile["advisor_every"] = data["advisor_every"]
                 if isinstance(data.get("notes_context"), bool):
                     profile["notes_context"] = data["notes_context"]
                 if isinstance(data.get("goal_turns"), int) and data["goal_turns"] > 0:
