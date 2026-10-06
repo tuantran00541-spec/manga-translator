@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from typing import Callable
 import re
 from urllib.parse import parse_qs, quote_plus, urlparse
 
@@ -118,24 +119,42 @@ def filter_results(results: list[tuple[str, str, str]], wanted: dict) -> tuple[l
     return results, dropped
 
 
-def search(query: str, count: int = 8, recency: str = "") -> str:
+LABELS = {"tinyfish": "TinyFish", "tavily": "Tavily", "duckduckgo": "DuckDuckGo"}
+
+
+class NotConfigured(SearchError):
+    """A provider missing its key is skipped without counting as a failure."""
+
+
+def _default_providers() -> list[tuple[str, Callable]]:
+    def keyed(fn: Callable, env: str) -> Callable:
+        def run(query: str, count: int, recency: str = "") -> list:
+            if not os.environ.get(env):
+                raise NotConfigured(f"{env} is not set")
+            return fn(query, count, os.environ[env], **({"recency": recency} if recency else {}))
+        return run
+    return [("tinyfish", keyed(_tinyfish, "TINYFISH_API_KEY")), ("tavily", keyed(_tavily, "TAVILY_API_KEY")),
+            ("duckduckgo", lambda query, count, recency="": _duckduckgo(query, count, **({"recency": recency} if recency else {})))]
+
+
+def search(query: str, count: int = 8, recency: str = "", providers: list[tuple[str, Callable]] | None = None) -> str:
+    """Results from the first provider that answers, each provider called as fn(query, count, recency)."""
     query = " ".join(str(query).split())[:300]
     if not query:
         raise SearchError("query is empty")
     count = max(1, min(15, int(count)))
-    extra = {"recency": recency} if recency in RECENCY else {}
-    chain = []
-    if os.environ.get("TINYFISH_API_KEY"):
-        chain.append(("TinyFish", lambda: _tinyfish(query, count, os.environ["TINYFISH_API_KEY"], **extra)))
-    if os.environ.get("TAVILY_API_KEY"):
-        chain.append(("Tavily", lambda: _tavily(query, count, os.environ["TAVILY_API_KEY"], **extra)))
-    chain.append(("DuckDuckGo", lambda: _duckduckgo(query, count, **extra)))
+    recency = recency if recency in RECENCY else ""
     failures, answered = [], False
-    for name, run in chain:
+    for name, run in providers or _default_providers():
         try:
-            found = run()
+            found = run(query, count, recency)
+        except NotConfigured:
+            continue
         except (requests.RequestException, SearchError) as exc:
-            failures.append(f"{name}: {exc if isinstance(exc, SearchError) else type(exc).__name__}")
+            failures.append(f"{LABELS.get(name, name)}: {exc if isinstance(exc, SearchError) else type(exc).__name__}")
+            continue
+        except Exception as exc:  # a plugin's provider fails like any other
+            failures.append(f"{name}: {type(exc).__name__}: {exc}"[:200])
             continue
         wanted = constraints(query)
         found, dropped = filter_results(found, wanted) if found else (found, [])

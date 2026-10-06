@@ -488,6 +488,53 @@ def test_profile_swaps_built_in_tools_for_mcp_tools_and_gives_them_roles(ws, hom
     agents.close_all()
 
 
+SEAM_PLUGIN = textwrap.dedent('''
+    import shlex
+    from app.agent import sandbox
+
+    def register(api):
+        api.provide("web.search", "fake-search", lambda query, count, recency="": [("Fake hit", "https://fake.example/" + query.replace(" ", "-"), "from the plugin")])
+        api.provide("web.fetch", "fake-fetch", lambda url: (b"<html><body><main><h1>Plugin page</h1><p>" + b"word " * 300 + b"</p></main></body></html>", "text/html", "utf-8"))
+        api.provide("shell", "tagged", lambda command, policy, cwd, tty=False: sandbox.Job("echo tagged: && " + command, policy, cwd, tty=tty))
+''')
+
+
+def test_plugins_provide_the_services_behind_search_fetch_and_commands(ws, home, tmp_path, monkeypatch):
+    folder = home / ".manga-agent"
+    (folder / "plugins").mkdir(parents=True, exist_ok=True)
+    (folder / "plugins" / "seams.py").write_text(SEAM_PLUGIN, encoding="utf-8")
+    (folder / "profile.json").write_text(json.dumps({"services": {"web.search": ["fake-search", "duckduckgo"], "web.fetch": "fake-fetch",
+                                                                  "shell": "tagged"}}))
+    monkeypatch.setattr(sandbox, "backend", lambda: "landlock")
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    output, ok = session._run_call({"id": "1", "name": "web_search", "args": {"query": "seam test"}})
+    assert ok and "https://fake.example/seam-test" in output, output
+    output, ok = session._run_call({"id": "2", "name": "web_fetch", "args": {"url": "https://anything.example/"}})
+    assert ok and "Plugin page" in output, output
+    session.mode = "edits"
+    assert session._needs_approval(call("run_command", command="ls")), "a command a plugin runs is outside our sandbox, so it asks"
+    monkeypatch.undo()
+    session.mode = "auto"
+    output, ok = session._run_call({"id": "3", "name": "run_command", "args": {"command": "echo hi"}})
+    assert ok and "tagged:" in output and "hi" in output, output
+    described = session.command("/services")["message"]
+    assert "web.search: fake-search, duckduckgo" in described and "shell: tagged (còn có: local)" in described
+    with pytest.raises(ValueError, match="cannot be registered"):
+        session.registry.provide("teleport", "x", print)
+
+
+def test_an_unknown_provider_choice_falls_back_to_the_built_in_ones(ws, home, tmp_path):
+    folder = home / ".manga-agent"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "profile.json").write_text(json.dumps({"services": {"shell": "nowhere", "web.search": ["nope"]}}))
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    assert session.workspace.services.is_local_shell()
+    assert session.workspace.services.active("web.search") == ["tinyfish", "tavily", "duckduckgo"]
+    assert "không có provider nowhere, dùng mặc định" in session.command("/services")["message"]
+    output, ok = session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo still-local"}})
+    assert ok and "still-local" in output
+
+
 def test_mcp_config_from_codex_and_claude_files(ws, home):
     (home / ".codex").mkdir()
     (home / ".codex" / "config.toml").write_text('[mcp_servers.docs]\ncommand = "npx"\nargs = ["-y", "docs-mcp"]\n', encoding="utf-8")
@@ -2715,7 +2762,7 @@ def test_web_reading_keeps_github_index_pages_reuses_a_fetched_page_and_points_t
     assert asked == ["https://raw.githubusercontent.com/o/r/HEAD/README.md", "https://github.com/o/r"], "a missing README falls back to the page"
     ws._tool_web_fetch("https://github.com/o/r", offset=1000)
     assert "needle" in ws._tool_web_fetch("https://github.com/o/r", find="needle") and len(asked) == 2, "offset and find reuse the page"
-    monkeypatch.setattr(websearch, "search", lambda q, n=8, r="": "1. A\nhttps://a.example\nsnip")
+    monkeypatch.setattr(websearch, "search", lambda q, n=8, r="", providers=None: "1. A\nhttps://a.example\nsnip")
     tips = [("[Tip: this is search" in ws._tool_web_search(f"q{i}")) for i in range(3)]
     assert tips == [False, False, True]
     ws._tool_web_fetch("https://github.com/o/r", find="needle")

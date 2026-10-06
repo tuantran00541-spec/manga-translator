@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import advisor, agents, aliases, client, codemode, context, external, guardian, isolate, mcp, memory, models, registry, rules, sandbox, gitguard, schema as schemas, skill_install, skills
+from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, mcp, memory, models, registry, rules, sandbox, schema as schemas, services, skill_install, skills
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -184,7 +184,7 @@ SESSION_SPECS = {
 BUILTIN_COMMANDS = {
     "help": "Xem các lệnh", "compact": "Tóm gọn hội thoại để giải phóng chỗ (có thể ghi điều cần giữ); /compact auto 900k đặt mức tự tóm gọn",
     "init": "Viết AGENTS.md mô tả dự án này", "skills": "Xem skill; /skills add CHỦ/REPO[/THƯ-MỤC] cài skill từ GitHub",
-    "mcp": "Xem MCP server và công cụ của chúng", "model": "Đổi model: /model TÊN",
+    "mcp": "Xem MCP server và công cụ của chúng", "services": "Xem provider đang chạy sau tìm web, tải trang và lệnh", "model": "Đổi model: /model TÊN",
     "mode": "Đổi cách duyệt: /mode ask|edits|auto",
     "sandbox": "Đổi sandbox: /sandbox read-only|workspace-write|full-access [net]",
     "clear": "Mở phiên mới", "plan": "Chế độ lập kế hoạch (chỉ đọc đến khi bạn duyệt): /plan [việc] hoặc /plan off",
@@ -330,6 +330,7 @@ class AgentSession:
             reg.tool(external.spec(list(self.externals)), lambda session, args: external.run(session, args, self.externals),
                      kind="exec", group="external", always_ask=True)
         registry.load_plugins(reg, self.workspace.root, home_path, self.trust)
+        self.workspace.services = services.Services(self.profile["services"], reg.providers)
         return reg
 
     def _enabled(self, name: str) -> bool:
@@ -525,6 +526,9 @@ class AgentSession:
                 return {"message": self._install_skills(args[3:].strip())}
             rows = [f"{'/' if s.manual else ''}{s.name}{' (có sẵn)' if s.builtin else ''}: {s.description[:150]}" for s in self.skills.values()]
             return {"message": "\n".join(rows) or "Không có skill nào."}
+        if name == "services":
+            return {"message": "\n".join(self.workspace.services.describe())
+                    + "\nChọn trong ~/.manga-agent/profile.json, ví dụ \"services\": {\"web.search\": [\"tavily\", \"duckduckgo\"]}; plugin thêm provider bằng api.provide()."}
         if name == "mcp":
             self._ensure_mcp()
             rows = [f"{m['name']} ({m['scope']}): {m['state']}" + (f", {m['tools']} công cụ" if m.get("tools") else "")
@@ -837,7 +841,8 @@ class AgentSession:
             return via_mcp or not (name == "run_command" and not call["args"].get("outside_sandbox") and rules.safe_readonly(str(call["args"].get("command") or "")))
         if kind == "exec":
             # In edits mode commands run on their own only inside a working OS sandbox.
-            confined = sandbox.backend() != "none" and self.workspace.policy.mode != "full-access" and not via_mcp
+            confined = (sandbox.backend() != "none" and self.workspace.policy.mode != "full-access" and not via_mcp
+                        and self.workspace.services.is_local_shell())
             return bool(call["args"].get("outside_sandbox")) or not confined
         if kind == "edit" and via_mcp:
             try:
@@ -1042,7 +1047,7 @@ class AgentSession:
         policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
         root = self.workspace.root
         guard = gitguard.snapshot(root)
-        job = sandbox.Job(command, policy, root)
+        job = self.workspace.services.shell(command, policy, root)
         end = time.time() + limit
         while job.code is None and time.time() < end and not self._stop:
             time.sleep(0.05)
@@ -1077,7 +1082,7 @@ class AgentSession:
             raise ToolError("command is empty")
         policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
         name = f"job{next(i for i in range(1, 100) if f'job{i}' not in self.jobs)}"
-        self.jobs[name] = sandbox.Job(command, policy, self.workspace.root, tty=bool(args.get("tty")))
+        self.jobs[name] = self.workspace.services.shell(command, policy, self.workspace.root, tty=bool(args.get("tty")))
         time.sleep(1.0)
         job = self.jobs[name]
         state = "running" if job.code is None else f"exited with code {job.code}"
@@ -1201,6 +1206,7 @@ class AgentSession:
                 busy = ""
         helper = Workspace(copy or self.workspace.root, self.workspace.policy if mutating else sandbox.Policy("read-only", False),
                            read_roots=self.workspace.read_roots)
+        helper.services = self.workspace.services
         child = AgentSession(f"{self.id}-{nick}", self.provider, self.api_key, agent.model or self.profile.get("subagent_model") or self.model, helper,
                              self.mode if mutating else "auto", complete=self.complete, depth=self.depth + 1, home=self.home,
                              trust=self.trust, parent=self, agent=agent)

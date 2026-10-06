@@ -14,7 +14,7 @@ import unicodedata
 
 import requests
 
-from app.agent import gitguard, hashline, patch as patches, sandbox, webread, websearch
+from app.agent import gitguard, hashline, patch as patches, sandbox, services, webread, websearch
 from app.downloader.http import read_response_limited, safe_get
 
 BROAD_FOLDERS = {"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/var", "/boot", "/dev", "/proc", "/sys", "/opt", "/root", "/home", "/Users",
@@ -224,6 +224,8 @@ class Workspace:
         self.searches_in_row = 0
         self.pages: dict[str, tuple[str, list[str], float]] = {}
         self.new_images: list[tuple[str, str]] = []
+        # The providers behind web search, page downloads and commands; a session swaps in the user's choice.
+        self.services = services.Services()
 
     def resolve(self, path: str | None, *, write: bool = False) -> Path:
         target = (self.root / (path or ".")).resolve()
@@ -523,7 +525,14 @@ class Workspace:
         limit = max(1, min(MAX_COMMAND_TIMEOUT, int(timeout)))
         policy = sandbox.Policy("full-access", True) if outside_sandbox else self.policy
         guard = gitguard.snapshot(self.root)
-        code, output = sandbox.run(str(command), policy, self.root, limit)
+        if self.services.is_local_shell():
+            code, output = sandbox.run(str(command), policy, self.root, limit)
+        else:
+            job, end = self.services.shell(str(command), policy, self.root), time.time() + limit
+            while job.code is None and time.time() < end:
+                time.sleep(0.05)
+            code, output = job.code, job.read()
+            job.stop()
         status = f"[stopped after {limit} s]" if code is None else f"[exit code {code}]"
         undone = gitguard.restore(self.root, guard)
         warning = f"\n[blocked: the command changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]" if undone else ""
@@ -595,6 +604,12 @@ class Workspace:
         return text, notes
 
     def _download(self, url: str) -> tuple[bytes, str, str | None]:
+        fetch = self.services.fetcher()
+        if fetch is not None:
+            try:
+                return fetch(url)
+            except Exception as exc:
+                raise ToolError(f"Could not fetch {url}: {exc}") from exc
         try:
             response = safe_get(url, timeout=(10, 30), headers={"User-Agent": "Mozilla/5.0 manga-translator-agent", "Accept": "text/html,application/xhtml+xml;q=0.9,text/markdown;q=0.5,*/*;q=0.3"})
             body = read_response_limited(response, limit_bytes=MAX_FETCH_BYTES)
@@ -607,7 +622,7 @@ class Workspace:
     def _tool_web_search(self, query: str, count: int = 8, recency: str = "") -> str:
         self.searches_in_row += 1
         try:
-            found = websearch.search(query, count, recency)
+            found = self.services.search(query, count, recency)
         except websearch.SearchError as exc:
             raise ToolError(str(exc)) from exc
         if self.searches_in_row >= SEARCH_STREAK:

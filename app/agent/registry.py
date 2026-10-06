@@ -39,7 +39,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": "",
-                     "replace": {}, "roles": {}}
+                     "replace": {}, "roles": {}, "services": {}}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -105,6 +105,9 @@ def load_profile(workspace: Path, home: Path) -> dict:
                 if isinstance(data.get("replace"), dict):
                     profile["replace"].update({k: v for k, v in data["replace"].items()
                                                if k in REPLACEABLE and isinstance(v, str) and v.startswith("mcp__")})
+                if isinstance(data.get("services"), dict):
+                    profile["services"].update({k: v for k, v in data["services"].items()
+                                                if isinstance(v, str) or (isinstance(v, list) and all(isinstance(x, str) for x in v))})
                 if isinstance(data.get("roles"), dict):
                     profile["roles"].update({k: v for k, v in data["roles"].items() if str(k).startswith("mcp__") and v in ROLES})
     profile["disable"] = sorted(set(profile["disable"]))
@@ -130,6 +133,7 @@ class Registry:
         self.hooks: dict[str, list[Callable]] = {e: [] for e in EVENTS}
         self.prompts: list[Callable] = []
         self.loops: dict[str, Callable] = {}
+        self.providers: dict[str, dict[str, Callable]] = {}
         self.plugins: list[dict] = []
         self._current = ""
 
@@ -154,6 +158,14 @@ class Registry:
 
     def prompt(self, fn: Callable) -> None:
         self.prompts.append(fn)
+
+    def provide(self, service: str, name: str, fn: Callable) -> None:
+        """Add a provider for a capability seam (web.search, web.fetch, shell); profile.json "services" picks which one runs."""
+        from app.agent.services import CONTRACTS
+
+        if service not in CONTRACTS or not NAME_RE.match(name.replace("-", "_")) or not callable(fn):
+            raise ValueError(f"provider {name!r} for {service!r} cannot be registered; services: {', '.join(CONTRACTS)}")
+        self.providers.setdefault(service, {})[name] = fn
 
     def loop(self, name: str, fn: Callable) -> None:
         """fn(session, max_steps) replaces the step loop; the session API (_turn, _run_calls, history, emit) does the work."""
