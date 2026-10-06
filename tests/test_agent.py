@@ -226,11 +226,13 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     client.complete(PROVIDERS["gemini"], "k", "m", [], tools=None)
     assert sent[1][0].endswith("/openai/chat/completions") and "tools" not in sent[1][1]
     replies = [FakeResponse(429, {"error": {"message": "slow down"}}), FakeResponse(200, reply)]
+    monkeypatch.setattr(client, "RATE_LIMITS", {})
     waits = []
     monkeypatch.setattr(client.time, "sleep", waits.append)
     monkeypatch.setattr(client.requests, "post", lambda url, **kw: replies.pop(0))
     assert client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)["calls"][0]["name"] == "list_dir"
     assert waits == [6.0], "a rate-limited request waits and is sent again"
+    assert client.RATE_LIMITS["openai"]["count"] == 1 and client.RATE_LIMITS["openai"]["waited_s"] == 6.0, "every 429 is counted"
     client._COOLDOWN["openai"] = time.time() + 5
     waits.clear()
     monkeypatch.setattr(client.requests, "post", lambda url, **kw: FakeResponse(200, reply))
@@ -3034,3 +3036,21 @@ def test_the_harness_serves_its_own_tools_and_its_plugins_tools_over_mcp(ws, hom
         assert not ok and "outside the workspace" in text
     finally:
         writer.close()
+
+
+def test_a_session_reports_each_rate_limit_its_provider_answered(ws, home, tmp_path, monkeypatch):
+    from app.agent import client
+
+    monkeypatch.setattr(client, "RATE_LIMITS", {})
+
+    def throttled(provider, key, model, messages, *, tools, **extra):
+        client.RATE_LIMITS.setdefault(provider.id, {"count": 0, "waited_s": 0.0, "detail": ""})
+        client.RATE_LIMITS[provider.id].update(count=client.RATE_LIMITS[provider.id]["count"] + 2, detail="free tier: 10 requests per minute")
+        client.RATE_LIMITS[provider.id]["waited_s"] += 18.0
+        return turn("ok")
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=throttled)
+    session.send("hi")
+    wait_for(session, "idle")
+    notes = [e["text"] for e in session.events if e["type"] == "notice"]
+    assert any("rate-limited this request 2 time(s), waited 18 s: free tier: 10 requests per minute" in n for n in notes), notes
+    assert session.rate_limited == {"count": 2, "waited_s": 18.0} and session.snapshot()["rate_limited"]["count"] == 2

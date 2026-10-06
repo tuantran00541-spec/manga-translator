@@ -332,6 +332,7 @@ class AgentSession:
         self.mcp_status: dict[str, dict] = {}
         self.mcp_tools: dict[str, tuple[str, dict]] = {}
         self.mcp_loaded: set[str] = set()
+        self.rate_limited = {"count": 0, "waited_s": 0.0}
         self._plain = False
         self._mcp_ready = depth > 0
 
@@ -439,7 +440,7 @@ class AgentSession:
                     "plan_mode": self.plan_mode, "goal": self.goal and self.goal["text"], "queued": len(self.queue),
                     "agents": [{"name": a.name, "description": a.description} for a in self.agents.values()],
                     "skills": [{"name": s.name, "description": s.description} for s in self.skills.values()],
-                    "mcp": list(self.mcp_status.values()), "replaced": self.replaced, "hooks": self._hook_summary(),
+                    "mcp": list(self.mcp_status.values()), "replaced": self.replaced, "rate_limited": dict(self.rate_limited), "hooks": self._hook_summary(),
                     "commands": [{"name": k, "description": v} for k, v in self._builtin_commands().items()]
                     + [{"name": k, "description": d} for k, (d, _) in self.registry.commands.items()]
                     + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
@@ -1691,6 +1692,19 @@ class AgentSession:
     def _call_model(self, messages: list[dict], tools: list[dict] | None) -> dict:
         streams = (self.complete is client.complete or getattr(self.complete, "streams", False)) and not self._plain
         started = time.time()
+        limited = dict(client.RATE_LIMITS.get(self.provider.id) or {"count": 0, "waited_s": 0.0})
+        try:
+            return self._call_model_once(messages, tools, streams, started)
+        finally:
+            now = client.RATE_LIMITS.get(self.provider.id) or {"count": 0, "waited_s": 0.0}
+            if now["count"] > limited["count"]:
+                # The provider throttled this request; say so, with its own words, instead of only taking longer.
+                self.rate_limited["count"] += now["count"] - limited["count"]
+                self.rate_limited["waited_s"] += now["waited_s"] - limited["waited_s"]
+                self.emit("notice", text=f"{self.provider.label} rate-limited this request {now['count'] - limited['count']} time(s), "
+                          f"waited {now['waited_s'] - limited['waited_s']:.0f} s: {now.get('detail', '')[:160]}")
+
+    def _call_model_once(self, messages: list[dict], tools: list[dict] | None, streams: bool, started: float) -> dict:
         try:
             extra = {"on_delta": self._on_delta} if streams else {}
             if self.complete is client.complete:

@@ -9,6 +9,7 @@ import uuid
 from email.utils import parsedate_to_datetime
 
 import requests
+from loguru import logger
 
 from app.ai_providers import AIProvider
 from app.logging_config import logger
@@ -226,6 +227,23 @@ def _retry_after(response: requests.Response) -> float:
         return 0.0
 
 
+# Rate-limit answers seen per provider: how many, how long we waited, and the provider's last words, so a session can report them.
+RATE_LIMITS: dict[str, dict] = {}
+
+
+def _note_rate_limit(provider: AIProvider, response: requests.Response, wait: float) -> None:
+    try:
+        detail = response.text[:300]
+    except Exception:
+        detail = ""
+    row = RATE_LIMITS.setdefault(provider.id, {"count": 0, "waited_s": 0.0, "detail": "", "first": time.time()})
+    row["count"] += 1
+    row["waited_s"] += wait
+    row["detail"] = detail or row["detail"]
+    row["last"] = time.time()
+    logger.info("{} answered 429 ({} so far, waiting {:.0f} s): {}", provider.label, row["count"], wait, detail[:200])
+
+
 def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> requests.Response:
     """The request, with the shared 429 cooldown and retries."""
     url = chat_url(provider)
@@ -244,6 +262,7 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
             return response
         # Free tiers allow a few requests a minute; wait as told, or longer each time.
         wait = min(60.0, _retry_after(response) or 6.0 * 2 ** attempt)
+        _note_rate_limit(provider, response, wait)
         _COOLDOWN[provider.id] = max(_COOLDOWN.get(provider.id, 0.0), time.time() + wait)
         response.close()
         time.sleep(wait)
