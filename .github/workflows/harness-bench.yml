@@ -1,0 +1,154 @@
+name: Harness bench
+
+# One-off: our Agent harness on hard benchmarks through Harbor, with PolarGrid behind a key relay (the containers never hold the key).
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/harness-bench.yml"
+      - ".github/harness-bench/**"
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: "tb3 or swepro"
+        default: "tb3"
+      n_tasks:
+        description: "How many tasks (0 = all)"
+        default: "2"
+      concurrent:
+        description: "Tasks at once"
+        default: "2"
+
+permissions:
+  contents: write
+
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        dataset: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', github.event.inputs.dataset) || '["tb3", "swepro"]') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    env:
+      OUT: audit-results/harness-bench/${{ matrix.dataset }}-ours
+      N_TASKS: ${{ github.event.inputs.n_tasks || '2' }}
+      CONCURRENT: ${{ github.event.inputs.concurrent || '2' }}
+      PORT: "18080"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h / | tail -1
+
+      - name: Install Harbor
+        run: |
+          python -m pip install -q uv
+          uv tool install harbor 2>&1 | tail -2
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/harbor" --version || true
+
+      - name: Start the key relay as another user
+        env:
+          POLARGRID_KEY: ${{ secrets.polagrid_ }}
+        run: |
+          [ -n "$POLARGRID_KEY" ] || { echo "::error::polagrid_ is not set"; exit 1; }
+          python -m pip install -q requests
+          sudo install -d -o nobody -m 711 /opt/relay
+          sudo install -m 755 .github/harness-bench/proxy.py /opt/relay/proxy.py
+          printf '%s' "$POLARGRID_KEY" | sudo -u nobody tee /opt/relay/key > /dev/null
+          sudo chmod 600 /opt/relay/key
+          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" > /dev/null 2>&1 &
+          sleep 3
+          mkdir -p "$OUT"
+          curl -sS -m 30 "http://127.0.0.1:$PORT/v1/models" | head -c 300 || true
+          echo
+          (cat /opt/relay/key > /dev/null 2>&1 && echo "::error::the runner user can read the key" && exit 1) || echo "key file is not readable by the runner user"
+
+      - name: Package the harness
+        run: |
+          python -m pip install -q -r requirements-test.txt
+          python - <<'PY'
+          import importlib, os, sys, tarfile
+          importlib.import_module("app.agent.cli")
+          files = set()
+          for name, mod in list(sys.modules.items()):
+              path = getattr(mod, "__file__", None)
+              if name.split(".")[0] == "app" and path and path.endswith(".py"):
+                  files.add(os.path.relpath(path))
+          with tarfile.open("/tmp/manga-agent.tgz", "w:gz") as tar:
+              for f in sorted(files):
+                  tar.add(f)
+          print(len(files), "files")
+          PY
+          ip -4 -o addr show docker0 | awk '{print $4}' | cut -d/ -f1 | tee /tmp/docker-gateway
+
+      - name: Get the benchmark
+        run: |
+          if [ "${{ matrix.dataset }}" = swepro ]; then
+            git clone -q --depth 1 https://github.com/scaleapi/SWE-bench_Pro-os /tmp/swepro
+            ls /tmp/swepro/v2 | head
+          fi
+
+      - name: Run Harbor
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.github/harness-bench
+          MANGA_AGENT_TGZ: /tmp/manga-agent.tgz
+          MANGA_AGENT_MODEL: qwen-3.8-27b
+          MANGA_AGENT_MINUTES: "150"
+          MANGA_AGENT_SHA: ${{ github.sha }}
+        run: |
+          export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"
+          N=""; [ "$N_TASKS" != 0 ] && N="--n-tasks $N_TASKS"
+          if [ "${{ matrix.dataset }}" = swepro ]; then SRC="-p /tmp/swepro/v2/tasks"; else SRC="-d terminal-bench/terminal-bench@3.0.0"; fi
+          harbor run $SRC $N --agent-import-path manga_agent:MangaAgent --model qwen-3.8-27b --env docker \
+            --n-concurrent "$CONCURRENT" --max-retries 1 --jobs-dir "$PWD/jobs" --yes 2>&1 | tail -80 || true
+
+      - name: Summarize
+        if: always()
+        run: |
+          cp /opt/relay/stats.json "$OUT/relay-stats.json" 2>/dev/null || true
+          python - <<'PY'
+          import glob, json, os, shutil
+          out = os.environ["OUT"]
+          rows = []
+          for path in sorted(glob.glob("jobs/*/*/result.json")):
+              try:
+                  data = json.load(open(path))
+              except ValueError:
+                  continue
+              trial = os.path.basename(os.path.dirname(path))
+              rows.append({"trial": trial, "reward": ((data.get("verifier_result") or {}).get("rewards")), "exception": (data.get("exception_info") or {}).get("exception_type") if isinstance(data.get("exception_info"), dict) else data.get("exception_info"),
+                           "tokens": [(data.get("agent_result") or {}).get(k) for k in ("n_input_tokens", "n_cache_tokens", "n_output_tokens")]})
+              d = f"{out}/trials/{trial}"
+              os.makedirs(d, exist_ok=True)
+              shutil.copy(path, d)
+              for name in ("events.jsonl", "stderr.log"):
+                  for src in glob.glob(f"{os.path.dirname(path)}/agent/{name}"):
+                      shutil.copy(src, d)
+          json.dump(rows, open(f"{out}/summary.json", "w"), indent=1)
+          print(json.dumps(rows, indent=1)[:3000])
+          PY
+          gzip -f "$OUT"/trials/*/events.jsonl 2>/dev/null || true
+          find jobs -maxdepth 3 -name '*.log' | head -5
+
+      - name: Give git access only now that the agents are done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/harness-bench/${{ matrix.dataset }}-ours
+          message: "audit: Harness bench ${{ matrix.dataset }} ours (run ${{ github.run_id }})"
