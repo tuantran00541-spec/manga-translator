@@ -1,0 +1,42 @@
+{
+ "status": "idle",
+ "usage": {
+  "prompt_tokens": 13263344,
+  "completion_tokens": 38786,
+  "cached_tokens": 10028800
+ },
+ "stats": {
+  "model_seconds": 82.6,
+  "tool_seconds": 542.2,
+  "cache_pct": 76,
+  "cost": null
+ },
+ "steps": 11,
+ "tool_counts": {
+  "job_output": 1,
+  "list_dir": 1,
+  "run_command": 6,
+  "spawn_agent": 10,
+  "todo_write": 1,
+  "wait_agent": 2
+ },
+ "failed_tools": [
+  [
+   "spawn_agent",
+   "Error: 6 agents are already running (limit 6); call wait_agent for some of them first"
+  ],
+  [
+   "spawn_agent",
+   "Error: 6 agents are already running (limit 6); call wait_agent for some of them first"
+  ],
+  [
+   "job_output",
+   "Error: No job named 'ivy'; running: none"
+  ]
+ ],
+ "helpers_started": 8,
+ "errors": [
+  "Đã dùng quá 4,000,000 token cho lượt này; dừng. Nhắn tiếp nếu muốn agent làm tiếp."
+ ],
+ "notices": []
+}
