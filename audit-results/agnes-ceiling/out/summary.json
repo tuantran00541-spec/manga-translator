@@ -1,0 +1,53 @@
+{
+ "A_burst": {
+  "requests": 40,
+  "minutes": 0.5,
+  "sent_rpm": 79.0,
+  "ok": 10,
+  "ok_rpm": 19.7,
+  "codes": {
+   "200": 10,
+   "429": 30
+  },
+  "first_429_at": 10,
+  "median_latency_s": 0.27,
+  "headers_seen": [],
+  "errors": [
+   "{\"error\":{\"code\":\"\",\"message\":\"You’ve reached the API rate limit for free users. Upgrade to a Token Plan to unlock higher limits and continue using the API with"
+  ]
+ },
+ "B_10rpm": {
+  "requests": 600,
+  "minutes": 65.5,
+  "sent_rpm": 9.2,
+  "ok": 559,
+  "ok_rpm": 8.5,
+  "codes": {
+   "200": 559,
+   "429": 41
+  },
+  "first_429_at": 18,
+  "median_latency_s": 1.51,
+  "headers_seen": [],
+  "errors": [
+   "{\"error\":{\"code\":\"\",\"message\":\"You’ve reached the API rate limit for free users. Upgrade to a Token Plan to unlock higher limits and continue using the API with"
+  ]
+ },
+ "C_20rpm": {
+  "requests": 200,
+  "minutes": 13.3,
+  "sent_rpm": 15.0,
+  "ok": 119,
+  "ok_rpm": 8.9,
+  "codes": {
+   "200": 119,
+   "429": 81
+  },
+  "first_429_at": 10,
+  "median_latency_s": 0.7,
+  "headers_seen": [],
+  "errors": [
+   "{\"error\":{\"code\":\"\",\"message\":\"You’ve reached the API rate limit for free users. Upgrade to a Token Plan to unlock higher limits and continue using the API with"
+  ]
+ }
+}
