@@ -18,9 +18,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import advisor, agents, client, codemode, context, external, guardian, isolate, mcp, memory, models, registry, rules, sandbox, schema as schemas, skill_install, skills
+from app.agent import advisor, agents, client, codemode, context, external, guardian, isolate, mcp, memory, models, registry, rules, sandbox, gitguard, schema as schemas, skill_install, skills
 from app.agent.checkpoint import Checkpoints
-from app.agent.tools import KIND, SPECS, ToolError, Workspace, clip
+from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
 
 MODES = ("ask", "edits", "review", "auto")
@@ -924,6 +924,37 @@ class AgentSession:
         status = f"[stopped after {limit} s]" if code_out is None else f"[exit code {code_out}]"
         return clip(f"{output.strip()}\n{status} [{calls} tool call{'s' if calls != 1 else ''}]", 400_000)
 
+    def _run_foreground(self, args: dict) -> str:
+        """A command that outlives its timeout keeps running as a background job instead of being killed (Kimi Code)."""
+        command = str(args.get("command") or "").strip()
+        if not command:
+            raise ToolError("command is empty")
+        try:
+            limit = max(1, min(MAX_COMMAND_TIMEOUT, int(args.get("timeout") or COMMAND_TIMEOUT)))
+        except (TypeError, ValueError) as exc:
+            raise ToolError("timeout must be a whole number of seconds") from exc
+        policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
+        root = self.workspace.root
+        guard = gitguard.snapshot(root)
+        job = sandbox.Job(command, policy, root)
+        end = time.time() + limit
+        while job.code is None and time.time() < end and not self._stop:
+            time.sleep(0.05)
+        undone = gitguard.restore(root, guard)
+        warning = f"\n[blocked: the command changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]" if undone else ""
+        if job.code is None and not self._stop and len(self.jobs) < MAX_JOBS:
+            name = f"job{next(i for i in range(1, 100) if f'job{i}' not in self.jobs)}"
+            self.jobs[name] = job
+            return clip(f"{job.read().strip()}\n[still running after {limit} s; it was not stopped but moved to the background as {name}: read it with job_output, stop it with job_stop]{warning}", 400_000)
+        finished = job.code is not None
+        if finished:
+            job.out.join(5)
+        output = job.out.text().strip()
+        code = job.code
+        job.stop()
+        status = f"[exit code {code}]" if finished else f"[stopped after {limit} s]"
+        return clip(f"{output}\n{status}{warning}", 400_000)
+
     def _job(self, name: str) -> "sandbox.Job":
         job = self.jobs.get(name.strip().lower())
         if job is None:
@@ -1250,6 +1281,8 @@ class AgentSession:
                 output, ok = self.mcp_servers[server].call_tool(tool["name"], call["args"])
             elif call["name"] == "run_command" and call["args"].get("background"):
                 output, ok = self._start_job(call["args"]), True
+            elif call["name"] == "run_command" and self.profile["timeout_to_background"]:
+                output, ok = self._run_foreground(call["args"]), True
             elif call["name"] == "run_script":
                 output, ok = self._run_script(call["args"]), True
             elif call["name"] in self.registry.tools:

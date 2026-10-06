@@ -35,7 +35,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
-                     "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": ""}
+                     "timeout_to_background": True, "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": ""}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -73,6 +73,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                                 profile["stream_rules"].append({"name": str(rule.get("name") or rule["pattern"])[:40], "pattern": str(rule["pattern"]), "message": rule["message"][:1000]})
                         except re.error:
                             continue
+                if isinstance(data.get("timeout_to_background"), bool):
+                    profile["timeout_to_background"] = data["timeout_to_background"]
                 if isinstance(data.get("advisor"), bool):
                     profile["advisor"] = data["advisor"]
                 if isinstance(data.get("advisor_every"), int) and data["advisor_every"] > 0:

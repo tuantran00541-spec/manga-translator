@@ -2008,3 +2008,21 @@ def test_auto_mode_tells_the_agent_to_rule_instead_of_stalling_and_compaction_ke
     first = session.history[0]["content"]
     saved = re.search(r"saved in (\S+?\.json);", first)
     assert saved and "first request" in open(saved.group(1), encoding="utf-8").read(), first
+
+
+def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick_one_runs_as_before(ws, home):
+    fake = scripted(turn(calls=[call("run_command", command="echo hi; exit 3")]),
+                    turn(calls=[call("run_command", command="echo started; sleep 20; echo finished", timeout=1)]),
+                    turn(calls=[{"id": "o", "name": "job_stop", "args": {"id": "job1"}}]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    outs = tool_outputs(session)
+    assert "hi" in outs[0][2] and "[exit code 3]" in outs[0][2]
+    assert "started" in outs[1][2] and "moved to the background as job1" in outs[1][2] and "stopped after" not in outs[1][2], outs[1]
+    assert "Stopped job1" in outs[2][2]
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"timeout_to_background": False}))
+    fake = scripted(turn(calls=[call("run_command", command="sleep 20", timeout=1)]), turn("ok"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert "[stopped after 1 s]" in tool_outputs(session)[0][2] and not session.jobs
