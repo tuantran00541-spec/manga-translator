@@ -52,6 +52,10 @@ ADVISED = "[Advisor] A second model reviewing your recent steps says the followi
 GARBLED_NUDGE = ("[Your last reply ({text!r}) does not read as an answer after this much work. Write the final answer to the user's request now, "
                  "from what the tool results showed; do not claim anything they did not show.]")
 ANNOUNCED_NUDGE = "[You wrote what you would do next but called no tool. Make that call now; if you are finished, write your final report instead.]"
+RULINGS = ("Nobody is watching this run, so do not stop to ask what you can decide. When a conflict, an ambiguity or a missing detail comes up, decide it, record it in one line "
+           "'Ruling: <what you decided> - <why> - <what it costs if wrong>', and carry on; a wrong ruling is cheap to undo, a parked run is not. "
+           "Stop and ask only for: an irreversible or destructive operation, a security-sensitive action, a side effect outside this workspace that is normally asked first "
+           "(a push, a merge, a publish), or a task so broken that every way forward is a guess.")
 EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -1308,6 +1312,8 @@ class AgentSession:
             parts += [self._hook_call(fn) for fn in self.registry.prompts]
             if self.plan_mode:
                 parts.append(PLAN_PROMPT)
+            elif self.mode == "auto":
+                parts.append(RULINGS)
         else:
             parts.append(self.agent.prompt if self.agent else agents.BUILTIN["explore"].prompt)
             parts.append("Work until the job is done, then end with a complete report: the parent sees only your final reply.")
@@ -1421,17 +1427,21 @@ class AgentSession:
                 rows.append(f"TOOL {item['name']}: {item['content'][:1500]}")
         return clip("\n\n".join(rows), 200_000)
 
-    def _roll_over(self) -> None:
-        """A fresh context window built from the notebook, the user's request and the last few messages; the old one is saved to a file."""
-        self._rollover = False
+    def _archive(self, items: list[dict], instead_of: str) -> str:
+        """Save the part of the conversation about to be replaced, so a detail the summary lacks can still be searched and read (as dsh keeps its raw log)."""
         folder = self._outputs_dir()
         path = folder / f"history-{len(self.cache_log) + int(time.time())}.json"
         try:
             folder.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps([{k: v for k, v in h.items() if k != "images"} for h in self.history], ensure_ascii=False, indent=1), encoding="utf-8")
-            saved = f" The whole earlier conversation is saved in {path}; read it only for a detail the notebook lacks."
+            path.write_text(json.dumps([{k: v for k, v in h.items() if k != "images"} for h in items], ensure_ascii=False, indent=1), encoding="utf-8")
         except OSError:
-            saved = ""
+            return ""
+        return f" The whole earlier conversation is saved in {path}; search or read it only for a detail {instead_of} lacks."
+
+    def _roll_over(self) -> None:
+        """A fresh context window built from the notebook, the user's request and the last few messages; the old one is saved to a file."""
+        self._rollover = False
+        saved = self._archive(self.history, "the notebook")
         request = self._last_request
         cut = self._cut_point(ROLLOVER_KEEP_CHARS)
         tail = self.history[cut:] if cut else []
@@ -1488,7 +1498,8 @@ class AgentSession:
             return False
         summary = FILE_BLOCK.sub("", summary).rstrip()
         job = f"[Your job, as the parent gave it]\n{self._last_request[:8000]}\n\n" if self.depth and self._last_request else ""
-        marker = [{"role": "user", "content": f"{job}[Summary of the earlier conversation]\n{summary}{self._file_lists(head)}"}]
+        saved = self._archive(head, "the summary")
+        marker = [{"role": "user", "content": f"{job}[Summary of the earlier conversation]\n{summary}{self._file_lists(head)}{saved}"}]
         # Two user messages in a row are fine; an acknowledgement is only needed so the next message is not an assistant one.
         ack = [{"role": "assistant", "content": "Understood; continuing from that summary.", "calls": []}] if not tail or tail[0]["role"] == "user" else []
         self.history = marker + ack + tail

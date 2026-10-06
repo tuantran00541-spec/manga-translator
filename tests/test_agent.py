@@ -1993,3 +1993,18 @@ def test_the_schema_check_covers_types_required_items_and_enums():
     assert "sev must be one of" in schema.report('{"sev": "mid", "n": 2}', shape)[1]
     assert "n is missing" in schema.report('{"sev": "low"}', shape)[1]
     assert "tags[1] must be a string" in schema.report('{"sev": "low", "n": 1, "tags": ["a", 2]}', shape)[1]
+
+
+def test_auto_mode_tells_the_agent_to_rule_instead_of_stalling_and_compaction_keeps_the_old_history(ws, home):
+    from app.agent import session as session_module
+    auto = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    ask = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted(turn("x")))
+    assert session_module.RULINGS in auto.system_prompt() and session_module.RULINGS not in ask.system_prompt()
+    fake = scripted(turn("one"), turn("two"), turn("Summary: did one and two."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session, "first request")
+    run_to_idle(session, "second request")
+    assert session.compact(keep=1)
+    first = session.history[0]["content"]
+    saved = re.search(r"saved in (\S+?\.json);", first)
+    assert saved and "first request" in open(saved.group(1), encoding="utf-8").read(), first
