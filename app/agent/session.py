@@ -117,6 +117,9 @@ SESSION_SPECS = {
                   "parameters": {"type": "object", "required": ["summary"], "properties": {"summary": {"type": "string"}}}},
     "job_output": {"name": "job_output", "description": "Read what a background job printed since the last read (waiting up to wait_s seconds for more), and whether it is still running.",
                    "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}, "wait_s": {"type": "integer"}}}},
+    "job_input": {"name": "job_input", "description": "Type into a background job's input (a REPL, a prompt asking y/n, a debugger); end a line with \\n. "
+                                            "Returns what it printed after waiting up to wait_s seconds (default 2). Start the job with tty for programs that want a terminal.",
+                  "parameters": {"type": "object", "required": ["id", "chars"], "properties": {"id": {"type": "string"}, "chars": {"type": "string"}, "wait_s": {"type": "integer"}}}},
     "job_stop": {"name": "job_stop", "description": "Stop a background job.",
                  "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
     "context_notes": {"name": "context_notes", "description": "Read or replace your working notebook for this task (at most 16 KB): goal, decisions, what is done, "
@@ -666,7 +669,7 @@ class AgentSession:
         rows = list(SPECS)
         if self.skills:
             rows.append(SESSION_SPECS["skill"])
-        rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_stop"]]
+        rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"]]
         rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn, fan,
                  SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         rows += [t.spec for t in self.registry.tools.values()]
@@ -696,6 +699,8 @@ class AgentSession:
         # Leaving the sandbox is never the model's call: it asks even when everything else is automatic.
         if name == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access":
             return True
+        if name == "job_input" and self._typing_outside(call):
+            return True
         if name == "memory":
             return self.mode != "auto" and call["args"].get("action") != "list"
         if self.mode == "auto" or name in SESSION_SPECS or verdict == "allow":
@@ -721,9 +726,14 @@ class AgentSession:
             return bool(call["args"].get("outside_sandbox")) or not confined
         return False
 
+    def _typing_outside(self, call: dict) -> bool:
+        """Input to a job running outside the sandbox is a new command there, so it asks like one."""
+        job = self.jobs.get(str(call["args"].get("id") or "").strip().lower()) if call["name"] == "job_input" else None
+        return bool(job and job.outside and self.workspace.policy.mode != "full-access")
+
     def _always_ask(self, call: dict) -> bool:
         plugin = self.registry.tools.get(call["name"])
-        return bool(plugin and plugin.always_ask) or call["name"] == "memory" or bool(
+        return bool(plugin and plugin.always_ask) or call["name"] == "memory" or self._typing_outside(call) or bool(
             call["name"] == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access")
 
     def _user_messages(self) -> list[str]:
@@ -837,6 +847,13 @@ class AgentSession:
             return "\n".join(f"{n}: {(self.mcp_tools[n][1].get('description') or '')[:200]}" for n in found) + "\nThese tools can be called now." if found else "No connected tool matches."
         if call["name"] == "job_output":
             return self._job_output(str(args.get("id") or ""), args.get("wait_s"))
+        if call["name"] == "job_input":
+            job = self._job(str(args.get("id") or ""))
+            try:
+                job.write(str(args.get("chars") or ""))
+            except OSError as exc:
+                raise ToolError(str(exc)) from exc
+            return self._job_output(str(args.get("id") or ""), 2 if args.get("wait_s") is None else args.get("wait_s"), settle=True)
         if call["name"] == "job_stop":
             job = self._job(str(args.get("id") or ""))
             job.stop()
@@ -898,13 +915,13 @@ class AgentSession:
             raise ToolError("command is empty")
         policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
         name = f"job{next(i for i in range(1, 100) if f'job{i}' not in self.jobs)}"
-        self.jobs[name] = sandbox.Job(command, policy, self.workspace.root)
+        self.jobs[name] = sandbox.Job(command, policy, self.workspace.root, tty=bool(args.get("tty")))
         time.sleep(1.0)
         job = self.jobs[name]
         state = "running" if job.code is None else f"exited with code {job.code}"
         return f"Started {name} ({state}). Read it with job_output.\n{clip(job.read(), 4000)}".rstrip()
 
-    def _job_output(self, name: str, wait) -> str:
+    def _job_output(self, name: str, wait, settle: bool = False) -> str:
         job = self._job(name)
         try:
             end = time.time() + max(0, min(120, int(wait or 0)))
@@ -912,6 +929,12 @@ class AgentSession:
             raise ToolError("wait_s must be a whole number of seconds") from exc
         while job.code is None and time.time() < end and len(job.out.data) == job.cursor and not self._stop:
             time.sleep(0.25)
+        # After typing, keep reading until the program goes quiet so a reply is not cut mid-line.
+        while settle and job.code is None and time.time() < end and not self._stop:
+            seen = len(job.out.data)
+            time.sleep(0.25)
+            if len(job.out.data) == seen:
+                break
         text = job.read()
         state = "running" if job.code is None else f"exited with code {job.code}"
         return f"[{name} {state}]\n{clip(text, 20000) if text else '(no new output)'}"

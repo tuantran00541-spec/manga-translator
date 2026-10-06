@@ -1854,3 +1854,21 @@ def test_a_script_calls_read_tools_as_functions_and_cannot_write(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     run_to_idle(session)
     assert "[stopped after 1 s]" in tool_outputs(session)[0][2]
+
+
+def test_a_background_job_takes_typed_input_on_a_pipe_or_a_terminal(ws, home):
+    fake = scripted(turn(calls=[call("run_command", command="python3 -i -q", background=True, tty=True)]),
+                    turn(calls=[{"id": "i", "name": "job_input", "args": {"id": "job1", "chars": "print(6 * 7)\n"}}]),
+                    turn(calls=[call("run_command", command="read a; echo got $a", background=True)]),
+                    turn(calls=[{"id": "j", "name": "job_input", "args": {"id": "job2", "chars": "yes\n"}}]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    outs = tool_outputs(session)
+    assert "42" in outs[1][2] and "running" in outs[1][2], outs[1]
+    assert "got yes" in outs[3][2] and "exited with code 0" in outs[3][2], outs[3]
+    for job in session.jobs.values():
+        job.stop()
+    session.jobs["job9"] = sandbox.Job("cat", sandbox.Policy("full-access", True), ws.root)
+    assert session._needs_approval({"name": "job_input", "args": {"id": "job9", "chars": "x"}}), "typing into an unsandboxed job asks"
+    assert not session._needs_approval({"name": "job_input", "args": {"id": "job1", "chars": "x"}})
+    session.jobs.pop("job9").stop()

@@ -90,6 +90,7 @@ SPECS = [
          "timeout": {"type": "integer", "description": "Seconds before it is stopped, at most 1800."},
          "background": {"type": "boolean", "description": "Start it and return a job id at once (a dev server, a watcher); read it with job_output, stop it with job_stop. "
                                                            "A server needs the network switch on to listen on a port."},
+         "tty": {"type": "boolean", "description": "With background: run it on a terminal, for programs that want one (python -i, interactive prompts); type into it with job_input."},
          "outside_sandbox": {"type": "boolean"}}}},
     {"name": "run_script", "description": "Run a Python script in the sandbox that can call read-only tools as functions and print what you need: "
                                           "tools.read_file(path=...), tools.search(pattern=...), tools.glob(pattern=...), tools.list_dir(path=...), "
@@ -475,7 +476,7 @@ class Workspace:
         except patches.PatchError as exc:
             raise ToolError(str(exc)) from exc
 
-    def _tool_run_command(self, command: str, timeout: int = COMMAND_TIMEOUT, outside_sandbox: bool = False, background: bool = False) -> str:
+    def _tool_run_command(self, command: str, timeout: int = COMMAND_TIMEOUT, outside_sandbox: bool = False, background: bool = False, tty: bool = False) -> str:
         if not str(command).strip():
             raise ToolError("command is empty")
         limit = max(1, min(MAX_COMMAND_TIMEOUT, int(timeout)))

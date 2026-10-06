@@ -116,15 +116,33 @@ def _env_for(policy: Policy, scratch: str) -> dict | None:
 class Job:
     """A command left running in the background, under the same policy as any other."""
 
-    def __init__(self, command: str, policy: Policy, root: Path):
-        self.command, self.started = command, time.time()
+    def __init__(self, command: str, policy: Policy, root: Path, tty: bool = False):
+        self.command, self.started, self.outside = command, time.time(), policy.mode == "full-access"
         self.scratch = tempfile.mkdtemp(prefix="agent-job-")
         target, shell = wrap(command, policy, root, os.path.realpath(self.scratch))
-        self.proc = subprocess.Popen(target, shell=shell, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                     start_new_session=os.name == "posix", env=_env_for(policy, self.scratch))
-        self.out = _Capture(self.proc.stdout, lambda: _kill_group(self.proc))
+        env = _env_for(policy, self.scratch)
+        if tty and os.name == "posix":
+            import pty
+            master, slave = pty.openpty()
+            env = {**(env or os.environ), "TERM": "dumb"}
+            self.proc = subprocess.Popen(target, shell=shell, cwd=root, stdout=slave, stderr=slave, stdin=slave, start_new_session=True, env=env)
+            os.close(slave)
+            self.stdout, self.stdin = os.fdopen(master, "rb", buffering=0), os.fdopen(os.dup(master), "wb", buffering=0)
+        else:
+            self.proc = subprocess.Popen(target, shell=shell, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE,
+                                         start_new_session=os.name == "posix", env=env)
+            self.stdout, self.stdin = self.proc.stdout, self.proc.stdin
+        self.out = _Capture(self.stdout, lambda: _kill_group(self.proc))
         self.out.start()
         self.cursor = 0
+
+    def write(self, text: str) -> None:
+        """Send text to the job's input, as if typed."""
+        try:
+            self.stdin.write(text.encode("utf-8"))
+            self.stdin.flush()
+        except (BrokenPipeError, OSError, ValueError) as exc:
+            raise OSError("the job no longer reads input") from exc
 
     def read(self) -> str:
         """Output produced since the last read."""
@@ -140,7 +158,11 @@ class Job:
         _kill_group(self.proc)
         self.proc.wait()
         self.out.join(5)
-        self.proc.stdout.close()
+        for stream in (self.stdin, self.stdout):
+            try:
+                stream.close()
+            except OSError:
+                pass
         shutil.rmtree(self.scratch, ignore_errors=True)
 
 
@@ -166,7 +188,10 @@ class _Capture(threading.Thread):
 
     def run(self) -> None:
         while True:
-            chunk = self.stream.read1(65536) if hasattr(self.stream, "read1") else self.stream.read(65536)
+            try:
+                chunk = self.stream.read1(65536) if hasattr(self.stream, "read1") else self.stream.read(65536)
+            except OSError:  # A terminal reports EIO once the program behind it exits.
+                return
             if not chunk:
                 return
             self.total += len(chunk)
