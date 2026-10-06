@@ -1,0 +1,28 @@
+{
+ "status": "idle",
+ "usage": {
+  "prompt_tokens": 5629932,
+  "completion_tokens": 8378,
+  "cached_tokens": 0
+ },
+ "stats": {
+  "model_seconds": 435.7,
+  "tool_seconds": 1500.3,
+  "cache_pct": 0,
+  "cost": null
+ },
+ "steps": 12,
+ "tool_counts": {
+  "list_dir": 2,
+  "run_command": 1,
+  "spawn_agent": 6,
+  "todo_write": 1,
+  "wait_agent": 2
+ },
+ "failed_tools": [],
+ "helpers_started": 6,
+ "errors": [
+  "Đã dùng quá 4,000,000 token cho lượt này; dừng. Nhắn tiếp nếu muốn agent làm tiếp."
+ ],
+ "notices": []
+}
