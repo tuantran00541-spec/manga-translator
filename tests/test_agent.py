@@ -2346,7 +2346,7 @@ def test_a_web_page_is_read_as_markdown_with_offset_find_and_github_raw_files(ws
     monkeypatch.setattr(agent_tools, "read_response_limited", lambda response, limit_bytes: html)
     page = ws._tool_web_fetch("https://docs.example.org/guide/", max_chars=1000)
     assert page.startswith("# Guide\n\nSee [the docs](https://docs.example.org/docs).") and "```\nx = 1\n```" in page and "Menu" not in page
-    assert "call again with offset=1000" in page and asked[0][1].startswith("text/markdown")
+    assert "call again with offset=1000" in page and asked[0][1].startswith("text/html")
     assert "filler line" in ws._tool_web_fetch("https://docs.example.org/guide/", max_chars=1000, offset=1000)
     found = ws._tool_web_fetch("https://docs.example.org/guide/", find="needle")
     assert "the needle is here" in found and "Guide" not in found

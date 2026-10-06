@@ -509,7 +509,7 @@ class Workspace:
     def _tool_web_fetch(self, url: str, max_chars: int = MAX_OUTPUT_CHARS, offset: int = 0, find: str = "") -> str:
         url = webread.rewrite(str(url))
         try:
-            response = safe_get(url, timeout=(10, 30), headers={"User-Agent": "Mozilla/5.0 manga-translator-agent", "Accept": "text/markdown, text/html;q=0.9, */*;q=0.8"})
+            response = safe_get(url, timeout=(10, 30), headers={"User-Agent": "Mozilla/5.0 manga-translator-agent", "Accept": "text/html,application/xhtml+xml;q=0.9,text/markdown;q=0.5,*/*;q=0.3"})
             body = read_response_limited(response, limit_bytes=MAX_FETCH_BYTES)
             kind = response.headers.get("Content-Type", "")
             response.close()
