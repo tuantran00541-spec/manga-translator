@@ -2439,6 +2439,7 @@ def test_a_page_that_needs_javascript_is_read_through_tinyfish_but_only_then(ws,
     monkeypatch.setattr(webread, "browsed", lambda url, key: asked.append((url, key)) or "# Real page\n\n" + "A real paragraph of content. " * 30)
     assert "needs JavaScript" in ws._tool_web_fetch("https://spa.example.org/") and not asked, "without a key nothing leaves the machine"
     monkeypatch.setenv("TINYFISH_API_KEY", "tf")
+    ws.pages.clear()
     page = ws._tool_web_fetch("https://spa.example.org/")
     assert asked == [("https://spa.example.org/", "tf")] and page.startswith("[This page needs JavaScript; it was read through TinyFish's browser.]\n# Real page")
     asked.clear()
@@ -2446,6 +2447,7 @@ def test_a_page_that_needs_javascript_is_read_through_tinyfish_but_only_then(ws,
     assert "Fine" in ws._tool_web_fetch("https://plain.example.org/") and not asked, "a page that reads fine is not sent anywhere"
     monkeypatch.setattr(agent_tools, "read_response_limited", lambda response, limit_bytes: shell)
     monkeypatch.setattr(webread, "browsed", lambda url, key: (_ for _ in ()).throw(agent_tools.requests.ConnectionError("down")))
+    ws.pages.clear()
     assert "needs JavaScript" in ws._tool_web_fetch("https://spa.example.org/"), "if the service fails the warning stays"
 
 
@@ -2520,3 +2522,36 @@ def test_changed_toml_and_yaml_files_are_checked_for_syntax_errors(ws):
     yaml = pytest.importorskip("yaml")
     (ws.root / "ci.yml").write_text("jobs: [a, b\n")
     assert "ci.yml: while parsing" in ws.diagnose([ws.root / "ci.yml"])
+
+
+
+def test_web_reading_keeps_github_index_pages_reuses_a_fetched_page_and_points_to_reading_after_a_search_streak(ws, monkeypatch):
+    from app.agent import tools as agent_tools, webread, websearch
+    assert webread.rewrite("https://github.com/trending/python?since=weekly") == "https://github.com/trending/python?since=weekly"
+    assert webread.rewrite("https://github.com/topics/cli") == "https://github.com/topics/cli" and webread.rewrite("https://github.com/o/r").endswith("/o/r/HEAD/README.md")
+    asked = []
+
+    class Page:
+        encoding = "utf-8"
+        headers = {"Content-Type": "text/html"}
+
+        def close(self):
+            pass
+
+    def get(url, **kw):
+        asked.append(url)
+        if url.startswith(webread.RAW_GITHUB):
+            raise agent_tools.ToolError("404")
+        return Page()
+
+    monkeypatch.setattr(agent_tools, "safe_get", get)
+    monkeypatch.setattr(agent_tools, "read_response_limited", lambda response, limit_bytes: b"<html><body><main><h1>Repo</h1><p>" + b"word " * 600 + b"needle</p></main></body></html>")
+    assert ws._tool_web_fetch("https://github.com/o/r", max_chars=1000).startswith("# Repo")
+    assert asked == ["https://raw.githubusercontent.com/o/r/HEAD/README.md", "https://github.com/o/r"], "a missing README falls back to the page"
+    ws._tool_web_fetch("https://github.com/o/r", offset=1000)
+    assert "needle" in ws._tool_web_fetch("https://github.com/o/r", find="needle") and len(asked) == 2, "offset and find reuse the page"
+    monkeypatch.setattr(websearch, "search", lambda q, n=8, r="": "1. A\nhttps://a.example\nsnip")
+    tips = [("[Tip: this is search" in ws._tool_web_search(f"q{i}")) for i in range(3)]
+    assert tips == [False, False, True]
+    ws._tool_web_fetch("https://github.com/o/r", find="needle")
+    assert "[Tip:" not in ws._tool_web_search("again"), "a fetch resets the streak"

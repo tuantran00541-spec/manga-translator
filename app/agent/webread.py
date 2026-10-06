@@ -12,6 +12,9 @@ SKIP = ("script", "style", "noscript", "svg", "form", "iframe", "template", "but
 CHROME = ("nav", "footer", "aside")
 JS_GATED = ("enable javascript", "javascript required", "turn on javascript", "please enable javascript", "browser not supported")
 RAW_GITHUB = "https://raw.githubusercontent.com"
+# First path parts of github.com pages that are not a user or organisation (github.com/trending/python is not a repository).
+GITHUB_PAGES = {"trending", "topics", "collections", "explore", "search", "marketplace", "orgs", "users", "settings", "sponsors", "features",
+                "about", "login", "notifications", "issues", "pulls", "apps", "enterprise", "pricing", "readme", "events", "codespaces", "new"}
 
 
 def rewrite(url: str) -> str:
@@ -20,6 +23,8 @@ def rewrite(url: str) -> str:
     if parts.netloc.lower() not in ("github.com", "www.github.com"):
         return url
     path = [p for p in parts.path.split("/") if p]
+    if not path or path[0].lower() in GITHUB_PAGES or parts.query:
+        return url
     if len(path) >= 5 and path[2] == "blob":
         return f"{RAW_GITHUB}/{path[0]}/{path[1]}/{'/'.join(path[3:])}"
     if len(path) == 2:

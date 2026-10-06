@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import time
 import unicodedata
 
 import requests
@@ -106,6 +107,7 @@ SPECS = [
          "url": {"type": "string"}, "max_chars": {"type": "integer"}, "offset": {"type": "integer", "description": "Character to start from, to read on in a long page."},
          "find": {"type": "string", "description": "A word or regular expression; returns the matching lines with a little around each instead of the page."}}}},
     {"name": "web_search", "description": "Search the web; returns titles, links and snippets. Follow a link with web_fetch. The query may use site:, -site:, filetype:, \"phrases\" and -words. "
+                                          "Write short plain queries of 3 to 6 words; if two searches miss, fetch an index page, the docs or an API URL instead. "
                                           "Prefer primary sources (official docs, the project's own repository) and cite the links you used.",
      "parameters": {"type": "object", "required": ["query"], "properties": {
          "query": {"type": "string"}, "count": {"type": "integer", "description": "How many results, 1 to 15."},
@@ -190,8 +192,11 @@ CHECKERS = _checkers()
 SHELL_HINTS = ((re.compile(r"^(cat|head|tail|less|more)\s+[^|<>;&]*$"), "read_file shows a file with line numbers and records that you read it, which edit_file and write_file rely on"),
                (re.compile(r"^(grep\s+(-\w*r|--recursive)|rg\s|ag\s|ack\s)"), "search looks through the project for a pattern, skips ignored and data folders and lists file:line"),
                (re.compile(r"^find\s.*-i?name\b"), "glob finds files by name pattern and skips ignored folders"),
+               (re.compile(r"^(curl|wget)\s.*https?://"), "web_fetch reads a URL (HTML as Markdown, JSON pretty-printed), keeps the page for offset and find, and marks it as web content"),
                (re.compile(r"^(sed|perl)\s+(-\w*i|--in-place)"), "edit_file changes text and shows what changed; a file changed with sed -i must be read again before edit_file can change it"))
 SHELL_HINT_LIMIT = 3
+SEARCH_STREAK = 3  # Searches in a row before the result suggests reading instead.
+PAGE_CACHE_S, PAGE_CACHE_SIZE = 600, 20  # A fetched page is kept this long for offset and find.
 
 
 def clip(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
@@ -216,6 +221,8 @@ class Workspace:
         # Files the agent has read or written, with their modification time then; an edit over a newer one is refused.
         self.seen: dict[Path, int] = {}
         self.hints = 0
+        self.searches_in_row = 0
+        self.pages: dict[str, tuple[str, list[str], float]] = {}
         self.new_images: list[tuple[str, str]] = []
 
     def resolve(self, path: str | None, *, write: bool = False) -> Path:
@@ -543,15 +550,36 @@ class Workspace:
         return f"Saved {self.rel(target)} ({len(body)} bytes)"
 
     def _tool_web_fetch(self, url: str, max_chars: int = MAX_OUTPUT_CHARS, offset: int = 0, find: str = "") -> str:
-        url = webread.rewrite(str(url))
+        self.searches_in_row = 0
+        url = str(url)
+        page = self.pages.get(url)
+        if page is None or time.time() - page[2] > PAGE_CACHE_S:
+            text, notes = self._read_page(url)
+            self.pages[url] = (text, notes, time.time())
+            while len(self.pages) > PAGE_CACHE_SIZE:
+                self.pages.pop(next(iter(self.pages)))
+        else:
+            # Reading on in a page (offset, find) does not download it again.
+            text, notes = page[0], page[1]
+        head = "".join(f"[{note}]\n" for note in notes)
+        if find:
+            return head + webread.find(text, str(find))
+        limit, start = max(1000, min(100_000, int(max_chars))), max(0, int(offset))
+        more = len(text) - start - limit
+        footer = f"\n[{more} more characters; call again with offset={start + limit}, or find=... to search the page]" if more > 0 else ""
+        return head + text[start:start + limit] + footer
+
+    def _read_page(self, url: str) -> tuple[str, list[str]]:
+        raw = webread.rewrite(url)
         try:
-            response = safe_get(url, timeout=(10, 30), headers={"User-Agent": "Mozilla/5.0 manga-translator-agent", "Accept": "text/html,application/xhtml+xml;q=0.9,text/markdown;q=0.5,*/*;q=0.3"})
-            body = read_response_limited(response, limit_bytes=MAX_FETCH_BYTES)
-            kind = response.headers.get("Content-Type", "")
-            response.close()
-        except Exception as exc:
-            raise ToolError(f"Could not fetch {url}: {getattr(exc, 'detail', exc)}") from exc
-        text, notes = webread.readable(body, kind, response.encoding, url)
+            body, kind, encoding = self._download(raw)
+        except ToolError:
+            if raw == url:
+                raise
+            # A GitHub page that has no raw file (a missing README) is read as the page itself.
+            raw = url
+            body, kind, encoding = self._download(url)
+        text, notes = webread.readable(body, kind, encoding, raw)
         text = text.strip()
         key = os.environ.get("TINYFISH_API_KEY")
         if notes and key:
@@ -562,16 +590,27 @@ class Workspace:
                 seen = ""
             if seen and not webread.low_quality(seen) and len(seen) > len(text):
                 text, notes = seen, ["This page needs JavaScript; it was read through TinyFish's browser."]
-        head = "".join(f"[{note}]\n" for note in notes)
-        if find:
-            return head + webread.find(text, str(find))
-        limit, start = max(1000, min(100_000, int(max_chars))), max(0, int(offset))
-        more = len(text) - start - limit
-        footer = f"\n[{more} more characters; call again with offset={start + limit}, or find=... to search the page]" if more > 0 else ""
-        return head + text[start:start + limit] + footer
+        return text, notes
+
+    def _download(self, url: str) -> tuple[bytes, str, str | None]:
+        try:
+            response = safe_get(url, timeout=(10, 30), headers={"User-Agent": "Mozilla/5.0 manga-translator-agent", "Accept": "text/html,application/xhtml+xml;q=0.9,text/markdown;q=0.5,*/*;q=0.3"})
+            body = read_response_limited(response, limit_bytes=MAX_FETCH_BYTES)
+            kind = response.headers.get("Content-Type", "")
+            response.close()
+        except Exception as exc:
+            raise ToolError(f"Could not fetch {url}: {getattr(exc, 'detail', exc)}") from exc
+        return body, kind, response.encoding
 
     def _tool_web_search(self, query: str, count: int = 8, recency: str = "") -> str:
+        self.searches_in_row += 1
         try:
-            return websearch.search(query, count, recency)
+            found = websearch.search(query, count, recency)
         except websearch.SearchError as exc:
             raise ToolError(str(exc)) from exc
+        if self.searches_in_row >= SEARCH_STREAK:
+            # Searching again with longer queries rarely helps; reading the best lead does (seen on Qwen: eight searches before one fetch).
+            found += (f"\n\n[Tip: this is search {self.searches_in_row} in a row. Open the most promising result with web_fetch, or fetch a page that "
+                      "lists what you need (a project's docs, an index page such as https://github.com/trending/python, or an API URL), instead of "
+                      "searching again. Short plain queries of 3 to 6 words work best; quotes and stacked terms often return nothing.]")
+        return found
