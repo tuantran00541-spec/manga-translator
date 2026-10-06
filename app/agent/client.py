@@ -17,7 +17,7 @@ from app.visual_qc.deepseek_region_client import _safe_error_detail
 
 READ_TIMEOUT = 600
 STREAM_IDLE_TIMEOUT = 120
-NETWORK_RETRIES = 6
+NETWORK_RETRIES = 10
 RATE_LIMIT_RETRIES = 4
 # When a provider says "slow down", every session using it waits, not just the one that was told.
 _COOLDOWN: dict[str, float] = {}
@@ -305,7 +305,7 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
         except TransientError as exc:
             if attempt == NETWORK_RETRIES:
                 raise
-            wait = min(60.0, 2.0 * 2 ** attempt) * random.uniform(0.75, 1.0)
+            wait = min(90.0, 2.0 * 2 ** attempt) * random.uniform(0.75, 1.0)
             logger.warning("{} ({}); asking again in {:.0f}s", exc, provider.label, wait)
             time.sleep(wait)
     raise AssertionError("unreachable")

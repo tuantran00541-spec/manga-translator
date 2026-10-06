@@ -26,6 +26,7 @@ from app.logging_config import logger
 MODES = ("ask", "edits", "review", "auto")
 MAX_STEPS = 300
 MAX_JOBS = 8
+MAX_TODO_NUDGES = 3
 MAX_SCHEDULES = 10
 URL_TOOLS = ("web_fetch", "web_download")
 MASK_KEEP = 12
@@ -60,6 +61,8 @@ RULINGS = ("Nobody is watching this run, so do not stop to ask what you can deci
            "(a push, a merge, a publish), or a task so broken that every way forward is a guess.")
 ORACLE_PROMPT = ("You are a senior engineer a coding agent consults. You see its recent conversation and its question. Answer directly and concretely: name the risk, the cause or the better approach, "
                  "and what to check. Cite only what the conversation shows; say so when something you would need is not visible. No preamble, no restating the question.")
+TODO_NUDGE = ("[Your todo list still has unfinished items: {items}. Do the next one now by calling a tool. If the work is really done or an item no longer applies, "
+              "update the list with todo_write, then give your final report.]")
 EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -1879,7 +1882,7 @@ class AgentSession:
 
     def _steps(self, max_steps: int) -> None:
         """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
-        broken = empties = worked = 0
+        broken = empties = worked = todo_nudges = 0
         garbled = announced = False
         for _ in range(max_steps):
             if self._stop:
@@ -1938,6 +1941,13 @@ class AgentSession:
                     announced = True
                     self.history.append({"role": "user", "content": ANNOUNCED_NUDGE})
                     self.emit("notice", text="Agent báo sẽ làm tiếp nhưng không gọi công cụ; nhắc nó làm tiếp.")
+                    continue
+                open_items = [i["content"][:60] for i in self.todos if i["status"] != "completed"]
+                if open_items and todo_nudges < MAX_TODO_NUDGES and not self.depth:
+                    # A plan with items left and a reply that calls nothing is a model that stopped early (seen on Qwen: "I'll start now." and nothing more).
+                    todo_nudges += 1
+                    self.history.append({"role": "user", "content": TODO_NUDGE.format(items="; ".join(open_items[:5]))})
+                    self.emit("notice", text=f"Còn {len(open_items)} việc chưa xong trong danh sách; nhắc agent làm tiếp ({todo_nudges}/{MAX_TODO_NUDGES}).")
                     continue
                 if self._final_advice() or self._more_work():
                     continue

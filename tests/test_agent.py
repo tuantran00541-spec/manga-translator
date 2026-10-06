@@ -1921,10 +1921,11 @@ def test_prewalk_plans_on_the_strong_model_and_hands_over_at_the_first_edit(ws, 
     fake = advised([turn(calls=[call("read_file", path="pkg/a.py")]),
                     turn("Plan: change f to return 2, then run the tests.", calls=[call("todo_write", items=[{"text": "edit f", "status": "in_progress"}])]),
                     turn(calls=[call("edit_file", path="pkg/a.py", old_text="return 1", new_text="return 2")]),
-                    turn(calls=[call("run_command", command="python -c 'import pkg.a'")]), turn("Done.")], [[]])
+                    turn(calls=[call("run_command", command="python -c 'import pkg.a'")]),
+                    turn(calls=[call("todo_write", items=[{"content": "edit f", "status": "completed"}])]), turn("Done.")], [[]])
     session = manager(home).create(PROVIDERS["openai"], "k", "small", ws, "auto", complete=fake)
     run_to_idle(session)
-    assert fake.models == ["big", "big", "big", "small", "small"], fake.models
+    assert fake.models == ["big", "big", "big", "small", "small", "small"], fake.models
     texts = [h["content"] for h in session.history if h["role"] == "user"]
     assert session_module.PREWALK_PLAN in texts and session_module.PREWALK_CHECKLIST in texts
     assert texts.index(session_module.PREWALK_PLAN) < texts.index(session_module.PREWALK_CHECKLIST)
@@ -2160,3 +2161,18 @@ def test_a_session_schedules_prompts_for_itself_asks_before_it_outside_auto_and_
         s.close()
     with pytest.raises(Exception):
         session._schedule("schedule_create", {"prompt": "x", "in_minutes": 0})
+
+
+def test_a_text_only_reply_with_todo_items_left_is_sent_back_and_a_finished_list_stands(ws, home):
+    plan = [{"content": "write code", "status": "in_progress"}, {"content": "run tests", "status": "pending"}]
+    fake = scripted(turn(calls=[call("todo_write", items=plan)]), turn("I'll start now."), turn(calls=[call("todo_write", items=[{"content": "write code", "status": "completed"}, {"content": "run tests", "status": "completed"}])]),
+                    turn("Done: everything finished."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    nudges = [h["content"] for h in session.history if h["role"] == "user" and h["content"].startswith("[Your todo list still has")]
+    assert len(nudges) == 1 and "write code; run tests" in nudges[0]
+    assert session.history[-1]["content"] == "Done: everything finished."
+    fake = scripted(turn(calls=[call("todo_write", items=plan)]), *[turn("Still just talking.")] * 6)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session)
+    assert sum(h["content"].startswith("[Your todo list still has") for h in session.history if h["role"] == "user") == 3, "at most three nudges, then the turn ends"
