@@ -41,6 +41,7 @@ SCRIPT_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", 
 SCRIPT_AGENTS = 40
 MAX_NOTES = 16_000
 EMPTY_RETRIES = 3
+MAX_OUT_CEILING = 32_768  # The most a reply may be raised to when a model spends it all on reasoning.
 LONG_CALL = ("[Reminder] The tool call you were writing was getting too long for one reply and would be cut off. Send it in pieces: create the file "
              "with a short write_file, then add the rest with edit_file or run_command (cat >> file <<'EOF').")
 WRAP_UP = "[The {limit} for this turn is used up. Do not call tools. Report in a few paragraphs what you found or built, what is not finished, and what you would do next.]"
@@ -54,6 +55,9 @@ PREWALK_CHECKLIST = ("[Before you call it done] Consistency: a pattern, signatur
 ADVISED = "[Advisor] A second model reviewing your recent steps says the following. Weigh it; you decide, and say briefly if you disagree.\n"
 GARBLED_NUDGE = ("[Your last reply ({text!r}) does not read as an answer after this much work. Write the final answer to the user's request now, "
                  "from what the tool results showed; do not claim anything they did not show.]")
+UNTESTED_NUDGE = ("[Check] Your reply says the tests pass, but files were changed after the last command you ran, so that result is not "
+                  "the code as it is now. Run the tests again and report what they actually print.]")
+PASS_CLAIM = re.compile(r"\b(?:pass(?:ed|es|ing)?|green|succeed(?:ed|s)?)\b|xanh|\bđạt\b", re.I)
 ANNOUNCED_NUDGE = "[You wrote what you would do next but called no tool. Make that call now; if you are finished, write your final report instead.]"
 RULINGS = ("Nobody is watching this run, so do not stop to ask what you can decide. When a conflict, an ambiguity or a missing detail comes up, decide it, record it in one line "
            "'Ruling: <what you decided> - <why> - <what it costs if wrong>', and carry on; a wrong ruling is cheap to undo, a parked run is not. "
@@ -292,6 +296,7 @@ class AgentSession:
         window = int(self.profile["context_window"])
         self.compact_at = int(window * WINDOW_SHARE) if window else int(self.profile["compact_at_tokens"])
         self.max_steps = self.profile["max_steps"]
+        self._max_out = int(self.profile["max_output_tokens"])
         self.quirks = models.quirks(model, self.profile["models"])
         self.disabled = set(self.profile["disable"])
         self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
@@ -1479,7 +1484,7 @@ class AgentSession:
         try:
             extra = {"on_delta": self._on_delta} if streams else {}
             if self.complete is client.complete:
-                extra["max_tokens"] = self.profile["max_output_tokens"]
+                extra["max_tokens"] = self._max_out
             chain = [self.profile["prewalk_model"] if self._prewalk else self.model] + self.profile["fallback_models"]
             while True:
                 try:
@@ -1946,7 +1951,7 @@ class AgentSession:
     def _steps(self, max_steps: int) -> None:
         """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
         broken = empties = worked = todo_nudges = 0
-        garbled = announced = False
+        garbled = announced = untested = False
         for _ in range(max_steps):
             if self._stop:
                 self.emit("notice", text="Đã dừng.")
@@ -1985,6 +1990,12 @@ class AgentSession:
                 empties += 1
                 used = turn["usage"].get("completion_tokens") or 0
                 debug = turn.get("debug") or {}
+                # A reasoning model that spends the whole reply budget thinking writes nothing; it gets a larger budget, not the same one again.
+                if debug.get("finish") == "length" and self._max_out < MAX_OUT_CEILING:
+                    self._max_out = min(self._max_out * 2, MAX_OUT_CEILING)
+                    self.emit("notice", text=f"Model dùng hết {used} token để suy luận mà chưa viết gì; nâng giới hạn trả lời lên {self._max_out:,} token.")
+                    empties -= 1
+                    continue
                 if empties > EMPTY_RETRIES:
                     self.emit("error", text=f"Model trả lời rỗng {empties} lần liền ({debug}); dừng.")
                     break
@@ -2015,6 +2026,12 @@ class AgentSession:
                     self.history.append({"role": "user", "content": ANNOUNCED_NUDGE})
                     self.emit("notice", text="Agent báo sẽ làm tiếp nhưng không gọi công cụ; nhắc nó làm tiếp.")
                     continue
+                # "All tests pass" after an edit that no command has run since is a claim about code that no longer exists (seen on Qwen and sovinfra).
+                if not untested and "test" in turn["text"].lower() and PASS_CLAIM.search(turn["text"]) and self._edited_after_run():
+                    untested = True
+                    self.history.append({"role": "user", "content": UNTESTED_NUDGE})
+                    self.emit("notice", text="Agent báo test xanh nhưng đã sửa file sau lần chạy lệnh cuối; nhắc agent chạy lại test.")
+                    continue
                 open_items = [i["content"][:60] for i in self.todos if i["status"] != "completed"]
                 if open_items and todo_nudges < MAX_TODO_NUDGES and not self.depth:
                     # A plan with items left and a reply that calls nothing is a model that stopped early (seen on Qwen: "I'll start now." and nothing more).
@@ -2042,8 +2059,31 @@ class AgentSession:
             if not self._stop:
                 self._wrap_up("step limit")
 
+    def _edited_after_run(self) -> bool:
+        """The latest file change in the conversation came after the latest command run."""
+        for item in reversed(self.history):
+            for call in reversed(item.get("calls") or []):
+                if call["name"] in ("run_command", "run_script"):
+                    return False
+                if KIND.get(call["name"]) == "edit":
+                    return True
+        return False
+
+    def _handoff(self, start: int) -> None:
+        """When a turn dies after doing work (the provider gave out), what it changed and what is left, so nothing has to be guessed before going on."""
+        part = self.history[start:] if start <= len(self.history) else self.history
+        files = FILE_BLOCK.findall(self._file_lists(part))
+        changed = next((body.splitlines() for kind, body in files if kind == "modified"), [])
+        left = [item["content"][:60] for item in self.todos if item["status"] != "completed"]
+        if not changed and not left:
+            return
+        done = f"đã sửa {', '.join(changed[:12])}" if changed else "chưa sửa file nào"
+        rest = f"; còn {len(left)} việc trong danh sách: {'; '.join(left[:5])}" if left else ""
+        self.emit("notice", text=f"Lượt này dừng giữa chừng vì lỗi: {done}{rest}. Nhắn tiếp để agent làm tiếp từ đây.")
+
     def _loop(self, max_steps: int | None = None) -> None:
         max_steps = max_steps or self.max_steps
+        start = len(self.history)
         try:
             self._ensure_mcp()
             custom = self.registry.loops.get(self.profile["loop"])
@@ -2053,6 +2093,7 @@ class AgentSession:
         except Exception as exc:
             logger.opt(exception=True).warning("Agent session {} failed", self.id)
             self.emit("error", text=str(exc)[:1000])
+            self._handoff(start)
         finally:
             with self._lock:
                 again = bool(self.queue) and not self._stop

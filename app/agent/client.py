@@ -293,12 +293,37 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
     return message, usage, stopped
 
 
+THINK = re.compile(r"<think>(.*?)</think>", re.S)
+
+
+def split_thinking(text: str) -> tuple[str, str]:
+    """Reasoning some models write into the reply itself (<think>…</think>, or only the closing tag) is moved out of it."""
+    thought = "\n".join(part.strip() for part in THINK.findall(text))
+    text = THINK.sub("", text)
+    if "</think>" in text:
+        before, _, text = text.partition("</think>")
+        thought = (before.strip() + "\n" + thought).strip()
+    return text.strip(), thought
+
+
+def loads_args(raw: str):
+    """Tool arguments as JSON, after the repairs models most often need (pi's repairJson): code fences, stray backslashes, trailing commas."""
+    try:
+        return json.loads(raw or "{}", strict=False)
+    except ValueError:
+        pass
+    fixed = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw)
+    fixed = re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", fixed)
+    fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
+    return json.loads(fixed, strict=False)
+
+
 def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
     calls = []
     for call in message.get("tool_calls") or []:
         function = call.get("function") or {}
         try:
-            args = json.loads(function.get("arguments") or "{}", strict=False)
+            args = loads_args(function.get("arguments") or "{}")
         except ValueError:
             args = None
         row = {"id": str(call.get("id") or uuid.uuid4().hex[:12]), "name": str(function.get("name") or ""),
@@ -324,6 +349,9 @@ def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
                     call.pop("error", None)
                     spare.remove(match)
     reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
+    if "think>" in str(text):
+        text, thought = split_thinking(str(text))
+        reasoning = (str(reasoning) + "\n" + thought).strip()
     result = {"text": str(text).strip(), "calls": calls, "reasoning": str(reasoning), "usage": usage_of(usage)}
     finish = (message.get("_debug") or {}).get("finish")
     result["finish"] = finish or ""

@@ -168,6 +168,32 @@ def _closest(lines: list[str], want: list[str]) -> str:
     return f". The closest text is at lines {start + 1}-{start + size}:\n{snippet[:1500]}"
 
 
+def _checkers() -> dict:
+    found = {".py": ast.parse, ".json": json.loads}
+    try:
+        import tomllib
+        found[".toml"] = tomllib.loads
+    except ImportError:
+        pass
+    try:
+        import yaml
+        found[".yaml"] = found[".yml"] = lambda text: list(yaml.safe_load_all(text))
+    except ImportError:
+        pass
+    return found
+
+
+CHECKERS = _checkers()
+
+
+# Shell commands a project tool does better, each with the tip that follows its output (omp's bash interceptor, as advice instead of a refusal).
+SHELL_HINTS = ((re.compile(r"^(cat|head|tail|less|more)\s+[^|<>;&]*$"), "read_file shows a file with line numbers and records that you read it, which edit_file and write_file rely on"),
+               (re.compile(r"^(grep\s+(-\w*r|--recursive)|rg\s|ag\s|ack\s)"), "search looks through the project for a pattern, skips ignored and data folders and lists file:line"),
+               (re.compile(r"^find\s.*-i?name\b"), "glob finds files by name pattern and skips ignored folders"),
+               (re.compile(r"^(sed|perl)\s+(-\w*i|--in-place)"), "edit_file changes text and shows what changed; a file changed with sed -i must be read again before edit_file can change it"))
+SHELL_HINT_LIMIT = 3
+
+
 def clip(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
     if len(text) <= limit:
         return text
@@ -189,6 +215,7 @@ class Workspace:
         self.read_roots = [Path(p).resolve() for p in read_roots or []]
         # Files the agent has read or written, with their modification time then; an edit over a newer one is refused.
         self.seen: dict[Path, int] = {}
+        self.hints = 0
         self.new_images: list[tuple[str, str]] = []
 
     def resolve(self, path: str | None, *, write: bool = False) -> Path:
@@ -276,18 +303,18 @@ class Workspace:
             raise ToolError(f"{shown} changed since you last read it; read it again before changing it")
 
     def diagnose(self, paths: list[Path]) -> str:
-        """Syntax errors in changed Python and JSON files, so the model sees them at once."""
+        """Syntax errors in changed Python, JSON, TOML and YAML files, so the model sees them at once."""
         rows = []
         for path in paths:
-            if path.suffix not in (".py", ".json") or not path.is_file():
+            check = CHECKERS.get(path.suffix)
+            if check is None or not path.is_file():
                 continue
             try:
-                source = path.read_text(encoding="utf-8")
-                ast.parse(source) if path.suffix == ".py" else json.loads(source)
+                check(path.read_text(encoding="utf-8"))
             except SyntaxError as exc:
                 rows.append(f"{self.rel(path)}:{exc.lineno}: {exc.msg}")
-            except ValueError as exc:
-                rows.append(f"{self.rel(path)}: {exc}")
+            except Exception as exc:
+                rows.append(f"{self.rel(path)}: {' '.join(str(exc).split())[:240] or type(exc).__name__}")
         return "\n".join(rows)
 
     def _files(self, top: Path, name_glob: str | None = None):
@@ -491,7 +518,15 @@ class Workspace:
         status = f"[stopped after {limit} s]" if code is None else f"[exit code {code}]"
         undone = gitguard.restore(self.root, guard)
         warning = f"\n[blocked: the command changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]" if undone else ""
-        return clip(f"{output.strip()}\n{status}{warning}", 400_000)
+        return clip(f"{output.strip()}\n{status}{warning}{self._shell_hint(str(command))}", 400_000)
+
+    def _shell_hint(self, command: str) -> str:
+        bare = re.sub(r"^\s*cd\s+\S+\s*&&\s*", "", command).strip()
+        tip = next((tip for pattern, tip in SHELL_HINTS if pattern.search(bare)), "")
+        if not tip or self.hints >= SHELL_HINT_LIMIT:
+            return ""
+        self.hints += 1
+        return f"\n[Tip: {tip}.]"
 
     def _tool_web_download(self, url: str, path: str) -> str:
         target = self.resolve(path, write=True)

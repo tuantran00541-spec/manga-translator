@@ -2447,3 +2447,76 @@ def test_a_page_that_needs_javascript_is_read_through_tinyfish_but_only_then(ws,
     monkeypatch.setattr(agent_tools, "read_response_limited", lambda response, limit_bytes: shell)
     monkeypatch.setattr(webread, "browsed", lambda url, key: (_ for _ in ()).throw(agent_tools.requests.ConnectionError("down")))
     assert "needs JavaScript" in ws._tool_web_fetch("https://spa.example.org/"), "if the service fails the warning stays"
+
+
+def test_thinking_written_into_the_reply_is_moved_out_and_broken_tool_arguments_are_repaired():
+    turn_ = client._build({"content": "<think>The user wants a summary.</think>\n\n## Done, 51/51", "reasoning_content": ""}, {})
+    assert turn_["text"] == "## Done, 51/51" and turn_["reasoning"] == "The user wants a summary."
+    assert client._build({"content": "only the end tag</think>Answer"}, {})["text"] == "Answer"
+    raw = '```json\n{"path": "a.py", "content": "x = re.compile(\'\\d+\')", "tags": [1, 2,],}\n```'
+    call = {"id": "c1", "function": {"name": "write_file", "arguments": raw}}
+    built = client._build({"content": "", "tool_calls": [call]}, {})
+    assert built["calls"][0]["args"] == {"path": "a.py", "content": "x = re.compile('\\d+')", "tags": [1, 2]} and "error" not in built["calls"][0]
+    bad = client._build({"content": "", "tool_calls": [{"id": "c2", "function": {"name": "write_file", "arguments": "{not json"}}]}, {})
+    assert bad["calls"][0]["error"] == "Tool arguments were not a JSON object"
+
+
+def test_a_reply_that_spent_its_whole_budget_on_reasoning_is_asked_again_with_a_larger_budget(ws, home, monkeypatch):
+    sizes = []
+
+    def fake(provider, key, model, messages, *, tools, on_delta=None, max_tokens=None):
+        sizes.append(max_tokens)
+        if len(sizes) < 3:
+            return {"text": "", "calls": [], "reasoning": "thinking", "usage": {"completion_tokens": max_tokens}, "debug": {"finish": "length"}}
+        return turn("Done.")
+
+    monkeypatch.setattr(client, "complete", fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=client.complete)
+    run_to_idle(session, "go")
+    assert sizes == [8192, 16384, 32768] and session.history[-1]["content"] == "Done."
+    assert sum("nâng giới hạn" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
+
+
+def test_a_turn_that_dies_after_changing_files_says_what_it_changed_and_what_is_left(ws, home):
+    replies = iter([turn(calls=[call("todo_write", items=[{"content": "write a.txt", "status": "completed"}, {"content": "test it", "status": "pending"}])]),
+                    turn(calls=[call("write_file", path="a.txt", content="x")])])
+
+    def complete(*a, **k):
+        try:
+            return next(replies)
+        except StopIteration:
+            raise RuntimeError("provider HTTP 503: all providers busy")
+
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    run_to_idle(session, "make a.txt and test it")
+    note = next(e["text"] for e in session.events if e["type"] == "notice" and "dừng giữa chừng" in e.get("text", ""))
+    assert "a.txt" in note and "test it" in note
+
+
+def test_a_claim_that_tests_pass_after_an_untested_edit_is_sent_back_once(ws, home):
+    fake = scripted(turn(calls=[call("run_command", command="echo 3 passed")]), turn(calls=[call("write_file", path="a.txt", content="x")]),
+                    turn("All 3 tests pass."), turn(calls=[call("run_command", command="echo 3 passed")]), turn("All 3 tests pass."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session, "go")
+    nudges = [h for h in session.history if h["role"] == "user" and h["content"].startswith("[Check] Your reply says the tests pass")]
+    assert len(nudges) == 1 and session.history[-1]["content"] == "All 3 tests pass." and len(fake.seen) == 5
+    quiet = scripted(turn(calls=[call("write_file", path="b.txt", content="x")]), turn(calls=[call("run_command", command="echo ok")]), turn("Tests pass."))
+    clean = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=quiet)
+    run_to_idle(clean, "go")
+    assert not any(h["role"] == "user" and h["content"].startswith("[Check]") for h in clean.history)
+
+
+def test_shell_commands_a_tool_does_better_get_a_tip_a_few_times(ws):
+    assert "read_file" in ws._shell_hint("cat pkg/a.py") and "search" in ws._shell_hint("cd pkg && grep -rn f .")
+    assert ws._shell_hint("cat a.py | wc -l") == "" and ws._shell_hint("python -m pytest -q") == ""
+    assert "glob" in ws._shell_hint("find . -name '*.py'") and ws._shell_hint("sed -i 's/a/b/' x") == "", "three tips at most"
+
+
+def test_changed_toml_and_yaml_files_are_checked_for_syntax_errors(ws):
+    (ws.root / "pyproject.toml").write_text("[project]\nname = \n")
+    (ws.root / "good.toml").write_text("[a]\nb = 1\n")
+    rows = ws.diagnose([ws.root / "pyproject.toml", ws.root / "good.toml"])
+    assert rows.startswith("pyproject.toml: Invalid value") and "good.toml" not in rows
+    yaml = pytest.importorskip("yaml")
+    (ws.root / "ci.yml").write_text("jobs: [a, b\n")
+    assert "ci.yml: while parsing" in ws.diagnose([ws.root / "ci.yml"])
