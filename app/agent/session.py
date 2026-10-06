@@ -69,15 +69,16 @@ WAIT_DEFAULT = 120
 WAIT_MAX = 900
 NICKNAMES = ("ash", "birch", "cedar", "elm", "fern", "hazel", "ivy", "juniper", "maple", "oak", "pine", "rowan", "sage", "willow",
              "alder", "beech", "clover", "dahlia", "fir", "holly", "iris", "laurel", "moss", "nettle")
-COMPACT_AT = 200_000
+COMPACT_AT_TOKENS = 900_000  # Auto-compaction starts near a 1M-token window; /compact auto N or compact_at_tokens in profile.json change it.
+CHARS_PER_TOKEN = 3.5
 KEEP_RECENT_CHARS = 60_000
+COMPACT_REARM = 1.25  # After a compaction, the context must grow by this factor before the next one.
 ROLLOVER_KEEP_CHARS = 15_000
 OVERFLOW_RE = re.compile(r"context.{0,20}(length|window)|maximum context|too many tokens|prompt is too long|reduce the length", re.I)
 FILE_BLOCK = re.compile(r"<(read|modified)-files>\n(.*?)\n</\1-files>", re.S)
 SUMMARY_PROMPT = """Write a handover summary of this conversation between a user and a coding agent, so the agent can continue without it.
 Use exactly these sections: Goal; Constraints and preferences; Progress (done, in progress); Key decisions and why; Critical context (exact names, paths, commands, error messages and results that are still needed); Next steps.
 Be specific. If the conversation already starts with an earlier summary, fold it in and keep what is still true."""
-MAX_HISTORY_CHARS = 450_000
 MAX_SESSIONS = 50
 HOOK_TIMEOUT = 60
 MAX_REFS = 6
@@ -173,7 +174,7 @@ SESSION_SPECS = {
                    "text": {"type": "string"}, "index": {"type": "integer", "description": "Note number to remove."}}}},
 }
 BUILTIN_COMMANDS = {
-    "help": "Xem các lệnh", "compact": "Tóm gọn hội thoại để giải phóng chỗ (có thể ghi điều cần giữ)",
+    "help": "Xem các lệnh", "compact": "Tóm gọn hội thoại để giải phóng chỗ (có thể ghi điều cần giữ); /compact auto 900k đặt mức tự tóm gọn",
     "init": "Viết AGENTS.md mô tả dự án này", "skills": "Xem skill; /skills add CHỦ/REPO[/THƯ-MỤC] cài skill từ GitHub",
     "mcp": "Xem MCP server và công cụ của chúng", "model": "Đổi model: /model TÊN",
     "mode": "Đổi cách duyệt: /mode ask|edits|auto",
@@ -249,6 +250,8 @@ class AgentSession:
         self._turn_usage = 0
         self._denials: list[bool] = []
         self._fallback_at = 0
+        self._last_prompt = (0, 0)
+        self._after_compact = 0
         self.schedules: list[dict] = []
         self._scheduler: threading.Thread | None = None
         self._closing = False
@@ -283,6 +286,7 @@ class AgentSession:
         self.agents = agents.discover(workspace.root, home_path) if not depth else {}
         self.rules = rules.load(workspace.root, home_path) if not depth else parent.rules
         self.profile = registry.load_profile(workspace.root, home_path) if not depth else parent.profile
+        self.compact_at = int(self.profile["compact_at_tokens"])
         self.max_steps = self.profile["max_steps"]
         self.quirks = models.quirks(model, self.profile["models"])
         self.disabled = set(self.profile["disable"])
@@ -394,7 +398,7 @@ class AgentSession:
         data = {"id": self.id, "provider": self.provider.id, "model": self.model, "mode": self.mode, "title": self.title,
                 "workspace": str(self.workspace.root), "sandbox": [self.workspace.policy.mode, self.workspace.policy.network],
                 "created_at": self.created_at, "updated_at": self.updated_at, "usage": self.usage, "todos": self.todos, "notes": self.notes,
-                "text_tools": self.text_tools, "plan_mode": self.plan_mode, "goal": self.goal, "schedules": self.schedules,
+                "text_tools": self.text_tools, "plan_mode": self.plan_mode, "goal": self.goal, "schedules": self.schedules, "compact_at": self.compact_at,
                 "history": [{k: v for k, v in h.items() if k != "images"} for h in self.history], "events": self.events}
         tmp = self.store.with_suffix(".tmp")
         try:
@@ -409,6 +413,8 @@ class AgentSession:
         self.history, self.events = list(data.get("history") or []), list(data.get("events") or [])
         self.todos, self.title = list(data.get("todos") or []), str(data.get("title") or "")
         self.notes = str(data.get("notes") or "")
+        if isinstance(data.get("compact_at"), int) and data["compact_at"] >= 0:
+            self.compact_at = data["compact_at"]
         self.schedules = [t for t in (data.get("schedules") or []) if isinstance(t, dict) and {"id", "prompt", "next_at", "every"} <= set(t)][:MAX_SCHEDULES]
         if self.schedules:
             self._start_scheduler()
@@ -560,6 +566,8 @@ class AgentSession:
             return {"message": agents.catalog(self.agents)}
         if name == "rules":
             return {"message": rules.describe(self.rules)}
+        if name == "compact" and args.split()[:1] == ["auto"]:
+            return {"message": self._compact_auto(args.split()[1:])}
         if name == "compact":
             with self._lock:
                 if self.status != "idle":
@@ -1599,6 +1607,24 @@ class AgentSession:
         self.emit("notice", text=f"Đã tóm gọn {len(head)} mục hội thoại cũ.")
         return True
 
+    def _compact_auto(self, rest: list[str]) -> str:
+        """/compact auto [off|900k|1m]: the context size at which the conversation is summarised by itself."""
+        if not rest:
+            return f"Tự tóm gọn khi ngữ cảnh gần {self.compact_at:,} token." if self.compact_at else "Tự tóm gọn đang tắt."
+        word = rest[0].lower().replace("_", "").replace(",", "")
+        if word in ("off", "0", "tat", "tắt"):
+            self.compact_at = 0
+            return "Đã tắt tự tóm gọn."
+        match = re.fullmatch(r"(\d+(?:\.\d+)?)([km]?)", word)
+        if not match:
+            raise ValueError("Dùng /compact auto 900k, /compact auto 1m hoặc /compact auto off")
+        tokens = int(float(match.group(1)) * {"": 1, "k": 1000, "m": 1_000_000}[match.group(2)])
+        if not 20_000 <= tokens <= 10_000_000:
+            raise ValueError("Mức tự tóm gọn phải từ 20k đến 10m token")
+        self.compact_at = tokens
+        self.save()
+        return f"Sẽ tự tóm gọn khi ngữ cảnh gần {tokens:,} token."
+
     def _compact_job(self, focus: str) -> None:
         try:
             if not self.compact(focus):
@@ -1626,20 +1652,39 @@ class AgentSession:
 
     def _make_room(self) -> None:
         self._mask_old()
-        if self._size() > COMPACT_AT and not self.depth and self.notes and (self.goal or self.profile["notes_context"]):
-            self._roll_over()
-        if self._size() > COMPACT_AT:
-            try:
-                self.compact(keep=KEEP_RECENT_CHARS)
-            except Exception as exc:
-                logger.warning("Agent session {} could not compact: {}", self.id, exc)
-        size = self._size()
+        if self._should_compact():
+            if not self.depth and self.notes and (self.goal or self.profile["notes_context"]):
+                self._roll_over()
+            else:
+                try:
+                    self.compact(keep=self._keep_chars())
+                except Exception as exc:
+                    logger.warning("Agent session {} could not compact: {}", self.id, exc)
+            self._after_compact = self._size()
+        size, limit = self._size(), int(self.compact_at * CHARS_PER_TOKEN * 1.3)
         for item in self.history:
-            if size <= MAX_HISTORY_CHARS:
+            if size <= limit:
                 return
             if item["role"] == "tool" and len(item["content"]) > 200:
                 size -= len(item["content"]) - 40
                 item["content"] = "[older tool output removed to save room]"
+
+    def context_tokens(self) -> int:
+        """The context size now: the provider's own count from the last request plus an estimate for what was added since."""
+        used, size_then = self._last_prompt
+        size = self._size()
+        if used and size >= size_then:
+            return used + int((size - size_then) / CHARS_PER_TOKEN)
+        return int(size / CHARS_PER_TOKEN)
+
+    def _should_compact(self) -> bool:
+        if not self.compact_at or self.context_tokens() <= self.compact_at:
+            return False
+        return not self._after_compact or self._size() > self._after_compact * COMPACT_REARM
+
+    def _keep_chars(self) -> int:
+        """How much recent conversation stays verbatim: a sixth of the window the trigger implies, never less than 60k characters."""
+        return max(KEEP_RECENT_CHARS, int(self.compact_at * CHARS_PER_TOKEN / 6))
 
     def _drain(self) -> None:
         with self._lock:
@@ -1895,8 +1940,10 @@ class AgentSession:
                 self._wrap_up()
                 break
             self._make_room()
+            size_before = self._size()
             turn = self._turn()
             self.live = None
+            self._last_prompt = (int(turn["usage"].get("prompt_tokens") or 0), size_before)
             for key in self.usage:
                 self.usage[key] += int(turn["usage"].get(key) or 0)
             if self._interrupt is not None:

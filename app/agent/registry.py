@@ -35,7 +35,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
-                     "timeout_to_background": True, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": ""}
+                     "timeout_to_background": True, "compact_at_tokens": 900_000, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": ""}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -77,6 +77,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["fallback_models"] = [m.strip()[:100] for m in data["fallback_models"][:4] if isinstance(m, str) and m.strip()]
                 if isinstance(data.get("oracle"), bool):
                     profile["oracle"] = data["oracle"]
+                if isinstance(data.get("compact_at_tokens"), int) and (data["compact_at_tokens"] == 0 or 20_000 <= data["compact_at_tokens"] <= 10_000_000):
+                    profile["compact_at_tokens"] = data["compact_at_tokens"]
                 if isinstance(data.get("timeout_to_background"), bool):
                     profile["timeout_to_background"] = data["timeout_to_background"]
                 if isinstance(data.get("advisor"), bool):

@@ -2197,3 +2197,45 @@ def test_the_cli_takes_an_http_relay_only_on_a_private_address_and_streams_are_r
     from app.agent import client
     message, usage, debug = client._read_stream(Response(), lambda live: None)
     assert message["content"] == "Báo cáo"
+
+
+def test_auto_compaction_starts_near_the_configured_token_count_once_and_not_again_until_the_context_grows(ws, home):
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"compact_at_tokens": 20_000}))
+    summaries = []
+
+    def complete(provider, key, model, messages, *, tools):
+        if messages[0]["content"] == "You write precise handover summaries.":
+            summaries.append(1)
+            return turn("Summary of the work so far.")
+        n = sum(m["role"] == "assistant" for m in messages)
+        out = turn(calls=[call("list_dir", path=f"d{n}")]) if n < 5 else turn("All done.")
+        out["usage"] = {"prompt_tokens": 30_000, "completion_tokens": 10}
+        return out
+
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    assert session.compact_at == 20_000
+    session.history = [{"role": "user" if i % 2 == 0 else "assistant", "content": "x" * 9_000, **({"calls": []} if i % 2 else {})} for i in range(24)]
+    run_to_idle(session, "go on")
+    assert len(summaries) == 1, "one compaction, then the rearm margin holds the next ones back"
+    assert any(h["role"] == "user" and "[Summary of the earlier conversation]" in h["content"] for h in session.history)
+    quiet = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    quiet.compact_at = 0
+    quiet.history = list(session.history[:0]) + [{"role": "user", "content": "y" * 9_000} for _ in range(24)]
+    assert not quiet._should_compact()
+
+
+def test_compact_auto_sets_shows_and_turns_off_the_threshold_and_it_is_saved(ws, home, tmp_path):
+    store = manager(home, tmp_path / "s").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    assert store.compact_at == 900_000 and "900,000" in store.command("/compact auto")["message"]
+    assert "1,000,000" in store.command("/compact auto 1m")["message"] and store.compact_at == 1_000_000
+    assert store.command("/compact auto 750k")["message"].endswith("750,000 token.") and store.compact_at == 750_000
+    store.save()
+    again = AgentSession("again", PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    again.restore(json.loads(store.store.read_text(encoding="utf-8")))
+    assert again.compact_at == 750_000
+    assert "tắt" in store.command("/compact auto off")["message"] and store.compact_at == 0
+    for bad in ("banana", "5k", "99m"):
+        with pytest.raises(ValueError):
+            store.command(f"/compact auto {bad}")
+    assert store.context_tokens() >= 0
