@@ -1,56 +1,37 @@
 {
  "status": "idle",
  "usage": {
-  "prompt_tokens": 3949984,
-  "completion_tokens": 50318,
-  "cached_tokens": 3321600
+  "prompt_tokens": 289652,
+  "completion_tokens": 12204,
+  "cached_tokens": 228800
  },
  "stats": {
-  "model_seconds": 263.3,
-  "tool_seconds": 575.4,
-  "cache_pct": 84,
+  "model_seconds": 124.3,
+  "tool_seconds": 72.1,
+  "cache_pct": 79,
   "cost": null
  },
- "steps": 52,
+ "steps": 21,
  "tool_counts": {
-  "apply_patch": 6,
-  "edit_lines": 2,
-  "glob": 1,
-  "job_stop": 1,
-  "list_dir": 3,
-  "read_file": 18,
-  "run_command": 4,
-  "spawn_agent": 12,
-  "task": 4,
-  "todo_write": 2,
-  "wait_agent": 7,
-  "write_file": 2
+  "edit_file": 1,
+  "list_dir": 4,
+  "read_file": 4,
+  "run_command": 5,
+  "skill": 1,
+  "spawn_agent": 2,
+  "todo_write": 4,
+  "wait_agent": 2,
+  "write_file": 5
  },
  "failed_tools": [
   [
-   "run_command",
-   "Denied by a permission rule for run_command. Do not retry it; use another way or ask the user."
-  ],
-  [
-   "job_stop",
-   "Error: No job named 'ivy'; running: none"
-  ],
-  [
-   "edit_lines",
-   "Error: Anchor '45#d4' is stale: line 45 is now 45#00|. Read the file again with anchors=true"
-  ],
-  [
-   "apply_patch",
-   "Error: src/notekeeper/storage.py: these lines were not found (read the file again):\n    def list(self) -> list[dict]:\n        return sorted("
+   "read_file",
+   "Error: '/tmp/agent-work/.agents/skills/dispatching-parallel-agents/SKILL.md' is outside the workspace"
   ]
  ],
- "helpers_started": 16,
- "errors": [
-  "Đã dùng quá 4,000,000 token cho lượt này; dừng. Nhắn tiếp nếu muốn agent làm tiếp."
- ],
+ "helpers_started": 2,
+ "errors": [],
  "notices": [
-  "Đã gộp việc của cedar: 0 file",
-  "Đã gộp việc của elm: 2 file",
-  "Đã gộp việc của hazel: 0 file"
+  "Đã gộp việc của birch: 2 file"
  ]
 }
