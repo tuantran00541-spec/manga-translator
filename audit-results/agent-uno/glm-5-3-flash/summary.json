@@ -1,0 +1,25 @@
+{
+ "model": "glm-5.3-flash:free",
+ "status": "idle",
+ "usage": {
+  "prompt_tokens": 4828,
+  "completion_tokens": 1640,
+  "cached_tokens": 0
+ },
+ "stats": {
+  "model_seconds": 577.2,
+  "tool_seconds": 0.0,
+  "cache_pct": 0,
+  "cost": null
+ },
+ "steps": 1,
+ "tool_counts": {
+  "list_dir": 1,
+  "skill": 1
+ },
+ "failed_tools": [],
+ "errors": [
+  "uno HTTP 429: This model's provider is full right now. Nothing is used up on your side. Retry and another provider will take it, or try again in a few minutes. (request id: 202610060905342961635768268"
+ ],
+ "notices": []
+}
