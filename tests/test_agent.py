@@ -550,15 +550,74 @@ def test_skills_are_written_uploaded_listed_and_removed_through_the_api(api, hom
     assert "slides" not in agents.get(session["id"]).skills
 
 
-def test_tool_names_from_other_harnesses_run_as_ours(ws, home):
+HARNESS_CALLS = [
+    # (harness, tool, args, text the result must contain)
+    ("Claude Code", "Read", {"file_path": "pkg/a.py", "offset": 1, "limit": 1}, "def"),
+    ("Claude Code", "Grep", {"pattern": "return", "path": "pkg", "-i": True, "output_mode": "content"}, "pkg/a.py:2"),
+    ("Claude Code", "Glob", {"pattern": "**/*.py"}, "pkg/a.py"),
+    ("Claude Code", "LS", {"path": "pkg"}, "a.py"),
+    ("Claude Code", "Bash", {"command": "echo hi-bash", "description": "say hi"}, "hi-bash"),
+    ("Claude Code", "Write", {"file_path": "w.txt", "content": "one two\n"}, "w.txt"),
+    ("Claude Code", "Edit", {"file_path": "w.txt", "old_string": "one", "new_string": "uno"}, "Edited"),
+    ("Claude Code", "MultiEdit", {"file_path": "w.txt", "edits": [{"old_string": "two", "new_string": "dos"}]}, "Edited"),
+    ("Claude Code", "TodoWrite", {"todos": [{"content": "Read", "status": "in_progress", "activeForm": "Reading"}]}, "Plan saved"),
+    ("Codex", "shell", {"command": ["bash", "-lc", "echo hi-codex"], "workdir": "."}, "hi-codex"),
+    ("Codex", "exec_command", {"cmd": "echo hi-exec", "yield_time_ms": 1000}, "hi-exec"),
+    ("Codex", "grep_files", {"pattern": "return", "include": "*.py", "path": "pkg", "limit": 5}, "pkg/a.py:2"),
+    ("Codex", "list_dir", {"dir_path": "pkg", "depth": 1}, "a.py"),
+    ("Codex", "update_plan", {"plan": [{"step": "Look", "status": "completed"}], "explanation": "x"}, "Plan saved"),
+    ("Gemini CLI", "read_file", {"absolute_path": "pkg/a.py"}, "def"),
+    ("Gemini CLI", "run_shell_command", {"command": "echo hi-gemini", "description": "x"}, "hi-gemini"),
+    ("Gemini CLI", "search_file_content", {"pattern": "return", "include": "*.py"}, "pkg/a.py:2"),
+    ("Gemini CLI", "replace", {"file_path": "w.txt", "old_string": "uno", "new_string": "eins", "instruction": "x"}, "Edited"),
+    ("Cursor", "read_file", {"target_file": "pkg/a.py", "start_line_one_indexed": 1, "end_line_one_indexed_inclusive": 2,
+                             "should_read_entire_file": False, "explanation": "x"}, "def"),
+    ("Cursor", "run_terminal_cmd", {"command": "echo hi-cursor", "is_background": False, "explanation": "x"}, "hi-cursor"),
+    ("Cursor", "grep_search", {"query": "RETURN", "case_sensitive": False, "include_pattern": "*.py"}, "pkg/a.py:2"),
+    ("Cursor", "list_dir", {"relative_workspace_path": "pkg", "explanation": "x"}, "a.py"),
+    ("Cursor", "search_replace", {"file_path": "w.txt", "old_string": "eins", "new_string": "un"}, "Edited"),
+    ("Windsurf", "run_command", {"CommandLine": "echo hi-windsurf", "Cwd": "."}, "hi-windsurf"),
+    ("Windsurf", "view_file", {"AbsolutePath": "pkg/a.py", "StartLine": 1, "EndLine": 2}, "def"),
+    ("Windsurf", "replace_file_content", {"TargetFile": "w.txt", "ReplacementChunks": [{"TargetContent": "un", "ReplacementContent": "one"}]}, "Edited"),
+    ("Cline", "execute_command", {"command": "echo hi-cline", "requires_approval": False}, "hi-cline"),
+    ("Cline", "replace_in_file", {"path": "w.txt", "diff": "<<<<<<< SEARCH\none\n=======\nuno\n>>>>>>> REPLACE"}, "Edited"),
+    ("Cline", "write_to_file", {"path": "c.txt", "content": "x\n"}, "c.txt"),
+    ("Kimi CLI", "ReadFile", {"path": "pkg/a.py", "line_offset": 1, "n_lines": 2}, "def"),
+    ("Kimi CLI", "StrReplaceFile", {"path": "w.txt", "edit": {"old": "uno", "new": "one"}}, "Edited"),
+    ("Kimi CLI", "SetTodoList", {"todos": [{"title": "Look", "status": "Done"}]}, "Plan saved"),
+    ("oh-my-pi", "read", {"path": "pkg/a.py"}, "def"),
+    ("oh-my-pi", "find", {"pattern": "*.txt"}, "w.txt"),
+    ("v0", "LSRepo", {"path": "pkg", "taskNameActive": "x"}, "a.py"),
+    ("Manus", "file_find_in_content", {"file": "pkg/a.py", "regex": "return"}, "return"),
+    ("Augment", "str-replace-editor", {"command": "str_replace", "path": "w.txt", "old_str_1": "one", "new_str_1": "ein"}, "Edited"),
+    ("SWE-agent", "str_replace_editor", {"command": "view", "path": "pkg/a.py", "view_range": [1, 2]}, "def"),
+    ("SWE-agent", "str_replace_editor", {"command": "create", "path": "s.txt", "file_text": "made\n"}, "s.txt"),
+]
+
+
+@pytest.mark.parametrize("harness,name,args,expect", HARNESS_CALLS, ids=[f"{h}:{n}" for h, n, _, _ in HARNESS_CALLS])
+def test_tool_calls_written_for_other_harnesses_run_here(ws, home, harness, name, args, expect):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
-    output, ok = session._run_call({"id": "1", "name": "grep_files", "args": {"path": "pkg", "pattern": "return"}})
-    assert ok and output.startswith("[grep_files is called search here") and "pkg/a.py:2" in output
-    ws.run("write_file", {"path": "n.txt", "content": "one\n"})
-    output, ok = session._run_call({"id": "2", "name": "str_replace", "args": {"file_path": "n.txt", "old_str": "one", "new_str": "two"}})
-    assert ok, output
-    assert "two" in ws.run("read_file", {"path": "n.txt"})
-    assert session._run_call({"id": "3", "name": "teleport", "args": {}})[0].startswith("Unknown tool 'teleport'")
+    for setup in HARNESS_CALLS[:HARNESS_CALLS.index((harness, name, args, expect))]:
+        session._run_call({"id": "s", "name": setup[1], "args": json.loads(json.dumps(setup[2]))})
+    output, ok = session._run_call({"id": "1", "name": name, "args": json.loads(json.dumps(args))})
+    assert ok and expect in output, output
+
+
+def test_a_command_under_another_harness_name_still_waits_for_approval(ws, home):
+    fake = scripted(turn(calls=[call("Bash", command="touch made.txt")]), turn("Xong."), turn("Xong."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
+    session.send("make it")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "run_command" and not (ws.root / "made.txt").exists()
+
+
+def test_unknown_tools_and_editor_commands_we_lack_are_still_refused(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    assert session._run_call({"id": "1", "name": "teleport", "args": {}})[0].startswith("Unknown tool 'teleport'")
+    assert session._run_call({"id": "2", "name": "str_replace_editor", "args": {"command": "undo_edit", "path": "x"}})[0].startswith("Unknown tool")
+    output, ok = session._run_call({"id": "3", "name": "read_file", "args": {"path": "pkg/a.py"}})
+    assert ok and not output.startswith("["), "a call already in our names gets no note"
 
 
 # Harness v3: hashline edits, rules, undo, agents, queue, references, memory, plan, goal.
