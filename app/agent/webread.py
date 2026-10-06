@@ -5,6 +5,7 @@ import json
 import re
 from urllib.parse import urljoin, urlparse
 
+import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 SKIP = ("script", "style", "noscript", "svg", "form", "iframe", "template", "button")
@@ -123,3 +124,12 @@ def find(text: str, pattern: str, context: int = 2, limit: int = 40) -> str:
         last = end - 1
     more = f"\n[{len(hits) - limit} more matching lines]" if len(hits) > limit else ""
     return "\n".join(shown) + more
+
+
+def browsed(url: str, key: str) -> str:
+    """The page as TinyFish's real browser sees it, for a page whose own HTML needs JavaScript; empty when it has nothing."""
+    reply = requests.post("https://api.fetch.tinyfish.ai", json={"urls": [url], "format": "markdown"}, timeout=(10, 60),
+                          headers={"X-API-Key": key, "Content-Type": "application/json", "Accept": "application/json"})
+    reply.raise_for_status()
+    rows = reply.json().get("results") or []
+    return str(rows[0].get("text") or "").strip() if rows and isinstance(rows[0], dict) else ""

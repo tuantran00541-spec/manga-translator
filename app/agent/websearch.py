@@ -1,4 +1,4 @@
-"""Web search for the agent: Tavily when a key is set in the environment, else DuckDuckGo's plain HTML page; DuckDuckGo answers when Tavily fails or finds nothing."""
+"""Web search for the agent: TinyFish, then Tavily when their keys are set in the environment, then DuckDuckGo's plain HTML page; the next one answers when one fails or finds nothing."""
 from __future__ import annotations
 
 import os
@@ -25,6 +25,25 @@ def _rows(results: list[tuple[str, str, str]]) -> str:
 
 
 RECENCY = {"day": ("day", "d"), "week": ("week", "w"), "month": ("month", "m"), "year": ("year", "y")}
+
+
+MINUTES = {"day": 1440, "week": 10080, "month": 43200, "year": 525600}
+
+
+def _tinyfish(query: str, count: int, key: str, recency: str = "") -> list[tuple[str, str, str]]:
+    """TinyFish takes the site: words as domain lists and a recency in minutes, so the engine itself does the filtering."""
+    wanted = constraints(query)
+    params = {"query": re.sub(r"(?<!\S)-?site:\S+", "", query).strip() or query, "num_results": count}
+    if wanted["sites"]:
+        params["include_domains"] = ",".join(dict.fromkeys(site.split("/")[0] for site in wanted["sites"]))
+    if wanted["not_sites"]:
+        params["exclude_domains"] = ",".join(dict.fromkeys(site.split("/")[0] for site in wanted["not_sites"]))
+    if recency:
+        params["recency_minutes"] = MINUTES[recency]
+    reply = requests.get("https://api.search.tinyfish.ai", params=params, timeout=TIMEOUT, headers={"X-API-Key": key, "Accept": "application/json"})
+    reply.raise_for_status()
+    return [(r.get("title") or r.get("site_name") or r["url"], r["url"], (r.get("snippet") or "")[:400])
+            for r in reply.json().get("results") or [] if isinstance(r, dict) and r.get("url")]
 
 
 def _tavily(query: str, count: int, key: str, recency: str = "") -> list[tuple[str, str, str]]:
@@ -59,7 +78,7 @@ def _duckduckgo(query: str, count: int, recency: str = "") -> list[tuple[str, st
         response.close()
     found = parse_duckduckgo(html, count)
     if not found and ("anomaly" in html.lower() or "captcha" in html.lower()):
-        raise SearchError("DuckDuckGo refused this machine; set TAVILY_API_KEY for a search service")
+        raise SearchError("DuckDuckGo refused this machine; set TINYFISH_API_KEY or TAVILY_API_KEY for a search service")
     return found
 
 
@@ -106,6 +125,8 @@ def search(query: str, count: int = 8, recency: str = "") -> str:
     count = max(1, min(15, int(count)))
     extra = {"recency": recency} if recency in RECENCY else {}
     chain = []
+    if os.environ.get("TINYFISH_API_KEY"):
+        chain.append(("TinyFish", lambda: _tinyfish(query, count, os.environ["TINYFISH_API_KEY"], **extra)))
     if os.environ.get("TAVILY_API_KEY"):
         chain.append(("Tavily", lambda: _tavily(query, count, os.environ["TAVILY_API_KEY"], **extra)))
     chain.append(("DuckDuckGo", lambda: _duckduckgo(query, count, **extra)))

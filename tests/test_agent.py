@@ -2390,3 +2390,60 @@ def test_a_server_retry_hint_in_milliseconds_or_as_a_date_is_obeyed_and_should_r
     ok = {"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
     monkeypatch.setattr(client, "_post", lambda *a: calls.append(1) or (Hinted(409, {}) if len(calls) == 1 else FakeResponse(200, ok)))
     assert client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[])["text"] == "done"
+
+
+def test_tinyfish_answers_search_first_with_site_words_as_domain_lists_and_falls_back_when_it_fails(monkeypatch):
+    from app.agent import websearch
+    monkeypatch.setenv("TINYFISH_API_KEY", "tf")
+    monkeypatch.setenv("TAVILY_API_KEY", "tv")
+    sent = {}
+
+    class Reply:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"results": [{"title": "Fixtures", "url": "https://docs.pytest.org/a", "snippet": "how to"}, {"title": None, "site_name": "Site", "url": "https://s.example/x"}, {"url": ""}]}
+
+    def get(url, params=None, headers=None, timeout=None):
+        sent.update(url=url, params=params, key=headers["X-API-Key"])
+        return Reply()
+
+    monkeypatch.setattr(websearch.requests, "get", get)
+    text = websearch.search("pytest fixtures site:docs.pytest.org -site:reddit.com", 5, "week")
+    assert sent["url"] == "https://api.search.tinyfish.ai" and sent["key"] == "tf"
+    assert sent["params"] == {"query": "pytest fixtures", "num_results": 5, "include_domains": "docs.pytest.org", "exclude_domains": "reddit.com", "recency_minutes": 10080}
+    assert "Fixtures" in text and "docs.pytest.org/a" in text
+    monkeypatch.setattr(websearch, "_tinyfish", lambda *a, **k: (_ for _ in ()).throw(websearch.requests.ConnectionError("down")))
+    monkeypatch.setattr(websearch, "_tavily", lambda q, n, key, recency="": [("T", "https://t.example", "snip")])
+    assert "https://t.example" in websearch.search("anything"), "Tavily answered when TinyFish failed"
+
+
+def test_a_page_that_needs_javascript_is_read_through_tinyfish_but_only_then(ws, monkeypatch):
+    from app.agent import tools as agent_tools, webread
+    asked = []
+
+    class Page:
+        encoding = "utf-8"
+        headers = {"Content-Type": "text/html"}
+
+        def close(self):
+            pass
+
+    shell = b"<html><body>Please enable JavaScript to continue</body></html>"
+    monkeypatch.setattr(agent_tools, "safe_get", lambda url, **kw: Page())
+    monkeypatch.setattr(agent_tools, "read_response_limited", lambda response, limit_bytes: shell)
+    monkeypatch.delenv("TINYFISH_API_KEY", raising=False)
+    monkeypatch.setattr(webread, "browsed", lambda url, key: asked.append((url, key)) or "# Real page\n\n" + "A real paragraph of content. " * 30)
+    assert "needs JavaScript" in ws._tool_web_fetch("https://spa.example.org/") and not asked, "without a key nothing leaves the machine"
+    monkeypatch.setenv("TINYFISH_API_KEY", "tf")
+    page = ws._tool_web_fetch("https://spa.example.org/")
+    assert asked == [("https://spa.example.org/", "tf")] and page.startswith("[This page needs JavaScript; it was read through TinyFish's browser.]\n# Real page")
+    asked.clear()
+    monkeypatch.setattr(agent_tools, "read_response_limited", lambda response, limit_bytes: b"<html><body><main><h1>Fine</h1><p>Plain readable page with enough words.</p></main></body></html>")
+    assert "Fine" in ws._tool_web_fetch("https://plain.example.org/") and not asked, "a page that reads fine is not sent anywhere"
+    monkeypatch.setattr(agent_tools, "read_response_limited", lambda response, limit_bytes: shell)
+    monkeypatch.setattr(webread, "browsed", lambda url, key: (_ for _ in ()).throw(agent_tools.requests.ConnectionError("down")))
+    assert "needs JavaScript" in ws._tool_web_fetch("https://spa.example.org/"), "if the service fails the warning stays"

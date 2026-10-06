@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import unicodedata
 
+import requests
 
 from app.agent import gitguard, hashline, patch as patches, sandbox, webread, websearch
 from app.downloader.http import read_response_limited, safe_get
@@ -517,6 +518,15 @@ class Workspace:
             raise ToolError(f"Could not fetch {url}: {getattr(exc, 'detail', exc)}") from exc
         text, notes = webread.readable(body, kind, response.encoding, url)
         text = text.strip()
+        key = os.environ.get("TINYFISH_API_KEY")
+        if notes and key:
+            # Only a page that needs JavaScript or is all menus goes to the browser service; a page that refused us is not sent there.
+            try:
+                seen = webread.browsed(url, key)
+            except requests.RequestException:
+                seen = ""
+            if seen and not webread.low_quality(seen) and len(seen) > len(text):
+                text, notes = seen, ["This page needs JavaScript; it was read through TinyFish's browser."]
         head = "".join(f"[{note}]\n" for note in notes)
         if find:
             return head + webread.find(text, str(find))
