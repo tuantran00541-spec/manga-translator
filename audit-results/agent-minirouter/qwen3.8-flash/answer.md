@@ -1,0 +1,1 @@
+Trước khi chốt, tôi cần chắc hai agent còn lại không sửa file sau lần chạy xanh cuối cùng.
