@@ -4,10 +4,12 @@
 ./.pytest_cache/v/cache/lastfailed
 ./.pytest_cache/v/cache/nodeids
 ./.pytest_cache/v/cache/stepwise
+./DESIGN.md
 ./README.md
 ./pyproject.toml
 ./src/notekeeper/__init__.py
 ./src/notekeeper/cli.py
 ./src/notekeeper/storage.py
-./tests/conftest.py
-./tests/test_notekeeper.py
+./tests/__init__.py
+./tests/test_cli.py
+./tests/test_storage.py

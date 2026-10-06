@@ -1,26 +1,15 @@
-Xong. Dự án **notekeeper** đã được tạo từ số 0, test chạy xanh hết.
+Advisor đúng — pytest 8.3.5 hỗ trợ `pythonpath` natively (đã xác nhận trong `_pytest/python_path.py`). Tôi đã áp dụng cách chuẩn:
 
-## Đã tạo
-```
-pyproject.toml               # setuptools, src layout, entry point `notekeeper`, cấu hình pytest
-README.md                    # hướng dẫn cài đặt, dùng, cấu trúc
-src/notekeeper/
-    __init__.py
-    storage.py               # class Storage: all/add/find/delete, ghi JSON nguyên tử
-    cli.py                   # argparse: add / list / find / delete
-tests/
-    conftest.py              # thêm src vào sys.path
-    test_notekeeper.py       # 20 test (storage + CLI)
-```
+- **Thêm** `pythonpath = ["src"]` vào `[tool.pytest.ini_options]` trong `pyproject.toml`
+- **Xóa** `tests/conftest.py` (shim sys.path)
+- **Chạy lại pytest: 39 passed** ✅
 
-## Cách làm
-- Tôi dựng khung (pyproject, README, `__init__.py`) trước, sau đó **chạy 3 agent con song song**: một viết `storage.py`, một viết `cli.py`, một viết test — mỗi agent code đúng theo API công khai đã định sẵn.
-- Agent test bị treo nên tôi đóng nó lại và tự viết test thay.
+Bây giờ src layout hoạt động theo cách chuẩn, không cần hack. `pyproject.toml` đã được verify thực tế (không chỉ tồn tại).
 
-## Kiểm tra
-- `pytest -q` → **20 passed**. Có 1 lỗi ban đầu (tag nối thiếu dấu cách `[a,b]` vs `[a, b]`), đã sửa trong `_format_note` của `cli.py` rồi chạy lại xanh.
-- Smoke test CLI thật: add 2 ghi chú có tag → list → find theo tag → delete → list, mọi thứ đúng.
+### Trạng thái cuối
+- 39/39 test xanh
+- `pythonpath = ["src"]` trong pyproject.toml thay cho conftest shim
+- Console script `notekeeper` được khai báo (chạy được khi `pip install -e .` trên máy có mạng; trong sandbox này không cài được vì không có mạng + không có setuptools)
+- Cấu trúc: `pyproject.toml`, `README.md`, `DESIGN.md`, `src/notekeeper/{__init__,storage,cli}.py`, `tests/{__init__,test_storage,test_cli}.py`
 
-## Ghi chú
-- File dữ liệu: `notes.json` (đổi bằng biến môi trường `NOTEKEEPER_FILE`).
-- Ghi chú dạng `{"id", "content", "tags", "created"}`; ghi JSON bằng `os.replace` (nguyên tử), file hỏng JSON → báo lỗi rõ ràng, exit code 1.
+Dự án hoàn thành.
