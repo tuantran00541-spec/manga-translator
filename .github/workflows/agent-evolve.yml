@@ -1,0 +1,64 @@
+name: Agent evolves a slide skill into a plugin and an MCP server
+
+# One-off: PolarGrid learns PowerPoint from zero, turns its skill into a plugin it evolves, serves it over MCP, then answers about this repo with it.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/agent-evolve.yml"
+      - ".github/agent-evolve/drive.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  evolve:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 355
+    env:
+      OUT: audit-results/agent-evolve/out
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install -q -r requirements-test.txt python-pptx pillow
+          sudo apt-get update -q > /dev/null
+          sudo apt-get install -y -q --no-install-recommends libreoffice-impress poppler-utils fonts-dejavu > /dev/null
+          soffice --version || true
+      - name: Learn, evolve, serve over MCP, answer
+        env:
+          AGENT_API_KEY: ${{ secrets.polagrid_ }}
+          AGENT_BASE: https://api.mia-01.edge.polargrid.ai/v1
+          AGENT_MODEL: qwen-3.8-27b
+          TINYFISH_API_KEY: ${{ secrets.TINYFISH }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY }}
+        run: |
+          [ -n "$AGENT_API_KEY" ] || { echo "::error::secret polagrid_ is not set"; exit 1; }
+          python .github/agent-evolve/drive.py "$OUT" 2>&1 | tail -c 60000 || true
+      - name: Pictures of every deck the agent made
+        if: always()
+        run: |
+          mkdir -p "$OUT/previews"
+          find "$OUT/made" -name '*.pptx' 2>/dev/null | head -40 | while read -r deck; do
+            name=$(echo "${deck#$OUT/made/}" | tr '/' '_' | sed 's/\.pptx$//')
+            timeout 120 soffice -env:UserInstallation=file:///tmp/lo_ci --headless --convert-to pdf --outdir /tmp/pdf "$deck" > /dev/null 2>&1 || continue
+            pdftoppm -png -r 40 "/tmp/pdf/$(basename "${deck%.pptx}").pdf" "$OUT/previews/$name" || true
+          done
+          ls "$OUT/previews" | head -100; du -sh "$OUT" || true
+      - name: Give git access only now that the agent is done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - uses: ./.github/actions/save-evidence
+        if: always()
+        with:
+          paths: audit-results/agent-evolve/out
+          message: "audit: Agent evolves a slide skill into a plugin and an MCP server (run ${{ github.run_id }})"
