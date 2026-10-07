@@ -1,23 +1,29 @@
 name: Agent evolves a slide skill into a plugin and an MCP server
 
-# One-off: Agnes (agnes-3.0-flash, it reads images; PolarGrid's qwen-3.8-27b does not) learns PowerPoint from zero, turns its skill into a plugin it evolves, serves it over MCP, then answers about this repo with it.
+# One-off: Agnes learns slides over seven 45-minute days (graduating from day 5 at the earliest), then a fresh session sits an exam with only its MCP server.
 on:
   push:
     branches-ignore: [main]
     paths:
       - ".github/workflows/agent-evolve.yml"
       - ".github/agent-evolve/drive.py"
+      - ".github/agent-evolve/tinyfish_mcp.py"
   workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  AGENT_BASE: https://apihub.agnes-ai.com/v1
+  AGENT_MODEL: agnes-3.0-flash
+  AGENT_LABEL: Agnes
+
 jobs:
-  evolve:
+  learn:
     runs-on: ubuntu-22.04
     timeout-minutes: 355
     env:
-      OUT: audit-results/agent-evolve/out
+      OUT: audit-results/agent-evolve/learn
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,28 +36,38 @@ jobs:
           python -m pip install -q -r requirements-test.txt python-pptx pillow
           sudo apt-get update -q > /dev/null
           sudo apt-get install -y -q --no-install-recommends libreoffice-impress poppler-utils fonts-dejavu > /dev/null
-          soffice --version || true
-      - name: Learn, evolve, serve over MCP, answer
+      - name: Seven days of study
         env:
           AGENT_API_KEY: ${{ secrets.Agnes_key }}
-          AGENT_BASE: https://apihub.agnes-ai.com/v1
-          AGENT_MODEL: agnes-3.0-flash
-          AGENT_LABEL: Agnes
           TINYFISH_API_KEY: ${{ secrets.TINYFISH }}
           TAVILY_API_KEY: ${{ secrets.TAVILY }}
         run: |
           [ -n "$AGENT_API_KEY" ] || { echo "::error::secret Agnes_key is not set"; exit 1; }
-          python -u .github/agent-evolve/drive.py "$OUT" 2>&1 || true
-      - name: Pictures of every deck the agent made
+          python -u .github/agent-evolve/drive.py learn "$OUT" 2>&1 || true
+      - name: Keep what the agent made for the exam
         if: always()
         run: |
+          mkdir -p /tmp/state "$OUT/made"
+          # .agents/ is gitignored, so it is added by hand next to every new or changed file.
+          { git ls-files -m -o --exclude-standard -z -- . ':!audit-results'; [ -d .agents ] && find .agents -type f -not -path '*/__pycache__/*' -print0; } \
+            | tar czf /tmp/state/work.tgz --ignore-failed-read --null -T -
+          tar czf /tmp/state/home.tgz -C "$HOME" .manga-agent
+          for p in deck-lab .agents .mcp.json; do [ -e "$p" ] && cp -r "$p" "$OUT/made/"; done
+          cp -r "$HOME/.manga-agent/plugins" "$OUT/made/plugins" 2>/dev/null || true
+          find "$OUT/made" -name "*.pdf" -delete; find "$OUT/made" -name "__pycache__" -prune -exec rm -rf {} +
           mkdir -p "$OUT/previews"
-          find "$OUT/made/all-pptx" -name "*.pptx" 2>/dev/null | head -60 | while read -r deck; do
-            name=$(basename "${deck%.pptx}")
+          find deck-lab -name "*.pptx" 2>/dev/null | head -40 | while read -r deck; do
+            name=$(echo "${deck%.pptx}" | tr '/' '_')
             timeout 120 soffice -env:UserInstallation=file:///tmp/lo_ci --headless --convert-to pdf --outdir /tmp/pdf "$deck" > /dev/null 2>&1 || continue
             pdftoppm -png -r 40 "/tmp/pdf/$(basename "${deck%.pptx}").pdf" "$OUT/previews/$name" || true
           done
-          ls "$OUT/previews" | head -100; du -sh "$OUT" || true
+          du -sh "$OUT" /tmp/state/* || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agent-state
+          path: /tmp/state
+          retention-days: 2
       - name: Give git access only now that the agent is done
         if: always()
         env:
@@ -61,5 +77,64 @@ jobs:
       - uses: ./.github/actions/save-evidence
         if: always()
         with:
-          paths: audit-results/agent-evolve/out
-          message: "audit: Agent evolves a slide skill into a plugin and an MCP server (run ${{ github.run_id }})"
+          paths: audit-results/agent-evolve/learn
+          message: "audit: Agent learns slides over seven days (run ${{ github.run_id }})"
+
+  exam:
+    needs: learn
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      OUT: audit-results/agent-evolve/exam
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install -q -r requirements-test.txt python-pptx pillow
+          sudo apt-get update -q > /dev/null
+          sudo apt-get install -y -q --no-install-recommends libreoffice-impress poppler-utils fonts-dejavu > /dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          name: agent-state
+          path: /tmp/state
+      - name: Restore what the agent made
+        run: |
+          tar xzf /tmp/state/work.tgz
+          tar xzf /tmp/state/home.tgz -C "$HOME"
+          ls -la deck-lab .agents .mcp.json "$HOME/.manga-agent/plugins" || true
+      - name: Exam with only the MCP server
+        env:
+          AGENT_API_KEY: ${{ secrets.Agnes_key }}
+          TINYFISH_API_KEY: ${{ secrets.TINYFISH }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY }}
+        run: |
+          [ -n "$AGENT_API_KEY" ] || { echo "::error::secret Agnes_key is not set"; exit 1; }
+          python -u .github/agent-evolve/drive.py exam "$OUT" 2>&1 || true
+      - name: Keep the exam deck and its pictures
+        if: always()
+        run: |
+          mkdir -p "$OUT/final" "$OUT/previews"
+          cp -r final/. "$OUT/final/" 2>/dev/null || true
+          for deck in final/*.pptx; do
+            [ -f "$deck" ] || continue
+            timeout 120 soffice -env:UserInstallation=file:///tmp/lo_ci --headless --convert-to pdf --outdir /tmp/pdf "$deck" > /dev/null 2>&1 || continue
+            pdftoppm -png -r 50 "/tmp/pdf/$(basename "${deck%.pptx}").pdf" "$OUT/previews/$(basename "${deck%.pptx}")" || true
+          done
+          ls "$OUT/previews" || true
+      - name: Give git access only now that the agent is done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - uses: ./.github/actions/save-evidence
+        if: always()
+        with:
+          paths: audit-results/agent-evolve/exam
+          message: "audit: Agent sits the slide exam with only MCP (run ${{ github.run_id }})"
