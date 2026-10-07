@@ -48,15 +48,15 @@ jobs:
           ls deck-lab | head; ls .mcp.json "$HOME/.manga-agent/plugins"
       - name: Wait for the daily quota
         env:
-          AGENT_API_KEY: ${{ secrets.Agnes_key }}
+          AGENT_API_KEY: ${{ secrets.agnes_key2 }}
         run: python -u .github/agent-evolve/wait_quota.py 240
       - name: Exam with only the MCP server
         env:
-          AGENT_API_KEY: ${{ secrets.Agnes_key }}
+          AGENT_API_KEY: ${{ secrets.agnes_key2 }}
           TINYFISH_API_KEY: ${{ secrets.TINYFISH }}
           TAVILY_API_KEY: ${{ secrets.TAVILY }}
         run: |
-          [ -n "$AGENT_API_KEY" ] || { echo "::error::secret Agnes_key is not set"; exit 1; }
+          [ -n "$AGENT_API_KEY" ] || { echo "::error::secret agnes_key2 is not set"; exit 1; }
           python -u .github/agent-evolve/drive.py exam "$OUT" 2>&1 || true
       - name: Keep the exam deck and its pictures
         if: always()
