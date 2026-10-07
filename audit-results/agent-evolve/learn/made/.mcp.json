@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "deck": {
+      "command": "python",
+      "args": [
+        "-B",
+        ".agents/skills/pptx/deck_mcp_server.py"
+      ],
+      "env": {
+        "DECK_TOOLS_DIR": ".agents/skills/pptx"
+      },
+      "cwd": "."
+    }
+  }
+}
