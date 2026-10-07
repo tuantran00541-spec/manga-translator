@@ -37,6 +37,12 @@ WINDOW_PATTERNS = [re.compile(p, re.I) for p in (
 RATE_LIMIT_RETRIES = 4
 # When a provider says "slow down", every session using it waits, not just the one that was told.
 _COOLDOWN: dict[str, float] = {}
+# A pace a provider asked for in words ("1 request every 1 minutes"): provider id -> (seconds between requests, until when, last sent).
+_PACE: dict[str, list[float]] = {}
+PACE_HOLD_S = 900  # A pace lapses this long after the provider last asked for it.
+PACE_RE = re.compile(r"(\d+) requests? (?:every|per|each) (\d+)? ?(second|sec|minute|min|hour)", re.I)
+AFTER_RE = re.compile(r"try again (?:after|at) (\d{1,2}):(\d{2})(?::(\d{2}))?", re.I)
+IN_RE = re.compile(r"(?:try again|retry) in (\d+(?:\.\d+)?) ?(ms|milliseconds?|s|secs?|seconds?|m|mins?|minutes?)\b", re.I)
 # A block may lack its closing tag when the model stops early or opens the next call.
 TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*(?:</tool_call>|(?=<tool_call>)|\Z)", re.S)
 PARAMETER_RE = re.compile(r"<parameter=(\w+)>\s*(.*?)\s*</parameter>", re.S)
@@ -227,6 +233,46 @@ def _retry_after(response: requests.Response) -> float:
         return 0.0
 
 
+def _hinted_wait(text: str) -> float:
+    """Seconds the provider's own words ask to wait ("try again in 20s", "try again after 05:18:33"), or 0."""
+    found = IN_RE.search(text)
+    if found:
+        unit = found.group(2).lower()
+        return float(found.group(1)) * (0.001 if unit.startswith("ms") or unit.startswith("milli") else 60 if unit.startswith("m") else 1)
+    found = AFTER_RE.search(text)
+    if found:
+        now = time.gmtime()
+        target = int(found.group(1)) * 3600 + int(found.group(2)) * 60 + int(found.group(3) or 0)
+        wait = (target - (now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec)) % 86400
+        # A clock time in another zone would read as hours away; only a near one is trusted.
+        return float(wait) if wait <= 900 else 0.0
+    return 0.0
+
+
+def _pace_hint(text: str) -> float:
+    """Seconds between requests when the provider names a pace, or 0."""
+    found = PACE_RE.search(text)
+    if not found or int(found.group(1)) == 0:
+        return 0.0
+    unit = found.group(3).lower()
+    period = int(found.group(2) or 1) * (3600 if unit.startswith("h") else 60 if unit.startswith("m") else 1)
+    return period / int(found.group(1))
+
+
+def _wait_for_pace(provider_id: str) -> None:
+    pace = _PACE.get(provider_id)
+    if not pace:
+        return
+    interval, until, last = pace
+    if time.time() > until:
+        _PACE.pop(provider_id, None)
+        return
+    gap = last + interval - time.time()
+    if gap > 0:
+        time.sleep(gap)
+    pace[2] = time.time()
+
+
 # Rate-limit answers seen per provider: how many, how long we waited, and the provider's last words, so a session can report them.
 RATE_LIMITS: dict[str, dict] = {}
 
@@ -252,6 +298,7 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
         pause = _COOLDOWN.get(provider.id, 0.0) - time.time() if attempt == 0 else 0
         if pause > 0:
             time.sleep(min(pause, 60.0))
+        _wait_for_pace(provider.id)
         try:
             response = requests.post(url, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                                      json=payload, timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, STREAM_IDLE_TIMEOUT if stream else READ_TIMEOUT),
@@ -260,8 +307,17 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
             raise TransientError(f"{provider.label} request failed: {type(exc).__name__}") from exc
         if response.status_code != 429 or attempt == RATE_LIMIT_RETRIES:
             return response
-        # Free tiers allow a few requests a minute; wait as told, or longer each time.
-        wait = min(60.0, _retry_after(response) or 6.0 * 2 ** attempt)
+        # Free tiers allow a few requests a minute; wait as told (in a header or in words), or longer each time.
+        try:
+            words = response.text[:500]
+        except Exception:
+            words = ""
+        interval = _pace_hint(words)
+        if interval:
+            # Once the provider names a slower pace, every later request keeps to it instead of failing a few times and giving up.
+            _PACE[provider.id] = [interval, time.time() + PACE_HOLD_S, time.time()]
+            RATE_LIMITS.setdefault(provider.id, {"count": 0, "waited_s": 0.0, "detail": "", "first": time.time()})["pace_s"] = interval
+        wait = min(900.0 if interval else 60.0, _retry_after(response) or _hinted_wait(words) or interval or 6.0 * 2 ** attempt)
         _note_rate_limit(provider, response, wait)
         _COOLDOWN[provider.id] = max(_COOLDOWN.get(provider.id, 0.0), time.time() + wait)
         response.close()
@@ -426,7 +482,8 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
         if tools and 400 <= response.status_code < 500 and "tool" in detail.lower():
             raise ToolsUnsupported(detail)
         # A busy model ("at capacity, retry in a few seconds") is waited out like a server error; a spent quota or balance is not.
-        busy = response.status_code == 429 and not re.search(r"quota|billing|insufficient|balance|credit", detail, re.I)
+        # A spent daily quota that still lets requests through at a slower pace is waited out too.
+        busy = response.status_code == 429 and (not re.search(r"quota|billing|insufficient|balance|credit", detail, re.I) or bool(_pace_hint(detail)))
         retry = response.headers.get("x-should-retry", "").lower()
         error = TransientError if (response.status_code >= 500 or response.status_code in (408, 409) or busy or retry == "true") and retry != "false" else RuntimeError
         raise error(f"{provider.label} HTTP {response.status_code}: {detail}")

@@ -239,6 +239,24 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
     assert len(waits) == 1 and 3 < waits[0] <= 5, "another session waits out the cooldown a 429 set"
     client._COOLDOWN.clear()
+    # Agnes after its daily quota: one request a minute; the harness keeps to that pace instead of giving up after a few tries.
+    agnes = {"error": {"message": "You have used up today's text quota and are now limited to 1 request every 1 minutes. Try again after 05:18:33."}}
+    replies = [FakeResponse(429, agnes), FakeResponse(200, reply), FakeResponse(200, reply)]
+    waits.clear()
+    monkeypatch.setattr(client.requests, "post", lambda url, **kw: replies.pop(0))
+    client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
+    assert waits and waits[0] == 60.0 and client.RATE_LIMITS["openai"]["pace_s"] == 60.0, waits
+    waits.clear()
+    client._COOLDOWN.clear()  # the sleeps above are faked, so the clock has not moved past the 429's own cooldown
+    client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
+    assert len(waits) == 1 and waits[0] > 55, "the next request keeps the named pace"
+    monkeypatch.setattr(client.requests, "post", lambda url, **kw: FakeResponse(429, agnes))
+    with pytest.raises(client.TransientError):
+        client.complete(PROVIDERS["openai"], "k", "m", [], tools=None)
+    client._PACE.clear()
+    client._COOLDOWN.clear()
+    assert client._hinted_wait("Rate limited, try again in 20s") == 20 and client._pace_hint("10 requests per minute") == 6.0
+    assert client._hinted_wait("quota spent") == 0 and client._pace_hint("slow down") == 0
     monkeypatch.setattr(client.requests, "post", lambda url, **kw: FakeResponse(400, {"error": {"message": "tools are not supported"}}))
     with pytest.raises(client.ToolsUnsupported):
         client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
