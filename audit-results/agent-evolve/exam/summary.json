@@ -1,0 +1,58 @@
+{
+ "model": "agnes-3.0-flash",
+ "vision": true,
+ "setup": {
+  "plugins": "Cây plugin:\n  web-search-tinyfish [builtin] active\n  web-search-tavily [builtin] active\n  web-search-duckduckgo [builtin] active\n  web-fetch-http [builtin] active\n  shell-local [builtin] active\n  model-default [builtin] active\n  compact-default [builtin] active\n  deck [user] disabled (cần tools)\n  mcp:deck [mcp] active\n  mcp:tinyfish [mcp] active\nAgent ngoài: không tìm thấy codex hay claude\nTính năng đã tắt: không\nVòng lặp: default\nNhóm có thể tắt trong profile.json: ask_user, edit, extensions, external, files, goal, mcp, memory, plan, schedule, shell, skills, subagents, todo, web",
+  "mcp": "deck (workspace): running, 2 công cụ\ntinyfish (user): running, 2 công cụ",
+  "mcp_tools": [
+   "mcp__deck__check_deck",
+   "mcp__deck__make_deck",
+   "mcp__tinyfish__fetch",
+   "mcp__tinyfish__search"
+  ]
+ },
+ "exam": {
+  "minutes": 7.1,
+  "tool_counts": {
+   "list_dir": 2,
+   "read_file": 2,
+   "skill": 1,
+   "spawn_agent": 1
+  },
+  "usage": {
+   "prompt_tokens": 40487,
+   "completion_tokens": 349,
+   "cached_tokens": 12288
+  },
+  "rate_limited": {
+   "count": 8,
+   "waited_s": 450.0
+  },
+  "report": ""
+ },
+ "grade": {
+  "checks": {
+   "files": false,
+   "slide_count_12_16": false,
+   "vietnamese_on_90pct_slides": false,
+   "no_lint_problems": false,
+   "cited_paths_exist": false,
+   "made_with_mcp": false,
+   "checked_with_mcp": false,
+   "no_own_pptx_script": true
+  },
+  "passed": 1,
+  "total": 8,
+  "slides": 0,
+  "slides_with_vietnamese": 0,
+  "lint_problems": [
+   "missing"
+  ],
+  "cited_paths": [],
+  "missing_paths": [],
+  "mcp_make_calls": 0,
+  "mcp_check_calls": 0,
+  "own_pptx_script_calls": [],
+  "agent_check_deck_on_final": ""
+ }
+}
