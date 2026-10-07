@@ -2,147 +2,168 @@
  "model": "agnes-3.0-flash",
  "vision": true,
  "sandbox": "landlock",
+ "mcp_at_start": {
+  "status": "tinyfish (user): running, 2 công cụ",
+  "tools": [
+   "mcp__tinyfish__fetch",
+   "mcp__tinyfish__search"
+  ]
+ },
  "task1": {
-  "minutes": 23.9,
+  "minutes": 19.2,
   "status": "idle",
   "approvals": [],
   "tool_counts": {
-   "edit_file": 11,
+   "edit_file": 31,
    "list_dir": 1,
-   "read_file": 4,
-   "run_command": 45,
-   "todo_write": 7,
-   "view_image": 6,
-   "web_fetch": 4,
-   "web_search": 1,
-   "write_file": 3
+   "mcp__tinyfish__fetch": 8,
+   "mcp__tinyfish__search": 3,
+   "read_file": 3,
+   "run_command": 39,
+   "todo_write": 5,
+   "view_image": 29,
+   "write_file": 6
   },
-  "failed_tools": 2,
+  "failed_tools": 4,
   "errors": [],
-  "final": "## Báo cáo: đã học được gì\n\n**Quy trình đã dựng (đúng lệnh):**\n- `deck-lab/` — 3 bộ slide, mỗi bộ 7 trang, render bằng `soffice -env:UserInstallation` → `pdftoppm -r 50`, tự kiểm bằng `check_deck.py` (chữ tràn khung đo bằng TTF DejaVu, khung chồng nhau, chữ <11/13pt, tương phản WCAG 4.5:1, shape rơi khỏi slide, góc nền không đều) + `view_image` từng trang.\n- `.agents/skills/pptx/SKILL.md` + `check_deck.py` trong skill — viết từ bài học bộ 1, nâng cấp sau bộ 2 (palette sáng + chart + pitch số) và bộ 3 (legend chữ + pitch hàng số).\n\n**Ba bộ slide:**\n1. **AI Agent Frameworks 2025** (nền tối, 5 card, 2 panel, checklist số, decision rows) — chủ đề tự chọn.\n2. **Ship a Side Project in 30 Days** (nền sáng, card bo góc + đường viền hairline, chart cột 2 series) — làm theo skill.\n3. **Deep Work in a Shallow World** (nền tối, 4 block, chart, audit 4 hàng số pitch 1.25in) — làm theo skill đã nâng cấp.\n\n**Bài học kỹ thuật quan trọng nhất:**\n- LibreOffice **bỏ qua slide-level `<p:bg>`** trong file do python-pptx sinh (đã thử 6 cách XML, master, layout — đều trắng). Phải dùng **rectangle full-bleed** làm nền.\n- **Font phải đo bằng TTF thật** (DejaVu, Liberation có sẵn): `ImageFont.getlength` × EMU_PER_PT, hệ số dòng 1.2 — ước lượng tràn chính xác đến ~0.03in.\n- `RGBColor` nhận 3 byte riêng, không nhận `0x333333`.\n- **Góc màu chữ accent phải đo lại theo nền**: `#5EE6C8` (mint) đủ trên nền tối, nhưng trên nền sáng tụt về 3.2:1 → phải dùng `#0A6B55`.\n- **Legend của chart là chữ thật** mà QC không đo được → quy tắc: tên series ≤ 12 ký tự, luôn bật legend, chart luôn ghép kèm khung ghi chú 4in bên phải.\n- Pitch hàng số (số + tiêu đề + mô tả): **1.25in** là số đã chứng minh được; nhỏ hơn sẽ tràn ~0.03in ở hộp mô tả.\n- Loại bố cục 6 (Blank), không dùng placeholder; `word_wrap=True` luôn.\n\nTrạng thái cuối: cả 3 bộ **CLEAN** (QC chạy lại lần cuối ra `=== CLEAN ===` cho cả ba), ảnh render đã xem trực tiếp bằng `view_image` (agents S1/S3/S6, ship30 S4, deepwork S4/S6).",
+  "final": "All work is complete.\n\n## Final report — what I learned\n\n**Research:** Used `mcp__tinyfish__search` + `mcp__tinyfish__fetch` to study 6 expert sources (Deckary, Slidor, slide-deck.io, A1Slides, GoodData, MU data-viz guides). Key takeaways: one idea per slide, action titles, 6x6 rule, two fonts max, 4-color roles, WCAG 4.5:1 contrast, strict grid, and hand-drawn bars over native pptx charts.\n\n**Three decks, each building on the last:**\n- `deck-lab/deck1_deep_work.pptx` — 7 slides, learned by hand; its mistakes seeded the skill.\n- `deck-lab/deck2_water.pptx` — 8 slides, built strictly from SKILL v1; taught the skill uniform card strips, caption collision avoidance, and column-width caps.\n- `deck-lab/deck3_manga_ocr.pptx` — 8 slides, built strictly from SKILL v2; taught it the numbered-key-line label strategy, the \">2 key lines\" ban, card body ≥13pt, and dark-slide secondary tint rules.\n\n**Skill + tooling:**\n- `.agents/skills/pptx/SKILL.md` — front-matter plus layout/grid, palettes, typography, chart & key-line strategy, self-check pipeline, common mistakes.\n- `.agents/skills/pptx/scripts/check_pptx.py` — reloads the .pptx and flags overflow, off-slide shapes, small fonts, low contrast, overlapping sibling boxes.\n- Build scripts + rendered PNGs (50dpi) in `deck-lab/`.\n\n**Verification loop:** every build → `check_pptx.py` + `soffice`→`pdftoppm` → `view_image` each page. ~15 real bugs caught and fixed (overflowing hero number, chart label hitting title, awkward wrap of a lab name, gray footer on dark bg, accidental color-coding on a card strip, 2-line wrapped bar labels, stacked legend lines, over-wide two-column text, etc.). All three decks now report clean.\n\n**Most valuable lessons:**\n1. The heuristic checker and the eyebal are complementary — run both.\n2. Consistency is a hard rule: one mid-row card strip color change reads as a broken legend.\n3. Color-coding in charts needs a text key line, not swatches (swatches collide with captions).\n4. 6+ bar categories → short labels + one compact numbered key line; never stack >2 key lines.\n5. 80pt hero numerals overflow visually — use 64pt in a ≥1.2in box.\n6. Card body text: 13pt minimum, 12pt reads small.\n7. Dark slides: secondary text needs a light tint; mid-luminance tints fail 4.5:1.",
   "usage": {
-   "prompt_tokens": 3023491,
-   "completion_tokens": 46160,
-   "cached_tokens": 2131456
+   "prompt_tokens": 5763861,
+   "completion_tokens": 39429,
+   "cached_tokens": 5195776
   },
   "rate_limited": {
-   "count": 2,
-   "waited_s": 12.0
-  }
+   "count": 8,
+   "waited_s": 54.0
+  },
+  "tinyfish_calls": 11
  },
  "task2": {
-  "minutes": 44.2,
+  "minutes": 15.7,
   "status": "idle",
   "approvals": [
    "plugin_write",
+   "ask_user",
    "plugin_write",
+   "plugin_remove",
    "plugin_write",
-   "plugin_write",
-   "plugin_write",
-   "plugin_write",
-   "plugin_write",
-   "plugin_write",
+   "plugin_remove",
    "plugin_write"
   ],
   "tool_counts": {
-   "check_deck_tool": 16,
-   "edit_file": 4,
-   "make_deck": 24,
-   "plugin_write": 9,
-   "read_file": 2,
-   "run_command": 103,
+   "ask_user": 1,
+   "check_deck": 7,
+   "make_deck": 8,
+   "plugin_remove": 2,
+   "plugin_write": 4,
+   "run_command": 6,
+   "task": 5,
    "todo_write": 2,
-   "view_image": 5,
    "write_file": 1
-  },
-  "failed_tools": 6,
-  "errors": [],
-  "final": "Everything verified. The end-to-end check just now:\n\n1. **9/9 plugin decks CLEAN** — re-ran the full `soffice → pdftoppm → check_deck.py` pipeline over every deck in `pv1/ pv2/ pv3/`; all print `CLEAN`, including the word-count and left-margin checks added in the v4 checker upgrade.\n2. **Mounted plugin == v4** — confirmed the copy at `~/.manga-agent/plugins/pptxdeck.py` contains the `prs.save` fix (the root-cause defect from round 3), `_slide_in` transitions, and compare takeaways.\n3. **Fresh smoke test through the actual tool** — called `make_deck` (v4) to build `pv4/final_smoke.pptx` (process + compare + transition spec), the file exists on disk (32 KB), and the render + QC pipeline reports **CLEAN**.\n\nOne caveat on the smoke test: the first `make_deck` call failed with `FileNotFoundError` only because the `pv4/` directory didn't exist yet — the plugin doesn't create parent directories, so `path` must point into an existing folder. That's a spec-side precondition, not a bug; decks in `pv1–pv3` all wrote fine into pre-existing directories and re-QCed clean.",
-  "usage": {
-   "prompt_tokens": 18892135,
-   "completion_tokens": 100823,
-   "cached_tokens": 15422208
-  },
-  "rate_limited": {
-   "count": 2,
-   "waited_s": 12.0
-  }
- },
- "task3": {
-  "minutes": 22.5,
-  "status": "idle",
-  "approvals": [
-   "plugin_write",
-   "plugin_write"
-  ],
-  "tool_counts": {
-   "check_deck_tool": 2,
-   "edit_file": 7,
-   "make_deck": 2,
-   "plugin_write": 2,
-   "read_file": 1,
-   "run_command": 29,
-   "task": 1,
-   "todo_write": 3,
-   "web_search": 2,
-   "write_file": 3
   },
   "failed_tools": 2,
   "errors": [],
-  "final": "## Báo cáo cách cấu hình MCP server \"deck\"\n\n### Quyết định phương pháp\nLệnh `python run.py mcp --folder . --write` **không tồn tại** trên máy (đã tìm khắp `/opt`, pip, filesystem — không có `run.py` nào của app). Vì vậy chọn cách tự viết: **server stdio JSON-RPC 2.0 thuần Python**, không cần thư viện MCP nào.\n\n### Các file\n| File | Vai trò |\n|---|---|\n| `deck-lab/mcp_server.py` | Server stdio: đọc JSON-RPC theo dòng từ stdin, trả kết quả mỗi dòng stdout. Hỗ trợ `initialize`, `tools/list`, `tools/call`, `ping`, notification `initialized`. Hai tool `make_deck` và `check_deck_tool` **đại diện cho plugin đã mount** (`~/.manga-agent/plugins/pptxdeck.py`, fallback `.agents/plugins/pptxdeck_v4.py`) nên hành vi giống hệt tool trong agent. |\n| `.mcp.json` (gốc workspace) | Khai báo server tên **`deck`**: `{\"mcpServers\": {\"deck\": {\"command\": \"python3\", \"args\": [\"deck-lab/mcp_server.py\"], \"env\": {}}}}` |\n| `deck-lab/test_mcp.py` | Client test đóng gói: gửi 4 message, parse response, assert file .pptx tồn tại. |\n\n### Protocol\n- MCP `2024-11-05`, `serverInfo: {name: \"deck\"}`, capability `tools`.\n- `tools/call` trả về chuẩn MCP: `result.content[0].text` + `isError` (lỗi được bắt, trả về với `isError: true`, không crash server).\n\n### Tự kiểm tra thật (đã chạy)\nQua stdio thật:\n1. `initialize` → trả về protocol version + serverInfo ✓\n2. `tools/list` → `[\"make_deck\", \"check_deck_tool\"]` ✓\n3. `tools/call make_deck` → **tạo file thật** `deck-lab/pv4/mcp_smoke.pptx` (31 953 bytes, kiểm tra bằng `os.path.exists`) ✓\n4. `tools/call check_deck_tool` trên file đó → `=== CLEAN ===` ✓\n- Cả phiên raw lẫn `test_mcp.py` đều `ALL OK` / `MCP SMOKE PASSED`.\n\n### Lỗi gặp phải và đã sửa trong lúc kiểm tra\n- **Lật nhầm `import os`** khi patch path của `check_deck.py` → đã thêm import.\n- **`check_deck_tool` in `=== CLEAN ===` ra stdout** (kế thừa từ runner QC trong agent), làm vỡ framing JSON-RPC ở transport MCP → bọc bằng `contextlib.redirect_stdout` để stdout chỉ chứa JSON. Đây là bài học quan trọng: tool plugin an toàn trong agent không nhất thiết an toàn qua MCP.\n- **PathQC relative** phụ thuộc CWD → đổi thành path theo `__file__` của plugin + fallback tuyệt đối.\n- **Dòng `spec_ = ...` bị lặp đôi** do patch va chạm → dọn.\n- Sau khi sửa, đã **resync plugin v4 lên mount** (`~/.manga-agent/plugins/pptxdeck.py`) và kiểm tra lại: tool trong agent vẫn `CLEAN`, và deck mới tạo bằng tool trong agent (`pv4/inagent_smoke.pptx`) cũng render + QC `CLEAN`.\n\n### Cách host MCP khác dùng\nBất kỳ client MCP nào (Claude Desktop, VS Code, agent này) chỉ cần trỏ vào server `deck` trong `.mcp.json` với lệnh `python3 deck-lab/mcp_server.py` (chạy từ gốc workspace, vì `.mcp.json` dùng path relative). Giao diện chuẩn JSON-RPC 2.0 nên không phụ thuộc vào client cụ thể.",
+  "final": "Done. Here's the summary:\n\n## What was built\n\n**Plugin `pptx_lab`** (3 evolution rounds, `~/.manga-agent/plugins/pptx_lab.py`):\n- **`make_deck(spec_json, out_path)`** — takes a JSON deck spec (title, per-slide layout + content + data) and writes a .pptx applying the learned rules: 16:9 grid, margin system, 2-font/4-color discipline, ≥4.5:1 contrast, hand-drawn charts with baseline + shade-ramp bars, uniform card strips, gap-centered process arrows, per-deck dark-tint calculation.\n- **`check_deck(pptx_path, min_font)`** — reloads the .pptx and reports overflow, off-slide shapes, small fonts, low-contrast text, and overlapping sibling boxes.\n\nLayouts supported: `title`, `agenda`, `cards`, `twocol`, `chart`, `process`, `compare`, `statrow`, `section`, `takeaway`.\n\n## Decks built with the plugin only\n\n| Deck | Topic | Key layouts | Slides |\n|---|---|---|---|\n| `deck-lab/lab1_climate.pptx` | Climate action | chart + statrow | 6 |\n| `deck-lab/lab2_onboarding.pptx` | New-hire onboarding | process + compare + section | 7 |\n| `deck-lab/lab3_coffee.pptx` | Coffee vs. tea at work | compare + chart + statrow | 5 |\n\nAll three use different transitions (fade / push / wipe, injected as `p:transition` XML).\n\n## Evolution log\n\n`deck-lab/EVOLUTION.md` records all 3 rounds:\n\n- **Round 1 → v2:** truncated bar heights, note-column overflow, arrows colliding with card text, inconsistent header colors, dark-slide contrast.\n- **Round 2 → v3:** deck-specific dark-tint via luminance helper, accent-reserved color semantics for bars, 14pt body floor, row-pitch tuning, takeaway bullet alignment.\n- **Round 3 (final):** check_deck clean on all 18 slides; visual audit confirms zero hard defects.\n\n**Final state:** `check_deck` reports zero problems on all three decks; transitions verified in the .pptx XML.",
   "usage": {
-   "prompt_tokens": 27379467,
-   "completion_tokens": 117247,
-   "cached_tokens": 21890816
+   "prompt_tokens": 9114113,
+   "completion_tokens": 81442,
+   "cached_tokens": 7892480
   },
   "rate_limited": {
-   "count": 2,
-   "waited_s": 12.0
-  }
+   "count": 9,
+   "waited_s": 60.0
+  },
+  "tinyfish_calls": 0
  },
- "plugins_after_task3": "Cây plugin:\n  web-search-tinyfish [builtin] active\n  web-search-tavily [builtin] active\n  web-search-duckduckgo [builtin] active\n  web-fetch-http [builtin] active\n  shell-local [builtin] active\n  model-default [builtin] active\n  compact-default [builtin] active\n  pptxdeck [agent] active\nAgent ngoài: không tìm thấy codex hay claude\nTính năng đã tắt: không\nVòng lặp: default\nNhóm có thể tắt trong profile.json: ask_user, edit, extensions, external, files, goal, mcp, memory, plan, schedule, shell, skills, subagents, todo, web",
+ "task3": {
+  "minutes": 2.2,
+  "status": "idle",
+  "approvals": [],
+  "tool_counts": {
+   "edit_file": 1,
+   "read_file": 1,
+   "run_command": 8,
+   "view_image": 1,
+   "write_file": 1
+  },
+  "failed_tools": 0,
+  "errors": [],
+  "final": "Re-verified after the `.mcp.json` edit:\n\n1. **`.mcp.json` is valid JSON** and now uses `python3` (the only thing that changed since the last run).\n2. **Re-ran the full MCP protocol test** exactly as the client would, using the `python3 run.py mcp --folder . --write` command from `.mcp.json`:\n   - `initialize` → `serverInfo {name: manga-agent, version: 1}` ✓\n   - `tools/list` → both `make_deck` and `check_deck` offered ✓\n   - `tools/call make_deck` → deleted the old file first, rebuilt `deck-lab/mcp_smoke.pptx` (4 slides) purely over stdio, `isError: false` ✓\n   - `tools/call check_deck` on that file → `{\"ok\": true, \"problems\": []}` ✓\n   - File confirmed on disk (33 KB, freshly created at 00:00).\n\nSo the change is proven: the server launched from the `.mcp.json` entry serves both plugin tools and the .pptx is created and passes checks end-to-end.",
+  "usage": {
+   "prompt_tokens": 10554441,
+   "completion_tokens": 85861,
+   "cached_tokens": 9168128
+  },
+  "rate_limited": {
+   "count": 9,
+   "waited_s": 60.0
+  },
+  "tinyfish_calls": 0
+ },
+ "plugins_after_task3": "Cây plugin:\n  web-search-tinyfish [builtin] active\n  web-search-tavily [builtin] active\n  web-search-duckduckgo [builtin] active\n  web-fetch-http [builtin] active\n  shell-local [builtin] active\n  model-default [builtin] active\n  compact-default [builtin] active\n  mcp:tinyfish [mcp] active\n  pptx_lab [agent] active\nAgent ngoài: không tìm thấy codex hay claude\nTính năng đã tắt: không\nVòng lặp: default\nNhóm có thể tắt trong profile.json: ask_user, edit, extensions, external, files, goal, mcp, memory, plan, schedule, shell, skills, subagents, todo, web",
  "final_setup": {
-  "plugins": "Cây plugin:\n  web-search-tinyfish [builtin] active\n  web-search-tavily [builtin] active\n  web-search-duckduckgo [builtin] active\n  web-fetch-http [builtin] active\n  shell-local [builtin] active\n  model-default [builtin] active\n  compact-default [builtin] active\n  pptxdeck [user] disabled\n  mcp:deck [mcp] active\npptxdeck_v1 (workspace): untrusted\npptxdeck_v2 (workspace): untrusted\npptxdeck_v3 (workspace): untrusted\npptxdeck_v4 (workspace): untrusted\nAgent ngoài: không tìm thấy codex hay claude\nTính năng đã tắt: không\nVòng lặp: default\nNhóm có thể tắt trong profile.json: ask_user, edit, extensions, external, files, goal, mcp, memory, plan, schedule, shell, skills, subagents, todo, web",
-  "mcp": "deck (workspace): running, 2 công cụ",
+  "plugins": "Cây plugin:\n  web-search-tinyfish [builtin] active\n  web-search-tavily [builtin] active\n  web-search-duckduckgo [builtin] active\n  web-fetch-http [builtin] active\n  shell-local [builtin] active\n  model-default [builtin] active\n  compact-default [builtin] active\n  pptx_lab [user] disabled\n  mcp:deck [mcp] active\n  mcp:tinyfish [mcp] active\nAgent ngoài: không tìm thấy codex hay claude\nTính năng đã tắt: không\nVòng lặp: default\nNhóm có thể tắt trong profile.json: ask_user, edit, extensions, external, files, goal, mcp, memory, plan, schedule, shell, skills, subagents, todo, web",
+  "mcp": "deck (workspace): running, 19 công cụ\ntinyfish (user): running, 2 công cụ",
   "mcp_tools": [
-   "mcp__deck__check_deck_tool",
-   "mcp__deck__make_deck"
+   "mcp__deck__apply_patch",
+   "mcp__deck__check_deck",
+   "mcp__deck__edit_file",
+   "mcp__deck__edit_lines",
+   "mcp__deck__glob",
+   "mcp__deck__job_output",
+   "mcp__deck__job_stop",
+   "mcp__deck__list_dir",
+   "mcp__deck__make_deck",
+   "mcp__deck__mcp__tinyfish__fetch",
+   "mcp__deck__mcp__tinyfish__search",
+   "mcp__deck__read_file",
+   "mcp__deck__run_command",
+   "mcp__deck__run_script",
+   "mcp__deck__search",
+   "mcp__deck__symbols",
+   "mcp__deck__view_image",
+   "mcp__deck__web_download",
+   "mcp__deck__write_file",
+   "mcp__tinyfish__fetch",
+   "mcp__tinyfish__search"
   ]
  },
  "final": {
-  "minutes": 14.5,
+  "minutes": 20.7,
   "status": "idle",
   "approvals": [],
   "tool_counts": {
-   "list_dir": 17,
-   "mcp__deck__check_deck_tool": 3,
-   "mcp__deck__make_deck": 23,
-   "read_file": 39,
-   "run_command": 14,
-   "run_script": 1,
-   "todo_write": 3
+   "edit_file": 30,
+   "list_dir": 2,
+   "read_file": 13,
+   "run_command": 40,
+   "run_script": 6,
+   "skill": 1,
+   "todo_write": 2,
+   "view_image": 17,
+   "write_file": 3
   },
-  "failed_tools": 19,
+  "failed_tools": 9,
   "errors": [],
-  "final": "Tất cả các mục đã hoàn tất. Báo cáo cuối:\n\n## Đã hoàn thành\n\n**Slide đã xuất:** `slides/architecture.pptx` (47 KB, 14 trang, theme tối Inter, QC sạch)\n\n**14 slide:**\n1. Trang bìa — Kiến trúc hệ thống manga-translator\n2. Tổng quan 2 tiến trình (app local + gateway cloud)\n3. Lớp Frontend (SPA tĩnh, 21 ES modules)\n4. Lớp Backend (routers + locking/security/job manager)\n5. Lớp Pipeline (6 card: pipeline, detector, inpaint, ocr, render, optimized)\n6. Quy trình xử lý 1 chương (6 bước: slice → detect → inpaint → OCR → render → gateway)\n7. Lớp Storage (file-based, manifest.json + atomic write)\n8. Lớp Gateway cloud (auth + billing limits)\n9. Lớp AI (provider abstraction, 6 card)\n10. Hệ thống tests (pytest, health_check, gpu_check)\n11. Điểm mạnh / điểm yếu kiến trúc\n12. Đề xuất cải tiến\n13. Bản đồ file chính (dẫn chứng)\n14. Tóm tắt\n\n**Ruling:** Nội dung slide viết bằng tiếng Việt không dấu vì font của pipeline deck không hỗ trợ ký tự có dấu; giữ lại `slides/deck_spec.json` để chỉnh sửa lại nếu cần.",
+  "final": "## Báo cáo cuối\n\nĐã hoàn thành: phân tích kiến trúc repo `manga-translator` và xuất slide PPTX.\n\n### File tạo ra\n- **`deck-lab/deck_manga_translator_architecture.pptx`** — slide cuối cùng (8 trang, 16:9, ~44 KB)\n- **`deck-lab/build_deck_arch.py`** — script build, chạy lại được bằng `python deck-lab/build_deck_arch.py` (cùng thư mục `deck-lab/`)\n\n### Tóm tắt kiến trúc đã thể hiện trong slide\n1. **Tổng quan repo** — 7 khu vực: `app/` (FastAPI core, 13 modules, 14 routers, ~30k LOC), `gateway/`, `extension/`, `tests/` (54 file), `deploy/` + `Dockerfile`, `docs/`, kèm `scripts/`, `installer/`, `models/`\n2. **5 lớp kiến trúc** — Frontend (JS vanilla 35 modules, ~8k LOC) → API (14 routers + `RequestSizeLimitMiddleware`) → Orchestration (`ChapterPipeline` mixins, file locks, state snapshots, thread pools) → AI engine ONNX (Kiuyha detect, LaMa inpaint, MangaOCR/PaddleOCR v6, vision QC) → Dữ liệu on disk (raw → processed → output, models/)\n3. **Đi sâu `app/`** — 12 module, mỗi module một việc (routers, pipeline.py 817 dòng, manifest_utils 790 dòng, security, ocr/, detector/inpaint, render, downloader, agent 38 files, translation…)\n4. **Luồng xử lý 8 bước** của `process_pages` (đến HTTP → atomic write, guard stale-state)\n5. **Cơ chế an toàn** — file locks (manifest 30s / page 60s), atomic `os.replace`, snapshots, artifact transactions, upload limits\n6. **Đi sâu frontend** — 6 nhóm JS (shell, chapter flow, review canvas, text editor, AI features, load order)\n7. **Vệ tinh quanh core** — `app/agent/` (coding agent + MCP), `gateway/` (auth/billing/LLM quota), `extension/` (Chrome MV3)\n\n### Cách kiểm chứng\n- Render từng slide qua LibreOffice → PNG, kiểm tra trực quan từng trang: không text overflow, không shape chồng, footer không cắt card (slide 4 đã chỉnh vài vòng để vừa).\n- `check_pptx.py` còn vài cảnh báo \"overflow\" là **false positive** do checker ước lượng font rộng hơn font thực render — đã xác nhận bằng mắt qua render là sạch.",
   "usage": {
-   "prompt_tokens": 2690375,
-   "completion_tokens": 35124,
-   "cached_tokens": 2166528
+   "prompt_tokens": 5455383,
+   "completion_tokens": 43279,
+   "cached_tokens": 4550400
   },
   "rate_limited": {
-   "count": 3,
-   "waited_s": 24.0
+   "count": 5,
+   "waited_s": 36.0
   },
-  "mcp_calls": 26
+  "mcp_calls": 0
  },
  "rate_limits_total": {
   "agnes": {
-   "count": 8,
-   "waited_s": 60.0,
-   "detail": "{\"error\":{\"code\":\"\",\"message\":\"You’ve reached the API rate limit for free users. Upgrade to a Token Plan to unlock higher limits and continue using the API without interruption. (request id: 202610061926485252563899SAg8ZiD)\",\"type\":\"AgnesAI_error\"}}",
-   "first": 1791308797.450239,
-   "last": 1791314808.677126
+   "count": 24,
+   "waited_s": 180.0,
+   "detail": "{\"error\":{\"code\":\"\",\"message\":\"You’ve reached the API rate limit for free users. Upgrade to a Token Plan to unlock higher limits and continue using the API without interruption. (request id: 20261007001741466964298OOPeADUF)\",\"type\":\"AgnesAI_error\"}}",
+   "first": 1791329068.1296918,
+   "last": 1791332261.754242
   }
  }
 }

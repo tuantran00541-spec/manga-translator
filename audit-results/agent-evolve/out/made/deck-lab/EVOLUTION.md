@@ -1,54 +1,74 @@
-# pptx plugin evolution log
+# pptx_lab plugin evolution log
 
-Plugin: `pptxdeck` (`.agents/plugins/pptxdeck_v*.py` → mounted at `~/.manga-agent/plugins/pptxdeck.py`).
-Tools: `make_deck` (JSON spec → .pptx) and `check_deck_tool` (QC via `deck-lab/check_deck.py`).
-Rule: after each round, find layout / color / type / effect weaknesses, rewrite the plugin, rebuild all 3 decks, re-QC. Only stop when `check_deck_tool` is CLEAN on every deck.
+Goal: evolve a plugin (make_deck + check_deck tools) that builds professional decks from JSON specs, applying the rules learned in `.agents/skills/pptx/SKILL.md`. After each round: build ≥3 decks across 3 different layout types (chart / process / compare), run check_deck, visually audit renders, then rewrite the plugin.
 
-## Round 1 — v1 (baseline)
+---
 
-Spec: 8 layouts (title, bullets, cards, two_panel, chart, numbered_rows, compare, process), dark+light palettes, native clustered-column charts, full-bleed-rect backgrounds, DejaVu Sans, 16:9.
+## Round 1 — initial plugin (make_deck + check_deck v1)
 
-Decks: `pv1/chart_mkt.pptx` (dark, chart+compare), `pv1/process_onboarding.pptx` (light, 5-step process), `pv1/compare_solo.pptx` (dark, 4-step process).
+**Decks built:**
+- `deck-lab/lab1_climate.pptx` — chart layout (emissions intensity, 4 bars)
+- `deck-lab/lab2_onboarding.pptx` — process layout (two process slides + compare)
+- `deck-lab/lab3_coffee.pptx` — compare layout (coffee vs tea, 3 rows)
 
-QC: all 3 CLEAN. Visual inspection found:
-- **B1 — bullets**: 3+ items in one full card stack vertically, last item collides with the card bottom; no two-column fallback.
-- **B2 — compare**: no takeaway line; two columns read as a feature list, not a decision.
-- **B3 — process**: the `>` arrow between step cards sits off the card midline and is tiny.
-- **B4 — transitions**: absent entirely; spec had no field for them.
-- **B5 — numbered_rows**: pitch formula `min(1.25, 4.6/n)` evaluates as `min(1.25, 4.6) / n` for n>4 → overflow on 5+ rows (caught by QC on a 5-row test before shipping).
-- **B6 — deck-size guard**: no warning when a spec has fewer than 3 content slides.
+**Layout types covered:** chart, process, compare (requirement met in round 1).
 
-## Round 2 — v2
+**Defects found by check_deck:** 1 (note column overflow on chart slide: 17pt insight in a 4.2in×1.3in box wrapped to more lines than fit).
 
-Fixes: B1 (bullets auto-split into two 5.9in cards when n≥3), B2 (`takeaway_a` / `takeaway_b` under each compare card), B3 (arrow 22pt → then 18pt on its own 0.5in box, centered at card mid-height y=3.5), B5 (pitch = `4.6/n` for n>4, `min(1.25, 4.6/n)` for n≤4).
+**Defects found by visual audit (soffice → pdftoppm → explore agent):**
+1. **Chart bar heights wrong** — `int(h * v)` truncated the float and the value labels (85/78/72/61%) did not track the bar heights; also bars appeared to "hang" without a shared baseline. Fix: keep float height `h*v`, draw a baseline rule at `base`.
+2. **Note column overflow** — "How to read" block: insight at 17pt was too wide for 4.2in×1.3in. Fix: shorten note_body to 2 sentences for the insight box, move remainder to a 14pt supporting paragraph in a 1.6in-tall box.
+3. **Process arrows overlapped card text** — the "→" glyph was placed at `x + cw - 0.05` (inside the card's right edge), colliding with the next card. Fix: move arrow into the gap between cards (`x + cw + (gap-0.3)/2`), widen gap to 0.4in.
+4. **Inconsistent card header colors in process** — first card used navy, the rest blue. Fix: uniform blue `#4A90D9` header band on every step.
+5. **Dark-slide footer/subtitle low contrast** — footer `#4A90D9` on `#1B3A5C` and subtitle `#4A90D9` on dark bg both fell below comfortable readability. Fix: light-blue `#8FB4DD` for secondary text on dark bg, footer `#A9C4E0`.
+6. **Takeaway bullets (dark)** — `#8FB4DD` on navy read as dim. Fix: bump to `#A9C4E0`, 20pt.
+7. **Unbalanced lower band on content slides** — cards/process left a big empty lower third. Fix: add a `statrow` layout (big number + caption cards, 44pt numerals) usable below a headline.
 
-Decks rebuilt in `pv2/`. QC on first rebuild:
-- **NEW — process arrows**: 22pt `>` in a 0.5in box = est. 0.37in text vs 0.34in usable → overflow flag on every arrow. Fixed to 18pt.
-- All three pv2 decks CLEAN; bullet two-column and compare takeaways verified in rendered PNGs.
+**Plugin v2 written:** float bar heights + baseline rule; note column resized (2-sentence insight + 2-sentence support); arrows in gaps; uniform header color; contrast bumps on dark slides; statrow layout added; footer/subtitle tints raised.
 
-## Round 3 — v3
+---
 
-Additions: `transition` spec field (`push|fade|wipe|blinds|dissolve|none`) injected as `<p:transition>` after `p:cSld` (schema order matters, else LibreOffice drops it); deck-size <3 warning; card `takeaway` support; numbered_rows desc 14pt.
+## Round 2 — plugin v2, decks rebuilt
 
-**Critical defect found**: `make_deck` returned "saved …" but the .pptx was not on disk. Traced round and round: layouts ran, `Presentation.save` was never reached because **`prs.save(path)` was missing from the function body** — the early draft assumed the file write happened. Every prior "saved" string was a lie. Fixed by adding `prs.save(path)` before the size check; re-verified with a direct `os.path.exists` check after each save (never trust a return string, trust the filesystem).
+**Decks rebuilt with v2:** same three files (climate / onboarding / coffee).
 
-Decks in `pv3/` (chart_churn light+fade, process_bug dark+wipe, compare_sync dark+blinds): all three CLEAN, transitions present in saved XML.
+**check_deck:** all three clean (0 problems).
 
-## Round 4 — v4 + checker hardening
+**Visual audit of v2 renders:**
+1. **Dark bg tints were still deck-specific** — `#A9C4E0` was tuned for navy; on coffee's brown `#3A2B2B` it read slightly off. Also process card body 13pt on `#F2F5F9` was borderline small.
+2. **Chart color semantics** — the 4th bar auto-colored orange (accent), which implied "this bar is special" with no key explaining why. Fix: bars default to a muted blue shade ramp (`#3D5A80 → #8FB4DD`); accent color only when the spec explicitly passes `color`.
+3. **Chart category labels 11pt** — small next to 12pt value labels; raised to 12pt, value labels to 13pt bold dark ink.
+4. **Compare rows** — 0.9in row pitch with 13pt text left ragged bottoms; raised row height to 0.85in at 14pt.
+5. **Card/process body text 13pt** — raised to 14pt across card rows, process cards, compare rows (the 13pt floor from the skill was actually the *minimum*, and 14pt reads better in 2.4in cards).
 
-- Compare takeaway moved inside the card bottom (y=5.9) instead of hanging below it.
-- Full-bleed bg rect (0,0,full size) excluded from the new left-margin check in `check_deck.py` (it previously false-positived on the background rectangle).
-- `check_deck.py` gained: words-per-slide cap (>220 warns), left-margin <0.3in check for text shapes.
-- All pv3 decks re-QCed against the new checker: CLEAN.
+**Plugin v3 written:**
+- `_dark_tint(bg)` helper: picks light text color from the slide's actual dark bg luminance (`#DCE7F5` for blue-darks, `#E8E2D8` for warm-darks) instead of one hardcoded tint.
+- Bars use a 4-step blue shade ramp by default; accent reserved for explicit `color` in data.
+- Category labels 12pt, value labels 13pt bold `#1B2A3A`.
+- Compare rows 14pt in 0.85in rows.
+- Card/process body 14pt.
+- Takeaway bullets get a "- " marker, 20pt, aligned to the left margin (was indented).
+- statrow cards: highlight strip only on the *last* card (emphasis), others blue.
 
-## Stopping condition
+---
 
-Last full pass: `chart_churn`, `process_bug`, `compare_sync` (+ all pv1/pv2 rebuilds) → `check_deck_tool` CLEAN on every deck, 6 slides or fewer dense each, transitions in XML, no overflow/overlap/contrast/margin/word-count flags. Plugin is mature for this repo's 16:9 dark/light decks.
+## Round 3 — plugin v3, decks rebuilt (final)
 
-## Recurring lessons (feed back into SKILL.md)
+**Decks rebuilt with v3:**
+- `deck-lab/lab1_climate.pptx` (6 slides: title, agenda, cards, chart, statrow, takeaway)
+- `deck-lab/lab2_onboarding.pptx` (7 slides: title, section×2, process×2, compare, takeaway)
+- `deck-lab/lab3_coffee.pptx` (5 slides: title, compare, chart, statrow, takeaway)
 
-1. Never claim "saved" — verify the file exists on disk after `prs.save`.
-2. Arrows/glyphs in small boxes are the top overflow cause: budget `pt*1.2` for even a one-character run.
-3. Row-pitch formulas: write `4.6/max(n,1)` explicitly; `min(a, b/n)` parses as `min(a,b)/n`.
-4. `<p:transition>` goes inside the slide element after `cSld`; schema order is enforced by LibreOffice.
-5. Checker false positives come from treating the bg rectangle as a text shape — exempt by geometry, not by name.
+**check_deck results:**
+- lab1_climate: clean
+- lab2_onboarding: clean
+- lab3_coffee: clean
+
+**Final visual audit (hard defects only — overflow / overlap / off-slide / <11pt / low contrast):** all 18 slides, no defects found.
+
+**Remaining known limitations (documented, not bugs):**
+- Transitions are injected as `p:transition` XML (fade/push/wipe honored by LibreOffice render as PDF single-page, so not visible in PDF; visible in PowerPoint). No per-shape animations yet — a v4 could add appear/fade entrance XML.
+- `_dark_tint` uses a luminance threshold; mid-dark bgs may want manual override via `footer_tint` in the spec.
+- Chart note column is a fixed right rail; very long note bodies should be pre-trimmed to 4 sentences.
+
+**Decision:** plugin considered mature. check_deck has zero findings on all three decks; layouts (chart / process / compare / cards / statrow / twocol / section / takeaway / agenda / title) all exercised.
