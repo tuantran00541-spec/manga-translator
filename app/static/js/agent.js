@@ -409,7 +409,7 @@
       if (server.state === "untrusted") row.append(button("Cho phép", "agent-btn", () => trust(`mcp/${encodeURIComponent(server.name)}`)));
       box.append(row);
     });
-    Object.entries(snap.replaced || {}).forEach(([name, target]) => box.append(el("p", "agent-muted", `${name} → ${target.replace(/^mcp__/, "MCP ").replace("__", ": ")}`)));
+    Object.entries(snap.replaced || {}).forEach(([name, target]) => box.append(el("p", "agent-muted", `${name} thay bằng ${target.replace(/^mcp__/, "MCP ").replace("__", ": ")}`)));
     const plug = snap.plugins || {};
     (plug.rows || []).forEach((row) => {
       const state = { loaded: "đã nạp", untrusted: "chưa cho phép", failed: `lỗi: ${row.error}` }[row.state] || row.state;
