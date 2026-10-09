@@ -1,0 +1,18 @@
+Seed session 9cb7f3c6f9b6 — model starts with ONE tool: define.
+
+
+--- final ---
+Created the PowerPoint design skill and an 8-slide technical example on pre-fault-tolerant quantum computing.
+
+Workspace files:
+- `skill_pptx.py` — reusable title, content, comparison, and data slide layouts
+- `SKILL.md` — design principles, source notes, layout guidance, and code patterns
+- `make_deck.py` — script to regenerate the example deck
+- `quantum_utility_brief.pptx` — editable presentation based on the cited Nature study
+- `QA_REPORT.md` — build and rendering checks
+- `render_final/` — rendered PDF and PNGs for all slides
+
+The deck was rendered with LibreOffice and checked programmatically for slide dimensions and shape bounds. The technical claims are qualified to distinguish the study’s utility evidence from a demonstrated practical quantum advantage.
+
+Capabilities defined: ['check_slides', 'image_report', 'inspect_render', 'pptx_to_png', 'research', 'workspace_ops']
+Audit entries: 77 (see ~/.seed/audit-9cb7f3c6f9b6.jsonl)
