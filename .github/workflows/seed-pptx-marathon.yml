@@ -19,6 +19,9 @@ jobs:
   pptx-marathon:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
+    # needed so the audit-evidence branch push below doesn't 403
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,12 +71,14 @@ jobs:
             [ -f "$pptx" ] || continue
             base=$(basename "$pptx" .pptx)
             echo "rendering $base"
-            cd /tmp
+            # NOTE: keep cwd at $GITHUB_WORKSPACE — a stray `cd /tmp` here used to
+            # break the relative `python app/agent/seed/render_evidence.py` call
+            # below ("can't open file", exit code 2).
             libreoffice --headless --convert-to pdf "$pptx" --outdir /tmp 2>/dev/null || echo "(libreoffice failed for $base)"
             pdftoppm -png -r 100 "/tmp/$base.pdf" "/tmp/seed-evidence/previews/$base" 2>/dev/null || echo "(pdftoppm failed for $base)"
           done
           ls -la /tmp/seed-evidence/previews/ 2>/dev/null || echo "(no previews)"
-          python app/agent/seed/render_evidence.py \
+          python "$GITHUB_WORKSPACE/app/agent/seed/render_evidence.py" \
             /tmp/seed-run.log "" "" /tmp/seed-evidence \
             "${{ inputs.model || 'openai/gpt-6-luna' }}" "${{ github.run_id }}"
 
@@ -113,4 +118,5 @@ jobs:
           cp ~/.seed/audit-*.jsonl "$EVID_DIR/" 2>/dev/null || true
           git add "$EVID_DIR"
           git commit -qm "seed pptx marathon evidence run $RUN_ID" || echo "nothing to commit"
-          git push -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" audit-evidence || echo "push failed"
+          # fail loudly if the push fails (was 403 before contents:write) so it shows red, not silent green
+          git push -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" audit-evidence
