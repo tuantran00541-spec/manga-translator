@@ -1,0 +1,64 @@
+name: Seed smoke — tool-less harness with a real model
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model name"
+        default: "agnes-3.0-flash"
+        required: true
+      api_base:
+        description: "OpenAI-compatible API base URL"
+        default: "https://apihub.agnes-ai.com/v1"
+        required: true
+      task:
+        description: "Small task for the model (it starts with zero tools)"
+        default: "List the files in the workspace, read notes.txt, summarize it in 3 lines, write summary.txt"
+        required: true
+
+jobs:
+  seed-smoke:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/seed-harness-proto
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Seed runtime
+        run: python -m pip install -q requests loguru
+
+      - name: Prepare workspace
+        run: |
+          mkdir -p /tmp/seed-ws
+          printf 'alpha beta gamma\ndelta epsilon zeta\neta theta iota\n' > /tmp/seed-ws/notes.txt
+          ls -la /tmp/seed-ws
+
+      - name: Run Seed (model bootstraps its own tools)
+        env:
+          SEED_API_KEY: ${{ secrets.AGNES_KEY2 }}
+        run: |
+          python -m app.agent.seed.demo \
+            --provider custom \
+            --api-base "${{ inputs.api_base }}" \
+            --model "${{ inputs.model }}" \
+            --workspace /tmp/seed-ws \
+            --task "${{ inputs.task }}" \
+            --yes 2>&1 | tee /tmp/seed-run.log
+          echo "--- workspace after ---"
+          ls -la /tmp/seed-ws
+          echo "--- summary.txt ---"
+          cat /tmp/seed-ws/summary.txt 2>/dev/null || echo "(no summary.txt)"
+
+      - name: Upload Seed transcript and audit log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-smoke-transcript
+          path: |
+            /tmp/seed-run.log
+            ~/.seed/audit-*.jsonl
