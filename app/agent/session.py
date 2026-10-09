@@ -398,7 +398,8 @@ class AgentSession:
             # M27: the tamper check runs BEFORE any plugin is exec'd, so a notice describes the
             # files that are about to load, not ones that already ran. (The hold decision above
             # already keeps held plugins out of the build entirely.)
-            self._check_plugin_files()
+            # C1+C2: on tampering the check holds the user plugins and does not re-baseline.
+            self._check_plugin_files(initial=True)
         if depth:
             self.registry, self.kernel = parent.registry, parent.kernel
         else:
@@ -422,8 +423,13 @@ class AgentSession:
     def _plugin_home(self) -> Path:
         return self.home if self.home is not None else Path.home()
 
-    def _check_plugin_files(self) -> None:
-        """Notice when a plugin file appeared, changed or vanished outside the plugin_write/plugin_remove approval flow."""
+    def _check_plugin_files(self, initial: bool = False) -> None:
+        """Notice when a plugin file appeared, changed or vanished outside the plugin_write/plugin_remove approval flow.
+
+        initial=True means this is the session-startup check (which runs before any plugin is exec'd,
+        per M27). On tampering it refuses to load the user plugins (C1) and does NOT update the
+        baseline (C2): the user reviews the files and confirms via trust_plugins(), which re-baselines
+        what they just inspected."""
         home_path = self._plugin_home()
         current = _scan_plugin_files(home_path)
         state, known = _read_plugin_hashes(home_path)
@@ -448,8 +454,6 @@ class AgentSession:
         gone = sorted(n for n in known if n not in current)
         if not (new or changed or gone):
             return
-        if not _write_plugin_hashes(home_path, current):
-            self.emit("notice", text="Không ghi được plugin_hashes.json mới; bạn sẽ thấy cảnh báo này lại ở phiên sau.")
         bits = []
         if new:
             bits.append(f"new: {', '.join(new)}")
@@ -457,7 +461,19 @@ class AgentSession:
             bits.append(f"changed: {', '.join(changed)}")
         if gone:
             bits.append(f"removed: {', '.join(gone)}")
-        self.emit("notice", text="Plugin files changed outside the approval flow (" + "; ".join(bits) +
+        detail = "; ".join(bits)
+        if initial:
+            # C1+C2: refuse to load, do not re-baseline. The plugins stay held until the user
+            # inspects the files and confirms them via trust_plugins().
+            self._plugin_hold = True
+            logger.warning("Agent session {}: plugin files changed outside the approval flow ({}); user plugins held unloaded", self.id, detail)
+            self.emit("notice", text=f"Plugin files changed outside the approval flow ({detail}). "
+                                     "Plugin của bạn KHÔNG được nạp trong phiên này. Kiểm tra ~/.manga-agent/plugins/, "
+                                     "rồi bấm tin tưởng plugin để nạp (file bạn đã kiểm tra sẽ thành baseline mới).")
+            return
+        if not _write_plugin_hashes(home_path, current):
+            self.emit("notice", text="Không ghi được plugin_hashes.json mới; bạn sẽ thấy cảnh báo này lại ở phiên sau.")
+        self.emit("notice", text="Plugin files changed outside the approval flow (" + detail +
                                  "); they were not installed through plugin_write. Check ~/.manga-agent/plugins if this is unexpected.")
 
     def _record_plugin_hashes(self) -> None:
@@ -1149,23 +1165,15 @@ class AgentSession:
         if name == "memory":
             return self.mode != "auto" and call["args"].get("action") != "list"
         # A session that has seen untrusted content asks about everything it can change,
-        # even in auto mode; the taint guard is not a mode feature.
-        if self.mode == "auto" and self.tainted and self.profile["untrusted_guard"]:
-            kind = plugin.kind if plugin else self._role(name) or KIND.get(name, "exec")
-            if kind != "read" and not (
-                    name in URL_TOOLS and (urlparse(str(call["args"].get("url") or "")).hostname or "") in self.web_ok):
-                return True
+        # even in auto mode; the taint guard is not a mode feature. It also outranks a user's
+        # "allow" verdict outside auto mode (MH8): a permissive permission rule must not silently
+        # switch off exfiltration protection.
+        if self._taint_asks(call):
+            return True
         # M35: without an OS sandbox backend, even auto mode asks before running a shell command;
         # silently running unsandboxed commands was the "sandbox" the prompt promised but never had.
         if name == "run_command" and self.mode == "auto" and sandbox.backend() == "none" \
                 and self.workspace.policy.mode != "full-access":
-            return True
-        # MH7/MH8: outside auto mode the taint guard outranks the readOnlyHint shortcut below, the
-        # kind == "read" shortcut, and a user's "allow" verdict. A permissive permission rule must
-        # not silently switch off exfiltration protection in ask/edits/review mode. (In auto mode
-        # the check above already ran, with its read exemption.)
-        if self.mode != "auto" and self.tainted and self.profile["untrusted_guard"] and not (
-                name in URL_TOOLS and (urlparse(str(call["args"].get("url") or "")).hostname or "") in self.web_ok):
             return True
         if self.mode == "auto" or name in SESSION_SPECS or verdict == "allow":
             return False
@@ -1200,10 +1208,27 @@ class AgentSession:
         job = self.jobs.get(str(call["args"].get("id") or "").strip().lower()) if call["name"] == "job_input" else None
         return bool(job and job.outside and self.workspace.policy.mode != "full-access")
 
+    def _taint_asks(self, call: dict) -> bool:
+        """Whether the taint guard demands approval for this call, in any mode. This is the floor
+        no plugin may lower (H1): the tool/approve waterfall can only raise the asking level."""
+        if not (self.tainted and self.profile["untrusted_guard"]):
+            return False
+        name = call["name"]
+        args = call["args"] if isinstance(call.get("args"), dict) else {}
+        if name in URL_TOOLS and (urlparse(str(args.get("url") or "")).hostname or "") in self.web_ok:
+            return False
+        if self.mode == "auto":
+            plugin = self.registry.tools.get(name)
+            kind = plugin.kind if plugin else self._role(name) or KIND.get(name, "exec")
+            return kind != "read"
+        return True
+
     def _always_ask(self, call: dict) -> bool:
         plugin = self.registry.tools.get(call["name"])
+        # H1: the taint guard is part of the floor; a plugin returning {"ask": False} from the
+        # tool/approve waterfall cannot switch off exfiltration protection.
         return bool(plugin and plugin.always_ask) or call["name"] in ("memory", *SELF_EXTEND) or self._typing_outside(call) or bool(
-            call["name"] == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access")
+            call["name"] == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access") or self._taint_asks(call)
 
     def _user_messages(self) -> list[str]:
         root = self

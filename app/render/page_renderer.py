@@ -82,7 +82,9 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
     """
     width, height = image.size
     x1, x2 = max(0, box[0]), min(width, box[2])
-    top, bottom = max(0, -box[1]), max(0, box[3] - height)
+    # H6: clamp the pad amounts; an unclamped y2 (e.g. 10**9 from a malformed box) would make
+    # np.pad allocate hundreds of GiB and crash the worker (reproduced live).
+    top, bottom = min(max(0, -box[1]), height), min(max(0, box[3] - height), height)
     if not (top or bottom):
         return render_text_in_box(image, text, (x1, box[1], x2, box[3]), **style)
     pixels = np.asarray(image)
