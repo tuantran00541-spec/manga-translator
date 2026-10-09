@@ -10,6 +10,7 @@ import zipfile
 
 from app.agent.skills import NAME_RE, frontmatter
 from app.downloader.http import read_response_limited, safe_get
+from loguru import logger
 
 SPEC_RE = re.compile(r"^([\w.-]+)/([\w.-]+)(?:@([\w.-]+))?(?:/([\w./-]+))?$")
 MAX_ZIP_BYTES = 40_000_000
@@ -25,6 +26,36 @@ def parse(spec: str) -> tuple[str, str, str, str]:
         raise ValueError("dùng dạng CHỦ/REPO, CHỦ/REPO@nhánh hoặc CHỦ/REPO/thư-mục")
     owner, repo, ref, sub = match.groups()
     return owner, repo, ref or "HEAD", (sub or "").strip("/")
+
+
+def _github_json(owner: str, repo: str, path: str) -> dict:
+    """One GitHub API call, with a plain error when it fails."""
+    try:
+        response = safe_get(f"https://api.github.com/repos/{owner}/{repo}/{path}", timeout=(10, 30),
+                            headers={"Accept": "application/vnd.github+json"})
+    except Exception as exc:
+        raise ValueError(f"không gọi được GitHub API cho {owner}/{repo}: {exc}") from exc
+    try:
+        data = response.json()
+    except Exception as exc:
+        raise ValueError(f"GitHub trả về dữ liệu không đọc được cho {owner}/{repo}/{path}") from exc
+    finally:
+        response.close()
+    if not isinstance(data, dict):
+        raise ValueError(f"GitHub trả về dữ liệu không đọc được cho {owner}/{repo}/{path}")
+    return data
+
+
+def _resolve_ref(owner: str, repo: str, ref: str) -> str:
+    """Pin a branch, tag or HEAD to the commit SHA it points at, so the zip fetched
+    below cannot change between inspection and install. Fails closed: a ref that
+    cannot be resolved is never downloaded as a mutable name."""
+    if ref == "HEAD":
+        ref = _github_json(owner, repo, "").get("default_branch") or "main"
+    sha = _github_json(owner, repo, f"commits/{ref}").get("sha") or ""
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise ValueError(f"GitHub không trả về commit hợp lệ cho {owner}/{repo}@{ref}")
+    return sha
 
 
 def _fetch(owner: str, repo: str, ref: str) -> zipfile.ZipFile:
@@ -45,9 +76,21 @@ def user_dir(home: Path) -> Path:
 
 
 def install(spec: str, home: Path) -> list[str]:
-    """Copy every skill folder found under the repo path; returns their names."""
+    """Copy every skill folder found under the repo path; returns their names.
+
+    The ref is pinned to a commit SHA first, so the zip installed is exactly
+    the commit resolved here; the SHA is recorded next to each installed skill.
+    """
     owner, repo, ref, sub = parse(spec)
-    return _install_archive(_fetch(owner, repo, ref), sub, home, spec)
+    sha = _resolve_ref(owner, repo, ref)
+    names = _install_archive(_fetch(owner, repo, sha), sub, home, f"{spec} (commit {sha[:12]})")
+    for name in names:
+        try:
+            (user_dir(home) / name / ".installed-from").write_text(f"{owner}/{repo}@{sha}\n", encoding="utf-8")
+        except OSError:
+            pass
+    logger.info("Installed skills {} from {}/{}@{}", ", ".join(names), owner, repo, sha)
+    return names
 
 
 def install_zip(data: bytes, home: Path) -> list[str]:

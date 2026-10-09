@@ -67,7 +67,51 @@ def _allowed_siblings(denied: list[str]) -> list[str]:
     return allowed
 
 
-def restrict(writable: list[str], network: bool, deny_read: list[str] | None = None) -> None:
+def _carved_writes(writable: list[str], deny_write: list[str]) -> list[str]:
+    """Writable roots with the denied subtrees cut out.
+
+    Landlock only grants access, so where a denied path sits beneath a writable
+    root the root's children are listed and everything except the denied subtree
+    is granted instead -- the write-side mirror of _allowed_siblings. Denied
+    paths that do not exist, or sit outside every writable root, need no carving.
+    """
+    denied = [os.path.realpath(p) for p in deny_write if os.path.exists(p)]
+    if not denied:
+        return list(writable)
+    out: list[str] = []
+
+    def carve(folder: str, tree: dict) -> None:
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            return
+        for name in names:
+            full = os.path.join(folder, name)
+            if os.path.islink(full):
+                continue  # a symlink gets no fresh write grant from the carve
+            if name in tree:
+                if tree[name]:
+                    carve(full, tree[name])
+                # else: this exact path is denied -- it is skipped
+            else:
+                out.append(full)
+
+    for root in writable:
+        real = os.path.realpath(root)
+        beneath = [d for d in denied if d != real and d.startswith(real + os.sep)]
+        if not beneath:
+            out.append(root)
+            continue
+        tree: dict = {}
+        for path in beneath:
+            node = tree
+            for part in path[len(real) + 1:].split(os.sep):
+                node = node.setdefault(part, {})
+        carve(real, tree)
+    return out
+
+
+def restrict(writable: list[str], network: bool, deny_read: list[str] | None = None, deny_write: list[str] | None = None) -> None:
     version = abi()
     if version < 1:
         raise OSError("Landlock is not available in this kernel")
@@ -102,7 +146,7 @@ def restrict(writable: list[str], network: bool, deny_read: list[str] | None = N
                 raise OSError(ctypes.get_errno(), f"landlock_add_rule failed for {path}")
         os.close(fd)
 
-    for path in writable:
+    for path in _carved_writes(writable, deny_write or []):
         allow(path, write | reads)
     for path in _allowed_siblings(deny_read or []) if deny_read else []:
         allow(path, reads)
@@ -176,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--write", action="append", default=[])
     parser.add_argument("--no-network", action="store_true")
     parser.add_argument("--deny-read", action="append", default=[])
+    parser.add_argument("--deny-write", action="append", default=[])
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
@@ -189,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, OSError):
         pass
     try:
-        restrict(args.write, not args.no_network, args.deny_read)
+        restrict(args.write, not args.no_network, args.deny_read, args.deny_write)
         if args.no_network:
             block_sockets()
     except OSError as exc:

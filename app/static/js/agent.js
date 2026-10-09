@@ -299,18 +299,28 @@
         }
       }
     } else if (event.type === "approval") {
-      // The change waiting for approval is shown open, so it is read before it is allowed.
-      const row = log.querySelector(`.agent-row[data-call-id="${CSS.escape(event.call.id)}"]`);
-      if (row) {
-        row.open = true;
-        row.closest(".agent-group").open = true;
-      }
-      log.append(approvalCard(event.call));
+      showApprovalCard(event.call);
     } else if (event.type === "subagent" && event.state === "done") {
       log.append(el("p", "agent-note", `Helper ${event.agent || ""} done: ${event.description} · ${event.tools} tool calls`));
     } else if (event.type === "notice" || event.type === "error") {
       log.append(el("p", event.type === "error" ? "agent-note agent-error" : "agent-note", event.text));
     }
+  }
+
+  // Show the approval card for a call once. The "approval" event fires only
+  // once per call, so after a reload (resume()) the card is rebuilt from
+  // snap.pending instead of being lost and leaving the session stuck waiting.
+  function showApprovalCard(call) {
+    if (!call || !call.id) return;
+    const log = $("agent-log");
+    if (log.querySelector(`.agent-approval[data-call-id="${CSS.escape(call.id)}"]`)) return;
+    // The change waiting for approval is shown open, so it is read before it is allowed.
+    const row = log.querySelector(`.agent-row[data-call-id="${CSS.escape(call.id)}"]`);
+    if (row) {
+      row.open = true;
+      row.closest(".agent-group").open = true;
+    }
+    log.append(approvalCard(call));
   }
 
   function decide(card, decision, note, doneText) {
@@ -330,6 +340,7 @@
   // A question for the user: answer choices as buttons, or a typed answer.
   function questionCard(c) {
     const card = el("div", "agent-approval");
+    card.dataset.callId = c.id || "";
     card.append(el("p", "agent-approval-title", c.args.question || ""));
     const actions = el("div", "agent-approval-actions");
     (c.args.options || []).forEach((option) => actions.append(button(option, "agent-btn", () => decide(card, "allow", option, `Bạn trả lời: ${option}`))));
@@ -346,6 +357,7 @@
 
   function planCard(c) {
     const card = el("div", "agent-approval");
+    card.dataset.callId = c.id || "";
     const note = el("input", "agent-approval-note");
     note.placeholder = "Cần sửa gì trong kế hoạch?";
     const actions = el("div", "agent-approval-actions");
@@ -360,6 +372,7 @@
     if (c.name === "ask_user") return questionCard(c);
     if (c.name === "exit_plan_mode") return planCard(c);
     const card = el("div", "agent-approval");
+    card.dataset.callId = c.id || "";
     const title = el("p", "agent-approval-title");
     title.append(document.createTextNode(c.agent ? `Agent phụ ${c.agent} muốn ` : "Cho phép "), el("strong", "", (isMcp(c.name) ? "gọi MCP" : VERBS[c.name] || c.name).toLowerCase()),
       document.createTextNode(" "), el("code", "", target(c)), document.createTextNode("?"));
@@ -532,6 +545,10 @@
       showFolder();
       $("agent-model").value = snap.model;
       snap.events.forEach((event) => { if (event.type !== "approval") render(event); lastSeq = Math.max(lastSeq, event.seq); });
+      // A waiting session's approval card is rebuilt here: the "approval" event
+      // was skipped above and only ever fires once, so without this a reload
+      // loses the card and the session stays stuck on "Waiting for you".
+      if (snap.status === "waiting" && snap.pending) showApprovalCard(snap.pending);
       showStatus(snap);
       document.querySelectorAll(".agent-menu[open]").forEach((menu) => { menu.open = false; });
       follow(true);

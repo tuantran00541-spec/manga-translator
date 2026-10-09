@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
+from loguru import logger
+
 # Workspace folders first, so a project's own skill wins over a user one with the same name.
 WORKSPACE_DIRS = (".agents/skills", ".claude/skills", ".codex/skills")
 HOME_DIRS = (".manga-agent/skills", ".agents/skills", ".claude/skills", ".codex/skills")
@@ -58,7 +60,9 @@ def discover(workspace: Path, home: Path | None = None) -> dict[str, Skill]:
     home = home if home is not None else Path.home()
     found: dict[str, Skill] = {}
     roots = [workspace / d for d in WORKSPACE_DIRS] + [home / d for d in HOME_DIRS] + [BUILTIN_DIR]
-    for root in roots:
+    scopes = (["workspace"] * len(WORKSPACE_DIRS) + ["user"] * len(HOME_DIRS) + ["built-in"])
+    origin: dict[str, str] = {}
+    for scope, root in zip(scopes, roots):
         if not root.is_dir():
             continue
         for skill_file in sorted(root.glob("*/SKILL.md")):
@@ -70,9 +74,19 @@ def discover(workspace: Path, home: Path | None = None) -> dict[str, Skill]:
                 continue
             name = fields.get("name") or skill_file.parent.name
             description = fields.get("description", "")
-            if NAME_RE.match(name) and description and name not in found:
-                found[name] = Skill(name, description[:1024], skill_file.parent.resolve(),
-                                    fields.get("disable-model-invocation", "").lower() == "true", root == BUILTIN_DIR)
+            if not (NAME_RE.match(name) and description):
+                continue
+            if name in found:
+                # The nearer scope wins, but say so loudly: a project can
+                # silently replace a built-in or user skill just by reusing its
+                # name, and its instructions are then loaded into the session.
+                logger.warning("Skill {!r} from the {} scope ({}) shadows the {} skill at {}; "
+                               "the nearer scope wins and its instructions will be loaded instead.",
+                               name, scope, skill_file.parent, origin[name], found[name].folder)
+                continue
+            found[name] = Skill(name, description[:1024], skill_file.parent.resolve(),
+                                fields.get("disable-model-invocation", "").lower() == "true", root == BUILTIN_DIR)
+            origin[name] = scope
     return found
 
 

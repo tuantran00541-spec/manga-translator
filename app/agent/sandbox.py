@@ -27,8 +27,20 @@ HOME_SECRETS = (".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".git-cr
 SYSTEM_SECRETS = ("/run/user", "/run/secrets", "/var/run/secrets")
 # More folders to keep unreadable, added by whoever stores private data (the agent's own saved sessions).
 EXTRA_DENY: list[str] = []
-SECRET_NAME = re.compile(r"(?i)(^|_)(api_?key|key|token|secret|passw(or)?d|credentials?|auth|cookie|session_?id|private)(_|$)")
+# A name is treated as secret-bearing when a secret word starts or ends it
+# (MYSECRET, LLMKEY) or is _-separated (MY_API_KEY). A heuristic, deliberately
+# biased toward over-scrubbing: leaking a real secret into a command's
+# environment is worse than hiding an oddly named variable like KEYBOARD_LAYOUT.
+_SECRET_WORDS = r"api_?key|key|token|secret|passw(or)?d|credentials?|auth|cookie|session_?id|private"
+SECRET_NAME = re.compile(rf"(?i)(^|_)({_SECRET_WORDS})(_|$)|^({_SECRET_WORDS})|({_SECRET_WORDS})$")
 DROP_ENV = {"SSH_AUTH_SOCK", "DBUS_SESSION_BUS_ADDRESS", "GPG_AGENT_INFO", "GNOME_KEYRING_CONTROL", "KRB5CCNAME"}
+# Git control paths that stay unwritable for a confined command, even inside a
+# writable workspace: hooks run the moment git fires them (outside any later
+# sandbox), and .git/config can redirect hooks elsewhere via core.hooksPath.
+# Refs are deliberately not listed: git commit/checkout needs to write them,
+# and a ref alone cannot execute code. gitguard still snapshots hooks+config
+# for belt and braces.
+GIT_GUARD = ("hooks", "config", "modules")
 
 
 def clean_env() -> dict[str, str]:
@@ -53,7 +65,8 @@ class Policy:
             return "Commands run without a sandbox: full file and network access."
         where = "nowhere except a private temp folder" if self.mode == "read-only" else f"only inside {root} and the temp folder"
         net = "allowed" if self.network else "blocked"
-        return f"Commands run in a sandbox: they can read everything except credential folders, write {where}; network {net}."
+        return (f"Commands run in a sandbox: they can read everything except credential folders, write {where} "
+                f"(git hooks and config stay read-only); network {net}.")
 
 
 @functools.lru_cache(maxsize=1)
@@ -77,12 +90,36 @@ def writable_roots(policy: Policy, root: Path, scratch: str) -> list[str]:
     return roots
 
 
+def git_guard_paths(root: Path) -> list[str]:
+    """Git control paths beneath the workspace that a confined command must never write.
+
+    Only the workspace's own .git is covered; a .git that does not exist yet
+    (git init/clone during the run) is not, so agents can still start repos.
+    """
+    git = root / ".git"
+    if git.is_file():
+        # A linked worktree: .git names the real git dir.
+        try:
+            target = git.read_text(encoding="utf-8").strip()
+        except OSError:
+            return []
+        if not target.startswith("gitdir:"):
+            return []
+        git = (root / target[len("gitdir:"):].strip()).resolve()
+    if not git.is_dir():
+        return []
+    return [str(git / part) for part in GIT_GUARD if (git / part).exists()]
+
+
 def _seatbelt_profile(policy: Policy, root: Path, scratch: str) -> str:
     forms = ["(version 1)", "(allow default)", "(deny file-write*)",
              '(allow file-write* (literal "/dev/null") (literal "/dev/tty") (subpath "/dev/fd"))']
     paths = [os.path.realpath(p) for p in writable_roots(policy, root, scratch) if p != "/dev"]
     forms.append("(allow file-write* " + " ".join(f'(subpath "{p}")' for p in paths) + ")")
     forms += [f'(deny file-read* (subpath "{p}"))' for p in secret_paths()]
+    # In Seatbelt a deny rule wins over an allow, so these stay unwritable even
+    # though the workspace root above is writable.
+    forms += [f'(deny file-write* (subpath "{p}"))' for p in git_guard_paths(root)]
     if not policy.network:
         forms.append('(deny network-outbound (remote ip))')
     return " ".join(forms)
@@ -100,6 +137,9 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
             args += ["--write", path]
         for path in secret_paths():
             args += ["--deny-read", path]
+        # Landlock has no deny rules; the launcher carves these out of the writable roots instead.
+        for path in git_guard_paths(root):
+            args += ["--deny-write", path]
         if not policy.network:
             args.append("--no-network")
         return args + ["--", "/bin/sh", "-c", command], False
