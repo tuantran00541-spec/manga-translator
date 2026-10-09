@@ -1,6 +1,9 @@
 name: Seed smoke — tool-less harness with a real model
 
 on:
+  push:
+    branches: [claude/seed-harness-proto]
+    paths: [.github/workflows/seed-smoke.yml, app/agent/seed/**]
   workflow_dispatch:
     inputs:
       model:
