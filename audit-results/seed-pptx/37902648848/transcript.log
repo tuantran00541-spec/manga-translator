@@ -1,0 +1,15 @@
+Seed session 2e063867da99 — model starts with ONE tool: define.
+
+
+--- final ---
+Built the reusable slide toolkit and two editable example presentations in the workspace:
+
+- `skill_pptx.py` — human-first layouts for title, content, comparison, and data slides.
+- `SKILL.md` — design principles, layout guidance, code examples, source notes, and rendering instructions.
+- `earth_energy_budget.pptx` — a nine-slide briefing based on IPCC AR6 Chapter 7.
+- `cloud_feedbacks_brief.pptx` — a four-slide briefing on cloud feedbacks and uncertainty.
+
+Rendered both decks with LibreOffice and inspected the PNGs programmatically for slide dimensions and off-slide geometry. All slide objects stayed within bounds.
+
+Capabilities defined: ['inspect_render', 'pptx_to_png', 'research_web', 'workspace_ops', 'write_file']
+Audit entries: 92 (see ~/.seed/audit-2e063867da99.jsonl)
