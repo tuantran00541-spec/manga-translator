@@ -117,6 +117,7 @@ def render_boxes_legacy(
     radii_dict: dict,
 ) -> int:
     rendered_count = 0
+    failed_boxes: list[int] = []
     box_indices = set()
     for box_key in req.translations.keys():
         try:
@@ -226,6 +227,8 @@ def render_boxes_legacy(
             )
             rendered_count += 1
         except Exception as e:
+            # M8: one bad box used to abort the whole page (HTTP 500, every other box lost).
+            # Log it, leave the box unrendered, and continue with the rest.
             logger.opt(exception=True).error(
                 "Chapter {} page {} box {} operation 'render_text_in_box' failed: {}",
                 req.chapter_id,
@@ -233,10 +236,8 @@ def render_boxes_legacy(
                 box_idx,
                 e,
             )
-            raise HTTPException(
-                500,
-                f"Chèn chữ thất bại (ô {box_idx})",
-            ) from e
+            failed_boxes.append(box_idx)
+            continue
 
     return rendered_count
 
@@ -376,10 +377,11 @@ def render_text_objects(
                         raise
             rendered_count += 1
         except Exception as e:
+            # M8: one bad object used to abort the whole page; log it, skip it, continue.
             logger.opt(exception=True).error(
                 "Chapter {} page {} object {} operation 'render_text_in_box' failed: {}",
                 req.chapter_id, req.page_index, oid, e,
             )
-            raise HTTPException(500, f"Chèn chữ thất bại (vùng {oid})") from e
+            continue
 
     return rendered_count

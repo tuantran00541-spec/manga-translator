@@ -46,6 +46,12 @@ def restore(root: Path, before: dict[str, bytes]) -> list[str]:
             touched.append(name)
     for name in after:
         if name not in before:
+            # L8: do not delete a .git/config (or hooks) that the command legitimately created via
+            # "git init" when there was no .git before the snapshot (before == {}). Deleting it
+            # breaks the repo the command just created. Only remove files that appeared when a
+            # baseline existed to compare against.
+            if not before and name in (".git/config", ".git/HEAD"):
+                continue
             (root / name).unlink(missing_ok=True)
             touched.append(name)
     return sorted(touched)

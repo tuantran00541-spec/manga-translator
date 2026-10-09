@@ -1017,9 +1017,15 @@ class AgentSession:
 
         def apply(ctx, _config):
             status = self.mcp_status[name]
-            if row["scope"] == "workspace" and not self.trust.trusted(self.workspace.root, f"mcp:{name}", status["digest"]):
+            # L3: plugin-bundled MCP servers (rows in ~/.manga-agent/plugins.json) used to auto-start
+            # with the "user" scope and no trust prompt. A plugin installed for its tools can smuggle
+            # a server that sees the (now scrubbed) env and the network; require the user's trust
+            # just like a workspace-declared server.
+            needs_trust = row["scope"] in ("workspace", "plugin")
+            trust_key = f"mcp:{name}"
+            if needs_trust and not self.trust.trusted(self.workspace.root if row["scope"] == "workspace" else self._plugin_home(), trust_key, status["digest"]):
                 status["state"] = "untrusted"
-                raise PermissionError("the project declares this server; allow it first")
+                raise PermissionError("this server was bundled with a plugin; allow it first")
             server = mcp.Server(name, config, self.workspace.root)
             added = [mcp.tool_name(name, tool["name"]) for tool in server.tools]
             clash = next((t for t in added if t in self.mcp_tools), None)
@@ -1426,7 +1432,15 @@ class AgentSession:
         if call["name"] == "job_stop":
             job = self._job(str(args.get("id") or ""))
             job.stop()
-            return f"Stopped {args.get('id')}. Last output:\n{clip(job.read(), 4000)}"
+            # MH2: a background job may have planted a git hook after the 1s start_job window.
+            # Restore against the snapshot taken when the job started.
+            guard = getattr(job, "_gitguard", None)
+            warning = ""
+            if guard is not None:
+                undone = gitguard.restore(self.workspace.root, guard)
+                if undone:
+                    warning = f"\n[blocked: the job changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]"
+            return f"Stopped {args.get('id')}. Last output:\n{clip(job.read(), 4000)}{warning}"
         if call["name"] == "spawn_agent":
             nick = self._spawn(str(args.get("message") or ""), str(args.get("agent") or "explore"))
             queued = self.children[nick].pending is not None
@@ -1513,7 +1527,10 @@ class AgentSession:
         return job
 
     def _start_job(self, args: dict) -> str:
-        for name in [n for n, j in self.jobs.items() if j.code is not None and not j.read() and time.time() - j.started > 600]:
+        # M2: the old auto-reap check called j.read(), which consumes output as a side effect;
+        # a job with unread output was kept but its output was already eaten, so the next
+        # job_output came back empty. peek() checks without consuming.
+        for name in [n for n, j in self.jobs.items() if j.code is not None and not j.peek() and time.time() - j.started > 600]:
             self.jobs.pop(name).stop()
         if len(self.jobs) >= MAX_JOBS:
             raise ToolError(f"{MAX_JOBS} background jobs already; stop some with job_stop")
@@ -1525,6 +1542,9 @@ class AgentSession:
         root = self.workspace.root
         guard = gitguard.snapshot(root)
         self.jobs[name] = self.workspace.services.shell(command, policy, root, tty=bool(args.get("tty")))
+        # MH2: keep the start snapshot on the job so job_stop can restore against it; a background
+        # job planting a hook at t=2s is otherwise outside the 1s window below.
+        self.jobs[name]._gitguard = guard
         time.sleep(1.0)
         undone = gitguard.restore(root, guard)
         job = self.jobs[name]
@@ -1911,7 +1931,7 @@ class AgentSession:
         # MH13/M30: anything an MCP server returns is untrusted third-party content, whatever role the
         # profile claims for it; and a command whose output may have come from the network (network
         # on, or run outside the sandbox) taints the session the same way a web fetch does.
-        if (name in ("web_fetch", "web_search", "web_download", "delegate") or name in self.mcp_tools
+        if (name in ("web_fetch", "web_search", "web_download") or name in self.mcp_tools
                 or (name == "run_command" and isinstance(call["args"], dict)
                     and (self.workspace.policy.network or call["args"].get("outside_sandbox")))):
             self.tainted = True
@@ -2764,6 +2784,9 @@ class AgentSessionManager:
         while len(self.sessions) >= MAX_SESSIONS and idle:
             self.sessions.pop(idle.pop(0).id).close()
         session_id = session_id or uuid.uuid4().hex[:16]
+        # The session id becomes a file name; reject path traversal and odd names up front.
+        if not session_id.isalnum():
+            raise ValueError(f"session_id must be alphanumeric, got {session_id!r}")
         session = AgentSession(session_id, provider, api_key, model, workspace, mode, complete=complete,
                                store=self._path(session_id), trust=self.trust, home=self.home)
         self.sessions[session_id] = session

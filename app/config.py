@@ -16,6 +16,15 @@ CTD_MODEL = MODELS_DIR / "ctd_seg.onnx"
 
 REQUIRED_MODELS = [KIUYHA_TEXT_MODEL, CTD_MODEL]
 
+# H7: SHA256 pins for the ONNX model files. Fill these in from a trusted download; a model whose
+# hash is pinned is verified on every load, and a model with no pin logs a warning instead of
+# loading blind. (Keys are file names under MODELS_DIR.)
+MODEL_SHA256: dict[str, str] = {
+    # "kiuyha_text_1280.onnx": "<sha256>",
+    # "ctd_seg.onnx": "<sha256>",
+    # "lama.onnx": "<sha256>",
+}
+
 DEFAULT_FONT = BASE_DIR / "app" / "static" / "fonts" / "default.ttf"
 
 HOST = os.getenv("HOST", "127.0.0.1")

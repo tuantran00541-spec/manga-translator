@@ -34,7 +34,11 @@ EXTRA_DENY: list[str] = []
 # environment is worse than hiding an oddly named variable like KEYBOARD_LAYOUT.
 _SECRET_WORDS = r"api_?key|key|token|secret|passw(or)?d|credentials?|auth|cookie|session_?id|private"
 SECRET_NAME = re.compile(rf"(?i)(^|_)({_SECRET_WORDS})(_|\d|$)|^({_SECRET_WORDS})|({_SECRET_WORDS})$")
-DROP_ENV = {"SSH_AUTH_SOCK", "DBUS_SESSION_BUS_ADDRESS", "GPG_AGENT_INFO", "GNOME_KEYRING_CONTROL", "KRB5CCNAME"}
+DROP_ENV = {"SSH_AUTH_SOCK", "DBUS_SESSION_BUS_ADDRESS", "GPG_AGENT_INFO", "GNOME_KEYRING_CONTROL", "KRB5CCNAME",
+          # L6: DISPLAY (and friends) let a confined process reach the X11 abstract socket, which
+          # Landlock does not mediate -> screenshot/keylog vector. The agent has no legitimate
+          # need to open windows.
+          "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"}
 # Git control paths that stay unwritable for a confined command, even inside a
 # writable workspace: hooks run the moment git fires them (outside any later
 # sandbox), and .git/config can redirect hooks elsewhere via core.hooksPath.
@@ -115,6 +119,15 @@ def git_guard_paths(root: Path) -> list[str]:
         git = (root / target[len("gitdir:"):].strip()).resolve()
     if not git.is_dir():
         return []
+    # MH2: the Landlock carve (and Seatbelt deny rules) only cover paths that exist at setup.
+    # A command running "mkdir -p .git/hooks" would bypass the guard entirely. Pre-create the
+    # hooks dir so it is always denied; creating an empty hooks dir is harmless (git makes one
+    # on init anyway).
+    try:
+        (git / "hooks").mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return [str(git / part) for part in GIT_GUARD if (git / part).exists()]
     return [str(git / part) for part in GIT_GUARD if (git / part).exists()]
 
 
@@ -196,6 +209,10 @@ class Job:
         data = bytes(self.out.data[self.cursor:])
         self.cursor += len(data)
         return data.decode("utf-8", errors="replace")
+
+    def peek(self) -> str:
+        """Output produced since the last read, without consuming it (M2)."""
+        return bytes(self.out.data[self.cursor:]).decode("utf-8", errors="replace")
 
     @property
     def code(self) -> int | None:

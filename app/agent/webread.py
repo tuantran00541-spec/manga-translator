@@ -140,7 +140,14 @@ TINYFISH_NOTE = ("⚠ NOTE: this URL was sent to the TinyFish third-party browse
 
 def browsed(url: str, key: str) -> str:
     """The page as TinyFish's real browser sees it, for a page whose own HTML needs JavaScript; empty when it has nothing."""
-    reply = requests.post("https://api.fetch.tinyfish.ai", json={"urls": [url], "format": "markdown"}, timeout=(10, 60),
+    # M20: the full URL (including query string) used to be POSTed to the third-party service;
+    # query strings often carry secrets (API keys in params, presigned URLs). Strip them.
+    from urllib.parse import urlsplit, urlunsplit
+    parts = urlsplit(url)
+    clean = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    if parts.query or parts.fragment:
+        logger.warning("browsed(): stripped query/fragment from URL before sending to TinyFish")
+    reply = requests.post("https://api.fetch.tinyfish.ai", json={"urls": [clean], "format": "markdown"}, timeout=(10, 60),
                           headers={"X-API-Key": key, "Content-Type": "application/json", "Accept": "application/json"})
     reply.raise_for_status()
     rows = reply.json().get("results") or []

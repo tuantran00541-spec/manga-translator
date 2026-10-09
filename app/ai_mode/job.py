@@ -169,10 +169,12 @@ class AIModeRunner:
         self.job.updated_at = time.time()
 
     def _add_cost(self, cost: float | None) -> None:
-        if cost is None:
-            self.job.cost_usd = None
-        elif self.job.cost_usd is not None:
-            self.job.cost_usd += float(cost)
+        # M11: the old code set cost_usd = None on a single None cost, permanently disabling every
+        # budget gate for the rest of the job. A None cost now means "unknown for this call":
+        # keep the running total and let the gates work on what is known.
+        if cost is None or self.job.cost_usd is None:
+            return
+        self.job.cost_usd += float(cost)
 
     def _remaining_budget(self) -> float | None:
         if not self.provider.tracks_cost or self.job.cost_usd is None:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import threading
@@ -191,6 +193,28 @@ class _SerializedSession:
         return getattr(self._session, name)
 
 
+def _verify_model_integrity(model_path) -> None:
+    """H7: check a model file against its pinned SHA256 before loading.
+
+    Raises if the pinned hash mismatches (tampered/corrupt). Warns loudly if no hash is pinned
+    for this file yet, so the gap stays visible instead of silent.
+    """
+    from app.config import MODEL_SHA256
+    path = Path(model_path)
+    expected = MODEL_SHA256.get(path.name)
+    if not expected:
+        logging.getLogger(__name__).warning(
+            "no SHA256 pin for model %s; loading without integrity verification (see app/config.py MODEL_SHA256)",
+            path.name)
+        return
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != expected.lower():
+        raise ValueError(f"model integrity check failed for {path}: SHA256 mismatch (file may be corrupt or tampered)")
+
+
 def make_session(
     model_path,
     *,
@@ -199,6 +223,9 @@ def make_session(
     enable_mem_pattern: bool | None = None,
     serialize_inference: bool | None = None,
 ):
+    # H7: verify the model file's integrity before loading it. A corrupt or tampered model
+    # (disk corruption, compromised mirror) must not be loaded blind.
+    _verify_model_integrity(model_path)
     providers, use_openvino = _provider_stack(model_path)
 
     opts = ort.SessionOptions()

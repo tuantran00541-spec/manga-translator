@@ -65,7 +65,17 @@ class Context:
         chain = [fn for _, fn in self.listeners.get(event, [])]
 
         def step(index: int) -> Callable:
-            return last if index == len(chain) else (lambda value: chain[index](value, step(index + 1)))
+            if index == len(chain):
+                return last
+            def run(value):
+                try:
+                    return chain[index](value, step(index + 1))
+                except Exception as exc:
+                    # A failing plugin must not break the chain (fail-closed: the payload passes
+                    # through unchanged, and the failure is logged).
+                    logger.warning("Plugin waterfall for {} failed: {}", event, exc)
+                    return step(index + 1)(value)
+            return run
         return step(0)(payload)
 
     def emit(self, event: str, payload: Any) -> None:

@@ -325,9 +325,24 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
     return response
 
 
+# M4: cap for streamed text/reasoning accumulation; a misbehaving provider streaming forever
+# must not grow RAM without bound.
+_STREAM_CAP = 4_000_000
+
+
 def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, bool]:
     """Assemble the streamed message; on_delta(live) is called as it grows and returns True to stop early."""
-    text, reasoning, usage, calls, stopped = "", "", {}, {}, False
+    # M4: the old code rebuilt "".join(all tool-call arguments) on EVERY chunk (O(n^2)) and let
+    # text/reasoning grow without bound if a provider streams forever. Arguments are tracked
+    # incrementally and the text buffers are capped.
+    # M4: the old code rebuilt "".join(all tool-call arguments) on EVERY chunk (O(n^2)) and let
+    # text/reasoning grow without bound if a provider streams forever. Arguments are tracked
+    # incrementally and the text buffers are capped.
+    text_parts, reasoning_parts = [], []
+    text_len, reasoning_len = 0, 0
+    arg_parts: dict[int, list[str]] = {}
+    arg_len = 0
+    usage, calls, stopped = {}, {}, False
     finish, other = "", {}
     response.encoding = "utf-8"  # An event stream without a charset is otherwise read as Latin-1 and Vietnamese text turns into mojibake.
     for raw in response.iter_lines(decode_unicode=True):
@@ -347,19 +362,35 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
             for key, value in delta.items():
                 if key not in ("content", "reasoning_content", "reasoning", "tool_calls", "role") and isinstance(value, str) and value:
                     other[key] = other.get(key, "") + value
-            text += delta.get("content") or ""
-            reasoning += delta.get("reasoning_content") or delta.get("reasoning") or ""
+            piece = delta.get("content") or ""
+            if piece and text_len < _STREAM_CAP:
+                take = min(len(piece), _STREAM_CAP - text_len)
+                text_parts.append(piece[:take])
+                text_len += take
+            piece = delta.get("reasoning_content") or delta.get("reasoning") or ""
+            if piece and reasoning_len < _STREAM_CAP:
+                take = min(len(piece), _STREAM_CAP - reasoning_len)
+                reasoning_parts.append(piece[:take])
+                reasoning_len += take
             for part in delta.get("tool_calls") or []:
                 slot = calls.setdefault(part.get("index", len(calls)), {"id": "", "name": "", "arguments": ""})
                 slot["id"] = part.get("id") or slot["id"]
                 function = part.get("function") or {}
                 slot["name"] += function.get("name") or ""
-                slot["arguments"] += function.get("arguments") or ""
-        arg_text = "".join(c["arguments"] for c in calls.values())
-        if on_delta({"text": text, "reasoning": reasoning, "tools": [c["name"] for c in calls.values() if c["name"]],
-                     "args": arg_text[-4000:], "arg_chars": len(arg_text)}):
+                arg = function.get("arguments") or ""
+                if arg:
+                    arg_parts.setdefault(part.get("index", 0), []).append(arg)
+                    arg_len += len(arg)
+        # Only the tail is shown live; the full length is tracked without rebuilding the string.
+        arg_tail = "".join(arg_parts.get(i, [""])[-1] for i in sorted(arg_parts))[-4000:] if arg_parts else ""
+        if on_delta({"text": "".join(text_parts), "reasoning": "".join(reasoning_parts),
+                     "tools": [c["name"] for c in calls.values() if c["name"]],
+                     "args": arg_tail, "arg_chars": arg_len}):
             stopped = True
             break
+    text, reasoning = "".join(text_parts), "".join(reasoning_parts)
+    for idx, slot in calls.items():
+        slot["arguments"] = "".join(arg_parts.get(idx, []))
     if other and not (text or reasoning or calls):
         # Some providers put the reply in a field of their own; keep it rather than lose it.
         reasoning = "".join(other.values())
@@ -478,7 +509,10 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
     if 300 <= response.status_code < 400:
         raise RuntimeError(f"{provider.label} redirected the request")
     if not response.ok:
+        # M5: close the streamed error response before raising; the old code leaked the socket
+        # on every non-OK streaming response (the 429 path closed it, this one did not).
         detail = _safe_error_detail(response, api_key)
+        response.close()
         if tools and 400 <= response.status_code < 500 and "tool" in detail.lower():
             raise ToolsUnsupported(detail)
         # A busy model ("at capacity, retry in a few seconds") is waited out like a server error; a spent quota or balance is not.

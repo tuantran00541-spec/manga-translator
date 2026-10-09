@@ -90,7 +90,7 @@ def configured(workspace: Path, home: Path | None = None) -> list[dict]:
 
     add(_json_servers(workspace / ".mcp.json"), ".mcp.json", "workspace")
     add(_json_servers(home / ".manga-agent" / "mcp.json"), "~/.manga-agent/mcp.json", "user")
-    add(_plugin_rows(home / ".manga-agent" / "plugins.json"), "~/.manga-agent/plugins.json", "user")
+    add(_plugin_rows(home / ".manga-agent" / "plugins.json"), "~/.manga-agent/plugins.json", "plugin")
     add(_json_servers(home / ".claude.json"), "~/.claude.json", "user")
     try:
         codex = tomllib.loads((home / ".codex" / "config.toml").read_text(encoding="utf-8")).get("mcp_servers", {}) if tomllib else {}
@@ -105,10 +105,24 @@ class _StdioTransport:
         command = config.get("command")
         if not command:
             raise MCPError("stdio server has no command")
-        env = {**os.environ, **{str(k): str(v) for k, v in (config.get("env") or {}).items()}}
+        # L4: validate the config shape up front with a clear error instead of degrading noisily
+        # (a string "args" used to be iterated character-by-character into argv).
+        if not isinstance(command, str):
+            raise MCPError(f"stdio server command must be a string, got {type(command).__name__}")
+        args = config.get("args") or []
+        if isinstance(args, str) or not isinstance(args, (list, tuple)):
+            raise MCPError(f"stdio server args must be a list, got {type(args).__name__}")
+        env_cfg = config.get("env") or {}
+        if not isinstance(env_cfg, dict):
+            raise MCPError(f"stdio server env must be a dict, got {type(env_cfg).__name__}")
+        # C4: a stdio server used to see the whole os.environ, including API keys and secrets.
+        # It now starts from the scrubbed clean_env() (no secret-looking names); only variables
+        # the user explicitly set in the server's "env" config are added back on top.
+        from app.agent import sandbox
+        env = {**sandbox.clean_env(), **{str(k): str(v) for k, v in env_cfg.items()}}
         # Windows needs the full name of launchers such as npx.cmd.
         command = shutil.which(command, path=env.get("PATH")) or command
-        self.proc = subprocess.Popen([command, *[str(a) for a in config.get("args") or []]], cwd=config.get("cwd") or cwd,
+        self.proc = subprocess.Popen([command, *[str(a) for a in args]], cwd=config.get("cwd") or cwd,
                                      env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                      text=True, encoding="utf-8", bufsize=1)
         self.waiting: dict[int, dict] = {}
@@ -186,6 +200,14 @@ class _HttpTransport:
         self.url = config.get("url")
         if not self.url:
             raise MCPError("http server has no url")
+        # M21: validate the URL against SSRF (private/link-local IPs, DNS rebinding). A malicious
+        # or compromised MCP config pointing at http://169.254.169.254/ would otherwise get the
+        # bearer token forwarded to cloud metadata.
+        from app.security import validate_url
+        try:
+            self.url = validate_url(str(self.url))
+        except ValueError as exc:
+            raise MCPError(f"refusing unsafe MCP server URL: {exc}") from exc
         self.headers = {str(k): str(v) for k, v in (config.get("headers") or {}).items()}
         token = config.get("bearer_token") or (os.environ.get(config["bearer_token_env_var"]) if config.get("bearer_token_env_var") else None)
         if token:

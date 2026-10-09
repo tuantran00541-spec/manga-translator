@@ -178,7 +178,12 @@ def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str
                     continue
                 destination = staging / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_bytes(archive.read(info))
+                # L2: the per-file cap used to trust info.file_size, which is the DECLARED size in
+                # the zip header. A 1MB-declared entry can expand to 1GB; check the actual bytes.
+                data = archive.read(info)
+                if len(data) > MAX_FILE_BYTES:
+                    continue
+                destination.write_bytes(data)
             target.mkdir(parents=True, exist_ok=True)
             final = target / name
             if final.exists():

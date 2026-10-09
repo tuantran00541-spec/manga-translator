@@ -213,7 +213,12 @@ class Workspace:
         root = Path(root).expanduser().resolve()
         if not root.is_dir():
             raise ValueError(f"Workspace folder does not exist: {root}")
-        if root == Path(root.anchor) or root == Path.home().resolve() or str(root) in BROAD_FOLDERS:
+        home = Path.home().resolve()
+        # M6: the home-dir check was an exact match, so ~/.ssh (private keys!) passed as a
+        # workspace. Reject the home dir itself, any dot-folder directly under it (which by
+        # convention holds app secrets and credentials), and the broad system folders.
+        if root == Path(root.anchor) or root == home or str(root) in BROAD_FOLDERS or (
+                root.parent == home and root.name.startswith(".")):
             raise ValueError(f"Pick a project folder, not {root}: the agent could read and change everything in it")
         self.root = root
         self.policy = policy or sandbox.Policy()

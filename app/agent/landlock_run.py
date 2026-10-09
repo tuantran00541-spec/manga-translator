@@ -117,7 +117,11 @@ def restrict(writable: list[str], network: bool, deny_read: list[str] | None = N
         raise OSError("Landlock is not available in this kernel")
     write = write_access(version)
     reads = READ_FILE | READ_DIR if deny_read else 0
+    # L7: on ABI < 4 the network rules cannot be expressed; warn instead of silently running
+    # a "no-network" command with network access.
     net = NET_BIND | NET_CONNECT if (not network and version >= 4) else 0
+    if not network and version < 4:
+        print("WARNING: Landlock ABI < 4 cannot block network; the command may have network access", flush=True)
     scoped = SCOPE_UNIX_SOCKET | SCOPE_SIGNAL if version >= 6 else 0
     if version >= 6:
         attr = struct.pack("QQQ", write | reads, net, scoped)
@@ -231,12 +235,22 @@ def main(argv: list[str] | None = None) -> int:
         # No core dumps, and no single file larger than 1 GiB: a runaway command cannot fill the disk.
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         resource.setrlimit(resource.RLIMIT_FSIZE, (1 << 30, 1 << 30))
+        # M1: cap virtual memory at 4 GiB; without RLIMIT_AS a command like
+        # python -c "x=' '*10**10" OOMs the whole host. (RLIMIT_RSS is not enforced
+        # on Linux, so AS is the one that matters.)
+        resource.setrlimit(resource.RLIMIT_AS, (4 << 30, 4 << 30))
     except (ValueError, OSError):
         pass
     try:
         restrict(args.write, not args.no_network, args.deny_read, args.deny_write)
         if args.no_network:
-            block_sockets()
+            # L7: --no-network used to fail silently on old kernels (ABI < 4 gives net=0) or
+            # unknown arches (block_sockets returns False) while restrict() still succeeded.
+            # Report it loudly so the caller knows the command may have network.
+            blocked = block_sockets()
+            if not blocked:
+                print("WARNING: --no-network could not be enforced on this kernel/arch; the command may have network access",
+                      flush=True)
     except OSError as exc:
         print(f"sandbox: {exc}", file=sys.stderr)
         return 126
