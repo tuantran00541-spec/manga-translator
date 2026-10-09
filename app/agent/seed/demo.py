@@ -17,7 +17,9 @@ import sys
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Seed: the tool-less harness demo")
-    parser.add_argument("--provider", default="gemini", help="provider id from app.ai_providers.PROVIDERS")
+    parser.add_argument("--provider", default="gemini", help="provider id from app.ai_providers.PROVIDERS, or 'custom'")
+    parser.add_argument("--api-base", default=os.getenv("SEED_API_BASE", ""),
+                        help="base URL for a custom OpenAI-compatible provider (or SEED_API_BASE env)")
     parser.add_argument("--model", default="", help="model name (default: provider default)")
     parser.add_argument("--api-key", default=os.getenv("SEED_API_KEY", ""), help="or SEED_API_KEY env")
     parser.add_argument("--workspace", default=".", help="folder the session works in")
@@ -30,13 +32,20 @@ def main(argv: list[str] | None = None) -> int:
         print("need --api-key or SEED_API_KEY", file=sys.stderr)
         return 2
 
-    from app.ai_providers import PROVIDERS
+    from app.ai_providers import PROVIDERS, resolve_provider
     from app.agent.seed.session import SeedSession
 
-    provider = PROVIDERS.get(args.provider)
-    if provider is None:
-        print(f"unknown provider {args.provider!r}; known: {', '.join(sorted(PROVIDERS))}", file=sys.stderr)
-        return 2
+    if args.provider == "custom" or args.api_base:
+        if not args.api_base:
+            print("custom provider needs --api-base or SEED_API_BASE", file=sys.stderr)
+            return 2
+        provider = resolve_provider("seed-custom", protocol="openai", api_base=args.api_base,
+                                    label="seed-custom")
+    else:
+        provider = PROVIDERS.get(args.provider)
+        if provider is None:
+            print(f"unknown provider {args.provider!r}; known: {', '.join(sorted(PROVIDERS))}", file=sys.stderr)
+            return 2
     model = args.model or provider.default_qc_model
 
     approve = (lambda prompt: True) if args.yes else None
