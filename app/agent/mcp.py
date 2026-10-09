@@ -264,6 +264,13 @@ class Server:
 
 
 def tool_name(server: str, tool: str) -> str:
-    """The name the model sees: mcp__server__tool, kept to the 64 characters most APIs allow."""
+    """The name the model sees: mcp__server__tool plus a short hash of the exact (server, tool) pair.
+
+    The readable part alone is ambiguous (H16): server names may contain dots, so "my.server" and
+    "my_server" normalize identically; "__" is both the separator and legal inside names; and names
+    truncate at the 64 characters most APIs allow. The hash suffix makes every distinct pair a
+    distinct key, so a hostile server can never silently shadow another server's tool under the
+    same name — including a built-in tool mapped onto an MCP tool by profile.json "replace"."""
+    suffix = hashlib.sha256(f"{server}\0{tool}".encode()).hexdigest()[:8]
     clean = re.sub(r"[^A-Za-z0-9_-]", "_", f"mcp__{server}__{tool}")
-    return clean[:64]
+    return f"{clean[:54]}__{suffix}"

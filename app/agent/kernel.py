@@ -200,6 +200,11 @@ def patch_rows(ctx: Context, home: Path) -> list[str]:
             row.config = config if config is not None else row.config
             row.disabled = bool(entry.get("disabled", row.disabled))
             continue
+        if row_id in ctx.rows and ctx.rows[row_id].source == "builtin":
+            # Same rule as plugin_write (H12): a plugins.json edit must never silently swap the module
+            # behind a built-in row like shell or web-fetch; switch it off instead.
+            problems.append(f"plugins.json: {row_id} is a built-in row and cannot be replaced by a plugin file")
+            continue
         target = (folder / str(entry.get("plugin", ""))).resolve()
         if folder not in target.parents or target.suffix != ".py" or not target.is_file():
             problems.append(f"plugins.json: {row_id} needs a .py file inside ~/.manga-agent/plugins")

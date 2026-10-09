@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import hashlib
 import re
 
 from loguru import logger
@@ -23,10 +24,19 @@ class Skill:
     folder: Path
     manual: bool = False
     builtin: bool = False
+    scope: str = "built-in"  # "workspace", "user" or "built-in": where it was discovered
 
     @property
     def file(self) -> Path:
         return self.folder / "SKILL.md"
+
+
+def digest(skill: Skill) -> str | None:
+    """The exact bytes of the skill's SKILL.md, for pinning a trust decision to its content."""
+    try:
+        return hashlib.sha256(skill.file.read_bytes()).hexdigest()[:16]
+    except OSError:
+        return None
 
 
 def frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -85,7 +95,8 @@ def discover(workspace: Path, home: Path | None = None) -> dict[str, Skill]:
                                name, scope, skill_file.parent, origin[name], found[name].folder)
                 continue
             found[name] = Skill(name, description[:1024], skill_file.parent.resolve(),
-                                fields.get("disable-model-invocation", "").lower() == "true", root == BUILTIN_DIR)
+                                fields.get("disable-model-invocation", "").lower() == "true", root == BUILTIN_DIR,
+                                scope)
             origin[name] = scope
     return found
 

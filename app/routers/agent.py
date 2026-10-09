@@ -255,6 +255,16 @@ async def trust_mcp(session_id: str, name: str) -> dict:
     return session.snapshot(len(session.events))
 
 
+@router.post("/sessions/{session_id}/trust/skill/{name}")
+def trust_skill(session_id: str, name: str) -> dict:
+    session = _session(session_id)
+    try:
+        session.trust_skill(name)
+    except KeyError:
+        raise HTTPException(404, "Workspace skill not found") from None
+    return session.snapshot(len(session.events))
+
+
 @router.post("/sessions/{session_id}/trust/hooks")
 def trust_hooks(session_id: str) -> dict:
     session = _session(session_id)

@@ -341,7 +341,7 @@ def test_a_refused_tools_field_switches_the_session_to_text_calls(ws, home):
     assert any(e["type"] == "notice" for e in session.events)
 
 
-def test_skills_todos_and_the_read_only_helper(ws, home):
+def test_skills_todos_and_the_read_only_helper(ws, home, tmp_path):
     write_skill(ws.root / ".agents" / "skills", "style", "House style rules.", "Always use tabs.")
     helper_tools = []
 
@@ -354,9 +354,25 @@ def test_skills_todos_and_the_read_only_helper(ws, home):
         turn(calls=[call("task", description="find f", prompt="What does f return?")]),
         helper_read, turn("f returns 1."),
         turn("Done."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=main)
-    assert "- style: House style rules." in session.system_prompt()
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=main)
+    assert "- style: House style rules." not in session.system_prompt(), \
+        "a workspace skill stays out of the prompt until the user trusts it (H9)"
+    assert "style" not in session._skills_trusted
+    session.trust_skill("style")
+    # The pinned system prompt stays cached; the model learns the newly trusted skill on its next
+    # turn through the context update, which is also how reload_skills surfaces changes.
+    assert "+ - style: House style rules." in session._context_update()
     session.send("go")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "todo_write", \
+        "loading a non-builtin skill taints the session (H10), so the next change asks even in auto mode"
+    assert session.tainted
+    session.decide("allow")
+    end = time.time() + 10
+    while not (session.pending and session.pending["name"] == "task") and time.time() < end:
+        time.sleep(0.01)
+    assert session.pending["name"] == "task", "spawning a helper from a tainted session asks too"
+    session.decide("allow")
     wait_for(session, "idle")
     outputs = {e["name"]: e["output"] for e in session.events if e["type"] == "tool"}
     assert "Always use tabs." in outputs["skill"] and outputs["todo_write"] == "Plan saved: 0/1 done."
@@ -440,14 +456,15 @@ def test_mcp_servers_need_trust_in_the_workspace_and_their_tools_run(ws, home, t
     (tmp_path / "fake_mcp.py").write_text(FAKE_SERVER, encoding="utf-8")
     (ws.root / ".mcp.json").write_text(json.dumps({"mcpServers": {"calc": {"command": sys.executable,
                                                                            "args": [str(tmp_path / "fake_mcp.py")]}}}), encoding="utf-8")
-    fake = scripted(turn(calls=[call("mcp__calc__add", a=2, b=3)]), turn("5"))
+    add = mcp.tool_name("calc", "add")
+    fake = scripted(turn(calls=[call(add, a=2, b=3)]), turn("5"))
     agents = manager(home, tmp_path / "store")
     session = agents.create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=fake)
     session._ensure_mcp()
-    assert session.mcp_status["calc"]["state"] == "untrusted" and "mcp__calc__add" not in session.mcp_tools
+    assert session.mcp_status["calc"]["state"] == "untrusted" and add not in session.mcp_tools
     session.trust_mcp("calc")
     assert session.mcp_status["calc"]["state"] == "running" and session.mcp_status["calc"]["tools"] == 1
-    assert not session._needs_approval(call("mcp__calc__add", a=1, b=1)), "a read-only MCP tool runs alone in edits mode"
+    assert not session._needs_approval(call(add, a=1, b=1)), "a read-only MCP tool runs alone in edits mode"
     session.send("add")
     wait_for(session, "idle")
     assert [e["output"] for e in session.events if e["type"] == "tool"] == ["5"]
@@ -455,7 +472,9 @@ def test_mcp_servers_need_trust_in_the_workspace_and_their_tools_run(ws, home, t
     again._ensure_mcp()
     assert again.mcp_status["calc"]["state"] == "running", "trust is remembered for the same config"
     agents.close_all()
-    assert mcp.tool_name("my server", "x" * 80) == ("mcp__my_server__" + "x" * 80)[:64]
+    assert mcp.tool_name("my.server", "x") != mcp.tool_name("my_server", "x"), "a dot in a server name no longer collides with _"
+    assert mcp.tool_name("a", "b__c") != mcp.tool_name("a__b", "c"), "the __ separator cannot be confused with __ inside names"
+    assert len(mcp.tool_name("my server", "x" * 80)) <= 64, "names still fit the 64 characters most APIs allow"
 
 
 SWAP_SERVER = textwrap.dedent('''
@@ -484,28 +503,30 @@ def test_profile_swaps_built_in_tools_for_mcp_tools_and_gives_them_roles(ws, hom
     folder = home / ".manga-agent"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "mcp.json").write_text(json.dumps({"mcpServers": {"fs": {"command": sys.executable, "args": [str(tmp_path / "swap.py")]}}}))
+    read_text, sh, gone_search = mcp.tool_name("fs", "read_text"), mcp.tool_name("fs", "sh"), mcp.tool_name("gone", "search")
+    write_text, bogus = mcp.tool_name("fs", "write_text"), mcp.tool_name("fs", "bogus")
     (folder / "profile.json").write_text(json.dumps({
-        "replace": {"read_file": "mcp__fs__read_text", "run_command": "mcp__fs__sh", "web_search": "mcp__gone__search", "todo_write": "mcp__fs__sh"},
-        "roles": {"mcp__fs__write_text": "edit", "mcp__fs__bogus": "root"}}))
+        "replace": {"read_file": read_text, "run_command": sh, "web_search": gone_search, "todo_write": sh},
+        "roles": {write_text: "edit", bogus: "root"}}))
     monkeypatch.setattr(sandbox, "backend", lambda: "landlock")
     agents = manager(home, tmp_path / "store")
     session = agents.create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=scripted(turn("x")))
     session._ensure_mcp()
-    assert session.profile["replace"] == {"read_file": "mcp__fs__read_text", "run_command": "mcp__fs__sh", "web_search": "mcp__gone__search"}, \
+    assert session.profile["replace"] == {"read_file": read_text, "run_command": sh, "web_search": gone_search}, \
         "only built-in file, command and web tools can be swapped"
-    assert session.profile["roles"] == {"mcp__fs__write_text": "edit"}
+    assert session.profile["roles"] == {write_text: "edit"}
     specs = {s["name"]: s for s in session.specs()}
     assert specs["read_file"]["description"].startswith("[MCP fs] Read a file over MCP"), "the model keeps the familiar name"
-    assert "mcp__fs__read_text" not in specs and "mcp__fs__sh" not in specs, "a swapped-in tool is not listed twice"
+    assert read_text not in specs and sh not in specs, "a swapped-in tool is not listed twice"
     assert "count" in specs["web_search"]["parameters"]["properties"], "an unconnected server leaves our tool in place"
     output, ok = session._run_call({"id": "1", "name": "read_file", "args": {"path": "pkg/a.py"}})
     assert ok and output.startswith('mcp read_text {"path": "pkg/a.py"}')
     assert not session.tainted, "a swapped built-in is the user's own choice, not untrusted content"
     assert session._needs_approval(call("run_command", command="ls")), "a command an MCP server runs is outside our sandbox, so it asks"
-    assert not session._needs_approval(call("mcp__fs__write_text", path="pkg/new.txt", content="x")), "an edit-role tool inside the folder runs"
-    assert session._needs_approval(call("mcp__fs__write_text", path="../outside.txt", content="x")), "outside the folder it asks"
-    assert "read_file → mcp__fs__read_text" in session.command("/mcp")["message"]
-    assert "mcp__gone__search (chưa kết nối" in session.command("/mcp")["message"]
+    assert not session._needs_approval(call(write_text, path="pkg/new.txt", content="x")), "an edit-role tool inside the folder runs"
+    assert session._needs_approval(call(write_text, path="../outside.txt", content="x")), "outside the folder it asks"
+    assert f"read_file → {read_text}" in session.command("/mcp")["message"]
+    assert f"{gone_search} (chưa kết nối" in session.command("/mcp")["message"]
     agents.close_all()
 
 
@@ -853,20 +874,30 @@ def test_agent_files_limit_tools_and_a_coder_helper_edits_through_the_parents_ap
     assert not (ws.root / "made.txt").exists()
 
 
-def test_several_task_calls_in_one_reply_run_together(ws, home):
-    import threading
-    gate = threading.Barrier(2, timeout=5)
+def test_task_calls_run_one_at_a_time_in_order(ws, home):
+    # Tainting calls (web_fetch, web_search, task) run alone, in order (H18): a parallel batch must
+    # not sneak a write past the untrusted-content guard while a fetch is still in flight.
+    order = []
 
-    def helper(messages, tools):
-        gate.wait()
-        return turn(f"report {messages[1]['content']}")
+    def helper_a(messages, tools):
+        order.append("a")
+        return turn("report A")
+
+    def helper_b(messages, tools):
+        order.append("b")
+        return turn("report B")
 
     fake = scripted(turn(calls=[{"id": "t1", "name": "task", "args": {"description": "a", "prompt": "A"}},
                                 {"id": "t2", "name": "task", "args": {"description": "b", "prompt": "B"}}]),
-                    helper, helper, turn("merged"))
+                    helper_a, helper_b, turn("merged"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     run_to_idle(session)
+    assert order == ["a", "b"], "tainting calls run alone, in the order the model gave them"
     assert sorted(o for _, _, o in tool_outputs(session)) == ["report A", "report B"]
+    assert session._footprint({"name": "web_fetch", "args": {}}) is None
+    assert session._footprint({"name": "web_search", "args": {}}) is None
+    assert session._footprint({"name": "task", "args": {}}) is None
+    assert session._footprint({"name": "read_file", "args": {"path": "a"}}) is not None, "plain reads still batch"
 
 
 def test_a_message_sent_while_the_agent_works_joins_the_next_step(ws, home):
@@ -900,7 +931,11 @@ def test_at_references_attach_files_but_not_secrets(ws, home):
 def test_memory_notes_persist_into_the_next_session(ws, home):
     fake = scripted(turn(calls=[call("memory", action="add", scope="project", text="Tests run with pytest -q")]), turn("noted"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
-    run_to_idle(session)
+    session.send("remember this")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "memory", "memory writes always ask, even in auto mode (H17)"
+    session.decide("allow")
+    wait_for(session, "idle")
     later = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("hi")))
     assert "1. Tests run with pytest -q" in later.system_prompt()
     assert "pytest" in later.command("/memory")["message"]
@@ -1727,11 +1762,13 @@ def test_the_command_line_runs_a_task_and_prints_json_events(ws, home, monkeypat
 
 def test_many_connected_tools_are_found_by_search_instead_of_listed(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted())
-    session.mcp_tools = {f"mcp__s__tool{i}": ("s", {"name": f"tool{i}", "description": "makes tickets" if i == 3 else "does thing"}) for i in range(20)}
+    keys = [mcp.tool_name("s", f"tool{i}") for i in range(20)]
+    session.mcp_tools = {key: ("s", {"name": f"tool{i}", "description": "makes tickets" if i == 3 else "does thing"})
+                         for i, key in enumerate(keys)}
     names = {s["name"] for s in session.specs()}
     assert "tool_search" in names and not any(n.startswith("mcp__s__") for n in names)
     found = session._session_tool({"name": "tool_search", "args": {"query": "tickets"}})
-    assert "mcp__s__tool3" in found and "mcp__s__tool3" in {s["name"] for s in session.specs()}
+    assert keys[3] in found and keys[3] in {s["name"] for s in session.specs()}
 
 
 def test_a_second_editing_helper_works_in_a_copy_and_its_changes_are_merged_back(ws, home):
@@ -2033,7 +2070,11 @@ def test_the_request_prefix_stays_the_same_across_steps_and_each_change_is_count
         return [turn(calls=[call("memory", action="add", scope="project", text="Use tabs")]), turn(calls=[call("list_dir")]), turn("done")][len(seen) - 1]
 
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
-    run_to_idle(session)
+    session.send("go")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "memory", "memory writes always ask, even in auto mode (H17)"
+    session.decide("allow")
+    wait_for(session, "idle")
     assert len({system for system, _ in seen}) == 1, "a memory note added mid-turn does not change the system prompt"
     assert session.cache_log["requests"] == 3 and not [k for k in session.cache_log if k.startswith("header changed")]
     session.command("/goal finish it")
@@ -3006,7 +3047,8 @@ def test_an_mcp_tool_can_be_the_provider_behind_a_seam(ws, home, tmp_path):
     folder = home / ".manga-agent"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "mcp.json").write_text(json.dumps({"mcpServers": {"fs": {"command": sys.executable, "args": [str(tmp_path / "swap.py")]}}}))
-    (folder / "profile.json").write_text(json.dumps({"services": {"web.search": ["mcp__fs__find", "duckduckgo"], "shell": "mcp__fs__sh"}}))
+    (folder / "profile.json").write_text(json.dumps({"services": {"web.search": [mcp.tool_name("fs", "find"), "duckduckgo"],
+                                                               "shell": mcp.tool_name("fs", "sh")}}))
     agents = manager(home, tmp_path / "store")
     session = agents.create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
     output, ok = session._run_call({"id": "1", "name": "web_search", "args": {"query": "manga fonts", "count": 3}})
@@ -3014,7 +3056,7 @@ def test_an_mcp_tool_can_be_the_provider_behind_a_seam(ws, home, tmp_path):
     output, ok = session._run_call({"id": "2", "name": "run_command", "args": {"command": "ls -la"}})
     assert ok and 'mcp sh {"command": "ls -la"}' in output and "[exit code 0]" in output, output
     assert not session.workspace.services.is_local_shell()
-    assert "shell: mcp__fs__sh (còn có: local)" in session.command("/services")["message"]
+    assert f"shell: {mcp.tool_name('fs', 'sh')} (còn có: local)" in session.command("/services")["message"]
     agents.close_all()
 
 
@@ -3032,14 +3074,15 @@ def test_mcp_servers_are_rows_of_the_plugin_tree_that_stop_and_start_live(ws, ho
     session._ensure_mcp()
     tree = session.command("/plugins")["message"]
     assert "mcp:fs [mcp] active" in tree and "mcp:calc [mcp] active" in tree, tree
-    assert session._run_call({"id": "1", "name": "mcp__calc__add", "args": {"a": 2, "b": 2}}) == ("4", True)
+    add = mcp.tool_name("calc", "add")
+    assert session._run_call({"id": "1", "name": add, "args": {"a": 2, "b": 2}}) == ("4", True)
     process = session.mcp_servers["calc"].transport.proc
     session.command("/plugins disable mcp:calc")
-    assert "mcp__calc__add" not in session.mcp_tools and "calc" not in session.mcp_servers
+    assert add not in session.mcp_tools and "calc" not in session.mcp_servers
     assert process.wait(timeout=10) is not None, "switching the row off stops the server process"
     assert session.mcp_status["calc"]["state"] == "stopped"
     session.command("/plugins enable mcp:calc")
-    assert session._run_call({"id": "2", "name": "mcp__calc__add", "args": {"a": 1, "b": 5}}) == ("6", True)
+    assert session._run_call({"id": "2", "name": add, "args": {"a": 1, "b": 5}}) == ("6", True)
     agents.close_all()
 
 
@@ -3255,6 +3298,89 @@ def test_plugin_files_changed_outside_approval_emit_a_notice(ws, home):
     assert found and "sneaky.py" in found[0]["text"] and "known.py" in found[0]["text"] and "gone.py" in found[0]["text"], found
     quiet = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
     assert not notices(quiet), "once recorded, the same files are quiet again"
+
+
+def test_a_corrupt_plugin_baseline_holds_user_plugins_until_trusted(ws, home):
+    # C6: a corrupt plugin_hashes.json fails closed; it never silently re-baselines.
+    write_plugin(home / ".manga-agent" / "plugins", "evil", "def register(api):\n    pass\n")
+    manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    (home / ".manga-agent" / "plugin_hashes.json").write_text("{corrupt", encoding="utf-8")
+    held = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    rows = {p["name"]: p for p in held.registry.plugins}
+    assert rows["evil"]["state"] == "held", rows
+    assert held._plugin_hold
+    loud = [e for e in held.events if e["type"] == "notice" and "plugin_hashes.json" in e.get("text", "")]
+    assert loud and "KHÔNG được nạp" in loud[0]["text"], "the user is warned loudly"
+    assert (home / ".manga-agent" / "plugin_hashes.json").read_text(encoding="utf-8") == "{corrupt", \
+        "a baseline we cannot read is never silently overwritten"
+    assert held.snapshot()["plugins"]["needs_trust"]
+    held.trust_plugins()
+    assert not held._plugin_hold and held.registry.plugins[0]["state"] == "loaded"
+    data = json.loads((home / ".manga-agent" / "plugin_hashes.json").read_text(encoding="utf-8"))
+    assert data.get("evil.py"), "trusting re-baselines the files the user confirmed"
+
+
+def test_plugins_json_is_covered_by_the_tamper_baseline(ws, home):
+    # H12: plugins.json decides which file backs which row, so it is hashed too.
+    (home / ".manga-agent" / "plugins").mkdir(parents=True)
+    manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    (home / ".manga-agent" / "plugins.json").write_text(json.dumps({"rows": []}), encoding="utf-8")
+    flagged = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    found = [e for e in flagged.events if e["type"] == "notice" and "Plugin files changed" in e.get("text", "")]
+    assert found and "plugins.json" in found[0]["text"], found
+
+
+def test_plugins_json_cannot_replace_a_builtin_row(ws, home):
+    # H12: same rule as plugin_write — a plugins.json edit never swaps a built-in row's module.
+    write_plugin(home / ".manga-agent" / "plugins", "evil", "def register(api):\n    pass\n")
+    (home / ".manga-agent").mkdir(parents=True, exist_ok=True)
+    (home / ".manga-agent" / "plugins.json").write_text(
+        json.dumps({"rows": [{"id": "shell-local", "plugin": "evil.py"}]}), encoding="utf-8")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    assert any("built-in row" in p for p in session.kernel_problems), session.kernel_problems
+    assert session.kernel.rows["shell-local"].source == "builtin", "the built-in shell provider survives"
+
+
+def test_always_ask_applies_with_no_plugin_subscriber(ws, home):
+    # H17: the _always_ask floor applies even when nothing subscribes to tool/approve.
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("done")))
+    assert not session.kernel.subscribers("tool/approve"), "no built-in subscribes to tool/approve"
+    fake = scripted(turn(calls=[call("memory", action="add", text="attacker note")]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session.send("remember this")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "memory", "memory writes always ask, even in auto mode with no plugins"
+    session.decide("deny")
+    wait_for(session, "idle")
+
+
+def test_taint_survives_across_turns_until_the_user_clears_it(ws, home, tmp_path):
+    # H19: the taint guard is per-session, not per-turn; only the user clears it.
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto",
+                                                       complete=scripted(turn("done")))
+    session.tainted = True
+    session.send("first")
+    wait_for(session, "idle")
+    assert session.tainted, "send() must not reset the taint flag"
+    assert session.command("/untaint")["message"] and not session.tainted
+    session.tainted = True
+    session.save()
+    data = json.loads(session.store.read_text(encoding="utf-8"))
+    assert data["tainted"] is True, "taint persists across save/resume"
+    clone = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    clone.restore(data)
+    assert clone.tainted
+
+
+def test_clean_env_scrubs_numbered_secret_names(monkeypatch):
+    # H20: AGNES_KEY2-style numbered variants are still secrets.
+    monkeypatch.setenv("AGNES_KEY2", "s3cr3t")
+    monkeypatch.setenv("GITHUB_TOKEN2", "s3cr3t")
+    monkeypatch.setenv("AGNES_KEY", "s3cr3t")
+    monkeypatch.setenv("MYSAFE_COUNTER", "42")
+    env = sandbox.clean_env()
+    assert "AGNES_KEY2" not in env and "GITHUB_TOKEN2" not in env and "AGNES_KEY" not in env
+    assert env["MYSAFE_COUNTER"] == "42"
 
 
 def test_a_workspace_skill_shadowing_another_scope_logs_a_warning(ws, home, monkeypatch):

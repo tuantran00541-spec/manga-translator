@@ -28,11 +28,12 @@ SYSTEM_SECRETS = ("/run/user", "/run/secrets", "/var/run/secrets")
 # More folders to keep unreadable, added by whoever stores private data (the agent's own saved sessions).
 EXTRA_DENY: list[str] = []
 # A name is treated as secret-bearing when a secret word starts or ends it
-# (MYSECRET, LLMKEY) or is _-separated (MY_API_KEY). A heuristic, deliberately
-# biased toward over-scrubbing: leaking a real secret into a command's
+# (MYSECRET, LLMKEY) or is _-separated (MY_API_KEY). A trailing digit is part of the
+# boundary too (AGNES_KEY2, GITHUB_TOKEN2): numbered secret variants are still secrets (H20).
+# A heuristic, deliberately biased toward over-scrubbing: leaking a real secret into a command's
 # environment is worse than hiding an oddly named variable like KEYBOARD_LAYOUT.
 _SECRET_WORDS = r"api_?key|key|token|secret|passw(or)?d|credentials?|auth|cookie|session_?id|private"
-SECRET_NAME = re.compile(rf"(?i)(^|_)({_SECRET_WORDS})(_|$)|^({_SECRET_WORDS})|({_SECRET_WORDS})$")
+SECRET_NAME = re.compile(rf"(?i)(^|_)({_SECRET_WORDS})(_|\d|$)|^({_SECRET_WORDS})|({_SECRET_WORDS})$")
 DROP_ENV = {"SSH_AUTH_SOCK", "DBUS_SESSION_BUS_ADDRESS", "GPG_AGENT_INFO", "GNOME_KEYRING_CONTROL", "KRB5CCNAME"}
 # Git control paths that stay unwritable for a confined command, even inside a
 # writable workspace: hooks run the moment git fires them (outside any later

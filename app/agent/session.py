@@ -207,6 +207,7 @@ BUILTIN_COMMANDS = {
     "init": "Viết AGENTS.md mô tả dự án này", "skills": "Xem skill; /skills add CHỦ/REPO[/THƯ-MỤC] cài skill từ GitHub",
     "mcp": "Xem MCP server và công cụ của chúng", "services": "Xem provider đang chạy sau tìm web, tải trang và lệnh", "model": "Đổi model: /model TÊN",
     "mode": "Đổi cách duyệt: /mode ask|edits|auto",
+    "untaint": "Đánh dấu phiên đã sạch nội dung không tin cậy (tắt taint guard cho tới lần nhiễm tiếp theo)",
     "sandbox": "Đổi sandbox: /sandbox read-only|workspace-write|full-access [net]",
     "clear": "Mở phiên mới", "plan": "Chế độ lập kế hoạch (chỉ đọc đến khi bạn duyệt): /plan [việc] hoặc /plan off",
     "goal": "Giao mục tiêu để agent tự làm nhiều lượt: /goal MỤC TIÊU hoặc /goal off",
@@ -267,16 +268,32 @@ def _scan_plugin_files(home_path: Path) -> dict[str, str]:
                 found[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
             except OSError:
                 continue
+    # plugins.json itself decides which file backs which row (H12): a silent edit there can swap a
+    # built-in row's module without touching any .py file, so it belongs in the tamper baseline too.
+    try:
+        found["plugins.json"] = hashlib.sha256((home_path / ".manga-agent" / "plugins.json").read_bytes()).hexdigest()
+    except OSError:
+        pass
     return found
 
 
-def _read_plugin_hashes(home_path: Path) -> dict[str, str] | None:
-    """The recorded baseline, or None when no baseline was ever written (or it is unreadable)."""
+def _read_plugin_hashes(home_path: Path) -> tuple[str, dict[str, str] | None]:
+    """(state, baseline): "missing" when no baseline was ever written, "corrupt" when the file
+    exists but cannot be read or parsed, "ok" with the recorded hashes otherwise.
+
+    "missing" and "corrupt" must stay apart: a missing baseline means first run and may be
+    recorded silently, but a corrupt one means tamper detection is blind and must fail closed
+    instead of silently re-baselining whatever is on disk now (C6)."""
+    path = _plugin_hashes_path(home_path)
+    if not path.exists():
+        return "missing", None
     try:
-        data = json.loads(_plugin_hashes_path(home_path).read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return None
-    return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else None
+        return "corrupt", None
+    if not isinstance(data, dict):
+        return "corrupt", None
+    return "ok", {str(k): str(v) for k, v in data.items()}
 
 
 def _write_plugin_hashes(home_path: Path, hashes: dict[str, str]) -> None:
@@ -370,12 +387,17 @@ class AgentSession:
         self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
         self.externals = external.available(self.profile["external_agents"]) if not depth and "external" not in self.disabled else {}
         self.kernel_problems: list[str] = []
+        # Fail closed when the tamper baseline is unreadable: user plugins stay unloaded until the
+        # user confirms them (C6). Decided before _build_registry so held plugins are never exec'd.
+        self._plugin_hold = (parent._plugin_hold if depth else _read_plugin_hashes(home_path)[0] == "corrupt")
         if depth:
             self.registry, self.kernel = parent.registry, parent.kernel
         else:
             self.registry = self._build_registry(home_path)
         self.checkpoints = parent.checkpoints if depth else Checkpoints()
         self.skills = skills.discover(workspace.root, home)
+        self._skills_trusted: set[str] = set()
+        self._refresh_skill_trust()
         self._set_read_roots()
         self.commands = context.commands(workspace.root, home) if not depth else {}
         self.hooks = context.hooks(workspace.root, home) if not depth else parent.hooks
@@ -396,10 +418,19 @@ class AgentSession:
         """Notice when a plugin file appeared, changed or vanished outside the plugin_write/plugin_remove approval flow."""
         home_path = self._plugin_home()
         current = _scan_plugin_files(home_path)
-        known = _read_plugin_hashes(home_path)
-        if known is None:
+        state, known = _read_plugin_hashes(home_path)
+        if state == "missing":
             # No baseline yet: record it silently, so a long-time user is not alarmed on first run.
             _write_plugin_hashes(home_path, current)
+            return
+        if state == "corrupt" or known is None:
+            # Fail closed (C6): the baseline exists but cannot be read, so tamper detection is blind.
+            # Never silently re-baseline whatever happens to be on disk now; the user plugins were
+            # already held back from loading, and they stay that way until the user confirms them.
+            logger.warning("Agent session {}: plugin tamper baseline unreadable; user plugins held unloaded", self.id)
+            self.emit("notice", text="Không đọc được plugin_hashes.json (~/.manga-agent/plugin_hashes.json) nên không kiểm tra được plugin "
+                                     "có bị sửa ngoài luồng duyệt không. Plugin của bạn KHÔNG được nạp trong phiên này. Kiểm tra "
+                                     "~/.manga-agent/plugins/, rồi bấm tin tưởng plugin để nạp (file bạn đã kiểm tra sẽ thành baseline mới).")
             return
         new = sorted(n for n in current if n not in known)
         changed = sorted(n for n in current if n in known and known[n] != current[n])
@@ -434,7 +465,7 @@ class AgentSession:
         if self.externals:
             reg.tool(external.spec(list(self.externals)), lambda session, args: external.run(session, args, self.externals),
                      kind="exec", group="external", always_ask=True)
-        registry.load_plugins(reg, self.workspace.root, home_path, self.trust)
+        registry.load_plugins(reg, self.workspace.root, home_path, self.trust, hold_user=self._plugin_hold)
         # The plugin tree: built-in providers are rows like any other, plugin files join it, plugins.json changes it.
         old_kernel = getattr(self, "kernel", None)
         if old_kernel is not None:
@@ -461,6 +492,11 @@ class AgentSession:
         home_path = self.home if self.home is not None else Path.home()
         files = registry.plugin_files(self.workspace.root, home_path)
         self.trust.allow(self.workspace.root, "plugins", registry.workspace_digest(files))
+        if self._plugin_hold:
+            # The user confirmed the current plugin files are fine after a blind baseline (C6):
+            # what they just inspected becomes the new tamper baseline.
+            self._plugin_hold = False
+            self._record_plugin_hashes()
         self.registry = self._build_registry(home_path)
 
     def _plugins_command(self, args: str) -> str:
@@ -522,10 +558,11 @@ class AgentSession:
                     "text_tools": self.text_tools, "usage": dict(self.usage), "stats": self._stats(), "live": self._live_view(),
                     "pending": self.pending, "todos": self.todos,
                     "disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins, "externals": list(self.externals),
-                                                                    "needs_trust": any(p["state"] == "untrusted" for p in self.registry.plugins)},
+                                                                    "needs_trust": any(p["state"] in ("untrusted", "held") for p in self.registry.plugins)},
                     "plan_mode": self.plan_mode, "goal": self.goal and self.goal["text"], "queued": len(self.queue),
                     "agents": [{"name": a.name, "description": a.description} for a in self.agents.values()],
-                    "skills": [{"name": s.name, "description": s.description} for s in self.skills.values()],
+                    "skills": [{"name": s.name, "description": s.description, "trusted": s.name in self._skills_trusted}
+                               for s in self.skills.values()],
                     "mcp": list(self.mcp_status.values()), "replaced": self.replaced, "rate_limited": dict(self.rate_limited), "hooks": self._hook_summary(),
                     "commands": [{"name": k, "description": v} for k, v in self._builtin_commands().items()]
                     + [{"name": k, "description": d} for k, (d, _) in self.registry.commands.items()]
@@ -564,6 +601,7 @@ class AgentSession:
         data = {"id": self.id, "provider": self.provider.id, "model": self.model, "mode": self.mode, "title": self.title,
                 "workspace": str(self.workspace.root), "sandbox": [self.workspace.policy.mode, self.workspace.policy.network],
                 "created_at": self.created_at, "updated_at": self.updated_at, "usage": self.usage, "todos": self.todos, "notes": self.notes,
+                "tainted": self.tainted,
                 "text_tools": self.text_tools, "plan_mode": self.plan_mode, "goal": self.goal, "schedules": self.schedules, "compact_at": self.compact_at,
                 "history": [{k: v for k, v in h.items() if k != "images"} for h in self.history], "events": events}
         tmp = self.store.with_suffix(".tmp")
@@ -590,6 +628,7 @@ class AgentSession:
         self.usage.update(data.get("usage") or {})
         self.text_tools = bool(data.get("text_tools"))
         self.plan_mode = bool(data.get("plan_mode"))
+        self.tainted = bool(data.get("tainted"))
         goal = data.get("goal")
         self.goal = {"text": str(goal.get("text", "")), "turns": int(goal.get("turns", 0))} if isinstance(goal, dict) else None
         self.created_at = float(data.get("created_at") or self.created_at)
@@ -647,7 +686,9 @@ class AgentSession:
             return True
         if not self.depth:
             self.checkpoints.begin()
-        self._dirty = self._gated = self.tainted = False
+        # The taint flag is NOT reset here: once a session has seen untrusted content the guard
+        # stays on for the rest of the session (H19). Only the user clears it, with /untaint.
+        self._dirty = self._gated = False
         self._final_advised = self._edited = self._plan_nudged = self._continued = False
         self._fallback_at = 0
         self._prewalk = bool(self.profile["prewalk_model"]) and self.profile["prewalk_model"] != self.model and not self.depth
@@ -681,7 +722,9 @@ class AgentSession:
         if name == "skills":
             if args.split()[:1] == ["add"]:
                 return {"message": self._install_skills(args[3:].strip())}
-            rows = [f"{'/' if s.manual else ''}{s.name}{' (có sẵn)' if s.builtin else ''}: {s.description[:150]}" for s in self.skills.values()]
+            rows = [f"{'/' if s.manual else ''}{s.name}{' (có sẵn)' if s.builtin else ''}"
+                    f"{'' if s.name in self._skills_trusted else ' (chưa tin tưởng)'}: {s.description[:150]}"
+                    for s in self.skills.values()]
             return {"message": "\n".join(rows) or "Không có skill nào."}
         if name == "services":
             return {"message": "\n".join(self.workspace.services.describe())
@@ -700,6 +743,9 @@ class AgentSession:
         if name == "mode" and args in MODES:
             self.mode = args
             return {"message": f"Quyền: {args}"}
+        if name == "untaint" and not args:
+            self.tainted = False
+            return {"message": "Đã đánh dấu phiên là sạch nội dung không tin cậy. Guard sẽ bật lại khi phiên thấy nội dung không tin cậy mới."}
         if name == "sandbox" and args:
             parts = args.split()
             self.set_policy(parts[0], len(parts) > 1 and parts[1] in ("net", "network", "on"))
@@ -753,7 +799,8 @@ class AgentSession:
         if name == "init":
             self.send(INIT_PROMPT)
             return {"sent": True}
-        if name in self.skills and self.skills[name].manual:
+        if name in self.skills and self.skills[name].manual and self.skills[name].name in self._skills_trusted:
+            self.tainted = True  # manual skill instructions are untrusted content, like a loaded skill
             self.send(skills.load(self.skills[name]) + (f"\n\nUser input: {args}" if args else ""))
             return {"sent": True}
         if name in self.commands:
@@ -761,9 +808,33 @@ class AgentSession:
             return {"sent": True}
         raise ValueError(f"Unknown command /{name}; type /help")
 
+    def _refresh_skill_trust(self) -> None:
+        """Which skills may reach the model: built-in and user skills are the user's own; a workspace
+        skill only after the user trusts its exact SKILL.md (H9). Recomputed often, so editing a
+        trusted skill file drops it back out until it is trusted again."""
+        self._skills_trusted = {name for name, skill in self.skills.items() if self._skill_trusted(skill)}
+
+    def _skill_trusted(self, skill: "skills.Skill") -> bool:
+        if skill.builtin or skill.scope != "workspace":
+            return True
+        digest = skills.digest(skill)
+        return digest is not None and self.trust.trusted(self.workspace.root, f"skill:{skill.name}", digest)
+
+    def trust_skill(self, name: str) -> None:
+        """The user confirmed a workspace skill's SKILL.md: its description may enter the prompt."""
+        skill = self.skills.get(name)
+        if skill is None or skill.scope != "workspace":
+            raise KeyError(name)
+        digest = skills.digest(skill)
+        if digest is None:
+            raise KeyError(name)
+        self.trust.allow(self.workspace.root, f"skill:{name}", digest)
+        self._refresh_skill_trust()
+
     def reload_skills(self) -> None:
         """Pick up skills added, written or removed since the session started; the model sees the change on its next turn."""
         self.skills = skills.discover(self.workspace.root, self.home)
+        self._refresh_skill_trust()
         self._set_read_roots()
 
     def _install_skills(self, spec: str) -> str:
@@ -867,8 +938,14 @@ class AgentSession:
                 status["state"] = "untrusted"
                 raise PermissionError("the project declares this server; allow it first")
             server = mcp.Server(name, config, self.workspace.root)
-            self.mcp_servers[name] = server
             added = [mcp.tool_name(name, tool["name"]) for tool in server.tools]
+            clash = next((t for t in added if t in self.mcp_tools), None)
+            if clash is not None:
+                # Defense in depth: the hash suffix in tool_name should make this impossible;
+                # a hostile server must never silently take over another tool's name (H16).
+                server.close()
+                raise RuntimeError(f"tool name {clash} is already registered")
+            self.mcp_servers[name] = server
             for tool_name, tool in zip(added, server.tools):
                 self.mcp_tools[tool_name] = (name, tool)
             status.update(state="running", tools=len(server.tools), error="")
@@ -1170,6 +1247,13 @@ class AgentSession:
             found = self.skills.get(str(args.get("name") or ""))
             if found is None:
                 raise ToolError(f"No skill named {args.get('name')!r}; known: {', '.join(self.skills) or 'none'}")
+            if found.name not in self._skills_trusted:
+                raise ToolError(f"Skill {found.name!r} comes from this workspace and is not trusted yet; "
+                                "ask the user to trust it before loading.")
+            if not found.builtin:
+                # A skill's instructions are untrusted content (H10): loading one taints the session
+                # like a web fetch does, so what the model does next goes through the taint guard.
+                self.tainted = True
             if found.name not in self._skills_loaded:
                 if len(self._skills_loaded) >= MAX_SKILLS_PER_TURN:
                     raise ToolError(f"Load at most {MAX_SKILLS_PER_TURN} skills per task; you already loaded {', '.join(self._skills_loaded)}. Use those.")
@@ -1618,8 +1702,10 @@ class AgentSession:
         with self._approval_lock:
             ask = self._needs_approval(call, verdict)
             if self.kernel.subscribers("tool/approve"):
-                # A plugin may change the approval policy; what must always ask still asks.
-                ask = bool(self.kernel.waterfall("tool/approve", {"call": call, "ask": ask, "mode": self.mode}, lambda p: p["ask"])) or self._always_ask(call)
+                # A plugin may change the approval policy, but what must always ask still asks:
+                # the floor applies after the waterfall, so a plugin can only raise it, never lower it.
+                ask = bool(self.kernel.waterfall("tool/approve", {"call": call, "ask": ask, "mode": self.mode}, lambda p: p["ask"]))
+            ask = ask or self._always_ask(call)
             if ask:
                 why = "untrusted" if self.tainted and self.mode != "auto" and self.profile["untrusted_guard"] else ""
                 reviewed, cleared = "", False
@@ -1763,7 +1849,8 @@ class AgentSession:
     def _volatile(self) -> dict[str, str]:
         """The parts of the system prompt that files on disk can change: read once and kept, so the cached prefix stays the same."""
         home = self.home if self.home is not None else Path.home()
-        rows = {"Skills": skills.catalog(self.skills)}
+        self._refresh_skill_trust()
+        rows = {"Skills": skills.catalog({n: s for n, s in self.skills.items() if n in self._skills_trusted})}
         if not self.depth:
             rows["Project instructions"] = context.instructions(self.workspace.root, self.home)
             rows["Memory"] = memory.prompt(home, self.workspace.root)
@@ -2277,6 +2364,10 @@ class AgentSession:
     def _footprint(call: dict) -> tuple[frozenset, frozenset] | None:
         """(paths read, paths written) for a call that touches only files, or None when it must run alone."""
         name, args = call["name"], call["args"] if isinstance(call["args"], dict) else {}
+        if name in ("web_fetch", "web_search", "task"):
+            # Tainting calls run alone, in order (H18): their approval check, execution and taint flag
+            # stay sequential, so a parallel batch cannot sneak a write past the untrusted-content guard.
+            return None
         path = os.path.normpath(str(args.get("path") or ".")).lstrip("/")
         if name in PARALLEL_CALLS:
             return (frozenset({path}) if name in ("list_dir", "read_file", "search", "glob", "symbols") else frozenset()), frozenset()

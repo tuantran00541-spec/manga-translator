@@ -202,13 +202,21 @@ def workspace_digest(files: list[tuple[str, Path]]) -> str:
     return h.hexdigest()
 
 
-def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.TrustStore) -> None:
-    """Python files that define register(api); a workspace's own plugins run only once the user trusts their exact contents."""
+def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.TrustStore, hold_user: bool = False) -> None:
+    """Python files that define register(api); a workspace's own plugins run only once the user trusts their exact contents.
+
+    hold_user fails closed (C6): when the plugin tamper baseline is unreadable, user plugins are
+    listed as "held" and never exec'd until the user confirms them."""
     files = plugin_files(workspace, home)
     trusted = trust.trusted(workspace, "plugins", workspace_digest(files))
     for scope, path in files:
         row = {"name": path.stem, "scope": scope, "state": "loaded", "error": ""}
         reg.plugins.append(row)
+        if hold_user and scope == "user":
+            row["state"] = "held"
+            row["error"] = ("the plugin tamper baseline is unreadable, so this plugin was not loaded; "
+                            "inspect the file and trust the plugins to load it")
+            continue
         if scope == "workspace" and not trusted:
             row["state"] = "untrusted"
             continue
