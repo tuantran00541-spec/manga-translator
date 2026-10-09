@@ -1,0 +1,116 @@
+name: Seed PPTX marathon — build a human-quality slide skill
+
+on:
+  push:
+    branches: [claude/seed-harness-proto]
+    paths: [.github/workflows/seed-pptx-marathon.yml]
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model name"
+        default: "openai/gpt-6-luna"
+        required: true
+      api_base:
+        description: "OpenAI-compatible API base URL"
+        default: "https://api.minirouter.sh/v1"
+        required: true
+
+jobs:
+  pptx-marathon:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/seed-harness-proto
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Seed runtime + PPTX toolchain
+        run: |
+          python -m pip install -q -r requirements-test.txt python-pptx pillow
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libreoffice-impler poppler-utils > /dev/null 2>&1 || \
+            sudo apt-get install -y -qq libreoffice poppler-utils > /dev/null 2>&1 || true
+          which libreoffice || echo "(no libreoffice)"
+
+      - name: Prepare workspace
+        run: |
+          mkdir -p /tmp/seed-ws /tmp/seed-evidence
+          ls /tmp/seed-ws
+
+      - name: Run Seed PPTX marathon (no step limit)
+        env:
+          SEED_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
+          SEED_API_BASE: ${{ inputs.api_base || 'https://api.minirouter.sh/v1' }}
+          SEED_MODEL: ${{ inputs.model || 'openai/gpt-6-luna' }}
+          TINYFISH_API_KEY: ${{ secrets.TINYFISH }}
+        run: |
+          TASK="Build a PowerPoint-creation SKILL that makes slides like a real human designer - not AI slop. You start with ONE tool: define. Invent every capability you need as you go. You have web access through harness.web_fetch(url) - call it from your defined capabilities as harness.web_fetch(\"https://...\"); it renders JavaScript pages via a third-party browser and returns markdown. Use it CONTINUOUSLY to research: python-pptx techniques, professional slide design principles, typography rules, color theory, real presentation examples. Ground every design decision in something you read. Your mission: 1) RESEARCH what separates human-made slides from AI-generated ones - typography, whitespace, restraint, real data over lorem ipsum, no purple-blue gradients, no generic layouts. 2) BUILD a reusable Python toolkit as a skill/plugin: functions for title slides, content slides, comparison layouts, data slides - with human design defaults baked in. Save it as skill_pptx.py in the workspace. 3) CREATE real .pptx files demonstrating the skill on a substantive technical topic you research (not placeholder content). 4) ITERATE: define a pptx_to_png capability using libreoffice (installed: libreoffice --headless --convert-to pdf, then pdftoppm -png), render your slides, inspect the PNGs programmatically (check text overflow, alignment, whitespace with Python/PIL), and improve. 5) WRITE SKILL.md documenting the skill: design principles, when to use each layout, code patterns. There is no step limit. Work until the skill is genuinely good - this is a marathon, not a sprint. Save everything in the workspace root."
+          python -m app.agent.seed.demo \
+            --provider custom \
+            --api-base "$SEED_API_BASE" \
+            --model "$SEED_MODEL" \
+            --workspace /tmp/seed-ws \
+            --task "$TASK" \
+            --max-steps 0 \
+            --yes 2>&1 | tee /tmp/seed-run.log
+          echo "--- workspace after ---"
+          ls -la /tmp/seed-ws
+
+      - name: Render PPTX previews (exam-rerun style)
+        if: always()
+        run: |
+          mkdir -p /tmp/seed-evidence/previews
+          for pptx in /tmp/seed-ws/*.pptx; do
+            [ -f "$pptx" ] || continue
+            base=$(basename "$pptx" .pptx)
+            echo "rendering $base"
+            cd /tmp
+            libreoffice --headless --convert-to pdf "$pptx" --outdir /tmp 2>/dev/null || echo "(libreoffice failed for $base)"
+            pdftoppm -png -r 100 "/tmp/$base.pdf" "/tmp/seed-evidence/previews/$base" 2>/dev/null || echo "(pdftoppm failed for $base)"
+          done
+          ls -la /tmp/seed-evidence/previews/ 2>/dev/null || echo "(no previews)"
+          python app/agent/seed/render_evidence.py \
+            /tmp/seed-run.log "" "" /tmp/seed-evidence \
+            "${{ inputs.model || 'openai/gpt-6-luna' }}" "${{ github.run_id }}"
+
+      - name: Upload marathon evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-pptx-marathon
+          path: |
+            /tmp/seed-run.log
+            /tmp/seed-ws/*.pptx
+            /tmp/seed-ws/*.py
+            /tmp/seed-ws/*.md
+            /tmp/seed-evidence/
+            ~/.seed/audit-*.jsonl
+
+      - name: Save evidence to audit-evidence branch
+        if: always()
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          EVID_DIR="audit-results/seed-pptx/$RUN_ID"
+          rm -rf /tmp/evidence-branch && mkdir -p /tmp/evidence-branch
+          cd /tmp/evidence-branch
+          git init -q
+          git config user.name "seed-pptx"
+          git config user.email "seed-pptx@local"
+          git fetch -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" audit-evidence || true
+          git checkout -q -B audit-evidence FETCH_HEAD 2>/dev/null || git checkout -q -B audit-evidence
+          mkdir -p "$EVID_DIR/previews"
+          cp /tmp/seed-run.log "$EVID_DIR/transcript.log" 2>/dev/null || true
+          cp /tmp/seed-ws/*.pptx "$EVID_DIR/" 2>/dev/null || true
+          cp /tmp/seed-ws/*.md "$EVID_DIR/" 2>/dev/null || true
+          cp /tmp/seed-ws/skill_*.py "$EVID_DIR/" 2>/dev/null || true
+          cp /tmp/seed-evidence/*.png "$EVID_DIR/previews/" 2>/dev/null || true
+          cp /tmp/seed-evidence/previews/*.png "$EVID_DIR/previews/" 2>/dev/null || true
+          cp ~/.seed/audit-*.jsonl "$EVID_DIR/" 2>/dev/null || true
+          git add "$EVID_DIR"
+          git commit -qm "seed pptx marathon evidence run $RUN_ID" || echo "nothing to commit"
+          git push -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" audit-evidence || echo "push failed"
