@@ -156,8 +156,27 @@ class SeedSession:
         if self._complete is not None:
             return self._complete(self.messages, specs)
         from app.agent import client
+        import json as _json
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + self.messages
+        messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        for m in self.messages:
+            role = m.get("role")
+            if role == "assistant" and m.get("calls"):
+                messages.append({
+                    "role": "assistant",
+                    "content": m.get("content") or "",
+                    "tool_calls": [
+                        {"id": c["id"], "type": "function",
+                         "function": {"name": c["name"],
+                                      "arguments": _json.dumps(c.get("args") or c.get("arguments") or {})}}
+                        for c in m["calls"]
+                    ],
+                })
+            elif role == "tool":
+                messages.append({"role": "tool", "tool_call_id": m.get("id"),
+                                 "content": m.get("content") or ""})
+            else:
+                messages.append({"role": role, "content": m.get("content") or ""})
         return client.complete(self.provider, self.api_key, self.model,
                                messages, tools=specs)
 
