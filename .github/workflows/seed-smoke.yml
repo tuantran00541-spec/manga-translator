@@ -15,14 +15,14 @@ on:
         default: "https://apihub.agnes-ai.com/v1"
         required: true
       max_steps:
-        description: "Max agent steps"
-        default: "40"
+        description: "Max agent steps (0 = unlimited endurance mode)"
+        default: "0"
         required: true
 
 jobs:
   seed-audit:
     runs-on: ubuntu-22.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,9 +48,9 @@ jobs:
           SEED_API_KEY: ${{ secrets.AGNES_KEY2 }}
           SEED_API_BASE: ${{ inputs.api_base || 'https://apihub.agnes-ai.com/v1' }}
           SEED_MODEL: ${{ inputs.model || 'agnes-3.0-flash' }}
-          SEED_MAX_STEPS: ${{ inputs.max_steps || '40' }}
+          SEED_MAX_STEPS: ${{ inputs.max_steps || '0' }}
         run: |
-          TASK="Audit the backend of the manga-translator project (Python/FastAPI). The code is at project/ in your workspace. You start with ONE tool: define. Invent every capability you need as you go: file listing, reading, code search (grep-like), running Python for analysis. If you repeat an analysis pattern, package it as a reusable plugin. You may define MCP-style servers if that helps structure your work. Do a real backend audit: 1) Architecture map - main components under project/app/, request flow, key modules and responsibilities. 2) Findings - error handling gaps, input validation, security issues (injection, path traversal, secrets), dead code, performance smells - each with file:line references, ranked by severity. 3) Write AUDIT.md in the workspace root: overview, component map, findings (severity-ranked), recommendations. Be specific and cite real code. This is a long task - take up to $SEED_MAX_STEPS steps."
+          TASK="Audit the backend of the manga-translator project (Python/FastAPI). The code is at project/ in your workspace. You start with ONE tool: define. Invent every capability you need as you go: file listing, reading, code search (grep-like), running Python for analysis. If you repeat an analysis pattern, package it as a reusable plugin. You may define MCP-style servers if that helps structure your work. Do a real backend audit: 1) Architecture map - main components under project/app/, request flow, key modules and responsibilities. 2) Findings - error handling gaps, input validation, security issues (injection, path traversal, secrets), dead code, performance smells - each with file:line references, ranked by severity. 3) Write AUDIT.md in the workspace root: overview, component map, findings (severity-ranked), recommendations. Be specific and cite real code. There is no step limit - take as long as you need, but work efficiently toward the finished AUDIT.md."
           python -m app.agent.seed.demo \
             --provider custom \
             --api-base "$SEED_API_BASE" \

@@ -25,7 +25,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workspace", default=".", help="folder the session works in")
     parser.add_argument("--task", required=True, help="the task to give the model")
     parser.add_argument("--yes", action="store_true", help="auto-approve persisted capabilities")
-    parser.add_argument("--max-steps", type=int, default=40)
+    parser.add_argument("--max-steps", type=int, default=40,
+                        help="max agent steps; 0 = unlimited (endurance mode)")
     args = parser.parse_args(argv)
 
     if not args.api_key:

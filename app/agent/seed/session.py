@@ -129,7 +129,9 @@ class SeedSession:
     def run(self, task: str) -> str:
         self.messages = [{"role": "user", "content": task}]
         self._audit("session.start", task[:200])
-        for step in range(self.max_steps):
+        step = 0
+        while self.max_steps <= 0 or step < self.max_steps:
+            step += 1
             specs = [DEFINE_SPEC] + self.registry.specs()
             turn = self._turn(specs)
             text = (turn.get("text") or "").strip()
