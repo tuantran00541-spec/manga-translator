@@ -48,7 +48,7 @@ jobs:
 
       - name: Run Seed backend audit (model bootstraps its own tools)
         env:
-          SEED_API_KEY: ${{ secrets.AGNES_KEY2 }}
+          SEED_API_KEY: ${{ secrets.AGNES_KEY }}
           SEED_API_BASE: ${{ inputs.api_base || 'https://apihub.agnes-ai.com/v1' }}
           SEED_MODEL: ${{ inputs.model || 'agnes-3.0-flash' }}
           SEED_MAX_STEPS: ${{ inputs.max_steps || '0' }}
