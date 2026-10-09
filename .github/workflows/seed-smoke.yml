@@ -44,13 +44,17 @@ jobs:
       - name: Run Seed (model bootstraps its own tools)
         env:
           SEED_API_KEY: ${{ secrets.AGNES_KEY2 }}
+          SEED_API_BASE: ${{ inputs.api_base || 'https://apihub.agnes-ai.com/v1' }}
+          SEED_MODEL: ${{ inputs.model || 'agnes-3.0-flash' }}
         run: |
+          TASK="${{ inputs.task }}"
+          if [ -z "$TASK" ]; then TASK="List the files in the workspace, read notes.txt, summarize it in 3 lines, write summary.txt"; fi
           python -m app.agent.seed.demo \
             --provider custom \
-            --api-base "${{ inputs.api_base }}" \
-            --model "${{ inputs.model }}" \
+            --api-base "$SEED_API_BASE" \
+            --model "$SEED_MODEL" \
             --workspace /tmp/seed-ws \
-            --task "${{ inputs.task }}" \
+            --task "$TASK" \
             --yes 2>&1 | tee /tmp/seed-run.log
           echo "--- workspace after ---"
           ls -la /tmp/seed-ws
