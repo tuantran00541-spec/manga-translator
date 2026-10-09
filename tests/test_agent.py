@@ -773,7 +773,7 @@ def test_edits_report_syntax_errors_at_once(ws):
 
 
 def test_rules_allow_ask_and_deny_by_pattern(ws, home):
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "settings.json").write_text(json.dumps({"permission": {
         "bash": {"*": "ask", "echo *": "allow", "rm *": "deny"}, "edit": {"notes/*": "allow"}}}), encoding="utf-8")
     (ws.root / ".agents").mkdir()
@@ -1128,6 +1128,7 @@ def test_skills_install_from_a_github_zip(ws, home, monkeypatch):
         "repo-main/skills/Bad Name/SKILL.md": "---\nname: Bad Name\ndescription: x\n---\n",
         "repo-main/other/beta/SKILL.md": "---\nname: beta\ndescription: Second.\n---\n"})
     monkeypatch.setattr(skill_install, "_fetch", lambda owner, repo, ref: archive)
+    monkeypatch.setattr(skill_install, "_resolve_ref", lambda o, r, ref: "ab" * 20)
     assert skill_install.parse("obra/superpowers@main/skills") == ("obra", "superpowers", "main", "skills")
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
     assert skill_install.install("o/r/skills", home) == ["alpha"]
@@ -1355,7 +1356,11 @@ def test_after_reading_untrusted_content_consequential_calls_ask_even_in_edits_m
     assert not (ws.root / "z.txt").exists()
     again = scripted(turn(calls=[call("web_fetch", url="https://example.com/x")]), turn(calls=[call("write_file", path="z.txt", content="z")]), turn("ok"), turn("ok"))
     auto = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=again, session_id="auto")
-    run_to_idle(auto)
+    auto.send("read https://example.com/x then write z.txt")
+    wait_for(auto, "waiting")
+    assert auto.pending["name"] == "write_file", "the taint guard asks about consequential calls even in auto mode"
+    auto.decide("allow")
+    wait_for(auto, "idle")
     assert (ws.root / "z.txt").exists()
     write_profile(home, {"untrusted_guard": False})
     off = scripted(turn(calls=[call("web_fetch", url="https://example.com/x")]), turn(calls=[call("write_file", path="w.txt", content="w")]), turn("ok"), turn("ok"))
@@ -1847,7 +1852,7 @@ def test_the_output_limit_is_sent_dropped_when_refused_and_a_cut_off_call_gets_a
 
 
 def test_the_number_of_goal_nudges_comes_from_the_profile(ws, home):
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"goal_turns": 2}))
     fake = scripted(*([turn("Working on it.")] * 6))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
@@ -1878,7 +1883,7 @@ def test_timeouts_dropped_connections_and_server_errors_are_asked_again_with_a_p
 
 
 def test_when_the_token_budget_runs_out_the_agent_still_reports_what_it_has(ws, home):
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"token_budget": 50}))
     big = {"text": "", "calls": [call("list_dir")], "reasoning": "", "usage": {"prompt_tokens": 40, "completion_tokens": 30, "cached_tokens": 0}}
     wrapped = scripted(big, turn("Report: I listed the folder; nothing else done."))
@@ -1982,7 +1987,11 @@ def test_a_command_cannot_leave_a_git_hook_behind_and_receipts_list_what_was_don
     subprocess.run(["git", "init", "-q"], cwd=ws.root, check=True)
     config_before = (ws.root / ".git" / "config").read_bytes()
     out = ws.run("run_command", {"command": "printf '#!/bin/sh\\necho pwned' > .git/hooks/pre-commit && echo '[x]' >> .git/config"})
-    assert "[blocked:" in out and ".git/hooks/pre-commit" in out and ".git/config" in out
+    if sandbox.backend() == "none":
+        assert "[blocked:" in out and ".git/hooks/pre-commit" in out and ".git/config" in out
+    else:
+        # with an OS sandbox the write is denied outright, so the hook is never created
+        assert "denied" in out.lower() or "permission" in out.lower(), out
     assert not (ws.root / ".git" / "hooks" / "pre-commit").exists() and (ws.root / ".git" / "config").read_bytes() == config_before
     fake = scripted(turn(calls=[call("write_file", path="r.txt", content="1"), call("run_command", command="echo hi")]), turn("done"), turn(calls=[call("run_command", command="true")]), turn("ok"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
@@ -1992,7 +2001,7 @@ def test_a_command_cannot_leave_a_git_hook_behind_and_receipts_list_what_was_don
 
 
 def test_a_stream_rule_stops_a_reply_midway_reminds_the_model_and_asks_again(ws, home):
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"max_output_tokens": 100, "stream_rules": [
         {"name": "no-drop", "pattern": "DROP TABLE", "message": "Never write destructive SQL; use a migration file."}]}))
     sent = []
@@ -2127,7 +2136,7 @@ def advised(agent_turns, advice):
 
 
 def test_the_advisor_speaks_up_in_the_background_and_checks_a_claim_of_done(ws, home):
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"advisor": True, "advisor_every": 1, "advisor_model": "big"}))
     def slow(messages, tools):
         time.sleep(0.3)
@@ -2147,7 +2156,7 @@ def test_the_advisor_speaks_up_in_the_background_and_checks_a_claim_of_done(ws, 
 
 def test_prewalk_plans_on_the_strong_model_and_hands_over_at_the_first_edit(ws, home):
     from app.agent import session as session_module
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"prewalk_model": "big"}))
     fake = advised([turn(calls=[call("read_file", path="pkg/a.py")]),
                     turn("Plan: change f to return 2, then run the tests.", calls=[call("todo_write", items=[{"text": "edit f", "status": "in_progress"}])]),
@@ -2179,7 +2188,7 @@ def test_a_reply_that_announces_a_step_continues_and_a_step_limit_still_reports(
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     run_to_idle(session)
     assert session.history[-1]["content"] == "Report: f returns 1." and len(fake.seen) == 3
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"max_steps": 3}))
     fake = scripted(*[turn(calls=[call("list_dir", path=f"d{n}")]) for n in range(3)], turn("Read three folders; nothing else done."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
@@ -2252,7 +2261,7 @@ def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick
     assert "hi" in outs[0][2] and "[exit code 3]" in outs[0][2]
     assert "started" in outs[1][2] and "moved to the background as job1" in outs[1][2] and "stopped after" not in outs[1][2], outs[1]
     assert "Stopped job1" in outs[2][2]
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"timeout_to_background": False}))
     fake = scripted(turn(calls=[call("run_command", command="sleep 20", timeout=1)]), turn("ok"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
@@ -2296,7 +2305,7 @@ def test_edits_to_different_files_run_together_and_overlapping_ones_stay_in_orde
 
 def test_a_model_that_keeps_failing_hands_the_turn_to_the_next_configured_model(ws, home):
     from app.agent import client
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"fallback_models": ["backup-1", "backup-2"]}))
     used = []
 
@@ -2322,7 +2331,7 @@ def test_the_oracle_tool_asks_the_advisor_model_and_is_offered_only_when_switche
     from app.agent import session as session_module
     plain = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
     assert "oracle" not in {t["name"] for t in plain.specs()}
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"oracle": True, "advisor_model": "big"}))
     seen = []
 
@@ -2431,7 +2440,7 @@ def test_the_cli_takes_an_http_relay_only_on_a_private_address_and_streams_are_r
 
 
 def test_auto_compaction_starts_near_the_configured_token_count_once_and_not_again_until_the_context_grows(ws, home):
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"compact_at_tokens": 20_000}))
     summaries = []
 
@@ -2497,7 +2506,7 @@ def test_a_context_error_that_names_the_window_moves_the_compaction_mark_under_i
 
 
 def test_context_window_in_the_profile_sets_the_compaction_mark(ws, home):
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"context_window": 128_000}))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
     assert session.compact_at == 102_400
@@ -3101,3 +3110,207 @@ def test_a_session_reports_each_rate_limit_its_provider_answered(ws, home, tmp_p
     notes = [e["text"] for e in session.events if e["type"] == "notice"]
     assert any("rate-limited this request 2 time(s), waited 18 s: free tier: 10 requests per minute" in n for n in notes), notes
     assert session.rate_limited == {"count": 2, "waited_s": 18.0} and session.snapshot()["rate_limited"]["count"] == 2
+
+
+# Regression tests for the agent-mode security fixes.
+
+
+def test_clean_env_scrubs_secret_named_variables_but_keeps_path_and_home(monkeypatch):
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("HOME", "/tmp/nope")
+    monkeypatch.setenv("MYSECRET", "s1")
+    monkeypatch.setenv("LLMKEY", "s2")
+    monkeypatch.setenv("MY_API_KEY", "s3")
+    monkeypatch.setenv("DB_PASSWORD", "s4")
+    env = sandbox.clean_env()
+    assert "MYSECRET" not in env, "a secret word at the end of the name is scrubbed"
+    assert "LLMKEY" not in env, "a secret word at the start of the name is scrubbed"
+    assert "MY_API_KEY" not in env and "DB_PASSWORD" not in env
+    assert env["PATH"] == "/usr/bin" and env["HOME"] == "/tmp/nope"
+
+
+def test_git_guard_paths_cover_hooks_config_and_modules(ws):
+    git = ws.root / ".git"
+    (git / "hooks").mkdir(parents=True)
+    (git / "config").write_text("[core]\n", encoding="utf-8")
+    (git / "modules").mkdir()
+    (git / "objects").mkdir()
+    guarded = sandbox.git_guard_paths(ws.root)
+    assert {Path(p).name for p in guarded} == {"hooks", "config", "modules"}
+    assert all(p.startswith(str(git) + os.sep) for p in guarded)
+    (git / "hooks").rmdir()
+    assert "hooks" not in {Path(p).name for p in sandbox.git_guard_paths(ws.root)}, "missing paths are not listed"
+
+
+def test_git_guard_paths_follow_a_worktree_gitdir_file(ws):
+    real = ws.root / "real.git"
+    (real / "hooks").mkdir(parents=True)
+    (ws.root / ".git").write_text("gitdir: real.git\n", encoding="utf-8")
+    guarded = sandbox.git_guard_paths(ws.root)
+    assert [Path(p).name for p in guarded] == ["hooks"] and guarded[0].startswith(str(real) + os.sep)
+    (ws.root / ".git").write_text("garbage\n", encoding="utf-8")
+    assert sandbox.git_guard_paths(ws.root) == [], "a .git file that is not a gitdir link guards nothing"
+    assert sandbox.git_guard_paths(ws.root / "missing") == [], "no .git at all guards nothing"
+
+
+def test_carved_writes_cut_git_control_paths_but_keep_the_rest(ws):
+    from app.agent import landlock_run
+    git = ws.root / ".git"
+    (git / "hooks").mkdir(parents=True)
+    (git / "config").write_text("[core]\n", encoding="utf-8")
+    (git / "modules" / "sub").mkdir(parents=True)
+    (git / "objects").mkdir()
+    (ws.root / "src").mkdir()
+    (ws.root / "src" / "main.py").write_text("x = 1\n", encoding="utf-8")
+    (ws.root / "README.md").write_text("hi\n", encoding="utf-8")
+    carved = landlock_run._carved_writes([str(ws.root)], sandbox.git_guard_paths(ws.root))
+    denied = [os.path.realpath(p) for p in sandbox.git_guard_paths(ws.root)]
+    assert not any(p == d or p.startswith(d + os.sep) for p in carved for d in denied), carved
+    assert str(ws.root / "src") in carved and str(ws.root / "README.md") in carved
+    assert str(ws.root / ".git" / "objects") in carved, "unlisted .git children stay writable"
+    assert landlock_run._carved_writes([str(ws.root / "src")], []) == [str(ws.root / "src")]
+
+
+def test_tainted_sessions_ask_about_edits_and_commands_even_in_auto_mode(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    edit = call("edit_file", path="a", old_text="a", new_text="b")
+    run = call("run_command", command="ls")
+    read = call("read_file", path="pkg/a.py")
+    assert not session.tainted
+    assert not session._needs_approval(edit) and not session._needs_approval(run) and not session._needs_approval(read)
+    session.tainted = True
+    assert session._needs_approval(edit), "a tainted edit asks even in auto mode"
+    assert session._needs_approval(run), "a tainted command asks even in auto mode"
+    assert not session._needs_approval(read), "reads stay free when tainted"
+    session.profile["untrusted_guard"] = False
+    assert not session._needs_approval(edit), "the guard is a profile switch"
+
+
+def test_save_trims_old_events_but_keeps_seq_monotonic(ws, home, tmp_path):
+    from app.agent import session as session_mod
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    for i in range(session_mod.MAX_EVENTS + 100):
+        session.emit("note", text=f"n{i}")
+    assert session.events[-1]["seq"] == session_mod.MAX_EVENTS + 100
+    session.save()
+    assert len(session.events) <= session_mod.MAX_EVENTS
+    seqs = [e["seq"] for e in session.events]
+    assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs), "seq stays strictly increasing after a trim"
+    assert seqs[0] == 101, "the oldest 100 events were dropped"
+    data = json.loads(session.store.read_text(encoding="utf-8"))
+    assert len(data["events"]) <= session_mod.MAX_EVENTS
+    snap = session.snapshot(after=100)["events"]
+    assert snap and snap[0]["seq"] == 101, "polling with after=<old seq> skips the trimmed events"
+    assert all(e["seq"] > 100 for e in snap)
+    restored = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    restored.restore(data)
+    restored.emit("note", text="after restore")
+    assert restored.events[-1]["seq"] == session_mod.MAX_EVENTS + 101, "seq keeps counting after a restore"
+
+
+def test_clean_outputs_deletes_files_older_than_30_days(home):
+    out = home / ".manga-agent" / "outputs" / "sess1"
+    out.mkdir(parents=True)
+    old = out / "old.bin"
+    old.write_bytes(b"x" * 64)
+    new = out / "new.bin"
+    new.write_bytes(b"y" * 64)
+    ancient = time.time() - 31 * 24 * 3600
+    os.utime(old, (ancient, ancient))
+    AgentSessionManager._clean_outputs(home)
+    assert not old.exists() and new.exists()
+    AgentSessionManager._clean_outputs(home / "missing"), "no outputs dir: no crash"
+
+
+def test_clean_outputs_caps_the_folder_size_oldest_first(home, monkeypatch):
+    from app.agent import session as session_mod
+    out = home / ".manga-agent" / "outputs" / "sess1"
+    out.mkdir(parents=True)
+    base = time.time()
+    for i, name in enumerate(["a.bin", "b.bin", "c.bin"]):
+        p = out / name
+        p.write_bytes(b"x" * 60)
+        os.utime(p, (base + i, base + i))  # a.bin is the oldest
+    monkeypatch.setattr(session_mod, "OUTPUTS_MAX_BYTES", 100)
+    AgentSessionManager._clean_outputs(home)
+    assert sorted(p.name for p in out.iterdir()) == ["c.bin"], "180 bytes over a 100 cap drops the two oldest"
+
+
+def test_plugin_files_changed_outside_approval_emit_a_notice(ws, home):
+    plugdir = home / ".manga-agent" / "plugins"
+    plugdir.mkdir(parents=True)
+    (plugdir / "known.py").write_text("x = 1\n", encoding="utf-8")
+    (plugdir / "gone.py").write_text("x = 0\n", encoding="utf-8")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+
+    def notices(s):
+        return [e for e in s.events if e["type"] == "notice" and "Plugin files changed" in e.get("text", "")]
+
+    assert not notices(session), "the first run records the baseline silently"
+    (plugdir / "sneaky.py").write_text("x = 2\n", encoding="utf-8")
+    (plugdir / "known.py").write_text("x = 3\n", encoding="utf-8")
+    (plugdir / "gone.py").unlink()
+    flagged = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    found = notices(flagged)
+    assert found and "sneaky.py" in found[0]["text"] and "known.py" in found[0]["text"] and "gone.py" in found[0]["text"], found
+    quiet = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    assert not notices(quiet), "once recorded, the same files are quiet again"
+
+
+def test_a_workspace_skill_shadowing_another_scope_logs_a_warning(ws, home, monkeypatch):
+    write_skill(ws.root / ".agents" / "skills", "dupname", "Workspace copy wins.")
+    write_skill(home / ".agents" / "skills", "dupname", "User copy is shadowed.")
+    records = []
+
+    class FakeLogger:
+        def warning(self, msg, *args, **kwargs):
+            records.append(msg.format(*args) if args else msg)
+
+        def __getattr__(self, name):
+            return lambda *a, **k: None
+
+    monkeypatch.setattr(skills, "logger", FakeLogger())
+    found = skills.discover(ws.root, home)
+    assert found["dupname"].description == "Workspace copy wins.", "the nearer scope still wins"
+    assert any("dupname" in r and "shadow" in r for r in records), records
+
+
+def test_skill_ref_is_pinned_to_a_commit_sha(monkeypatch):
+    from app.agent import skill_install
+
+    def fake_github(owner, repo, path):
+        if path == "":
+            return {"default_branch": "main"}
+        assert path == "commits/main", path
+        return {"sha": "ab" * 20}
+
+    monkeypatch.setattr(skill_install, "_github_json", fake_github)
+    assert skill_install._resolve_ref("o", "r", "main") == "ab" * 20
+    assert skill_install._resolve_ref("o", "r", "HEAD") == "ab" * 20, "HEAD resolves through the default branch"
+    monkeypatch.setattr(skill_install, "_github_json", lambda o, r, p: {"sha": "bogus"})
+    with pytest.raises(ValueError):
+        skill_install._resolve_ref("o", "r", "main"), "a non-SHA answer is rejected"
+
+
+def test_skill_install_fails_closed_when_the_ref_cannot_resolve(ws, home, monkeypatch):
+    from app.agent import skill_install
+
+    def boom(owner, repo, path):
+        raise ValueError("network down")
+
+    def no_download(owner, repo, ref):
+        raise AssertionError("must not download when the ref cannot be resolved")
+
+    monkeypatch.setattr(skill_install, "_github_json", boom)
+    monkeypatch.setattr(skill_install, "_fetch", no_download)
+    with pytest.raises(ValueError):
+        skill_install.install("o/r", home)
+
+
+def test_skill_install_records_the_commit_sha(ws, home, monkeypatch):
+    from app.agent import skill_install
+    archive = fake_repo_zip({"repo-main/skills/alpha/SKILL.md": "---\nname: alpha\ndescription: First.\n---\nDo alpha."})
+    monkeypatch.setattr(skill_install, "_resolve_ref", lambda o, r, ref: "cd" * 20)
+    monkeypatch.setattr(skill_install, "_fetch", lambda owner, repo, ref: archive)
+    assert skill_install.install("o/r/skills", home) == ["alpha"]
+    assert (home / ".manga-agent" / "skills" / "alpha" / ".installed-from").read_text() == f"o/r@{'cd' * 20}\n"

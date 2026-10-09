@@ -5,6 +5,7 @@ import atexit
 import collections
 import difflib
 import ctypes
+import hashlib
 import json
 import os
 import platform
@@ -93,6 +94,9 @@ MAX_PARALLEL = 3
 SELF_EXTEND = ("plugin_write", "plugin_remove")
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
+MAX_EVENTS = 2000  # events kept per session; older ones are dropped when the session is saved
+OUTPUTS_TTL_S = 30 * 24 * 3600  # files under ~/.manga-agent/outputs/ older than this are deleted
+OUTPUTS_MAX_BYTES = 2 * 1024 ** 3  # ...and the outputs folder is capped at this, oldest first
 UNREADABLE_TURNS = 4
 TOKEN_BUDGET = 10_000_000
 URL_RE = re.compile(r"https?://([^\s/:?#]+)")
@@ -242,6 +246,50 @@ def _harden_process() -> None:
             pass
 
 
+def _plugin_folder(home_path: Path) -> Path:
+    return home_path / ".manga-agent" / "plugins"
+
+
+def _plugin_hashes_path(home_path: Path) -> Path:
+    return home_path / ".manga-agent" / "plugin_hashes.json"
+
+
+def _scan_plugin_files(home_path: Path) -> dict[str, str]:
+    """sha256 of every .py plugin file, by file name; empty when the folder is missing."""
+    found: dict[str, str] = {}
+    try:
+        entries = list(_plugin_folder(home_path).iterdir())
+    except OSError:
+        return found
+    for path in entries:
+        if path.is_file() and path.suffix == ".py":
+            try:
+                found[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError:
+                continue
+    return found
+
+
+def _read_plugin_hashes(home_path: Path) -> dict[str, str] | None:
+    """The recorded baseline, or None when no baseline was ever written (or it is unreadable)."""
+    try:
+        data = json.loads(_plugin_hashes_path(home_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else None
+
+
+def _write_plugin_hashes(home_path: Path, hashes: dict[str, str]) -> None:
+    try:
+        target = _plugin_hashes_path(home_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".tmp")
+        tmp.write_text(json.dumps(hashes, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError:
+        logger.opt(exception=True).warning("Could not save plugin hashes")
+
+
 class AgentSession:
     """One conversation with one model in one workspace."""
 
@@ -256,6 +304,7 @@ class AgentSession:
         home_path = home if home is not None else Path.home()
         self.history: list[dict] = []
         self.events: list[dict] = []
+        self._seq = 0  # monotonic event counter; stays valid when old events are trimmed
         self.todos: list[dict] = []
         self.status = "idle"
         self.text_tools = False
@@ -337,6 +386,40 @@ class AgentSession:
         self.rate_limited = {"count": 0, "waited_s": 0.0}
         self._plain = False
         self._mcp_ready = depth > 0
+        if not depth:
+            self._check_plugin_files()
+
+    def _plugin_home(self) -> Path:
+        return self.home if self.home is not None else Path.home()
+
+    def _check_plugin_files(self) -> None:
+        """Notice when a plugin file appeared, changed or vanished outside the plugin_write/plugin_remove approval flow."""
+        home_path = self._plugin_home()
+        current = _scan_plugin_files(home_path)
+        known = _read_plugin_hashes(home_path)
+        if known is None:
+            # No baseline yet: record it silently, so a long-time user is not alarmed on first run.
+            _write_plugin_hashes(home_path, current)
+            return
+        new = sorted(n for n in current if n not in known)
+        changed = sorted(n for n in current if n in known and known[n] != current[n])
+        gone = sorted(n for n in known if n not in current)
+        if not (new or changed or gone):
+            return
+        _write_plugin_hashes(home_path, current)
+        bits = []
+        if new:
+            bits.append(f"new: {', '.join(new)}")
+        if changed:
+            bits.append(f"changed: {', '.join(changed)}")
+        if gone:
+            bits.append(f"removed: {', '.join(gone)}")
+        self.emit("notice", text="Plugin files changed outside the approval flow (" + "; ".join(bits) +
+                                 "); they were not installed through plugin_write. Check ~/.manga-agent/plugins if this is unexpected.")
+
+    def _record_plugin_hashes(self) -> None:
+        """Refresh the baseline after plugin_write/plugin_remove, so the check above does not flag our own changes."""
+        _write_plugin_hashes(self._plugin_home(), _scan_plugin_files(self._plugin_home()))
 
     def _outputs_dir(self) -> Path:
         return (self.home if self.home is not None else Path.home()) / ".manga-agent" / "outputs" / self.id.split("-")[0]
@@ -421,7 +504,8 @@ class AgentSession:
 
     def emit(self, kind: str, **data) -> None:
         with self._lock:
-            event = {"seq": len(self.events) + 1, "type": kind, "time": round(time.time(), 3), **data}
+            self._seq += 1
+            event = {"seq": self._seq, "type": kind, "time": round(time.time(), 3), **data}
             self.events.append(event)
             self.updated_at = time.time()
             self._lock.notify_all()
@@ -471,11 +555,17 @@ class AgentSession:
     def save(self) -> None:
         if self.store is None:
             return
+        with self._lock:
+            # Old events are dropped in batches; seq stays monotonic (see emit), so
+            # a frontend polling with after=<seq> keeps working after a trim.
+            if len(self.events) > MAX_EVENTS:
+                del self.events[:-MAX_EVENTS]
+            events = list(self.events)
         data = {"id": self.id, "provider": self.provider.id, "model": self.model, "mode": self.mode, "title": self.title,
                 "workspace": str(self.workspace.root), "sandbox": [self.workspace.policy.mode, self.workspace.policy.network],
                 "created_at": self.created_at, "updated_at": self.updated_at, "usage": self.usage, "todos": self.todos, "notes": self.notes,
                 "text_tools": self.text_tools, "plan_mode": self.plan_mode, "goal": self.goal, "schedules": self.schedules, "compact_at": self.compact_at,
-                "history": [{k: v for k, v in h.items() if k != "images"} for h in self.history], "events": self.events}
+                "history": [{k: v for k, v in h.items() if k != "images"} for h in self.history], "events": events}
         tmp = self.store.with_suffix(".tmp")
         try:
             self.store.parent.mkdir(parents=True, exist_ok=True)
@@ -487,6 +577,9 @@ class AgentSession:
 
     def restore(self, data: dict) -> None:
         self.history, self.events = list(data.get("history") or []), list(data.get("events") or [])
+        if len(self.events) > MAX_EVENTS:
+            del self.events[:-MAX_EVENTS]
+        self._seq = max((int(e.get("seq") or 0) for e in self.events), default=0)
         self.todos, self.title = list(data.get("todos") or []), str(data.get("title") or "")
         self.notes = str(data.get("notes") or "")
         if isinstance(data.get("compact_at"), int) and data["compact_at"] >= 0:
@@ -911,6 +1004,13 @@ class AgentSession:
             return self.mode != "auto"
         if name == "memory":
             return self.mode != "auto" and call["args"].get("action") != "list"
+        # A session that has seen untrusted content asks about everything it can change,
+        # even in auto mode; the taint guard is not a mode feature.
+        if self.mode == "auto" and self.tainted and self.profile["untrusted_guard"]:
+            kind = plugin.kind if plugin else self._role(name) or KIND.get(name, "exec")
+            if kind != "read" and not (
+                    name in URL_TOOLS and (urlparse(str(call["args"].get("url") or "")).hostname or "") in self.web_ok):
+                return True
         if self.mode == "auto" or name in SESSION_SPECS or verdict == "allow":
             return False
         if verdict == "ask":
@@ -1020,6 +1120,7 @@ class AgentSession:
                 raise ToolError(f"No plugin {pid}; mounted: {', '.join(r.id for r in self.kernel.rows.values() if r.source != 'builtin') or 'none'}")
             self.kernel.unmount(pid)
             path.unlink(missing_ok=True)
+            self._record_plugin_hashes()
             return f"Plugin {pid} unmounted and its file deleted."
         if args.get("path"):
             # A long plugin is written to a workspace file first; one huge code argument is easily cut or garbled on the way.
@@ -1053,6 +1154,7 @@ class AgentSession:
             raise ToolError(f"The plugin failed to load, nothing was saved: {type(exc).__name__}: {exc}") from exc
         config = args.get("config") if isinstance(args.get("config"), dict) else {}
         self.kernel.mount(kernel.Row(pid, module, config, False, "agent"))
+        self._record_plugin_hashes()
         mounted = self.kernel.rows[pid]
         detail = f" — {mounted.error}" if mounted.error else ""
         self.emit("notice", text=f"Plugin {pid} mounted: {mounted.state}{detail}")
@@ -1231,11 +1333,15 @@ class AgentSession:
             raise ToolError("command is empty")
         policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
         name = f"job{next(i for i in range(1, 100) if f'job{i}' not in self.jobs)}"
-        self.jobs[name] = self.workspace.services.shell(command, policy, self.workspace.root, tty=bool(args.get("tty")))
+        root = self.workspace.root
+        guard = gitguard.snapshot(root)
+        self.jobs[name] = self.workspace.services.shell(command, policy, root, tty=bool(args.get("tty")))
         time.sleep(1.0)
+        undone = gitguard.restore(root, guard)
         job = self.jobs[name]
         state = "running" if job.code is None else f"exited with code {job.code}"
-        return f"Started {name} ({state}). Read it with job_output.\n{clip(job.read(), 4000)}".rstrip()
+        warning = f"\n[blocked: the command changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]" if undone else ""
+        return f"Started {name} ({state}). Read it with job_output.\n{clip(job.read(), 4000)}{warning}".rstrip()
 
     def _job_output(self, name: str, wait, settle: bool = False) -> str:
         job = self._job(name)
@@ -2395,6 +2501,37 @@ class AgentSessionManager:
         if store_dir is not None:
             sandbox.EXTRA_DENY.append(str(store_dir))
         atexit.register(self.close_all)
+        self._clean_outputs(home if home is not None else Path.home())
+
+    @staticmethod
+    def _clean_outputs(home_path: Path) -> None:
+        """Delete outputs/ files older than OUTPUTS_TTL_S, then cap the folder at OUTPUTS_MAX_BYTES, oldest first."""
+        root = home_path / ".manga-agent" / "outputs"
+        try:
+            files = [p for p in root.rglob("*") if p.is_file()]
+        except OSError:
+            return
+        now = time.time()
+        for path in files:
+            try:
+                if now - path.stat().st_mtime > OUTPUTS_TTL_S:
+                    path.unlink()
+            except OSError:
+                continue
+        try:
+            entries = sorted(((p.stat().st_mtime, p.stat().st_size, p) for p in root.rglob("*") if p.is_file()),
+                             key=lambda t: t[0])
+        except OSError:
+            return
+        total = sum(size for _, size, _ in entries)
+        for _, size, path in entries:
+            if total <= OUTPUTS_MAX_BYTES:
+                break
+            try:
+                path.unlink()
+            except OSError:
+                continue
+            total -= size
 
     def _path(self, session_id: str) -> Path | None:
         return self.store_dir / "sessions" / f"{session_id}.json" if self.store_dir else None
