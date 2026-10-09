@@ -33,7 +33,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Seed runtime
-        run: python -m pip install -q requests loguru
+        run: python -m pip install -q requests loguru fastapi
 
       - name: Prepare workspace
         run: |
