@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 
 import requests
 
@@ -23,6 +24,10 @@ except ImportError:  # Python 3.10 has no TOML reader, so Codex's config is skip
 PROTOCOL_VERSION = "2025-06-18"
 CLIENT_INFO = {"name": "manga-translator-agent", "version": "1.0"}
 REQUEST_TIMEOUT = 120
+# M33: bounds on what an MCP server can make us buffer. A hostile server otherwise grows our
+# memory without limit: one endless JSON-RPC line, an infinite tools/list pagination, or a
+# multi-gigabyte tool result.
+MAX_LINE_CHARS = 10_000_000
 MAX_RESULT_CHARS = 20_000
 _ENV_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
@@ -44,6 +49,13 @@ def _expand(value):
 
 def config_hash(config: dict) -> str:
     return hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def expand_config(config: dict) -> dict:
+    """The config as the server will actually see it, with ${VAR} substituted (M31). The trust
+    digest must cover this, not the raw config: the environment decides what command, URL and
+    token really run, so a digest of the unexpanded text would miss env-driven changes."""
+    return _expand(config)
 
 
 def _json_servers(path: Path, key: str = "mcpServers") -> dict:
@@ -104,7 +116,25 @@ class _StdioTransport:
         threading.Thread(target=self._read, daemon=True, name="mcp-stdio").start()
 
     def _read(self) -> None:
-        for line in self.proc.stdout:
+        # M33: a malicious server must not be able to grow our memory without bound; one line
+        # (one JSON-RPC message) past MAX_LINE_CHARS kills the server instead of us.
+        while True:
+            chunks, size = [], 0
+            while True:
+                chunk = self.proc.stdout.readline(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                size += len(chunk)
+                if size > MAX_LINE_CHARS or chunk.endswith("\n"):
+                    break
+            if not chunks:
+                break
+            line = "".join(chunks)
+            if size > MAX_LINE_CHARS:
+                logger.warning("MCP server sent a line past {} chars; closing it", MAX_LINE_CHARS)
+                self.close()
+                break
             try:
                 message = json.loads(line)
             except ValueError:
@@ -167,9 +197,16 @@ class _HttpTransport:
                    "MCP-Protocol-Version": PROTOCOL_VERSION, **self.headers}
         if self.session_id:
             headers["Mcp-Session-Id"] = self.session_id
-        response = requests.post(self.url, json=message, headers=headers, timeout=timeout, stream=True)
+        # M32: never follow redirects. A 307/308 would re-POST the JSON-RPC body (and our
+        # Authorization / custom headers) to wherever the server points, which is credential
+        # forwarding to an unvalidated URL by another name.
+        response = requests.post(self.url, json=message, headers=headers, timeout=timeout, stream=True,
+                                 allow_redirects=False)
         if response.headers.get("Mcp-Session-Id"):
             self.session_id = response.headers["Mcp-Session-Id"]
+        if 300 <= response.status_code < 400:
+            response.close()
+            raise MCPError(f"server redirected to {response.headers.get('location', '?')[:200]}; refusing to follow")
         if response.status_code >= 400:
             raise MCPError(f"HTTP {response.status_code}: {response.text[:300]}")
         return response
@@ -179,11 +216,16 @@ class _HttpTransport:
 
     def request(self, message: dict, timeout: float) -> dict:
         response = self._post(message, timeout)
+        # M32: a per-read timeout does not bound a trickling server; the whole answer must arrive
+        # within a multiple of the request timeout or the thread is held forever.
+        deadline = time.monotonic() + max(timeout, 30) * 3
         try:
             if "text/event-stream" not in response.headers.get("Content-Type", ""):
                 return response.json()
             data: list[str] = []
             for line in response.iter_lines(decode_unicode=True):
+                if time.monotonic() > deadline:
+                    raise MCPError("server trickled the answer past the deadline")
                 if line.startswith("data:"):
                     data.append(line[5:].strip())
                 elif not line and data:
@@ -224,12 +266,15 @@ class Server:
             self._call("initialize", {"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": CLIENT_INFO}, 60)
             self.transport.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
             cursor = None
+            seen_cursors: set = set()
             while True:
                 page = self._call("tools/list", {"cursor": cursor} if cursor else {}, 60)
                 self.tools += [t for t in page.get("tools") or [] if isinstance(t, dict) and t.get("name")]
                 cursor = page.get("nextCursor")
-                if not cursor or len(self.tools) > 500:
+                # M33: a hostile server must not spin us in an endless pagination loop.
+                if not cursor or cursor in seen_cursors or len(self.tools) > 500:
                     break
+                seen_cursors.add(cursor)
         except Exception:
             self.close()
             raise
@@ -242,17 +287,23 @@ class Server:
 
     def call_tool(self, tool: str, arguments: dict) -> tuple[str, bool]:
         result = self._call("tools/call", {"name": tool, "arguments": arguments})
-        parts = []
+        # M33: truncate incrementally; a hostile server must not make us buffer a multi-gigabyte
+        # result just to slice it down to MAX_RESULT_CHARS afterwards.
+        parts, size = [], 0
         for item in result.get("content") or []:
+            if size >= MAX_RESULT_CHARS:
+                break
             if item.get("type") == "text":
-                parts.append(str(item.get("text", "")))
+                text = str(item.get("text", ""))
             elif item.get("type") == "resource":
                 resource = item.get("resource") or {}
-                parts.append(str(resource.get("text") or f"[resource {resource.get('uri', '')}]"))
+                text = str(resource.get("text") or f"[resource {resource.get('uri', '')}]")
             else:
-                parts.append(f"[{item.get('type', 'content')} omitted]")
+                text = f"[{item.get('type', 'content')} omitted]"
+            parts.append(text[:MAX_RESULT_CHARS - size])
+            size += len(parts[-1])
         if result.get("structuredContent") and not parts:
-            parts.append(json.dumps(result["structuredContent"], ensure_ascii=False))
+            parts.append(json.dumps(result["structuredContent"], ensure_ascii=False)[:MAX_RESULT_CHARS])
         text = "\n".join(parts) or "(no output)"
         return text[:MAX_RESULT_CHARS], not result.get("isError")
 

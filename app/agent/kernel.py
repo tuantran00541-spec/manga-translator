@@ -170,11 +170,15 @@ def provider(name: str, value: Any) -> Plugin:
     return Plugin(lambda ctx, config: ctx.provide(name, value))
 
 
-def load_module(path: Path, label: str):
-    """Run a plugin file from its source every time, so a reload never picks up a stale cached .pyc."""
+def load_module(path: Path, label: str, source: bytes | None = None):
+    """Run a plugin file from its source every time, so a reload never picks up a stale cached .pyc.
+
+    source pins the exact bytes to exec (M25): when the caller already read the file for a trust
+    digest, passing those bytes closes the read-then-exec TOCTOU window."""
     spec = importlib.util.spec_from_file_location(label, path)
     module = importlib.util.module_from_spec(spec)
-    exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module.__dict__)
+    data = source if source is not None else path.read_bytes()
+    exec(compile(data.decode("utf-8"), str(path), "exec"), module.__dict__)
     return module
 
 

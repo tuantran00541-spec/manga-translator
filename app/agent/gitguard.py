@@ -10,9 +10,18 @@ def _watched(root: Path) -> dict[str, bytes]:
         return {}
     found: dict[str, bytes] = {}
     paths = [git / "config", git / "info" / "attributes"]
-    hooks = git / "hooks"
-    if hooks.is_dir():
-        paths += [p for p in hooks.iterdir() if p.is_file() and not p.name.endswith(".sample")]
+    # M36: hooks can also live in submodule and worktree git dirs; a hook planted there runs just
+    # the same on the user's next commit, so they are watched too.
+    hook_dirs = [git / "hooks"]
+    modules = git / "modules"
+    if modules.is_dir():
+        hook_dirs += [p / "hooks" for p in modules.rglob("hooks") if p.is_dir()]
+    worktrees = git / "worktrees"
+    if worktrees.is_dir():
+        hook_dirs += [p / "hooks" for p in worktrees.rglob("hooks") if p.is_dir()]
+    for hooks in hook_dirs:
+        if hooks.is_dir():
+            paths += [p for p in hooks.iterdir() if p.is_file() and not p.name.endswith(".sample")]
     for path in paths:
         try:
             found[str(path.relative_to(root))] = path.read_bytes()

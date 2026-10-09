@@ -64,6 +64,12 @@ class Policy:
     def describe(self, root: Path) -> str:
         if self.mode == "full-access":
             return "Commands run without a sandbox: full file and network access."
+        # M35: do not claim a sandbox when there is no OS backend to enforce it; the model (and
+        # the user reading the prompt) must know commands run unsandboxed on this machine.
+        if backend() == "none":
+            net = "allowed" if self.network else "blocked"
+            return ("Commands run WITHOUT an OS sandbox on this machine (no Landlock/Seatbelt available): "
+                    f"they run as this process with full file access; network {net}.")
         where = "nowhere except a private temp folder" if self.mode == "read-only" else f"only inside {root} and the temp folder"
         net = "allowed" if self.network else "blocked"
         return (f"Commands run in a sandbox: they can read everything except credential folders, write {where} "
@@ -248,9 +254,16 @@ class _Capture(threading.Thread):
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
+    """Kill a job's whole process tree. A double-fork daemon that calls setsid() escapes the process
+    group and cannot be reached this way (M37); its damage stays bounded because Landlock confinement
+    is inherited across fork/exec, but we lose the ability to stop it or read its output."""
     try:
         if os.name == "posix":
-            os.killpg(proc.pid, signal.SIGKILL)
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                # Not (or no longer) a process-group leader: at least kill the process itself.
+                proc.kill()
         else:
             proc.kill()
     except OSError:

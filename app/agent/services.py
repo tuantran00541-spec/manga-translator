@@ -81,7 +81,10 @@ def mcp_provider(service: str, tool: dict, call: Callable) -> Callable | None:
     schema = tool.get("inputSchema") or {}
 
     def checked(values: dict) -> str:
-        text, ok = call(_mcp_args(schema, values))
+        # MH14: the bridge is told which seam it serves, so content coming back through a
+        # content seam (search/fetch/shell) taints the session even though execute() only sees
+        # the built-in tool's name.
+        text, ok = call(_mcp_args(schema, values), service)
         if not ok:
             raise websearch.SearchError(text[:300])
         return text
@@ -132,7 +135,7 @@ class Services:
         if wanted and self.mcp is not None:
             tools = self.mcp.tools()
             for tool_name in wanted:
-                made = mcp_provider(name, tools[tool_name][1], lambda args, t=tool_name: self.mcp.call(t, args)) if tool_name in tools else None
+                made = mcp_provider(name, tools[tool_name][1], lambda args, t=tool_name, s=name: self.mcp.call(t, args, s)) if tool_name in tools else None
                 if made is not None:
                     mounted[tool_name] = made
         return {**mounted, **self.extra.get(name, {})}

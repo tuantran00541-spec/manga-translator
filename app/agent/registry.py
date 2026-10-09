@@ -194,11 +194,15 @@ def plugin_files(workspace: Path, home: Path) -> list[tuple[str, Path]]:
     return found
 
 
-def workspace_digest(files: list[tuple[str, Path]]) -> str:
+def workspace_digest(files: list[tuple[str, Path]], contents: dict[Path, bytes] | None = None) -> str:
     h = hashlib.sha256()
     for scope, path in files:
         if scope == "workspace":
-            h.update(path.name.encode() + b"\0" + path.read_bytes())
+            try:
+                data = contents[path] if contents is not None and path in contents else path.read_bytes()
+            except OSError:
+                continue
+            h.update(path.name.encode() + b"\0" + data)
     return h.hexdigest()
 
 
@@ -208,7 +212,15 @@ def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.Trus
     hold_user fails closed (C6): when the plugin tamper baseline is unreadable, user plugins are
     listed as "held" and never exec'd until the user confirms them."""
     files = plugin_files(workspace, home)
-    trusted = trust.trusted(workspace, "plugins", workspace_digest(files))
+    # M25: read each plugin file once; the trust digest below and the exec further down both use
+    # these exact bytes, so a file changed in between cannot be trusted as one version and run as another.
+    contents: dict[Path, bytes] = {}
+    for _, path in files:
+        try:
+            contents[path] = path.read_bytes()
+        except OSError:
+            continue
+    trusted = trust.trusted(workspace, "plugins", workspace_digest(files, contents))
     for scope, path in files:
         row = {"name": path.stem, "scope": scope, "state": "loaded", "error": ""}
         reg.plugins.append(row)
@@ -224,16 +236,73 @@ def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.Trus
         try:
             from app.agent.kernel import load_module
 
-            module = load_module(path, f"manga_agent_plugin_{scope}_{path.stem}")
+            module = load_module(path, f"manga_agent_plugin_{scope}_{path.stem}", source=contents.get(path))
             if callable(getattr(module, "apply", None)) and not callable(getattr(module, "register", None)):
                 reg.kernel_modules.append((scope, path.stem, module))
                 row["state"] = "kernel"
             else:
-                module.register(reg)
+                # H13: a register-style plugin becomes a kernel row too, through an adapter that
+                # undoes its registrations when the row stops. /plugins disable, enable and remove
+                # then work for it exactly like a kernel-style plugin; without this, disabling one
+                # was a silent no-op and removing one left its tools, hooks and commands behind.
+                reg.kernel_modules.append((scope, path.stem, _RegisterAdapter(module, reg)))
         except Exception as exc:
             row.update(state="failed", error=f"{type(exc).__name__}: {exc}"[:300])
         finally:
             reg._current = ""
+
+
+class _RegisterAdapter:
+    """Adapts a register(api) plugin to the kernel: everything it registers is tagged with its row id
+    and undone when the row stops (disable/remove/reload), via the kernel's effect mechanism."""
+
+    def __init__(self, module, reg: Registry):
+        self.module = module
+        self.reg = reg
+
+    def __getattr__(self, name: str):
+        # A register-style module may still declare inject/defaults; forward them to the kernel.
+        return getattr(self.module, name)
+
+    def apply(self, ctx, config) -> None:
+        reg = self.reg
+        owner = ctx._owner or "?"
+        orig_tool, orig_command = reg.tool, reg.command
+        orig_hook, orig_prompt = reg.hook, reg.prompt
+        orig_provide, orig_loop = reg.provide, reg.loop
+
+        def tool(spec: dict, handler: Callable, kind: str = "exec", group: str | None = None, always_ask: bool = False) -> None:
+            orig_tool(spec, handler, kind, group or owner, always_ask)
+            name = str(spec.get("name") or "")
+            ctx.effect(lambda: reg.tools.pop(name, None))
+
+        def command(name: str, description: str, handler: Callable) -> None:
+            orig_command(name, description, handler)
+            ctx.effect(lambda: reg.commands.pop(name, None))
+
+        def hook(event: str, fn: Callable) -> None:
+            orig_hook(event, fn)
+            ctx.effect(lambda: reg.hooks[event].remove(fn) if fn in reg.hooks[event] else None)
+
+        def prompt(fn: Callable) -> None:
+            orig_prompt(fn)
+            ctx.effect(lambda: reg.prompts.remove(fn) if fn in reg.prompts else None)
+
+        def provide(service: str, name: str, fn: Callable) -> None:
+            orig_provide(service, name, fn)
+            ctx.effect(lambda: reg.providers.get(service, {}).pop(name, None))
+
+        def loop(name: str, fn: Callable) -> None:
+            orig_loop(name, fn)
+            ctx.effect(lambda: reg.loops.pop(name, None) if reg.loops.get(name) is fn else None)
+
+        reg.tool, reg.command, reg.hook = tool, command, hook
+        reg.prompt, reg.provide, reg.loop = prompt, provide, loop
+        try:
+            self.module.register(reg)
+        finally:
+            reg.tool, reg.command, reg.hook = orig_tool, orig_command, orig_hook
+            reg.prompt, reg.provide, reg.loop = orig_prompt, orig_provide, orig_loop
 
 
 class KernelTools:
