@@ -1,4 +1,4 @@
-name: Seed smoke — tool-less harness with a real model
+name: Seed backend audit — model invents its own tools
 
 on:
   push:
@@ -14,15 +14,15 @@ on:
         description: "OpenAI-compatible API base URL"
         default: "https://apihub.agnes-ai.com/v1"
         required: true
-      task:
-        description: "Small task for the model (it starts with zero tools)"
-        default: "List the files in the workspace, read notes.txt, summarize it in 3 lines, write summary.txt"
+      max_steps:
+        description: "Max agent steps"
+        default: "40"
         required: true
 
 jobs:
-  seed-smoke:
+  seed-audit:
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,39 +33,73 @@ jobs:
           python-version: "3.12"
 
       - name: Install Seed runtime
-        run: python -m pip install -q -r requirements-test.txt
+        run: python -m pip install -q -r requirements-test.txt pillow
 
-      - name: Prepare workspace
+      - name: Prepare workspace with the project backend
         run: |
-          mkdir -p /tmp/seed-ws
-          printf 'alpha beta gamma\ndelta epsilon zeta\neta theta iota\n' > /tmp/seed-ws/notes.txt
-          ls -la /tmp/seed-ws
+          mkdir -p /tmp/seed-ws/project /tmp/seed-evidence
+          cp -r "$GITHUB_WORKSPACE/app" /tmp/seed-ws/project/
+          rm -rf /tmp/seed-ws/project/__pycache__
+          find /tmp/seed-ws/project -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+          echo "backend files:"; find /tmp/seed-ws/project -name "*.py" | wc -l
 
-      - name: Run Seed (model bootstraps its own tools)
+      - name: Run Seed backend audit (model bootstraps its own tools)
         env:
           SEED_API_KEY: ${{ secrets.AGNES_KEY2 }}
           SEED_API_BASE: ${{ inputs.api_base || 'https://apihub.agnes-ai.com/v1' }}
           SEED_MODEL: ${{ inputs.model || 'agnes-3.0-flash' }}
+          SEED_MAX_STEPS: ${{ inputs.max_steps || '40' }}
         run: |
-          TASK="${{ inputs.task }}"
-          if [ -z "$TASK" ]; then TASK="List the files in the workspace, read notes.txt, summarize it in 3 lines, write summary.txt"; fi
+          TASK="Audit the backend of the manga-translator project (Python/FastAPI). The code is at project/ in your workspace. You start with ONE tool: define. Invent every capability you need as you go: file listing, reading, code search (grep-like), running Python for analysis. If you repeat an analysis pattern, package it as a reusable plugin. You may define MCP-style servers if that helps structure your work. Do a real backend audit: 1) Architecture map - main components under project/app/, request flow, key modules and responsibilities. 2) Findings - error handling gaps, input validation, security issues (injection, path traversal, secrets), dead code, performance smells - each with file:line references, ranked by severity. 3) Write AUDIT.md in the workspace root: overview, component map, findings (severity-ranked), recommendations. Be specific and cite real code. This is a long task - take up to $SEED_MAX_STEPS steps."
           python -m app.agent.seed.demo \
             --provider custom \
             --api-base "$SEED_API_BASE" \
             --model "$SEED_MODEL" \
             --workspace /tmp/seed-ws \
             --task "$TASK" \
+            --max-steps "$SEED_MAX_STEPS" \
             --yes 2>&1 | tee /tmp/seed-run.log
           echo "--- workspace after ---"
           ls -la /tmp/seed-ws
-          echo "--- summary.txt ---"
-          cat /tmp/seed-ws/summary.txt 2>/dev/null || echo "(no summary.txt)"
+          test -f /tmp/seed-ws/AUDIT.md && wc -l /tmp/seed-ws/AUDIT.md || echo "(no AUDIT.md)"
 
-      - name: Upload Seed transcript and audit log
+      - name: Render evidence images (exam-rerun style)
+        if: always()
+        run: |
+          python app/agent/seed/render_evidence.py \
+            /tmp/seed-run.log /tmp/seed-ws/AUDIT.md "" /tmp/seed-evidence \
+            "${{ inputs.model || 'agnes-3.0-flash' }}" "${{ github.run_id }}"
+          ls -la /tmp/seed-evidence
+
+      - name: Upload Seed evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: seed-smoke-transcript
+          name: seed-audit-evidence
           path: |
             /tmp/seed-run.log
+            /tmp/seed-ws/AUDIT.md
+            /tmp/seed-evidence/
             ~/.seed/audit-*.jsonl
+
+      - name: Save evidence to audit-evidence branch
+        if: always()
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          EVID_DIR="audit-results/seed/$RUN_ID"
+          rm -rf /tmp/evidence-branch && mkdir -p /tmp/evidence-branch
+          cd /tmp/evidence-branch
+          git init -q
+          git config user.name "seed-audit"
+          git config user.email "seed-audit@local"
+          git fetch -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" audit-evidence || true
+          git checkout -q -B audit-evidence FETCH_HEAD 2>/dev/null || git checkout -q -B audit-evidence
+          mkdir -p "$EVID_DIR"
+          cp /tmp/seed-run.log "$EVID_DIR/transcript.log" 2>/dev/null || true
+          cp /tmp/seed-ws/AUDIT.md "$EVID_DIR/" 2>/dev/null || true
+          cp /tmp/seed-evidence/*.png "$EVID_DIR/" 2>/dev/null || true
+          cp ~/.seed/audit-*.jsonl "$EVID_DIR/" 2>/dev/null || true
+          git add "$EVID_DIR"
+          git commit -qm "seed backend audit evidence run $RUN_ID" || echo "nothing to commit"
+          git push -q "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" audit-evidence || echo "push failed"
