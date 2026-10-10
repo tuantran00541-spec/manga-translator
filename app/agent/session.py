@@ -2171,6 +2171,30 @@ class AgentSession:
         self.api_key = self._api_keys[self._key_index]
         return True
 
+    def _ask_key_switch(self, reason: str) -> bool:
+        """Ask the user whether to rotate to the next API key. Returns True if approved."""
+        if self._key_index + 1 >= len(self._api_keys):
+            self.emit("notice", text="Key đã hết hạn mức và không còn key dự phòng.")
+            return False
+        with self._approval_lock:
+            with self._lock:
+                previous = self.status
+                self.pending = {"type": "key_switch", "reason": reason,
+                                "from_key": self._key_index + 1, "to_key": self._key_index + 2,
+                                "total_keys": len(self._api_keys)}
+                self._decision = None
+                self.status = "waiting"
+            self.emit("key_switch_ask", text=f"Key {self._key_index + 1} đã hết hạn mức ({reason}). Đổi sang key {self._key_index + 2}/{len(self._api_keys)}?",
+                      pending=self.pending)
+            with self._lock:
+                while self._decision is None and not self._stop:
+                    self._lock.wait(timeout=1.0)
+                decision = self._decision or {"decision": "deny", "note": "stopped"}
+                self.pending, self.status = None, previous
+            if decision.get("decision") in ("allow", "allow_always", "allow_all"):
+                return self._rotate_key()
+            return False
+
     def _aux_complete(self, messages: list[dict], kind: str = "compact", cap: int = 5000) -> dict:
         """Auxiliary model call (ZCode-style routing): background tasks like compaction, advisor
         and memory extraction run on a cheaper/lighter model with a capped output budget.
@@ -2235,10 +2259,10 @@ class AgentSession:
                     self._fallback_at += 1
                     self.emit("notice", text=f"Model {chain[self._fallback_at - 1]} did not answer ({exc}); switching to {chain[self._fallback_at]}.")
                 except client.KeyExhausted as exc:
-                    # This key is spent: rotate to the next configured key for this provider.
-                    if not self._rotate_key():
+                    # This key is spent: ask the user before rotating to the next key.
+                    if not self._ask_key_switch(str(exc)):
                         raise
-                    self.emit("key_switched", text=f"Key exhausted ({exc}); switched to backup key {self._key_index + 1}/{len(self._api_keys)}.")
+                    self.emit("key_switched", text=f"Đã đổi sang key dự phòng {self._key_index + 1}/{len(self._api_keys)}.")
         finally:
             self.stats["model_s"] += time.time() - started
 

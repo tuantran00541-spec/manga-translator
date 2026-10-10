@@ -342,6 +342,7 @@
   .agent-key-box { background: var(--bg-primary); border-radius: 12px; padding: 20px 24px; max-width: 360px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,.25); }
   .agent-key-title { margin: 0 0 8px; font-weight: 700; font-size: 16px; }
   .agent-key-text { margin: 0 0 16px; color: var(--text-quiet); font-size: 13.5px; }
+  .agent-key-row { display: flex; gap: 10px; justify-content: center; }
   .agent-error { color: var(--text-primary); font-weight: 600; }
   .agent-live { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text-quiet); font: inherit; font-size: 13px; }
   .agent-working { margin: 0; color: var(--text-quiet); font-size: 13px; animation: agent-pulse 1.4s ease-in-out infinite; }

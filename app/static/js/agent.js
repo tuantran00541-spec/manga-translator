@@ -305,8 +305,9 @@
       }
     } else if (event.type === "approval") {
       showApprovalCard(event.call);
-    } else if (event.type === "key_switched") {
+    } else if (event.type === "key_switch_ask") {
       showKeySwitchedModal(event.text);
+    } else if (event.type === "key_switched") {
       log.append(el("p", "agent-note", event.text));
     } else if (event.type === "subagent" && event.state === "done") {
       log.append(el("p", "agent-note", `Helper ${event.agent || ""} done: ${event.description} · ${event.tools} tool calls`));
@@ -322,15 +323,24 @@
     document.querySelector(".agent-key-modal")?.remove();
     const overlay = el("div", "agent-key-modal");
     const box = el("div", "agent-key-box");
-    box.append(el("p", "agent-key-title", "Đã đổi API key"));
-    box.append(el("p", "agent-key-text", text || "Key hiện tại đã hết hạn mức, đã tự động chuyển sang key dự phòng."));
-    const btn = el("button", "agent-btn", "Đã hiểu");
-    btn.type = "button";
-    btn.onclick = () => overlay.remove();
-    box.append(btn);
+    box.append(el("p", "agent-key-title", "Key đã hết hạn mức"));
+    box.append(el("p", "agent-key-text", text || "Đổi sang key dự phòng?"));
+    const row = el("div", "agent-key-row");
+    const ok = el("button", "agent-btn agent-btn-primary", "Đồng ý đổi");
+    ok.type = "button";
+    ok.onclick = () => { decideKey(true); overlay.remove(); };
+    const no = el("button", "agent-btn", "Từ chối");
+    no.type = "button";
+    no.onclick = () => { decideKey(false); overlay.remove(); };
+    row.append(ok, no);
+    box.append(row);
     overlay.append(box);
-    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     document.body.append(overlay);
+  }
+
+  function decideKey(allow) {
+    if (!session) return;
+    post(`/api/agent/sessions/${session.id}/approval`, { decision: allow ? "allow" : "deny", note: "" }).catch(() => {});
   }
 
   function showApprovalCard(call) {
@@ -569,7 +579,10 @@
       // A waiting session's approval card is rebuilt here: the "approval" event
       // was skipped above and only ever fires once, so without this a reload
       // loses the card and the session stays stuck on "Waiting for you".
-      if (snap.status === "waiting" && snap.pending) showApprovalCard(snap.pending);
+      if (snap.status === "waiting" && snap.pending) {
+        if (snap.pending.type === "key_switch") showKeySwitchedModal(`Key ${snap.pending.from_key} đã hết hạn mức (${snap.pending.reason || ""}). Đổi sang key ${snap.pending.to_key}/${snap.pending.total_keys}?`);
+        else showApprovalCard(snap.pending);
+      }
       showStatus(snap);
       document.querySelectorAll(".agent-menu[open]").forEach((menu) => { menu.open = false; });
       follow(true);
