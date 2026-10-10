@@ -556,6 +556,7 @@ class OcrTextObjectRequest(BaseModel):
 
 class VisualQCKeyRequest(BaseModel):
     api_key: str
+    api_keys: list[str] | None = None
     provider_label: str | None = None
     provider_protocol: str | None = None
     provider_api_base: str | None = None
@@ -569,4 +570,17 @@ class VisualQCKeyRequest(BaseModel):
         if len(v) > 4096:
             raise ValueError("API key is unexpectedly long")
         return v
+
+    @field_validator("api_keys")
+    @classmethod
+    def _api_keys_valid(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        cleaned = [k.strip() for k in v if k and k.strip()]
+        if len(cleaned) > 10:
+            raise ValueError("Too many keys (max 10)")
+        for k in cleaned:
+            if len(k) > 4096:
+                raise ValueError("API key is unexpectedly long")
+        return cleaned
 

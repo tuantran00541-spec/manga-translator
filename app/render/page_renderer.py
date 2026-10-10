@@ -82,7 +82,9 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
     """
     width, height = image.size
     x1, x2 = max(0, box[0]), min(width, box[2])
-    top, bottom = max(0, -box[1]), max(0, box[3] - height)
+    # H6: clamp the pad amounts; an unclamped y2 (e.g. 10**9 from a malformed box) would make
+    # np.pad allocate hundreds of GiB and crash the worker (reproduced live).
+    top, bottom = min(max(0, -box[1]), height), min(max(0, box[3] - height), height)
     if not (top or bottom):
         return render_text_in_box(image, text, (x1, box[1], x2, box[3]), **style)
     pixels = np.asarray(image)
@@ -115,6 +117,7 @@ def render_boxes_legacy(
     radii_dict: dict,
 ) -> int:
     rendered_count = 0
+    failed_boxes: list[int] = []
     box_indices = set()
     for box_key in req.translations.keys():
         try:
@@ -224,6 +227,8 @@ def render_boxes_legacy(
             )
             rendered_count += 1
         except Exception as e:
+            # M8: one bad box used to abort the whole page (HTTP 500, every other box lost).
+            # Log it, leave the box unrendered, and continue with the rest.
             logger.opt(exception=True).error(
                 "Chapter {} page {} box {} operation 'render_text_in_box' failed: {}",
                 req.chapter_id,
@@ -231,10 +236,8 @@ def render_boxes_legacy(
                 box_idx,
                 e,
             )
-            raise HTTPException(
-                500,
-                f"Chèn chữ thất bại (ô {box_idx})",
-            ) from e
+            failed_boxes.append(box_idx)
+            continue
 
     return rendered_count
 
@@ -374,10 +377,11 @@ def render_text_objects(
                         raise
             rendered_count += 1
         except Exception as e:
+            # M8: one bad object used to abort the whole page; log it, skip it, continue.
             logger.opt(exception=True).error(
                 "Chapter {} page {} object {} operation 'render_text_in_box' failed: {}",
                 req.chapter_id, req.page_index, oid, e,
             )
-            raise HTTPException(500, f"Chèn chữ thất bại (vùng {oid})") from e
+            continue
 
     return rendered_count

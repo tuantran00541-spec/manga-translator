@@ -233,6 +233,43 @@ def test_manga_opens_the_running_app_instead_of_starting_a_second_one(monkeypatc
     assert opened == [run._url(run.PORT)]
 
 
+def test_manga_typed_in_a_folder_hands_it_to_the_agent_tab(tmp_path, monkeypatch):
+    class Tty:
+        def isatty(self):
+            return True
+
+    project = tmp_path / "my project"
+    project.mkdir()
+    monkeypatch.setattr(run.sys, "stdin", Tty())
+    monkeypatch.setattr(run.Path, "home", lambda: tmp_path)
+    monkeypatch.chdir(project)
+    assert run._page("http://127.0.0.1:8000") == f"http://127.0.0.1:8000/?workspace={run.urllib.parse.quote(str(project.resolve()))}"
+    for plain in (tmp_path, run.BASE_DIR, run.BASE_DIR / "app"):
+        monkeypatch.chdir(plain)
+        assert run._page("http://127.0.0.1:8000") == "http://127.0.0.1:8000"
+    monkeypatch.setattr(run.sys, "stdin", None)
+    monkeypatch.chdir(project)
+    assert run._launch_dir() is None
+
+
+def test_the_app_is_recognised_even_when_models_are_missing(monkeypatch):
+    replies = {"ok": {"status": "ok", "models_missing": []}, "degraded": {"status": "degraded", "models_missing": ["lama.onnx"]},
+               "other": {"status": "ok"}}
+    for name, body in replies.items():
+        monkeypatch.setattr(run, "_health", lambda url, body=body: body)
+        assert run._is_ours("http://127.0.0.1:8000") is (name != "other")
+
+
+def test_manga_mcp_serves_the_agent_tools_instead_of_opening_the_app(monkeypatch):
+    import app.agent.mcp_server as served
+
+    seen = []
+    monkeypatch.setattr(served, "main", seen.append)
+    monkeypatch.setattr(run, "_serve", lambda *a, **k: pytest.fail("the app was started"))
+    run.main(["--open", "mcp", "--write", "--folder", "/tmp/x"])
+    assert seen == [["--write", "--folder", "/tmp/x"]]
+
+
 def test_another_program_on_the_port_moves_the_app_to_the_next_free_one(monkeypatch):
     monkeypatch.setattr(run, "_is_ours", lambda url: False)
     with socket.socket() as squatter:

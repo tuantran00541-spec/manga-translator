@@ -239,9 +239,16 @@ class VisionPageTranslator:
         )
         system = system_prompt(language_name(target_lang), target_lang, memory.settled() if memory is not None else None)
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
+        # M12: the memory snapshot used to be embedded without a cap (~20k chars on long chapters).
+        # Truncate to a bounded budget so a long chapter cannot blow the context or the cost.
+        mem_json = ""
+        if memory is not None:
+            mem_json = json.dumps(memory.snapshot(settled=False), ensure_ascii=False, separators=(',', ':'))
+            if len(mem_json) > 12_000:
+                mem_json = mem_json[:12_000] + '...[truncated]'
         prompt = (
             (f"CHAPTER MEMORY (context from earlier slices, not to be copied into the answer): "
-             f"{json.dumps(memory.snapshot(settled=False), ensure_ascii=False, separators=(',', ':'))}\n\n"
+             f"{mem_json}\n\n"
              if memory is not None else "")
             + f"{where}Translate these text objects from {source_name}.\n"
             + json.dumps({"image_width": w, "image_height": h, "objects": objects,

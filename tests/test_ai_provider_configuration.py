@@ -188,3 +188,39 @@ def test_custom_provider_private_remote_is_rejected_before_use():
     )
     with pytest.raises(Exception):
         visual_qc_router._validate_custom_remote(provider)
+
+
+def test_keys_go_to_a_private_file_when_the_machine_has_no_secret_store(monkeypatch, tmp_path):
+    import stat
+
+    import keyring
+    from keyring.backends import fail
+
+    from app import secret_store
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(secret_store, "_os_store_works", None)
+    monkeypatch.setattr(keyring, "get_keyring", lambda: fail.Keyring())
+    secret_store.set_provider_api_key("custom-lab", "top-secret", provider_label="Custom Lab")
+    path = tmp_path / "manga-translator" / "secrets.json"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert secret_store.get_provider_api_key("custom-lab", provider_label="Custom Lab") == "top-secret"
+    assert secret_store.provider_key_status("custom-lab", provider_label="Custom Lab")["source"] == "local_file"
+    secret_store.delete_provider_api_key("custom-lab", provider_label="Custom Lab")
+    secret_store.delete_provider_api_key("custom-lab", provider_label="Custom Lab")
+    assert secret_store.get_provider_api_key("custom-lab", provider_label="Custom Lab") is None
+
+
+def test_a_secret_store_that_crashes_while_loading_falls_back_to_the_file(monkeypatch, tmp_path):
+    import keyring
+
+    from app import secret_store
+
+    def panic():
+        raise BaseException("backend panicked")
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(secret_store, "_os_store_works", None)
+    monkeypatch.setattr(keyring, "get_keyring", panic)
+    secret_store.set_provider_api_key("custom-lab", "k", provider_label="Custom Lab")
+    assert (tmp_path / "manga-translator" / "secrets.json").is_file()

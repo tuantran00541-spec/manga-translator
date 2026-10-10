@@ -20,15 +20,23 @@ def _advise_file_cache_drop(file_obj) -> None:
 
 
 def read_image(path: Path) -> np.ndarray:
+    # H8: cv2.imdecode ignores EXIF orientation, so phone photos (very common) were processed
+    # rotated: detection boxes landed in the wrong place and OCR read sideways text. PIL's
+    # exif_transpose applies the orientation before the pixels reach the pipeline.
+    # M13: the old code ran cv2.imdecode (full bitmap allocation) BEFORE checking
+    # MAX_IMAGE_PIXELS, so a header-only 100000x100000 PNG allocated ~30GB first. PIL parses
+    # the header without decoding, so the size gate now runs before any big allocation.
+    from PIL import Image, ImageOps
+    with Image.open(path) as img:
+        width, height = img.size
+        if width * height > MAX_IMAGE_PIXELS:
+            raise ValueError(f"Image too large at {path}: {width}x{height}")
+        img = ImageOps.exif_transpose(img)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        image = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
     with path.open("rb") as source_file:
-        data = np.fromfile(source_file, dtype=np.uint8)
         _advise_file_cache_drop(source_file)
-    image = cv2.imdecode(data, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ValueError(f"Could not read image at {path}")
-    height, width = image.shape[:2]
-    if width * height > MAX_IMAGE_PIXELS:
-        raise ValueError(f"Image too large at {path}: {width}x{height}")
     return image
 
 

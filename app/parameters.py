@@ -257,7 +257,10 @@ DEEPSEEK_INPUT_CACHE_MISS_USD_PER_M = 0.14
 DEEPSEEK_OUTPUT_USD_PER_M = 0.28
 
 TRANSLATION_PREFLIGHT_MIN_TOKENS = 1000
-TRANSLATION_PREFLIGHT_PROMPT_OVERHEAD = 2500
+# M10: the old 2500-char overhead ignored the chapter memory (~12k capped), glossary and image
+# tokens that ride in the real prompt, so the budget check ran on a fantasy number. Sized for the
+# capped memory plus glossary/prompt template.
+TRANSLATION_PREFLIGHT_PROMPT_OVERHEAD = 16000
 TRANSLATION_PREFLIGHT_OUTPUT_MULTIPLIER = 2.0
 
 REMOTE_CHUNK_BYTES = 64 * 1024

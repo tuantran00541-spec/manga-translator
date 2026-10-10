@@ -18,6 +18,7 @@
     <nav id="workflow-steps" class="sidebar-nav" aria-label="Các màn hình">
       <button aria-label="Trang chủ" class="sidebar-link active" type="button" data-route="home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5v-8Z"/><path d="M9 21v-7h6v7"/></svg><span>Trang chủ</span></button>
       <button aria-label="Nhập nội dung" class="sidebar-link" type="button" data-route="import"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v6m-3-3h6"/></svg><span>Nhập nội dung</span></button>
+      <button aria-label="Agent" class="sidebar-link" type="button" data-route="agent"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg><span>Agent</span></button>
       <button aria-label="Xem cắt lát" class="sidebar-link" type="button" data-stage="preview" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 15 3-3 2 2 3-4 3 5"/></svg><span>Xem cắt lát</span></button>
       <button aria-label="Xử lý &amp; Biên tập" class="sidebar-link" type="button" data-stage="review" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg><span>Xử lý &amp; Biên tập</span></button>
     </nav>
@@ -77,6 +78,51 @@
           </section>
         </section>
       </div>
+      <div id="agent-view" class="agent-view" hidden>
+        <div class="agent-top">
+          <p id="agent-status" class="agent-status" aria-live="polite"></p>
+          <div class="agent-top-actions">
+            <details id="agent-skills-menu" class="agent-menu"><summary class="agent-chip">Skill</summary><div class="agent-pop agent-pop-right agent-pop-wide">
+              <p class="agent-skill-head">Nạp skill</p>
+              <div class="agent-skill-row"><input id="agent-skill-source" class="agent-skill-input" placeholder="CHỦ/REPO hoặc CHỦ/REPO/thư-mục trên GitHub" autocomplete="off" spellcheck="false"><button id="agent-skill-install" class="agent-btn" type="button">Cài</button></div>
+              <label class="agent-btn agent-skill-file">Tải lên .zip hoặc SKILL.md<input id="agent-skill-file" type="file" accept=".zip,.md,text/markdown,application/zip" hidden></label>
+              <details id="agent-skill-new" class="agent-skill-new"><summary class="agent-skill-head">Tạo skill mới</summary>
+                <label class="agent-field"><span>Tên (chữ thường, số, gạch ngang)</span><input id="agent-skill-name" autocomplete="off" spellcheck="false" placeholder="viet-bao-cao"></label>
+                <label class="agent-field"><span>Mô tả: skill làm gì và khi nào agent nên dùng</span><textarea id="agent-skill-desc" rows="2"></textarea></label>
+                <label class="agent-field"><span>Hướng dẫn (Markdown)</span><textarea id="agent-skill-body" rows="9"></textarea></label>
+                <div class="agent-skill-row"><button id="agent-skill-save" class="agent-btn agent-btn-primary" type="button">Lưu skill</button><button id="agent-skill-draft" class="agent-btn" type="button">Nhờ agent soạn</button></div>
+              </details>
+              <p class="agent-skill-head">Skill agent dùng được ở đây</p>
+              <ul id="agent-skill-list" class="agent-skill-list"><li class="agent-muted">Đang tải…</li></ul>
+            </div></details>
+            <details class="agent-menu"><summary class="agent-chip">Lịch sử</summary><div class="agent-pop agent-pop-right"><ul id="agent-sessions" class="agent-sessions"><li class="agent-muted">Chưa có phiên nào.</li></ul></div></details>
+            <details class="agent-menu"><summary class="agent-chip">Thiết lập</summary><div class="agent-pop agent-pop-right">
+              <label class="agent-field" for="agent-workspace"><span>Thư mục làm việc</span><input id="agent-workspace" autocomplete="off" spellcheck="false"></label>
+              <p id="agent-sandbox-info" class="agent-muted"></p><div id="agent-tools-info"></div>
+            </div></details>
+            <button id="agent-new" class="agent-chip" type="button">Phiên mới</button>
+          </div>
+        </div>
+        <div id="agent-log" class="agent-log" aria-live="polite"></div>
+        <div class="agent-dock">
+          <section id="agent-todos" class="agent-todos" hidden><ol id="agent-todo-list"></ol></section>
+          <form id="agent-composer" class="agent-composer">
+            <ul id="agent-hints" class="agent-hints" hidden></ul>
+            <label class="sr-only" for="agent-input">Tin nhắn cho agent</label>
+            <textarea id="agent-input" rows="1" placeholder="Giao việc cho agent… (/ để xem lệnh)" required></textarea>
+            <div class="agent-bar">
+              <label class="agent-pick" title="Dịch vụ"><span class="sr-only">Dịch vụ</span><select id="agent-provider"></select></label>
+              <label class="agent-pick agent-pick-model" title="Model"><span class="sr-only">Model</span><input id="agent-model" list="agent-model-list" placeholder="model" autocomplete="off" required><datalist id="agent-model-list"></datalist></label>
+              <label class="agent-pick" title="Duyệt: agent hỏi bạn trước những gì"><span class="sr-only">Duyệt</span><select id="agent-mode"><option value="ask">Hỏi mọi thứ</option><option value="edits" selected>Tự sửa và chạy</option><option value="review">Model duyệt thay bạn</option><option value="auto">Tự làm hết</option></select></label>
+              <label class="agent-pick" title="Sandbox: lệnh được ghi vào đâu"><span class="sr-only">Sandbox</span><select id="agent-sandbox"><option value="read-only">Chỉ đọc</option><option value="workspace-write" selected>Ghi trong thư mục</option><option value="full-access">Không sandbox</option></select></label>
+              <label class="agent-pick agent-toggle" title="Cho lệnh dùng mạng"><input type="checkbox" id="agent-network"><span>Mạng</span></label>
+              <span class="agent-bar-gap"></span>
+              <button id="agent-stop" class="agent-round" type="button" aria-label="Dừng" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg></button>
+              <button id="agent-send" class="agent-round agent-round-primary" type="submit" aria-label="Gửi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg></button>
+            </div>
+          </form>
+        </div>
+      </div>
     </section>
     <main id="page-view" class="app-workspace" hidden></main>
   </div>
@@ -88,6 +134,6 @@
   <div class="settings-body"><section class="settings-section" aria-labelledby="ai-settings-title"><div class="settings-section-heading"><h3 id="ai-settings-title">Dịch vụ AI</h3><p>API key được giữ trong kho bí mật của hệ điều hành.</p></div><div id="ai-settings-host" class="ai-settings-host"><p class="settings-placeholder">Đang tải cấu hình AI…</p></div></section></div>
 </aside>
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
-<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/source-language.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script type="module" src="/static/js/review-stitch/index.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-history.js"></script><script src="/static/js/editor-presets.js"></script><script src="/static/js/editor-inspector.js"></script><script src="/static/js/editor-persistence.js"></script><script src="/static/js/editor-geometry.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script><script src="/static/js/ai-mode.js"></script>
+<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/source-language.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script type="module" src="/static/js/review-stitch/index.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-history.js"></script><script src="/static/js/editor-presets.js"></script><script src="/static/js/editor-inspector.js"></script><script src="/static/js/editor-persistence.js"></script><script src="/static/js/editor-geometry.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script><script src="/static/js/ai-mode.js"></script><script src="/static/js/agent.js"></script>
 </body>
 </html>

@@ -75,3 +75,11 @@ def test_a_narrow_box_shrinks_the_letters_before_it_breaks_a_word():
     draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     size, lines, fits = _fit_text(draw, "Không...", 120, 400, str(DEFAULT_FONT), maximum_size=120)
     assert lines == ["Không..."] and fits, f"kept whole at {size}px"
+
+
+def test_a_giant_y2_does_not_allocate_gigabytes():
+    # H6: a malformed box with y2=10**9 used to make np.pad allocate ~279 GiB and crash the worker.
+    # The pad is clamped to the image height now.
+    page = Image.new("RGB", (800, 1200), (180, 200, 230))
+    out = _render_in_region(page.copy(), "x", (100, 700, 700, 10**9), **STYLE)
+    assert out.size == (800, 1200), "the region renders at the page size, not the box size"

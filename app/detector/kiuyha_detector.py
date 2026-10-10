@@ -209,6 +209,10 @@ class KiuyhaTextDetector:
     def raw_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
         """Boxes (x1, y1, x2, y2, score) in ``image`` pixels from one letterboxed pass."""
         h, w = image.shape[:2]
+        # M15: a degenerate image (w==0 or h==0) used to ZeroDivisionError here and surface as a
+        # 500; reject it cleanly instead.
+        if w <= 0 or h <= 0:
+            raise ValueError(f"degenerate image shape: {image.shape}")
         in_h, in_w = self._input_size(h, w)
         scale = min(in_w / w, in_h / h)
         rw, rh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))

@@ -116,9 +116,55 @@ PROVIDERS: dict[str, AIProvider] = {
         supports_translation=True,
         tracks_cost=False,
     ),
+    "agnes": AIProvider(
+        id="agnes",
+        label="Agnes AI",
+        protocol="openai",
+        api_base="https://apihub.agnes-ai.com/v1",
+        default_qc_model=os.getenv("AGNES_MODEL", "agnes-3.0-flash"),
+        default_translation_model=os.getenv("AGNES_MODEL", "agnes-3.0-flash"),
+        env_names=("AGNES_API_KEY", "AGNES_KEY", "AGNES_KEY2"),
+        request_profile="standard",
+        image_transport="data_url",
+        supports_visual_qc=True,
+        supports_translation=True,
+        tracks_cost=False,
+    ),
 }
 
 PROVIDER_IDS = frozenset(PROVIDERS)
+
+
+def chat_url_candidates(api_base: str) -> list[str]:
+    """Ordered chat-completions endpoint candidates for a user-supplied URL.
+
+    The user pastes whatever the gateway docs show — a bare host, a /v1 base,
+    or a full endpoint — and the first candidate that answers wins. Nobody
+    needs to know whether /v1 belongs in the box.
+    """
+    base = (api_base or "").strip().rstrip("/")
+    if not base:
+        return []
+    cands: list[str] = []
+
+    def add(url: str) -> None:
+        if url not in cands:
+            cands.append(url)
+
+    if base.endswith("/chat/completions"):
+        # Full endpoint, used verbatim. If a picky gateway 404s it, fall back
+        # to rebuilding from the /v1 root (covers doubled-path gateways).
+        add(base)
+        root = base[: -len("/chat/completions")].rstrip("/")
+        if root.endswith("/v1"):
+            add(root + "/chat/completions")
+    elif base.endswith("/v1"):
+        add(base + "/chat/completions")
+    else:
+        # Bare host: OpenAI-compatible gateways almost always serve under /v1.
+        add(base + "/v1/chat/completions")
+        add(base + "/chat/completions")
+    return cands
 
 CLOUD_PROVIDER_ID = "manga-cloud"
 _cloud_job: ContextVar[tuple[AIProvider, str] | None] = ContextVar("cloud_job", default=None)

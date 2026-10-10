@@ -685,3 +685,11 @@ def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
     objects = manifest["pages"][0]["text_objects"]
     assert objects[1]["editorial_disposition"] == "non_story" and objects[1]["editorial_reviewed"] is True
     assert "editorial_disposition" not in objects[0] and "editorial_disposition" not in objects[2]
+
+
+def test_budget_warning_when_provider_does_not_track_cost():
+    # H3: a budget the provider cannot enforce must be announced, not silently ignored.
+    snapshot = _run_manager()
+    assert snapshot["cost_usd"] is None
+    assert any("will NOT be enforced" in w for w in snapshot["warnings"]), \
+        f"expected a budget warning, got {snapshot['warnings']}"

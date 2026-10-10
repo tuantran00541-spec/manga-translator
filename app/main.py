@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import mimetypes
 import os
 from pathlib import Path
+import threading
 import time
 
 from fastapi import FastAPI, HTTPException, Request
@@ -31,7 +32,7 @@ from app.parameters import (
     STALE_TEMP_MAX_AGE_SECONDS,
     USE_DYNAMIC_LAMA,
 )
-from app.routers import account, ai_mode, automation, chapters, editor, export, image, ocr, render, render_commit, translation, visual_qc
+from app.routers import account, agent, ai_mode, automation, chapters, editor, export, image, ocr, render, render_commit, translation, visual_qc
 from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 
 
@@ -206,8 +207,40 @@ class LocalHostOnlyMiddleware:
         await self.app(scope, receive, send)
 
 
+class RateLimitMiddleware:
+    """M7/M22: per-IP token bucket. The app listens on loopback by default, but if the user exposes
+    it via MANGA_ALLOWED_HOSTS there was nothing stopping a script from churning sessions and
+    burning LLM money without limit."""
+
+    def __init__(self, app, rate: float = 2.0, burst: int = 120):
+        self.app = app
+        self.rate = rate  # tokens per second
+        self.burst = burst  # bucket size
+        self._buckets: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            ip = scope.get("client", ("?",))[0] if scope.get("client") else "?"
+            now = time.monotonic()
+            with self._lock:
+                tokens, updated = self._buckets.get(ip, (self.burst, now))
+                tokens = min(self.burst, tokens + (now - updated) * self.rate)
+                if tokens < 1.0:
+                    retry = int((1.0 - tokens) / self.rate) + 1
+                    async def limited(receive, send):
+                        resp = JSONResponse({"detail": "Rate limit exceeded"}, status_code=429,
+                                            headers={"Retry-After": str(retry)})
+                        await resp(scope, receive, send)
+                    await limited(receive, send)
+                    return
+                self._buckets[ip] = (tokens - 1.0, now)
+        await self.app(scope, receive, send)
+
+
 app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(LocalHostOnlyMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
 
 @app.exception_handler(Exception)
@@ -230,6 +263,7 @@ app.include_router(export.router)
 app.include_router(visual_qc.router)
 app.include_router(ai_mode.router)
 app.include_router(account.router)
+app.include_router(agent.router)
 
 
 def _current_rss_bytes() -> int | None:

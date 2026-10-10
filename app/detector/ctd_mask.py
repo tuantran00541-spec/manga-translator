@@ -60,7 +60,13 @@ def _prob(img: np.ndarray, scale: float) -> np.ndarray:
 
 def probability(img: np.ndarray) -> np.ndarray:
     """How sure the model is that each pixel is a letter, the higher of full and half size."""
-    return np.max([_prob(img, s) for s in SCALES], axis=0)
+    # M14: the old np.max([...]) materialized both float32 maps plus the max output at once
+    # (~3x image size; ~1.2GB transient at 100MP). Take the max in place, one scale at a time.
+    best = None
+    for s in SCALES:
+        p = _prob(img, s)
+        best = p if best is None else np.maximum(best, p)
+    return best
 
 
 def text_size(part: np.ndarray, prob: np.ndarray | None = None) -> int:

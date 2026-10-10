@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import ipaddress
+import os
 from pathlib import Path
 import re
 import socket
@@ -39,6 +40,29 @@ _BLOCKED_NETWORKS = [
         "::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8",
     )
 ]
+
+
+def _trusted_egress_networks() -> list:
+    """CIDRs from AGENT_TRUSTED_EGRESS_CIDRS that bypass the SSRF IP check.
+
+    In sandboxed runtimes all outbound traffic goes through an egress proxy;
+    DNS then resolves to the proxy's IP (e.g. 198.18.0.0/15), which the SSRF
+    guard would otherwise reject even though the real destination is public.
+    Opt-in via env so the default stays strict.
+    """
+    out = []
+    for part in os.getenv("AGENT_TRUSTED_EGRESS_CIDRS", "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            out.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            continue
+    return out
+
+
+_TRUSTED_EGRESS = _trusted_egress_networks()
 
 
 def validate_chapter_id(chapter_id: str) -> str:
@@ -117,6 +141,13 @@ def _check_ip(ip_obj, hostname: str) -> None:
     if mapped is not None:
         _check_ip(mapped, hostname)
         return
+
+    # Trusted egress proxy: all outbound traffic in this runtime goes through
+    # it, so the resolved IP is the proxy's, not the real destination's.
+    # The proxy itself enforces egress policy.
+    for net in _TRUSTED_EGRESS:
+        if ip_obj in net:
+            return
 
     if not ip_obj.is_global:
         raise HTTPException(

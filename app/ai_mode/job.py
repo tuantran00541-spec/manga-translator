@@ -97,6 +97,7 @@ class AIModeJob:
     cost_usd: float | None = 0.0
     report: dict = field(default_factory=dict)
     cancel_requested: bool = False
+    warnings: list[str] = field(default_factory=list)  # H3: surfaced when a setting cannot be honored
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     task: asyncio.Task | None = field(default=None, repr=False)
@@ -168,10 +169,12 @@ class AIModeRunner:
         self.job.updated_at = time.time()
 
     def _add_cost(self, cost: float | None) -> None:
-        if cost is None:
-            self.job.cost_usd = None
-        elif self.job.cost_usd is not None:
-            self.job.cost_usd += float(cost)
+        # M11: the old code set cost_usd = None on a single None cost, permanently disabling every
+        # budget gate for the rest of the job. A None cost now means "unknown for this call":
+        # keep the running total and let the gates work on what is known.
+        if cost is None or self.job.cost_usd is None:
+            return
+        self.job.cost_usd += float(cost)
 
     def _remaining_budget(self) -> float | None:
         if not self.provider.tracks_cost or self.job.cost_usd is None:
@@ -957,6 +960,11 @@ class AIModeJobManager:
                       for key, label in STAGES}
         if not provider.tracks_cost:
             job.cost_usd = None
+            # H3: the user set a budget, but this provider reports no cost data, so the budget
+            # cannot be enforced. Say so loudly instead of silently ignoring the setting.
+            job.warnings.append(
+                f"Budget ${settings.budget_usd:.2f} will NOT be enforced: the {provider.label} provider "
+                "does not report cost data, so preflight checks and budget stops are disabled for this job.")
         self._jobs[job.job_id] = job
         runner = self._runner_factory(job, provider, api_key)
         job.task = asyncio.get_running_loop().create_task(self._run(job, runner, on_finish))
@@ -1015,6 +1023,7 @@ class AIModeJobManager:
             "target_lang": job.settings.target_lang,
             "cost_usd": None if job.cost_usd is None else round(job.cost_usd, 6),
             "budget_usd": job.settings.budget_usd,
+            "warnings": list(job.warnings),
             "cancel_requested": job.cancel_requested,
             "error": job.error,
             "report": copy.deepcopy(job.report),

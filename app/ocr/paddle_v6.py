@@ -487,6 +487,10 @@ class PaddleV6OCR:
             if existing is not None:
                 return existing
             from paddleocr import TextRecognition
+            # M16: PaddleOCR fetches its models on first use with no checksum verification; the
+            # supply chain is delegated to PyPI/paddleocr. There is no hash to pin against here
+            # (the package manages its own cache), so this stays a known accepted risk, logged.
+            logger.warning("PaddleOCR is downloading its %s model without hash verification", self.unified_model_name)
             recognizer = TextRecognition(
                 model_name=self.unified_model_name,
                 device="cpu",
