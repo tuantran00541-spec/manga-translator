@@ -3869,3 +3869,29 @@ def test_trusted_egress_cidrs_bypass_ssrf_check(monkeypatch):
 
     monkeypatch.delenv("AGENT_TRUSTED_EGRESS_CIDRS", raising=False)
     importlib.reload(sec)
+
+
+def test_chat_url_candidates_cover_all_input_forms():
+    from app.ai_providers import chat_url_candidates as cands
+    # Full endpoint used verbatim
+    assert cands("https://h/v1/chat/completions") == ["https://h/v1/chat/completions"]
+    # /v1 base gets the endpoint appended
+    assert cands("https://h/v1") == ["https://h/v1/chat/completions"]
+    assert cands("https://h/v1/") == ["https://h/v1/chat/completions"]
+    # Bare host tries /v1 first, then the root path
+    assert cands("https://h") == ["https://h/v1/chat/completions", "https://h/chat/completions"]
+    assert cands("") == []
+
+
+def test_wrong_endpoint_detection():
+    from app.agent import client as cl
+    class R:
+        def __init__(self, status, ctype="application/json"):
+            self.status_code = status
+            self.headers = {"content-type": ctype}
+    assert cl._looks_like_wrong_endpoint(R(404)) is True
+    assert cl._looks_like_wrong_endpoint(R(405)) is True
+    assert cl._looks_like_wrong_endpoint(R(403, "text/html")) is True
+    assert cl._looks_like_wrong_endpoint(R(403, "application/json")) is False
+    assert cl._looks_like_wrong_endpoint(R(401)) is False
+    assert cl._looks_like_wrong_endpoint(R(200)) is False

@@ -11,7 +11,7 @@ from email.utils import parsedate_to_datetime
 import requests
 from loguru import logger
 
-from app.ai_providers import AIProvider
+from app.ai_providers import AIProvider, chat_url_candidates
 from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS
 from app.security import validate_url
@@ -290,9 +290,78 @@ def _note_rate_limit(provider: AIProvider, response: requests.Response, wait: fl
     logger.info("{} answered 429 ({} so far, waiting {:.0f} s): {}", provider.label, row["count"], wait, detail[:200])
 
 
+# Resolved chat endpoint per api_base: the first candidate that answered.
+_RESOLVED_URL: dict[str, str] = {}
+
+
+def _looks_like_wrong_endpoint(response: requests.Response) -> bool:
+    """True when the response means 'this URL is not the chat endpoint'.
+
+    404/405 are unambiguous. A 403 with a non-JSON body is a path-level block
+    (e.g. Cloudflare in front of a gateway that only serves /v1/*); a 403
+    with a JSON error body is the API refusing the key, which must NOT
+    trigger a fallback.
+    """
+    if response.status_code in (404, 405):
+        return True
+    if response.status_code == 403:
+        ctype = response.headers.get("content-type", "")
+        if "json" not in ctype.lower():
+            return True
+    return False
+
+
+def _resolved_chat_url(provider: AIProvider) -> str:
+    """Pick the working chat endpoint for provider.api_base, probing once."""
+    key = provider.api_base.strip().rstrip("/")
+    hit = _RESOLVED_URL.get(key)
+    if hit:
+        return hit
+    cands = chat_url_candidates(provider.api_base)
+    if not cands:
+        raise RuntimeError(f"{provider.label}: no chat endpoint for empty api_base")
+    # Fast path: single candidate, no probing needed.
+    if len(cands) == 1:
+        _RESOLVED_URL[key] = cands[0]
+        return cands[0]
+    probe_headers = {"Content-Type": "application/json"}
+    for url in cands:
+        try:
+            validate_url(url)
+        except Exception:
+            continue
+        try:
+            # Minimal probe: wrong model name still yields a JSON API error
+            # (401/400) on the right endpoint, vs 404/403-HTML on the wrong one.
+            resp = requests.post(
+                url, headers=probe_headers,
+                json={"model": "__probe__", "messages": []},
+                timeout=(5, 10), allow_redirects=False, stream=False,
+            )
+        except requests.RequestException:
+            continue
+        try:
+            if _looks_like_wrong_endpoint(resp):
+                continue
+            _RESOLVED_URL[key] = url
+            return url
+        finally:
+            resp.close()
+    # Nothing answered: fall back to the first candidate and let the normal
+    # error path report what the server actually said.
+    _RESOLVED_URL[key] = cands[0]
+    return cands[0]
+
+
 def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> requests.Response:
-    """The request, with the shared 429 cooldown and retries."""
-    url = chat_url(provider)
+    """The request, with the shared 429 cooldown and retries.
+
+    The chat endpoint is auto-resolved: chat_url_candidates() lists every
+    likely URL for the configured api_base (bare host, /v1 base, or full
+    endpoint) and the first one that answers wins. The winner is cached per
+    api_base so only the very first call ever probes.
+    """
+    url = _resolved_chat_url(provider)
     validate_url(url)
     for attempt in range(RATE_LIMIT_RETRIES + 1):
         pause = _COOLDOWN.get(provider.id, 0.0) - time.time() if attempt == 0 else 0
