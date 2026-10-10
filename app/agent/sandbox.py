@@ -169,6 +169,11 @@ def _env_for(policy: Policy, scratch: str) -> dict | None:
     env = None if policy.mode == "full-access" else clean_env()
     if policy.mode == "read-only":
         env = {**(env or {}), "TMPDIR": scratch, "TMP": scratch, "TEMP": scratch}
+    # Experiment gate: restrict the shell PATH (e.g. to a python3-only bin dir)
+    # via AGENT_PYONLY_BIN. Unset by default; no behaviour change otherwise.
+    pyonly = os.environ.get("AGENT_PYONLY_BIN")
+    if pyonly and env is not None:
+        env = {**env, "PATH": pyonly}
     return env
 
 
