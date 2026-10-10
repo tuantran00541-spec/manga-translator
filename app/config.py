@@ -20,8 +20,9 @@ REQUIRED_MODELS = [KIUYHA_TEXT_MODEL, CTD_MODEL]
 # hash is pinned is verified on every load, and a model with no pin logs a warning instead of
 # loading blind. (Keys are file names under MODELS_DIR.)
 MODEL_SHA256: dict[str, str] = {
-    # "kiuyha_text_1280.onnx": "<sha256>",
-    # "ctd_seg.onnx": "<sha256>",
+    "kiuyha_text_1280.onnx": "030961ef6041b17d43103e17c8b4dbd8840067e89d8898a4a12081bfe702b7cc",  # yolo26s.onnx from Kiuyha/Manga-Bubble-YOLO
+    "lama-manga-dynamic.onnx": "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9",  # from ogkalu/lama-manga-onnx-dynamic
+    "ctd_seg.onnx": "dd7c2555ed56a123163c2144ebf9bf07352d412d7574d55e967b1168476d916d",  # seg-only extract from comictextdetector.pt.onnx (manga-image-translator beta-0.3)
     # "lama.onnx": "<sha256>",
 }
 
