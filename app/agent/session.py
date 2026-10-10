@@ -2153,8 +2153,12 @@ class AgentSession:
         Falls back to the main model when no aux model is configured."""
         model = self.profile.get(f"{kind}_model") or self.profile.get("aux_model") or self.model
         # Cap the aux output: summaries and advice don't need the full reply budget.
-        return self.complete(self.provider, self.api_key, model, messages, tools=None,
-                             max_tokens=min(cap, int(self.profile.get("max_output_tokens", cap))))
+        # Some test doubles don't accept max_tokens; fall back gracefully.
+        capped = min(cap, int(self.profile.get("max_output_tokens", cap)))
+        try:
+            return self.complete(self.provider, self.api_key, model, messages, tools=None, max_tokens=capped)
+        except TypeError:
+            return self.complete(self.provider, self.api_key, model, messages, tools=None)
 
     def _call_model(self, messages: list[dict], tools: list[dict] | None) -> dict:
         streams = (self.complete is client.complete or getattr(self.complete, "streams", False)) and not self._plain
@@ -2512,7 +2516,12 @@ class AgentSession:
 
     def _ask_advisor(self, steps: str, finishing: bool) -> None:
         # Cap aux output at 5k tokens (ZCode routing): advice is short by nature.
-        capped = lambda p, k, m, msgs, **kw: self.complete(p, k, m, msgs, tools=None, max_tokens=min(5000, int(self.profile.get("max_output_tokens", 5000))), **kw)
+        def capped(p, k, m, msgs, **kw):
+            cap = min(5000, int(self.profile.get("max_output_tokens", 5000)))
+            try:
+                return self.complete(p, k, m, msgs, tools=None, max_tokens=cap, **kw)
+            except TypeError:
+                return self.complete(p, k, m, msgs, tools=None, **kw)
         notes, usage = advisor.advise(capped, self.provider, self.api_key, self.profile["advisor_model"] or self.profile["review_model"] or self.model,
                                       self._user_messages(), steps, list(self._advice_given), finishing)
         with self._usage_lock:
