@@ -64,6 +64,15 @@ class ToolsUnsupported(RuntimeError):
     """The provider refused the native tools field, so the session falls back to text tool calls."""
 
 
+class KeyExhausted(RuntimeError):
+    """The API key is spent (quota/billing) or hard rate-limited: rotate to the next key."""
+
+
+def is_key_exhausted(message: str) -> bool:
+    """True when the provider says this key cannot be used anymore (not a transient 429)."""
+    return bool(re.search(r"HTTP 429", message) and re.search(r"quota|billing|insufficient|balance|credit|exhausted|spent", message, re.I))
+
+
 def chat_url(provider: AIProvider) -> str:
     if provider.protocol == "gemini":
         # Gemini serves the same chat format under its OpenAI-compatible path.
@@ -593,7 +602,11 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
         # A spent daily quota that still lets requests through at a slower pace is waited out too.
         busy = response.status_code == 429 and (not re.search(r"quota|billing|insufficient|balance|credit", detail, re.I) or bool(_pace_hint(detail)))
         retry = response.headers.get("x-should-retry", "").lower()
-        error = TransientError if (response.status_code >= 500 or response.status_code in (408, 409) or busy or retry == "true") and retry != "false" else RuntimeError
+        key_dead = response.status_code == 429 and re.search(r"quota|billing|insufficient|balance|credit|exhausted", detail, re.I) and not _pace_hint(detail)
+        if key_dead:
+            error = KeyExhausted
+        else:
+            error = TransientError if (response.status_code >= 500 or response.status_code in (408, 409) or busy or retry == "true") and retry != "false" else RuntimeError
         raise error(f"{provider.label} HTTP {response.status_code}: {detail}")
     if on_delta:
         try:

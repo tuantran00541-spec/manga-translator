@@ -251,6 +251,29 @@ def set_provider_api_key(provider_id: str, value: str, *, provider_label: str | 
     _set_api_key(account, value, label)
 
 
+def get_provider_api_keys(provider_id: str, *, provider_label: str | None = None) -> list[str]:
+    """All configured keys for a provider, in priority order. Backward compatible:
+    a single plain key is returned as a one-item list; a JSON list is parsed."""
+    raw = get_provider_api_key(provider_id, provider_label=provider_label)
+    if not raw:
+        return []
+    raw = raw.strip()
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [str(k).strip() for k in parsed if str(k).strip()]
+        except (ValueError, TypeError):
+            pass
+    return [raw]
+
+
+def set_provider_api_keys(provider_id: str, values: list[str], *, provider_label: str | None = None) -> None:
+    """Store multiple keys for a provider as a JSON list. Empty list clears."""
+    cleaned = [v.strip() for v in values if v and v.strip()]
+    set_provider_api_key(provider_id, json.dumps(cleaned), provider_label=provider_label)
+
+
 def delete_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> None:
     provider_id, _env_names, label = _provider_meta(provider_id, provider_label)
     account = {

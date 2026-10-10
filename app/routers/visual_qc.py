@@ -154,11 +154,17 @@ def save_provider_key(provider_id: str, req: VisualQCKeyRequest) -> dict:
                 protocol=provider.protocol,
                 api_base=provider.api_base,
             )
-        set_provider_api_key(
-            normalized,
-            req.api_key,
-            provider_label=label,
-        )
+        from app.secret_store import set_provider_api_keys
+        if req.api_keys:
+            # Multiple keys: primary first, then backups for auto-rotation.
+            all_keys = [req.api_key] + [k for k in req.api_keys if k != req.api_key]
+            set_provider_api_keys(normalized, all_keys, provider_label=label)
+        else:
+            set_provider_api_key(
+                normalized,
+                req.api_key,
+                provider_label=label,
+            )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:

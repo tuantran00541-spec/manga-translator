@@ -305,6 +305,9 @@
       }
     } else if (event.type === "approval") {
       showApprovalCard(event.call);
+    } else if (event.type === "key_switched") {
+      showKeySwitchedModal(event.text);
+      log.append(el("p", "agent-note", event.text));
     } else if (event.type === "subagent" && event.state === "done") {
       log.append(el("p", "agent-note", `Helper ${event.agent || ""} done: ${event.description} · ${event.tools} tool calls`));
     } else if (event.type === "notice" || event.type === "error") {
@@ -315,6 +318,21 @@
   // Show the approval card for a call once. The "approval" event fires only
   // once per call, so after a reload (resume()) the card is rebuilt from
   // snap.pending instead of being lost and leaving the session stuck waiting.
+  function showKeySwitchedModal(text) {
+    document.querySelector(".agent-key-modal")?.remove();
+    const overlay = el("div", "agent-key-modal");
+    const box = el("div", "agent-key-box");
+    box.append(el("p", "agent-key-title", "Đã đổi API key"));
+    box.append(el("p", "agent-key-text", text || "Key hiện tại đã hết hạn mức, đã tự động chuyển sang key dự phòng."));
+    const btn = el("button", "agent-btn", "Đã hiểu");
+    btn.type = "button";
+    btn.onclick = () => overlay.remove();
+    box.append(btn);
+    overlay.append(box);
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    document.body.append(overlay);
+  }
+
   function showApprovalCard(call) {
     if (!call || !call.id) return;
     const log = $("agent-log");

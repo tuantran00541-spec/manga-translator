@@ -320,6 +320,8 @@ class AgentSession:
                  agent: agents.Agent | None = None):
         self.id, self.provider, self.api_key, self.model = session_id, provider, api_key, model
         self.workspace, self.mode, self.complete, self.store, self.depth = workspace, mode, complete, store, depth
+        self._api_keys = [api_key] if api_key else []
+        self._key_index = 0
         self.trust = trust or context.TrustStore(None)
         self.home, self.parent, self.agent = home, parent, agent
         home_path = home if home is not None else Path.home()
@@ -2152,6 +2154,23 @@ class AgentSession:
         except services.NoProvider:
             return None
 
+    def set_backup_keys(self, keys: list[str]) -> None:
+        """Configure backup API keys for rotation. First key stays primary."""
+        cleaned = [k.strip() for k in keys if k and k.strip()]
+        if cleaned:
+            # Keep current key first, add others that differ
+            seen = {self.api_key}
+            self._api_keys = [self.api_key] + [k for k in cleaned if k not in seen]
+        self._key_index = 0
+
+    def _rotate_key(self) -> bool:
+        """Switch to the next available key. Returns False when no keys remain."""
+        if self._key_index + 1 >= len(self._api_keys):
+            return False
+        self._key_index += 1
+        self.api_key = self._api_keys[self._key_index]
+        return True
+
     def _aux_complete(self, messages: list[dict], kind: str = "compact", cap: int = 5000) -> dict:
         """Auxiliary model call (ZCode-style routing): background tasks like compaction, advisor
         and memory extraction run on a cheaper/lighter model with a capped output budget.
@@ -2215,6 +2234,11 @@ class AgentSession:
                         raise
                     self._fallback_at += 1
                     self.emit("notice", text=f"Model {chain[self._fallback_at - 1]} did not answer ({exc}); switching to {chain[self._fallback_at]}.")
+                except client.KeyExhausted as exc:
+                    # This key is spent: rotate to the next configured key for this provider.
+                    if not self._rotate_key():
+                        raise
+                    self.emit("key_switched", text=f"Key exhausted ({exc}); switched to backup key {self._key_index + 1}/{len(self._api_keys)}.")
         finally:
             self.stats["model_s"] += time.time() - started
 
@@ -2924,6 +2948,14 @@ class AgentSessionManager:
             raise ValueError(f"session_id must be alphanumeric, got {session_id!r}")
         session = AgentSession(session_id, provider, api_key, model, workspace, mode, complete=complete,
                                store=self._path(session_id), trust=self.trust, home=self.home)
+        # Load backup keys for auto-rotation on exhaustion (lazy import to avoid cycles).
+        try:
+            from app.secret_store import get_provider_api_keys
+            backup = get_provider_api_keys(provider.id)
+            if len(backup) > 1:
+                session.set_backup_keys(backup)
+        except Exception:
+            pass
         self.sessions[session_id] = session
         return session
 
