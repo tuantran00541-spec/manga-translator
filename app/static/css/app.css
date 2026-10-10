@@ -337,6 +337,7 @@
   .agent-fail { font-size: 12px; }
   .agent-think > summary { color: var(--text-quiet); font-size: 12.5px; cursor: pointer; list-style: none; }
   .agent-note { margin: 0; color: var(--text-quiet); font-size: 12.5px; }
+  .agent-usage { margin: 2px 0 0; color: var(--text-quiet); font-size: 12px; }
   .agent-error { color: var(--text-primary); font-weight: 600; }
   .agent-live { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text-quiet); font: inherit; font-size: 13px; }
   .agent-working { margin: 0; color: var(--text-quiet); font-size: 13px; animation: agent-pulse 1.4s ease-in-out infinite; }

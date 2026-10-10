@@ -35,6 +35,7 @@
   let session = null;
   let lastSeq = 0;
   let pollTimer = null;
+  let lastUsage = null;
   let loaded = false;
   let commands = [];
   let group = null;
@@ -286,6 +287,10 @@
       if (event.text) {
         group = null;
         log.append(prose(event.text));
+        if (lastUsage && (lastUsage.prompt_tokens || lastUsage.completion_tokens)) {
+          const fmt = (n) => (n || 0).toLocaleString("en-US");
+          log.append(el("p", "agent-usage", `${fmt(lastUsage.prompt_tokens)} in / ${fmt(lastUsage.completion_tokens)} out`));
+        }
       }
       (event.calls || []).forEach(addRow);
     } else if (event.type === "tool") {
@@ -447,13 +452,10 @@
     $("agent-stop").hidden = !busy;
     $("agent-send").hidden = false;
     const usage = snap.usage || {};
+    lastUsage = usage;
     const state = { running: "Working", waiting: "Waiting for you" }[snap.status];
-    const parts = [snap.title || "New session", `${usage.prompt_tokens || 0} in, ${usage.completion_tokens || 0} out`];
-    const stats = snap.stats || {};
-    if (usage.prompt_tokens) parts.push(`cache ${stats.cache_pct || 0}%`);
-    if (stats.cost != null) parts.push(`$${stats.cost}`);
-    if (stats.model_seconds || stats.tool_seconds) parts.push(`model ${stats.model_seconds}s, tools ${stats.tool_seconds}s`);
-    if (snap.text_tools) parts.push("text tool calls");
+    const parts = [snap.title || "New session"];
+    if (state) parts.push(state);
     if (snap.plan_mode) parts.push("planning");
     if (snap.goal) parts.push(`goal: ${snap.goal}`);
     $("agent-status").textContent = parts.join(" · ");
@@ -476,6 +478,7 @@
     try {
       const stick = nearBottom();
       const snap = await call(`/api/agent/sessions/${session.id}?after=${lastSeq}`);
+      if (snap.usage) lastUsage = snap.usage;
       snap.events.forEach((event) => { render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
       follow(stick && snap.events.length > 0);
