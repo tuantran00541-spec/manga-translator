@@ -116,6 +116,20 @@ PROVIDERS: dict[str, AIProvider] = {
         supports_translation=True,
         tracks_cost=False,
     ),
+    "agnes": AIProvider(
+        id="agnes",
+        label="Agnes AI",
+        protocol="openai",
+        api_base="https://apihub.agnes-ai.com/v1",
+        default_qc_model=os.getenv("AGNES_MODEL", "agnes-3.0-flash"),
+        default_translation_model=os.getenv("AGNES_MODEL", "agnes-3.0-flash"),
+        env_names=("AGNES_API_KEY", "AGNES_KEY", "AGNES_KEY2"),
+        request_profile="standard",
+        image_transport="data_url",
+        supports_visual_qc=True,
+        supports_translation=True,
+        tracks_cost=False,
+    ),
 }
 
 PROVIDER_IDS = frozenset(PROVIDERS)

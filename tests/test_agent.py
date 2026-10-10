@@ -3846,3 +3846,26 @@ def test_create_rejects_non_alnum_session_id(ws, home):
     mgr = manager(home)
     with pytest.raises(ValueError):
         mgr.create(PROVIDERS["openai"], "k", "m", ws, "ask", session_id="../../evil")
+
+
+def test_trusted_egress_cidrs_bypass_ssrf_check(monkeypatch):
+    # AGENT_TRUSTED_EGRESS_CIDRS lets an egress proxy IP through the SSRF
+    # guard; everything else stays blocked.
+    import importlib
+    import ipaddress
+    import app.security as sec
+
+    monkeypatch.delenv("AGENT_TRUSTED_EGRESS_CIDRS", raising=False)
+    importlib.reload(sec)
+    proxy_ip = ipaddress.ip_address("198.18.141.230")
+    with pytest.raises(Exception):
+        sec._check_ip(proxy_ip, "example.com")
+
+    monkeypatch.setenv("AGENT_TRUSTED_EGRESS_CIDRS", "198.18.0.0/15")
+    importlib.reload(sec)
+    sec._check_ip(proxy_ip, "example.com")  # must not raise
+    with pytest.raises(Exception):
+        sec._check_ip(ipaddress.ip_address("10.9.9.9"), "example.com")
+
+    monkeypatch.delenv("AGENT_TRUSTED_EGRESS_CIDRS", raising=False)
+    importlib.reload(sec)
