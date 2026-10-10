@@ -35,7 +35,7 @@ def _private_base(base: str) -> str:
         address = ipaddress.ip_address(parsed.hostname or "")
     except ValueError as exc:
         raise SystemExit("--allow-private-base needs an IP address in the base URL") from exc
-    if parsed.scheme != "http" or not (address.is_private or address.is_loopback) or parsed.username or parsed.query:
+    if parsed.scheme != "http" or not (address.is_private or address.is_loopback) or parsed.username or parsed.password or parsed.query:
         raise SystemExit("--allow-private-base takes only http://<private or loopback IP>[:port]/path")
     return base.rstrip("/")
 

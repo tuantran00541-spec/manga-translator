@@ -49,7 +49,7 @@ class SessionRequest(BaseModel):
     provider: str
     model: str
     mode: str = "edits"
-    workspace: str = ""
+    workspace: str = Field(default="", max_length=4096)
     sandbox: str = "workspace-write"
     network: bool = False
 

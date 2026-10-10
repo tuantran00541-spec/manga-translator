@@ -471,10 +471,14 @@ class AgentSession:
                                      "Plugin của bạn KHÔNG được nạp trong phiên này. Kiểm tra ~/.manga-agent/plugins/, "
                                      "rồi bấm tin tưởng plugin để nạp (file bạn đã kiểm tra sẽ thành baseline mới).")
             return
-        if not _write_plugin_hashes(home_path, current):
-            self.emit("notice", text="Không ghi được plugin_hashes.json mới; bạn sẽ thấy cảnh báo này lại ở phiên sau.")
-        self.emit("notice", text="Plugin files changed outside the approval flow (" + detail +
-                                 "); they were not installed through plugin_write. Check ~/.manga-agent/plugins if this is unexpected.")
+        # Same rule on reload: hold the new/changed files and do not re-baseline until the
+        # user confirms them via trust_plugins(). Re-baselining here would silently legitimize
+        # a file planted mid-session for every session after.
+        self._plugin_hold = True
+        logger.warning("Agent session {}: plugin files changed outside the approval flow on reload ({}); user plugins held unloaded", self.id, detail)
+        self.emit("notice", text=f"Plugin files changed outside the approval flow ({detail}). "
+                                 "Plugin của bạn KHÔNG được nạp lại trong phiên này. Kiểm tra ~/.manga-agent/plugins/, "
+                                 "rồi bấm tin tưởng plugin để nạp (file bạn đã kiểm tra sẽ thành baseline mới).")
 
     def _record_plugin_hashes(self) -> None:
         """Refresh the baseline after plugin_write/plugin_remove, so the check above does not flag our own changes."""
@@ -851,6 +855,9 @@ class AgentSession:
         if name == "init":
             self.send(INIT_PROMPT)
             return {"sent": True}
+        # Refresh trust right before the check (TOCTOU): the file may have changed
+        # since the last refresh, and we must not load bytes the user never approved.
+        self._refresh_skill_trust()
         if name in self.skills and self.skills[name].manual and self.skills[name].name in self._skills_trusted:
             skill = self.skills[name]
             if skill.shadows_manual:
@@ -1055,7 +1062,11 @@ class AgentSession:
         status = self.mcp_status.get(name)
         if status is None:
             raise KeyError(name)
-        self.trust.allow(self.workspace.root, f"mcp:{name}", status["digest"])
+        # Mirror _mcp_plugin.apply: a plugin-bundled server is trusted under the plugin
+        # home, a workspace server under the workspace root. Writing to the wrong root
+        # leaves the server permanently untrusted.
+        root = self.workspace.root if status.get("scope") == "workspace" else self._plugin_home()
+        self.trust.allow(root, f"mcp:{name}", status["digest"])
         mounted = self.kernel.rows[f"mcp:{name}"]
         if mounted.state != "active":
             mounted.state, mounted.disabled = "waiting", False
@@ -1225,7 +1236,11 @@ class AgentSession:
             return False
         if self.mode == "auto":
             plugin = self.registry.tools.get(name)
-            kind = plugin.kind if plugin else self._role(name) or KIND.get(name, "exec")
+            if plugin is not None:
+                # A plugin declares its own kind; for the taint floor we never trust a
+                # third-party tool's self-declared kind, so every plugin tool asks.
+                return True
+            kind = self._role(name) or KIND.get(name, "exec")
             return kind != "read"
         return True
 
@@ -1304,11 +1319,26 @@ class AgentSession:
                 raise ToolError(f"No plugin {pid}; mounted: {', '.join(r.id for r in self.kernel.rows.values() if r.source != 'builtin') or 'none'}")
             self.kernel.unmount(pid)
             path.unlink(missing_ok=True)
+            # Also drop the row from plugins.json, or patch_rows remounts the plugin
+            # (via its "plugin" file) at the next session even though the user removed it.
+            plugins_path = (self.home if self.home is not None else Path.home()) / ".manga-agent" / "plugins.json"
+            try:
+                data = json.loads(plugins_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = None
+            if isinstance(data, dict) and isinstance(data.get("rows"), list):
+                kept = [e for e in data["rows"] if not (isinstance(e, dict) and e.get("id") == pid)]
+                if len(kept) != len(data["rows"]):
+                    data["rows"] = kept
+                    plugins_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
             self._record_plugin_hashes()
             return f"Plugin {pid} unmounted and its file deleted."
         # H15: never write a plugin file through a symlink; a planted link could redirect the
         # write outside the plugin folder (path.write_text follows links, path.unlink does not).
-        if path.is_symlink() or folder.is_symlink():
+        # Resolve fully: a symlink on any parent component (e.g. ~/.manga-agent itself)
+        # would otherwise slip past a check of only the final components.
+        target = path.resolve()
+        if folder.resolve() not in target.parents:
             raise ToolError("Refusing to write through a symlink; remove the link first.")
         if args.get("path"):
             # A long plugin is written to a workspace file first; one huge code argument is easily cut or garbled on the way.
@@ -1358,6 +1388,9 @@ class AgentSession:
             found = self.skills.get(str(args.get("name") or ""))
             if found is None:
                 raise ToolError(f"No skill named {args.get('name')!r}; known: {', '.join(self.skills) or 'none'}")
+            # Refresh trust right before the check (TOCTOU): the file may have changed
+            # since the last refresh, and we must not load bytes the user never approved.
+            self._refresh_skill_trust()
             if found.name not in self._skills_trusted:
                 raise ToolError(f"Skill {found.name!r} comes from this workspace and is not trusted yet; "
                                 "ask the user to trust it before loading.")
@@ -1434,12 +1467,10 @@ class AgentSession:
             job.stop()
             # MH2: a background job may have planted a git hook after the 1s start_job window.
             # Restore against the snapshot taken when the job started.
-            guard = getattr(job, "_gitguard", None)
+            undone = self._job_gitguard_restore(job)
             warning = ""
-            if guard is not None:
-                undone = gitguard.restore(self.workspace.root, guard)
-                if undone:
-                    warning = f"\n[blocked: the job changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]"
+            if undone:
+                warning = f"\n[blocked: the job changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]"
             return f"Stopped {args.get('id')}. Last output:\n{clip(job.read(), 4000)}{warning}"
         if call["name"] == "spawn_agent":
             nick = self._spawn(str(args.get("message") or ""), str(args.get("agent") or "explore"))
@@ -1531,7 +1562,9 @@ class AgentSession:
         # a job with unread output was kept but its output was already eaten, so the next
         # job_output came back empty. peek() checks without consuming.
         for name in [n for n, j in self.jobs.items() if j.code is not None and not j.peek() and time.time() - j.started > 600]:
-            self.jobs.pop(name).stop()
+            old = self.jobs.pop(name)
+            self._job_gitguard_restore(old)
+            old.stop()
         if len(self.jobs) >= MAX_JOBS:
             raise ToolError(f"{MAX_JOBS} background jobs already; stop some with job_stop")
         command = str(args.get("command") or "").strip()
@@ -1552,6 +1585,15 @@ class AgentSession:
         warning = f"\n[blocked: the command changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]" if undone else ""
         return f"Started {name} ({state}). Read it with job_output.\n{clip(job.read(), 4000)}{warning}".rstrip()
 
+    def _job_gitguard_restore(self, job) -> list:
+        """Restore the gitguard snapshot taken when a job started, once. A job that exits
+        on its own (never job_stop'ed) could otherwise leave a planted hook behind."""
+        guard = getattr(job, "_gitguard", None)
+        if guard is None or getattr(job, "_gitguard_done", False):
+            return []
+        job._gitguard_done = True
+        return gitguard.restore(self.workspace.root, guard)
+
     def _job_output(self, name: str, wait, settle: bool = False) -> str:
         job = self._job(name)
         try:
@@ -1568,7 +1610,14 @@ class AgentSession:
                 break
         text = job.read()
         state = "running" if job.code is None else f"exited with code {job.code}"
-        return f"[{name} {state}]\n{clip(text, 20000) if text else '(no new output)'}"
+        warning = ""
+        if job.code is not None:
+            # The job exited on its own; run the final gitguard restore now so a hook
+            # planted after the 1s start window does not survive the job.
+            undone = self._job_gitguard_restore(job)
+            if undone:
+                warning = f"\n[blocked: the job changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]"
+        return f"[{name} {state}]\n{clip(text, 20000) if text else '(no new output)'}{warning}"
 
     def _memory_tool(self, args: dict) -> str:
         home, root, scope = self.home if self.home is not None else Path.home(), self.workspace.root, str(args.get("scope") or "project")
@@ -1809,6 +1858,9 @@ class AgentSession:
                 return f"[{fixed[2]}.]\n{output}", ok
         if call["name"] not in known:
             return f"Unknown tool {call['name']!r}; available: {', '.join(sorted(known))}", False
+        # Checked before approval, so nobody is asked to approve a tool that cannot run.
+        if not self._enabled(call["name"]):
+            return f"Tool {call['name']} is disabled in this profile.", False
         required = next((s.get("parameters", {}).get("required") or [] for s in self.specs() if s["name"] == call["name"]), [])
         missing = [k for k in required if isinstance(call["args"], dict) and k not in call["args"]]
         if missing and not str(call.get("id", "")).startswith("script-"):
@@ -2722,11 +2774,11 @@ class _McpBridge:
         root = self.session._mcp_root()
         server, tool = root.mcp_tools[name]
         text, ok = root.mcp_servers[server].call_tool(tool["name"], arguments)
-        # MH14: an MCP server is an untrusted third party; content arriving through a content seam
-        # (search/fetch/shell) taints the session. execute() only sees the built-in tool's name here,
+        # MH14/MH30: an MCP server is an untrusted third party; every result arriving
+        # through the bridge taints the session, consistent with execute() which taints
+        # on all MCP tool results. execute() only sees the built-in tool's name here,
         # so the bridge sets the taint itself. (The model/compact seams are the model's own output.)
-        if service in ("web.search", "web.fetch", "shell"):
-            root.tainted = True
+        root.tainted = True
         return text, ok
 
 

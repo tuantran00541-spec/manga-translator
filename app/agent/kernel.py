@@ -228,5 +228,5 @@ def patch_rows(ctx: Context, home: Path) -> list[str]:
         except Exception as exc:
             problems.append(f"{row_id}: {type(exc).__name__}: {exc}"[:300])
             continue
-        ctx.rows[row_id] = Row(row_id, module, config or {}, bool(entry.get("disabled")), "user")
+        ctx.mount(Row(row_id, module, config or {}, bool(entry.get("disabled")), "user"))
     return problems

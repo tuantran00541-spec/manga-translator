@@ -147,8 +147,13 @@ def _write(home: Path, name: str, text: str) -> None:
     if len(text.encode("utf-8")) > MAX_SKILL_BYTES:
         raise ValueError("SKILL.md quá dài (tối đa 200 KB)")
     folder = user_dir(home) / name
+    # Mirror H15 (plugin_write): never write through a symlink; a planted link could redirect
+    # the write outside the skills folder.
+    path = folder / "SKILL.md"
+    if path.is_symlink() or folder.is_symlink():
+        raise ValueError("Refusing to write through a symlink; remove the link first.")
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / "SKILL.md").write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
 
 
 def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str, wrapped: bool = True) -> list[str]:

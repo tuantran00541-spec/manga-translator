@@ -55,7 +55,15 @@ def expand_config(config: dict) -> dict:
     """The config as the server will actually see it, with ${VAR} substituted (M31). The trust
     digest must cover this, not the raw config: the environment decides what command, URL and
     token really run, so a digest of the unexpanded text would miss env-driven changes."""
-    return _expand(config)
+    expanded = _expand(config)
+    # bearer_token_env_var names an env var whose *value* is read at connect time; the digest
+    # must cover the value (as a hash, never the secret itself), or changing the env would not
+    # invalidate trust and a secret could be swapped in silently.
+    var = expanded.get("bearer_token_env_var")
+    if isinstance(var, str) and var:
+        value = os.environ.get(var, "")
+        expanded["_bearer_token_value_sha256"] = hashlib.sha256(value.encode()).hexdigest()[:16]
+    return expanded
 
 
 def _json_servers(path: Path, key: str = "mcpServers") -> dict:
@@ -85,8 +93,16 @@ def configured(workspace: Path, home: Path | None = None) -> list[dict]:
 
     def add(servers: dict, source: str, scope: str) -> None:
         for name, config in servers.items():
-            if isinstance(config, dict) and re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", str(name)) and name not in rows:
-                rows[name] = {"name": name, "config": config, "source": source, "scope": scope}
+            if not (isinstance(config, dict) and re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", str(name))):
+                continue
+            if name in rows:
+                # A workspace .mcp.json silently replacing a user-level server of the same name
+                # would leave the user's server never starting with no trace; warn like skill
+                # shadowing does (H11).
+                logger.warning("MCP server %r from %s shadows the one from %s; the shadowed server will not start",
+                               name, source, rows[name]["source"])
+                continue
+            rows[name] = {"name": name, "config": config, "source": source, "scope": scope}
 
     add(_json_servers(workspace / ".mcp.json"), ".mcp.json", "workspace")
     add(_json_servers(home / ".manga-agent" / "mcp.json"), "~/.manga-agent/mcp.json", "user")

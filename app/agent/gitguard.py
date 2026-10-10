@@ -4,9 +4,27 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def _watched(root: Path) -> dict[str, bytes]:
+def _git_dir(root: Path) -> Path | None:
+    """The workspace's real git dir, following a linked-worktree pointer.
+
+    Mirrors the resolution in sandbox.git_guard_paths so the snapshot/restore
+    layer covers the same git dir the Landlock carve denies writes to.
+    """
     git = root / ".git"
-    if not git.is_dir():
+    if git.is_file():
+        try:
+            target = git.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        if not target.startswith("gitdir:"):
+            return None
+        git = (root / target[len("gitdir:"):].strip()).resolve()
+    return git if git.is_dir() else None
+
+
+def _watched(root: Path) -> dict[str, bytes]:
+    git = _git_dir(root)
+    if git is None:
         return {}
     found: dict[str, bytes] = {}
     paths = [git / "config", git / "info" / "attributes"]
@@ -25,7 +43,9 @@ def _watched(root: Path) -> dict[str, bytes]:
     for path in paths:
         try:
             found[str(path.relative_to(root))] = path.read_bytes()
-        except OSError:
+        except (OSError, ValueError):
+            # ValueError: path is outside root (e.g. a hooks symlink pointing
+            # elsewhere, or a worktree gitdir living outside the workspace).
             continue
     return found
 
@@ -36,7 +56,7 @@ def snapshot(root: Path) -> dict[str, bytes]:
 
 def restore(root: Path, before: dict[str, bytes]) -> list[str]:
     """Put back what a command changed; returns what it touched."""
-    if not (root / ".git").is_dir():
+    if _git_dir(root) is None:
         return []
     after, touched = _watched(root), []
     for name, data in before.items():

@@ -128,7 +128,6 @@ def git_guard_paths(root: Path) -> list[str]:
     except OSError:
         pass
     return [str(git / part) for part in GIT_GUARD if (git / part).exists()]
-    return [str(git / part) for part in GIT_GUARD if (git / part).exists()]
 
 
 def _seatbelt_profile(policy: Policy, root: Path, scratch: str) -> str:
