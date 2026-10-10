@@ -826,11 +826,18 @@ def test_claude_style_permission_lists_are_read(ws, home):
 
 def test_the_same_call_three_times_in_a_row_is_blocked(ws, home):
     same = call("list_dir")
-    fake = scripted(turn(calls=[same]), turn(calls=[same]), turn(calls=[same]), turn("stuck"))
+    # New behavior (dsh-style): remind at 3/5, block at 8 (was: hard block at 3).
+    fake = scripted(turn(calls=[same]), turn(calls=[same]), turn(calls=[same]),
+                    turn(calls=[same]), turn(calls=[same]), turn(calls=[same]),
+                    turn(calls=[same]), turn(calls=[same]), turn("stuck"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
     run_to_idle(session)
     outputs = [o for _, _, o in tool_outputs(session)]
-    assert "pkg/" in outputs[0] and outputs[2].startswith("Blocked")
+    assert "pkg/" in outputs[0]
+    assert "[Reminder]" in outputs[2] and "3 times" in outputs[2]  # 3rd: gentle reminder
+    assert "[Reminder]" not in outputs[3]  # 4th: quiet
+    assert "[Reminder]" in outputs[4] and "5th" in outputs[4]  # 5th: stronger reminder
+    assert outputs[7].startswith("Blocked") and "8 times" in outputs[7]  # 8th: blocked
 
 
 def test_undo_restores_edited_files_and_removes_new_ones(ws, home):

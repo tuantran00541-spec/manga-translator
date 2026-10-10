@@ -24,7 +24,7 @@ from app.agent.checkpoint import Checkpoints
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
 
-MODES = ("ask", "edits", "review", "auto")
+MODES = ("ask", "edits", "review", "auto", "unless-trusted")
 MAX_STEPS = 300
 MAX_JOBS = 8
 MAX_TODO_NUDGES = 3
@@ -1901,11 +1901,16 @@ class AgentSession:
                 return (f"Blocked: you made this exact {call['name']} call 8 times in a row. "
                         "Change your approach or ask the user."), False
             # Advisory only: stash the reminder to prepend to this call's result below.
-            repeat_note = (f"[Reminder] You have now made this exact {call['name']} call {n} times in a row "
-                           f"with identical arguments. If the result keeps coming back the same, try a different approach "
-                           f"instead of repeating it." if n == 3 else
-                           f"[Reminder] This is the {n}th identical {call['name']} call in a row. "
-                           f"Stop and reconsider: what new information would a repeat give you?")
+            # Remind at exactly 3 (gentle) and exactly 5 (stronger); quiet otherwise to avoid nagging.
+            if n == 3:
+                repeat_note = (f"[Reminder] You have now made this exact {call['name']} call 3 times in a row "
+                               f"with identical arguments. If the result keeps coming back the same, try a different approach "
+                               f"instead of repeating it.")
+            elif n == 5:
+                repeat_note = (f"[Reminder] This is the 5th identical {call['name']} call in a row. "
+                               f"Stop and reconsider: what new information would a repeat give you?")
+            else:
+                repeat_note = ""
         else:
             repeat_note = ""
         verdict = rules.check(self.rules, call["name"], call["args"], self._rel) if isinstance(call["args"], dict) else None
@@ -2518,10 +2523,12 @@ class AgentSession:
         # Cap aux output at 5k tokens (ZCode routing): advice is short by nature.
         def capped(p, k, m, msgs, **kw):
             cap = min(5000, int(self.profile.get("max_output_tokens", 5000)))
+            kw.setdefault("tools", None)
             try:
-                return self.complete(p, k, m, msgs, tools=None, max_tokens=cap, **kw)
+                return self.complete(p, k, m, msgs, max_tokens=cap, **kw)
             except TypeError:
-                return self.complete(p, k, m, msgs, tools=None, **kw)
+                kw.pop("max_tokens", None)
+                return self.complete(p, k, m, msgs, **kw)
         notes, usage = advisor.advise(capped, self.provider, self.api_key, self.profile["advisor_model"] or self.profile["review_model"] or self.model,
                                       self._user_messages(), steps, list(self._advice_given), finishing)
         with self._usage_lock:
