@@ -462,9 +462,14 @@ def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
     finish = (message.get("_debug") or {}).get("finish")
     result["finish"] = finish or ""
     if finish == "length":
+        # Fail-safe (Pi): a reply cut off by the length limit may have truncated tool call
+        # arguments mid-JSON; executing them would run garbled commands. Mark every call
+        # as failed so the model retries with smaller pieces instead.
         for call in calls:
-            if call.get("error"):
+            if not call.get("error"):
                 call["error"] = CUT_OFF
+            elif CUT_OFF not in call["error"]:
+                call["error"] = CUT_OFF + " " + call["error"]
     if not (result["text"] or calls) and message.get("_debug"):
         result["debug"] = message["_debug"]
     return result

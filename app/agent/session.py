@@ -368,6 +368,7 @@ class AgentSession:
         self.plan_mode = False
         self.goal: dict | None = None
         self._recent: list[str] = []
+        self._approval_audit: list[dict] = []
         self._approval_lock = threading.RLock()
         self._spawn_lock = threading.Lock()
         self.children: dict[str, AgentSession] = {}
@@ -1189,10 +1190,10 @@ class AgentSession:
             return True
         # M35: without an OS sandbox backend, even auto mode asks before running a shell command;
         # silently running unsandboxed commands was the "sandbox" the prompt promised but never had.
-        if name == "run_command" and self.mode == "auto" and sandbox.backend() == "none" \
+        if name == "run_command" and self.mode in ("auto", "unless-trusted") and sandbox.backend() == "none" \
                 and self.workspace.policy.mode != "full-access":
             return True
-        if self.mode == "auto" or name in SESSION_SPECS or verdict == "allow":
+        if self.mode in ("auto", "unless-trusted") or name in SESSION_SPECS or verdict == "allow":
             return False
         if verdict == "ask":
             return True
@@ -1208,6 +1209,14 @@ class AgentSession:
         via_mcp = name in self.replaced or name in self.mcp_tools
         if self.mode in ("ask", "review"):
             return via_mcp or not (name == "run_command" and not call["args"].get("outside_sandbox") and rules.safe_readonly(str(call["args"].get("command") or "")))
+        if self.mode == "unless-trusted":
+            # Granular approval (Codex): in untrusted workspaces, ask like "ask" mode;
+            # in trusted ones, fall through to the normal auto-mode rules below.
+            untrusted = any(p["state"] in ("untrusted", "held") for p in self.registry.plugins) or \
+                        any(s.name not in self._skills_trusted for s in self.skills.values() if not s.builtin)
+            if untrusted:
+                return via_mcp or not (name == "run_command" and not call["args"].get("outside_sandbox") and rules.safe_readonly(str(call["args"].get("command") or "")))
+            # Trusted: continue to the auto-mode rules below.
         if kind == "exec":
             # In edits mode commands run on their own only inside a working OS sandbox.
             confined = (sandbox.backend() != "none" and self.workspace.policy.mode != "full-access" and not via_mcp
@@ -1291,6 +1300,11 @@ class AgentSession:
     def _wait_for_decision(self, call: dict) -> dict:
         if self.parent is not None:
             return self.parent._wait_for_decision({**call, "agent": self.nick or (self.agent.name if self.agent else "")})
+        # Approval audit log (dsh): record asked/decided pairs for compliance review.
+        audit_id = f"appr-{int(time.time() * 1000)}-{len(self._approval_audit)}"
+        self._approval_audit.append({"id": audit_id, "event": "approval/asked",
+                                     "tool": call.get("name"), "args": call.get("args"),
+                                     "at": time.time()})
         with self._approval_lock:
             with self._lock:
                 previous = self.status
@@ -1301,6 +1315,10 @@ class AgentSession:
                     self._lock.wait(timeout=1.0)
                 decision = self._decision or {"decision": "deny", "note": "stopped"}
                 self.pending, self.status = None, previous
+            self._approval_audit.append({"id": audit_id, "event": "approval/decided",
+                                         "outcome": decision.get("decision"),
+                                         "note": decision.get("note", ""),
+                                         "at": time.time()})
             return decision
 
     def _self_extend(self, call: dict) -> str:
@@ -1402,7 +1420,8 @@ class AgentSession:
                 if len(self._skills_loaded) >= MAX_SKILLS_PER_TURN:
                     raise ToolError(f"Load at most {MAX_SKILLS_PER_TURN} skills per task; you already loaded {', '.join(self._skills_loaded)}. Use those.")
                 self._skills_loaded.append(found.name)
-            return skills.load(found)
+            # Skill arguments (Kimi): pass through for $ARGUMENTS/$0 expansion.
+            return skills.load(found, str(args.get("args") or args.get("arguments") or ""))
         if call["name"] == "todo_write":
             items = [{"content": str(i.get("content", ""))[:300], "status": i.get("status") if i.get("status") in
                       ("pending", "in_progress", "completed") else "pending"} for i in args.get("items") or [] if isinstance(i, dict)]
@@ -1869,12 +1888,26 @@ class AgentSession:
             return (f"{call['name']} needs {', '.join(missing)}; this call arrived with {got}. A very long argument can be cut or garbled "
                     "on the way: write long content to a file first and pass its path where the tool takes one."), False
         signature = call["name"] + json.dumps(call["args"], sort_keys=True, default=str)
-        self._recent = (self._recent + [signature])[-DOOM_LOOP:]
-        if len(self._recent) == DOOM_LOOP and len(set(self._recent)) == 1 and call["name"] != "wait_agent":
-            self._recent = []
-            self.emit("notice", text=f"{call['name']} called {DOOM_LOOP} times with the same arguments; blocked.")
-            return (f"Blocked: you made this exact {call['name']} call {DOOM_LOOP} times in a row. "
-                    "Change your approach or ask the user."), False
+        # Repeat guard (dsh-style): remind at 3/5, block at 8. Gentler than a hard block
+        # at 3 — the model often needs a couple of retries before it realizes it's stuck.
+        self._recent = (self._recent + [signature])[-8:]
+        if len(self._recent) >= 3 and len(set(self._recent[-3:])) == 1 and call["name"] != "wait_agent":
+            n = 3
+            while n < len(self._recent) and self._recent[-(n + 1)] == signature:
+                n += 1
+            if n >= 8:
+                self._recent = []
+                self.emit("notice", text=f"{call['name']} called 8 times with the same arguments; blocked.")
+                return (f"Blocked: you made this exact {call['name']} call 8 times in a row. "
+                        "Change your approach or ask the user."), False
+            # Advisory only: stash the reminder to prepend to this call's result below.
+            repeat_note = (f"[Reminder] You have now made this exact {call['name']} call {n} times in a row "
+                           f"with identical arguments. If the result keeps coming back the same, try a different approach "
+                           f"instead of repeating it." if n == 3 else
+                           f"[Reminder] This is the {n}th identical {call['name']} call in a row. "
+                           f"Stop and reconsider: what new information would a repeat give you?")
+        else:
+            repeat_note = ""
         verdict = rules.check(self.rules, call["name"], call["args"], self._rel) if isinstance(call["args"], dict) else None
         if verdict == "deny":
             return f"Denied by a permission rule for {call['name']}. Do not retry it; use another way or ask the user.", False
@@ -2002,6 +2035,8 @@ class AgentSession:
                 notes = "\n".join(n for n in (notes, self._hook_call(fn, call, output)) if n)
             if notes:
                 output = f"{output}\n{notes}"
+        if repeat_note:
+            output = f"{repeat_note}\n{output}"
         return output, ok
 
     def _offload(self, call: dict, output: str) -> str:
@@ -2015,8 +2050,15 @@ class AgentSession:
             path.write_text(output, encoding="utf-8")
         except OSError:
             return clip(output)
-        return (f"{output[:6000]}\n… [full output saved to {path}: {len(output) - 10000} more characters; "
-                f"read it with read_file offset and limit, or search it] …\n{output[-4000:]}")
+        # Truncation metadata (Pi): explicit counts so the model knows exactly what it's missing.
+        total_chars = len(output)
+        total_lines = output.count("\n") + 1
+        head_chars, tail_chars = 6000, 4000
+        head_lines = output[:head_chars].count("\n") + 1
+        tail_lines = output[-tail_chars:].count("\n") + 1
+        return (f"{output[:head_chars]}\n… [truncatedBy=offload: {total_chars:,} chars / {total_lines:,} lines total; "
+                f"showing {head_chars:,} chars ({head_lines} lines) head + {tail_chars:,} chars ({tail_lines} lines) tail; "
+                f"full output saved to {path}: read it with read_file offset and limit, or search it] …\n{output[-tail_chars:]}")
 
     # The model turn and the loop.
 
@@ -2105,6 +2147,15 @@ class AgentSession:
         except services.NoProvider:
             return None
 
+    def _aux_complete(self, messages: list[dict], kind: str = "compact", cap: int = 5000) -> dict:
+        """Auxiliary model call (ZCode-style routing): background tasks like compaction, advisor
+        and memory extraction run on a cheaper/lighter model with a capped output budget.
+        Falls back to the main model when no aux model is configured."""
+        model = self.profile.get(f"{kind}_model") or self.profile.get("aux_model") or self.model
+        # Cap the aux output: summaries and advice don't need the full reply budget.
+        return self.complete(self.provider, self.api_key, model, messages, tools=None,
+                             max_tokens=min(cap, int(self.profile.get("max_output_tokens", cap))))
+
     def _call_model(self, messages: list[dict], tools: list[dict] | None) -> dict:
         streams = (self.complete is client.complete or getattr(self.complete, "streams", False)) and not self._plain
         started = time.time()
@@ -2121,8 +2172,17 @@ class AgentSession:
                           f"waited {now['waited_s'] - limited['waited_s']:.0f} s: {now.get('detail', '')[:160]}")
 
     def _call_model_once(self, messages: list[dict], tools: list[dict] | None, streams: bool, started: float) -> dict:
+        # Per-turn timing telemetry (Codex): TTFT, TTFM and tool-blocking breakdown for the web UI.
+        telem = {"ttft_s": None, "ttfm_s": None, "model_s": 0.0}
+        first_at = [None]
+        orig_delta = self._on_delta
+        def timed_delta(live: dict) -> bool:
+            if first_at[0] is None:
+                first_at[0] = time.time()
+                telem["ttft_s"] = round(first_at[0] - started, 3)
+            return orig_delta(live)
         try:
-            extra = {"on_delta": self._on_delta} if streams else {}
+            extra = {"on_delta": timed_delta} if streams else {}
             if self.complete is client.complete:
                 extra["max_tokens"] = self._max_out
             chain = [self.profile["prewalk_model"] if self._prewalk else self.model] + self.profile["fallback_models"]
@@ -2131,10 +2191,15 @@ class AgentSession:
                     request = {"model": chain[self._fallback_at], "messages": messages, "tools": tools}
                     model = self._core("model") or self.complete
                     if not self.kernel.subscribers("model/request"):
-                        return model(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
-                    # Plugins may rewrite a model request or answer it themselves: (request, next) -> the model's turn.
-                    return self.kernel.waterfall("model/request", request, lambda r: model(
-                        self.provider, self.api_key, r["model"], r["messages"], tools=r["tools"], **extra))
+                        out = model(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
+                    else:
+                        # Plugins may rewrite a model request or answer it themselves: (request, next) -> the model's turn.
+                        out = self.kernel.waterfall("model/request", request, lambda r: model(
+                            self.provider, self.api_key, r["model"], r["messages"], tools=r["tools"], **extra))
+                    telem["ttfm_s"] = round(time.time() - started, 3)
+                    telem["model_s"] = round(time.time() - started, 3)
+                    out["timing"] = telem
+                    return out
                 except client.TransientError as exc:
                     # Retries are used up: the next configured model takes over for the rest of this turn (free-claude-code).
                     if self._fallback_at + 1 >= len(chain):
@@ -2262,8 +2327,8 @@ class AgentSession:
         messages = [{"role": "system", "content": "You write precise handover summaries."},
                     {"role": "user", "content": f"{ask}\n\n<conversation>\n{self._transcript(head)}\n</conversation>"}]
         summarize = self._core("compact")
-        summary = str(summarize(self, messages) or "") if summarize else self.complete(
-            self.provider, self.api_key, self.profile.get("compact_model") or self.model, messages, tools=None)["text"]
+        summary = str(summarize(self, messages) or "") if summarize else self._aux_complete(
+            messages, kind="compact", cap=5000)["text"]
         if not summary:
             return False
         summary = FILE_BLOCK.sub("", summary).rstrip()
@@ -2439,14 +2504,16 @@ class AgentSession:
             raise ToolError("question is empty")
         messages = [{"role": "system", "content": ORACLE_PROMPT},
                     {"role": "user", "content": f"The user asked:\n{self._last_request[:4000]}\n\nRecent conversation:\n{self._transcript(self.history[-30:])[-50000:]}\n\nThe agent asks you:\n{question[:6000]}"}]
-        reply = self.complete(self.provider, self.api_key, self.profile["advisor_model"] or self.profile["review_model"] or self.model, messages, tools=None)
+        reply = self._aux_complete(messages, kind="advisor", cap=5000)
         with self._usage_lock:
             for key in self.usage:
                 self.usage[key] += int(reply.get("usage", {}).get(key) or 0)
         return reply["text"].strip() or "The oracle gave no answer."
 
     def _ask_advisor(self, steps: str, finishing: bool) -> None:
-        notes, usage = advisor.advise(self.complete, self.provider, self.api_key, self.profile["advisor_model"] or self.profile["review_model"] or self.model,
+        # Cap aux output at 5k tokens (ZCode routing): advice is short by nature.
+        capped = lambda p, k, m, msgs, **kw: self.complete(p, k, m, msgs, tools=None, max_tokens=min(5000, int(self.profile.get("max_output_tokens", 5000))), **kw)
+        notes, usage = advisor.advise(capped, self.provider, self.api_key, self.profile["advisor_model"] or self.profile["review_model"] or self.model,
                                       self._user_messages(), steps, list(self._advice_given), finishing)
         with self._usage_lock:
             for key in self.usage:

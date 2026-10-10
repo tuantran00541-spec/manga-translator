@@ -126,7 +126,30 @@ def catalog(found: dict[str, Skill]) -> str:
             "and asking the user as ask_user.\n" + rows)
 
 
-def load(skill: Skill) -> str:
+def expand_arguments(body: str, args: str, skill_dir: str = "") -> str:
+    """Substitute $ARGUMENTS/$0/$<name> placeholders (Kimi-style skill arguments)."""
+    import shlex
+    if not args.strip():
+        return body
+    try:
+        tokens = shlex.split(args)
+    except ValueError:
+        tokens = args.split()
+    # Escape to avoid breaking XML wrappers.
+    esc = lambda s: s.replace("<", "&lt;").replace(">", "&gt;")
+    out = body
+    out = out.replace("$ARGUMENTS", esc(args))
+    for i, tok in enumerate(tokens):
+        out = re.sub(rf"\${i}(?!\w)", esc(tok), out)
+    if skill_dir:
+        out = out.replace("${SKILL_DIR}", esc(skill_dir))
+    # If no placeholder was used but args were given, append them.
+    if args.strip() and "$ARGUMENTS" not in body and not re.search(r"\$\d", body):
+        out = out.rstrip() + f"\n\nArguments: {esc(args)}"
+    return out
+
+
+def load(skill: Skill, args: str = "") -> str:
     """The skill's instructions with the files it ships, for the model to read next."""
     _, body = frontmatter(skill.file.read_text(encoding="utf-8", errors="replace"))
     if len(body) > MAX_BODY_CHARS:
@@ -137,4 +160,5 @@ def load(skill: Skill) -> str:
                     if p.is_file() and p.name != "SKILL.md")[:100]
     files = "\n".join(f"- {e}" for e in extras)
     tail = f"\n\nFiles in this skill (read them with read_file using the skill path):\n{files}" if extras else ""
+    body = expand_arguments(body, args, str(skill.folder))
     return f"Skill {skill.name} at {skill.folder}\n\n{body.strip()}{tail}"
