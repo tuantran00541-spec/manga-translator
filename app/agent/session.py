@@ -99,6 +99,21 @@ MAX_REFS = 6
 MAX_PARALLEL = 3
 # Tools with which the agent changes its own plugin tree; they ask the user in every mode.
 SELF_EXTEND = ("plugin_write", "plugin_remove")
+CREATED_NAME = re.compile(r"[a-z][a-z0-9_]{0,40}")
+# Calls a created tool's function with the model's arguments, the way function calling hands them over.
+CREATED_CALL = """
+
+import inspect as _inspect, json as _json
+_args = _json.loads({args!r})
+_fns = {{k: v for k, v in list(globals().items()) if _inspect.isfunction(v) and v.__module__ == "__main__" and not k.startswith("_")}}
+_fn = _fns.get({name!r}) or _fns.get("run") or _fns.get("main") or (next(iter(_fns.values())) if len(_fns) == 1 else None)
+if _fn is not None:
+    _params = list(_inspect.signature(_fn).parameters.values())
+    _whole = len(_params) == 1 and _params[0].name not in _args and _params[0].kind != _params[0].VAR_KEYWORD
+    _result = _fn(_args) if _whole else _fn(**_args)
+    if _result is not None:
+        print(_result if isinstance(_result, str) else _json.dumps(_result, ensure_ascii=False, default=str))
+"""
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
 UNREADABLE_TURNS = 4
@@ -167,6 +182,9 @@ SESSION_SPECS = {
             "id": {"type": "string", "description": "lower_case name, also the file name"}, "code": {"type": "string"},
             "path": {"type": "string", "description": "a workspace file holding the code, instead of code (better for a long plugin)"},
             "config": {"type": "object"}}}},
+    "create": {"name": "create", "description": "create",
+               "parameters": {"type": "object", "required": ["name"], "properties": {
+                   "name": {"type": "string"}, "description": {"type": "string"}, "parameters": {"type": "object"}, "code": {"type": "string"}}}},
     "plugin_remove": {"name": "plugin_remove", "description": "Unmount a plugin you or the user wrote and delete its file (the user approves).",
                       "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
     "goal_done": {"name": "goal_done", "description": "Mark the user's goal finished and verified, with a short report.",
@@ -365,6 +383,7 @@ class AgentSession:
         self.mcp_servers: dict[str, mcp.Server] = {}
         self.mcp_status: dict[str, dict] = {}
         self.mcp_tools: dict[str, tuple[str, dict]] = {}
+        self.created = parent.created if depth else self._load_created()
         self.mcp_loaded: set[str] = set()
         self._mcp_starting: dict = {}
         self._mcp_stale = False
@@ -1013,6 +1032,9 @@ class AgentSession:
         if not self.depth:
             rows += [SESSION_SPECS["schedule_create"], SESSION_SPECS["schedule_list"], SESSION_SPECS["schedule_delete"]]
         rows += [SESSION_SPECS["plugin_write"], SESSION_SPECS["plugin_remove"]]
+        if self.workspace.policy.mode != "read-only":
+            rows.append(SESSION_SPECS["create"])
+            rows += [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
         rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn, fan,
                  SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         rows += [t.spec for t in self.registry.tools.values()]
@@ -1057,6 +1079,9 @@ class AgentSession:
             return self.mode not in HANDS_OFF
         if name == "memory":
             return self.mode not in HANDS_OFF and call["args"].get("action") != "list"
+        if name == "create":
+            # Writing a tool is an edit; running it is a command and asks like one.
+            return self.mode in ("ask", "review") and verdict != "allow"
         if name == "revert_file":
             # Putting a file back is an edit, so it asks wherever edits ask.
             return self.mode in ("ask", "review") and verdict != "allow"
@@ -1210,10 +1235,64 @@ class AgentSession:
             raise ToolError(f"Saved {path} but it failed to start{detail}. Fix it and call plugin_write again.")
         return f"Saved {path} and mounted it: {mounted.state}{detail}. It loads again in every new session; /plugins shows the tree."
 
+    def _tools_folder(self) -> Path:
+        return (self.home if self.home is not None else Path.home()) / ".manga-agent" / "tools"
+
+    def _load_created(self) -> dict[str, dict]:
+        """Tools the model wrote with create, kept across sessions."""
+        found = {}
+        for path in sorted(self._tools_folder().glob("*.json")):
+            try:
+                tool = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(tool, dict) and CREATED_NAME.fullmatch(str(tool.get("name"))) and isinstance(tool.get("code"), str):
+                found[tool["name"]] = tool
+        return found
+
+    def _create(self, args: dict) -> str:
+        """Write, replace or (with empty code) delete a tool the model defines in its own function-calling form."""
+        name = str(args.get("name") or "").strip()
+        if not CREATED_NAME.fullmatch(name):
+            raise ToolError("name must be lower_case letters, digits and _, starting with a letter")
+        created = self._root().created
+        if name not in created and name in {s["name"] for s in self.specs()}:
+            raise ToolError(f"{name} is a built-in tool; pick another name")
+        path = self._tools_folder() / f"{name}.json"
+        code = str(args.get("code") or "")
+        if not code.strip():
+            if name not in created:
+                raise ToolError(f"No created tool {name}; created: {', '.join(created) or 'none'}")
+            created.pop(name)
+            path.unlink(missing_ok=True)
+            return f"Deleted tool {name}."
+        try:
+            compile(code, f"{name}.py", "exec")
+        except SyntaxError as exc:
+            raise ToolError(f"Syntax error: {exc}") from exc
+        params = args.get("parameters") if isinstance(args.get("parameters"), dict) else {}
+        params = {"type": "object", "properties": {}, **params}
+        old = created.get(name)
+        tool = {"name": name, "description": str(args.get("description") or (old or {}).get("description") or name)[:1024],
+                "parameters": params, "code": code}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(tool, ensure_ascii=False, indent=1), encoding="utf-8")
+        created[name] = tool
+        return f"{'Updated' if old else 'Created'} tool {name}; call it like any other tool. It runs in the sandbox and is kept for later sessions."
+
+    def _run_created(self, call: dict) -> str:
+        """A created tool runs as a sandboxed script that may call the read-only tools."""
+        tool = self._root().created[call["name"]]
+        args = call["args"] if isinstance(call["args"], dict) else {}
+        script = tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
+        return self._run_script({"code": script})
+
     def _session_tool(self, call: dict) -> str:
         args = call["args"]
         if call["name"] in SELF_EXTEND:
             return self._self_extend(call)
+        if call["name"] == "create":
+            return self._create(args)
         if call["name"] == "skill":
             found = self.skills.get(str(args.get("name") or ""))
             if found is None:
@@ -1787,6 +1866,8 @@ class AgentSession:
                     output, ok = self._run_foreground(call["args"]), True
                 elif call["name"] == "run_script":
                     output, ok = self._run_script(call["args"]), True
+                elif call["name"] in self._root().created:
+                    output, ok = self._run_created(call), True
                 elif call["name"] in self.registry.tools:
                     try:
                         output, ok = str(self.registry.tools[call["name"]].handler(self, call["args"])), True
@@ -2576,18 +2657,22 @@ class AgentSession:
         finally:
             with self._lock:
                 again = bool(self.queue) and not self._stop
-                if not again:
-                    self.status = "idle"
-                self._lock.notify_all()
+            if not again:
+                # Saved before going idle, so whoever sees idle also finds the session on disk.
+                self.emit("done")
+                self.save()
+                with self._lock:
+                    again = bool(self.queue) and not self._stop
+                    if not again:
+                        self.status = "idle"
+                    self._lock.notify_all()
             if again:
                 # A message that arrived as the turn ended starts a request of its own.
                 with self._lock:
                     nxt = self.queue[0] if self.queue else ""
                 self._new_request(nxt)
                 threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
-            else:
-                self.emit("done")
-            self.save()
+                self.save()
 
 
 class _McpBridge:

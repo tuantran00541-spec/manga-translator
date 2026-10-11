@@ -11,7 +11,7 @@ import uuid
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_INFO = {"name": "manga-agent", "version": "1"}
 # Tools that need a person in the loop or the agent's own conversation are not offered to another client.
-HIDDEN = {"ask_user", "exit_plan_mode", "goal_done", "todo_write", "memory", "task", "spawn_agent", "fan_out", "wait_agent", "send_input",
+HIDDEN = {"create", "ask_user", "exit_plan_mode", "goal_done", "todo_write", "memory", "task", "spawn_agent", "fan_out", "wait_agent", "send_input",
           "close_agent", "oracle", "schedule_create", "schedule_list", "schedule_delete", "context_notes", "new_context", "plugin_write",
           "plugin_remove", "skill", "job_input", "delegate", "tool_search", "changes", "revert_file"}
 

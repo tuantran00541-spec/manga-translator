@@ -3032,6 +3032,30 @@ def test_the_agent_writes_a_plugin_that_mounts_after_approval_even_in_auto_mode(
     assert "shout" not in {s["name"] for s in session.specs()} and not (home / ".manga-agent" / "plugins" / "shouter.py").exists()
 
 
+def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_keeps_it(ws, home):
+    (ws.root / "notes.txt").write_text("a\nb\nc\n")
+    code = "def count_lines(path):\n    return {'lines': len(tools.read_file(path=path).splitlines())}\n"
+    params = {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}
+    fake = scripted(turn(calls=[call("create", name="count_lines", description="Count lines.", parameters=params, code=code)]),
+                    turn(calls=[call("count_lines", path="notes.txt")]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    run_to_idle(session, "count lines")
+    outputs = [e["output"] for e in session.events if e["type"] == "tool"]
+    assert outputs[0].startswith("Created tool count_lines") and '{"lines": 3}' in outputs[1], outputs
+    assert next(s for s in session.specs() if s["name"] == "create")["description"] == "create"
+    later = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=scripted(), session_id="later")
+    assert {"name": "count_lines", "description": "Count lines.", "parameters": params} in later.specs()
+    assert later._needs_approval({"name": "count_lines", "args": {}}) == later._needs_approval({"name": "run_command", "args": {"command": "make"}})
+    assert later._create({"name": "count_lines", "code": "def run(args):\n    return 'v2'\n"}).startswith("Updated")
+    assert later.created["count_lines"]["description"] == "Count lines."
+    with pytest.raises(ToolError, match="built-in"):
+        later._create({"name": "read_file", "code": "x = 1"})
+    with pytest.raises(ToolError, match="Syntax"):
+        later._create({"name": "bad", "code": "def ("})
+    assert later._create({"name": "count_lines", "code": ""}) == "Deleted tool count_lines."
+    assert not (home / ".manga-agent" / "tools" / "count_lines.json").exists() and "count_lines" not in {s["name"] for s in later.specs()}
+
+
 def test_plugin_write_failures_from_the_evolve_run_say_what_is_wrong(ws, home, tmp_path):
     session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     plugins = home / ".manga-agent" / "plugins"
