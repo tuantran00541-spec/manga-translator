@@ -343,6 +343,12 @@
   @keyframes agent-pulse { 50% { opacity: .35; } }
   .agent-approval { display: grid; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--surface-quiet); }
   .agent-approval-title { margin: 0; overflow-wrap: anywhere; }
+  .agent-key-dialog { width: min(420px, calc(100vw - 32px)); padding: 18px 20px; border: 0; border-radius: 14px; background: var(--surface-canvas); color: var(--text-primary); box-shadow: var(--shadow-float); }
+  .agent-key-dialog::backdrop { background: var(--surface-overlay); }
+  .agent-key-dialog p { margin: 0 0 10px; overflow-wrap: anywhere; }
+  .agent-key-title { font-weight: 600; }
+  .agent-key-detail { font-size: 12.5px; color: var(--text-secondary); max-height: 6em; overflow: auto; }
+  .agent-key-dialog .agent-approval-actions { justify-content: flex-end; margin-top: 6px; }
   .agent-approval-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .agent-approval-note { flex: 1 1 160px; min-width: 0; padding: 6px 10px; border: 0; border-radius: 999px; background: var(--surface-canvas); color: var(--text-primary); font: inherit; font-size: 12.5px; }
   .agent-btn { padding: 5px 13px; border: 0; border-radius: 999px; background: var(--surface-canvas); color: var(--text-primary); font: inherit; font-size: 12.5px; cursor: pointer; }

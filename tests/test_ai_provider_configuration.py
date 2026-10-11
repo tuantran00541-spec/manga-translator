@@ -224,3 +224,75 @@ def test_a_secret_store_that_crashes_while_loading_falls_back_to_the_file(monkey
     monkeypatch.setattr(keyring, "get_keyring", panic)
     secret_store.set_provider_api_key("custom-lab", "k", provider_label="Custom Lab")
     assert (tmp_path / "manga-translator" / "secrets.json").is_file()
+
+
+def test_extra_keys_are_kept_after_the_first_and_the_first_is_what_other_features_use(monkeypatch, tmp_path):
+    import keyring
+    from keyring.backends import fail
+
+    from app import secret_store
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(secret_store, "_os_store_works", None)
+    monkeypatch.setattr(keyring, "get_keyring", lambda: fail.Keyring())
+    assert secret_store.set_provider_api_key("openai", "k1") == 1
+    assert secret_store.set_provider_api_key("openai", "k2", append=True) == 2
+    assert secret_store.set_provider_api_key("openai", "k2", append=True) == 2, "the same key is not stored twice"
+    assert secret_store.get_provider_api_keys("openai") == ["k1", "k2"]
+    assert secret_store.get_provider_api_key("openai") == "k1"
+    assert secret_store.provider_key_status("openai")["count"] == 2
+    assert secret_store.set_provider_api_key("openai", "k3") == 1, "Lưu replaces every stored key"
+    assert secret_store.get_provider_api_keys("openai") == ["k3"]
+
+
+@pytest.mark.parametrize("pasted, base", [
+    ("https://api.groq.com", "https://api.groq.com/openai/v1"),
+    ("api.openai.com/v1/chat/completions", "https://api.openai.com/v1"),
+    ("https://openrouter.ai/api/v1/", "https://openrouter.ai/api/v1"),
+    ("https://generativelanguage.googleapis.com", "https://generativelanguage.googleapis.com/v1beta/openai"),
+    ("https://generativelanguage.googleapis.com/v1beta/openai/", "https://generativelanguage.googleapis.com/v1beta/openai"),
+    ("https://api.z.ai/api/paas/v4/chat/completions", "https://api.z.ai/api/paas/v4"),
+    ("https://dashscope-intl.aliyuncs.com", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
+    ("https://api.perplexity.ai/chat/completions", "https://api.perplexity.ai"),
+    ("https://me.openai.azure.com/openai/deployments/gpt/chat/completions?api-version=2024-10-21", "https://me.openai.azure.com/openai/v1"),
+    ("https://gw.example.com/custom/v1/models", "https://gw.example.com/custom/v1"),
+])
+def test_pasted_base_urls_become_the_api_root(pasted, base):
+    from app.ai_providers import validate_api_base
+
+    assert validate_api_base(pasted) == base
+
+
+def test_an_unknown_bare_host_is_probed_for_its_api_root(monkeypatch):
+    import requests
+
+    from app.ai_providers import auth_headers
+
+    tried = []
+
+    class Response:
+        def __init__(self, data):
+            self._data = data
+
+        def json(self):
+            return self._data
+
+        def close(self):
+            pass
+
+    def fake_get(url, **kwargs):
+        tried.append(url)
+        if url == "https://gw.example.com/v1/models":
+            return Response({"data": [{"id": "m"}]})
+        error = requests.HTTPError("404")
+        error.response = type("R", (), {"status_code": 404, "headers": {"content-type": "text/html"}})()
+        raise error
+
+    monkeypatch.setattr(visual_qc_router, "safe_get", fake_get)
+    provider = resolve_provider("gw", label="Gateway", protocol="openai", api_base="https://gw.example.com")
+    found = visual_qc_router._discover_api_base(provider, "k")
+    assert found.api_base == "https://gw.example.com/v1"
+    assert tried == ["https://gw.example.com/models", "https://gw.example.com/v1/models"]
+    azure = resolve_provider("az", label="Azure", protocol="openai", api_base="https://me.openai.azure.com")
+    assert auth_headers(azure, "k") == {"Authorization": "Bearer k", "api-key": "k"}
+    assert auth_headers(PROVIDERS["openai"], "k") == {"Authorization": "Bearer k"}

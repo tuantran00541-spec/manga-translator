@@ -292,6 +292,72 @@ def wait_for(session, status, timeout=10.0):
     assert session.status == status
 
 
+def test_a_limited_key_asks_before_moving_to_the_next_stored_key(ws, home, monkeypatch):
+    monkeypatch.setattr(client, "validate_url", lambda url: url)
+    monkeypatch.setattr(client, "RATE_LIMITS", {})
+    monkeypatch.setattr(client, "_COOLDOWN", {})
+    monkeypatch.setattr(client.time, "sleep", lambda s: None)
+    reply = ["data: " + json.dumps({"choices": [{"delta": {"content": "Xong."}, "finish_reason": "stop"}]}), "data: [DONE]"]
+    used = []
+
+    def post(url, **kw):
+        used.append(kw["headers"]["Authorization"])
+        return FakeResponse(429, {"error": {"message": "Rate limit exceeded"}}) if kw["headers"]["Authorization"] == "Bearer k1" else FakeResponse(200, reply)
+
+    monkeypatch.setattr(client.requests, "post", post)
+    session = manager(home).create(PROVIDERS["openai"], ["k1", "k2"], "m", ws, "auto", complete=client.complete)
+    session.send("chào")
+    end = time.time() + 10
+    while session.key_prompt is None and time.time() < end:
+        time.sleep(0.01)
+    assert session.key_prompt["index"] == 1 and session.key_prompt["next"] == 2 and session.snapshot()["key_prompt"]
+    assert used == ["Bearer k1"], "a limit with no named wait is not retried blindly"
+    session.choose_key("next")
+    wait_for(session, "idle")
+    assert session.api_key == "k2" and used[-1] == "Bearer k2" and session.history[-1]["content"] == "Xong."
+    assert any(e["type"] == "key_limit" for e in session.events) and session.key_prompt is None
+    # With one key the old behaviour stands: wait and retry.
+    used.clear()
+    single = manager(home).create(PROVIDERS["openai"], "k1", "m", ws, "auto", complete=client.complete)
+    with pytest.raises(client.TransientError):
+        single.complete(PROVIDERS["openai"], "k1", "m", [], tools=None)
+    assert len(used) > 1
+
+
+def test_declining_the_next_key_ends_the_turn_with_the_error(ws, home):
+    def complete(provider, key, model, messages, *, tools, **kw):
+        assert client.ASK_ON_LIMIT.get()
+        raise client.KeyLimited("OpenAI HTTP 429: insufficient_quota")
+
+    session = manager(home).create(PROVIDERS["openai"], ["k1", "k2"], "m", ws, "auto", complete=complete)
+    session.send("chào")
+    end = time.time() + 10
+    while session.key_prompt is None and time.time() < end:
+        time.sleep(0.01)
+    session.choose_key("stop")
+    wait_for(session, "idle")
+    assert session.api_key == "k1" and any(e["type"] == "error" and "429" in e["text"] for e in session.events)
+    with pytest.raises(RuntimeError):
+        session.choose_key("next")
+
+
+def test_a_named_wait_is_kept_even_with_spare_keys(monkeypatch):
+    monkeypatch.setattr(client, "validate_url", lambda url: url)
+    monkeypatch.setattr(client, "RATE_LIMITS", {})
+    monkeypatch.setattr(client, "_COOLDOWN", {})
+    waits = []
+    monkeypatch.setattr(client.time, "sleep", waits.append)
+    replies = [FakeResponse(429, {"error": {"message": "Rate limited, try again in 3s"}}),
+               FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})]
+    monkeypatch.setattr(client.requests, "post", lambda url, **kw: replies.pop(0))
+    token = client.ASK_ON_LIMIT.set(True)
+    try:
+        assert client.complete(PROVIDERS["openai"], "k", "m", [], tools=None)["text"] == "ok"
+    finally:
+        client.ASK_ON_LIMIT.reset(token)
+    assert waits == [3.0]
+
+
 def test_ask_mode_waits_for_approval_then_writes(ws, home):
     fake = scripted(turn(calls=[call("write_file", path="new.txt", content="hi")]), turn("Xong."), turn("Không có test để chạy."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
@@ -577,7 +643,7 @@ def api(monkeypatch, ws, home, tmp_path):
     real_create = agents.create
     monkeypatch.setattr(agents, "create", lambda *a, **kw: real_create(*a, **{**kw, "complete": fake}))
     monkeypatch.setattr(agent, "agent_sessions", agents)
-    monkeypatch.setattr(agent, "get_provider_api_key", lambda *a, **kw: "secret")
+    monkeypatch.setattr(agent, "get_provider_api_keys", lambda *a, **kw: ["secret"])
     # The test client calls from the host name "testclient", which stands in for this machine here.
     monkeypatch.setattr(agent, "is_loopback", lambda host: host == "testclient")
     return TestClient(app, base_url="http://127.0.0.1"), str(ws.root), agents

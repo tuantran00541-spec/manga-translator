@@ -14,7 +14,7 @@ from app.agent.tools import Workspace
 from app.ai_providers import CLOUD_PROVIDER_ID, validate_model_name
 from app.config import BASE_DIR
 from app.routers.visual_qc import _resolve_configured_provider
-from app.secret_store import SecretStoreUnavailable, get_provider_api_key
+from app.secret_store import SecretStoreUnavailable, get_provider_api_keys
 
 AGENT_HEADER = "1"
 
@@ -74,6 +74,10 @@ class ApprovalRequest(BaseModel):
     note: str = Field(default="", max_length=2000)
 
 
+class KeyChoice(BaseModel):
+    decision: str
+
+
 class SessionUpdate(BaseModel):
     mode: str | None = None
     model: str | None = None
@@ -93,14 +97,14 @@ async def _provider_and_key(provider_id: str):
         raise HTTPException(400, "Manga Cloud only serves A.I mode")
     try:
         provider = await run_in_threadpool(_resolve_configured_provider, provider_id)
-        api_key = await run_in_threadpool(get_provider_api_key, provider.id, provider_label=provider.label)
+        api_keys = await run_in_threadpool(get_provider_api_keys, provider.id, provider_label=provider.label)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
-    if not api_key:
+    if not api_keys:
         raise HTTPException(409, f"{provider.label} API key is not configured")
-    return provider, api_key
+    return provider, api_keys
 
 
 @router.get("/config")
@@ -240,6 +244,17 @@ def approve(session_id: str, req: ApprovalRequest) -> dict:
         raise HTTPException(400, "decision must be allow, allow_always, allow_all or deny")
     try:
         _session(session_id).decide(req.decision, req.note)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"ok": True}
+
+
+@router.post("/sessions/{session_id}/key")
+def choose_key(session_id: str, req: KeyChoice) -> dict:
+    if req.decision not in {"next", "stop"}:
+        raise HTTPException(400, "decision must be next or stop")
+    try:
+        _session(session_id).choose_key(req.decision)
     except RuntimeError as exc:
         raise HTTPException(409, str(exc)) from exc
     return {"ok": True}

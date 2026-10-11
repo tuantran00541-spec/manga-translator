@@ -242,6 +242,19 @@ def _harden_process() -> None:
             pass
 
 
+class _Keyed:
+    """The session's model function, asking to move to the next key when one is limited; other attributes pass through."""
+
+    def __init__(self, session: "AgentSession", raw):
+        self.session, self.raw = session, raw
+
+    def __call__(self, *args, **kwargs):
+        return self.session._complete_keyed(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.raw, name)
+
+
 class AgentSession:
     """One conversation with one model in one workspace."""
 
@@ -249,8 +262,15 @@ class AgentSession:
                  complete=client.complete, store: Path | None = None, trust: context.TrustStore | None = None,
                  depth: int = 0, home: Path | None = None, parent: "AgentSession | None" = None,
                  agent: agents.Agent | None = None):
-        self.id, self.provider, self.api_key, self.model = session_id, provider, api_key, model
-        self.workspace, self.mode, self.complete, self.store, self.depth = workspace, mode, complete, store, depth
+        keys = [api_key] if isinstance(api_key, str) else [k for k in api_key if k]
+        self.id, self.provider, self.model = session_id, provider, model
+        self.api_keys, self.api_key = keys, keys[0] if keys else ""
+        self.key_prompt: dict | None = None
+        self._key_choice: str | None = None
+        self._key_lock = threading.Lock()
+        self.workspace, self.mode, self.store, self.depth = workspace, mode, store, depth
+        self._raw_complete = complete
+        self.complete = _Keyed(self, complete)
         self.trust = trust or context.TrustStore(None)
         self.home, self.parent, self.agent = home, parent, agent
         home_path = home if home is not None else Path.home()
@@ -436,7 +456,7 @@ class AgentSession:
                     "sandbox": {"mode": self.workspace.policy.mode, "network": self.workspace.policy.network,
                                 "backend": sandbox.backend()},
                     "text_tools": self.text_tools, "usage": dict(self.usage), "stats": self._stats(), "live": self._live_view(),
-                    "pending": self.pending, "todos": self.todos,
+                    "pending": self.pending, "todos": self.todos, "key_prompt": self.key_prompt, "keys": len(self.api_keys),
                     "disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins, "externals": list(self.externals),
                                                                     "needs_trust": any(p["state"] == "untrusted" for p in self.registry.plugins)},
                     "plan_mode": self.plan_mode, "goal": self.goal and self.goal["text"], "queued": len(self.queue),
@@ -699,6 +719,58 @@ class AgentSession:
             if self.status != "waiting" or self.pending is None:
                 raise RuntimeError("Nothing is waiting for approval")
             self._decision = {"decision": decision, "note": note}
+            self._lock.notify_all()
+
+    def _root(self) -> "AgentSession":
+        return self.parent._root() if self.parent is not None else self
+
+    @property
+    def _base_complete(self):
+        """The model function underneath the key handling."""
+        return self.complete.raw if isinstance(self.complete, _Keyed) else self.complete
+
+    def _complete_keyed(self, provider, api_key, *args, **kwargs):
+        """The model call; when a spare key exists, a key limit asks the user whether to move to the next key."""
+        root = self._root()
+        while True:
+            key = root.api_key if api_key in root.api_keys else api_key
+            token = client.ASK_ON_LIMIT.set(key == root.api_key and len(root.api_keys) > 1)
+            try:
+                return self._raw_complete(provider, key, *args, **kwargs)
+            except client.KeyLimited as exc:
+                if not root._ask_next_key(key, str(exc)):
+                    raise
+            finally:
+                client.ASK_ON_LIMIT.reset(token)
+
+    def _ask_next_key(self, key: str, detail: str) -> bool:
+        """Waits for the user's answer; True once a different key is in use."""
+        with self._key_lock:
+            if key != self.api_key:
+                return True
+            index = self.api_keys.index(key)
+            following = (index + 1) % len(self.api_keys)
+            with self._lock:
+                self.key_prompt = {"index": index + 1, "next": following + 1, "count": len(self.api_keys),
+                                   "provider": self.provider.label, "detail": detail[:300]}
+                self._key_choice = None
+            self.emit("key_limit", **self.key_prompt)
+            with self._lock:
+                while self._key_choice is None and not self._stop:
+                    self._lock.wait(timeout=1.0)
+                choice, self.key_prompt = self._key_choice, None
+            if choice != "next":
+                self.emit("notice", text=f"Đã dừng: key {index + 1}/{len(self.api_keys)} của {self.provider.label} đang bị giới hạn.")
+                return False
+            self.api_key = self.api_keys[following]
+            self.emit("notice", text=f"Đã đổi sang key {following + 1}/{len(self.api_keys)} của {self.provider.label}.")
+            return True
+
+    def choose_key(self, choice: str) -> None:
+        with self._lock:
+            if self.key_prompt is None:
+                raise RuntimeError("No key is waiting for a decision")
+            self._key_choice = choice
             self._lock.notify_all()
 
     def stop(self) -> None:
@@ -1356,8 +1428,8 @@ class AgentSession:
         helper = Workspace(copy or self.workspace.root, self.workspace.policy if mutating else sandbox.Policy("read-only", False),
                            read_roots=self.workspace.read_roots)
         helper.services = self.workspace.services
-        child = AgentSession(f"{self.id}-{nick}", self.provider, self.api_key, agent.model or self.profile.get("subagent_model") or self.model, helper,
-                             self.mode if mutating else "auto", complete=self.complete, depth=self.depth + 1, home=self.home,
+        child = AgentSession(f"{self.id}-{nick}", self.provider, self.api_keys, agent.model or self.profile.get("subagent_model") or self.model, helper,
+                             self.mode if mutating else "auto", complete=self._raw_complete, depth=self.depth + 1, home=self.home,
                              trust=self.trust, parent=self, agent=agent)
         child.text_tools, child.nick, child.job, child.mutating = self.text_tools, nick, job, mutating and copy is None
         child.copy, child.base = copy, base
@@ -1718,7 +1790,7 @@ class AgentSession:
             return None
 
     def _call_model(self, messages: list[dict], tools: list[dict] | None) -> dict:
-        streams = (self.complete is client.complete or getattr(self.complete, "streams", False)) and not self._plain
+        streams = (self._base_complete is client.complete or getattr(self._base_complete, "streams", False)) and not self._plain
         started = time.time()
         limited = dict(client.RATE_LIMITS.get(self.provider.id) or {"count": 0, "waited_s": 0.0})
         try:
@@ -1735,7 +1807,7 @@ class AgentSession:
     def _call_model_once(self, messages: list[dict], tools: list[dict] | None, streams: bool, started: float) -> dict:
         try:
             extra = {"on_delta": self._on_delta} if streams else {}
-            if self.complete is client.complete:
+            if self._base_complete is client.complete:
                 extra["max_tokens"] = self._max_out
             chain = [self.profile["prewalk_model"] if self._prewalk else self.model] + self.profile["fallback_models"]
             while True:
@@ -2260,7 +2332,7 @@ class AgentSession:
                     self.emit("error", text=f"The model replied empty {empties} times in a row ({debug}); stopping.")
                     break
                 # The model wrote tool calls the server's stream parser lost; a reply without streaming carries them whole.
-                if debug.get("finish") == "tool_calls" and not self._plain and self.complete is client.complete:
+                if debug.get("finish") == "tool_calls" and not self._plain and self._base_complete is client.complete:
                     self._plain = True
                     self.emit("notice", text=f"The server lost the tool calls while streaming ({used} tokens); turning streaming off for this session.")
                 else:
@@ -2399,7 +2471,7 @@ class AgentSessionManager:
     def _path(self, session_id: str) -> Path | None:
         return self.store_dir / "sessions" / f"{session_id}.json" if self.store_dir else None
 
-    def create(self, provider, api_key: str, model: str, workspace: Workspace, mode: str, complete=client.complete,
+    def create(self, provider, api_key: str | list[str], model: str, workspace: Workspace, mode: str, complete=client.complete,
                session_id: str | None = None) -> AgentSession:
         if mode not in MODES:
             raise ValueError(f"mode must be one of {', '.join(MODES)}")

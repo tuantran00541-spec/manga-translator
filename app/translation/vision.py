@@ -10,7 +10,7 @@ import requests
 
 from app.ai_mode.vision_json import stage_headers
 from app.box_format import scaled_box
-from app.ai_providers import AIProvider
+from app.ai_providers import AIProvider, auth_headers
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
@@ -320,7 +320,7 @@ class VisionPageTranslator:
         try:
             response = requests.post(
                 url,
-                headers={"Authorization": f"Bearer {api_key.strip()}", "Content-Type": "application/json",
+                headers={**auth_headers(self.provider, api_key), "Content-Type": "application/json",
                          **stage_headers(self.provider, "translate")},
                 json=payload,
                 timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),

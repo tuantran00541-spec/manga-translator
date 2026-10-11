@@ -6,12 +6,13 @@ import random
 import re
 import time
 import uuid
+from contextvars import ContextVar
 from email.utils import parsedate_to_datetime
 
 import requests
 from loguru import logger
 
-from app.ai_providers import AIProvider
+from app.ai_providers import AIProvider, auth_headers
 from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS
 from app.security import validate_url
@@ -58,6 +59,14 @@ CUT_OFF = ("Your reply hit the output length limit and this call was cut off bef
 
 class TransientError(RuntimeError):
     """A failure worth asking again: a timeout, a dropped connection or a 5xx from the provider."""
+
+
+class KeyLimited(RuntimeError):
+    """The key is rate limited or out of quota and the provider named no wait; another key may help."""
+
+
+# Set while the caller holds spare keys: a limit with no named wait is handed back instead of retried blindly.
+ASK_ON_LIMIT: ContextVar[bool] = ContextVar("ask_on_limit", default=False)
 
 
 class ToolsUnsupported(RuntimeError):
@@ -300,7 +309,7 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
             time.sleep(min(pause, 60.0))
         _wait_for_pace(provider.id)
         try:
-            response = requests.post(url, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            response = requests.post(url, headers={**auth_headers(provider, api_key), "Content-Type": "application/json"},
                                      json=payload, timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, STREAM_IDLE_TIMEOUT if stream else READ_TIMEOUT),
                                      allow_redirects=False, stream=stream)
         except requests.RequestException as exc:
@@ -313,6 +322,9 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
         except Exception:
             words = ""
         interval = _pace_hint(words)
+        if ASK_ON_LIMIT.get() and not (interval or _retry_after(response) or _hinted_wait(words)):
+            _note_rate_limit(provider, response, 0.0)
+            return response
         if interval:
             # Once the provider names a slower pace, every later request keeps to it instead of failing a few times and giving up.
             _PACE[provider.id] = [interval, time.time() + PACE_HOLD_S, time.time()]
@@ -483,6 +495,9 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
             raise ToolsUnsupported(detail)
         # A busy model ("at capacity, retry in a few seconds") is waited out like a server error; a spent quota or balance is not.
         # A spent daily quota that still lets requests through at a slower pace is waited out too.
+        if ASK_ON_LIMIT.get() and (response.status_code == 402 or response.status_code == 429 and not (
+                _pace_hint(detail) or _retry_after(response) or _hinted_wait(detail))):
+            raise KeyLimited(f"{provider.label} HTTP {response.status_code}: {detail}")
         busy = response.status_code == 429 and (not re.search(r"quota|billing|insufficient|balance|credit", detail, re.I) or bool(_pace_hint(detail)))
         retry = response.headers.get("x-should-retry", "").lower()
         error = TransientError if (response.status_code >= 500 or response.status_code in (408, 409) or busy or retry == "true") and retry != "false" else RuntimeError

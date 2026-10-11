@@ -455,6 +455,49 @@
     if (state) log.append(el("p", "agent-working", `${state}…`));
     showTodos(snap.todos);
     showInfo(snap);
+    showKeyPrompt(snap.key_prompt);
+  }
+
+  // A key that hit a limit with no wait named: ask in the middle of the screen whether to move on to the next stored key.
+  let keyDialog = null;
+  function showKeyPrompt(prompt) {
+    if (!prompt) {
+      if (keyDialog?.open) keyDialog.close();
+      return;
+    }
+    const shown = `${prompt.index}>${prompt.next}`;
+    if (keyDialog?.open && keyDialog.dataset.shown === shown) return;
+    if (!keyDialog) {
+      keyDialog = el("dialog", "agent-key-dialog");
+      keyDialog.addEventListener("cancel", (event) => event.preventDefault());
+      document.body.append(keyDialog);
+    }
+    keyDialog.dataset.shown = shown;
+    const answer = (decision) => {
+      keyDialog.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+      post(`/api/agent/sessions/${session.id}/key`, { decision })
+        .then(() => keyDialog.close())
+        .catch((error) => {
+          keyDialog.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+          window.showToast?.(error.message, "error");
+        });
+    };
+    const next = el("button", "agent-btn agent-btn-primary", `Đổi sang key ${prompt.next}`);
+    next.type = "button";
+    next.addEventListener("click", () => answer("next"));
+    const stop = el("button", "agent-btn", "Dừng lại");
+    stop.type = "button";
+    stop.addEventListener("click", () => answer("stop"));
+    const actions = el("div", "agent-approval-actions");
+    actions.append(stop, next);
+    keyDialog.replaceChildren(
+      el("p", "agent-key-title", `Key ${prompt.index}/${prompt.count} của ${prompt.provider} đang bị giới hạn`),
+      el("p", "agent-key-detail", prompt.detail || "Nhà cung cấp không cho biết phải chờ bao lâu."),
+      el("p", "agent-key-ask", `Đổi sang key ${prompt.next}/${prompt.count} và chạy tiếp yêu cầu vừa rồi?`),
+      actions,
+    );
+    if (!keyDialog.open) keyDialog.showModal();
+    next.focus();
   }
 
   async function poll() {
