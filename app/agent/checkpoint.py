@@ -28,6 +28,10 @@ class Checkpoints:
         except OSError:
             pass
 
+    def current(self) -> dict[str, bytes | None]:
+        """Each file the edit tools changed in this request, as it was before the first change (None: it did not exist)."""
+        return dict(self.turns[-1]) if self.turns else {}
+
     def undo(self) -> list[str]:
         """Put the last turn's files back; returns what was restored or removed."""
         while self.turns and not self.turns[-1]:

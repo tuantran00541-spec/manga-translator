@@ -3316,3 +3316,66 @@ def test_users_add_test_switch_and_remove_their_own_mcp_servers_from_the_page(ap
     assert gone.status_code == 200 and all(r["name"] != "calc" for r in gone.json()["servers"]) and "mcp__calc__add" not in session.mcp_tools
     assert http.delete("/api/agent/mcp/calc", headers=head).status_code == 404
     agents.close_all()
+
+
+# Tool set: new tools and friendlier calls.
+
+def test_a_wrong_path_suggests_the_real_one(ws):
+    with pytest.raises(ToolError) as caught:
+        ws.run("read_file", {"path": "pkg/b.py"})
+    assert "did you mean pkg/a.py" in str(caught.value)
+    with pytest.raises(ToolError) as caught:
+        ws.run("read_file", {"path": "a.py"})
+    assert "pkg/a.py" in str(caught.value), "the same file name in another folder is offered"
+    with pytest.raises(ToolError) as caught:
+        ws.run("list_dir", {"path": "pk"})
+    assert "pkg" in str(caught.value)
+
+
+def test_search_shows_context_lines_or_only_the_files(ws):
+    (ws.root / "notes.txt").write_text("one\ntwo\nneedle\nthree\nfour\n", encoding="utf-8")
+    shown = ws.run("search", {"pattern": "needle", "path": "notes.txt", "context": 1})
+    assert shown.splitlines() == ["notes.txt:2- two", "notes.txt:3: needle", "notes.txt:4- three"]
+    (ws.root / "more.txt").write_text("needle needle\nneedle\n", encoding="utf-8")
+    assert ws.run("search", {"pattern": "needle", "files_only": True}).splitlines() == ["more.txt (2)", "notes.txt (1)"]
+
+
+def test_replace_in_files_previews_then_changes_every_file(ws):
+    (ws.root / "pkg" / "b.py").write_text("from pkg.a import f\nprint(f())\n", encoding="utf-8")
+    preview = ws.run("replace_in_files", {"pattern": "f()", "replacement": "g()", "glob": "*.py", "dry_run": True})
+    assert "Would change 3 places in 2 files" in preview and "f()" in (ws.root / "pkg" / "a.py").read_text()
+    done = ws.run("replace_in_files", {"pattern": r"\bf\b", "replacement": "g", "regex": True, "path": "pkg"})
+    assert "Changed" in done and (ws.root / "pkg" / "a.py").read_text() == "def g():\n    return 1\n\nx = g()\n"
+    assert ws.run("replace_in_files", {"pattern": "a\\b", "replacement": "x\\1"}) == "No file contains the pattern; nothing changed."
+
+
+def test_move_and_delete_files_then_review_and_revert_through_the_session(ws, home):
+    fake = scripted(turn(calls=[call("move_file", path="pkg/a.py", to="lib/a.py"), call("write_file", path="new.txt", content="hi")]),
+                    turn(calls=[call("delete_file", path="new.txt"), call("changes")]),
+                    turn(calls=[call("revert_file", path="pkg/a.py"), call("revert_file", path="lib/a.py")]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session, "reorganise")
+    outputs = {name: output for name, ok, output in tool_outputs(session)}
+    assert "Moved pkg/a.py to lib/a.py" in outputs["move_file"] and outputs["delete_file"] == "Deleted new.txt"
+    diff = outputs["changes"]
+    assert "--- a/pkg/a.py" in diff and "+++ b/lib/a.py" in diff and "new.txt" not in diff, "a file created and deleted again shows no change"
+    assert (ws.root / "pkg" / "a.py").is_file() and not (ws.root / "lib" / "a.py").exists(), "both ends of the move are put back"
+    assert session.command("/undo")["message"].startswith("Đã hoàn tác")
+    with pytest.raises(ToolError):
+        ws.run("move_file", {"path": "pkg/a.py", "to": "pkg/a.py"})
+    with pytest.raises(ToolError):
+        ws.run("delete_file", {"path": "pkg"})
+
+
+def test_new_tools_follow_the_rules_and_the_approval_modes(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted())
+    assert session._needs_approval(call("delete_file", path="x")) and session._needs_approval(call("revert_file", path="x"))
+    assert not session._needs_approval(call("changes"))
+    edits = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=scripted())
+    assert not edits._needs_approval(call("move_file", path="a", to="b")) and not edits._needs_approval(call("revert_file", path="a"))
+    output, ok = edits._run_call(call("delete_file", path=".env"))
+    assert not ok and "Denied" in output, "the .env rule covers the new edit tools"
+    output, ok = edits._run_call({"id": "x", "name": "rename_file", "args": {"path": "pkg/a.py", "destination": "pkg/b.py"}})
+    assert ok and "move_file" in output and (ws.root / "pkg" / "b.py").is_file()
+    reader = manager(home).create(PROVIDERS["openai"], "k", "m", Workspace(ws.root, sandbox.Policy("read-only")), "auto", complete=scripted())
+    assert "revert_file" not in {s["name"] for s in reader.specs()}

@@ -103,7 +103,8 @@ SYSTEM_PROMPT = """You are a coding agent inside the Manga Translator app, worki
 Workspace root: {root} on {system}. Paths are relative to it.
 {sandbox}
 Work in small verified steps: look first (list_dir, glob, search, read_file), then change files with apply_patch or edit_file
-(or edit_lines after read_file with anchors=true), then run the project's tests or the command that proves the change works.
+(or edit_lines after read_file with anchors=true; replace_in_files for a rename across files), then run the project's tests or the
+command that proves the change works, and look over your edits with changes before you report.
 Use todo_write to plan work with several steps and keep it current. Use task for one job you need answered now. To run
 several jobs at once call spawn_agent once per job (never the same job twice), then wait_agent; a finished agent also reports to
 you by itself. Use ask_user when a decision is the user's, and memory to keep a lasting fact for later sessions.
@@ -152,13 +153,10 @@ SESSION_SPECS = {
                        "parameters": {"type": "object", "required": ["plan"], "properties": {"plan": {"type": "string"}}}},
     "plugin_write": {"name": "plugin_write", "description": (
         "Write a Python plugin that extends you, save it to ~/.manga-agent/plugins/ID.py and mount it now (the user approves every time). "
-        "It defines inject = [service names it needs, e.g. \"tools\", \"commands\", \"session\"], optional defaults = {config}, and "
-        "apply(ctx, config). ctx.get(\"tools\").register({name, description, parameters: JSON schema}, handler(session, args) -> str, "
-        "kind=\"read\"|\"edit\"|\"exec\"|\"net\") adds a tool; "
-        "ctx.get(\"commands\").register(name, description, handler(session, args)) adds a slash command; ctx.on(\"tool/execute\", fn(call, next)) "
-        "wraps every tool call (return next(call) or your own (output, ok)); ctx.on(\"model/request\", fn(request, next)) wraps model calls; "
-        "ctx.on(\"tool/approve\", fn({call, ask, mode}, next)) adjusts approvals; ctx.provide(\"web.search/NAME\", fn) adds a provider "
-        "(web.search, web.fetch, shell, model, compact). Everything it registers is undone when it is removed."),
+        "It defines inject = [\"tools\", ...] and apply(ctx, config); ctx.get(\"tools\").register({name, description, parameters}, "
+        "handler(session, args) -> str, kind=\"read\"|\"edit\"|\"exec\"|\"net\") adds a tool, ctx.get(\"commands\").register(name, description, handler) "
+        "a slash command, ctx.on(\"tool/execute\" | \"model/request\" | \"tool/approve\", fn(payload, next)) wraps calls, "
+        "ctx.provide(\"web.search/NAME\", fn) adds a provider. Everything it registers is undone when it is removed."),
         "parameters": {"type": "object", "required": ["id"], "properties": {
             "id": {"type": "string", "description": "lower_case name, also the file name"}, "code": {"type": "string"},
             "path": {"type": "string", "description": "a workspace file holding the code, instead of code (better for a long plugin)"},
@@ -195,6 +193,11 @@ SESSION_SPECS = {
                     "parameters": {"type": "object", "properties": {}}},
     "tool_search": {"name": "tool_search", "description": "Find a connected (MCP) tool by what it does; the matches become callable on your next turn.",
                     "parameters": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}},
+    "changes": {"name": "changes", "description": "Show what the edit tools changed in this request, as a unified diff against how each file was before; "
+                                                "use it to review your work before reporting. Changes made by commands are not included.",
+                "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Only this file."}}}},
+    "revert_file": {"name": "revert_file", "description": "Put one file back as it was before this request's edits (a created file is deleted again).",
+                    "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
     "memory": {"name": "memory", "description": "Keep or drop a lasting note for later sessions: action add, remove or list; scope project or user.",
                "parameters": {"type": "object", "required": ["action"], "properties": {
                    "action": {"type": "string", "enum": ["add", "remove", "list"]}, "scope": {"type": "string", "enum": ["project", "user"]},
@@ -989,11 +992,15 @@ class AgentSession:
             rows = [s for s in SPECS if s["name"] in allowed]
             return rows + ([SESSION_SPECS["skill"]] if self.skills and "skill" in allowed else [])
         listing = agents.catalog(self.agents)
-        task, spawn, fan = (({**SESSION_SPECS[n], "description": SESSION_SPECS[n]["description"].format(agents=listing)}) for n in ("task", "spawn_agent", "fan_out"))
+        # The agent list is spelled out once, under task; the other two point to it.
+        task, spawn, fan = (({**SESSION_SPECS[n], "description": SESSION_SPECS[n]["description"].format(
+            agents=listing if n == "task" else "the same as for task.")}) for n in ("task", "spawn_agent", "fan_out"))
         rows = list(SPECS)
         if self.skills:
             rows.append(SESSION_SPECS["skill"])
-        rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"]]
+        rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"], SESSION_SPECS["changes"]]
+        if self.workspace.policy.mode != "read-only":
+            rows.append(SESSION_SPECS["revert_file"])
         if self.profile["oracle"] and not self.depth:
             rows.append(SESSION_SPECS["oracle"])
         if not self.depth:
@@ -1043,6 +1050,9 @@ class AgentSession:
             return self.mode != "auto"
         if name == "memory":
             return self.mode != "auto" and call["args"].get("action") != "list"
+        if name == "revert_file":
+            # Putting a file back is an edit, so it asks wherever edits ask.
+            return self.mode in ("ask", "review") and verdict != "allow"
         if self.mode == "auto" or name in SESSION_SPECS or verdict == "allow":
             return False
         if verdict == "ask":
@@ -1249,6 +1259,10 @@ class AgentSession:
                      if any(w in f"{n} {t.get('description') or ''}".lower() for w in words)][:8]
             self.mcp_loaded.update(found)
             return "\n".join(f"{n}: {(self.mcp_tools[n][1].get('description') or '')[:200]}" for n in found) + "\nThese tools can be called now." if found else "No connected tool matches."
+        if call["name"] == "changes":
+            return self._changes(str(args.get("path") or ""))
+        if call["name"] == "revert_file":
+            return self._revert(str(args.get("path") or ""))
         if call["name"] == "job_output":
             return self._job_output(str(args.get("id") or ""), args.get("wait_s"))
         if call["name"] in ("schedule_create", "schedule_list", "schedule_delete"):
@@ -1384,6 +1398,49 @@ class AgentSession:
         text = job.read()
         state = "running" if job.code is None else f"exited with code {job.code}"
         return f"[{name} {state}]\n{clip(text, 20000) if text else '(no new output)'}"
+
+    def _changes(self, only: str = "") -> str:
+        """A unified diff of this request's edits, file by file."""
+        before = self.checkpoints.current()
+        if only:
+            target = str(self.workspace.resolve(only))
+            before = {k: v for k, v in before.items() if k == target}
+        blocks = []
+        for name, old in sorted(before.items()):
+            path, rel = Path(name), self.workspace.rel(Path(name))
+            try:
+                new = path.read_bytes() if path.is_file() else None
+            except OSError:
+                new = None
+            if new == old:
+                continue
+            if b"\0" in (old or b"")[:8192] or b"\0" in (new or b"")[:8192]:
+                blocks.append(f"Binary file {rel} changed")
+                continue
+            lines = lambda data: (data or b"").decode("utf-8", errors="replace").splitlines(keepends=True)
+            diff = difflib.unified_diff(lines(old), lines(new), "/dev/null" if old is None else f"a/{rel}", "/dev/null" if new is None else f"b/{rel}")
+            blocks.append("".join(diff).rstrip("\n"))
+        if not blocks:
+            return "No file changed by the edit tools in this request" + (f" matches {only}" if only else "") + "."
+        return clip("\n".join(blocks), 60_000)
+
+    def _revert(self, path: str) -> str:
+        if self.workspace.policy.mode == "read-only":
+            raise ToolError("The session is read-only")
+        target = self.workspace.resolve(path, write=True)
+        before = self.checkpoints.current()
+        if str(target) not in before:
+            changed = ", ".join(self.workspace.rel(Path(n)) for n in before) or "none"
+            raise ToolError(f"{path!r} was not changed by the edit tools in this request; changed: {changed}")
+        old = before[str(target)]
+        if old is None:
+            target.unlink(missing_ok=True)
+            self.workspace.seen.pop(target, None)
+            return f"Deleted {self.workspace.rel(target)} again; it did not exist before this request."
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(old)
+        self.workspace.seen[target] = target.stat().st_mtime_ns
+        return f"Put {self.workspace.rel(target)} back as it was before this request."
 
     def _memory_tool(self, args: dict) -> str:
         home, root, scope = self.home if self.home is not None else Path.home(), self.workspace.root, str(args.get("scope") or "project")

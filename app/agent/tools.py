@@ -38,7 +38,7 @@ MAX_COMMAND_TIMEOUT = 1800
 
 # What each tool can do decides whether it waits for the user: read, edit, exec or net.
 KIND = {"list_dir": "read", "read_file": "read", "symbols": "read", "view_image": "read", "search": "read", "glob": "read", "write_file": "edit",
-        "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "run_command": "exec", "run_script": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
+        "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "replace_in_files": "edit", "move_file": "edit", "delete_file": "edit", "run_command": "exec", "run_script": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
 
 SPECS = [
     {"name": "list_dir", "description": "List files and folders under a path in the workspace.",
@@ -60,8 +60,10 @@ SPECS = [
     {"name": "search", "description": "Search file contents with a regular expression; returns file:line: text.",
      "parameters": {"type": "object", "required": ["pattern"], "properties": {
          "pattern": {"type": "string"}, "path": {"type": "string"},
-         "glob": {"type": "string", "description": "Only files whose name matches, such as *.py."},
-         "ignore_case": {"type": "boolean"}}}},
+         "glob": {"type": "string", "description": "Only matching files: *.py by name, or app/**/*.py by path."},
+         "ignore_case": {"type": "boolean"},
+         "context": {"type": "integer", "description": "Lines to show before and after each match, 0 to 5."},
+         "files_only": {"type": "boolean", "description": "List only the files that match, with their match counts."}}}},
     {"name": "glob", "description": "Find files whose path matches a pattern such as **/*.py or app/**/test_*.py, newest first.",
      "parameters": {"type": "object", "required": ["pattern"], "properties": {
          "pattern": {"type": "string"}, "path": {"type": "string"}}}},
@@ -81,6 +83,18 @@ SPECS = [
          "path": {"type": "string"}, "edits": {"type": "array", "items": {"type": "object", "required": ["op", "anchor"], "properties": {
              "op": {"type": "string", "enum": list(hashline.OPS)}, "anchor": {"type": "string"},
              "end": {"type": "string"}, "text": {"type": "string"}}}}}}},
+    {"name": "replace_in_files", "description": "Replace text in every matching file at once, such as a rename across the project. "
+                                                "The pattern is literal unless regex is true (then \\1 refers to a group). Run it with dry_run first to see what would change.",
+     "parameters": {"type": "object", "required": ["pattern", "replacement"], "properties": {
+         "pattern": {"type": "string"}, "replacement": {"type": "string"},
+         "path": {"type": "string", "description": "Folder or file to work in; '.' by default."},
+         "glob": {"type": "string", "description": "Only matching files: *.py by name, or app/**/*.py by path."},
+         "regex": {"type": "boolean"}, "ignore_case": {"type": "boolean"}, "dry_run": {"type": "boolean"}}}},
+    {"name": "move_file", "description": "Move or rename a file; missing folders are created. It will not replace an existing file unless overwrite is true.",
+     "parameters": {"type": "object", "required": ["path", "to"], "properties": {
+         "path": {"type": "string"}, "to": {"type": "string"}, "overwrite": {"type": "boolean"}}}},
+    {"name": "delete_file", "description": "Delete a file (not a folder). /undo and revert_file can bring it back.",
+     "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
     {"name": "apply_patch", "description": "Add, update, move or delete several files in one patch.\n" + patches.GUIDE,
      "parameters": {"type": "object", "required": ["patch"], "properties": {"patch": {"type": "string"}}}},
     {"name": "run_command", "description": "Run a shell command in the workspace root and return its output and exit code. "
@@ -199,6 +213,9 @@ SEARCH_STREAK = 3  # Searches in a row before the result suggests reading instea
 PAGE_CACHE_S, PAGE_CACHE_SIZE = 600, 20  # A fetched page is kept this long for offset and find.
 
 
+MAX_SUGGEST_FILES = 20_000
+
+
 def clip(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
     if len(text) <= limit:
         return text
@@ -240,6 +257,25 @@ class Workspace:
         if not any(target == r or r in target.parents for r in roots):
             raise ToolError(f"{path!r} is outside the workspace")
         return target
+
+    def missing(self, path: str, what: str = "file") -> ToolError:
+        """A not-found error that names the closest real paths, so a wrong guess costs one call, not a search."""
+        want = str(path or "").replace("\\", "/").strip("/").lower()
+        name = want.rsplit("/", 1)[-1]
+        found = []
+        for count, file in enumerate(self._files(self.root)):
+            if count >= MAX_SUGGEST_FILES:
+                break
+            rel = self.rel(file)
+            if what == "folder":
+                rel = rel.rsplit("/", 1)[0] if "/" in rel else ""
+            if rel and rel not in found:
+                found.append(rel)
+        names = {r.lower(): r for r in found}
+        close = [names[n] for n in difflib.get_close_matches(want, list(names), n=3, cutoff=0.6)]
+        close += [r for r in found if r.lower().rsplit("/", 1)[-1] == name and r not in close][:3]
+        hint = f"; did you mean {', '.join(close[:4])}?" if close else "; use glob or list_dir to find it"
+        return ToolError(f"{path!r} is not a {what}{hint}")
 
     def skipped(self, folder: Path) -> bool:
         return folder.name in SKIP_DIRS or (folder.parent == self.root and folder.name in ROOT_SKIP_DIRS)
@@ -295,8 +331,14 @@ class Workspace:
         try:
             if name == "apply_patch":
                 return [self.resolve(p, write=True) for h in patches.parse(str(args.get("patch") or "")) for p in (h.path, h.move_to) if p]
-            if name in ("write_file", "edit_file", "edit_lines", "web_download"):
+            if name in ("write_file", "edit_file", "edit_lines", "web_download", "delete_file"):
                 return [self.resolve(args.get("path"), write=True)]
+            if name == "move_file":
+                source, target = self.resolve(args.get("path"), write=True), self.resolve(args.get("to"), write=True)
+                return [source, target / source.name if target.is_dir() else target]
+            if name == "replace_in_files" and not args.get("dry_run"):
+                return [file for file, _, _ in self._replace_plan(str(args.get("pattern") or ""), str(args.get("replacement") or ""), str(args.get("path") or "."),
+                                                                  args.get("glob"), bool(args.get("regex")), bool(args.get("ignore_case")))]
         except (ToolError, patches.PatchError):
             pass
         return []
@@ -349,7 +391,7 @@ class Workspace:
     def _tool_list_dir(self, path: str = ".", depth: int = 1) -> str:
         top = self.resolve(path)
         if not top.is_dir():
-            raise ToolError(f"{path!r} is not a folder")
+            raise self.missing(path, "folder") if not top.exists() else ToolError(f"{path!r} is a file; read it with read_file")
         depth = max(1, min(4, int(depth)))
         rows: list[str] = []
 
@@ -371,7 +413,7 @@ class Workspace:
     def _tool_read_file(self, path: str, offset: int = 1, limit: int = MAX_READ_LINES, anchors: bool = False) -> str:
         target = self.resolve(path)
         if not target.is_file():
-            raise ToolError(f"{path!r} is not a file")
+            raise self.missing(path) if not target.exists() else ToolError(f"{path!r} is a folder; list it with list_dir")
         data = target.read_bytes()
         if b"\0" in data[:8192]:
             raise ToolError(f"{path!r} is a binary file")
@@ -445,7 +487,8 @@ class Workspace:
         self.new_images.append((self.rel(target), f"data:{kind};base64,{base64.b64encode(target.read_bytes()).decode()}"))
         return f"Image {self.rel(target)} loaded; it is shown to you in the next message."
 
-    def _tool_search(self, pattern: str, path: str = ".", glob: str | None = None, ignore_case: bool = False) -> str:
+    def _tool_search(self, pattern: str, path: str = ".", glob: str | None = None, ignore_case: bool = False, context: int = 0,
+                     files_only: bool = False) -> str:
         flags = re.IGNORECASE if ignore_case else 0
         try:
             regex = re.compile(pattern, flags)
@@ -454,6 +497,7 @@ class Workspace:
         except re.error as exc:
             raise ToolError(f"Bad regular expression: {exc}") from exc
         hits: list[str] = []
+        around = max(0, min(5, int(context or 0)))
         for file in self._files(self.resolve(path), glob):
             try:
                 if file.stat().st_size > MAX_SEARCH_FILE_BYTES:
@@ -466,12 +510,26 @@ class Workspace:
             text = data.decode("utf-8", errors="replace")
             if whole is not None and not whole.search(text):
                 continue
-            for number, line in enumerate(text.splitlines(), 1):
-                if regex.search(line):
-                    hits.append(f"{self.rel(file)}:{number}: {line.strip()[:300]}")
-                    if len(hits) >= MAX_SEARCH_HITS:
-                        return "\n".join(hits) + f"\n… stopped at {MAX_SEARCH_HITS} matches"
-        return "\n".join(hits) or "No matches"
+            lines = text.splitlines()
+            matched = [i for i, line in enumerate(lines) if regex.search(line)]
+            if not matched:
+                continue
+            if files_only:
+                hits.append(f"{self.rel(file)} ({len(matched)})")
+            elif around:
+                shown, last = [], -2
+                for i in matched:
+                    for j in range(max(0, i - around, last + 1), min(len(lines), i + around + 1)):
+                        if shown and j > last + 1:
+                            shown.append("--")
+                        shown.append(f"{self.rel(file)}:{j + 1}{':' if j in matched else '-'} {lines[j].rstrip()[:300]}")
+                        last = j
+                hits += shown + ["--"]
+            else:
+                hits += [f"{self.rel(file)}:{i + 1}: {lines[i].strip()[:300]}" for i in matched]
+            if len(hits) >= MAX_SEARCH_HITS * (1 + 2 * around):
+                return "\n".join(hits) + f"\n… stopped after {len(hits)} lines; narrow the path or glob"
+        return "\n".join(hits).rstrip("-\n") or "No matches"
 
     def _tool_glob(self, pattern: str, path: str = ".") -> str:
         top = self.resolve(path)
@@ -495,7 +553,7 @@ class Workspace:
                         edits: list | None = None) -> str:
         target = self.resolve(path, write=True)
         if not target.is_file():
-            raise ToolError(f"{path!r} is not a file")
+            raise self.missing(path)
         self._fresh(target, path)
         if not edits and old_text is not None:
             edits = None
@@ -525,6 +583,76 @@ class Workspace:
         except hashline.HashlineError as exc:
             raise ToolError(str(exc)) from exc
         return f"Edited {self.rel(target)} ({len(edits)} edits)"
+
+    def _replacer(self, pattern: str, replacement: str, regex: bool, ignore_case: bool):
+        if not pattern:
+            raise ToolError("pattern is empty")
+        try:
+            rx = re.compile(pattern if regex else re.escape(pattern), re.IGNORECASE if ignore_case else 0)
+        except re.error as exc:
+            raise ToolError(f"Bad regular expression: {exc}") from exc
+        if not regex:
+            replacement = replacement.replace("\\", "\\\\")
+        return rx, replacement
+
+    def _replace_plan(self, pattern: str, replacement: str, path: str, glob: str | None, regex: bool, ignore_case: bool):
+        """Each text file that would change, with its new text and how many places changed."""
+        rx, repl = self._replacer(pattern, replacement, regex, ignore_case)
+        plan = []
+        for file in self._files(self.resolve(path, write=True), glob):
+            try:
+                if file.stat().st_size > MAX_SEARCH_FILE_BYTES:
+                    continue
+                data = file.read_bytes()
+            except OSError:
+                continue
+            if b"\0" in data[:8192]:
+                continue
+            try:
+                text = data.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            try:
+                new, count = rx.subn(repl, text)
+            except (re.error, IndexError) as exc:
+                raise ToolError(f"Bad replacement: {exc}") from exc
+            if count:
+                plan.append((file, new, count))
+        return plan
+
+    def _tool_replace_in_files(self, pattern: str, replacement: str, path: str = ".", glob: str | None = None, regex: bool = False,
+                               ignore_case: bool = False, dry_run: bool = False) -> str:
+        plan = self._replace_plan(pattern, replacement, path, glob, regex, ignore_case)
+        if not plan:
+            return "No file contains the pattern; nothing changed."
+        if len(plan) > MAX_LIST_ENTRIES:
+            raise ToolError(f"{len(plan)} files would change; narrow it with path or glob")
+        rows = [f"{self.rel(file)}: {count} place{'s' if count != 1 else ''}" for file, _, count in plan]
+        total = sum(count for _, _, count in plan)
+        if dry_run:
+            return f"Would change {total} places in {len(plan)} files (nothing written):\n" + "\n".join(rows)
+        for file, new, _ in plan:
+            file.write_text(new, encoding="utf-8")
+        return f"Changed {total} places in {len(plan)} files:\n" + "\n".join(rows)
+
+    def _tool_move_file(self, path: str, to: str, overwrite: bool = False) -> str:
+        source, target = self.resolve(path, write=True), self.resolve(to, write=True)
+        if not source.is_file():
+            raise self.missing(path) if not source.exists() else ToolError(f"{path!r} is a folder; move folders with run_command")
+        if target.is_dir():
+            target = target / source.name
+        if target.exists() and not overwrite:
+            raise ToolError(f"{self.rel(target)} already exists; set overwrite to replace it")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(source, target)
+        return f"Moved {self.rel(source)} to {self.rel(target)}"
+
+    def _tool_delete_file(self, path: str) -> str:
+        target = self.resolve(path, write=True)
+        if not target.is_file():
+            raise self.missing(path) if not target.exists() else ToolError(f"{path!r} is a folder; delete folders with run_command")
+        target.unlink()
+        return f"Deleted {self.rel(target)}"
 
     def _tool_apply_patch(self, patch: str) -> str:
         for path in self.targets("apply_patch", {"patch": patch}):
