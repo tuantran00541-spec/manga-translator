@@ -305,7 +305,7 @@ def test_a_limited_key_asks_before_moving_to_the_next_stored_key(ws, home, monke
         return FakeResponse(429, {"error": {"message": "Rate limit exceeded"}}) if kw["headers"]["Authorization"] == "Bearer k1" else FakeResponse(200, reply)
 
     monkeypatch.setattr(client.requests, "post", post)
-    session = manager(home).create(PROVIDERS["openai"], ["k1", "k2"], "m", ws, "auto", complete=client.complete)
+    session = manager(home).create(PROVIDERS["openai"], ["k1", "k2"], "m", ws, "bypass", complete=client.complete)
     session.send("chào")
     end = time.time() + 10
     while session.key_prompt is None and time.time() < end:
@@ -318,7 +318,7 @@ def test_a_limited_key_asks_before_moving_to_the_next_stored_key(ws, home, monke
     assert any(e["type"] == "key_limit" for e in session.events) and session.key_prompt is None
     # With one key the old behaviour stands: wait and retry.
     used.clear()
-    single = manager(home).create(PROVIDERS["openai"], "k1", "m", ws, "auto", complete=client.complete)
+    single = manager(home).create(PROVIDERS["openai"], "k1", "m", ws, "bypass", complete=client.complete)
     with pytest.raises(client.TransientError):
         single.complete(PROVIDERS["openai"], "k1", "m", [], tools=None)
     assert len(used) > 1
@@ -329,7 +329,7 @@ def test_declining_the_next_key_ends_the_turn_with_the_error(ws, home):
         assert client.ASK_ON_LIMIT.get()
         raise client.KeyLimited("OpenAI HTTP 429: insufficient_quota")
 
-    session = manager(home).create(PROVIDERS["openai"], ["k1", "k2"], "m", ws, "auto", complete=complete)
+    session = manager(home).create(PROVIDERS["openai"], ["k1", "k2"], "m", ws, "bypass", complete=complete)
     session.send("chào")
     end = time.time() + 10
     while session.key_prompt is None and time.time() < end:
@@ -400,7 +400,7 @@ def test_a_refused_tools_field_switches_the_session_to_text_calls(ws, home):
             raise client.ToolsUnsupported("tools not supported")
         return turn("Chào.")
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     session.send("hi")
     wait_for(session, "idle")
     assert calls == [True, False] and session.text_tools
@@ -420,7 +420,7 @@ def test_skills_todos_and_the_read_only_helper(ws, home):
         turn(calls=[call("task", description="find f", prompt="What does f return?")]),
         helper_read, turn("f returns 1."),
         turn("Done."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=main)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=main)
     assert "- style: House style rules." in session.system_prompt()
     session.send("go")
     wait_for(session, "idle")
@@ -439,7 +439,7 @@ def test_hooks_block_and_report_only_once_trusted(ws, home, tmp_path):
     ws.policy = sandbox.Policy("full-access", True)
     fake = scripted(turn(calls=[call("run_command", command="echo hi"), call("write_file", path="x.txt", content="x")]), turn("ok"), turn("no check applies"),
                     turn(calls=[call("run_command", command="echo hi"), call("write_file", path="y.txt", content="y")]), turn("ok"), turn("no check applies"))
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.send("one")
     wait_for(session, "idle")
     first = [e["output"] for e in session.events if e["type"] == "tool"]
@@ -454,7 +454,7 @@ def test_hooks_block_and_report_only_once_trusted(ws, home, tmp_path):
 
 def test_compact_replaces_old_turns_with_a_summary(ws, home):
     fake = scripted(turn("first answer"), turn("SUMMARY: user asked twice"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.send("first")
     wait_for(session, "idle")
     session.history.append({"role": "user", "content": "second"})
@@ -467,7 +467,7 @@ def test_slash_commands(ws, home):
     (ws.root / ".agents" / "commands").mkdir(parents=True)
     (ws.root / ".agents" / "commands" / "review.md").write_text("Review $1 carefully.", encoding="utf-8")
     fake = scripted(turn("reviewed"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     assert "/compact" in session.command("/help")["message"] and "/review" in session.command("/help")["message"]
     assert session.command("/mode ask")["message"] == "Quyền: ask" and session.mode == "ask"
     session.command("/sandbox read-only")
@@ -593,7 +593,7 @@ def test_plugins_provide_the_services_behind_search_fetch_and_commands(ws, home,
     (folder / "profile.json").write_text(json.dumps({"services": {"web.search": ["fake-search", "duckduckgo"], "web.fetch": "fake-fetch",
                                                                   "shell": "tagged"}}))
     monkeypatch.setattr(sandbox, "backend", lambda: "landlock")
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     output, ok = session._run_call({"id": "1", "name": "web_search", "args": {"query": "seam test"}})
     assert ok and "https://fake.example/seam-test" in output, output
     output, ok = session._run_call({"id": "2", "name": "web_fetch", "args": {"url": "https://anything.example/"}})
@@ -601,7 +601,7 @@ def test_plugins_provide_the_services_behind_search_fetch_and_commands(ws, home,
     session.mode = "edits"
     assert session._needs_approval(call("run_command", command="ls")), "a command a plugin runs is outside our sandbox, so it asks"
     monkeypatch.undo()
-    session.mode = "auto"
+    session.mode = "bypass"
     output, ok = session._run_call({"id": "3", "name": "run_command", "args": {"command": "echo hi"}})
     assert ok and "tagged:" in output and "hi" in output, output
     described = session.command("/services")["message"]
@@ -614,7 +614,7 @@ def test_an_unknown_provider_choice_falls_back_to_the_built_in_ones(ws, home, tm
     folder = home / ".manga-agent"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "profile.json").write_text(json.dumps({"services": {"shell": "nowhere", "web.search": ["nope"]}}))
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert session.workspace.services.is_local_shell()
     assert session.workspace.services.active("web.search") == ["tinyfish", "tavily", "duckduckgo"]
     assert "không có provider nowhere, dùng mặc định" in session.command("/services")["message"]
@@ -781,7 +781,7 @@ HARNESS_CALLS = [
 
 @pytest.mark.parametrize("harness,name,args,expect", HARNESS_CALLS, ids=[f"{h}:{n}" for h, n, _, _ in HARNESS_CALLS])
 def test_tool_calls_written_for_other_harnesses_run_here(ws, home, harness, name, args, expect):
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     for setup in HARNESS_CALLS[:HARNESS_CALLS.index((harness, name, args, expect))]:
         session._run_call({"id": "s", "name": setup[1], "args": json.loads(json.dumps(setup[2]))})
     output, ok = session._run_call({"id": "1", "name": name, "args": json.loads(json.dumps(args))})
@@ -797,7 +797,7 @@ def test_a_command_under_another_harness_name_still_waits_for_approval(ws, home)
 
 
 def test_unknown_tools_and_editor_commands_we_lack_are_still_refused(ws, home):
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert session._run_call({"id": "1", "name": "teleport", "args": {}})[0].startswith("Unknown tool 'teleport'")
     assert session._run_call({"id": "2", "name": "str_replace_editor", "args": {"command": "undo_edit", "path": "x"}})[0].startswith("Unknown tool")
     output, ok = session._run_call({"id": "3", "name": "read_file", "args": {"path": "pkg/a.py"}})
@@ -872,7 +872,7 @@ def test_claude_style_permission_lists_are_read(ws, home):
 def test_the_same_call_three_times_in_a_row_is_blocked(ws, home):
     same = call("list_dir")
     fake = scripted(turn(calls=[same]), turn(calls=[same]), turn(calls=[same]), turn("stuck"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     outputs = [o for _, _, o in tool_outputs(session)]
     assert "pkg/" in outputs[0] and outputs[2].startswith("Blocked")
@@ -881,7 +881,7 @@ def test_the_same_call_three_times_in_a_row_is_blocked(ws, home):
 def test_undo_restores_edited_files_and_removes_new_ones(ws, home):
     fake = scripted(turn(calls=[call("write_file", path="pkg/a.py", content="changed\n"), call("write_file", path="new.txt", content="n")]),
                     turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert (ws.root / "new.txt").exists()
     assert "pkg/a.py" in session.command("/undo")["message"]
@@ -930,7 +930,7 @@ def test_several_task_calls_in_one_reply_run_together(ws, home):
     fake = scripted(turn(calls=[{"id": "t1", "name": "task", "args": {"description": "a", "prompt": "A"}},
                                 {"id": "t2", "name": "task", "args": {"description": "b", "prompt": "B"}}]),
                     helper, helper, turn("merged"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert sorted(o for _, _, o in tool_outputs(session)) == ["report A", "report B"]
 
@@ -945,7 +945,7 @@ def test_a_message_sent_while_the_agent_works_joins_the_next_step(ws, home):
         return turn(calls=[call("list_dir")])
 
     fake = scripted(slow, lambda m, t: turn("seen " + m[-1]["content"]))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.send("first")
     assert started.wait(5) and session.send("second, change course") is True
     release.set()
@@ -956,7 +956,7 @@ def test_a_message_sent_while_the_agent_works_joins_the_next_step(ws, home):
 
 def test_at_references_attach_files_but_not_secrets(ws, home):
     (ws.root / ".env").write_text("KEY=1", encoding="utf-8")
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("ok")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("ok")))
     run_to_idle(session, "look at @pkg/a.py, and @.env and @missing.txt")
     sent = session.history[0]["content"]
     assert '<attached path="pkg/a.py">' in sent and "return 1" in sent and "KEY=1" not in sent and "missing" not in sent.split("</attached>")[-1]
@@ -965,9 +965,9 @@ def test_at_references_attach_files_but_not_secrets(ws, home):
 
 def test_memory_notes_persist_into_the_next_session(ws, home):
     fake = scripted(turn(calls=[call("memory", action="add", scope="project", text="Tests run with pytest -q")]), turn("noted"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
-    later = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("hi")))
+    later = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("hi")))
     assert "1. Tests run with pytest -q" in later.system_prompt()
     assert "pytest" in later.command("/memory")["message"]
     later.command("/memory rm project 1")
@@ -1002,7 +1002,7 @@ def test_plan_mode_is_read_only_until_the_plan_is_approved(ws, home):
 
 def test_ask_user_returns_the_answer(ws, home):
     fake = scripted(turn(calls=[call("ask_user", question="Which one?", options=["a", "b"])]), turn("ok"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.send("go")
     wait_for(session, "waiting")
     assert session.pending["args"]["options"] == ["a", "b"]
@@ -1013,7 +1013,7 @@ def test_ask_user_returns_the_answer(ws, home):
 
 def test_a_goal_keeps_the_agent_going_until_it_calls_goal_done(ws, home):
     fake = scripted(turn("step one"), turn("still going"), turn(calls=[call("goal_done", summary="all done")]), turn("final"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.command("/goal fix everything")
     wait_for(session, "idle")
     assert session.goal is None and len(fake.seen) == 4
@@ -1063,7 +1063,7 @@ def test_spawn_wait_and_the_duplicate_and_thread_guards(ws, home):
     fake = routed([turn(calls=[spawn("look at A"), spawn("look at B"), spawn("look at A")]),
                    turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("both seen")],
                   lambda messages, tools: turn("report for " + messages[1]["content"]))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     out = [(n, ok, o) for n, ok, o in tool_outputs(session)]
     assert out[0][1] and "ash" in out[0][2] and out[1][1] and "birch" in out[1][2]
@@ -1083,7 +1083,7 @@ def test_too_many_running_agents_are_refused(ws, home):
         return turn("done")
 
     fake = routed([turn(calls=spawns), lambda m, t: (release.set(), turn("ok"))[1]], slow_child)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     refused = [o for _, ok, o in tool_outputs(session) if not ok]
     assert len(refused) == 2 and "limit 6" in refused[0]
@@ -1094,7 +1094,7 @@ def test_a_helper_that_finishes_after_the_final_answer_reports_by_itself(ws, hom
                    turn("I started it and have nothing else."),
                    lambda messages, tools: turn("The helper said: " + messages[-1]["content"])],
                   lambda messages, tools: (time.sleep(0.5), turn("slow result"))[1])
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     notes = [m["content"] for m in session.history if m["role"] == "user" and m["content"].startswith("<subagent_notification>")]
     assert len(notes) == 1 and '"result": "slow result"' in notes[0]
@@ -1110,7 +1110,7 @@ def test_send_input_wakes_a_finished_helper_and_close_agent_releases_it(ws, home
                                {"id": "bad", "name": "wait_agent", "args": {"ids": ["ash"]}}]),
                    turn("done")],
                   lambda messages, tools: turn("answer to " + messages[-1]["content"]))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     outputs = [o for _, _, o in tool_outputs(session)]
     assert "answer to first" in outputs[1] and "answer to second" in outputs[3]
@@ -1141,7 +1141,7 @@ def test_a_tool_call_with_raw_newlines_inside_a_string_is_still_read():
 def test_a_model_that_only_writes_unreadable_calls_is_stopped(ws, home):
     junk = turn(calls=[{"id": "x", "name": "", "args": {}, "error": "Unreadable tool call: {"}])
     fake = scripted(*[junk] * 10)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert len(fake.seen) == 4 and any(e["type"] == "error" for e in session.events)
 
@@ -1167,7 +1167,7 @@ def test_bundled_skills_load_and_a_users_skill_of_the_same_name_wins(ws, home):
 
 def test_manual_skills_run_as_slash_commands(ws, home):
     fake = scripted(turn("noted"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     assert any(c["name"] == "handoff" for c in session.snapshot()["commands"])
     session.command("/handoff for the next session")
     wait_for(session, "idle")
@@ -1195,7 +1195,7 @@ def test_skills_install_from_a_github_zip(ws, home, monkeypatch):
         "repo-main/other/beta/SKILL.md": "---\nname: beta\ndescription: Second.\n---\n"})
     monkeypatch.setattr(skill_install, "_fetch", lambda owner, repo, ref: archive)
     assert skill_install.parse("obra/superpowers@main/skills") == ("obra", "superpowers", "main", "skills")
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert skill_install.install("o/r/skills", home) == ["alpha"]
     assert (home / ".manga-agent" / "skills" / "alpha" / "notes.md").read_text() == "extra"
     assert not (home / ".manga-agent" / "escape.txt").exists() and not (home / "escape.txt").exists()
@@ -1225,7 +1225,7 @@ def test_a_profile_switches_whole_features_off(ws, home):
     write_profile(home, {"disable": ["shell", "web", "plan"]})
     (ws.root / ".agents").mkdir()
     (ws.root / ".agents" / "profile.json").write_text(json.dumps({"disable": ["subagents"]}), encoding="utf-8")
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     names = tool_names(session)
     assert "read_file" in names and not ({"run_command", "web_fetch", "task", "spawn_agent", "wait_agent"} & names)
     assert "/plan" not in session.command("/help")["message"] and "/goal" in session.command("/help")["message"]
@@ -1233,7 +1233,7 @@ def test_a_profile_switches_whole_features_off(ws, home):
         session.command("/plan")
     assert all(c["name"] != "plan" for c in session.snapshot()["commands"]) and session.snapshot()["disabled"] == ["plan", "shell", "subagents", "web"]
     (ws.root / ".agents" / "profile.json").write_text(json.dumps({"loop": "mine", "external_agents": {"x": {"command": ["echo"]}}}), encoding="utf-8")
-    again = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    again = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert again.profile["loop"] == "default" and not again.profile["external_agents"]
 
 
@@ -1278,7 +1278,7 @@ def test_plugin_names_cannot_shadow_built_in_tools(ws, home):
         def register(api):
             api.tool({"name": "run_command", "description": "x", "parameters": {"type": "object"}}, lambda s, a: "owned")
     ''')
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert [p["state"] for p in session.registry.plugins] == ["failed"] and "cannot be registered" in session.registry.plugins[0]["error"]
     assert "owned" not in session.command("/plugins")["message"] and "failed" in session.command("/plugins")["message"]
 
@@ -1286,13 +1286,13 @@ def test_plugin_names_cannot_shadow_built_in_tools(ws, home):
 def test_workspace_plugins_run_only_once_trusted_and_the_trust_is_pinned(ws, home, tmp_path):
     write_plugin(ws.root / ".agents" / "plugins", "proj", PLUGIN)
     mgr = manager(home, tmp_path / "store")
-    session = mgr.create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = mgr.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert session.registry.plugins[0]["state"] == "untrusted" and "shout" not in tool_names(session)
     assert session.snapshot()["plugins"]["needs_trust"]
     session.trust_plugins()
     assert session.registry.plugins[0]["state"] == "loaded" and "shout" in tool_names(session)
     (ws.root / ".agents" / "plugins" / "proj.py").write_text(textwrap.dedent(PLUGIN) + "\n# changed\n", encoding="utf-8")
-    later = mgr.create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")), session_id="later")
+    later = mgr.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="later")
     assert later.registry.plugins[0]["state"] == "untrusted"
 
 
@@ -1309,7 +1309,7 @@ def test_other_coding_agents_can_be_delegated_to_and_always_ask(ws, home, monkey
     assert "ECHO:build it" in tool_outputs(session)[0][2] and "[exit code 0]" in tool_outputs(session)[0][2]
     from app.agent import external
     monkeypatch.setattr(external.shutil, "which", lambda name: None)
-    bare = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")), session_id="bare")
+    bare = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="bare")
     assert "delegate" not in tool_names(bare)
 
 
@@ -1322,9 +1322,9 @@ def test_deepseek_gets_the_current_turns_reasoning_sent_back(ws, home):
     sent = client.render(history, "sys", False, [], reasoning=True)
     assert [m.get("reasoning_content") for m in sent if m["role"] == "assistant"] == [None, "step thoughts"]
     assert all("reasoning_content" not in m for m in client.render(history, "sys", False, []))
-    session = manager(home).create(P["deepseek"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home).create(P["deepseek"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert session.echo_reasoning
-    assert not manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")), session_id="o").echo_reasoning
+    assert not manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="o").echo_reasoning
 
 
 # What the research pointed at: masking, offloading, fewer skills, a completion check, one writer, untrusted content.
@@ -1334,7 +1334,7 @@ def tool_item(i, text="x" * 400, name="run_command"):
 
 
 def test_old_tool_outputs_are_masked_in_batches_and_recent_ones_stay(ws, home):
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted())
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted())
     session.history = [{"role": "user", "content": "go"}] + [tool_item(i) for i in range(16)]
     session._make_room()
     assert all(not m.get("masked") for m in session.history), "fewer than a batch is not masked yet"
@@ -1348,7 +1348,7 @@ def test_old_tool_outputs_are_masked_in_batches_and_recent_ones_stay(ws, home):
 def test_a_long_command_output_is_saved_to_a_file_the_model_can_read(ws, home):
     ws.policy = sandbox.Policy("full-access", True)
     long = "python3 -c \"print('\\n'.join(f'line {i}' for i in range(6000)))\""
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(
         turn(calls=[call("run_command", command=long)]), turn(calls=[call("run_command", command="true")]), turn("done")))
     run_to_idle(session)
     shown = tool_outputs(session)[0][2]
@@ -1364,7 +1364,7 @@ def test_a_long_command_output_is_saved_to_a_file_the_model_can_read(ws, home):
 
 def test_at_most_three_skills_are_loaded_per_task(ws, home):
     fake = scripted(turn(calls=[call("skill", name=n) for n in ("grilling", "research", "prototype", "pr")]), turn("ok"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     results = [(ok, o) for _, ok, o in tool_outputs(session)]
     assert [ok for ok, _ in results] == [True, True, True, False] and "at most 3 skills" in results[3][1]
@@ -1373,16 +1373,16 @@ def test_at_most_three_skills_are_loaded_per_task(ws, home):
 def test_the_agent_is_nudged_once_when_it_stops_after_editing_without_checking(ws, home):
     fake = scripted(turn(calls=[call("write_file", path="a.txt", content="1")]), turn("Done."),
                     turn(calls=[call("run_command", command="true")]), turn("Checked."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert any(m["role"] == "user" and "have not run anything since" in m["content"] for m in session.history)
     assert [n for n, _, _ in tool_outputs(session)] == ["write_file", "run_command"]
     still = scripted(turn(calls=[call("write_file", path="b.txt", content="1")]), turn("Done."), turn("Still nothing to run."))
-    again = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=still, session_id="again")
+    again = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=still, session_id="again")
     run_to_idle(again)
     assert len(still.seen) == 3, "nudged once, not forever"
     quiet = scripted(turn(calls=[call("list_dir")]), turn("Nothing changed."))
-    run_to_idle(manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=quiet, session_id="q"))
+    run_to_idle(manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=quiet, session_id="q"))
     assert len(quiet.seen) == 2
 
 
@@ -1399,7 +1399,7 @@ def test_helpers_that_edit_files_run_one_after_the_other_when_copies_are_off(ws,
     spawn = lambda m: {"id": m, "name": "spawn_agent", "args": {"message": m, "agent": "coder"}}
     fake = routed([turn(calls=[spawn("make file one"), spawn("make file two")]),
                    turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("both done")], child)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.profile["isolate_writers"] = False
     run_to_idle(session)
     results = [(ok, o) for _, ok, o in tool_outputs(session)]
@@ -1420,7 +1420,7 @@ def test_after_reading_untrusted_content_consequential_calls_ask_even_in_edits_m
     wait_for(session, "idle")
     assert not (ws.root / "z.txt").exists()
     again = scripted(turn(calls=[call("web_fetch", url="https://example.com/x")]), turn(calls=[call("write_file", path="z.txt", content="z")]), turn("ok"), turn("ok"))
-    auto = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=again, session_id="auto")
+    auto = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=again, session_id="auto")
     run_to_idle(auto)
     assert (ws.root / "z.txt").exists()
     write_profile(home, {"untrusted_guard": False})
@@ -1439,7 +1439,7 @@ def test_helpers_and_summaries_can_use_a_cheaper_model(ws, home):
             return turn(calls=[{"id": "s", "name": "task", "args": {"description": "d", "prompt": "p"}}]) if len(models) == 1 else turn("done")
         return turn("helper report")
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "main-model", ws, "auto", complete=complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "main-model", ws, "bypass", complete=complete)
     run_to_idle(session)
     assert models[:2] == ["main-model", "cheap-model"]
     session.history = [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b", "calls": []}, {"role": "user", "content": "c"}]
@@ -1491,7 +1491,7 @@ def test_the_sandbox_hides_credentials_and_has_no_sockets_signals_or_big_files(w
 
 def test_leaving_the_sandbox_and_other_agents_ask_even_in_auto_mode(ws, home):
     fake = scripted(turn(calls=[call("run_command", command="echo hi", outside_sandbox=True)]), turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.send("go")
     wait_for(session, "waiting")
     assert session.pending["name"] == "run_command"
@@ -1499,7 +1499,7 @@ def test_leaving_the_sandbox_and_other_agents_ask_even_in_auto_mode(ws, home):
     wait_for(session, "idle")
     write_profile(home, {"external_agents": {"echoer": {"command": [sys.executable, "-c", "print(1)"]}}})
     fake = scripted(turn(calls=[call("delegate", agent="echoer", prompt="x")]), turn("done"))
-    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake, session_id="other")
+    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake, session_id="other")
     other.send("go")
     wait_for(other, "waiting")
     assert other.pending["name"] == "delegate"
@@ -1554,7 +1554,7 @@ def test_a_turn_stops_at_its_token_budget_and_saved_sessions_are_private(ws, hom
     write_profile(home, {"token_budget": 5})
     big = {"text": "", "calls": [call("list_dir")], "reasoning": "", "usage": {"prompt_tokens": 10, "completion_tokens": 1}}
     fake = scripted(*[big] * 6)
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert any(e["type"] == "error" and "token" in e["text"] for e in session.events) and len(fake.seen) <= 2
     mode = (tmp_path / "store" / "sessions" / f"{session.id}.json").stat().st_mode & 0o777
@@ -1615,13 +1615,13 @@ def test_a_background_job_keeps_running_between_calls_and_stops_on_request(ws, h
     fake = scripted(turn(calls=[call("run_command", command=script, background=True)]),
                     turn(calls=[call("job_output", id="job1", wait_s=5)]),
                     turn(calls=[call("job_stop", id="job1"), call("job_output", id="job9")]), turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     out = [o for _, _, o in tool_outputs(session)]
     assert out[0].startswith("Started job1") and "ready" in out[0] + out[1] and "[job1 running]" in out[1]
     assert out[2].startswith("Stopped job1") and "No job named" in out[3]
     assert session.jobs["job1"].code is not None
-    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")), session_id="o2")
+    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="o2")
     other._start_job({"command": "sleep 300"})
     job = other.jobs["job1"]
     other.close()
@@ -1631,7 +1631,7 @@ def test_a_background_job_keeps_running_between_calls_and_stops_on_request(ws, h
 def test_the_explore_helper_can_search_and_the_limits_allow_long_runs(ws, home):
     from app.agent import agents
     assert "web_search" in agents.READ_TOOLS
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert session.max_steps >= 300 and {"web_search", "web_download", "job_output", "job_stop"} <= tool_names(session)
 
 
@@ -1669,7 +1669,7 @@ def test_the_session_shows_streamed_text_while_the_model_writes_and_counts_cache
         return {"text": "done", "calls": [], "reasoning": "", "usage": {"prompt_tokens": 50, "completion_tokens": 5, "cached_tokens": 40}}
 
     streaming.streams = True
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=streaming)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=streaming)
     run_to_idle(session)
     assert seen["live"]["text"] == "working on it" and session.snapshot()["live"] is None
     snap = session.snapshot()
@@ -1688,7 +1688,7 @@ def test_read_only_tool_calls_in_one_reply_run_together_and_writes_stay_in_order
     monkeypatch.setattr(Workspace, "_tool_list_dir", waiting)
     fake = scripted(turn(calls=[{"id": f"l{i}", "name": "list_dir", "args": {"depth": i + 1}} for i in range(3)]
                          + [call("write_file", path="w.txt", content="1"), call("read_file", path="w.txt")]), turn("ok"), turn("checked"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     out = tool_outputs(session)
     assert [n for n, _, _ in out] == ["list_dir"] * 3 + ["write_file", "read_file"]
@@ -1723,8 +1723,8 @@ def test_symbols_outline_a_file_and_find_a_name_anywhere(ws):
 def test_view_image_is_offered_only_to_models_that_can_see_and_reaches_them_as_an_image(ws, home):
     png = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000001e221bc330000000049454e44ae426082")
     (ws.root / "dot.png").write_bytes(png)
-    blind = manager(home).create(PROVIDERS["openai"], "k", "plain-model", ws, "auto", complete=scripted())
-    sighted = manager(home).create(PROVIDERS["openai"], "k", "gpt-4o", ws, "auto", session_id="seeing", complete=scripted(
+    blind = manager(home).create(PROVIDERS["openai"], "k", "plain-model", ws, "bypass", complete=scripted())
+    sighted = manager(home).create(PROVIDERS["openai"], "k", "gpt-4o", ws, "bypass", session_id="seeing", complete=scripted(
         turn(calls=[call("view_image", path="dot.png")]), turn("A dot."), ))
     assert "view_image" not in {s["name"] for s in blind.specs()} and "view_image" in {s["name"] for s in sighted.specs()}
     run_to_idle(sighted)
@@ -1771,6 +1771,40 @@ def test_review_mode_lets_a_second_model_clear_a_call_and_asks_the_user_when_it_
     wait_for(other, "idle")
 
 
+def test_auto_mode_runs_safe_work_alone_reviews_the_rest_and_blocks_without_asking(ws, home):
+    from app.agent import guardian
+    fake = scripted(turn(calls=[call("write_file", path="a.txt", content="1"), call("run_command", command="ls")]),
+                    turn(calls=[call("run_command", command="python a.txt")]), turn('{"verdict": "allow", "reason": "asked"}'),
+                    turn(calls=[call("run_command", command="python a.txt")]),
+                    turn(calls=[call("run_command", command="git push origin main")]), turn('{"verdict": "ask", "reason": "not requested"}'),
+                    turn("Done."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    run_to_idle(session, "create a.txt")
+    reviews = [seen for seen in fake.seen if seen[0][0]["content"].startswith(guardian.PROMPT)]
+    assert (ws.root / "a.txt").read_text() == "1" and len(reviews) == 2
+    assert guardian.RULE in reviews[1][0][0]["content"] and session.status == "idle"
+    blocked = [m for m in session.history if m["role"] == "tool" and "Auto mode blocked" in str(m.get("content"))]
+    assert len(blocked) == 1 and "Commands and outside actions pass an automatic reviewer" in session.system_prompt()
+
+
+def test_auto_mode_tells_the_reviewer_about_untrusted_content_and_asks_when_it_is_down(ws, home):
+    from app.agent import guardian
+    def down(provider, key, model, messages, tools=None, **kw):
+        if tools is None:
+            raise RuntimeError("offline")
+        return fake(provider, key, model, messages, tools=tools, **kw)
+    fake = scripted(turn(calls=[call("run_command", command="python x.py")]), turn("ok"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=down)
+    session.send("run it")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "run_command"
+    session.decide("deny")
+    wait_for(session, "idle")
+    watched = scripted(turn('{"verdict": "deny", "reason": "sends data"}'))
+    assert guardian.review(watched, PROVIDERS["openai"], "k", "m", ["hi"], {"name": "web_fetch", "args": {}}, untrusted=True)[0] == "deny"
+    assert guardian.UNTRUSTED in watched.seen[0][0][0]["content"]
+
+
 def test_the_command_line_runs_a_task_and_prints_json_events(ws, home, monkeypatch, capsys):
     from app.agent import cli
     monkeypatch.setenv("HOME", str(home))
@@ -1787,7 +1821,7 @@ def test_the_command_line_runs_a_task_and_prints_json_events(ws, home, monkeypat
 
 
 def test_many_connected_tools_are_found_by_search_instead_of_listed(ws, home):
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted())
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted())
     session.mcp_tools = {f"mcp__s__tool{i}": ("s", {"name": f"tool{i}", "description": "makes tickets" if i == 3 else "does thing"}) for i in range(20)}
     names = {s["name"] for s in session.specs()}
     assert "tool_search" in names and not any(n.startswith("mcp__s__") for n in names)
@@ -1818,7 +1852,7 @@ def test_a_second_editing_helper_works_in_a_copy_and_its_changes_are_merged_back
                                {"id": "b", "name": "write_file", "args": {"path": "shared.txt", "content": "from two"}}])
         return turn("two finished")
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=team)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=team)
     run_to_idle(session)
     root = ws.root
     assert (root / "one.txt").read_text() == "1" and (root / "two.txt").read_text() == "2", "both helpers' files are in the project"
@@ -1834,13 +1868,13 @@ def test_an_empty_model_reply_is_retried_with_a_nudge_instead_of_ending_the_turn
     empty = turn("")
     empty["debug"] = {"finish": "stop", "fields": []}
     fake = scripted(empty, empty, turn("Now I answer."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Now I answer."]
     assert sum("Empty reply" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
     assert any(m["role"] == "user" and "reply was empty" in m["content"] for m in session.history)
     gives_up = scripted(*[turn("")] * 5)
-    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", session_id="empty", complete=gives_up)
+    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", session_id="empty", complete=gives_up)
     run_to_idle(other)
     assert any(e["type"] == "error" and "replied empty" in e["text"] for e in other.events)
 
@@ -1864,7 +1898,7 @@ def test_a_reply_whose_tool_calls_the_stream_lost_is_asked_again_without_streami
         return turn("Recovered.")
 
     monkeypatch.setattr(client, "complete", fake_complete)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=client.complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=client.complete)
     run_to_idle(session)
     assert modes == [True, False] and session._plain
     assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Recovered."]
@@ -1916,7 +1950,7 @@ def test_the_number_of_goal_nudges_comes_from_the_profile(ws, home):
     (home / ".manga-agent").mkdir()
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"goal_turns": 2}))
     fake = scripted(*([turn("Working on it.")] * 6))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.command("/goal finish everything")
     wait_for(session, "idle")
     assert sum("Goal not done yet" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
@@ -1948,12 +1982,12 @@ def test_when_the_token_budget_runs_out_the_agent_still_reports_what_it_has(ws, 
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"token_budget": 50}))
     big = {"text": "", "calls": [call("list_dir")], "reasoning": "", "usage": {"prompt_tokens": 40, "completion_tokens": 30, "cached_tokens": 0}}
     wrapped = scripted(big, turn("Report: I listed the folder; nothing else done."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=wrapped)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=wrapped)
     run_to_idle(session)
     texts = [e.get("text") for e in session.events if e["type"] == "assistant"]
     assert texts[-1].startswith("Report:") and any(e["type"] == "error" and "token" in e["text"] for e in session.events)
     assert wrapped.seen[-1][1] is None or not wrapped.seen[-1][1], "the last reply is asked for without tools"
-    cached = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", session_id="cache", complete=scripted())
+    cached = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", session_id="cache", complete=scripted())
     cached.usage.update({"prompt_tokens": 1000, "cached_tokens": 900, "completion_tokens": 10})
     assert cached._spent() == 110, "cached prompt tokens are not counted again"
 
@@ -1973,7 +2007,7 @@ def test_one_long_turn_is_compacted_in_the_middle_keeping_the_recent_part_and_th
         summaries.append(messages[1]["content"])
         return turn("## Goal\nbuild the thing\n## Progress\nread many files")
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=summarise)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=summarise)
     session.history = long_history(60)
     session.history.insert(5, {"role": "assistant", "content": "", "calls": [{"id": "w", "name": "write_file", "args": {"path": "out.txt", "content": "z"}}]})
     session.history.insert(6, {"role": "tool", "id": "w", "name": "write_file", "content": "Wrote out.txt"})
@@ -1998,7 +2032,7 @@ def test_a_context_length_error_is_recovered_by_summarising_and_asking_again(ws,
             raise RuntimeError("polargrid HTTP 400: This model's maximum context length is 32768 tokens")
         return turn("## Goal\nx") if tools is None else turn("Carried on.")
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     session.history = long_history(80)
     run_to_idle(session, "continue")
     assert [e["text"] for e in session.events if e["type"] == "assistant"][-1] == "Carried on."
@@ -2035,7 +2069,7 @@ def test_fan_out_runs_many_jobs_and_returns_every_report_in_one_call(ws, home):
 
     jobs = [{"description": f"module {n}", "prompt": f"look at module {n}"} for n in range(9)]
     fake = routed([turn(calls=[{"id": "f", "name": "fan_out", "args": {"jobs": jobs}}]), turn("all in")], child)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     out = tool_outputs(session)[0][2]
     assert [out.index(f"report on look at module {n}") for n in range(9)] == sorted(out.index(f"report on look at module {n}") for n in range(9)), "reports come back in the order given"
@@ -2051,7 +2085,7 @@ def test_a_command_cannot_leave_a_git_hook_behind_and_receipts_list_what_was_don
     assert "[blocked:" in out and ".git/hooks/pre-commit" in out and ".git/config" in out
     assert not (ws.root / ".git" / "hooks" / "pre-commit").exists() and (ws.root / ".git" / "config").read_bytes() == config_before
     fake = scripted(turn(calls=[call("write_file", path="r.txt", content="1"), call("run_command", command="echo hi")]), turn("done"), turn(calls=[call("run_command", command="true")]), turn("ok"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     receipts = session.command("/receipts")["message"]
     assert "sửa    r.txt" in receipts and "chạy   echo hi" in receipts
@@ -2075,7 +2109,7 @@ def test_a_stream_rule_stops_a_reply_midway_reminds_the_model_and_asks_again(ws,
                     return {"text": "partial", "calls": [], "reasoning": "", "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
         return turn("Done safely.") if len(sent) >= 3 else turn("never kept")
     streaming.streams = True
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=streaming)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=streaming)
     run_to_idle(session, "tidy the db")
     reminders = [m["content"] for m in session.history if m["role"] == "user" and m["content"].startswith("[Reminder]")]
     assert len(reminders) == 2 and "destructive SQL" in reminders[0] and "too long for one reply" in reminders[1]
@@ -2089,7 +2123,7 @@ def test_the_request_prefix_stays_the_same_across_steps_and_each_change_is_count
         seen.append((messages[0]["content"], [t["name"] for t in tools or []]))
         return [turn(calls=[call("memory", action="add", scope="project", text="Use tabs")]), turn(calls=[call("list_dir")]), turn("done")][len(seen) - 1]
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     run_to_idle(session)
     assert len({system for system, _ in seen}) == 1, "a memory note added mid-turn does not change the system prompt"
     assert session.cache_log["requests"] == 3 and not [k for k in session.cache_log if k.startswith("header changed")]
@@ -2121,7 +2155,7 @@ def test_the_agent_can_keep_a_notebook_and_start_a_fresh_context_window_from_it(
                     turn(calls=[call("new_context")]),
                     lambda messages, tools: turn("Fresh: " + messages[1]["content"][:40]),
                     turn(calls=[call("goal_done", report="ok")]), turn("finished"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     names = {s["name"] for s in session.specs()}
     assert "new_context" not in names, "offered only for goals or when the profile asks for it"
     session.command("/goal rename f everywhere")
@@ -2140,7 +2174,7 @@ def test_a_script_calls_read_tools_as_functions_and_cannot_write(ws, home):
             "print(tools.read_file(path='pkg/a.py').count('return'))\n"
             "try:\n    tools.write_file(path='x.txt', content='no')\nexcept RuntimeError as error:\n    print('refused:', error)\n")
     fake = scripted(turn(calls=[call("run_script", code=code)]), turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     name, ok, out = tool_outputs(session)[0]
     assert name == "run_script" and ok, out
@@ -2148,7 +2182,7 @@ def test_a_script_calls_read_tools_as_functions_and_cannot_write(ws, home):
     assert "refused: write_file cannot be called from a script" in out and not (ws.root / "x.txt").exists()
     assert "[exit code 0] [3 tool calls]" in out
     fake = scripted(turn(calls=[call("run_script", code="import time\ntime.sleep(30)", timeout=1)]), turn("ok"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert "[stopped after 1 s]" in tool_outputs(session)[0][2]
 
@@ -2158,7 +2192,7 @@ def test_a_background_job_takes_typed_input_on_a_pipe_or_a_terminal(ws, home):
                     turn(calls=[{"id": "i", "name": "job_input", "args": {"id": "job1", "chars": "print(6 * 7)\n"}}]),
                     turn(calls=[call("run_command", command="read a; echo got $a", background=True)]),
                     turn(calls=[{"id": "j", "name": "job_input", "args": {"id": "job2", "chars": "yes\n"}}]), turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     outs = tool_outputs(session)
     assert "42" in outs[1][2] and "running" in outs[1][2], outs[1]
@@ -2201,7 +2235,7 @@ def test_the_advisor_speaks_up_in_the_background_and_checks_a_claim_of_done(ws, 
     fake = advised([turn(calls=[call("list_dir", path=".")]), slow, turn("All done."), turn("Fixed for real.")],
                    [[{"severity": "concern", "text": "You never read pkg/a.py before planning the change."}], [],
                     [{"severity": "blocker", "text": "Nothing was edited, yet the reply claims done."}, {"severity": "nit", "text": "style"}], []])
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     advice = [h["content"] for h in session.history if h["role"] == "user" and h["content"].startswith("[Advisor]")]
     assert any("concern: You never read pkg/a.py" in a for a in advice), session.history
@@ -2220,7 +2254,7 @@ def test_prewalk_plans_on_the_strong_model_and_hands_over_at_the_first_edit(ws, 
                     turn(calls=[call("edit_file", path="pkg/a.py", old_text="return 1", new_text="return 2")]),
                     turn(calls=[call("run_command", command="python -c 'import pkg.a'")]),
                     turn(calls=[call("todo_write", items=[{"content": "edit f", "status": "completed"}])]), turn("Done.")], [[]])
-    session = manager(home).create(PROVIDERS["openai"], "k", "small", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "small", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert fake.models == ["big", "big", "big", "small", "small", "small"], fake.models
     texts = [h["content"] for h in session.history if h["role"] == "user"]
@@ -2231,31 +2265,31 @@ def test_prewalk_plans_on_the_strong_model_and_hands_over_at_the_first_edit(ws, 
 def test_a_garbled_final_reply_after_long_work_is_sent_back_once(ws, home):
     reads = [turn(calls=[call("list_dir", path=f"d{n}")]) for n in range(5)]
     fake = scripted(*reads, turn("Lbtag"), turn("## Report\nThe audit found two issues."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert session.history[-1]["content"].startswith("## Report") and "'Lbtag'" in session.history[-2]["content"]
     fake = scripted(*reads, turn("Done."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert session.history[-1]["content"] == "Done.", "a short reply that ends like a sentence stands"
 
 
 def test_a_reply_that_announces_a_step_continues_and_a_step_limit_still_reports(ws, home):
     fake = scripted(turn("Now let me read the job file in full:"), turn(calls=[call("read_file", path="pkg/a.py")]), turn("Report: f returns 1."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert session.history[-1]["content"] == "Report: f returns 1." and len(fake.seen) == 3
     (home / ".manga-agent").mkdir()
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"max_steps": 3}))
     fake = scripted(*[turn(calls=[call("list_dir", path=f"d{n}")]) for n in range(3)], turn("Read three folders; nothing else done."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert "step limit" in session.history[-2]["content"] and session.history[-1]["content"] == "Read three folders; nothing else done."
     assert fake.seen[-1][1] is None, "the wrap-up offers no tools"
 
 
 def test_helpers_get_the_full_step_budget_and_compact_keeping_their_job(ws, home):
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     nick = session._spawn("audit the routers in depth", "explore")
     child = session.children[nick]
     assert child.max_steps == session.max_steps and "read only what the job needs" not in child.system_prompt()
@@ -2278,7 +2312,7 @@ def test_fan_out_with_a_schema_asks_once_to_fix_a_report_and_reports_null_when_i
         return turn("I looked around and everything seems fine.")
 
     fake = routed([turn(calls=[{"id": "f", "name": "fan_out", "args": {"jobs": jobs, "schema": schema}}]), turn("ok")], child)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     out = tool_outputs(session)[0][2]
     assert out.count('{"findings": [{"file": "a.py"}]}') == 2 and "null (invalid report: the reply holds no JSON object)" in out, out
@@ -2295,11 +2329,11 @@ def test_the_schema_check_covers_types_required_items_and_enums():
 
 def test_auto_mode_tells_the_agent_to_rule_instead_of_stalling_and_compaction_keeps_the_old_history(ws, home):
     from app.agent import session as session_module
-    auto = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    auto = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     ask = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted(turn("x")))
     assert session_module.RULINGS in auto.system_prompt() and session_module.RULINGS not in ask.system_prompt()
     fake = scripted(turn("one"), turn("two"), turn("Summary: did one and two."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session, "first request")
     run_to_idle(session, "second request")
     assert session.compact(keep=1)
@@ -2312,7 +2346,7 @@ def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick
     fake = scripted(turn(calls=[call("run_command", command="echo hi; exit 3")]),
                     turn(calls=[call("run_command", command="echo started; sleep 20; echo finished", timeout=1)]),
                     turn(calls=[{"id": "o", "name": "job_stop", "args": {"id": "job1"}}]), turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     outs = tool_outputs(session)
     assert "hi" in outs[0][2] and "[exit code 3]" in outs[0][2]
@@ -2321,7 +2355,7 @@ def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick
     (home / ".manga-agent").mkdir()
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"timeout_to_background": False}))
     fake = scripted(turn(calls=[call("run_command", command="sleep 20", timeout=1)]), turn("ok"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert "[stopped after 1 s]" in tool_outputs(session)[0][2] and not session.jobs
 
@@ -2329,7 +2363,7 @@ def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick
 def test_edits_to_different_files_run_together_and_overlapping_ones_stay_in_order(ws, home):
     import threading
     running, peak, lock = [0], [0], threading.Lock()
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     real = session._run_call
 
     def slow(call):
@@ -2372,13 +2406,13 @@ def test_a_model_that_keeps_failing_hands_the_turn_to_the_next_configured_model(
             raise client.TransientError("ReadTimeout")
         return turn("answered by " + model)
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     run_to_idle(session)
     assert used == ["m", "backup-1", "backup-2"] and session.history[-1]["content"] == "answered by backup-2"
     assert sum(e["type"] == "notice" and "switching to" in e["text"] for e in session.events) == 2
     run_to_idle(session, "again")
     assert used[3] == "m", "the next request tries the first model again"
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=lambda *a, **k: (_ for _ in ()).throw(client.TransientError("down")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=lambda *a, **k: (_ for _ in ()).throw(client.TransientError("down")))
     session.profile["fallback_models"] = []
     run_to_idle(session)
     assert any(e["type"] == "error" for e in session.events), "with no fallback the failure surfaces as before"
@@ -2386,7 +2420,7 @@ def test_a_model_that_keeps_failing_hands_the_turn_to_the_next_configured_model(
 
 def test_the_oracle_tool_asks_the_advisor_model_and_is_offered_only_when_switched_on(ws, home):
     from app.agent import session as session_module
-    plain = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    plain = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert "oracle" not in {t["name"] for t in plain.specs()}
     (home / ".manga-agent").mkdir()
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"oracle": True, "advisor_model": "big"}))
@@ -2398,7 +2432,7 @@ def test_the_oracle_tool_asks_the_advisor_model_and_is_offered_only_when_switche
             return {**turn("Check the lock ordering first."), "usage": {"prompt_tokens": 50, "completion_tokens": 5}}
         return [turn(calls=[call("oracle", question="Why would the deadlock appear only under load?")]), turn("Thanks.")][min(len([m for m in messages if m["role"] == "tool"]), 1)]
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     assert "oracle" in {t["name"] for t in session.specs()}
     run_to_idle(session, "debug the hang")
     assert tool_outputs(session)[0][2] == "Check the lock ordering first."
@@ -2424,7 +2458,7 @@ def test_a_script_can_run_rounds_of_helpers_and_use_their_reports_as_data(ws, ho
         return turn('{"ok": %s}' % ("true" if name != "c" or calls_seen[name] > 2 else "false"))
 
     fake = routed([turn(calls=[call("run_script", code=code, timeout=300)]), turn("done")], child)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     out = tool_outputs(session)[0][2]
     assert "rounds 3 left []" in out and "[exit code 0]" in out, out
@@ -2434,7 +2468,7 @@ def test_a_script_can_run_rounds_of_helpers_and_use_their_reports_as_data(ws, ho
 def test_a_session_schedules_prompts_for_itself_asks_before_it_outside_auto_and_keeps_them_across_a_restart(ws, home, tmp_path):
     fake = scripted(turn(calls=[call("schedule_create", prompt="check the deploy", in_minutes=1, every_minutes=5)]), turn("scheduled"),
                     turn("deploy fine"), turn(calls=[{"id": "d", "name": "schedule_list", "args": {}}]), turn("listed"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session, "watch the deploy")
     assert "Scheduled" in tool_outputs(session)[0][2] and len(session.schedules) == 1
     task = session.schedules[0]
@@ -2448,10 +2482,10 @@ def test_a_session_schedules_prompts_for_itself_asks_before_it_outside_auto_and_
     assert "every 5 min" in tool_outputs(session)[-1][2]
     ask = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted(turn("x")))
     assert ask._needs_approval(call("schedule_create", prompt="p", in_minutes=1)) and not ask._needs_approval(call("schedule_list"))
-    store = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    store = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     store._schedule("schedule_create", {"prompt": "later", "in_minutes": 10})
     store.save()
-    again = AgentSession("again", PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    again = AgentSession("again", PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     again.restore(json.loads(store.store.read_text(encoding="utf-8")))
     assert [t["prompt"] for t in again.schedules] == ["later"]
     for s in (session, ask, store, again):
@@ -2464,13 +2498,13 @@ def test_a_text_only_reply_with_todo_items_left_is_sent_back_and_a_finished_list
     plan = [{"content": "write code", "status": "in_progress"}, {"content": "run tests", "status": "pending"}]
     fake = scripted(turn(calls=[call("todo_write", items=plan)]), turn("I'll start now."), turn(calls=[call("todo_write", items=[{"content": "write code", "status": "completed"}, {"content": "run tests", "status": "completed"}])]),
                     turn("Done: everything finished."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     nudges = [h["content"] for h in session.history if h["role"] == "user" and h["content"].startswith("[Your todo list still has")]
     assert len(nudges) == 1 and "write code; run tests" in nudges[0]
     assert session.history[-1]["content"] == "Done: everything finished."
     fake = scripted(turn(calls=[call("todo_write", items=plan)]), *[turn("Still just talking.")] * 6)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert sum(h["content"].startswith("[Your todo list still has") for h in session.history if h["role"] == "user") == 3, "at most three nudges, then the turn ends"
 
@@ -2510,25 +2544,25 @@ def test_auto_compaction_starts_near_the_configured_token_count_once_and_not_aga
         out["usage"] = {"prompt_tokens": 30_000, "completion_tokens": 10}
         return out
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     assert session.compact_at == 20_000
     session.history = [{"role": "user" if i % 2 == 0 else "assistant", "content": "x" * 9_000, **({"calls": []} if i % 2 else {})} for i in range(24)]
     run_to_idle(session, "go on")
     assert len(summaries) == 1, "one compaction, then the rearm margin holds the next ones back"
     assert any(h["role"] == "user" and "[Summary of the earlier conversation]" in h["content"] for h in session.history)
-    quiet = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    quiet = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     quiet.compact_at = 0
     quiet.history = list(session.history[:0]) + [{"role": "user", "content": "y" * 9_000} for _ in range(24)]
     assert not quiet._should_compact()
 
 
 def test_compact_auto_sets_shows_and_turns_off_the_threshold_and_it_is_saved(ws, home, tmp_path):
-    store = manager(home, tmp_path / "s").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    store = manager(home, tmp_path / "s").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert store.compact_at == 900_000 and "900,000" in store.command("/compact auto")["message"]
     assert "1,000,000" in store.command("/compact auto 1m")["message"] and store.compact_at == 1_000_000
     assert store.command("/compact auto 750k")["message"].endswith("750,000 token.") and store.compact_at == 750_000
     store.save()
-    again = AgentSession("again", PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    again = AgentSession("again", PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     again.restore(json.loads(store.store.read_text(encoding="utf-8")))
     assert again.compact_at == 750_000
     assert "tắt" in store.command("/compact auto off")["message"] and store.compact_at == 0
@@ -2549,7 +2583,7 @@ def test_a_context_error_that_names_the_window_moves_the_compaction_mark_under_i
             raise RuntimeError("This model's maximum context length is 32768 tokens. However, your messages resulted in 40000 tokens.")
         return turn("Done.")
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     assert session.compact_at == 900_000
     session.history = [{"role": "user" if i % 2 == 0 else "assistant", "content": "x" * 9_000, **({"calls": []} if i % 2 else {})} for i in range(24)]
     run_to_idle(session, "go on")
@@ -2565,20 +2599,20 @@ def test_a_context_error_that_names_the_window_moves_the_compaction_mark_under_i
 def test_context_window_in_the_profile_sets_the_compaction_mark(ws, home):
     (home / ".manga-agent").mkdir()
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"context_window": 128_000}))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert session.compact_at == 102_400
 
 
 def test_a_run_with_a_clock_gets_a_time_notice_then_a_final_report_without_tools(ws, home):
     fake = scripted(turn(calls=[call("list_dir", path="pkg")]), turn("Report: read pkg; the rest is not done."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.set_deadline(1200)
     assert session._deadline - time.time() == pytest.approx(1200 - 120, abs=2) and session._notice_at < session._deadline
     session._notice_at = time.time() - 1
     run_to_idle(session, "work")
     assert any("[Time notice]" in str(h["content"]) for h in session.history if h["role"] == "user")
     fake = scripted(turn("Report: nothing could be done in time."))
-    late = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    late = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     late._deadline = time.time() - 1
     run_to_idle(late, "work")
     assert "time limit" in late.history[-2]["content"] and late.history[-1]["content"].startswith("Report:")
@@ -2772,7 +2806,7 @@ def test_a_reply_that_spent_its_whole_budget_on_reasoning_is_asked_again_with_a_
         return turn("Done.")
 
     monkeypatch.setattr(client, "complete", fake)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=client.complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=client.complete)
     run_to_idle(session, "go")
     assert sizes == [8192, 16384, 32768] and session.history[-1]["content"] == "Done."
     assert sum("raising the reply limit" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
@@ -2788,7 +2822,7 @@ def test_a_turn_that_dies_after_changing_files_says_what_it_changed_and_what_is_
         except StopIteration:
             raise RuntimeError("provider HTTP 503: all providers busy")
 
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=complete)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     run_to_idle(session, "make a.txt and test it")
     note = next(e["text"] for e in session.events if e["type"] == "notice" and "stopped on an error" in e.get("text", ""))
     assert "a.txt" in note and "test it" in note
@@ -2797,12 +2831,12 @@ def test_a_turn_that_dies_after_changing_files_says_what_it_changed_and_what_is_
 def test_a_claim_that_tests_pass_after_an_untested_edit_is_sent_back_once(ws, home):
     fake = scripted(turn(calls=[call("run_command", command="echo 3 passed")]), turn(calls=[call("write_file", path="a.txt", content="x")]),
                     turn("All 3 tests pass."), turn(calls=[call("run_command", command="echo 3 passed")]), turn("All 3 tests pass."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session, "go")
     nudges = [h for h in session.history if h["role"] == "user" and h["content"].startswith("[Check] Your reply says the tests pass")]
     assert len(nudges) == 1 and session.history[-1]["content"] == "All 3 tests pass." and len(fake.seen) == 5
     quiet = scripted(turn(calls=[call("write_file", path="b.txt", content="x")]), turn(calls=[call("run_command", command="echo ok")]), turn("Tests pass."))
-    clean = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=quiet)
+    clean = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=quiet)
     run_to_idle(clean, "go")
     assert not any(h["role"] == "user" and h["content"].startswith("[Check]") for h in clean.history)
 
@@ -2935,7 +2969,7 @@ def test_a_kernel_plugin_adds_tools_wraps_calls_and_model_requests_and_switches_
     (ws.root / "secret.txt").write_text("nope")
     (ws.root / "notes.txt").write_text("key TOKEN here")
     fake = scripted(turn("ok"))
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     tree = session.command("/plugins")["message"]
     assert "greeter [user] active (cần tools, session)" in tree and "web-search-tinyfish [builtin] disabled" in tree
     assert "ghost needs a .py file inside ~/.manga-agent/plugins" in tree, "a row cannot load a file outside the plugins folder"
@@ -2964,7 +2998,7 @@ def test_switching_off_every_shell_provider_stops_commands_cleanly(ws, home, tmp
     folder = home / ".manga-agent"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "plugins.json").write_text(json.dumps({"rows": [{"id": "shell-local", "disabled": True}]}))
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     output, ok = session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo hi"}})
     assert not ok and "no provider for shell" in output
     assert "shell: no provider for shell" in session.command("/services")["message"]
@@ -2980,7 +3014,7 @@ def test_the_agent_writes_a_plugin_that_mounts_after_approval_even_in_auto_mode(
     ''')
     fake = scripted(turn(calls=[call("plugin_write", id="shouter", code=code, config={"tail": "!"})]),
                     turn(calls=[call("shout", text="hi")]), turn("done"))
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.send("make yourself a shout tool")
     wait_for(session, "waiting")
     assert session.pending["name"] == "plugin_write", "writing code into the harness asks even in auto mode"
@@ -2999,7 +3033,7 @@ def test_the_agent_writes_a_plugin_that_mounts_after_approval_even_in_auto_mode(
 
 
 def test_plugin_write_failures_from_the_evolve_run_say_what_is_wrong(ws, home, tmp_path):
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     plugins = home / ".manga-agent" / "plugins"
     output, ok = session._run_call({"id": "1", "name": "plugin_write", "args": {}})
     assert not ok and "needs id" in output and "no arguments at all" in output and session.pending is None, "an empty call never reaches approval"
@@ -3065,7 +3099,7 @@ def test_an_mcp_tool_can_be_the_provider_behind_a_seam(ws, home, tmp_path):
     (folder / "mcp.json").write_text(json.dumps({"mcpServers": {"fs": {"command": sys.executable, "args": [str(tmp_path / "swap.py")]}}}))
     (folder / "profile.json").write_text(json.dumps({"services": {"web.search": ["mcp__fs__find", "duckduckgo"], "shell": "mcp__fs__sh"}}))
     agents = manager(home, tmp_path / "store")
-    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     output, ok = session._run_call({"id": "1", "name": "web_search", "args": {"query": "manga fonts", "count": 3}})
     assert ok and output == 'mcp find {"max_results": 3, "q": "manga fonts"}', output
     output, ok = session._run_call({"id": "2", "name": "run_command", "args": {"command": "ls -la"}})
@@ -3085,7 +3119,7 @@ def test_mcp_servers_are_rows_of_the_plugin_tree_that_stop_and_start_live(ws, ho
     (folder / "mcp.json").write_text(json.dumps({"mcpServers": {"fs": {"command": sys.executable, "args": [str(tmp_path / "swap.py")]}}}))
     (folder / "plugins.json").write_text(json.dumps({"rows": [{"id": "calc", "mcp": {"command": sys.executable, "args": [str(tmp_path / "fake.py")]}}]}))
     agents = manager(home, tmp_path / "store")
-    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._ensure_mcp()
     tree = session.command("/plugins")["message"]
     assert "mcp:fs [mcp] active" in tree and "mcp:calc [mcp] active" in tree, tree
@@ -3104,7 +3138,7 @@ def test_a_project_server_switched_on_by_hand_still_needs_trust(ws, home, tmp_pa
     (tmp_path / "fake.py").write_text(FAKE_SERVER, encoding="utf-8")
     (ws.root / ".mcp.json").write_text(json.dumps({"mcpServers": {"calc": {"command": sys.executable, "args": [str(tmp_path / "fake.py")]}}}))
     agents = manager(home, tmp_path / "store")
-    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session.command("/plugins enable mcp:calc")
     assert "calc" not in session.mcp_servers and session.mcp_status["calc"]["state"] == "untrusted"
     session.trust_mcp("calc")
@@ -3161,7 +3195,7 @@ def test_a_session_reports_each_rate_limit_its_provider_answered(ws, home, tmp_p
         client.RATE_LIMITS[provider.id].update(count=client.RATE_LIMITS[provider.id]["count"] + 2, detail="free tier: 10 requests per minute")
         client.RATE_LIMITS[provider.id]["waited_s"] += 18.0
         return turn("ok")
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=throttled)
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=throttled)
     session.send("hi")
     wait_for(session, "idle")
     notes = [e["text"] for e in session.events if e["type"] == "notice"]
@@ -3172,7 +3206,7 @@ def test_a_session_reports_each_rate_limit_its_provider_answered(ws, home, tmp_p
 # Optimisation pass: fixes and finished half-features.
 
 def test_auto_compaction_off_keeps_every_tool_output(ws, home):
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted())
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted())
     session.compact_at = 0
     session.history = [{"role": "user", "content": "go"}] + [{"role": "tool", "id": str(i), "name": "read_file", "content": "x" * 5_000} for i in range(4)]
     size = session._make_room()
@@ -3192,7 +3226,7 @@ def test_trust_without_a_file_holds_for_the_process_and_files_are_reread_only_wh
 
 
 def test_small_session_fixes(ws, home, tmp_path):
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("ok")))
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("ok")))
     run_to_idle(session, "   ")
     assert session.title == "", "a blank message does not crash the title"
     session.command("/model qwen-coder")
@@ -3212,7 +3246,7 @@ def test_small_session_fixes(ws, home, tmp_path):
 
 def test_tool_events_keep_a_clipped_copy_while_the_model_sees_everything(ws, home):
     (ws.root / "big.txt").write_text("\n".join("line %d %s" % (i, "y" * 60) for i in range(1500)), encoding="utf-8")
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto",
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass",
                                    complete=scripted(turn(calls=[call("run_command", command="cat big.txt")]), turn("done")))
     run_to_idle(session, "show")
     event = next(e for e in session.events if e["type"] == "tool")
@@ -3255,7 +3289,7 @@ def test_several_mcp_servers_start_side_by_side(ws, home, tmp_path):
     folder.mkdir(parents=True, exist_ok=True)
     servers = {f"s{i}": {"command": sys.executable, "args": [str(tmp_path / "slow.py")]} for i in range(3)}
     (folder / "mcp.json").write_text(json.dumps({"mcpServers": servers}), encoding="utf-8")
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted())
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted())
     started = time.time()
     session._ensure_mcp()
     took = time.time() - started
@@ -3353,7 +3387,7 @@ def test_move_and_delete_files_then_review_and_revert_through_the_session(ws, ho
     fake = scripted(turn(calls=[call("move_file", path="pkg/a.py", to="lib/a.py"), call("write_file", path="new.txt", content="hi")]),
                     turn(calls=[call("delete_file", path="new.txt"), call("changes")]),
                     turn(calls=[call("revert_file", path="pkg/a.py"), call("revert_file", path="lib/a.py")]), turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session, "reorganise")
     outputs = {name: output for name, ok, output in tool_outputs(session)}
     assert "Moved pkg/a.py to lib/a.py" in outputs["move_file"] and outputs["delete_file"] == "Deleted new.txt"
@@ -3377,5 +3411,5 @@ def test_new_tools_follow_the_rules_and_the_approval_modes(ws, home):
     assert not ok and "Denied" in output, "the .env rule covers the new edit tools"
     output, ok = edits._run_call({"id": "x", "name": "rename_file", "args": {"path": "pkg/a.py", "destination": "pkg/b.py"}})
     assert ok and "move_file" in output and (ws.root / "pkg" / "b.py").is_file()
-    reader = manager(home).create(PROVIDERS["openai"], "k", "m", Workspace(ws.root, sandbox.Policy("read-only")), "auto", complete=scripted())
+    reader = manager(home).create(PROVIDERS["openai"], "k", "m", Workspace(ws.root, sandbox.Policy("read-only")), "bypass", complete=scripted())
     assert "revert_file" not in {s["name"] for s in reader.specs()}

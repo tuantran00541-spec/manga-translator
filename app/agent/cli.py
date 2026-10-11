@@ -77,7 +77,7 @@ def run(args: argparse.Namespace) -> int:
                 session.choose_key("next" if switches < len(keys) else "stop")
         if snap["status"] == "waiting":
             # Nobody is here to answer: refuse, and say how to allow it next time.
-            session.decide("deny", "Running without a person to approve; the user can rerun with --mode auto.")
+            session.decide("deny", "Running without a person to approve; the user can rerun with --mode auto or bypass.")
         elif snap["status"] == "idle":
             break
         if time.time() > deadline:

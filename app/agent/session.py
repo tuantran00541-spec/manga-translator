@@ -24,7 +24,8 @@ from app.agent.checkpoint import Checkpoints
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
 
-MODES = ("ask", "edits", "review", "auto")
+MODES = ("ask", "edits", "review", "auto", "bypass")
+HANDS_OFF = ("auto", "bypass")
 MAX_STEPS = 300
 MAX_JOBS = 8
 MAX_TODO_NUDGES = 3
@@ -65,6 +66,11 @@ RULINGS = ("Nobody is watching this run, so do not stop to ask what you can deci
            "'Ruling: <what you decided> - <why> - <what it costs if wrong>', and carry on; a wrong ruling is cheap to undo, a parked run is not. "
            "Stop and ask only for: an irreversible or destructive operation, a security-sensitive action, a side effect outside this workspace that is normally asked first "
            "(a push, a merge, a publish), or a task so broken that every way forward is a guess.")
+AUTO_RULINGS = ("Nobody is watching this run, so do not stop to ask what you can decide. When a conflict, an ambiguity or a missing detail comes up, decide it, record it in one line "
+                "'Ruling: <what you decided> - <why> - <what it costs if wrong>', and carry on. Commands and outside actions pass an automatic reviewer that blocks destructive, "
+                "outbound or unrequested side effects; when it blocks one, take a safer route or leave that step out and name it in your final report as work for the user.")
+AUTO_BLOCKED = ("Auto mode blocked this {name} call: {reason}. Do not retry it or reach the same result another way. Take a safer route; if there is none, "
+                "skip the step and list it in your final report as something the user must do.")
 ORACLE_PROMPT = ("You are a senior engineer a coding agent consults. You see its recent conversation and its question. Answer directly and concretely: name the risk, the cause or the better approach, "
                  "and what to check. Cite only what the conversation shows; say so when something you would need is not visible. No preamble, no restating the question.")
 TODO_NUDGE = ("[Your todo list still has unfinished items: {items}. Do the next one now by calling a tool. If the work is really done or an item no longer applies, "
@@ -299,6 +305,7 @@ class AgentSession:
         self.web_ok: set[str] = set()
         self._turn_usage = 0
         self._denials: list[bool] = []
+        self._cleared: set[str] = set()
         self._fallback_at = 0
         self._last_prompt = (0, 0)
         self._after_compact = 0
@@ -1047,21 +1054,21 @@ class AgentSession:
         if name == "job_input" and self._typing_outside(call):
             return True
         if name == "schedule_create":
-            return self.mode != "auto"
+            return self.mode not in HANDS_OFF
         if name == "memory":
-            return self.mode != "auto" and call["args"].get("action") != "list"
+            return self.mode not in HANDS_OFF and call["args"].get("action") != "list"
         if name == "revert_file":
             # Putting a file back is an edit, so it asks wherever edits ask.
             return self.mode in ("ask", "review") and verdict != "allow"
-        if self.mode == "auto" or name in SESSION_SPECS or verdict == "allow":
+        if self.mode == "bypass" or name in SESSION_SPECS or verdict == "allow":
             return False
         if verdict == "ask":
             return True
-        if name in URL_TOOLS and self.mode == "edits" and (urlparse(str(call["args"].get("url") or "")).hostname or "") not in self.web_ok:
+        if name in URL_TOOLS and self.mode in ("edits", "auto") and (urlparse(str(call["args"].get("url") or "")).hostname or "") not in self.web_ok:
             return True
         if name in self.mcp_tools and not self._role(name):
             read_only = (self.mcp_tools[name][1].get("annotations") or {}).get("readOnlyHint")
-            return not (self.mode == "edits" and read_only)
+            return not (self.mode in ("edits", "auto") and read_only)
         kind = plugin.kind if plugin else self._role(name) or KIND.get(name, "exec")
         if kind == "read":
             return False
@@ -1072,6 +1079,9 @@ class AgentSession:
         via_mcp = name in self.replaced or name in self.mcp_tools
         if self.mode in ("ask", "review"):
             return via_mcp or not (name == "run_command" and not call["args"].get("outside_sandbox") and rules.safe_readonly(str(call["args"].get("command") or "")))
+        if kind == "exec" and self.mode == "auto":
+            # Auto mode lets only look-only commands skip its reviewer.
+            return not (name == "run_command" and not via_mcp and rules.safe_readonly(str(call["args"].get("command") or "")))
         if kind == "exec":
             # In edits mode commands run on their own only inside a working OS sandbox.
             confined = (sandbox.backend() != "none" and self.workspace.policy.mode != "full-access" and not via_mcp
@@ -1544,7 +1554,7 @@ class AgentSession:
                            read_roots=self.workspace.read_roots)
         helper.services = self.workspace.services
         child = AgentSession(f"{self.id}-{nick}", self.provider, self.api_keys, agent.model or self.profile.get("subagent_model") or self.model, helper,
-                             self.mode if mutating else "auto", complete=self._raw_complete, depth=self.depth + 1, home=self.home,
+                             self.mode if mutating else "bypass", complete=self._raw_complete, depth=self.depth + 1, home=self.home,
                              trust=self.trust, parent=self, agent=agent)
         child.text_tools, child.nick, child.job, child.mutating = self.text_tools, nick, job, mutating and copy is None
         child.copy, child.base = copy, base
@@ -1703,24 +1713,34 @@ class AgentSession:
                 # A plugin may change the approval policy; what must always ask still asks.
                 ask = bool(self.kernel.waterfall("tool/approve", {"call": call, "ask": ask, "mode": self.mode}, lambda p: p["ask"])) or self._always_ask(call)
             if ask:
-                why = "untrusted" if self.tainted and self.mode != "auto" and self.profile["untrusted_guard"] else ""
+                auto = self.mode == "auto"
+                why = "untrusted" if self.tainted and not auto and self.profile["untrusted_guard"] else ""
                 reviewed, cleared = "", False
-                if self.mode == "review" and not why and not self._always_ask(call):
+                if signature in self._cleared and not self._always_ask(call):
+                    cleared = True
+                elif self.mode in ("review", "auto") and not why and not self._always_ask(call):
                     started = time.time()
                     answer, reason = guardian.review(self.complete, self.provider, self.api_key, self.profile["review_model"] or self.model,
-                                                     self._user_messages(), call)
+                                                     self._user_messages(), call, untrusted=self.tainted, rule=verdict == "ask")
                     with self._usage_lock:
                         self.stats["model_s"] += time.time() - started
-                    self._denials.append(answer == "deny")
+                    # In Auto mode an unsure reviewer blocks; only a reviewer that could not answer hands the call to the user.
+                    blocked = answer == "deny" or (auto and answer == "ask" and reason != guardian.UNAVAILABLE)
+                    self._denials.append(blocked)
                     if answer == "allow":
                         self.emit("notice", text=f"Reviewer allowed {call['name']}: {reason}")
+                        self._cleared.add(signature)
                         cleared = True
-                    elif answer == "deny":
-                        self.emit("notice", text=f"Reviewer denied {call['name']}: {reason}")
-                        if guardian.tripped(self._denials):
+                    elif blocked and auto and guardian.tripped(self._denials):
+                        self.emit("notice", text=f"Auto mode blocked {call['name']} ({reason}) after many blocks in a row; asking you instead.")
+                        self._denials = []
+                        reviewed = reason
+                    elif blocked:
+                        self.emit("notice", text=f"Reviewer {'blocked' if auto else 'denied'} {call['name']}: {reason}")
+                        if not auto and guardian.tripped(self._denials):
                             self.emit("error", text="The reviewer denied too many calls in a row; stopping this turn for you to look.")
                             self._stop = True
-                        return guardian.DENIED.format(name=call["name"], reason=reason), False
+                        return (AUTO_BLOCKED if auto else guardian.DENIED).format(name=call["name"], reason=reason), False
                     else:
                         reviewed = reason
                 if not cleared:
@@ -1833,6 +1853,8 @@ class AgentSession:
             if self.plan_mode:
                 parts.append(PLAN_PROMPT)
             elif self.mode == "auto":
+                parts.append(AUTO_RULINGS)
+            elif self.mode == "bypass":
                 parts.append(RULINGS)
         else:
             parts.append(self.agent.prompt if self.agent else agents.BUILTIN["explore"].prompt)
