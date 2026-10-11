@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import threading
@@ -65,6 +66,164 @@ def _plugin_rows(path: Path) -> dict:
     rows = data.get("rows") if isinstance(data, dict) else None
     return {str(r["id"]): {**r["mcp"], **({"disabled": True} if r.get("disabled") else {})}
             for r in rows or [] if isinstance(r, dict) and isinstance(r.get("mcp"), dict) and r.get("id")}
+
+
+NAME_RE = re.compile(r"[A-Za-z0-9_.-]{1,40}")
+SECRET_VALUE = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}$")
+
+
+def user_file(home: Path) -> Path:
+    return home / ".manga-agent" / "mcp.json"
+
+
+def _pairs(value, what: str) -> dict[str, str]:
+    if value in (None, ""):
+        return {}
+    if not isinstance(value, dict) or not all(isinstance(k, str) and k.strip() for k in value):
+        raise ValueError(f"{what} must be an object of names and values")
+    return {k.strip(): str(v) for k, v in value.items()}
+
+
+def clean_config(config) -> dict:
+    """One server's settings checked and reduced to what the client uses: a command with args and env, or a URL with headers."""
+    if not isinstance(config, dict):
+        raise ValueError("a server's settings must be a JSON object")
+    kind = str(config.get("type") or config.get("transport") or ("http" if config.get("url") else "stdio")).lower()
+    out: dict = {"disabled": True} if config.get("disabled") or config.get("enabled") is False else {}
+    if kind in ("http", "streamable-http", "streamable_http", "sse"):
+        url = str(config.get("url") or "").strip()
+        if not re.match(r"^https?://[^\s/]+", url):
+            raise ValueError("an http server needs a url starting with http:// or https://")
+        out.update(type="http", url=url)
+        if headers := _pairs(config.get("headers"), "headers"):
+            out["headers"] = headers
+        for key in ("bearer_token_env_var",):
+            if isinstance(config.get(key), str) and config[key].strip():
+                out[key] = config[key].strip()
+        return out
+    if kind != "stdio":
+        raise ValueError(f"transport {kind!r} is not supported; use stdio or http")
+    command, args = config.get("command"), config.get("args") or []
+    if isinstance(command, list):
+        command, args = (command[0] if command else ""), [*command[1:], *args]
+    command = str(command or "").strip()
+    if command and not args and " " in command:
+        # A whole command line pasted into one field is split the way a shell would.
+        parts = shlex.split(command, posix=os.name != "nt")
+        command, args = parts[0], parts[1:]
+    if not command:
+        raise ValueError("a stdio server needs a command, such as npx or uvx")
+    if not isinstance(args, list):
+        raise ValueError("args must be a list")
+    out.update(command=command, args=[str(a) for a in args])
+    if env := _pairs(config.get("env"), "env"):
+        out["env"] = env
+    if isinstance(config.get("cwd"), str) and config["cwd"].strip():
+        out["cwd"] = config["cwd"].strip()
+    return out
+
+
+def parse_pasted(text: str, name: str = "") -> dict[str, dict]:
+    """Servers from JSON as MCP docs show it: {"mcpServers": {...}}, VS Code's {"servers": {...}}, a bare {"name": {...}} or one server's settings."""
+    text = (text or "").strip()
+    try:
+        data = json.loads(text)
+    except ValueError:
+        try:
+            # Docs often show only the inner "name": {...} lines, sometimes with a trailing comma.
+            data = json.loads("{" + text.rstrip(",") + "}")
+        except ValueError as exc:
+            raise ValueError("that is not JSON; paste the block from the server's docs") from exc
+    if not isinstance(data, dict):
+        raise ValueError("paste a JSON object")
+    for key in ("mcpServers", "mcp_servers", "servers", "mcp"):
+        if isinstance(data.get(key), dict):
+            data = data[key]
+            break
+    if any(k in data for k in ("command", "url", "type", "transport")):
+        if not name.strip():
+            raise ValueError("this is one server's settings; give it a name")
+        data = {name.strip(): data}
+    servers = {}
+    for key, config in data.items():
+        if not NAME_RE.fullmatch(str(key)):
+            raise ValueError(f"server name {key!r}: use letters, digits, '.', '_' or '-' (at most 40)")
+        servers[str(key)] = clean_config(config)
+    if not servers:
+        raise ValueError("no server found in that JSON")
+    return servers
+
+
+def _read_user(home: Path) -> dict:
+    try:
+        data = json.loads(user_file(home).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{user_file(home)} cannot be read: {exc}") from exc
+    return data if isinstance(data, dict) else {}
+
+
+def _write_user(home: Path, data: dict) -> None:
+    path = user_file(home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    # Settings may hold tokens, so only this user can read the file (the sandbox keeps commands out of it too).
+    with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def save_user(home: Path, servers: dict[str, dict]) -> None:
+    """Add or replace servers in ~/.manga-agent/mcp.json, keeping everything else in it."""
+    data = _read_user(home)
+    table = data.setdefault("mcpServers", {})
+    if not isinstance(table, dict):
+        table = data["mcpServers"] = {}
+    table.update(servers)
+    _write_user(home, data)
+
+
+def remove_user(home: Path, name: str) -> None:
+    data = _read_user(home)
+    table = data.get("mcpServers") if isinstance(data.get("mcpServers"), dict) else {}
+    if name not in table:
+        raise KeyError(name)
+    table.pop(name)
+    _write_user(home, data)
+
+
+def set_user_enabled(home: Path, name: str, enabled: bool) -> None:
+    data = _read_user(home)
+    table = data.get("mcpServers") if isinstance(data.get("mcpServers"), dict) else {}
+    if name not in table or not isinstance(table[name], dict):
+        raise KeyError(name)
+    table[name].pop("enabled", None)
+    if enabled:
+        table[name].pop("disabled", None)
+    else:
+        table[name]["disabled"] = True
+    _write_user(home, data)
+
+
+def public(row: dict) -> dict:
+    """A configured server as the page may show it: values of env and headers are hidden unless they only name a variable."""
+    config = row["config"]
+    hide = lambda pairs: {k: (v if SECRET_VALUE.match(str(v)) else "•••") for k, v in (pairs or {}).items()} if isinstance(pairs, dict) else {}
+    kind = "http" if config.get("url") else "stdio"
+    where = config.get("url") if kind == "http" else " ".join([str(config.get("command") or ""), *[str(a) for a in config.get("args") or []]])
+    return {"name": row["name"], "scope": row["scope"], "source": row["source"], "type": kind, "target": str(where)[:300],
+            "env": hide(config.get("env")), "headers": hide(config.get("headers")),
+            "disabled": bool(config.get("disabled") or config.get("enabled") is False), "editable": row["source"] == "~/.manga-agent/mcp.json"}
+
+
+def probe(name: str, config: dict, cwd: Path) -> list[str]:
+    """Start the server, list its tools and stop it again; raises MCPError with the server's own words when it fails."""
+    server = Server(name, config, cwd)
+    try:
+        return [str(t["name"]) for t in server.tools]
+    finally:
+        server.close()
 
 
 def configured(workspace: Path, home: Path | None = None) -> list[dict]:
@@ -180,7 +339,10 @@ class _HttpTransport:
                    "MCP-Protocol-Version": PROTOCOL_VERSION, **self.headers}
         if self.session_id:
             headers["Mcp-Session-Id"] = self.session_id
-        response = requests.post(self.url, json=message, headers=headers, timeout=timeout, stream=True)
+        try:
+            response = requests.post(self.url, json=message, headers=headers, timeout=timeout, stream=True)
+        except requests.RequestException as exc:
+            raise MCPError(f"cannot reach {self.url} ({type(exc).__name__})") from exc
         if response.headers.get("Mcp-Session-Id"):
             self.session_id = response.headers["Mcp-Session-Id"]
         if response.status_code >= 400:

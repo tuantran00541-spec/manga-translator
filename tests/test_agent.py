@@ -3280,3 +3280,39 @@ def test_the_cli_takes_several_keys_and_moves_on_by_itself(monkeypatch, home, ws
     monkeypatch.setenv("AGENT_API_KEY", "k1, k2")
     assert cli.main(["exec", "hi", "--base", "https://api.example.com/v1", "--model", "m", "--workspace", str(ws.root), "--timeout-min", "1"]) == 0
     assert used == ["k1", "k2"]
+
+
+def test_users_add_test_switch_and_remove_their_own_mcp_servers_from_the_page(api, home, tmp_path):
+    http, root, agents = api
+    head = {"X-Manga-Agent": "1"}
+    (tmp_path / "calc.py").write_text(FAKE_SERVER, encoding="utf-8")
+    command = f"{sys.executable} {tmp_path / 'calc.py'}"
+    added = http.post(f"/api/agent/mcp?workspace={root}", headers=head, json={"name": "calc", "config": {"command": command, "env": {"TOKEN": "s3cret"}}})
+    assert added.status_code == 200 and added.json()["added"] == ["calc"] and not added.json()["warning"]
+    row = next(r for r in added.json()["servers"] if r["name"] == "calc")
+    assert row["editable"] and row["type"] == "stdio" and row["env"] == {"TOKEN": "•••"} and "s3cret" not in added.text
+    stored = json.loads((home / ".manga-agent" / "mcp.json").read_text(encoding="utf-8"))
+    assert stored["mcpServers"]["calc"]["args"] == [str(tmp_path / "calc.py")] and stored["mcpServers"]["calc"]["env"] == {"TOKEN": "s3cret"}
+    assert oct((home / ".manga-agent" / "mcp.json").stat().st_mode & 0o777) == "0o600"
+    tested = http.post(f"/api/agent/mcp/calc/test?workspace={root}", headers=head).json()
+    assert tested == {"ok": True, "tools": ["add"]}
+    pasted = http.post("/api/agent/mcp", headers=head, json={"pasted": '"docs": {"type": "http", "url": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer t"}},'})
+    assert pasted.status_code == 200 and pasted.json()["added"] == ["docs"]
+    assert http.post("/api/agent/mcp", headers=head, json={"pasted": '{"command": "npx"}'}).status_code == 400, "one server's JSON needs a name"
+    assert http.post("/api/agent/mcp", headers=head, json={"name": "bad name", "config": {"command": "npx"}}).status_code == 400
+    assert http.post("/api/agent/mcp", headers=head, json={"name": "x", "config": {"type": "http", "url": "ftp://x"}}).status_code == 400
+    missing = http.post("/api/agent/mcp", headers=head, json={"name": "ghost", "config": {"command": "no-such-binary-xyz --flag"}}).json()
+    assert "no-such-binary-xyz" in missing["warning"]
+    failed = http.post("/api/agent/mcp/ghost/test", headers=head).json()
+    assert not failed["ok"] and failed["error"]
+    off = http.post("/api/agent/mcp/calc/enabled", headers=head, json={"enabled": False}).json()
+    assert next(r for r in off["servers"] if r["name"] == "calc")["disabled"]
+    session = agents.create(PROVIDERS["openai"], "k", "m", Workspace(root), "edits")
+    session._ensure_mcp()
+    assert session.mcp_status["calc"]["state"] == "disabled"
+    http.post("/api/agent/mcp/calc/enabled", headers=head, json={"enabled": True})
+    assert session.mcp_status["calc"]["state"] == "running" and "mcp__calc__add" in session.mcp_tools, "an idle session picks the change up at once"
+    gone = http.delete("/api/agent/mcp/calc", headers=head)
+    assert gone.status_code == 200 and all(r["name"] != "calc" for r in gone.json()["servers"]) and "mcp__calc__add" not in session.mcp_tools
+    assert http.delete("/api/agent/mcp/calc", headers=head).status_code == 404
+    agents.close_all()

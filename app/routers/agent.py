@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from app.agent import sandbox, skill_install, skills
+from app.agent import mcp, sandbox, skill_install, skills
 from app.agent.session import MODES, AgentSessionManager
 from app.agent.tools import Workspace
 from app.ai_providers import CLOUD_PROVIDER_ID, validate_model_name
@@ -52,6 +53,16 @@ class SessionRequest(BaseModel):
     workspace: str = ""
     sandbox: str = "workspace-write"
     network: bool = False
+
+
+class McpServer(BaseModel):
+    name: str = Field(default="", max_length=40)
+    config: dict | None = None
+    pasted: str = Field(default="", max_length=50_000)
+
+
+class McpSwitch(BaseModel):
+    enabled: bool
 
 
 class SkillSource(BaseModel):
@@ -218,6 +229,85 @@ async def resume_session(session_id: str) -> dict:
 @router.get("/sessions")
 def list_sessions() -> dict:
     return {"sessions": agent_sessions.listing()}
+
+
+def _mcp_rows(workspace: str) -> dict:
+    home, root = _skill_home(), Path(workspace.strip() or BASE_DIR)
+    rows = [mcp.public(row) for row in mcp.configured(root, agent_sessions.home)]
+    live = {}
+    for session in agent_sessions.sessions.values():
+        if session.workspace.root == root.resolve():
+            live.update({n: {"state": st["state"], "tools": st["tools"], "error": st["error"]} for n, st in session.mcp_status.items()})
+    for row in rows:
+        row.update(live.get(row["name"], {}))
+    return {"servers": rows, "file": str(mcp.user_file(home))}
+
+
+def _mcp_changed() -> None:
+    for session in list(agent_sessions.sessions.values()):
+        session.reload_mcp()
+
+
+@router.get("/mcp")
+def list_mcp(workspace: str = "") -> dict:
+    """Every MCP server the agent would start here, from all the files it reads; values of secrets are hidden."""
+    return _mcp_rows(workspace)
+
+
+@router.post("/mcp")
+async def add_mcp(req: McpServer, workspace: str = "") -> dict:
+    """Add servers to ~/.manga-agent/mcp.json from the form or from pasted JSON, then load them into open sessions."""
+    try:
+        servers = mcp.parse_pasted(req.pasted, req.name) if req.pasted.strip() else {req.name.strip(): mcp.clean_config(req.config or {})}
+        if not all(mcp.NAME_RE.fullmatch(n) for n in servers):
+            raise ValueError("give the server a name: letters, digits, '.', '_' or '-' (at most 40)")
+        await run_in_threadpool(mcp.save_user, _skill_home(), servers)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    missing = [c["command"] for c in servers.values() if c.get("command") and not shutil.which(c["command"])]
+    await run_in_threadpool(_mcp_changed)
+    return {**_mcp_rows(workspace), "added": list(servers),
+            "warning": f"{', '.join(missing)} is not installed on this machine" if missing else ""}
+
+
+@router.post("/mcp/{name}/test")
+async def test_mcp(name: str, workspace: str = "") -> dict:
+    """Start one of your own servers, list its tools and stop it, so a typo shows up before the agent needs it."""
+    root = Path(workspace.strip() or BASE_DIR)
+    row = next((r for r in mcp.configured(root, agent_sessions.home) if r["name"] == name), None)
+    if row is None:
+        raise HTTPException(404, "MCP server not found")
+    if row["scope"] == "workspace":
+        raise HTTPException(400, "A project's server runs only after you allow it in a session")
+    try:
+        tools = await run_in_threadpool(mcp.probe, name, row["config"], root)
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:600]}
+    return {"ok": True, "tools": tools}
+
+
+@router.post("/mcp/{name}/enabled")
+async def switch_mcp(name: str, req: McpSwitch, workspace: str = "") -> dict:
+    try:
+        await run_in_threadpool(mcp.set_user_enabled, _skill_home(), name, req.enabled)
+    except KeyError as exc:
+        raise HTTPException(404, "Only servers in ~/.manga-agent/mcp.json can be switched here") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    await run_in_threadpool(_mcp_changed)
+    return _mcp_rows(workspace)
+
+
+@router.delete("/mcp/{name}")
+async def delete_mcp(name: str, workspace: str = "") -> dict:
+    try:
+        await run_in_threadpool(mcp.remove_user, _skill_home(), name)
+    except KeyError as exc:
+        raise HTTPException(404, "Only servers in ~/.manga-agent/mcp.json can be removed here") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    await run_in_threadpool(_mcp_changed)
+    return _mcp_rows(workspace)
 
 
 @router.get("/sessions/{session_id}")

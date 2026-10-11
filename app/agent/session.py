@@ -357,6 +357,7 @@ class AgentSession:
         self.mcp_tools: dict[str, tuple[str, dict]] = {}
         self.mcp_loaded: set[str] = set()
         self._mcp_starting: dict = {}
+        self._mcp_stale = False
         self.rate_limited = {"count": 0, "waited_s": 0.0}
         self._plain = False
         self._mcp_ready = depth > 0
@@ -898,6 +899,22 @@ class AgentSession:
                 status.update(state="stopped", tools=0)
             return stop
         return kernel.Plugin(apply)
+
+    def reload_mcp(self) -> None:
+        """Pick up servers the user added or removed: now when idle, otherwise when the next request starts."""
+        with self._lock:
+            busy = self.status != "idle"
+            self._mcp_stale = busy
+        if not busy:
+            self._refresh_mcp()
+
+    def _refresh_mcp(self) -> None:
+        self._mcp_stale = False
+        for name in list(self.mcp_status):
+            self.kernel.unmount(f"mcp:{name}")
+        self.mcp_status.clear()
+        self._mcp_ready = False
+        self._ensure_mcp()
 
     def trust_mcp(self, name: str) -> None:
         self._ensure_mcp()
@@ -2466,6 +2483,8 @@ class AgentSession:
         max_steps = max_steps or self.max_steps
         start = len(self.history)
         try:
+            if self._mcp_stale:
+                self._refresh_mcp()
             self._ensure_mcp()
             custom = self.registry.loops.get(self.profile["loop"])
             if self.profile["loop"] != "default" and custom is None:

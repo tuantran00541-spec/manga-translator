@@ -95,6 +95,30 @@
               <p class="agent-skill-head">Skill agent dùng được ở đây</p>
               <ul id="agent-skill-list" class="agent-skill-list"><li class="agent-muted">Đang tải…</li></ul>
             </div></details>
+            <details id="agent-mcp-menu" class="agent-menu"><summary class="agent-chip">MCP</summary><div class="agent-pop agent-pop-right agent-pop-wide">
+              <p class="agent-skill-head">MCP server agent dùng ở đây</p>
+              <ul id="agent-mcp-list" class="agent-skill-list agent-mcp-list"><li class="agent-muted">Đang tải…</li></ul>
+              <p class="agent-skill-head">Thêm MCP server của bạn</p>
+              <div class="agent-mcp-kind" role="radiogroup" aria-label="Cách chạy server">
+                <label><input type="radio" name="agent-mcp-kind" value="stdio" checked> Lệnh trên máy</label>
+                <label><input type="radio" name="agent-mcp-kind" value="http"> URL (http)</label>
+                <label><input type="radio" name="agent-mcp-kind" value="json"> Dán JSON</label>
+              </div>
+              <label class="agent-field"><span>Tên</span><input id="agent-mcp-name" autocomplete="off" spellcheck="false" placeholder="context7"></label>
+              <div id="agent-mcp-stdio" class="agent-mcp-part">
+                <label class="agent-field"><span>Lệnh chạy server</span><input id="agent-mcp-command" autocomplete="off" spellcheck="false" placeholder="npx -y @upstash/context7-mcp"></label>
+                <label class="agent-field"><span>Biến môi trường, mỗi dòng TÊN=giá trị (không bắt buộc)</span><textarea id="agent-mcp-env" rows="2" spellcheck="false" placeholder="GITHUB_TOKEN=ghp_..."></textarea></label>
+              </div>
+              <div id="agent-mcp-http" class="agent-mcp-part" hidden>
+                <label class="agent-field"><span>URL của server</span><input id="agent-mcp-url" autocomplete="off" spellcheck="false" placeholder="https://mcp.example.com/mcp"></label>
+                <label class="agent-field"><span>Header, mỗi dòng Tên: giá trị (không bắt buộc)</span><textarea id="agent-mcp-headers" rows="2" spellcheck="false" placeholder="Authorization: Bearer ..."></textarea></label>
+              </div>
+              <div id="agent-mcp-json" class="agent-mcp-part" hidden>
+                <label class="agent-field"><span>JSON từ tài liệu của server ("mcpServers": {…} hoặc một server)</span><textarea id="agent-mcp-pasted" rows="6" spellcheck="false" placeholder='{"mcpServers": {"context7": {"command": "npx", "args": ["-y", "@upstash/context7-mcp"]}}}'></textarea></label>
+              </div>
+              <div class="agent-skill-row"><button id="agent-mcp-save" class="agent-btn agent-btn-primary" type="button">Thêm và thử kết nối</button></div>
+              <p id="agent-mcp-file" class="agent-muted"></p>
+            </div></details>
             <details class="agent-menu"><summary class="agent-chip">Lịch sử</summary><div class="agent-pop agent-pop-right"><ul id="agent-sessions" class="agent-sessions"><li class="agent-muted">Chưa có phiên nào.</li></ul></div></details>
             <details class="agent-menu"><summary class="agent-chip">Thiết lập</summary><div class="agent-pop agent-pop-right">
               <label class="agent-field" for="agent-workspace"><span>Thư mục làm việc</span><input id="agent-workspace" autocomplete="off" spellcheck="false"></label>

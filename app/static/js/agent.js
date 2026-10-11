@@ -704,6 +704,121 @@
     $("agent-input").title = folder;
   }
 
+  // The MCP panel: every server the agent would start here, and adding, testing, switching and removing your own.
+  const MCP_STATE = { running: "đang chạy", untrusted: "chờ bạn cho phép trong phiên", failed: "lỗi", disabled: "đã tắt", stopped: "đã dừng", waiting: "chờ" };
+  const mcpQuery = () => `?workspace=${encodeURIComponent($("agent-workspace").value.trim())}`;
+
+  function mcpKind() {
+    return document.querySelector('input[name="agent-mcp-kind"]:checked')?.value || "stdio";
+  }
+
+  function showMcpKind() {
+    const kind = mcpKind();
+    $("agent-mcp-stdio").hidden = kind !== "stdio";
+    $("agent-mcp-http").hidden = kind !== "http";
+    $("agent-mcp-json").hidden = kind !== "json";
+    $("agent-mcp-name").placeholder = kind === "json" ? "chỉ cần khi JSON là một server" : "context7";
+  }
+
+  function pairs(text, separator) {
+    const out = {};
+    text.split("\n").map((line) => line.trim()).filter(Boolean).forEach((line) => {
+      const at = line.indexOf(separator);
+      if (at > 0) out[line.slice(0, at).trim()] = line.slice(at + 1).trim();
+    });
+    return out;
+  }
+
+  function showMcp(data) {
+    $("agent-mcp-file").textContent = data.file ? `Lưu ở ${data.file} (chỉ bạn đọc được; lệnh của agent không đọc được file này).` : "";
+    const rows = (data.servers || []).map((server) => {
+      const item = el("li");
+      const title = el("span");
+      const where = server.scope === "workspace" ? "của dự án" : server.editable ? "của bạn" : server.source;
+      title.append(el("b", "", server.name), el("span", "agent-skill-tag", ` · ${server.type} · ${where}`));
+      const actions = el("span", "agent-skill-row");
+      if (server.scope !== "workspace") actions.append(button("Thử", "agent-btn", () => testMcp(server.name, state)));
+      if (server.editable) {
+        actions.append(button(server.disabled ? "Bật" : "Tắt", "agent-btn", () => switchMcp(server.name, server.disabled)),
+          button("Xóa", "agent-btn", () => removeMcp(server.name)));
+      }
+      const secrets = [...Object.keys(server.env || {}), ...Object.keys(server.headers || {})];
+      const about = el("span", "agent-muted", server.target + (secrets.length ? ` · ${secrets.join(", ")}` : ""));
+      const label = server.disabled ? "đã tắt" : server.state ? `${MCP_STATE[server.state] || server.state}${server.state === "running" ? `, ${server.tools} công cụ` : ""}` : "";
+      const state = el("span", `agent-mcp-state${server.state === "running" ? " ok" : server.state === "failed" ? " bad" : ""}`, label + (server.error ? `: ${server.error}` : ""));
+      item.append(title, actions, about, state);
+      return item;
+    });
+    $("agent-mcp-list").replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", "Chưa có MCP server nào.")]));
+  }
+
+  async function loadMcp() {
+    try {
+      showMcp(await call(`/api/agent/mcp${mcpQuery()}`));
+    } catch (error) {
+      $("agent-mcp-list").replaceChildren(el("li", "agent-muted", error.message));
+    }
+  }
+
+  async function testMcp(name, label) {
+    label.textContent = "đang thử…";
+    label.className = "agent-mcp-state";
+    try {
+      const data = await post(`/api/agent/mcp/${encodeURIComponent(name)}/test${mcpQuery()}`);
+      label.textContent = data.ok ? `kết nối được, ${data.tools.length} công cụ: ${data.tools.slice(0, 8).join(", ")}${data.tools.length > 8 ? "…" : ""}` : `không kết nối được: ${data.error}`;
+      label.className = `agent-mcp-state ${data.ok ? "ok" : "bad"}`;
+      return data.ok;
+    } catch (error) {
+      label.textContent = error.message;
+      label.className = "agent-mcp-state bad";
+      return false;
+    }
+  }
+
+  async function saveMcp() {
+    const kind = mcpKind();
+    const name = $("agent-mcp-name").value.trim();
+    const body = { name };
+    if (kind === "json") body.pasted = $("agent-mcp-pasted").value;
+    else if (kind === "http") body.config = { type: "http", url: $("agent-mcp-url").value.trim(), headers: pairs($("agent-mcp-headers").value, ":") };
+    else body.config = { command: $("agent-mcp-command").value.trim(), env: pairs($("agent-mcp-env").value, "=") };
+    const save = $("agent-mcp-save");
+    save.disabled = true;
+    try {
+      const data = await post(`/api/agent/mcp${mcpQuery()}`, body);
+      showMcp(data);
+      if (data.warning) window.showToast?.(`Đã lưu, nhưng ${data.warning}.`, "error");
+      ["agent-mcp-name", "agent-mcp-command", "agent-mcp-env", "agent-mcp-url", "agent-mcp-headers", "agent-mcp-pasted"].forEach((id) => { $(id).value = ""; });
+      for (const added of data.added || []) {
+        const row = [...$("agent-mcp-list").children].find((item) => item.querySelector("b")?.textContent === added);
+        const label = row?.querySelector(".agent-mcp-state");
+        if (label) window.showToast?.(await testMcp(added, label) ? `Đã thêm ${added}; agent dùng được từ lượt tới.` : `Đã lưu ${added} nhưng chưa kết nối được; xem lỗi trong danh sách.`, "info");
+      }
+    } catch (error) {
+      window.showToast?.(error.message, "error");
+    } finally {
+      save.disabled = false;
+    }
+  }
+
+  async function switchMcp(name, enable) {
+    try {
+      showMcp(await post(`/api/agent/mcp/${encodeURIComponent(name)}/enabled${mcpQuery()}`, { enabled: enable }));
+    } catch (error) {
+      window.showToast?.(error.message, "error");
+    }
+  }
+
+  async function removeMcp(name) {
+    if (!window.confirm(`Xóa MCP server ${name}?`)) return;
+    try {
+      showMcp(await call(`/api/agent/mcp/${encodeURIComponent(name)}${mcpQuery()}`, { method: "DELETE" }));
+      window.showToast?.(`Đã xóa ${name}.`, "success");
+    } catch (error) {
+      window.showToast?.(error.message, "error");
+    }
+  }
+
   const SKILL_SCOPE = { builtin: "có sẵn", user: "của bạn", project: "của dự án" };
   const SKILL_TEMPLATE = "## Steps\n\n1. \n2. \n\n## Check before you finish\n\n- \n";
   let editingSkill = "";
@@ -833,6 +948,9 @@
     $("agent-workspace").addEventListener("change", () => { resetLog(); showFolder(); });
     $("agent-skill-body").value = SKILL_TEMPLATE;
     $("agent-skills-menu").addEventListener("toggle", () => { if ($("agent-skills-menu").open) loadSkills(); });
+    $("agent-mcp-menu").addEventListener("toggle", () => { if ($("agent-mcp-menu").open) loadMcp(); });
+    document.querySelectorAll('input[name="agent-mcp-kind"]').forEach((radio) => radio.addEventListener("change", showMcpKind));
+    $("agent-mcp-save").addEventListener("click", saveMcp);
     $("agent-skill-install").addEventListener("click", installSkills);
     $("agent-skill-source").addEventListener("keydown", (event) => { if (event.key === "Enter") installSkills(); });
     $("agent-skill-file").addEventListener("change", uploadSkills);
