@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
 
 from app.agent.tools import ToolError, clip
 
@@ -35,9 +36,18 @@ def run(session, args: dict, commands: dict[str, list[str]]) -> str:
     if not prompt:
         raise ToolError("delegate needs a prompt")
     argv = [p.replace("{prompt}", prompt) for p in command]
-    try:
-        done = subprocess.run(argv, cwd=session.workspace.root, capture_output=True, text=True, errors="replace",
-                              timeout=TIMEOUT, stdin=subprocess.DEVNULL)
-    except subprocess.TimeoutExpired as exc:
-        raise ToolError(f"{command[0]} did not finish in {TIMEOUT} s") from exc
-    return clip(f"{done.stdout.strip()}\n{done.stderr.strip()[-2000:]}\n[exit code {done.returncode}]".strip())
+    proc = subprocess.Popen(argv, cwd=session.workspace.root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace",
+                            stdin=subprocess.DEVNULL)
+    end = time.time() + TIMEOUT
+    # Read in short steps (so a big output never blocks it), and the user's Stop ends the other agent too.
+    while True:
+        try:
+            out, err = proc.communicate(timeout=0.5)
+            break
+        except subprocess.TimeoutExpired:
+            if time.time() < end and not getattr(session, "_stop", False):
+                continue
+            proc.kill()
+            proc.communicate()
+            raise ToolError(f"{command[0]} was stopped" if getattr(session, "_stop", False) else f"{command[0]} did not finish in {TIMEOUT} s")
+    return clip(f"{out.strip()}\n{err.strip()[-2000:]}\n[exit code {proc.returncode}]".strip())

@@ -233,7 +233,7 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     assert client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)["calls"][0]["name"] == "list_dir"
     assert waits == [6.0], "a rate-limited request waits and is sent again"
     assert client.RATE_LIMITS["openai"]["count"] == 1 and client.RATE_LIMITS["openai"]["waited_s"] == 6.0, "every 429 is counted"
-    client._COOLDOWN["openai"] = time.time() + 5
+    client._COOLDOWN[client.slot(PROVIDERS["openai"], "k")] = time.time() + 5
     waits.clear()
     monkeypatch.setattr(client.requests, "post", lambda url, **kw: FakeResponse(200, reply))
     client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
@@ -3167,3 +3167,116 @@ def test_a_session_reports_each_rate_limit_its_provider_answered(ws, home, tmp_p
     notes = [e["text"] for e in session.events if e["type"] == "notice"]
     assert any("rate-limited this request 2 time(s), waited 18 s: free tier: 10 requests per minute" in n for n in notes), notes
     assert session.rate_limited == {"count": 2, "waited_s": 18.0} and session.snapshot()["rate_limited"]["count"] == 2
+
+
+# Optimisation pass: fixes and finished half-features.
+
+def test_auto_compaction_off_keeps_every_tool_output(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted())
+    session.compact_at = 0
+    session.history = [{"role": "user", "content": "go"}] + [{"role": "tool", "id": str(i), "name": "read_file", "content": "x" * 5_000} for i in range(4)]
+    size = session._make_room()
+    assert all(h["content"] == "x" * 5_000 for h in session.history if h["role"] == "tool") and size == session._size()
+
+
+def test_trust_without_a_file_holds_for_the_process_and_files_are_reread_only_when_changed(tmp_path):
+    memory = context.TrustStore(None)
+    assert not memory.trusted(tmp_path, "mcp:x", "d")
+    memory.allow(tmp_path, "mcp:x", "d")
+    assert memory.trusted(tmp_path, "mcp:x", "d") and not memory.trusted(tmp_path, "mcp:x", "other")
+    stored = context.TrustStore(tmp_path / "trust.json")
+    stored.allow(tmp_path, "hooks", "h1")
+    assert stored.trusted(tmp_path, "hooks", "h1")
+    stored.allow(tmp_path, "hooks", "h2")
+    assert stored.trusted(tmp_path, "hooks", "h2") and not stored.trusted(tmp_path, "hooks", "h1")
+
+
+def test_small_session_fixes(ws, home, tmp_path):
+    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("ok")))
+    run_to_idle(session, "   ")
+    assert session.title == "", "a blank message does not crash the title"
+    session.command("/model qwen-coder")
+    assert session.model == "qwen-coder" and "valid JSON" in session.quirks.get("prompt_extra", "")
+    assert session.command("/model")["message"] == "Model: qwen-coder"
+    full = session.snapshot()
+    lite = session.snapshot(len(session.events), full["info_rev"])
+    assert "skills" in full and "commands" in full and "skills" not in lite and lite["info_rev"] == full["info_rev"]
+    session.set_policy("read-only", False)
+    assert "skills" in session.snapshot(0, full["info_rev"]), "a changed sandbox sends the panel again"
+    agents = manager(home, tmp_path / "store")
+    rows = agents.listing()
+    assert rows[0]["id"] == session.id and (tmp_path / "store" / "sessions" / f"{session.id}.meta.json").is_file()
+    agents.delete(session.id)
+    assert not list((tmp_path / "store" / "sessions").glob(f"{session.id}*"))
+
+
+def test_tool_events_keep_a_clipped_copy_while_the_model_sees_everything(ws, home):
+    (ws.root / "big.txt").write_text("\n".join("line %d %s" % (i, "y" * 60) for i in range(1500)), encoding="utf-8")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto",
+                                   complete=scripted(turn(calls=[call("run_command", command="cat big.txt")]), turn("done")))
+    run_to_idle(session, "show")
+    event = next(e for e in session.events if e["type"] == "tool")
+    assert len(event["output"]) <= 20_100
+    assert "full output saved to" in session.history[2]["content"]
+
+
+def test_search_skips_files_fast_and_takes_path_globs_and_web_search_answers_repeats_from_memory(ws, monkeypatch):
+    (ws.root / "pkg" / "deep").mkdir()
+    (ws.root / "pkg" / "deep" / "b.py").write_text("needle = 1\n", encoding="utf-8")
+    (ws.root / "c.py").write_text("needle = 2\n", encoding="utf-8")
+    assert ws.run("search", {"pattern": "needle", "glob": "pkg/**/*.py"}) == "pkg/deep/b.py:1: needle = 1"
+    assert "c.py:1:" in ws.run("search", {"pattern": "^needle = 2$"})
+    assert ws.run("glob", {"pattern": "pkg/**/*.py"}).splitlines()[0] == "pkg/deep/b.py"
+    asked = []
+    monkeypatch.setattr(ws.services, "search", lambda q, c, r: asked.append(q) or "1. result")
+    first, again = ws.run("web_search", {"query": "python  docs"}), ws.run("web_search", {"query": "Python docs"})
+    assert asked == ["python  docs"] and first == "1. result" and "same search" in again
+
+
+def test_plan_mode_offers_read_only_mcp_tools(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted())
+    session.mcp_tools = {"mcp__docs__lookup": ("docs", {"name": "lookup", "annotations": {"readOnlyHint": True}}),
+                         "mcp__docs__write": ("docs", {"name": "write"})}
+    session.plan_mode = True
+    names = {s["name"] for s in session.specs()}
+    assert "mcp__docs__lookup" in names and "mcp__docs__write" not in names and "exit_plan_mode" in names
+
+
+def test_a_failing_mcp_server_says_why(tmp_path):
+    (tmp_path / "dies.py").write_text("import sys\nprint('missing token FOO', file=sys.stderr, flush=True)\nsys.exit(3)\n", encoding="utf-8")
+    with pytest.raises(mcp.MCPError) as caught:
+        mcp.Server("dies", {"command": sys.executable, "args": [str(tmp_path / "dies.py")]}, tmp_path)
+    assert "missing token FOO" in str(caught.value)
+
+
+def test_several_mcp_servers_start_side_by_side(ws, home, tmp_path):
+    (tmp_path / "slow.py").write_text("import time\ntime.sleep(1.0)\n" + FAKE_SERVER, encoding="utf-8")
+    folder = home / ".manga-agent"
+    folder.mkdir(parents=True, exist_ok=True)
+    servers = {f"s{i}": {"command": sys.executable, "args": [str(tmp_path / "slow.py")]} for i in range(3)}
+    (folder / "mcp.json").write_text(json.dumps({"mcpServers": servers}), encoding="utf-8")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted())
+    started = time.time()
+    session._ensure_mcp()
+    took = time.time() - started
+    assert all(session.mcp_status[n]["state"] == "running" for n in servers) and took < 2.5, took
+    session.close()
+
+
+def test_the_cli_takes_several_keys_and_moves_on_by_itself(monkeypatch, home, ws):
+    from app.agent import cli
+
+    used = []
+
+    def complete(provider, key, model, messages, *, tools, **kw):
+        used.append(key)
+        if key == "k1":
+            raise client.KeyLimited("HTTP 429: limit")
+        return turn("done")
+
+    real = AgentSessionManager.create
+    monkeypatch.setattr(AgentSessionManager, "create", lambda self, *a, **kw: real(self, *a, **{**kw, "complete": complete}))
+    monkeypatch.setattr(cli.Path, "home", staticmethod(lambda: home))
+    monkeypatch.setenv("AGENT_API_KEY", "k1, k2")
+    assert cli.main(["exec", "hi", "--base", "https://api.example.com/v1", "--model", "m", "--workspace", str(ws.root), "--timeout-min", "1"]) == 0
+    assert used == ["k1", "k2"]

@@ -1,6 +1,7 @@
 """One chat call to any configured provider, with native tool calls or a plain-text fallback."""
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 import re
@@ -10,7 +11,6 @@ from contextvars import ContextVar
 from email.utils import parsedate_to_datetime
 
 import requests
-from loguru import logger
 
 from app.ai_providers import AIProvider, auth_headers
 from app.logging_config import logger
@@ -36,9 +36,9 @@ WINDOW_PATTERNS = [re.compile(p, re.I) for p in (
     r"context (?:length|size) \(([\d,]{4,})", r"maximum number of tokens allowed \(([\d,]{4,})", r"maximum allowed input length of ([\d,]{4,})",
     r"limit of ([\d,]{4,})", r"> ([\d,]{4,}) maximum", r"configured context size is ([\d,]{4,})")]
 RATE_LIMIT_RETRIES = 4
-# When a provider says "slow down", every session using it waits, not just the one that was told.
+# When a provider says "slow down", every session using that key waits, not just the one that was told; another key is not held back.
 _COOLDOWN: dict[str, float] = {}
-# A pace a provider asked for in words ("1 request every 1 minutes"): provider id -> (seconds between requests, until when, last sent).
+# A pace a provider asked for in words ("1 request every 1 minutes"): slot -> (seconds between requests, until when, last sent).
 _PACE: dict[str, list[float]] = {}
 PACE_HOLD_S = 900  # A pace lapses this long after the provider last asked for it.
 PACE_RE = re.compile(r"(\d+) requests? (?:every|per|each) (\d+)? ?(second|sec|minute|min|hour)", re.I)
@@ -268,13 +268,18 @@ def _pace_hint(text: str) -> float:
     return period / int(found.group(1))
 
 
-def _wait_for_pace(provider_id: str) -> None:
-    pace = _PACE.get(provider_id)
+def slot(provider: AIProvider, api_key: str) -> str:
+    """Limits belong to a key, so the cooldown and pace are kept per provider and key."""
+    return f"{provider.id}:{hashlib.sha256((api_key or '').encode()).hexdigest()[:12]}"
+
+
+def _wait_for_pace(name: str) -> None:
+    pace = _PACE.get(name)
     if not pace:
         return
     interval, until, last = pace
     if time.time() > until:
-        _PACE.pop(provider_id, None)
+        _PACE.pop(name, None)
         return
     gap = last + interval - time.time()
     if gap > 0:
@@ -303,11 +308,12 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
     """The request, with the shared 429 cooldown and retries."""
     url = chat_url(provider)
     validate_url(url)
+    key = slot(provider, api_key)
     for attempt in range(RATE_LIMIT_RETRIES + 1):
-        pause = _COOLDOWN.get(provider.id, 0.0) - time.time() if attempt == 0 else 0
+        pause = _COOLDOWN.get(key, 0.0) - time.time() if attempt == 0 else 0
         if pause > 0:
             time.sleep(min(pause, 60.0))
-        _wait_for_pace(provider.id)
+        _wait_for_pace(key)
         try:
             response = requests.post(url, headers={**auth_headers(provider, api_key), "Content-Type": "application/json"},
                                      json=payload, timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, STREAM_IDLE_TIMEOUT if stream else READ_TIMEOUT),
@@ -327,11 +333,11 @@ def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> re
             return response
         if interval:
             # Once the provider names a slower pace, every later request keeps to it instead of failing a few times and giving up.
-            _PACE[provider.id] = [interval, time.time() + PACE_HOLD_S, time.time()]
+            _PACE[key] = [interval, time.time() + PACE_HOLD_S, time.time()]
             RATE_LIMITS.setdefault(provider.id, {"count": 0, "waited_s": 0.0, "detail": "", "first": time.time()})["pace_s"] = interval
         wait = min(900.0 if interval else 60.0, _retry_after(response) or _hinted_wait(words) or interval or 6.0 * 2 ** attempt)
         _note_rate_limit(provider, response, wait)
-        _COOLDOWN[provider.id] = max(_COOLDOWN.get(provider.id, 0.0), time.time() + wait)
+        _COOLDOWN[key] = max(_COOLDOWN.get(key, 0.0), time.time() + wait)
         response.close()
         time.sleep(wait)
     return response

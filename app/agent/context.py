@@ -109,14 +109,19 @@ class TrustStore:
     """What the user allowed to start in each workspace: MCP servers and hooks, pinned to their exact config."""
 
     def __init__(self, path: Path | None):
-        self.path = path
+        # Without a file, what the user allows holds for this process only.
+        self.path, self._memory = path, {}
+        self._cached: tuple[int, dict] | None = None
 
     def _read(self) -> dict:
         if self.path is None:
-            return {}
+            return self._memory
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else {}
+            stamp = self.path.stat().st_mtime_ns
+            if self._cached is None or self._cached[0] != stamp:
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+                self._cached = (stamp, data if isinstance(data, dict) else {})
+            return self._cached[1]
         except (OSError, ValueError):
             return {}
 
@@ -124,12 +129,14 @@ class TrustStore:
         return self._read().get(str(workspace), {}).get(key) == digest
 
     def allow(self, workspace: Path, key: str, digest: str) -> None:
-        if self.path is None:
-            return
         with _trust_lock:
-            data = self._read()
+            if self.path is None:
+                self._memory.setdefault(str(workspace), {})[key] = digest
+                return
+            data = json.loads(json.dumps(self._read()))
             data.setdefault(str(workspace), {})[key] = digest
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.path.with_suffix(".tmp")
             tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
             os.replace(tmp, self.path)
+            self._cached = None

@@ -43,9 +43,10 @@ def _private_base(base: str) -> str:
 def run(args: argparse.Namespace) -> int:
     home = Path.home()
     manager = AgentSessionManager(home / ".manga-agent", home=home)
-    key = os.environ.get(args.key_env, "")
-    if not key:
-        print(f"Set {args.key_env} to the provider's API key.", file=sys.stderr)
+    # Several keys may be given comma-separated; a limited key moves on to the next one by itself, once round the list.
+    keys = [k.strip() for k in os.environ.get(args.key_env, "").split(",") if k.strip()]
+    if not keys:
+        print(f"Set {args.key_env} to the provider's API key (several comma-separated).", file=sys.stderr)
         return 2
     if args.allow_private_base:
         provider = dataclasses.replace(resolve_provider(args.provider, label=args.provider, protocol="openai", api_base="https://relay.invalid"), api_base=_private_base(args.base))
@@ -55,21 +56,25 @@ def run(args: argparse.Namespace) -> int:
         data = manager.saved(args.session)
         mode, network = (data.get("sandbox") or ["workspace-write", False])[:2]
         workspace = Workspace(data["workspace"], sandbox.Policy(mode, bool(network)))
-        session = manager.create(provider, key, args.model or data["model"], workspace, args.mode, session_id=args.session)
+        session = manager.create(provider, keys, args.model or data["model"], workspace, args.mode, session_id=args.session)
         session.restore(data)
     else:
         workspace = Workspace(args.workspace, sandbox.Policy(args.sandbox, args.network))
-        session = manager.create(provider, key, args.model, workspace, args.mode)
+        session = manager.create(provider, keys, args.model, workspace, args.mode)
     seen = len(session.events)
     session.set_deadline(args.timeout_min * 60)
     # A line starting with / is a slash command, such as /goal TEXT to keep going until the goal is done.
     session.command(args.prompt) if args.prompt.startswith("/") else session.send(args.prompt)
     deadline = time.time() + args.timeout_min * 60
+    switches = 0
     while True:
         snap = session.snapshot(seen)
         for event in snap["events"]:
             _show(event, args.json)
             seen = max(seen, event["seq"])
+            if event["type"] == "key_limit":
+                switches += 1
+                session.choose_key("next" if switches < len(keys) else "stop")
         if snap["status"] == "waiting":
             # Nobody is here to answer: refuse, and say how to allow it next time.
             session.decide("deny", "Running without a person to approve; the user can rerun with --mode auto.")

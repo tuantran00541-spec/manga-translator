@@ -206,6 +206,12 @@ def clip(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
     return f"{text[:half]}\n… [{len(text) - limit} characters cut] …\n{text[-half:]}"
 
 
+def _path_glob(rel: str, pattern: str) -> bool:
+    pattern = pattern.lstrip("./")
+    return fnmatch.fnmatch(rel, pattern) or (pattern.startswith("**/") and fnmatch.fnmatch(rel, pattern[3:])) or (
+        "/**/" in pattern and fnmatch.fnmatch(rel, pattern.replace("/**/", "/")))
+
+
 class Workspace:
     """A folder the agent may read and, as its sandbox policy allows, change and run commands in."""
 
@@ -223,6 +229,7 @@ class Workspace:
         self.hints = 0
         self.searches_in_row = 0
         self.pages: dict[str, tuple[str, list[str], float]] = {}
+        self.searched: dict[str, tuple[str, float]] = {}
         self.new_images: list[tuple[str, str]] = []
         # The providers behind web search, page downloads and commands; a session swaps in the user's choice.
         self.services = services.Services()
@@ -330,11 +337,14 @@ class Workspace:
         if top.is_file():
             yield top
             return
+        # A glob with a slash (app/**/*.py) is matched against the path below top, a plain one (*.py) against the name.
+        by_path = bool(name_glob) and "/" in name_glob
         for folder, dirs, names in os.walk(top):
             dirs[:] = sorted(d for d in dirs if not self.skipped(Path(folder) / d))
             for n in sorted(names):
-                if not name_glob or fnmatch.fnmatch(n, name_glob):
-                    yield Path(folder) / n
+                path = Path(folder) / n
+                if not name_glob or (_path_glob(path.relative_to(top).as_posix(), name_glob) if by_path else fnmatch.fnmatch(n, name_glob)):
+                    yield path
 
     def _tool_list_dir(self, path: str = ".", depth: int = 1) -> str:
         top = self.resolve(path)
@@ -436,8 +446,11 @@ class Workspace:
         return f"Image {self.rel(target)} loaded; it is shown to you in the next message."
 
     def _tool_search(self, pattern: str, path: str = ".", glob: str | None = None, ignore_case: bool = False) -> str:
+        flags = re.IGNORECASE if ignore_case else 0
         try:
-            regex = re.compile(pattern, re.IGNORECASE if ignore_case else 0)
+            regex = re.compile(pattern, flags)
+            # One pass over the whole file skips the ones with no match before they are split into lines; \A and \Z mean something else there.
+            whole = None if re.search(r"\\[AZ]", pattern) else re.compile(pattern, flags | re.MULTILINE)
         except re.error as exc:
             raise ToolError(f"Bad regular expression: {exc}") from exc
         hits: list[str] = []
@@ -450,7 +463,10 @@ class Workspace:
                 continue
             if b"\0" in data[:8192]:
                 continue
-            for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+            text = data.decode("utf-8", errors="replace")
+            if whole is not None and not whole.search(text):
+                continue
+            for number, line in enumerate(text.splitlines(), 1):
                 if regex.search(line):
                     hits.append(f"{self.rel(file)}:{number}: {line.strip()[:300]}")
                     if len(hits) >= MAX_SEARCH_HITS:
@@ -460,9 +476,8 @@ class Workspace:
     def _tool_glob(self, pattern: str, path: str = ".") -> str:
         top = self.resolve(path)
         pattern = pattern.lstrip("./")
-        matched = [f for f in self._files(top) if fnmatch.fnmatch(f.relative_to(top).as_posix(), pattern)
-                   or ("/" not in pattern and fnmatch.fnmatch(f.name, pattern))
-                   or (pattern.startswith("**/") and fnmatch.fnmatch(f.relative_to(top).as_posix(), pattern[3:]))]
+        matched = [f for f in self._files(top) if _path_glob(f.relative_to(top).as_posix(), pattern)
+                   or ("/" not in pattern and fnmatch.fnmatch(f.name, pattern))]
         matched.sort(key=lambda f: f.stat().st_mtime if f.exists() else 0, reverse=True)
         rows = [self.rel(f) for f in matched[:MAX_LIST_ENTRIES]]
         return "\n".join(rows) + (f"\n… {len(matched) - len(rows)} more" if len(matched) > len(rows) else "") if rows else "No files"
@@ -621,10 +636,18 @@ class Workspace:
 
     def _tool_web_search(self, query: str, count: int = 8, recency: str = "") -> str:
         self.searches_in_row += 1
-        try:
-            found = self.services.search(query, count, recency)
-        except websearch.SearchError as exc:
-            raise ToolError(str(exc)) from exc
+        key = f"{' '.join(str(query).split()).lower()}|{count}|{recency}"
+        cached = self.searched.get(key)
+        if cached and time.time() - cached[1] < PAGE_CACHE_S:
+            found = cached[0] + "\n[The same search a moment ago; these are its results again.]"
+        else:
+            try:
+                found = self.services.search(query, count, recency)
+            except websearch.SearchError as exc:
+                raise ToolError(str(exc)) from exc
+            self.searched[key] = (found, time.time())
+            while len(self.searched) > PAGE_CACHE_SIZE:
+                self.searched.pop(next(iter(self.searched)))
         if self.searches_in_row >= SEARCH_STREAK:
             # Searching again with longer queries rarely helps; reading the best lead does (seen on Qwen: eight searches before one fetch).
             found += (f"\n\n[Tip: this is search {self.searches_in_row} in a row. Open the most promising result with web_fetch, or fetch a page that "

@@ -1,6 +1,7 @@
 """Model Context Protocol client: stdio and streamable HTTP servers, their tools offered to the agent."""
 from __future__ import annotations
 
+import collections
 import hashlib
 import itertools
 import json
@@ -97,11 +98,23 @@ class _StdioTransport:
         # Windows needs the full name of launchers such as npx.cmd.
         command = shutil.which(command, path=env.get("PATH")) or command
         self.proc = subprocess.Popen([command, *[str(a) for a in config.get("args") or []]], cwd=config.get("cwd") or cwd,
-                                     env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                     text=True, encoding="utf-8", bufsize=1)
+                                     env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     text=True, encoding="utf-8", errors="replace", bufsize=1)
         self.waiting: dict[int, dict] = {}
         self.lock = threading.Condition()
+        # The last lines a server wrote to stderr say why it failed to start or stopped.
+        self.errors: collections.deque[str] = collections.deque(maxlen=20)
         threading.Thread(target=self._read, daemon=True, name="mcp-stdio").start()
+        threading.Thread(target=self._read_errors, daemon=True, name="mcp-stderr").start()
+
+    def _read_errors(self) -> None:
+        for line in self.proc.stderr:
+            if line.strip():
+                self.errors.append(line.rstrip()[:300])
+
+    def why(self) -> str:
+        tail = " | ".join(list(self.errors)[-5:])
+        return f": {tail}" if tail else ""
 
     def _read(self) -> None:
         for line in self.proc.stdout:
@@ -137,10 +150,10 @@ class _StdioTransport:
         with self.lock:
             if not self.lock.wait_for(lambda: self.waiting[message["id"]] or self.proc.poll() is not None, timeout):
                 self.waiting.pop(message["id"], None)
-                raise MCPError("server did not answer in time")
+                raise MCPError("server did not answer in time" + self.why())
             reply = self.waiting.pop(message["id"])
         if not reply:
-            raise MCPError("server exited")
+            raise MCPError(f"server exited (code {self.proc.poll()}){self.why()}")
         return reply
 
     def close(self) -> None:

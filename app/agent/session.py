@@ -5,6 +5,7 @@ import atexit
 import collections
 import difflib
 import ctypes
+import hashlib
 import json
 import os
 import platform
@@ -40,6 +41,7 @@ MAX_FAN_OUT = 12
 SCRIPT_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "fan_out"})
 SCRIPT_AGENTS = 40
 MAX_NOTES = 16_000
+EVENT_OUTPUT = 20_000
 EMPTY_RETRIES = 3
 MAX_OUT_CEILING = 32_768  # The most a reply may be raised to when a model spends it all on reasoning.
 LONG_CALL = ("[Reminder] The tool call you were writing was getting too long for one reply and would be cut off. Send it in pieces: create the file "
@@ -325,7 +327,7 @@ class AgentSession:
         self.copy: Path | None = None
         self.base: dict[str, str] | None = None
         self.merge_note = ""
-        self.pending: str | None = None
+        self.held: str | None = None
         self.counted = {"prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0}
         self.jobs: dict[str, sandbox.Job] = {}
         self._usage_lock = threading.Lock()
@@ -354,6 +356,7 @@ class AgentSession:
         self.mcp_status: dict[str, dict] = {}
         self.mcp_tools: dict[str, tuple[str, dict]] = {}
         self.mcp_loaded: set[str] = set()
+        self._mcp_starting: dict = {}
         self.rate_limited = {"count": 0, "waited_s": 0.0}
         self._plain = False
         self._mcp_ready = depth > 0
@@ -449,25 +452,32 @@ class AgentSession:
         if kern is not None and kern.subscribers("session/event"):
             kern.emit("session/event", {**event, "session": self.id})
 
-    def snapshot(self, after: int = 0) -> dict:
+    def _info(self) -> dict:
+        """What the page shows beside the conversation; it changes rarely, so a poll that already has it gets only its revision."""
+        return {"disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins, "externals": list(self.externals),
+                                                                "needs_trust": any(p["state"] == "untrusted" for p in self.registry.plugins)},
+                "agents": [{"name": a.name, "description": a.description} for a in self.agents.values()],
+                "skills": [{"name": s.name, "description": s.description} for s in self.skills.values()],
+                "mcp": list(self.mcp_status.values()), "replaced": self.replaced, "hooks": self._hook_summary(),
+                "commands": [{"name": k, "description": v} for k, v in self._builtin_commands().items()]
+                + [{"name": k, "description": d} for k, (d, _) in self.registry.commands.items()]
+                + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
+                + [{"name": c["name"], "description": c["description"]} for c in self.commands.values()]}
+
+    def snapshot(self, after: int = 0, rev: str = "") -> dict:
         with self._lock:
-            return {"id": self.id, "status": self.status, "provider": self.provider.id, "provider_label": self.provider.label,
+            sandbox_info = {"mode": self.workspace.policy.mode, "network": self.workspace.policy.network, "backend": sandbox.backend()}
+            info = self._info()
+            digest = hashlib.sha256(json.dumps([info, sandbox_info], sort_keys=True, default=str).encode()).hexdigest()[:12]
+            snap = {"id": self.id, "status": self.status, "provider": self.provider.id, "provider_label": self.provider.label,
                     "model": self.model, "mode": self.mode, "workspace": str(self.workspace.root), "title": self.title,
-                    "sandbox": {"mode": self.workspace.policy.mode, "network": self.workspace.policy.network,
-                                "backend": sandbox.backend()},
-                    "text_tools": self.text_tools, "usage": dict(self.usage), "stats": self._stats(), "live": self._live_view(),
+                    "sandbox": sandbox_info, "text_tools": self.text_tools, "usage": dict(self.usage), "stats": self._stats(), "live": self._live_view(),
                     "pending": self.pending, "todos": self.todos, "key_prompt": self.key_prompt, "keys": len(self.api_keys),
-                    "disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins, "externals": list(self.externals),
-                                                                    "needs_trust": any(p["state"] == "untrusted" for p in self.registry.plugins)},
                     "plan_mode": self.plan_mode, "goal": self.goal and self.goal["text"], "queued": len(self.queue),
-                    "agents": [{"name": a.name, "description": a.description} for a in self.agents.values()],
-                    "skills": [{"name": s.name, "description": s.description} for s in self.skills.values()],
-                    "mcp": list(self.mcp_status.values()), "replaced": self.replaced, "rate_limited": dict(self.rate_limited), "hooks": self._hook_summary(),
-                    "commands": [{"name": k, "description": v} for k, v in self._builtin_commands().items()]
-                    + [{"name": k, "description": d} for k, (d, _) in self.registry.commands.items()]
-                    + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
-                    + [{"name": c["name"], "description": c["description"]} for c in self.commands.values()],
-                    "events": [e for e in self.events if e["seq"] > after]}
+                    "rate_limited": dict(self.rate_limited), "info_rev": digest, "events": [e for e in self.events if e["seq"] > after]}
+            if rev != digest:
+                snap.update(info)
+            return snap
 
     def _live_view(self) -> dict | None:
         live = self.live
@@ -497,11 +507,16 @@ class AgentSession:
                 "text_tools": self.text_tools, "plan_mode": self.plan_mode, "goal": self.goal, "schedules": self.schedules, "compact_at": self.compact_at,
                 "history": [{k: v for k, v in h.items() if k != "images"} for h in self.history], "events": self.events}
         tmp = self.store.with_suffix(".tmp")
+        # A small card beside the session, so the list of saved sessions never parses whole conversations.
+        card = {k: data[k] for k in ("title", "model", "updated_at", "workspace")}
         try:
             self.store.parent.mkdir(parents=True, exist_ok=True)
             tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
             os.chmod(tmp, 0o600)
             os.replace(tmp, self.store)
+            meta = self.store.with_name(self.store.stem + ".meta.json")
+            meta.write_text(json.dumps(card, ensure_ascii=False), encoding="utf-8")
+            os.chmod(meta, 0o600)
         except OSError:
             logger.opt(exception=True).warning("Could not save agent session {}", self.id)
 
@@ -520,6 +535,11 @@ class AgentSession:
         goal = data.get("goal")
         self.goal = {"text": str(goal.get("text", "")), "turns": int(goal.get("turns", 0))} if isinstance(goal, dict) else None
         self.created_at = float(data.get("created_at") or self.created_at)
+
+    def set_model(self, model: str) -> None:
+        """Switch the model; its prompt quirks come with it."""
+        self.model = model
+        self.quirks = models.quirks(model, self.profile["models"])
 
     def set_policy(self, mode: str, network: bool) -> None:
         if mode not in sandbox.MODES:
@@ -568,10 +588,21 @@ class AgentSession:
                 self.queue.append(text + extra)
             else:
                 self.status, self._stop = "running", False
-        self.title = self.title or text.strip().splitlines()[0][:80]
+        self.title = self.title or (text.strip().splitlines() or [""])[0][:80]
         self.emit("user", text=text, refs=names, queued=queued)
         if queued:
             return True
+        self._new_request(text + extra)
+        update = self._context_update()
+        if update:
+            self.history.append({"role": "user", "content": update})
+            self.cache_log["context updates"] += 1
+        self.history.append({"role": "user", "content": text + extra})
+        threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
+        return False
+
+    def _new_request(self, text: str) -> None:
+        """Per-request state starts fresh: the undo point, nudges, budgets and which hosts the user named."""
         if not self.depth:
             self.checkpoints.begin()
         self._dirty = self._gated = self.tainted = False
@@ -582,14 +613,7 @@ class AgentSession:
         self._turn_usage = self._spent()
         self._fired = {}
         self.web_ok |= {h.lower() for h in URL_RE.findall(text)}
-        update = self._context_update()
-        if update:
-            self.history.append({"role": "user", "content": update})
-            self.cache_log["context updates"] += 1
-        self.history.append({"role": "user", "content": text + extra})
-        self._last_request = text + extra
-        threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
-        return False
+        self._last_request = text
 
     def command(self, text: str) -> dict:
         """A slash command: built-ins act at once, custom ones become a message to the agent."""
@@ -621,9 +645,10 @@ class AgentSession:
             rows += [f"{name} → {target}" + ("" if target in self.mcp_tools else " (chưa kết nối, đang dùng tool có sẵn)") for name, target in configured.items()]
             rows += [f"{name}: vai {role}" for name, role in self.profile["roles"].items()]
             return {"message": "\n".join(rows) or "Chưa cấu hình MCP server nào (.mcp.json, ~/.claude.json, ~/.codex/config.toml)."}
-        if name == "model" and args:
-            self.model = args
-            return {"message": f"Model: {args}"}
+        if name == "model":
+            if args:
+                self.set_model(args)
+            return {"message": f"Model: {self.model}"}
         if name == "mode" and args in MODES:
             self.mode = args
             return {"message": f"Quyền: {args}"}
@@ -780,7 +805,7 @@ class AgentSession:
             self.goal = None
             self._lock.notify_all()
         for child in list(self.children.values()):
-            child.pending = None
+            child.held = None
             child.stop()
         for job in list(self.jobs.values()):
             job.stop()
@@ -801,16 +826,10 @@ class AgentSession:
 
     # MCP servers.
 
-    def _mcp_root(self) -> "AgentSession":
-        root = self
-        while root.parent is not None:
-            root = root.parent
-        return root
-
     @property
     def replaced(self) -> dict[str, str]:
         """Built-in tools served by a connected MCP tool, from "replace" in profile.json; an unconnected one falls back to ours."""
-        tools = self._mcp_root().mcp_tools
+        tools = self._root().mcp_tools
         return {name: target for name, target in self.profile["replace"].items() if target in tools}
 
     def _role(self, name: str) -> str | None:
@@ -822,7 +841,9 @@ class AgentSession:
         if self._mcp_ready:
             return
         self._mcp_ready = True
-        for row in mcp.configured(self.workspace.root, self.home):
+        rows = mcp.configured(self.workspace.root, self.home)
+        starts = []
+        for row in rows:
             name, digest = row["name"], mcp.config_hash(row["config"])
             status = {"name": name, "scope": row["scope"], "source": row["source"], "digest": digest, "tools": 0, "error": "", "state": "waiting"}
             self.mcp_status[name] = status
@@ -830,7 +851,21 @@ class AgentSession:
             self.kernel.rows[f"mcp:{name}"] = kernel.Row(f"mcp:{name}", self._mcp_plugin(row), {}, off, "mcp")
             if off:
                 status["state"] = "disabled"
+            elif row["scope"] != "workspace" or self.trust.trusted(self.workspace.root, f"mcp:{name}", digest):
+                starts.append(row)
+        # Servers start side by side (each may take seconds); the plugin tree then mounts them in order.
+        if len(starts) > 1:
+            pool = ThreadPoolExecutor(max_workers=min(8, len(starts)))
+            self._mcp_starting = {row["name"]: pool.submit(mcp.Server, row["name"], row["config"], self.workspace.root) for row in starts}
+            pool.shutdown(wait=False)
         self.kernel.settle()
+        for future in self._mcp_starting.values():
+            # A server started for a row the tree did not mount is closed again.
+            try:
+                future.result().close()
+            except Exception:
+                pass
+        self._mcp_starting = {}
         for name, status in self.mcp_status.items():
             mounted = self.kernel.rows.get(f"mcp:{name}")
             if mounted is not None and mounted.state == "failed" and status["state"] != "untrusted":
@@ -845,7 +880,8 @@ class AgentSession:
             if row["scope"] == "workspace" and not self.trust.trusted(self.workspace.root, f"mcp:{name}", status["digest"]):
                 status["state"] = "untrusted"
                 raise PermissionError("the project declares this server; allow it first")
-            server = mcp.Server(name, config, self.workspace.root)
+            started = self._mcp_starting.pop(name, None)
+            server = started.result() if started is not None else mcp.Server(name, config, self.workspace.root)
             self.mcp_servers[name] = server
             added = [mcp.tool_name(name, tool["name"]) for tool in server.tools]
             for tool_name, tool in zip(added, server.tools):
@@ -916,7 +952,7 @@ class AgentSession:
     def specs(self) -> list[dict]:
         sees = models.sees_images(self.provider.id, self.model, self.profile["vision"])
         swap = self.replaced
-        tools = self._mcp_root().mcp_tools
+        tools = self._root().mcp_tools
         rows = []
         for row in self._all_specs():
             if row["name"] in swap.values():
@@ -951,7 +987,14 @@ class AgentSession:
         rows += [t.spec for t in self.registry.tools.values()]
         if self.plan_mode:
             reads = {n for n, t in self.registry.tools.items() if t.kind == "read"}
-            return [r for r in rows if r["name"] in PLAN_TOOLS or r["name"] in reads] + [SESSION_SPECS["exit_plan_mode"]]
+            # A connected tool that only reads (its own readOnlyHint, or the read role in profile.json) helps a plan too.
+            reads |= {n for n, (_, tool) in self.mcp_tools.items()
+                      if self._role(n) == "read" or (not self._role(n) and (tool.get("annotations") or {}).get("readOnlyHint"))}
+            planned = [r for r in rows if r["name"] in PLAN_TOOLS or r["name"] in reads]
+            planned += [{"name": n, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
+                         "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}}}
+                        for n, (server, tool) in self.mcp_tools.items() if n in reads]
+            return planned + [SESSION_SPECS["exit_plan_mode"]]
         if self.goal:
             rows.append(SESSION_SPECS["goal_done"])
         if self.goal or self.profile["notes_context"]:
@@ -1025,9 +1068,7 @@ class AgentSession:
             call["name"] == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access")
 
     def _user_messages(self) -> list[str]:
-        root = self
-        while root.parent is not None:
-            root = root.parent
+        root = self._root()
         return [h["content"] for h in root.history if h["role"] == "user" and not h["content"].startswith(("[", "<"))]
 
     def _receipts(self) -> str:
@@ -1210,7 +1251,7 @@ class AgentSession:
             return f"Stopped {args.get('id')}. Last output:\n{clip(job.read(), 4000)}"
         if call["name"] == "spawn_agent":
             nick = self._spawn(str(args.get("message") or ""), str(args.get("agent") or "explore"))
-            queued = self.children[nick].pending is not None
+            queued = self.children[nick].held is not None
             lead = f"Queued {nick}: helpers that edit files run one at a time, so it starts when the one before it is done." if queued else f"Started {nick}."
             return f"{lead} Do other work, then call wait_agent with ids [\"{nick}\"]; it also reports to you by itself when done."
         if call["name"] == "fan_out":
@@ -1225,7 +1266,7 @@ class AgentSession:
         if call["name"] == "close_agent":
             child = self._child(str(args.get("id") or ""))
             state = self._state(child)
-            child.pending = None
+            child.held = None
             self._collect(child)
             child.close()
             child.closed = True
@@ -1350,7 +1391,7 @@ class AgentSession:
     def _state(child: "AgentSession") -> str:
         if child.closed:
             return "closed"
-        if child.pending is not None:
+        if child.held is not None:
             return "queued"
         if child.status != "idle":
             return "running"
@@ -1364,7 +1405,7 @@ class AgentSession:
 
     def _collect(self, child: "AgentSession") -> None:
         """Fold a finished helper's tokens into this session once and tell the page it is done."""
-        if child.reported or child.status != "idle" or child.pending is not None:
+        if child.reported or child.status != "idle" or child.held is not None:
             return
         child.reported = True
         self._merge_copy(child)
@@ -1437,18 +1478,18 @@ class AgentSession:
         self.emit("subagent", description=message[:80], agent=agent.name, id=nick, state="started")
         if busy:
             # Two helpers never edit at once: this one starts when the one before it is done.
-            child.pending = message
+            child.held = message
         else:
             child.send(message)
         return nick
 
     def _start_queued(self) -> None:
         """Starts the next held-back editing helper once no other editing helper is working."""
-        if any(c.mutating and c.pending is None and c.status != "idle" and not c.closed for c in self.children.values()):
+        if any(c.mutating and c.held is None and c.status != "idle" and not c.closed for c in self.children.values()):
             return
         for child in self.children.values():
-            if child.pending is not None and not child.closed and not self._stop:
-                message, child.pending = child.pending, None
+            if child.held is not None and not child.closed and not self._stop:
+                message, child.held = child.held, None
                 child.send(message)
                 return
 
@@ -1531,7 +1572,7 @@ class AgentSession:
         """Tell the model about helpers that finished on their own, as Codex does with a notification message."""
         self._start_queued()
         for child in list(self.children.values()):
-            if not child.closed and not child.reported and child.status == "idle" and child.pending is None:
+            if not child.closed and not child.reported and child.status == "idle" and child.held is None:
                 self._collect(child)
                 note = {"agent_id": child.nick, "agent": child.agent.name, "status": self._state(child), "result": self._result(child)}
                 self.history.append({"role": "user", "content": f"<subagent_notification>{json.dumps(note, ensure_ascii=False)}</subagent_notification>"})
@@ -1552,8 +1593,9 @@ class AgentSession:
     def _run_call(self, call: dict) -> tuple[str, bool]:
         if call.get("error"):
             return call["error"], False
-        known = {s["name"] for s in self.specs()}
-        props = {s["name"]: s.get("parameters", {}).get("properties", {}) for s in self.specs()}
+        offered = {s["name"]: s for s in self.specs()}
+        known = set(offered)
+        props = {name: spec.get("parameters", {}).get("properties", {}) for name, spec in offered.items()}
         # Calls a script makes go through as written: they carry internal flags such as as_data.
         if isinstance(call["args"], dict) and not str(call.get("id", "")).startswith("script-") and (
                 call["name"] not in known or any(k not in props[call["name"]] for k in call["args"])):
@@ -1563,7 +1605,7 @@ class AgentSession:
                 return f"[{fixed[2]}.]\n{output}", ok
         if call["name"] not in known:
             return f"Unknown tool {call['name']!r}; available: {', '.join(sorted(known))}", False
-        required = next((s.get("parameters", {}).get("required") or [] for s in self.specs() if s["name"] == call["name"]), [])
+        required = offered[call["name"]].get("parameters", {}).get("required") or []
         missing = [k for k in required if isinstance(call["args"], dict) and k not in call["args"]]
         if missing and not str(call.get("id", "")).startswith("script-"):
             # Checked before approval, so nobody is asked to approve a call that cannot run.
@@ -1635,7 +1677,7 @@ class AgentSession:
                 if call["name"] in SESSION_SPECS:
                     output, ok = self._session_tool(call), True
                 elif call["name"] in self.replaced:
-                    root = self._mcp_root()
+                    root = self._root()
                     server, tool = root.mcp_tools[self.replaced[call["name"]]]
                     if KIND.get(call["name"]) == "edit" and isinstance(call["args"], dict) and call["args"].get("path"):
                         self.checkpoints.save(self.workspace.resolve(str(call["args"]["path"]), write=True))
@@ -1882,7 +1924,7 @@ class AgentSession:
     def _archive(self, items: list[dict], instead_of: str) -> str:
         """Save the part of the conversation about to be replaced, so a detail the summary lacks can still be searched and read (as dsh keeps its raw log)."""
         folder = self._outputs_dir()
-        path = folder / f"history-{len(self.cache_log) + int(time.time())}.json"
+        path = folder / f"history-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.json"
         try:
             folder.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps([{k: v for k, v in h.items() if k != "images"} for h in items], ensure_ascii=False, indent=1), encoding="utf-8")
@@ -2005,9 +2047,11 @@ class AgentSession:
             item["masked"] = True
         self.cache_log["older outputs masked"] += 1
 
-    def _make_room(self) -> None:
+    def _make_room(self) -> int:
+        """Mask, compact or trim so the next request fits; returns the history's size in characters afterwards."""
         self._mask_old()
-        if self._should_compact():
+        size = self._size()
+        if self._should_compact(size):
             if not self.depth and self.notes and (self.goal or self.profile["notes_context"]):
                 self._roll_over()
             else:
@@ -2015,27 +2059,32 @@ class AgentSession:
                     self.compact(keep=self._keep_chars())
                 except Exception as exc:
                     logger.warning("Agent session {} could not compact: {}", self.id, exc)
-            self._after_compact = self._size()
-        size, limit = self._size(), int(self.compact_at * CHARS_PER_TOKEN * 1.3)
+            size = self._after_compact = self._size()
+        if not self.compact_at:
+            # With auto-compaction off nothing is trimmed here; a full window is still recovered from when the provider says so.
+            return size
+        limit = int(self.compact_at * CHARS_PER_TOKEN * 1.3)
         for item in self.history:
             if size <= limit:
-                return
+                break
             if item["role"] == "tool" and len(item["content"]) > 200:
                 size -= len(item["content"]) - 40
                 item["content"] = "[older tool output removed to save room]"
+        return size
 
-    def context_tokens(self) -> int:
+    def context_tokens(self, size: int | None = None) -> int:
         """The context size now: the provider's own count from the last request plus an estimate for what was added since."""
         used, size_then = self._last_prompt
-        size = self._size()
+        size = self._size() if size is None else size
         if used and size >= size_then:
             return used + int((size - size_then) / CHARS_PER_TOKEN)
         return int(size / CHARS_PER_TOKEN)
 
-    def _should_compact(self) -> bool:
-        if not self.compact_at or self.context_tokens() <= self.compact_at:
+    def _should_compact(self, size: int | None = None) -> bool:
+        size = self._size() if size is None else size
+        if not self.compact_at or self.context_tokens(size) <= self.compact_at:
             return False
-        return not self._after_compact or self._size() > self._after_compact * COMPACT_REARM
+        return not self._after_compact or size > self._after_compact * COMPACT_REARM
 
     def _keep_chars(self) -> int:
         """How much recent conversation stays verbatim: a sixth of the window the trigger implies, never less than 60k characters."""
@@ -2177,7 +2226,7 @@ class AgentSession:
             if self.queue or self._stop:
                 return bool(self.queue)
         # Helpers still working: wait for one to finish, then the model reads its report.
-        done = lambda: any(not c.closed and not c.reported and c.status == "idle" and c.pending is None for c in self.children.values())
+        done = lambda: any(not c.closed and not c.reported and c.status == "idle" and c.held is None for c in self.children.values())
         while any(self._state(c) in ("running", "queued") for c in self.children.values()) and not self._stop and not self.queue:
             self._start_queued()
             if done():
@@ -2217,7 +2266,8 @@ class AgentSession:
 
         def record(call: dict, output: str, ok: bool) -> None:
             self.history.append({"role": "tool", "id": call["id"], "name": call["name"], "content": output})
-            self.emit("tool", id=call["id"], name=call["name"], ok=ok, output=output)
+            # The page and the saved session keep a clipped copy; the model's history keeps all of it.
+            self.emit("tool", id=call["id"], name=call["name"], ok=ok, output=clip(output, EVENT_OUTPUT))
 
         # Calls whose files do not overlap run together, up to ten at once; anything else runs alone, in order, and results are always recorded in the order given (Kimi Code).
         index = 0
@@ -2302,8 +2352,7 @@ class AgentSession:
                 self.emit("error", text=f"Used more than {self.profile['token_budget']:,} tokens this turn; stopping. Send a message to continue.")
                 self._wrap_up()
                 break
-            self._make_room()
-            size_before = self._size()
+            size_before = self._make_room()
             turn = self._turn()
             self.live = None
             self._last_prompt = (int(turn["usage"].get("prompt_tokens") or 0), size_before)
@@ -2433,6 +2482,10 @@ class AgentSession:
                     self.status = "idle"
                 self._lock.notify_all()
             if again:
+                # A message that arrived as the turn ended starts a request of its own.
+                with self._lock:
+                    nxt = self.queue[0] if self.queue else ""
+                self._new_request(nxt)
                 threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
             else:
                 self.emit("done")
@@ -2446,12 +2499,12 @@ class _McpBridge:
         self.session = session
 
     def tools(self) -> dict:
-        root = self.session._mcp_root()
+        root = self.session._root()
         root._ensure_mcp()
         return root.mcp_tools
 
     def call(self, name: str, arguments: dict) -> tuple[str, bool]:
-        root = self.session._mcp_root()
+        root = self.session._root()
         server, tool = root.mcp_tools[name]
         return root.mcp_servers[server].call_tool(tool["name"], arguments)
 
@@ -2501,10 +2554,11 @@ class AgentSessionManager:
                        "workspace": str(s.workspace.root), "live": True} for s in self.sessions.values()}
         folder = self.store_dir / "sessions" if self.store_dir else None
         for path in sorted(folder.glob("*.json")) if folder and folder.is_dir() else []:
-            if path.stem in rows:
+            if path.name.endswith(".meta.json") or path.stem in rows:
                 continue
+            meta = path.with_name(path.stem + ".meta.json")
             try:
-                data = json.loads(path.read_text(encoding="utf-8"))
+                data = json.loads((meta if meta.is_file() else path).read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
             rows[path.stem] = {"id": path.stem, "title": data.get("title", ""), "model": data.get("model", ""), "status": "saved",
@@ -2516,10 +2570,11 @@ class AgentSessionManager:
         if session is not None:
             session.close()
         path = self._path(session_id)
-        if self.home is not None and session_id.isalnum():
-            shutil.rmtree(self.home / ".manga-agent" / "outputs" / session_id, ignore_errors=True)
+        if session_id.isalnum():
+            shutil.rmtree((self.home if self.home is not None else Path.home()) / ".manga-agent" / "outputs" / session_id, ignore_errors=True)
         if path is not None and session_id.isalnum() and path.is_file():
             path.unlink()
+            path.with_name(path.stem + ".meta.json").unlink(missing_ok=True)
         elif session is None:
             raise KeyError(session_id)
 

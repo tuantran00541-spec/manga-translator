@@ -37,6 +37,7 @@
   let pollTimer = null;
   let loaded = false;
   let commands = [];
+  let infoRev = "";
   let group = null;
 
   function store(action, key, value) {
@@ -394,6 +395,9 @@
   }
 
   function showInfo(snap) {
+    // A poll whose info has not changed carries only its revision; the panel is left as it is.
+    if (!("skills" in snap)) return;
+    infoRev = snap.info_rev || "";
     const box = el("div", "agent-info");
     const sb = snap.sandbox || {};
     $("agent-sandbox-info").textContent = sb.mode === "full-access"
@@ -505,7 +509,7 @@
     if (!session) return;
     try {
       const stick = nearBottom();
-      const snap = await call(`/api/agent/sessions/${session.id}?after=${lastSeq}`);
+      const snap = await call(`/api/agent/sessions/${session.id}?after=${lastSeq}&rev=${encodeURIComponent(infoRev)}`);
       snap.events.forEach((event) => { render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
       follow(stick && snap.events.length > 0);
@@ -597,6 +601,7 @@
     clearTimeout(pollTimer);
     session = null;
     lastSeq = 0;
+    infoRev = "";
     group = null;
     $("agent-log").replaceChildren(emptyState());
     $("agent-stop").hidden = true;

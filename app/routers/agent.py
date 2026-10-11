@@ -221,8 +221,8 @@ def list_sessions() -> dict:
 
 
 @router.get("/sessions/{session_id}")
-def session_events(session_id: str, after: int = 0) -> dict:
-    return _session(session_id).snapshot(after)
+def session_events(session_id: str, after: int = 0, rev: str = "") -> dict:
+    return _session(session_id).snapshot(after, rev)
 
 
 @router.post("/sessions/{session_id}/messages")
@@ -299,7 +299,7 @@ def update_session(session_id: str, req: SessionUpdate) -> dict:
                 raise ValueError(f"mode must be one of {', '.join(MODES)}")
             session.mode = req.mode
         if req.model is not None:
-            session.model = validate_model_name(req.model, default="")
+            session.set_model(validate_model_name(req.model, default=""))
         if req.sandbox is not None or req.network is not None:
             policy = session.workspace.policy
             session.set_policy(req.sandbox or policy.mode, policy.network if req.network is None else req.network)
