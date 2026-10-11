@@ -12,6 +12,9 @@ HOME_DIRS = (".manga-agent/skills", ".agents/skills", ".claude/skills", ".codex/
 BUILTIN_DIR = Path(__file__).parent / "builtin_skills"
 NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 MAX_SKILLS = 200
+# Skills are written for other harnesses too; this maps their tool names onto ours when one is loaded.
+NAMES = ("(Tool names here: TodoWrite is todo_write, Task or subagents are task or spawn_agent with wait_agent, Bash is run_command, "
+         "Read, Edit and Write are read_file, edit_file and apply_patch, asking the user is ask_user.)")
 
 
 @dataclass(frozen=True)
@@ -78,13 +81,13 @@ def discover(workspace: Path, home: Path | None = None) -> dict[str, Skill]:
 
 def catalog(found: dict[str, Skill]) -> str:
     """The skills the model may load itself; manual ones are only for the user's /commands."""
-    rows = "\n".join(f"- {s.name}: {s.description}" for s in found.values() if not s.manual)
-    if not rows:
-        return ""
-    return ("Skills you can load with the skill tool when a task matches one; load it before starting that task, and at most three per task. "
-            "Skills are written for other coding agents too: read TodoWrite as todo_write, Task or subagents as task or "
-            "spawn_agent with wait_agent, Bash as run_command, Read, Edit and Write as read_file, edit_file and apply_patch, "
-            "and asking the user as ask_user.\n" + rows)
+    rows = "\n".join(f"- {s.name}: {_short(s.description)}" for s in found.values() if not s.manual)
+    return f"Skills (load with the skill tool before a task that matches, at most three per task):\n{rows}" if rows else ""
+
+
+def _short(text: str, limit: int = 160) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "…"
 
 
 def load(skill: Skill) -> str:
@@ -94,4 +97,4 @@ def load(skill: Skill) -> str:
                     if p.is_file() and p.name != "SKILL.md")[:100]
     files = "\n".join(f"- {e}" for e in extras)
     tail = f"\n\nFiles in this skill (read them with read_file using the skill path):\n{files}" if extras else ""
-    return f"Skill {skill.name} at {skill.folder}\n\n{body.strip()}{tail}"
+    return f"Skill {skill.name} at {skill.folder}\n{NAMES}\n\n{body.strip()}{tail}"

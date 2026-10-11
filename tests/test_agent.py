@@ -1160,7 +1160,7 @@ def test_bundled_skills_load_and_a_users_skill_of_the_same_name_wins(ws, home):
     for name in BUNDLED:
         assert "superpowers:" not in skills.load(found[name])
     catalog = skills.catalog(found)
-    assert "- systematic-debugging:" in catalog and "- handoff:" not in catalog and "read TodoWrite as todo_write" in catalog
+    assert "- systematic-debugging:" in catalog and "- handoff:" not in catalog and "TodoWrite is todo_write" in skills.load(found["systematic-debugging"])
     write_skill(home / ".agents" / "skills", "grilling", "My own grilling.")
     assert skills.discover(ws.root, home)["grilling"].description == "My own grilling." and not skills.discover(ws.root, home)["grilling"].builtin
 

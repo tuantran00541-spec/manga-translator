@@ -120,112 +120,84 @@ UNREADABLE_TURNS = 4
 TOKEN_BUDGET = 10_000_000
 URL_RE = re.compile(r"https?://([^\s/:?#]+)")
 PLAN_TOOLS = agents.READ_TOOLS | {"oracle", "todo_write", "task", "fan_out", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
-SYSTEM_PROMPT = """You are a coding agent inside the Manga Translator app, working like Claude Code or Codex.
+SYSTEM_PROMPT = """You are a coding agent inside the Manga Translator app.
 Workspace root: {root} on {system}. Paths are relative to it.
 {sandbox}
-Work in small verified steps: look first (list_dir, glob, search, read_file), then change files with apply_patch or edit_file
-(or edit_lines after read_file with anchors=true; replace_in_files for a rename across files), then run the project's tests or the
-command that proves the change works, and look over your edits with changes before you report.
-Use todo_write to plan work with several steps and keep it current. Use task for one job you need answered now. To run
-several jobs at once call spawn_agent once per job (never the same job twice), then wait_agent; a finished agent also reports to
-you by itself. Use ask_user when a decision is the user's, and memory to keep a lasting fact for later sessions.
-Do not re-read a file you just changed; the tool reports failure and syntax errors. Fix root causes; keep changes minimal and in the code's style.
-End with a short report of what changed, how you checked it, and anything left.
-Language: everything you write while working (notes between tool calls, plans, todo items, prompts for helpers) is in English. Only the final
-answer to the user is in the language of the user's own request; the bracketed [...] notes from the harness are always English and do not count."""
+Look before you change, keep changes minimal and in the code's style, fix root causes, then run the tests or command that proves it works
+and review your edits with changes. Plan multi-step work with todo_write. End with a short report: what changed, how you checked, what is left.
+Write notes, plans and helper prompts in English; answer the user in the language of their request."""
+OBJ = {"type": "object", "properties": {}}
+ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {
-    "skill": {"name": "skill", "description": "Load a skill's full instructions by name before doing a task it covers.",
+    "skill": {"name": "skill", "description": "Load a skill's instructions by name.",
               "parameters": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
-    "todo_write": {"name": "todo_write", "description": "Replace the task's plan; each item has content and a status of "
-                                                       "pending, in_progress or completed. Keep one item in_progress.",
+    "todo_write": {"name": "todo_write", "description": "Replace the todo list; keep one item in_progress.",
                    "parameters": {"type": "object", "required": ["items"], "properties": {"items": {"type": "array", "items": {
                        "type": "object", "required": ["content", "status"], "properties": {
                            "content": {"type": "string"}, "status": {"type": "string", "enum": ["pending", "in_progress", "completed"]}}}}}}},
-    "task": {"name": "task", "description": "Send a helper agent off with one job; it returns one report. Give it a complete, "
-                                            "standalone instruction.\nAgents:\n{agents}",
+    "task": {"name": "task", "description": "Run a helper agent on one standalone job and get its report.\nAgents:\n{agents}",
              "parameters": {"type": "object", "required": ["description", "prompt"], "properties": {
-                 "description": {"type": "string", "description": "A few words naming the job."}, "prompt": {"type": "string"},
-                 "agent": {"type": "string", "description": "Which agent; explore by default."}}}},
-    "spawn_agent": {"name": "spawn_agent", "description": "Start a helper agent on one job and return at once with its name; it keeps working while you do other "
-                                                         "things. Collect its report with wait_agent.\nAgents:\n{agents}",
-                    "parameters": {"type": "object", "required": ["message"], "properties": {
-                        "message": {"type": "string", "description": "A complete, standalone instruction."}, "agent": {"type": "string"}}}},
-    "fan_out": {"name": "fan_out", "description": "Run several independent jobs on helper agents at once and get every report back in this one call; use it instead of "
-                                                  "spawn_agent and wait_agent when you only need the answers. At most 12 jobs, 6 at a time. "
-                                                  "With schema, each helper must end with a JSON object of that shape; one that does not is asked once to fix it, "
-                                                  "and a helper that still fails is reported as null instead of a vague answer.\nAgents:\n{agents}",
+                 "description": {"type": "string"}, "prompt": {"type": "string"}, "agent": {"type": "string"}}}},
+    "spawn_agent": {"name": "spawn_agent", "description": "Start a helper agent in the background (agents as for task); collect it with wait_agent.",
+                    "parameters": {"type": "object", "required": ["message"], "properties": {"message": {"type": "string"}, "agent": {"type": "string"}}}},
+    "fan_out": {"name": "fan_out", "description": "Run up to 12 independent helper jobs at once and return all reports. With schema, each report must be "
+                                                  "JSON of that shape (null if a helper fails).",
                 "parameters": {"type": "object", "required": ["jobs"], "properties": {
                     "jobs": {"type": "array", "items": {"type": "object", "required": ["prompt"], "properties": {
-                        "description": {"type": "string", "description": "A few words naming the job."}, "prompt": {"type": "string", "description": "A complete, standalone instruction."}}}},
-                    "agent": {"type": "string", "description": "Which agent runs them all; explore by default."},
-                    "schema": {"type": "object", "description": "Optional JSON Schema (type, properties, required, items, enum) every report must fit."}}}},
-    "wait_agent": {"name": "wait_agent", "description": "Wait until the named agents (all unfinished ones when ids is empty) finish and return their reports; "
-                                                       "after timeout_s the ones still running are listed as running.",
-                   "parameters": {"type": "object", "properties": {"ids": {"type": "array", "items": {"type": "string"}},
-                                                                    "timeout_s": {"type": "integer"}}}},
-    "send_input": {"name": "send_input", "description": "Send a follow-up message to an agent; a finished agent wakes up and works on it.",
+                        "description": {"type": "string"}, "prompt": {"type": "string"}}}},
+                    "agent": {"type": "string"}, "schema": {"type": "object"}}}},
+    "wait_agent": {"name": "wait_agent", "description": "Wait for helper agents (all when ids is empty) and return their reports.",
+                   "parameters": {"type": "object", "properties": {"ids": {"type": "array", "items": {"type": "string"}}, "timeout_s": {"type": "integer"}}}},
+    "send_input": {"name": "send_input", "description": "Send a follow-up message to a helper agent.",
                    "parameters": {"type": "object", "required": ["id", "message"], "properties": {"id": {"type": "string"}, "message": {"type": "string"}}}},
-    "close_agent": {"name": "close_agent", "description": "Stop an agent and release it once you no longer need it.",
-                    "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
-    "ask_user": {"name": "ask_user", "description": "Ask the user a question when a decision is theirs; optional answer choices.",
+    "close_agent": {"name": "close_agent", "description": "Stop a helper agent.", "parameters": ID},
+    "ask_user": {"name": "ask_user", "description": "Ask the user a question.",
                  "parameters": {"type": "object", "required": ["question"], "properties": {
                      "question": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}}}},
-    "exit_plan_mode": {"name": "exit_plan_mode", "description": "Present your finished plan for the user's approval; editing starts only after they approve.",
+    "exit_plan_mode": {"name": "exit_plan_mode", "description": "Submit the finished plan for approval.",
                        "parameters": {"type": "object", "required": ["plan"], "properties": {"plan": {"type": "string"}}}},
     "plugin_write": {"name": "plugin_write", "description": (
-        "Write a Python plugin that extends you, save it to ~/.manga-agent/plugins/ID.py and mount it now (the user approves every time). "
-        "It defines inject = [\"tools\", ...] and apply(ctx, config); ctx.get(\"tools\").register({name, description, parameters}, "
-        "handler(session, args) -> str, kind=\"read\"|\"edit\"|\"exec\"|\"net\") adds a tool, ctx.get(\"commands\").register(name, description, handler) "
-        "a slash command, ctx.on(\"tool/execute\" | \"model/request\" | \"tool/approve\", fn(payload, next)) wraps calls, "
-        "ctx.provide(\"web.search/NAME\", fn) adds a provider. Everything it registers is undone when it is removed."),
+        "Write and mount a Python plugin (~/.manga-agent/plugins/ID.py; the user approves). It defines apply(ctx, config): "
+        "ctx.get(\"tools\").register({name, description, parameters}, handler(session, args) -> str, kind=\"read\"|\"edit\"|\"exec\"|\"net\"), "
+        "ctx.get(\"commands\").register(name, description, handler), ctx.on(\"tool/execute\"|\"model/request\"|\"tool/approve\", fn(payload, next)), "
+        "ctx.provide(\"web.search/NAME\", fn). Removing it undoes everything it registered."),
         "parameters": {"type": "object", "required": ["id"], "properties": {
-            "id": {"type": "string", "description": "lower_case name, also the file name"}, "code": {"type": "string"},
-            "path": {"type": "string", "description": "a workspace file holding the code, instead of code (better for a long plugin)"},
+            "id": {"type": "string"}, "code": {"type": "string"}, "path": {"type": "string", "description": "A workspace file with the code."},
             "config": {"type": "object"}}}},
     "create": {"name": "create", "description": "create",
                "parameters": {"type": "object", "required": ["name"], "properties": {
                    "name": {"type": "string"}, "description": {"type": "string"}, "parameters": {"type": "object"}, "code": {"type": "string"}}}},
-    "plugin_remove": {"name": "plugin_remove", "description": "Unmount a plugin you or the user wrote and delete its file (the user approves).",
-                      "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
-    "goal_done": {"name": "goal_done", "description": "Mark the user's goal finished and verified, with a short report.",
+    "plugin_remove": {"name": "plugin_remove", "description": "Unmount and delete a plugin.", "parameters": ID},
+    "goal_done": {"name": "goal_done", "description": "Mark the goal done and verified.",
                   "parameters": {"type": "object", "required": ["summary"], "properties": {"summary": {"type": "string"}}}},
-    "job_output": {"name": "job_output", "description": "Read what a background job printed since the last read (waiting up to wait_s seconds for more), and whether it is still running.",
+    "job_output": {"name": "job_output", "description": "Read new output of a background job, waiting up to wait_s for more.",
                    "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}, "wait_s": {"type": "integer"}}}},
-    "job_input": {"name": "job_input", "description": "Type into a background job's input (a REPL, a prompt asking y/n, a debugger); end a line with \\n. "
-                                            "Returns what it printed after waiting up to wait_s seconds (default 2). Start the job with tty for programs that want a terminal.",
+    "job_input": {"name": "job_input", "description": "Type into a background job (a REPL, a y/n prompt, a debugger); end lines with \\n. "
+                                            "Returns its output after wait_s (default 2).",
                   "parameters": {"type": "object", "required": ["id", "chars"], "properties": {"id": {"type": "string"}, "chars": {"type": "string"}, "wait_s": {"type": "integer"}}}},
-    "schedule_create": {"name": "schedule_create", "description": "Have this session send itself a prompt later: once after in_minutes, or again every every_minutes (at least 1) for polling, deploy checks or daily reports. "
-                                                                  "It fires into this conversation, also after the session is reopened; at most 10 at a time. Needs the user's approval unless in auto mode.",
+    "schedule_create": {"name": "schedule_create", "description": "Send yourself a prompt later in this conversation: once after in_minutes, "
+                                                                  "or repeating every every_minutes. At most 10.",
                         "parameters": {"type": "object", "required": ["prompt", "in_minutes"], "properties": {
-                            "prompt": {"type": "string", "description": "The message to send yourself, written as a complete instruction."},
-                            "in_minutes": {"type": "integer", "description": "Minutes until the first time, at least 1."},
-                            "every_minutes": {"type": "integer", "description": "Repeat this often afterwards; leave out for a one-time reminder."}}}},
-    "schedule_list": {"name": "schedule_list", "description": "List the scheduled prompts with their ids and next time.", "parameters": {"type": "object", "properties": {}}},
-    "schedule_delete": {"name": "schedule_delete", "description": "Cancel a scheduled prompt by id.",
-                        "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
-    "oracle": {"name": "oracle", "description": "Ask a second, stronger model for advice: to review a plan before a big change, to check your own work, to understand tricky code, or when a fix keeps failing. "
-                                              "It sees the recent conversation and answers your question; it cannot run tools. Say why you are asking.",
-               "parameters": {"type": "object", "required": ["question"], "properties": {"question": {"type": "string", "description": "What you want its opinion on, with the context it needs."}}}},
-    "job_stop": {"name": "job_stop", "description": "Stop a background job.",
-                 "parameters": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}},
-    "context_notes": {"name": "context_notes", "description": "Read or replace your working notebook for this task (at most 16 KB): goal, decisions, what is done, "
-                                                              "what is next, key paths and facts. It survives new_context and summaries. Omit text to read it; text replaces it all.",
+                            "prompt": {"type": "string"}, "in_minutes": {"type": "integer"}, "every_minutes": {"type": "integer"}}}},
+    "schedule_list": {"name": "schedule_list", "description": "List scheduled prompts.", "parameters": OBJ},
+    "schedule_delete": {"name": "schedule_delete", "description": "Cancel a scheduled prompt.", "parameters": ID},
+    "oracle": {"name": "oracle", "description": "Ask a stronger model for advice on a plan, a review or a stuck fix; it sees the conversation but runs no tools.",
+               "parameters": {"type": "object", "required": ["question"], "properties": {"question": {"type": "string"}}}},
+    "job_stop": {"name": "job_stop", "description": "Stop a background job.", "parameters": ID},
+    "context_notes": {"name": "context_notes", "description": "Read (no text) or replace your task notebook (16 KB); it survives new_context and summaries.",
                       "parameters": {"type": "object", "properties": {"text": {"type": "string"}}}},
-    "new_context": {"name": "new_context", "description": "Start a fresh context window after this step, keeping your notebook, the user's request and the last few "
-                                                          "messages; files and running jobs are not touched. Save the notebook with context_notes first. Use it when the "
-                                                          "conversation is long and most of it is no longer needed.",
-                    "parameters": {"type": "object", "properties": {}}},
-    "tool_search": {"name": "tool_search", "description": "Find a connected (MCP) tool by what it does; the matches become callable on your next turn.",
+    "new_context": {"name": "new_context", "description": "Start a fresh context after this step, keeping the notebook, the request and the last few messages. "
+                                                          "Save context_notes first.", "parameters": OBJ},
+    "tool_search": {"name": "tool_search", "description": "Find a connected MCP tool by what it does; matches become callable next turn.",
                     "parameters": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}}},
-    "changes": {"name": "changes", "description": "Show what the edit tools changed in this request, as a unified diff against how each file was before; "
-                                                "use it to review your work before reporting. Changes made by commands are not included.",
-                "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Only this file."}}}},
-    "revert_file": {"name": "revert_file", "description": "Put one file back as it was before this request's edits (a created file is deleted again).",
+    "changes": {"name": "changes", "description": "Diff of what the edit tools changed in this request.",
+                "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}},
+    "revert_file": {"name": "revert_file", "description": "Undo this request's edits to one file.",
                     "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    "memory": {"name": "memory", "description": "Keep or drop a lasting note for later sessions: action add, remove or list; scope project or user.",
+    "memory": {"name": "memory", "description": "Add, remove or list lasting notes for later sessions.",
                "parameters": {"type": "object", "required": ["action"], "properties": {
                    "action": {"type": "string", "enum": ["add", "remove", "list"]}, "scope": {"type": "string", "enum": ["project", "user"]},
-                   "text": {"type": "string"}, "index": {"type": "integer", "description": "Note number to remove."}}}},
+                   "text": {"type": "string"}, "index": {"type": "integer"}}}},
 }
 BUILTIN_COMMANDS = {
     "help": "Xem các lệnh", "compact": "Tóm gọn hội thoại để giải phóng chỗ (có thể ghi điều cần giữ); /compact auto 900k đặt mức tự tóm gọn",

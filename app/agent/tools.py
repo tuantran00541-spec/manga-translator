@@ -41,38 +41,25 @@ KIND = {"list_dir": "read", "read_file": "read", "symbols": "read", "view_image"
         "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "replace_in_files": "edit", "move_file": "edit", "delete_file": "edit", "run_command": "exec", "run_script": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
 
 SPECS = [
-    {"name": "list_dir", "description": "List files and folders under a path in the workspace.",
-     "parameters": {"type": "object", "properties": {
-         "path": {"type": "string", "description": "Folder relative to the workspace root; '.' is the root."},
-         "depth": {"type": "integer", "description": "How many folder levels to show, 1 to 4."}}}},
-    {"name": "read_file", "description": "Read a text file with line numbers. Skill files may be read by their absolute path.",
+    {"name": "list_dir", "description": "List a folder.",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "depth": {"type": "integer", "description": "1 to 4"}}}},
+    {"name": "read_file", "description": "Read a file with line numbers.",
      "parameters": {"type": "object", "required": ["path"], "properties": {
-         "path": {"type": "string"},
-         "offset": {"type": "integer", "description": "First line to read, from 1."},
-         "limit": {"type": "integer", "description": "How many lines to read, at most 2000."},
-         "anchors": {"type": "boolean", "description": "Show each line as N#hh|text so edit_lines can point at it."}}}},
-    {"name": "symbols", "description": "Outline a file's classes and functions with line numbers, or find where a name is defined across the workspace.",
-     "parameters": {"type": "object", "properties": {
-         "path": {"type": "string", "description": "A file to outline, or a folder to search; '.' by default."},
-         "name": {"type": "string", "description": "Find definitions whose name contains this text."}}}},
-    {"name": "view_image", "description": "Look at an image file (png, jpg, gif, webp, up to 4 MB); it appears in your next turn.",
+         "path": {"type": "string"}, "offset": {"type": "integer"}, "limit": {"type": "integer"},
+         "anchors": {"type": "boolean", "description": "Show lines as N#hh|text for edit_lines."}}}},
+    {"name": "symbols", "description": "Outline a file's classes and functions, or find where a name is defined.",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "name": {"type": "string"}}}},
+    {"name": "view_image", "description": "Look at an image file.",
      "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "search", "description": "Search file contents with a regular expression; returns file:line: text.",
+    {"name": "search", "description": "Regex search in files (grep).",
      "parameters": {"type": "object", "required": ["pattern"], "properties": {
-         "pattern": {"type": "string"}, "path": {"type": "string"},
-         "glob": {"type": "string", "description": "Only matching files: *.py by name, or app/**/*.py by path."},
-         "ignore_case": {"type": "boolean"},
-         "context": {"type": "integer", "description": "Lines to show before and after each match, 0 to 5."},
-         "files_only": {"type": "boolean", "description": "List only the files that match, with their match counts."}}}},
-    {"name": "glob", "description": "Find files whose path matches a pattern such as **/*.py or app/**/test_*.py, newest first.",
-     "parameters": {"type": "object", "required": ["pattern"], "properties": {
-         "pattern": {"type": "string"}, "path": {"type": "string"}}}},
-    {"name": "write_file", "description": "Create or overwrite a file with the given content.",
-     "parameters": {"type": "object", "required": ["path", "content"], "properties": {
-         "path": {"type": "string"}, "content": {"type": "string"}}}},
-    {"name": "edit_file", "description": "Replace old_text with new_text in a file; old_text must match once unless replace_all. "
-                                         "For several changes to one file pass edits, a list of {old_text, new_text}, applied in order and saved together. "
-                                         "Whole lines that differ only in trailing spaces, quote style or indentation still match.",
+         "pattern": {"type": "string"}, "path": {"type": "string"}, "glob": {"type": "string"}, "ignore_case": {"type": "boolean"},
+         "context": {"type": "integer"}, "files_only": {"type": "boolean"}}}},
+    {"name": "glob", "description": "Find files by path pattern, newest first.",
+     "parameters": {"type": "object", "required": ["pattern"], "properties": {"pattern": {"type": "string"}, "path": {"type": "string"}}}},
+    {"name": "write_file", "description": "Create or overwrite a file.",
+     "parameters": {"type": "object", "required": ["path", "content"], "properties": {"path": {"type": "string"}, "content": {"type": "string"}}}},
+    {"name": "edit_file", "description": "Replace old_text with new_text (unique unless replace_all); edits applies several in order.",
      "parameters": {"type": "object", "required": ["path"], "properties": {
          "path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"},
          "replace_all": {"type": "boolean"},
@@ -83,52 +70,36 @@ SPECS = [
          "path": {"type": "string"}, "edits": {"type": "array", "items": {"type": "object", "required": ["op", "anchor"], "properties": {
              "op": {"type": "string", "enum": list(hashline.OPS)}, "anchor": {"type": "string"},
              "end": {"type": "string"}, "text": {"type": "string"}}}}}}},
-    {"name": "replace_in_files", "description": "Replace text in every matching file at once, such as a rename across the project. "
-                                                "The pattern is literal unless regex is true (then \\1 refers to a group). Run it with dry_run first to see what would change.",
+    {"name": "replace_in_files", "description": "Replace text across many files (literal unless regex); try dry_run first.",
      "parameters": {"type": "object", "required": ["pattern", "replacement"], "properties": {
-         "pattern": {"type": "string"}, "replacement": {"type": "string"},
-         "path": {"type": "string", "description": "Folder or file to work in; '.' by default."},
-         "glob": {"type": "string", "description": "Only matching files: *.py by name, or app/**/*.py by path."},
+         "pattern": {"type": "string"}, "replacement": {"type": "string"}, "path": {"type": "string"}, "glob": {"type": "string"},
          "regex": {"type": "boolean"}, "ignore_case": {"type": "boolean"}, "dry_run": {"type": "boolean"}}}},
-    {"name": "move_file", "description": "Move or rename a file; missing folders are created. It will not replace an existing file unless overwrite is true.",
+    {"name": "move_file", "description": "Move or rename a file.",
      "parameters": {"type": "object", "required": ["path", "to"], "properties": {
          "path": {"type": "string"}, "to": {"type": "string"}, "overwrite": {"type": "boolean"}}}},
-    {"name": "delete_file", "description": "Delete a file (not a folder). /undo and revert_file can bring it back.",
+    {"name": "delete_file", "description": "Delete a file.",
      "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "apply_patch", "description": "Add, update, move or delete several files in one patch.\n" + patches.GUIDE,
+    {"name": "apply_patch", "description": "Add, update, move or delete files in one patch.\n" + patches.GUIDE,
      "parameters": {"type": "object", "required": ["patch"], "properties": {"patch": {"type": "string"}}}},
-    {"name": "run_command", "description": "Run a shell command in the workspace root and return its output and exit code. "
-                                           "It runs in the session's sandbox; set outside_sandbox only when the sandbox blocks "
-                                           "something the task truly needs, and say why.",
+    {"name": "run_command", "description": "Run a shell command in the workspace sandbox.",
      "parameters": {"type": "object", "required": ["command"], "properties": {
-         "command": {"type": "string"},
-         "timeout": {"type": "integer", "description": "Seconds before it is stopped, at most 1800."},
-         "background": {"type": "boolean", "description": "Start it and return a job id at once (a dev server, a watcher); read it with job_output, stop it with job_stop. "
-                                                           "A server needs the network switch on to listen on a port."},
-         "tty": {"type": "boolean", "description": "With background: run it on a terminal, for programs that want one (python -i, interactive prompts); type into it with job_input."},
-         "outside_sandbox": {"type": "boolean"}}}},
-    {"name": "run_script", "description": "Run a Python script in the sandbox that can call read-only tools as functions and print what you need: "
-                                          "tools.read_file(path=...), tools.search(pattern=...), tools.glob(pattern=...), tools.list_dir(path=...), "
-                                          "tools.symbols(path=..., name=...), tools.web_fetch(url=...), tools.web_search(query=...). Each returns the tool's text "
-                                          "and raises on error. Use it to look through many files or results in one step instead of many calls; only what the "
-                                          "script prints comes back. tools.fan_out(jobs=[{\"prompt\": ...}], schema={...}) runs helper agents and returns a JSON list of {job, report} "
-                                          "(report is null when a helper failed), so a script can fan out, check the reports, and run another round on what is left (at most 40 helpers per script; timeout up to 3600).",
-     "parameters": {"type": "object", "required": ["code"], "properties": {
-         "code": {"type": "string"}, "timeout": {"type": "integer", "description": "Seconds, at most 3600."}}}},
-    {"name": "web_fetch", "description": "Fetch a public web page and return it as Markdown (headings, links, code kept); a GitHub file or repository page is read as raw text. "
-                                         "A long page is cut with a note giving the offset to continue from; find= returns only the matching lines.",
+         "command": {"type": "string"}, "timeout": {"type": "integer", "description": "Seconds, at most 1800."},
+         "background": {"type": "boolean", "description": "Return a job id at once; read with job_output, stop with job_stop."},
+         "tty": {"type": "boolean", "description": "With background: give it a terminal for job_input."},
+         "outside_sandbox": {"type": "boolean", "description": "Only when the sandbox blocks what the task needs; say why."}}}},
+    {"name": "run_script", "description": "Run Python in the sandbox where tools are functions returning text, e.g. tools.read_file(path=...), "
+                                          "tools.search(pattern=...), tools.glob(...), tools.list_dir(...), tools.symbols(...), tools.web_fetch(url=...), "
+                                          "tools.web_search(query=...), tools.fan_out(jobs=[{\"prompt\": ...}], schema={...}) -> JSON list of {job, report}. "
+                                          "Only what it prints comes back; use it for many lookups in one step.",
+     "parameters": {"type": "object", "required": ["code"], "properties": {"code": {"type": "string"}, "timeout": {"type": "integer"}}}},
+    {"name": "web_fetch", "description": "Fetch a web page as Markdown; offset reads on, find returns matching lines.",
      "parameters": {"type": "object", "required": ["url"], "properties": {
-         "url": {"type": "string"}, "max_chars": {"type": "integer"}, "offset": {"type": "integer", "description": "Character to start from, to read on in a long page."},
-         "find": {"type": "string", "description": "A word or regular expression; returns the matching lines with a little around each instead of the page."}}}},
-    {"name": "web_search", "description": "Search the web; returns titles, links and snippets. Follow a link with web_fetch. The query may use site:, -site:, filetype:, \"phrases\" and -words. "
-                                          "Write short plain queries of 3 to 6 words; if two searches miss, fetch an index page, the docs or an API URL instead. "
-                                          "Prefer primary sources (official docs, the project's own repository) and cite the links you used.",
+         "url": {"type": "string"}, "max_chars": {"type": "integer"}, "offset": {"type": "integer"}, "find": {"type": "string"}}}},
+    {"name": "web_search", "description": "Search the web.",
      "parameters": {"type": "object", "required": ["query"], "properties": {
-         "query": {"type": "string"}, "count": {"type": "integer", "description": "How many results, 1 to 15."},
-         "recency": {"type": "string", "enum": ["day", "week", "month", "year"], "description": "Only results from this long ago."}}}},
-    {"name": "web_download", "description": "Download a public file (an archive, a PDF, an image, a dataset) into the workspace, up to 50 MB.",
-     "parameters": {"type": "object", "required": ["url", "path"], "properties": {
-         "url": {"type": "string"}, "path": {"type": "string", "description": "Where to save it, relative to the workspace root."}}}},
+         "query": {"type": "string"}, "count": {"type": "integer"}, "recency": {"type": "string", "enum": ["day", "week", "month", "year"]}}}},
+    {"name": "web_download", "description": "Download a file from the web into the workspace.",
+     "parameters": {"type": "object", "required": ["url", "path"], "properties": {"url": {"type": "string"}, "path": {"type": "string"}}}},
 ]
 
 
