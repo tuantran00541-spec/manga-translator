@@ -187,6 +187,7 @@ jobs:
           MANGA_AGENT_SHA: ${{ github.sha }}
         run: |
           export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"
+          export MANGA_AGENT_UV="$(readlink -f "$(command -v uv)")"
           N=""; [ "${{ needs.config.outputs.n_tasks }}" != 0 ] && N="-l ${{ needs.config.outputs.n_tasks }}"
           TASKS="${{ needs.config.outputs.tasks }}"
           # With no task list, each shard takes every Nth task of the sorted set so hard and easy ones spread evenly.

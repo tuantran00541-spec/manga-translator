@@ -39,9 +39,13 @@ class MangaAgent(BaseInstalledAgent):
 
     @override
     async def install(self, environment: BaseEnvironment) -> None:
+        # The runner's own uv goes in first, so a task image without curl or a package manager can still install the agent.
+        await environment.upload_file(Path(os.environ["MANGA_AGENT_UV"]), "/tmp/uv-runner")
         await self.exec_as_root(
             environment,
-            command=("set -e; if ! command -v curl >/dev/null 2>&1; then "
+            command=(f"set -e; mkdir -p {HOME}/bin; if chmod 755 /tmp/uv-runner && /tmp/uv-runner --version >/dev/null 2>&1; then "
+                     f"mv /tmp/uv-runner {HOME}/bin/uv; exit 0; fi; "
+                     "if ! command -v curl >/dev/null 2>&1; then "
                      "(apt-get update && apt-get install -y curl ca-certificates) >/dev/null 2>&1 || apk add --no-cache curl ca-certificates >/dev/null 2>&1 || yum install -y curl >/dev/null 2>&1; fi; "
                      f"curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR={HOME}/bin UV_NO_MODIFY_PATH=1 sh"),
             env={"DEBIAN_FRONTEND": "noninteractive"},
