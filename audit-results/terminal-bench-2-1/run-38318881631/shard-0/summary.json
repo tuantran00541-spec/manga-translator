@@ -1,0 +1,47 @@
+{
+ "passed": 0,
+ "trials": 4,
+ "rate": 0.0,
+ "rows": [
+  {
+   "trial": "log-summary-date-ranges__besiQkj",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    51855,
+    49280,
+    347
+   ]
+  },
+  {
+   "trial": "openssl-selfsigned-cert__fbAy3Qe",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "regex-log__sbncw8Z",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "vulnerable-secret__vKnwCA9",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    47154,
+    46656,
+    282
+   ]
+  }
+ ]
+}
