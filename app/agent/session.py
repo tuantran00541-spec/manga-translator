@@ -281,6 +281,8 @@ INTENT_PROMPT = ("Before a program you wrote runs, write down how you picture th
                  "commands where possible), # Progress (one number a command can measure that falls as the work advances, or say none can be measured), "
                  "# Assumptions (what you decided without asking; mark the ones that are hard to undo), # Unclear (what only the user can settle). "
                  "Build on the earlier picture when the new request continues it. Keep it under 40 lines; reply with only the Markdown.")
+# Dollars per million input and output tokens above which a model the agent picks itself needs the user's yes.
+PRICE_CAP = (1.0, 5.0)
 INTENT_CHECK = ("[Check against intent.md: say in a line what this request has done so far. If it went off what the user asked, or you "
                 "cannot tell whether it fits, stop now and ask the user (ask_user, or end your reply with the question); if it fits but is not done, go on.]")
 HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a tool as Python code that runs in the sandbox (it is kept for later sessions). "
@@ -474,6 +476,7 @@ class AgentSession:
         self.find_provider = self.list_providers = None
         self._intent_request = 0
         self._answers: list[str] = []
+        self._paid_models: set[str] = set()
         self.role = ""
         self.role_usage: dict[str, dict] = {}
         # Past lessons are sent once at each cold start: a new or resumed session, and after a compaction.
@@ -1795,7 +1798,27 @@ class AgentSession:
         provider, key, cfg = self._source(source)
         if cfg and not roles.within(self.home if self.home is not None else Path.home(), source, cfg):
             raise ToolError(f"model source {source} has used today's budget")
+        self._price_gate(source, model.strip())
         return source, provider, key, model.strip()
+
+    def _price_gate(self, source: str, model: str) -> None:
+        """A model the agent picks itself above PRICE_CAP needs the user's yes once per session; unknown prices pass."""
+        root = self._root()
+        spec = f"{source}:{model}"
+        if spec in root._paid_models:
+            return
+        try:
+            price = next((r["price"] for r in json.loads(self._models(source, model)) if r["id"] == model), {})
+        except Exception:
+            price = {}
+        if price.get("in", 0) <= PRICE_CAP[0] and price.get("out", 0) <= PRICE_CAP[1]:
+            return
+        decision = self._wait_for_decision({"id": f"price-{uuid.uuid4().hex[:8]}", "name": "use_model",
+                                            "args": {"model": spec, "per_million_in": price.get("in"), "per_million_out": price.get("out")}})
+        if decision["decision"] == "deny":
+            raise ToolError(f"{spec} costs ${price.get('in', 0):g} in / ${price.get('out', 0):g} out per million tokens, above the "
+                            f"${PRICE_CAP[0]:g} / ${PRICE_CAP[1]:g} limit, and the user did not allow it; pick a cheaper model")
+        root._paid_models.add(spec)
 
     def _models(self, source: str = "", query: str = "") -> str:
         """The sources and roles a chain can use, or one source's models matching query with prices, as JSON."""

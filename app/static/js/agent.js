@@ -10,6 +10,7 @@
     symbols: "Symbols", web_search: "Web search", web_download: "Download", view_image: "View image", tool_search: "Find tools", run_script: "Script", fan_out: "Fan out",
     job_output: "Job output", job_input: "Type into job", job_stop: "Stop job", oracle: "Ask oracle", context_notes: "Notes", new_context: "New context",
     schedule_create: "Schedule", schedule_list: "Schedules", schedule_delete: "Cancel schedule",
+    use_model: "Use the paid model",
   };
   // How each kind of call is counted in a group's one-line summary: verb, one, many.
   const TALLY = {
@@ -138,6 +139,7 @@
     const a = c.args || {};
     if (c.name === "run_command") return `${a.command || ""}${a.outside_sandbox ? "  (outside the sandbox)" : ""}`;
     if (c.name === "search" || c.name === "glob") return `${a.pattern || ""}${a.path && a.path !== "." ? `  (${a.path})` : ""}`;
+    if (c.name === "use_model") return `${a.model || ""}  ($${a.per_million_in ?? "?"} in / $${a.per_million_out ?? "?"} out per 1M tokens)`;
     if (c.name === "web_fetch") return a.url || "";
     if (c.name === "web_search") return a.query || "";
     if (c.name === "web_download") return `${a.url || ""} to ${a.path || ""}`;

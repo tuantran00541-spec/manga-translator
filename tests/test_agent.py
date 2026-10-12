@@ -3850,6 +3850,18 @@ def test_the_model_picks_models_itself_from_any_source_with_a_key(ws, home, monk
     with pytest.raises(ToolError, match="no model source"):
         session._think("q", "", "nope:x")
     assert "Nguồn: minirouter (MiniRouter)" in session.command("/models")["message"]
+    monkeypatch.setattr(roles, "catalog", lambda base, headers, query="", limit=40: [
+        {"id": query, "price": {"in": 3.0, "out": 15.0} if query == "big/pro" else {"in": 0.9, "out": 5.0}, "context": None, "vision": False}])
+    asks = []
+    session._wait_for_decision = lambda c: (asks.append(c), {"decision": "deny"})[1]
+    assert session._think("q", "", "minirouter:small/flash") == "42" and not asks, "a model within $1 in / $5 out needs no yes"
+    with pytest.raises(ToolError, match="above the \\$1 / \\$5 limit"):
+        session._think("q", "", "minirouter:big/pro")
+    assert asks[-1]["name"] == "use_model" and asks[-1]["args"]["per_million_out"] == 15.0
+    session._wait_for_decision = lambda c: (asks.append(c), {"decision": "allow"})[1]
+    session._think("q", "", "minirouter:big/pro")
+    session._think("q", "", "minirouter:big/pro")
+    assert len(asks) == 2 and sent[-1][2] == "big/pro", "a yes lasts the session"
     session._new_request("go")
     chain = "def ask():\n    return [tools.models()['use'][:4], tools.think('6*7?', model='minirouter:a/b')]\n"
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "ask", "code": chain, "args": {}, "keep": False}})
