@@ -29,6 +29,7 @@ jobs:
       late_request: ${{ steps.cfg.outputs.late_request }}
       max_output: ${{ steps.cfg.outputs.max_output }}
       shards: ${{ steps.cfg.outputs.shards }}
+      tools: ${{ steps.cfg.outputs.tools }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,6 +62,7 @@ jobs:
           print(f"request={json.dumps(cfg.get('request') or {})}")
           print(f"late_request={json.dumps(cfg.get('late_request') or {})}")
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
+          print(f"tools={cfg.get('tools') if cfg.get('tools') in ('hybrid', 'create', 'full') else 'hybrid'}")
           print(f"shards={json.dumps(list(range(max(1, int(cfg.get('shards') or 1)))))}")
           PY
 
@@ -185,6 +187,7 @@ jobs:
           MANGA_AGENT_MODE: ${{ needs.config.outputs.mode }}
           MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
           MANGA_AGENT_SHA: ${{ github.sha }}
+          MANGA_AGENT_TOOLS: ${{ needs.config.outputs.tools }}
         run: |
           export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"
           export MANGA_AGENT_UV="$(readlink -f "$(command -v uv)")"

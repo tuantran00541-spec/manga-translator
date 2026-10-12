@@ -80,7 +80,7 @@ class MangaAgent(BaseInstalledAgent):
         mode = os.environ.get("MANGA_AGENT_MODE", "bypass")
         request = json.loads(os.environ.get("MANGA_AGENT_REQUEST") or "{}")
         late = json.loads(os.environ.get("MANGA_AGENT_LATE_REQUEST") or "{}")
-        profile = json.dumps({"advisor": True, "token_budget": 10 ** 12, "max_steps": 2000,
+        profile = json.dumps({"advisor": True, "token_budget": 10 ** 12, "max_steps": 2000, "tools": os.environ.get("MANGA_AGENT_TOOLS", "hybrid"),
                               "max_output_tokens": int(os.environ.get("MANGA_AGENT_MAX_OUTPUT", "65536")),
                               "models": {".": {"request": request, **({"late_request": late} if late else {})}}})
         var = f"MANGA_INSTRUCTION_{uuid.uuid4().hex}".upper()
