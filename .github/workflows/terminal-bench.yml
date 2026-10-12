@@ -175,6 +175,7 @@ jobs:
           PY
           # Codex gets this bridge key, never the provider key, which only the relay holds.
           export LITELLM_MASTER_KEY="sk-$(openssl rand -hex 24)"
+          echo "::add-mask::$LITELLM_MASTER_KEY"
           echo "BRIDGE_KEY=$LITELLM_MASTER_KEY" >> "$GITHUB_ENV"
           nohup litellm --config /tmp/bridge.yaml --host 0.0.0.0 --port 18081 > /tmp/bridge.log 2>&1 &
           for i in $(seq 90); do curl -sf http://127.0.0.1:18081/health/liveliness > /dev/null && break; sleep 2; done
@@ -183,7 +184,7 @@ jobs:
           tool = {"type": "function", "name": "write_file", "description": "Write text to a file.",
                   "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "text": {"type": "string"}}, "required": ["path", "text"]}}
           r = requests.post("http://127.0.0.1:18081/v1/responses", timeout=900, headers={"Authorization": f"Bearer {os.environ['LITELLM_MASTER_KEY']}"},
-                            json={"model": os.environ["MODEL"], "input": "Use the write_file tool to write OK to /tmp/ok.txt.", "tools": [tool], "reasoning": {"effort": "low"}})
+                            json={"model": os.environ["MODEL"], "input": "Use the write_file tool to write OK to /tmp/ok.txt.", "tools": [tool], "reasoning": {"effort": "medium"}})
           print(f"bridge: HTTP {r.status_code}")
           items = [i.get("type") for i in (r.json().get("output") or [])] if r.status_code == 200 else []
           print("output items:", items, r.text[:300] if r.status_code != 200 else "")
