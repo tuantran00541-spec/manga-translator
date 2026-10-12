@@ -4,7 +4,6 @@ from __future__ import annotations
 import ctypes
 from ctypes import wintypes as wt
 import os
-import subprocess
 import sys
 
 LEVELS = {"low": "S-1-16-4096", "untrusted": "S-1-16-0"}
@@ -49,9 +48,19 @@ def _check(ok, what: str):
 
 def label(path: str, level: str) -> None:
     """Give a folder (and what it holds) an integrity label, so commands at that level may write there."""
-    done = subprocess.run(["icacls", path, "/setintegritylevel", f"(OI)(CI){level}", "/Q"], capture_output=True, text=True)
-    if done.returncode:
-        raise OSError(f"icacls could not label {path}: {(done.stdout + done.stderr).strip()}")
+    advapi, kernel = ctypes.WinDLL("advapi32", use_last_error=True), ctypes.WinDLL("kernel32", use_last_error=True)
+    descriptor, sacl = ctypes.c_void_p(), ctypes.c_void_p()
+    present, defaulted = wt.BOOL(), wt.BOOL()
+    sddl = f"S:(ML;OICI;NW;;;{LEVELS[level]})"
+    _check(advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, ctypes.byref(descriptor), None), "ConvertStringSecurityDescriptor")
+    try:
+        _check(advapi.GetSecurityDescriptorSacl(descriptor, ctypes.byref(present), ctypes.byref(sacl), ctypes.byref(defaulted)), "GetSecurityDescriptorSacl")
+        # LABEL_SECURITY_INFORMATION on a file object; children that inherit take the label too.
+        error = advapi.SetNamedSecurityInfoW(ctypes.c_wchar_p(path), 1, 0x10, None, None, None, sacl)
+        if error:
+            raise OSError(f"could not label {path}: {ctypes.FormatError(error)}")
+    finally:
+        kernel.LocalFree(descriptor)
 
 
 def launch(level: str, command: str) -> int:

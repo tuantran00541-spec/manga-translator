@@ -129,7 +129,7 @@ def _os_backend() -> str:
         return "landlock" if landlock_run.abi() >= 1 else "none"
     if system == "Darwin" and shutil.which("sandbox-exec"):
         return "seatbelt"
-    if system == "Windows" and shutil.which("icacls"):
+    if system == "Windows":
         return "low-integrity"
     return "none"
 
