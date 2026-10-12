@@ -157,18 +157,40 @@ jobs:
               env.write(f"MANGA_AGENT_REQUEST={json.dumps(chosen)}\n")
           PY
 
-      - name: Check the provider serves the Responses API that Codex CLI calls
+      - name: Bridge the Responses API that Codex CLI calls onto chat completions
         if: needs.config.outputs.agent == 'codex'
         env:
           MODEL: ${{ needs.config.outputs.model }}
+          MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
         run: |
+          # The provider only serves chat completions, so LiteLLM's proxy turns Codex's Responses calls into them and sends them to the relay.
+          uv tool install -q 'litellm[proxy]==1.105.0' 2>&1 | tail -2
           python - <<'PY'
-          import os, requests, sys
-          r = requests.post(f"http://127.0.0.1:{os.environ['PORT']}/v1/responses", timeout=600,
-                            json={"model": os.environ["MODEL"], "input": "Say OK.", "max_output_tokens": 2000, "reasoning": {"effort": "low"}})
-          print(f"responses: HTTP {r.status_code}", r.text[:400])
+          import json, os
+          req = json.loads(os.environ["MANGA_AGENT_REQUEST"])
+          params = {"model": f"openai/{os.environ['MODEL']}", "api_base": f"http://127.0.0.1:{os.environ['PORT']}/v1", "api_key": "relay",
+                    "use_chat_completions_api": True, "max_tokens": int(os.environ["MAX_OUTPUT"]),
+                    **{k: req[k] for k in ("temperature", "top_p") if k in req}}
+          json.dump({"model_list": [{"model_name": os.environ["MODEL"], "litellm_params": params}]}, open("/tmp/bridge.yaml", "w"))
+          PY
+          # Codex gets this bridge key, never the provider key, which only the relay holds.
+          export LITELLM_MASTER_KEY="sk-$(openssl rand -hex 24)"
+          echo "BRIDGE_KEY=$LITELLM_MASTER_KEY" >> "$GITHUB_ENV"
+          nohup litellm --config /tmp/bridge.yaml --host 0.0.0.0 --port 18081 > /tmp/bridge.log 2>&1 &
+          for i in $(seq 90); do curl -sf http://127.0.0.1:18081/health/liveliness > /dev/null && break; sleep 2; done
+          python - <<'PY'
+          import json, os, requests, sys
+          tool = {"type": "function", "name": "write_file", "description": "Write text to a file.",
+                  "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "text": {"type": "string"}}, "required": ["path", "text"]}}
+          r = requests.post("http://127.0.0.1:18081/v1/responses", timeout=900, headers={"Authorization": f"Bearer {os.environ['LITELLM_MASTER_KEY']}"},
+                            json={"model": os.environ["MODEL"], "input": "Use the write_file tool to write OK to /tmp/ok.txt.", "tools": [tool], "reasoning": {"effort": "low"}})
+          print(f"bridge: HTTP {r.status_code}")
+          items = [i.get("type") for i in (r.json().get("output") or [])] if r.status_code == 200 else []
+          print("output items:", items, r.text[:300] if r.status_code != 200 else "")
           if r.status_code != 200:
-              sys.exit("::error::the provider does not serve /v1/responses, so Codex CLI cannot run on it")
+              sys.exit("::error::the Responses bridge does not work, so Codex CLI cannot run")
+          if "function_call" not in items:
+              print("::warning::the model answered without calling the tool through the bridge")
           PY
 
       - name: Package the harness
@@ -231,10 +253,10 @@ jobs:
           )
             export OPENAI_API_KEY=relay
           elif [ "${{ needs.config.outputs.agent }}" = "codex" ]; then
-            # Codex CLI runs in the task container and reaches the relay through the Docker gateway, like our harness.
+            # Codex CLI runs in the task container and reaches the bridge through the Docker gateway, like our harness reaches the relay.
             AGENT=(--agent codex --model "openai/$MANGA_AGENT_MODEL"
                    --ak "reasoning_effort=$(python -c 'import json,os; print(json.loads(os.environ["MANGA_AGENT_REQUEST_CFG"]).get("reasoning_effort", "high"))')")
-            export OPENAI_API_KEY=relay OPENAI_BASE_URL="$MANGA_AGENT_BASE"
+            export OPENAI_API_KEY="$BRIDGE_KEY" OPENAI_BASE_URL="http://$(cat /tmp/docker-gateway):18081/v1"
           else
             AGENT=(--agent-import-path manga_agent:MangaAgent --model "$MANGA_AGENT_MODEL")
           fi

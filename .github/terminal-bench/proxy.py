@@ -11,7 +11,7 @@ import requests
 KEY = open(sys.argv[1], encoding="utf-8").read().strip()
 STATS, PORT, UPSTREAM = sys.argv[2], int(sys.argv[3]), sys.argv[4].rstrip("/")
 # The agent calls http://relay/v1/<path>; only these paths go on, to UPSTREAM/<path>.
-ALLOWED = {"/v1/chat/completions": "/chat/completions", "/v1/responses": "/responses", "/v1/models": "/models"}
+ALLOWED = {"/v1/chat/completions": "/chat/completions", "/v1/models": "/models"}
 MAX_BODY = 16_000_000
 # Status counts and the first 429 show whether the provider starts throttling the key.
 stats = {"requests": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0, "status": {}, "first_429": None}
@@ -80,15 +80,13 @@ class Relay(BaseHTTPRequestHandler):
         for piece in tail.decode("utf-8", "ignore").split("\n"):
             piece = piece[5:].strip() if piece.startswith("data:") else piece
             try:
-                row = json.loads(piece)
-                # Responses API events carry usage inside "response".
-                usage = row.get("usage") or (row.get("response") or {}).get("usage")
+                usage = json.loads(piece).get("usage")
             except (ValueError, AttributeError):
                 continue
             if isinstance(usage, dict):
                 with lock:
-                    stats["prompt_tokens"] += int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
-                    stats["completion_tokens"] += int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+                    stats["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
+                    stats["completion_tokens"] += int(usage.get("completion_tokens") or 0)
         flush()
 
     do_GET = do_POST = handle_any
