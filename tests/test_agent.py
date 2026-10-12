@@ -3901,3 +3901,19 @@ def test_the_command_line_waits_for_the_learning_review_before_exiting(ws, home,
     assert cli.main(["exec", "list it", "--base", "https://api.example.com/v1", "--model", "m", "--workspace", str(ws.root), "--json"]) == 0
     notes = list((home / ".manga-agent" / "lessons").rglob("*.md"))
     assert notes and "Listed the folder" in notes[0].read_text(), "the review finished before the process ended"
+
+
+def test_late_request_fields_take_over_in_the_last_third_of_a_clocked_run(ws, home, monkeypatch):
+    from app.agent import session as session_module
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"models": {".": {"request": {"reasoning_effort": "xhigh", "top_p": 0.9},
+                                                                                     "late_request": {"reasoning_effort": "medium"}}}}))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    assert session._request_fields() == {"reasoning_effort": "xhigh", "top_p": 0.9}, "no clock, no switch"
+    now = [1000.0]
+    monkeypatch.setattr(session_module.time, "time", lambda: now[0])
+    session.set_deadline(900)
+    now[0] += 590
+    assert session._request_fields()["reasoning_effort"] == "xhigh"
+    now[0] += 20
+    assert session._request_fields() == {"reasoning_effort": "medium", "top_p": 0.9}, "past two thirds of the clock the late fields win"

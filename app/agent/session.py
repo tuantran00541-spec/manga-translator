@@ -93,6 +93,7 @@ KEEP_RECENT_CHARS = 60_000
 COMPACT_REARM = 1.25  # After a compaction, the context must grow by this factor before the next one.
 ROLLOVER_KEEP_CHARS = 15_000
 WINDOW_SHARE = 0.8  # Compact at this share of the model's real window, leaving room for the reply (pi keeps a reserve the same way).
+LATE_SHARE = 1 / 3  # The share of a run's clock left when late_request replaces the usual request fields.
 TIME_GRACE_S = 180  # The agent writes its report this long before a run's clock stops it.
 TIME_NOTICE = "[Time notice] About {minutes} minutes are left. Finish the step you are on, then stop calling tools and report what you did, what is not finished, and what you would do next."
 FILE_BLOCK = re.compile(r"<(read|modified)-files>\n(.*?)\n</\1-files>", re.S)
@@ -430,6 +431,7 @@ class AgentSession:
         self._last_prompt = (0, 0)
         self._after_compact = 0
         self._deadline = self._notice_at = 0.0
+        self._clock: tuple[float, float] | None = None
         self.schedules: list[dict] = []
         self._watch = watch.Watch(workspace.root)
         self.asked_s = 0.0
@@ -911,7 +913,7 @@ class AgentSession:
         while True:
             key = root.api_key if api_key in root.api_keys else api_key
             token = client.ASK_ON_LIMIT.set(key == root.api_key and len(root.api_keys) > 1)
-            extra = client.REQUEST_EXTRA.set(self.quirks.get("request") if isinstance(self.quirks.get("request"), dict) else {})
+            extra = client.REQUEST_EXTRA.set(self._request_fields())
             try:
                 return self._raw_complete(provider, key, *args, **kwargs)
             except client.KeyLimited as exc:
@@ -920,6 +922,14 @@ class AgentSession:
             finally:
                 client.REQUEST_EXTRA.reset(extra)
                 client.ASK_ON_LIMIT.reset(token)
+
+    def _request_fields(self) -> dict:
+        """Extra request fields for this model; with a clock, late_request takes over in the last third (say, less reasoning when time runs short)."""
+        fields = dict(self.quirks.get("request")) if isinstance(self.quirks.get("request"), dict) else {}
+        clock, late = self._root()._clock, self.quirks.get("late_request")
+        if clock and isinstance(late, dict) and time.time() - clock[0] > clock[1] * (1 - LATE_SHARE):
+            fields.update(late)
+        return fields
 
     def _ask_next_key(self, key: str, detail: str) -> bool:
         """Waits for the user's answer; True once a different key is in use."""
@@ -2461,6 +2471,7 @@ class AgentSession:
     def set_deadline(self, seconds: float) -> None:
         """A run with a clock (the CLI's --timeout-min): the agent is warned, then asked for its report before the clock stops it (omp's forced final report)."""
         grace = min(TIME_GRACE_S, seconds * 0.1)
+        self._clock = (time.time(), float(seconds))
         self._deadline = time.time() + seconds - grace
         self._notice_at = self._deadline - grace * 2
 

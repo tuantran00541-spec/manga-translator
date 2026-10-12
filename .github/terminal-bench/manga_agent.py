@@ -2,6 +2,7 @@
 import json
 import os
 import shlex
+import tomllib
 import uuid
 from pathlib import Path
 from typing import override
@@ -54,17 +55,30 @@ class MangaAgent(BaseInstalledAgent):
                      f"chmod -R a+rX {HOME}"),
         )
 
+    def _minutes(self) -> int:
+        """The task's own agent time limit less a minute for start-up, so the agent's clock matches the one that stops it."""
+        cap = int(os.environ.get("MANGA_AGENT_MINUTES", "60"))
+        task = Path(self.logs_dir).parent.name.split("__")[0]
+        try:
+            with open(Path(os.environ.get("MANGA_AGENT_TASKS_DIR", "/tmp/tb21/tasks")) / task / "task.toml", "rb") as f:
+                seconds = float(tomllib.load(f)["agent"]["timeout_sec"])
+        except (OSError, KeyError, ValueError, tomllib.TOMLDecodeError):
+            return cap
+        return max(1, min(cap, int(seconds // 60) - 1))
+
     @override
     @with_prompt_template
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         base = os.environ["MANGA_AGENT_BASE"]
         model = os.environ["MANGA_AGENT_MODEL"]
-        minutes = int(os.environ.get("MANGA_AGENT_MINUTES", "60"))
+        minutes = self._minutes()
         # The task container is the sandbox, so nobody approves calls by default (bypass), as in the other harnesses Harbor runs.
         mode = os.environ.get("MANGA_AGENT_MODE", "bypass")
         request = json.loads(os.environ.get("MANGA_AGENT_REQUEST") or "{}")
+        late = json.loads(os.environ.get("MANGA_AGENT_LATE_REQUEST") or "{}")
         profile = json.dumps({"advisor": True, "token_budget": 10 ** 12, "max_steps": 2000,
-                              "max_output_tokens": int(os.environ.get("MANGA_AGENT_MAX_OUTPUT", "65536")), "models": {".": {"request": request}}})
+                              "max_output_tokens": int(os.environ.get("MANGA_AGENT_MAX_OUTPUT", "65536")),
+                              "models": {".": {"request": request, **({"late_request": late} if late else {})}}})
         var = f"MANGA_INSTRUCTION_{uuid.uuid4().hex}".upper()
         env = {"AGENT_API_KEY": "relay", "PYTHONPATH": f"{HOME}/src", "HOME": f"{HOME}/home", var: instruction}
         await self.exec_as_agent(

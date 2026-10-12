@@ -26,6 +26,7 @@ jobs:
       minutes: ${{ steps.cfg.outputs.minutes }}
       mode: ${{ steps.cfg.outputs.mode }}
       request: ${{ steps.cfg.outputs.request }}
+      late_request: ${{ steps.cfg.outputs.late_request }}
       max_output: ${{ steps.cfg.outputs.max_output }}
     steps:
       - uses: actions/checkout@v4
@@ -52,11 +53,12 @@ jobs:
           print(f"base={cfg['base_url'].rstrip('/')}")
           print(f"model={cfg['model']}")
           print(f"n_tasks={int(cfg.get('n_tasks') or 0)}")
-          print(f"tasks={' '.join('-t ' + re.sub(r'[^A-Za-z0-9_.-]', '', t) for t in cfg.get('tasks') or [])}")
+          print(f"tasks={' '.join('-i ' + re.sub(r'[^A-Za-z0-9_.-]', '', t) for t in cfg.get('tasks') or [])}")
           print(f"concurrent={int(cfg.get('concurrent') or 2)}")
           print(f"minutes={int(cfg.get('minutes') or 60)}")
           print(f"mode={cfg.get('mode') if cfg.get('mode') in ('bypass', 'auto') else 'bypass'}")
           print(f"request={json.dumps(cfg.get('request') or {})}")
+          print(f"late_request={json.dumps(cfg.get('late_request') or {})}")
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
           PY
 
@@ -172,6 +174,8 @@ jobs:
           MANGA_AGENT_TGZ: /tmp/manga-agent.tgz
           MANGA_AGENT_MODEL: ${{ needs.config.outputs.model }}
           MANGA_AGENT_MINUTES: ${{ needs.config.outputs.minutes }}
+          MANGA_AGENT_TASKS_DIR: /tmp/tb21/tasks
+          MANGA_AGENT_LATE_REQUEST: ${{ needs.config.outputs.late_request }}
           MANGA_AGENT_MODE: ${{ needs.config.outputs.mode }}
           MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
           MANGA_AGENT_SHA: ${{ github.sha }}
