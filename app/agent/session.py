@@ -280,6 +280,8 @@ INTENT_PROMPT = ("Before a program you wrote runs, write down how you picture th
                  "commands where possible), # Progress (one number a command can measure that falls as the work advances, or say none can be measured), "
                  "# Assumptions (what you decided without asking; mark the ones that are hard to undo), # Unclear (what only the user can settle). "
                  "Build on the earlier picture when the new request continues it. Keep it under 40 lines; reply with only the Markdown.")
+INTENT_CHECK = ("[Check against intent.md: say in a line what this request has done so far. If it went off what the user asked, or you "
+                "cannot tell whether it fits, stop now and ask the user (ask_user, or end your reply with the question); if it fits but is not done, go on.]")
 HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a tool as Python code that runs in the sandbox (it is kept for later sessions). "
                  "Use the built-in tools while exploring or debugging step by step; when the steps are known, write them as one chain with create so they "
                  "run in a single call. Inside a chain tools.<name>(...) also calls the built-in tools (read_file, edit_file, run_command and the rest) and "
@@ -1549,7 +1551,8 @@ class AgentSession:
             # A tool that runs programs and changed nothing counts as a check, like a command did.
             self._dirty = False
             self._run_seq = self._edit_seq + 1
-        return note + output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "")
+        check = f"\n{INTENT_CHECK}" if not self.depth and self.profile["intent"] and self._intent(write=False) else ""
+        return note + output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "") + check
 
     def _intent(self, write: bool = True) -> str:
         """The request as the model pictures it, in intent.md; written once per request by the root session and built on the last one."""
@@ -1703,7 +1706,7 @@ class AgentSession:
 
     def _note_one_off(self, name: str, tool: dict, output: str) -> str:
         """A one-off chain that ends cleanly is remembered; the same one ending cleanly twice becomes a kept tool."""
-        if not tool or "[exit code 0]" not in output[-200:]:
+        if not tool or "[exit code 0]" not in output.removesuffix("\n" + INTENT_CHECK)[-200:]:
             return ""
         key = hashlib.sha1(tool["code"].encode()).hexdigest()
         row = self._one_offs.setdefault(key, {"name": name, "tool": tool, "runs": 0})

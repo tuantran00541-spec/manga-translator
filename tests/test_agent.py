@@ -3873,6 +3873,7 @@ def test_the_first_chain_of_a_request_writes_how_the_model_pictures_it(ws, home)
     chain = "def look():\n    return tools.intent()\n"
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "look", "code": chain, "args": {}, "keep": False}})
     assert "fix dates v1" in out and "```" not in out, out
+    assert out.rstrip().endswith("if it fits but is not done, go on.]"), "each chain ends with the check against the picture"
     session._session_tool({"id": "d", "name": "create", "args": {"name": "look2", "code": chain.replace("look", "look2"), "args": {}, "keep": False}})
     assert len(asked) == 1, "one picture per request"
     session.history.append({"role": "user", "content": "also keep the API", "from_user": True})
