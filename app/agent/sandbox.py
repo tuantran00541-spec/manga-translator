@@ -64,7 +64,9 @@ class Policy:
             return (f"Commands run in a Linux container ({settings()['image']}): the workspace is mounted {mount} at /workspace and nothing else "
                     f"of this machine is visible; use /workspace paths in commands; network {net}.")
         if kind == "low-integrity":
-            where = "nowhere except a private temp folder" if self.mode == "read-only" else f"only inside {root} and a private temp folder"
+            where = f"only inside {root} and a private temp folder"
+            if self.mode == "read-only":
+                where += " (read-only is not enforced inside a workspace an earlier session opened for writing; do not write there)"
             return f"Commands run at low integrity: they can write {where}, but can still read files and use the network."
         where = "nowhere except a private temp folder" if self.mode == "read-only" else f"only inside {root} and the temp folder"
         return f"Commands run in a sandbox: they can read everything except credential folders, write {where}; network {net}."
@@ -171,13 +173,11 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
     if kind == "low-integrity":
         from app.agent import win_low
 
-        # Read-only commands get a write-restricted token, since a workspace keeps the low label from earlier writing sessions.
-        reading = policy.mode == "read-only"
-        win_low.label(scratch, read_only=reading)
-        if not reading and str(root) not in _labelled:
+        win_low.label(scratch)
+        if policy.mode == "workspace-write" and str(root) not in _labelled:
             win_low.label(str(root))
             _labelled.add(str(root))
-        return [sys.executable, str(Path(__file__).with_name("win_low.py")), "read" if reading else "write", "--", command], False
+        return [sys.executable, str(Path(__file__).with_name("win_low.py")), "--", command], False
     if kind == "landlock":
         # The launcher runs by file path, so the user's project never sees this app on its import path.
         args = [sys.executable, str(Path(__file__).with_name("landlock_run.py"))]

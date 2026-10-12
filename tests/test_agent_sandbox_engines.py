@@ -75,14 +75,16 @@ def test_windows_commands_write_only_inside_the_workspace(tmp_path, home):
 
 
 @pytest.mark.skipif(not WINDOWS, reason="the low-integrity sandbox is Windows only")
-def test_windows_read_only_commands_cannot_write_a_workspace_an_earlier_session_opened(tmp_path, home):
-    root = tmp_path / "ws"
+def test_windows_read_only_commands_read_but_cannot_write_a_fresh_workspace_or_outside(tmp_path, home):
+    root, outside = tmp_path / "ws", Path(tempfile.mkdtemp(prefix="outside-"))
     root.mkdir()
-    assert _run("echo first> a.txt", root)[0] == 0
-    code, out = _run("echo again> b.txt", root, mode="read-only")
-    assert code != 0 and not (root / "b.txt").exists(), out
+    (root / "a.txt").write_text("first")
     code, out = _run('python -c "print(open(\'a.txt\').read())"', root, mode="read-only")
     assert code == 0 and "first" in out, out
+    code, out = _run("echo again> b.txt", root, mode="read-only")
+    assert code != 0 and not (root / "b.txt").exists(), out
+    code, out = _run(f'echo bad> "{outside / "x.txt"}"', root, mode="read-only")
+    assert code != 0 and not (outside / "x.txt").exists(), out
 
 
 @pytest.mark.skipif(not WINDOWS, reason="the low-integrity sandbox is Windows only")
