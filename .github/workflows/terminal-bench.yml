@@ -65,7 +65,7 @@ jobs:
           print(f"request={json.dumps(cfg.get('request') or {})}")
           print(f"late_request={json.dumps(cfg.get('late_request') or {})}")
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
-          print(f"agent={cfg.get('agent') if cfg.get('agent') in ('chaos', 'terminus-2', 'codex') else 'chaos'}")
+          print(f"agent={cfg.get('agent') if cfg.get('agent') in ('chaos', 'terminus-2', 'codex', 'claude-code') else 'chaos'}")
           print(f"tools={cfg.get('tools') if cfg.get('tools') in ('hybrid', 'create', 'full') else 'hybrid'}")
           total = max(1, int(cfg.get('shards') or 1))
           # only_shards reruns some shards of a split, which keep the tasks they had in the full split.
@@ -179,6 +179,20 @@ jobs:
               sys.exit("::error::the provider's Responses API does not answer, so Codex CLI cannot run")
           PY
 
+      - name: Check the provider's Messages API that Claude Code calls
+        if: needs.config.outputs.agent == 'claude-code'
+        env:
+          MODEL: ${{ needs.config.outputs.model }}
+        run: |
+          python - <<'PY'
+          import os, requests, sys
+          r = requests.post(f"http://127.0.0.1:{os.environ['PORT']}/v1/messages", timeout=600, headers={"anthropic-version": "2023-06-01"},
+                            json={"model": os.environ["MODEL"], "max_tokens": 2000, "messages": [{"role": "user", "content": "Say OK."}]})
+          print(f"messages: HTTP {r.status_code}", r.text[:300])
+          if r.status_code != 200:
+              sys.exit("::error::the provider's Messages API does not answer, so Claude Code cannot run")
+          PY
+
       - name: Package the harness
         run: |
           python -m pip install -q -r requirements-test.txt
@@ -243,6 +257,11 @@ jobs:
             AGENT=(--agent codex --model "openai/$MANGA_AGENT_MODEL"
                    --ak "reasoning_effort=$(python -c 'import json,os; print(json.loads(os.environ["MANGA_AGENT_REQUEST_CFG"]).get("reasoning_effort", "high"))')")
             export OPENAI_API_KEY=relay OPENAI_BASE_URL="$MANGA_AGENT_BASE"
+          elif [ "${{ needs.config.outputs.agent }}" = "claude-code" ]; then
+            # Claude Code runs in the task container and calls the provider's Messages API through the relay.
+            AGENT=(--agent claude-code --model "anthropic/$MANGA_AGENT_MODEL"
+                   --ak "reasoning_effort=$(python -c 'import json,os; print(json.loads(os.environ["MANGA_AGENT_REQUEST_CFG"]).get("reasoning_effort", "high"))')")
+            export ANTHROPIC_API_KEY=relay ANTHROPIC_BASE_URL="http://$(cat /tmp/docker-gateway):$PORT"
           else
             AGENT=(--agent-import-path manga_agent:MangaAgent --model "$MANGA_AGENT_MODEL")
           fi
