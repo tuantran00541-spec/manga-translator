@@ -322,9 +322,8 @@
   .chaos-runes { fill: var(--text-primary); stroke: none; font: 600 11px/1 "Noto Sans CJK JP", sans-serif; letter-spacing: 3px; }
   .chaos-letters { fill: none; stroke: var(--text-primary); stroke-width: 24px; stroke-linejoin: miter; stroke-miterlimit: 8; stroke-linecap: butt; }
   .chaos-letters .chaos-blade { fill: var(--text-primary); stroke: var(--text-primary); stroke-width: 3px; }
-  .chaos-eye-lid { fill: none; stroke: #d0121b; stroke-width: 20px; stroke-linejoin: miter; }
-  .chaos-eye-glow { fill: none; stroke: #ff2a36; stroke-width: 26px; opacity: .55; }
-  .chaos-pupil { fill: #d0121b; }
+  .chaos-eye-lid { fill: none; stroke-width: 20px; stroke-linejoin: miter; }
+  .chaos-eye-glow { fill: none; stroke-width: 26px; opacity: .55; }
   .chaos-slash { fill: var(--text-primary); opacity: .85; }
   .chaos-kana { font: 900 22px/1 "Hiragino Sans", "Noto Sans CJK JP", "Yu Gothic", sans-serif; fill: var(--text-primary); }
   @media (prefers-reduced-motion: no-preference) {

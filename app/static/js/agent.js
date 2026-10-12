@@ -599,7 +599,7 @@
     const a = -Math.PI / 2 + (i * 3 * 2 * Math.PI) / 7;
     return `${i ? "L" : "M"}${(300 + Math.cos(a) * 104).toFixed(1)} ${(130 + Math.sin(a) * 104).toFixed(1)}`;
   }).join("") + "Z";
-  // The title drawn like a webtoon logo: blade-cut letters, worn ink, a magic circle and a red eye for the O.
+  // The title drawn like a webtoon logo: blade-cut letters, worn ink, a magic circle and a red eye for the O (the one colour, kept in the art, not the layout CSS).
   const CHAOS_MARK = `<svg class="chaos-mark" viewBox="0 0 600 260" role="img" aria-label="Chaos">
     <defs>
       <filter id="chaos-worn" x="-5%" y="-5%" width="110%" height="110%">
@@ -635,9 +635,9 @@
         <path d="M452 168L420 196L462 162Z" class="chaos-blade"/>
       </g>
       <g class="chaos-eye">
-        <path d="M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z" class="chaos-eye-glow" filter="url(#chaos-glow)"/>
-        <path d="M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z" class="chaos-eye-lid"/>
-        <path d="M408 88L418 120L408 152L398 120Z" class="chaos-pupil"/>
+        <path d="M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z" class="chaos-eye-glow" stroke="#ff2a36" filter="url(#chaos-glow)"/>
+        <path d="M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z" class="chaos-eye-lid" stroke="#d0121b"/>
+        <path d="M408 88L418 120L408 152L398 120Z" class="chaos-pupil" fill="#d0121b"/>
       </g>
     </g>
     <path class="chaos-slash" d="M496 10L486 10L106 252L112 254Z"/>
