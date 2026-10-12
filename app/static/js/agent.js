@@ -590,28 +590,59 @@
     }
   }
 
-  // Speed lines for the title burst, fixed so the mark looks the same on every visit.
-  const BURST = Array.from({ length: 56 }, (_, i) => {
-    const angle = (i / 56) * Math.PI * 2 + ((i * 37) % 11) / 40;
-    const inner = 118 + ((i * 53) % 7) * 9, outer = 300 + ((i * 29) % 5) * 22;
-    const width = 1 + ((i * 17) % 4);
-    return `<path d="M${(260 + Math.cos(angle) * inner).toFixed(1)} ${(130 + Math.sin(angle) * inner * 0.62).toFixed(1)}L${(260 + Math.cos(angle) * outer).toFixed(1)} ${(130 + Math.sin(angle) * outer * 0.62).toFixed(1)}" stroke-width="${width}"/>`;
+  // Ticks and runes of the magic circle behind the title, fixed so the mark looks the same on every visit.
+  const TICKS = Array.from({ length: 72 }, (_, i) => {
+    const a = (i / 72) * Math.PI * 2, r1 = i % 6 ? 122 : 114;
+    return `<path d="M${(300 + Math.cos(a) * r1).toFixed(1)} ${(130 + Math.sin(a) * r1).toFixed(1)}L${(300 + Math.cos(a) * 128).toFixed(1)} ${(130 + Math.sin(a) * 128).toFixed(1)}"/>`;
   }).join("");
-  const CHAOS_MARK = `<svg class="chaos-mark" viewBox="0 0 520 260" role="img" aria-label="Chaos">
+  const STAR = Array.from({ length: 7 }, (_, i) => {
+    const a = -Math.PI / 2 + (i * 3 * 2 * Math.PI) / 7;
+    return `${i ? "L" : "M"}${(300 + Math.cos(a) * 104).toFixed(1)} ${(130 + Math.sin(a) * 104).toFixed(1)}`;
+  }).join("") + "Z";
+  // The title drawn like a webtoon logo: blade-cut letters, worn ink, a magic circle and a red eye for the O.
+  const CHAOS_MARK = `<svg class="chaos-mark" viewBox="0 0 600 260" role="img" aria-label="Chaos">
     <defs>
-      <pattern id="chaos-tone" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><circle cx="3.5" cy="3.5" r="1.6"/></pattern>
-      <clipPath id="chaos-clip"><text x="260" y="168" text-anchor="middle" class="chaos-word">CHAOS</text></clipPath>
+      <filter id="chaos-worn" x="-5%" y="-5%" width="110%" height="110%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="2" seed="7" result="grain"/>
+        <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 16 -10.4" result="holes"/>
+        <feComposite in="SourceGraphic" in2="holes" operator="out" result="speckled"/>
+        <feTurbulence type="turbulence" baseFrequency="0.04" numOctaves="2" seed="3" result="warp"/>
+        <feDisplacementMap in="speckled" in2="warp" scale="3"/>
+      </filter>
+      <filter id="chaos-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter>
+      <path id="chaos-ring" d="M300 130m-138 0a138 138 0 1 1 276 0a138 138 0 1 1 -276 0"/>
+      <mask id="chaos-cut">
+        <rect width="600" height="260" fill="#fff"/>
+        <path d="M498 14L120 252L108 248L486 10Z" fill="#000"/>
+        <path d="M560 40L230 256L222 252L552 36Z" fill="#000"/>
+      </mask>
     </defs>
-    <g class="chaos-burst">${BURST}</g>
-    <g transform="rotate(-6 260 140) skewX(-10)">
-      <text x="270" y="178" text-anchor="middle" class="chaos-word chaos-ink">CHAOS</text>
-      <text x="260" y="168" text-anchor="middle" class="chaos-word chaos-face">CHAOS</text>
-      <rect x="0" y="100" width="520" height="80" class="chaos-tone" clip-path="url(#chaos-clip)"/>
-      <text x="260" y="168" text-anchor="middle" class="chaos-word chaos-line">CHAOS</text>
+    <g class="chaos-circle">
+      <circle cx="300" cy="130" r="128"/><circle cx="300" cy="130" r="112"/><circle cx="300" cy="130" r="60"/>
+      <g class="chaos-ticks">${TICKS}</g>
+      <path d="${STAR}"/>
+      <text class="chaos-runes"><textPath href="#chaos-ring">✦ CHAOS ✦ カオス ✦ 混沌 ✦ CHAOS ✦ カオス ✦ 混沌 ✦ CHAOS ✦ カオス ✦</textPath></text>
     </g>
-    <text x="500" y="44" class="chaos-kana">カ</text><text x="500" y="70" class="chaos-kana">オ</text><text x="500" y="96" class="chaos-kana">ス</text>
-    <path class="chaos-spark" d="M78 52l5 15 15 5-15 5-5 15-5-15-15-5 15-5z"/>
-    <path class="chaos-spark" d="M440 204l3 9 9 3-9 3-3 9-3-9-9-3 9-3z"/>
+    <g transform="skewX(-12) translate(28 0)" mask="url(#chaos-cut)">
+      <g class="chaos-letters" filter="url(#chaos-worn)">
+        <path d="M150 74L94 66L68 120L88 174L148 166"/>
+        <path d="M150 74L172 40L160 80Z" class="chaos-blade"/>
+        <path d="M176 62L176 176M244 58L244 172M176 120L244 112"/>
+        <path d="M176 176L168 214L188 176Z" class="chaos-blade"/>
+        <path d="M262 176L310 56L356 176M282 134L340 130"/>
+        <path d="M310 56L322 22L318 64Z" class="chaos-blade"/>
+        <path d="M542 70L478 64L462 104L534 124L522 172L452 168"/>
+        <path d="M452 168L420 196L462 162Z" class="chaos-blade"/>
+      </g>
+      <g class="chaos-eye">
+        <path d="M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z" class="chaos-eye-glow" filter="url(#chaos-glow)"/>
+        <path d="M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z" class="chaos-eye-lid"/>
+        <path d="M408 88L418 120L408 152L398 120Z" class="chaos-pupil"/>
+      </g>
+    </g>
+    <path class="chaos-slash" d="M496 10L486 10L106 252L112 254Z"/>
+    <path class="chaos-slash" d="M558 34L552 36L222 254L228 256Z"/>
+    <text x="572" y="60" class="chaos-kana">カ</text><text x="572" y="86" class="chaos-kana">オ</text><text x="572" y="112" class="chaos-kana">ス</text>
   </svg>`;
 
   function emptyState() {

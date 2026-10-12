@@ -315,20 +315,23 @@
   .agent-session-del { padding: 4px 6px; border: 0; background: none; color: var(--text-quiet); font: inherit; font-size: 12px; cursor: pointer; }
   .agent-log { display: flex; flex: 1 1 auto; flex-direction: column; gap: 14px; padding: 8px 0 24px; }
   .agent-empty { display: grid; place-items: center; margin: auto 0; padding: 8vh 0 0; }
-  /* The Chaos title drawn like a manga logo: speed lines, screentone, inked outline and an offset ink shadow. */
-  .chaos-mark { width: min(520px, 100%); height: auto; color: var(--text-primary); overflow: visible; }
-  .chaos-burst { stroke: var(--text-primary); opacity: .22; stroke-linecap: round; }
-  .chaos-word { font: italic 900 116px/1 Impact, "Arial Black", "Helvetica Neue", "DejaVu Sans", sans-serif; letter-spacing: -2px; }
-  .chaos-ink { fill: var(--text-primary); }
-  .chaos-face { fill: var(--surface-canvas); }
-  .chaos-tone { fill: url(#chaos-tone); }
-  #chaos-tone circle { fill: var(--text-primary); opacity: .55; }
-  .chaos-line { fill: none; stroke: var(--text-primary); stroke-width: 5px; stroke-linejoin: round; paint-order: stroke; }
+  /* The Chaos title drawn like a webtoon logo: a faint magic circle, blade-cut worn letters and a red eye. */
+  .chaos-mark { width: min(600px, 100%); height: auto; color: var(--text-primary); overflow: visible; }
+  .chaos-circle { fill: none; stroke: var(--text-primary); stroke-width: 1.2; opacity: .2; transform-origin: 300px 130px; }
+  .chaos-ticks { stroke-width: 1.5; }
+  .chaos-runes { fill: var(--text-primary); stroke: none; font: 600 11px/1 "Noto Sans CJK JP", sans-serif; letter-spacing: 3px; }
+  .chaos-letters { fill: none; stroke: var(--text-primary); stroke-width: 24px; stroke-linejoin: miter; stroke-miterlimit: 8; stroke-linecap: butt; }
+  .chaos-letters .chaos-blade { fill: var(--text-primary); stroke: var(--text-primary); stroke-width: 3px; }
+  .chaos-eye-lid { fill: none; stroke: #d0121b; stroke-width: 20px; stroke-linejoin: miter; }
+  .chaos-eye-glow { fill: none; stroke: #ff2a36; stroke-width: 26px; opacity: .55; }
+  .chaos-pupil { fill: #d0121b; }
+  .chaos-slash { fill: var(--text-primary); opacity: .85; }
   .chaos-kana { font: 900 22px/1 "Hiragino Sans", "Noto Sans CJK JP", "Yu Gothic", sans-serif; fill: var(--text-primary); }
-  .chaos-spark { fill: var(--text-primary); }
   @media (prefers-reduced-motion: no-preference) {
-    .chaos-mark:hover .chaos-burst { animation: chaos-shake .35s steps(3) infinite; }
-    @keyframes chaos-shake { 33% { transform: translate(2px, -1px); } 66% { transform: translate(-2px, 1px); } }
+    .chaos-circle { animation: chaos-turn 90s linear infinite; }
+    .chaos-pupil { animation: chaos-blink 6s ease-in-out infinite; transform-origin: 408px 120px; transform-box: view-box; }
+    @keyframes chaos-turn { to { transform: rotate(360deg); } }
+    @keyframes chaos-blink { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
   }
   .agent-user { align-self: flex-end; max-width: 82%; padding: 9px 14px; border-radius: 18px; background: var(--surface-quiet); white-space: pre-wrap; overflow-wrap: anywhere; }
   .agent-refs { display: block; margin-top: 4px; color: var(--text-quiet); font-size: 12px; }
