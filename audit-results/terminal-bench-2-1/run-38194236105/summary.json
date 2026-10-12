@@ -1,0 +1,577 @@
+{
+ "passed": 32,
+ "trials": 57,
+ "rate": 0.561,
+ "rows": [
+  {
+   "trial": "adaptive-rejection-sampler__SYL9mQM",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "bn-fit-modify__aerGUyH",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    775178,
+    590400,
+    68824
+   ]
+  },
+  {
+   "trial": "break-filter-js-from-html__pVhZCcA",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    368835,
+    268800,
+    178512
+   ]
+  },
+  {
+   "trial": "build-cython-ext__9L8JQUz",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "build-pmars__NfdoCsZ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1170737,
+    900800,
+    65552
+   ]
+  },
+  {
+   "trial": "build-pov-ray__nHXBQv7",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2444986,
+    2008000,
+    106108
+   ]
+  },
+  {
+   "trial": "caffe-cifar-10__qdBATiK",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1571297,
+    1209600,
+    124899
+   ]
+  },
+  {
+   "trial": "cancel-async-tasks__ar2fEMo",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "chess-best-move__Fzyjy7G",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "circuit-fibsqrt__94RAWPe",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1156972,
+    953600,
+    516545
+   ]
+  },
+  {
+   "trial": "cobol-modernization__zE8TtFt",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "code-from-image__6eRz9s7",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "compile-compcert__Hniv5BN",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3445506,
+    2868800,
+    160856
+   ]
+  },
+  {
+   "trial": "configure-git-webserver__4YPvbS4",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    172901,
+    115200,
+    25687
+   ]
+  },
+  {
+   "trial": "constraints-scheduling__CJbRuNE",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    184003,
+    128000,
+    25621
+   ]
+  },
+  {
+   "trial": "count-dataset-tokens__DUnwmtk",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    659495,
+    504000,
+    44058
+   ]
+  },
+  {
+   "trial": "crack-7z-hash__XuUaSDs",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    167238,
+    104000,
+    8183
+   ]
+  },
+  {
+   "trial": "custom-memory-heap-crash__a88Rhxq",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    906105,
+    699200,
+    110406
+   ]
+  },
+  {
+   "trial": "db-wal-recovery__R3suBpV",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    381178,
+    273600,
+    71493
+   ]
+  },
+  {
+   "trial": "distribution-search__jv8ndog",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    179381,
+    126400,
+    83198
+   ]
+  },
+  {
+   "trial": "dna-assembly__FzWCij7",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "dna-insert__qCcmjhx",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    584778,
+    464000,
+    119008
+   ]
+  },
+  {
+   "trial": "extract-elf__KUJrWQM",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "extract-moves-from-video__HMhhg9c",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "feal-differential-cryptanalysis__NhczbDx",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "feal-linear-cryptanalysis__cbCaNM8",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "filter-js-from-html__vzQPhJi",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "financial-document-processor__oo97piS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    401516,
+    300800,
+    25148
+   ]
+  },
+  {
+   "trial": "fix-code-vulnerability__duotHhS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    197548,
+    140800,
+    10267
+   ]
+  },
+  {
+   "trial": "fix-git__WNr6mSe",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    159182,
+    99200,
+    19987
+   ]
+  },
+  {
+   "trial": "fix-ocaml-gc__aF4rZEx",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2781881,
+    2377600,
+    145028
+   ]
+  },
+  {
+   "trial": "gcode-to-text__CiiNchB",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1086858,
+    886400,
+    109016
+   ]
+  },
+  {
+   "trial": "git-leak-recovery__PwJAWRF",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    285014,
+    196800,
+    27423
+   ]
+  },
+  {
+   "trial": "git-multibranch__6pukZhG",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    410776,
+    281600,
+    55436
+   ]
+  },
+  {
+   "trial": "gpt2-codegolf__phAps3H",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "headless-terminal__UoP4zJe",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "hf-model-inference__BDaj6wz",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    285368,
+    196800,
+    43750
+   ]
+  },
+  {
+   "trial": "install-windows-3.11__Z5wYjwL",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "kv-store-grpc__Jm7bMWg",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    146793,
+    91200,
+    13435
+   ]
+  },
+  {
+   "trial": "large-scale-text-editing__YeDVkCt",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    525814,
+    419200,
+    72658
+   ]
+  },
+  {
+   "trial": "largest-eigenval__RF76LbW",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1388072,
+    1123200,
+    149803
+   ]
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__9zhtpyX",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "log-summary-date-ranges__wAuH4qR",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    73822,
+    44800,
+    6073
+   ]
+  },
+  {
+   "trial": "mailman__SCRXdRq",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "make-doom-for-mips__7d3BiK4",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "make-mips-interpreter__zNmEn2H",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "mcmc-sampling-stan__aSwbAnj",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__aREgMpZ",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "model-extraction-relu-logits__FsejJdP",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "modernize-scientific-stack__Xckpo2b",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    45476,
+    24000,
+    7616
+   ]
+  },
+  {
+   "trial": "mteb-leaderboard__FoS8hXb",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    5113904,
+    4219200,
+    179284
+   ]
+  },
+  {
+   "trial": "mteb-retrieve__3a2rhZG",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    223842,
+    148800,
+    23224
+   ]
+  },
+  {
+   "trial": "multi-source-data-merger__RfybH7V",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    107538,
+    67200,
+    25518
+   ]
+  },
+  {
+   "trial": "nginx-request-logging__6J64VgZ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    72512,
+    41600,
+    7310
+   ]
+  },
+  {
+   "trial": "openssl-selfsigned-cert__JkPUHpC",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    175391,
+    115200,
+    21802
+   ]
+  },
+  {
+   "trial": "overfull-hbox__QAreSYo",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "password-recovery__4GxDV7Z",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    171069,
+    118400,
+    29038
+   ]
+  }
+ ]
+}
