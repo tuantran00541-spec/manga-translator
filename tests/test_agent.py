@@ -2528,6 +2528,28 @@ def test_a_text_only_reply_with_todo_items_left_is_sent_back_and_a_finished_list
     assert sum(h["content"].startswith("[Your todo list still has") for h in session.history if h["role"] == "user") == 3, "at most three nudges, then the turn ends"
 
 
+def test_the_cli_really_calls_an_allowed_private_relay_and_nothing_else_private(ws, home, monkeypatch, capsys):
+    from app.agent import cli
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENT_API_KEY", "relay")
+    monkeypatch.setattr(client, "PRIVATE_BASES", set())
+    urls = []
+    ok = {"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+    def fake_post(url, **kw):
+        urls.append(url)
+        return FakeResponse(200, ok)
+
+    monkeypatch.setattr(client.requests, "post", fake_post)
+    code = cli.main(["exec", "hi", "--base", "http://172.17.0.1:18080/v1", "--allow-private-base", "--model", "m",
+                     "--workspace", str(ws.root), "--mode", "bypass", "--json"])
+    assert code == 0 and urls and urls[0] == "http://172.17.0.1:18080/v1/chat/completions"
+    import dataclasses
+    other = dataclasses.replace(PROVIDERS["openai"], api_base="http://10.0.0.5/v1")
+    with pytest.raises(Exception, match="non-public"):
+        client._post(other, "k", {"model": "m", "messages": []}, False)
+
+
 def test_the_cli_takes_an_http_relay_only_on_a_private_address_and_streams_are_read_as_utf8():
     import pytest
     from app.agent import cli

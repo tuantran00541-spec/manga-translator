@@ -11,7 +11,7 @@ import sys
 import time
 from urllib.parse import urlparse
 
-from app.agent import sandbox
+from app.agent import client, sandbox
 from app.agent.session import AgentSessionManager, MODES
 from app.agent.tools import Workspace
 from app.ai_providers import resolve_provider
@@ -50,6 +50,7 @@ def run(args: argparse.Namespace) -> int:
         return 2
     if args.allow_private_base:
         provider = dataclasses.replace(resolve_provider(args.provider, label=args.provider, protocol="openai", api_base="https://relay.invalid"), api_base=_private_base(args.base))
+        client.PRIVATE_BASES.add(provider.api_base.rstrip("/"))
     else:
         provider = resolve_provider(args.provider, label=args.provider, protocol="openai", api_base=args.base)
     if args.command == "resume":

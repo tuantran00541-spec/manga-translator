@@ -70,6 +70,8 @@ ASK_ON_LIMIT: ContextVar[bool] = ContextVar("ask_on_limit", default=False)
 # Extra request fields for the model in use, such as reasoning_effort or sampling, from profile.json "models".
 REQUEST_EXTRA: ContextVar[dict] = ContextVar("request_extra", default={})
 _REFUSED_EXTRA: set[tuple[str, str]] = set()
+# Private-network bases the command line was told to allow (a benchmark's key relay); every other URL must be public.
+PRIVATE_BASES: set[str] = set()
 
 
 class ToolsUnsupported(RuntimeError):
@@ -310,7 +312,8 @@ def _note_rate_limit(provider: AIProvider, response: requests.Response, wait: fl
 def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> requests.Response:
     """The request, with the shared 429 cooldown and retries."""
     url = chat_url(provider)
-    validate_url(url)
+    if provider.api_base.rstrip("/") not in PRIVATE_BASES:
+        validate_url(url)
     key = slot(provider, api_key)
     for attempt in range(RATE_LIMIT_RETRIES + 1):
         pause = _COOLDOWN.get(key, 0.0) - time.time() if attempt == 0 else 0

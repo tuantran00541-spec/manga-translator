@@ -109,23 +109,44 @@ jobs:
           curl -sS -m 30 -o /dev/null -w "models endpoint: HTTP %{http_code}\n" "http://127.0.0.1:$PORT/v1/models" || true
           (cat /opt/relay/key > /dev/null 2>&1 && echo "::error::the runner user can read the key" && exit 1) || echo "key file is not readable by the runner user"
 
-      - name: Probe the model with the run's request fields
+      - name: Probe the model and pick the request fields that turn thinking on
         env:
           MODEL: ${{ needs.config.outputs.model }}
           REQUEST: ${{ needs.config.outputs.request }}
         run: |
           python - <<'PY'
           import json, os, time, requests
-          body = {"model": os.environ["MODEL"], "messages": [{"role": "user", "content": "What is 17 * 23? Answer with the number."}], "max_tokens": 4000}
-          for label, extra in (("with fields", json.loads(os.environ["REQUEST"])), ("plain", {})):
+          base = f"http://127.0.0.1:{os.environ['PORT']}/v1"
+          try:
+              ids = [m.get("id") for m in requests.get(f"{base}/models", timeout=60).json().get("data", [])]
+              print("models:", ", ".join(i for i in ids if i)[:2000])
+          except Exception as exc:
+              print("models: not listed", type(exc).__name__)
+          wanted = json.loads(os.environ["REQUEST"])
+          prompt = "A bat and a ball cost 1.10 in total; the bat costs 1.00 more than the ball. How much is the ball? Answer with the number."
+          variants = [("as configured", wanted),
+                      ("chat_template_kwargs", {**wanted, "chat_template_kwargs": {"enable_thinking": True}}),
+                      ("reasoning object", {**{k: v for k, v in wanted.items() if k != "reasoning_effort"}, "reasoning": {"effort": wanted.get("reasoning_effort", "high")}}),
+                      ("thinking enabled", {**wanted, "thinking": {"type": "enabled"}})]
+          chosen = wanted
+          for label, extra in variants:
               started = time.time()
-              r = requests.post(f"http://127.0.0.1:{os.environ['PORT']}/v1/chat/completions", json={**body, **extra}, timeout=600)
+              r = requests.post(f"{base}/chat/completions", json={"model": os.environ["MODEL"], "messages": [{"role": "user", "content": prompt}], "max_tokens": 8000, **extra}, timeout=900)
               data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
               msg = ((data.get("choices") or [{}])[0].get("message") or {})
               reasoning = msg.get("reasoning_content") or msg.get("reasoning") or ""
-              print(f"{label}: HTTP {r.status_code} in {time.time() - started:.0f}s, answer {str(msg.get('content'))[:40]!r}, reasoning chars {len(reasoning)}, usage {data.get('usage')}")
+              out = (data.get("usage") or {}).get("completion_tokens") or 0
+              print(f"{label}: HTTP {r.status_code} in {time.time() - started:.0f}s, answer {str(msg.get('content'))[:40]!r}, reasoning chars {len(reasoning)}, completion tokens {out}")
               if r.status_code != 200:
-                  print(r.text[:300])
+                  print("  ", r.text[:300])
+              elif reasoning or out > 50:
+                  chosen = extra
+                  print(f"thinking is on with: {label}")
+                  break
+          else:
+              print("::warning::no variant turned thinking on; running with the configured fields")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"MANGA_AGENT_REQUEST={json.dumps(chosen)}\n")
           PY
 
       - name: Package the harness
@@ -156,7 +177,6 @@ jobs:
           MANGA_AGENT_MODEL: ${{ needs.config.outputs.model }}
           MANGA_AGENT_MINUTES: ${{ needs.config.outputs.minutes }}
           MANGA_AGENT_MODE: ${{ needs.config.outputs.mode }}
-          MANGA_AGENT_REQUEST: ${{ needs.config.outputs.request }}
           MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
           MANGA_AGENT_SHA: ${{ github.sha }}
         run: |
