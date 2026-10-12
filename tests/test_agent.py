@@ -3768,3 +3768,40 @@ def test_chains_have_no_ceiling_objects_agents_new_tools_parallel_calls_big_args
     threading_timer.start()
     out, _ = session._run_call({"id": "s", "name": "slow", "args": {}})
     assert "done" in out and "background" not in out, out
+
+
+def test_a_chain_thinks_repairs_a_failing_tool_while_running_and_keeps_chains_that_work(ws, home, monkeypatch):
+    from app.agent import guardian
+    create_only(home)
+    asked = []
+
+    def model(provider, key, m, messages, *, tools):
+        asked.append(messages[-1]["content"])
+        if "is still running" in messages[0]["content"]:
+            return {"text": "Fixed:\n```python\ndef half(x):\n    return x // 2\n```", "usage": {"prompt_tokens": 3}}
+        number = re.search(r"Is (\d+)", messages[-1]["content"])
+        return {"text": "yes" if number and int(number.group(1)) % 2 == 0 else "no", "usage": {"prompt_tokens": 2}}
+
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=model)
+    session._new_request("halve the even numbers")
+    session._create({"name": "half", "code": "def half(x):\n    return x / undefined_name\n"})
+    chain = ("def go():\n    out = []\n    for n in [4, 7, 10]:\n        if tools.think(f'Is {n} even? Say even or odd.', answer='yes/no') == 'yes':\n"
+             "            out.append(tools.half(x=n))\n    return out\n")
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": False}})
+    assert "[2, 5]" in out, out
+    assert "x // 2" in session.created["half"]["code"], "the repaired tool is kept"
+    assert sum("still running" in a or "Tool half" in a for a in asked) == 1, "one repair, then the chain went on with its state"
+    assert "now kept" not in out
+    again = session._session_tool({"id": "d", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": False}})
+    assert "now kept as the tool go" in again and "go" in session.created, "a one-off that ends cleanly twice becomes a tool"
+    session.mode = "ask"
+    session._create({"name": "bad", "code": "def bad():\n    raise ValueError('boom')\n"})
+    output, ok = session._repair({"name": "bad", "args": {}, "error": "ValueError: boom"})
+    assert not ok and "only in auto or bypass" in output, "outside hands-off modes a failing tool is not rewritten unseen"
+    session.mode = "auto"
+    # The reviewer lets the chain run but turns down the rewritten tool.
+    monkeypatch.setattr(guardian, "review", lambda *a, **k: ("deny", "unsafe") if "x // 2" in a[5]["args"]["_tool_code"] else ("allow", "ok"))
+    session._create({"name": "half", "code": "def half(x):\n    return x / undefined_name\n"})
+    session._recent = []
+    out, _ = session._run_call({"id": "f", "name": "go", "args": {}})
+    assert "did not allow the repaired code" in out and "undefined_name" in session.created["half"]["code"], "Auto mode reviews a repair first"

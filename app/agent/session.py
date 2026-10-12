@@ -158,7 +158,7 @@ class _Tools:
 
     def __getattr__(self, name):
         if name in _REMOTE and name not in _SOURCES:
-            first = {{"skill": "name", "agent": "prompt"}}.get(name)
+            first = {{"skill": "name", "agent": "prompt", "think": "question"}}.get(name)
             return lambda *a, **args: _call(name, {{first: a[0], **args}} if first and a else args)
         if not name.startswith("_") and name not in _SOURCES:
             # A tool made earlier in this same chain is fetched from the agent.
@@ -168,6 +168,9 @@ class _Tools:
                 pass
         if name.startswith("_") or name not in _SOURCES:
             raise AttributeError(f"no tool {{name!r}}; created: {{', '.join(_SOURCES)}}; others: {{', '.join(sorted(_REMOTE))}}")
+        return lambda *a, **args: self._run(name, a, args)
+
+    def _load(self, name):
         if name not in self._loaded:
             space = {{"tools": self, "__name__": "agent_tool_" + name}}
             exec(compile(_SOURCES[name], name + ".py", "exec"), space)
@@ -176,6 +179,22 @@ class _Tools:
         if self._loaded[name] is None:
             raise AttributeError(f"tool {{name!r}} defines no function named {{name!r}}")
         return self._loaded[name]
+
+    def _run(self, name, a, args):
+        \"\"\"Call a created tool; when it fails the model rewrites that tool and the call is retried, while the rest of the chain keeps its state.\"\"\"
+        import traceback
+        for attempt in range(3):
+            try:
+                return self._load(name)(*a, **args)
+            except Exception as exc:
+                if attempt == 2:
+                    raise
+                try:
+                    fixed = _call("_repair", {{"name": name, "args": _json.loads(_json.dumps(args, default=str)), "error": traceback.format_exc()[-4000:]}})
+                except RuntimeError as refused:
+                    raise exc from refused
+                _SOURCES[name] = fixed
+                self._loaded.pop(name, None)
 
 
 tools = _Tools()
@@ -206,7 +225,10 @@ background and you are told when it ends. Files a tool changes are listed after 
 under the same name, delete one with empty code. Prefer a few general tools (a shell, a file reader, an exact-text editor) over many narrow ones.
 Inside any tool's code, tools.<name>(...) calls another created tool in the same process and returns what it returns, so one call can
 chain many steps: read, edit, run and check without coming back in between. The same tools.<name>(...) reaches the user's plugin and
-MCP tools (JSON comes back as objects), tools.skill(name) returns a skill's instructions, tools.agent(prompt, agent="explore") runs a
+MCP tools (JSON comes back as objects), tools.think(question, answer="yes/no") asks you a question from inside the running code and
+returns your answer, so code does the sure steps and calls you only where judgment is needed; when a created tool fails inside a chain
+you are shown the error and rewrite that tool on the spot, and the chain retries it and carries on (auto and bypass modes);
+tools.skill(name) returns a skill's instructions, tools.agent(prompt, agent="explore") runs a
 helper agent and returns its report, and tools.create(...) adds a tool you can call later in the same chain. Calls from several threads
 run at the same time. Give create args to run the tool as soon as it is written;
 add keep: false for a one-off script that is not saved. Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
@@ -392,6 +414,7 @@ class AgentSession:
         self.schedules: list[dict] = []
         self._watch = watch.Watch(workspace.root)
         self.asked_s = 0.0
+        self._one_offs: dict[str, dict] = {}
         self._watch_request = self._request_no = self._edit_seq = self._run_seq = 0
         self._since_learn = self._learned_to = 0
         self._scheduler: threading.Thread | None = None
@@ -1430,7 +1453,7 @@ class AgentSession:
 
     def _chain_targets(self) -> set[str]:
         """What a created tool's code may reach through the agent: the user's plugin and MCP tools, and skills."""
-        names = {n for n in self.registry.tools if n not in registry.GROUPS} | set(self._root().mcp_tools) | {"agent", "create"}
+        names = {n for n in self.registry.tools if n not in registry.GROUPS} | set(self._root().mcp_tools) | {"agent", "create", "think"}
         return names | ({"skill"} if self.skills else set())
 
     def _serve_chain(self, folder: Path, job: "sandbox.Job") -> None:
@@ -1440,7 +1463,9 @@ class AgentSession:
         def answer(request: Path, data: dict) -> None:
             name, args = str(data.get("name") or ""), data.get("args") if isinstance(data.get("args"), dict) else {}
             try:
-                if name == "_source":
+                if name == "_repair":
+                    output, ok = self._repair(args)
+                elif name == "_source":
                     tool = self._root().created.get(str(args.get("name") or ""))
                     output, ok = (tool["code"], True) if tool else ("no such created tool", False)
                 elif name not in targets:
@@ -1448,6 +1473,8 @@ class AgentSession:
                 elif name == "skill":
                     found = self.skills.get(str(args.get("name") or ""))
                     output, ok = (skills.load(found), True) if found else (f"No skill named {args.get('name')!r}; known: {', '.join(self.skills)}", False)
+                elif name == "think":
+                    output, ok = self._think(str(args.get("question") or ""), str(args.get("answer") or "")), True
                 elif name == "agent":
                     output, ok = self._subagent("chain", str(args.get("prompt") or ""), str(args.get("agent") or "explore")), True
                 elif name == "create":
@@ -1475,6 +1502,63 @@ class AgentSession:
                     break
                 time.sleep(0.02)
         shutil.rmtree(folder, ignore_errors=True)
+
+    def _note_one_off(self, name: str, tool: dict, output: str) -> str:
+        """A one-off chain that ends cleanly is remembered; the same one ending cleanly twice becomes a kept tool."""
+        if not tool or "[exit code 0]" not in output[-200:]:
+            return ""
+        key = hashlib.sha1(tool["code"].encode()).hexdigest()
+        row = self._one_offs.setdefault(key, {"name": name, "tool": tool, "runs": 0})
+        row["runs"] += 1
+        if row["runs"] < 2 or name in self._root().created:
+            return ""
+        self._create({k: tool[k] for k in ("name", "description", "parameters", "code")})
+        self.emit("notice", text=f"The one-off chain {name} worked twice, so it is now a kept tool.")
+        return f"\n[this one-off ran cleanly twice, so it is now kept as the tool {name}]"
+
+    def _think(self, question: str, answer: str = "") -> str:
+        """One question from a running chain to the model, answered without tools."""
+        if not question.strip():
+            raise ToolError("think needs a question")
+        shape = f" in this form: {answer}" if answer else ""
+        messages = [{"role": "system", "content": f"A program you wrote is running and asks you this. Reply with only the answer{shape}, no other text."},
+                    {"role": "user", "content": question[:200_000]}]
+        reply = self.complete(self.provider, self.api_key, self.model, messages, tools=None)
+        with self._usage_lock:
+            for key in self.usage:
+                self.usage[key] += int(reply.get("usage", {}).get(key) or 0)
+        return reply["text"].strip()
+
+    def _repair(self, args: dict) -> tuple[str, bool]:
+        """The model rewrites a created tool that just failed inside a running chain; the fix is kept and, in Auto mode, reviewed first."""
+        name = str(args.get("name") or "")
+        tool = self._root().created.get(name)
+        if tool is None:
+            return "not a created tool", False
+        if self.mode not in HANDS_OFF:
+            return "live repair runs only in auto or bypass mode, where nobody is asked before code runs", False
+        messages = [{"role": "system", "content": "A tool in a program you wrote failed while the program is still running. Reply with only the full corrected "
+                                                  "Python code of that tool, keeping its function name and parameters, in one ```python block."},
+                    {"role": "user", "content": f"Tool {name}:\n```python\n{tool['code']}\n```\n\nCalled with: {json.dumps(args.get('args'), ensure_ascii=False)[:4000]}\n\n"
+                                                f"Error:\n{str(args.get('error') or '')[-4000:]}\n\nWhat the user asked:\n{self._last_request[:3000]}"}]
+        reply = self.complete(self.provider, self.api_key, self.model, messages, tools=None)
+        with self._usage_lock:
+            for key in self.usage:
+                self.usage[key] += int(reply.get("usage", {}).get(key) or 0)
+        found = re.search(r"```(?:python)?\n(.*?)```", reply["text"], re.S)
+        code = (found.group(1) if found else reply["text"]).strip() + "\n"
+        try:
+            compile(code, f"{name}.py", "exec")
+        except SyntaxError as exc:
+            return f"the repair did not compile: {exc}", False
+        if self.mode == "auto":
+            verdict, reason = guardian.review(self.complete, self.provider, self.api_key, self.profile["review_model"] or self.model, self._user_messages(),
+                                              {"name": name, "args": {**(args.get("args") or {}), "_tool_code": code[:6000]}}, untrusted=self.tainted)
+            if verdict != "allow":
+                return f"the reviewer did not allow the repaired code: {reason}", False
+        self._create({"name": name, "code": code, "description": tool["description"], "parameters": tool["parameters"]})
+        self.emit("notice", text=f"Repaired the tool {name} while a chain was running.")
+        return code, True
 
     def _with_callees(self, code: str) -> str:
         """A created tool's code followed by the code of every created tool it calls, directly or through another."""
@@ -1513,12 +1597,15 @@ class AgentSession:
                 return made
             # Write and run in one call; the run asks for approval like any call of that tool, and keep=false drops the tool after.
             name = str(args.get("name") or "").strip()
+            kept = self._root().created.get(name, {})
             try:
                 output, _ = self._run_call({"id": f"{call.get('id', 'create')}-run", "name": name, "args": args["args"]})
             finally:
                 if args.get("keep") is False:
                     self._create({"name": name, "code": ""})
-            return f"{made if args.get('keep') is not False else 'Ran a one-off tool (not kept).'}\n{output}"
+            if args.get("keep") is not False:
+                return f"{made}\n{output}"
+            return f"Ran a one-off tool (not kept).\n{output}{self._note_one_off(name, kept, output)}"
         if call["name"] == "skill":
             found = self.skills.get(str(args.get("name") or ""))
             if found is None:
@@ -2623,9 +2710,14 @@ class AgentSession:
         home = self.home if self.home is not None else Path.home()
         model = self.profile["review_model"] or self.model
         folder = learn.project_folder(home, root)
-        items, lessons, usage = learn.review(self.complete, self.provider, self.api_key, model, transcript, home, learn.session_file(folder, self.id))
+        chains = {r["name"]: r["tool"] for r in self._one_offs.values() if r["name"] not in self._root().created}
+        items, lessons, usage, keep = learn.review(self.complete, self.provider, self.api_key, model, transcript, home, learn.session_file(folder, self.id), chains)
         try:
             done = learn.write(home, items, (self.api_key,))
+            for name in keep:
+                if name in chains and name not in self._root().created:
+                    self._create({k: chains[name][k] for k in ("name", "description", "parameters", "code")})
+                    done.append(f"kept the chain {name} as a tool")
             if lessons and learn.write_lessons(folder, root, self.id, lessons, (self.api_key,)):
                 done.append(f"lesson notes for {root.name}")
             merged, more = learn.consolidate(self.complete, self.provider, self.api_key, model, folder, (self.api_key,))
