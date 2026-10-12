@@ -171,13 +171,13 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
     if kind == "low-integrity":
         from app.agent import win_low
 
-        # Read-only commands run untrusted, below the low label a workspace keeps from earlier writing sessions.
-        level = "untrusted" if policy.mode == "read-only" else "low"
-        win_low.label(scratch, level)
-        if policy.mode == "workspace-write" and str(root) not in _labelled:
-            win_low.label(str(root), "low")
+        # Read-only commands get a write-restricted token, since a workspace keeps the low label from earlier writing sessions.
+        reading = policy.mode == "read-only"
+        win_low.label(scratch, read_only=reading)
+        if not reading and str(root) not in _labelled:
+            win_low.label(str(root))
             _labelled.add(str(root))
-        return [sys.executable, str(Path(__file__).with_name("win_low.py")), level, "--", command], False
+        return [sys.executable, str(Path(__file__).with_name("win_low.py")), "read" if reading else "write", "--", command], False
     if kind == "landlock":
         # The launcher runs by file path, so the user's project never sees this app on its import path.
         args = [sys.executable, str(Path(__file__).with_name("landlock_run.py"))]

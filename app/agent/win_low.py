@@ -1,12 +1,15 @@
-"""Runs one shell command on Windows at low (or untrusted) integrity, so it cannot write to anything labelled above that."""
+"""Runs one shell command on Windows at low integrity, so it can write only where a folder is labelled low (read mode: only its scratch folder)."""
 from __future__ import annotations
 
 import ctypes
 from ctypes import wintypes as wt
 import os
+import subprocess
 import sys
 
-LEVELS = {"low": "S-1-16-4096", "untrusted": "S-1-16-0"}
+LOW = "S-1-16-4096"
+# A read-mode token is write-restricted to this SID (RESTRICTED), which only its scratch folder grants.
+RESTRICTED = "S-1-5-12"
 TOKEN_RIGHTS = 0x0001 | 0x0002 | 0x0008 | 0x0080  # assign primary, duplicate, query, adjust default
 CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT = 0x4, 0x400
 KILL_ON_JOB_CLOSE, EXTENDED_LIMITS = 0x2000, 9
@@ -46,12 +49,12 @@ def _check(ok, what: str):
     return ok
 
 
-def label(path: str, level: str) -> None:
-    """Give a folder (and what it holds) an integrity label, so commands at that level may write there."""
+def label(path: str, read_only: bool = False) -> None:
+    """Label a folder (and what it holds) low, so commands may write there; a read-mode scratch folder also grants RESTRICTED."""
     advapi, kernel = ctypes.WinDLL("advapi32", use_last_error=True), ctypes.WinDLL("kernel32", use_last_error=True)
     descriptor, sacl = ctypes.c_void_p(), ctypes.c_void_p()
     present, defaulted = wt.BOOL(), wt.BOOL()
-    sddl = f"S:(ML;OICI;NW;;;{LEVELS[level]})"
+    sddl = f"S:(ML;OICI;NW;;;{LOW})"
     _check(advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, ctypes.byref(descriptor), None), "ConvertStringSecurityDescriptor")
     try:
         _check(advapi.GetSecurityDescriptorSacl(descriptor, ctypes.byref(present), ctypes.byref(sacl), ctypes.byref(defaulted)), "GetSecurityDescriptorSacl")
@@ -61,9 +64,13 @@ def label(path: str, level: str) -> None:
             raise OSError(f"could not label {path}: {ctypes.FormatError(error)}")
     finally:
         kernel.LocalFree(descriptor)
+    if read_only:
+        done = subprocess.run(["icacls", path, "/grant", f"*{RESTRICTED}:(OI)(CI)F", "/Q"], capture_output=True, text=True)
+        if done.returncode:
+            raise OSError(f"could not open {path} to read-mode commands: {(done.stdout + done.stderr).strip()}")
 
 
-def launch(level: str, command: str) -> int:
+def launch(read_only: bool, command: str) -> int:
     """Start the command through cmd.exe with a lowered token inside a kill-on-close job, and return its exit code."""
     advapi, kernel = ctypes.WinDLL("advapi32", use_last_error=True), ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.GetCurrentProcess.restype = wt.HANDLE
@@ -71,8 +78,14 @@ def launch(level: str, command: str) -> int:
     kernel.GetStdHandle.restype = wt.HANDLE
     token, low, sid = wt.HANDLE(), wt.HANDLE(), ctypes.c_void_p()
     _check(advapi.OpenProcessToken(wt.HANDLE(kernel.GetCurrentProcess()), TOKEN_RIGHTS, ctypes.byref(token)), "OpenProcessToken")
-    _check(advapi.DuplicateTokenEx(token, TOKEN_RIGHTS, None, 2, 1, ctypes.byref(low)), "DuplicateTokenEx")
-    _check(advapi.ConvertStringSidToSidW(LEVELS[level], ctypes.byref(sid)), "ConvertStringSidToSidW")
+    if read_only:
+        restricted = ctypes.c_void_p()
+        _check(advapi.ConvertStringSidToSidW(RESTRICTED, ctypes.byref(restricted)), "ConvertStringSidToSidW")
+        only = SidAndAttributes(restricted, 0)
+        _check(advapi.CreateRestrictedToken(token, 0x8, 0, None, 0, None, 1, ctypes.byref(only), ctypes.byref(low)), "CreateRestrictedToken")
+    else:
+        _check(advapi.DuplicateTokenEx(token, TOKEN_RIGHTS, None, 2, 1, ctypes.byref(low)), "DuplicateTokenEx")
+    _check(advapi.ConvertStringSidToSidW(LOW, ctypes.byref(sid)), "ConvertStringSidToSidW")
     mandatory = SidAndAttributes(sid, 0x20)
     size = ctypes.sizeof(mandatory) + advapi.GetLengthSid(sid)
     _check(advapi.SetTokenInformation(low, 25, ctypes.byref(mandatory), size), "SetTokenInformation")
@@ -95,14 +108,15 @@ def launch(level: str, command: str) -> int:
     kernel.WaitForSingleObject(wt.HANDLE(info.hProcess), wt.DWORD(0xFFFFFFFF))
     code = wt.DWORD()
     kernel.GetExitCodeProcess(wt.HANDLE(info.hProcess), ctypes.byref(code))
-    return code.value
+    # Exit codes are unsigned on Windows; a crash such as 0xC0000005 comes back as a negative number.
+    return code.value - (1 << 32) if code.value >= 1 << 31 else code.value
 
 
 if __name__ == "__main__":
-    # Usage: win_low.py LEVEL -- COMMAND
-    level, command = sys.argv[1], " ".join(sys.argv[sys.argv.index("--") + 1:])
+    # Usage: win_low.py read|write -- COMMAND
+    mode, command = sys.argv[1], " ".join(sys.argv[sys.argv.index("--") + 1:])
     try:
-        sys.exit(launch(level, command))
+        sys.exit(launch(mode == "read", command))
     except OSError as exc:
         print(f"[sandbox] {exc}", file=sys.stderr)
         sys.exit(126)
