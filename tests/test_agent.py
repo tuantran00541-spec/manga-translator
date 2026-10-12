@@ -3882,3 +3882,22 @@ def test_the_skill_list_with_paths_names_each_folder_once(tmp_path):
     found.update({n: skills_module.Skill(n, f"Does {n}.", (tmp_path / "s" / n).resolve()) for n in ("one", "two")})
     text = skills_module.catalog(found, paths=True)
     assert text.count(str((tmp_path / "s").resolve())) == 1 and "- one: Does one." in text and "SKILL.md" in text.splitlines()[0]
+
+
+def test_the_command_line_waits_for_the_learning_review_before_exiting(ws, home, monkeypatch, capsys):
+    from app.agent import cli, learn
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENT_API_KEY", "k")
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"learn_every": 1}))
+
+    def slow_review(messages, tools):
+        time.sleep(1.0)
+        return turn(json.dumps({"skills": [], "lessons": "- Listed the folder before reading."}))
+
+    fake = scripted(turn(calls=[call("list_dir")]), turn("All listed."), slow_review)
+    original = AgentSessionManager.create
+    monkeypatch.setattr(AgentSessionManager, "create", lambda self, *a, **kw: original(self, *a, **{**kw, "complete": fake}))
+    assert cli.main(["exec", "list it", "--base", "https://api.example.com/v1", "--model", "m", "--workspace", str(ws.root), "--json"]) == 0
+    notes = list((home / ".manga-agent" / "lessons").rglob("*.md"))
+    assert notes and "Listed the folder" in notes[0].read_text(), "the review finished before the process ended"

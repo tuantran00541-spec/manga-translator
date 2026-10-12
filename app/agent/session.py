@@ -437,6 +437,7 @@ class AgentSession:
         self.chain_budget: dict[str, int] = {}
         self._watch_request = self._request_no = self._edit_seq = self._run_seq = 0
         self._since_learn = self._learned_to = 0
+        self._learning: threading.Thread | None = None
         self._scheduler: threading.Thread | None = None
         self._closing = False
         self._advice: list[tuple[str, str]] = []
@@ -2737,7 +2738,8 @@ class AgentSession:
         self._since_learn, self._learned_to = 0, len(self.history)
         transcript = self._transcript(self.history[start:])
         root = learn.project_root(self._touched(self.history[start:]), self.workspace.root)
-        threading.Thread(target=self._learn, args=(transcript, root), name=f"agent-learn-{self.id}", daemon=True).start()
+        self._learning = threading.Thread(target=self._learn, args=(transcript, root), name=f"agent-learn-{self.id}", daemon=True)
+        self._learning.start()
         return "Đang xem lại phiên để viết hoặc sửa skill; xong sẽ báo."
 
     def _touched(self, items: list[dict]) -> list[Path]:
@@ -2753,6 +2755,11 @@ class AgentSession:
                     path = Path(os.path.expanduser(spot))
                     found.append(path if path.is_absolute() else self.workspace.root / path)
         return found
+
+    def wait_learning(self, timeout: float = 180.0) -> None:
+        """Let a review that is still writing skills or lesson notes finish, for callers about to exit."""
+        if self._learning is not None:
+            self._learning.join(timeout)
 
     def _learn(self, transcript: str, root: Path) -> None:
         home = self.home if self.home is not None else Path.home()

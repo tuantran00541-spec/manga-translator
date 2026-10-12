@@ -86,6 +86,8 @@ def run(args: argparse.Namespace) -> int:
             print("Timed out.", file=sys.stderr)
             break
         time.sleep(0.2)
+    # The learning review runs after the turn; a process that exits at once would cut it off.
+    session.wait_learning()
     final = session.snapshot(seen)
     for event in final["events"]:
         _show(event, args.json)
