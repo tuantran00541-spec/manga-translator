@@ -3591,7 +3591,7 @@ def test_notes_follow_the_project_the_work_was_in_not_the_workspace(ws, home, tm
     assert "in this project" not in prompt and "one folder per project with a PROJECT file" in prompt, "a session elsewhere is told where other projects' notes are"
 
 
-def test_reviews_need_evidence_add_lessons_without_rewriting_and_can_be_undone(home, tmp_path):
+def test_reviews_need_evidence_add_lessons_without_rewriting_and_can_be_undone(ws, home, tmp_path):
     from app.agent import learn
     reads = [{"role": "user", "content": "look", "from_user": True}, {"role": "assistant", "content": "", "calls": [{"name": "read_file", "args": {}}]},
              {"role": "tool", "id": "1", "name": "read_file", "content": "x"}]
@@ -3599,6 +3599,10 @@ def test_reviews_need_evidence_add_lessons_without_rewriting_and_can_be_undone(h
     assert learn.worth_review(reads + [{"role": "tool", "id": "2", "name": "run_command", "content": "boom\n[exit code 2]"}], {})
     assert learn.worth_review(reads + [{"role": "user", "content": "no, use pytest -x", "from_user": True}], {}), "a user correction counts"
     assert learn.worth_review(reads, {"fix": {}}), "a one-off chain to keep counts"
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session.queue.append("stop, use the other folder")
+    session._drain()
+    assert session.history[-1].get("from_user"), "a message sent mid-run is the user's too"
     folder, root, changes = tmp_path / "notes", tmp_path / "proj", learn.Changes()
     assert learn.write_lessons(folder, root, "s1", ["- Run pytest from the root.", "- Quote paths with spaces."])
     assert learn.write_lessons(folder, root, "s1", ["- Run pytest from the root.", "- Use -x to stop early."], drop=["Quote paths"], changes=changes)

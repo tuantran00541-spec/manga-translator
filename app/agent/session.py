@@ -2683,7 +2683,7 @@ class AgentSession:
         with self._lock:
             queued, self.queue = self.queue, []
         for text in queued:
-            self.history.append({"role": "user", "content": text})
+            self.history.append({"role": "user", "content": text, "from_user": True})
         self._notifications()
 
     def _advance_prewalk(self) -> None:
