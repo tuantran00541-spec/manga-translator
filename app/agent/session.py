@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+import base64
 import collections
 import difflib
 import ctypes
@@ -10,7 +11,10 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -19,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, rules, sandbox, schema as schemas, services, skill_install, skills
+from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, rules, sandbox, schema as schemas, services, skill_install, skills, watch
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -30,7 +34,7 @@ MAX_STEPS = 300
 MAX_JOBS = 8
 MAX_TODO_NUDGES = 3
 MAX_SCHEDULES = 10
-CREATED_TIMEOUT = 900
+CREATED_TIMEOUT = 300
 URL_TOOLS = ("web_fetch", "web_download")
 MASK_KEEP = 12
 MASK_BATCH = 6
@@ -135,7 +139,9 @@ You start with one tool, create. Build every other tool you need with it, the wa
 a name, a description, JSON-schema parameters, and Python code that defines a function of that name taking those parameters.
 A tool runs as a Python script in the sandbox with the workspace as its working folder: it can read and write files, run programs
 with subprocess and use the network if the sandbox allows; whatever it returns or prints is the result. Return exit codes and errors
-in full, and keep long output short (head and tail). Tools are kept for later sessions: reuse them, fix one by creating it again
+in full, and keep long output short (head and tail). Each call is a fresh process: keep a working folder, variables or notes in files under
+the AGENT_STATE folder (an environment variable), which lasts the whole session. A call still running after 5 minutes moves to the
+background and you are told when it ends. Files a tool changes are listed after its output. Tools are kept for later sessions: reuse them, fix one by creating it again
 under the same name, delete one with empty code. Prefer a few general tools (a shell, a file reader, an exact-text editor) over many narrow ones.
 Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
 then run the tests or command that proves it works. End with a short report: what changed, how you checked, what is left.
@@ -317,6 +323,8 @@ class AgentSession:
         self._after_compact = 0
         self._deadline = self._notice_at = 0.0
         self.schedules: list[dict] = []
+        self._watch = watch.Watch(workspace.root)
+        self._watch_request = self._request_no = self._edit_seq = self._run_seq = 0
         self._since_learn = self._learned_to = 0
         self._scheduler: threading.Thread | None = None
         self._closing = False
@@ -628,6 +636,7 @@ class AgentSession:
         self._dirty = self._gated = self.tainted = False
         self._final_advised = self._edited = self._plan_nudged = self._continued = False
         self._fallback_at = 0
+        self._request_no += 1
         self._prewalk = bool(self.profile["prewalk_model"]) and self.profile["prewalk_model"] != self.model and not self.depth
         self._skills_loaded = []
         self._turn_usage = self._spent()
@@ -1066,6 +1075,9 @@ class AgentSession:
         rows += [t.spec for n, t in self.registry.tools.items() if n not in registry.GROUPS]
         rows += [{"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
                   "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}}} for name, (server, tool) in self.mcp_tools.items()]
+        if self.jobs:
+            # Only while something runs in the background; it is how the model reads, types into or stops it.
+            rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"]]
         if self.plan_mode:
             rows.append(SESSION_SPECS["exit_plan_mode"])
         elif self.goal:
@@ -1298,13 +1310,52 @@ class AgentSession:
         return f"{'Updated' if old else 'Created'} tool {name}; call it like any other tool. It runs in the sandbox and is kept for later sessions."
 
     def _run_created(self, call: dict) -> str:
-        """A created tool runs as a sandboxed script that may call the read-only tools."""
+        """A created tool runs as a sandboxed Python process; past CREATED_TIMEOUT it goes on in the background, and the files it changes are tracked."""
         tool = self._root().created[call["name"]]
         args = call["args"] if isinstance(call["args"], dict) else {}
-        script = tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
         # In plan mode a created tool may look but not change anything.
-        policy = sandbox.Policy("read-only", self.workspace.policy.network) if self.plan_mode else None
-        return self._run_script({"code": script, "timeout": CREATED_TIMEOUT}, policy)
+        policy = sandbox.Policy("read-only", self.workspace.policy.network) if self.plan_mode else self.workspace.policy
+        if self.profile["tools"] != "create":
+            # Next to the built-in tools a created one is a script that may call them, as run_script does.
+            script = tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
+            return self._run_script({"code": script, "timeout": 900}, policy)
+        state = self._outputs_dir() / "state"
+        state.mkdir(parents=True, exist_ok=True)
+        docker = sandbox.backend() == "docker" and policy.mode != "full-access"
+        # AGENT_STATE outlives the call, so a tool can keep a working folder, variables or notes between calls.
+        prelude = f"import os as _os\n_os.environ['AGENT_STATE'] = {('/tmp' if docker else str(state))!r}\n"
+        script = prelude + tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
+        payload = base64.b64encode(script.encode("utf-8")).decode("ascii")
+        if len(payload) > 100_000:
+            raise ToolError("the tool's code and arguments are too long to run; pass big content through a file")
+        python = "python3" if docker else (subprocess.list2cmdline([sys.executable]) if os.name == "nt" else shlex.quote(sys.executable))
+        command = f"{python} -c \"import base64;exec(compile(base64.b64decode('{payload}'),'{tool['name']}.py','exec'))\""
+        if not self._watch.ready or self._watch_request != self._request_no:
+            self._watch.refresh()
+            self._watch_request = self._request_no
+        guard = gitguard.snapshot(self.workspace.root)
+        job = sandbox.Job(command, policy, self.workspace.root, scratch=str(state))
+        output = self._await_job(job, CREATED_TIMEOUT, guard)
+        changed = self._record_changes()
+        if not changed and any(word in tool["code"] for word in ("subprocess", "os.system", "os.popen")):
+            # A tool that runs programs and changed nothing counts as a check, like a command did.
+            self._dirty = False
+            self._run_seq = self._edit_seq + 1
+        return output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "")
+
+    def _record_changes(self) -> list[str]:
+        """Note files a created tool or its background job changed, so /undo and the check-your-work reminder still see them."""
+        if not self._watch.ready:
+            return []
+        changed = []
+        for path, old in self._watch.changes():
+            if old is not watch.UNKNOWN:
+                self.checkpoints.remember(path, old)
+            changed.append(self.workspace.rel(path))
+        if changed:
+            self._dirty = self._edited = True
+            self._edit_seq = self._run_seq + 1
+        return changed
 
     def _session_tool(self, call: dict) -> str:
         args = call["args"]
@@ -1448,7 +1499,11 @@ class AgentSession:
         policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
         root = self.workspace.root
         guard = gitguard.snapshot(root)
-        job = self.workspace.services.shell(command, policy, root)
+        return self._await_job(self.workspace.services.shell(command, policy, root), limit, guard)
+
+    def _await_job(self, job: "sandbox.Job", limit: int, guard) -> str:
+        """Wait up to limit for a started job; one still running then moves to the background instead of being killed."""
+        root = self.workspace.root
         end = time.time() + limit
         while job.code is None and time.time() < end and not self._stop:
             time.sleep(0.05)
@@ -1460,7 +1515,8 @@ class AgentSession:
             if name:
                 self.jobs[name] = job
         if name:
-            return clip(f"{job.read().strip()}\n[still running after {limit} s; it was not stopped but moved to the background as {name}: read it with job_output, stop it with job_stop]{warning}", 400_000)
+            return clip(f"{job.read().strip()}\n[still running after {limit} s; it was not stopped but moved to the background as {name}: read it with job_output, "
+                        f"stop it with job_stop; you are told when it ends]{warning}", 400_000)
         finished = job.code is not None
         if finished:
             job.out.join(5)
@@ -1754,8 +1810,14 @@ class AgentSession:
         return "\n\n".join(rows) + ("\n\n[timed out; call wait_agent again to keep waiting]" if waiting else "")
 
     def _notifications(self) -> None:
-        """Tell the model about helpers that finished on their own, as Codex does with a notification message."""
+        """Tell the model about helpers and background jobs that finished on their own, as Codex does with a notification message."""
         self._start_queued()
+        for name, job in list(self.jobs.items()):
+            if job.code is not None and not getattr(job, "announced", False):
+                job.announced = True
+                changed = self._record_changes()
+                note = f"[{name} finished with exit code {job.code}; read the rest of its output with job_output]"
+                self.history.append({"role": "user", "content": note + (f"\n[changed: {', '.join(changed[:30])}]" if changed else "")})
         for child in list(self.children.values()):
             if not child.closed and not child.reported and child.status == "idle" and child.held is None:
                 self._collect(child)
@@ -2493,7 +2555,8 @@ class AgentSession:
             self._continued = True
             self.history.append({"role": "user", "content": PREWALK_CONTINUE})
             return True
-        if self._dirty and not self._gated and self.workspace.policy.mode != "read-only" and any(r["name"] == "run_command" for r in self.specs()):
+        if self._dirty and not self._gated and self.workspace.policy.mode != "read-only" and (
+                self.profile["tools"] == "create" or any(r["name"] == "run_command" for r in self.specs())):
             self._gated = True
             self.history.append({"role": "user", "content": GATE_NUDGE})
             self.emit("notice", text="Files changed but nothing was checked; reminding the agent to run a check.")
@@ -2701,6 +2764,8 @@ class AgentSession:
 
     def _edited_after_run(self) -> bool:
         """The latest file change in the conversation came after the latest command run."""
+        if self.profile["tools"] == "create" and not self.depth:
+            return self._edit_seq > self._run_seq
         for item in reversed(self.history):
             for call in reversed(item.get("calls") or []):
                 if call["name"] in ("run_command", "run_script"):

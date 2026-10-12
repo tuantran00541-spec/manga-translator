@@ -3650,3 +3650,32 @@ def test_create_only_mode_guards_names_reviews_code_and_keeps_plan_mode_read_onl
         assert "exit_plan_mode" in [s["name"] for s in session.specs()]
         output, _ = session._run_call({"id": "y", "name": "shell", "args": {"cmd": "touch nope.txt"}})
         assert not (ws.root / "nope.txt").exists(), "plan mode runs created tools read-only"
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="the shell tool uses a POSIX shell")
+def test_created_tools_keep_state_track_changed_files_for_undo_and_move_to_the_background(ws, home, monkeypatch):
+    from app.agent import session as session_module
+    create_only(home)
+    stateful = {"name": "sh", "description": "Shell that remembers its folder.", "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}},
+                "code": ("import os, subprocess\ndef sh(cmd):\n    f = os.path.join(os.environ['AGENT_STATE'], 'cwd')\n"
+                         "    cwd = open(f).read().strip() if os.path.exists(f) else os.getcwd()\n"
+                         "    r = subprocess.run(cmd + '; pwd > ' + repr(f), shell=True, cwd=cwd, capture_output=True, text=True)\n"
+                         "    return r.stdout + r.stderr + f'[exit {r.returncode}]'\n")}
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    session._create(stateful)
+    run = lambda cmd: session._run_call({"id": cmd[:8], "name": "sh", "args": {"cmd": cmd}})[0]
+    assert "[exit 0]" in run("cd pkg")
+    out = run("pwd && echo changed > a.py && echo new > n.txt")
+    assert out.splitlines()[0].endswith("/pkg"), "the folder from the last call is kept"
+    assert "[changed: pkg/a.py, pkg/n.txt]" in out and session._dirty and session._edited_after_run()
+    assert "[exit 0]" in run("true") and not session._dirty and not session._edited_after_run(), "a run that changes nothing counts as a check"
+    assert session.command("/undo")["message"]
+    assert (ws.root / "pkg" / "a.py").read_text().startswith("def f()") and not (ws.root / "pkg" / "n.txt").exists(), "/undo restores what a created tool changed"
+    monkeypatch.setattr(session_module, "CREATED_TIMEOUT", 1)
+    out = run("sleep 2 && echo late > late.txt")
+    assert "moved to the background as job1" in out and "job_output" in [s["name"] for s in session.specs()]
+    time.sleep(2.5)
+    session._notifications()
+    note = session.history[-1]["content"]
+    assert "job1 finished with exit code 0" in note and "pkg/late.txt" in note, note

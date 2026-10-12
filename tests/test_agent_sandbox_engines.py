@@ -144,3 +144,37 @@ def test_docker_runs_created_tool_scripts_without_the_tool_bridge(tmp_path, home
     root.mkdir()
     code, out, calls = codemode.run(SCRIPT, sandbox.Policy("workspace-write", False), root, 300, lambda n, a: ("", False))
     assert code == 0 and "wrote ok" in out and "no bridge" in out and (root / "made.txt").read_text() == "ok", out
+
+
+def _created_tool_session(tmp_path, home):
+    from app.agent.session import AgentSessionManager
+    from app.agent.tools import Workspace
+    from app.ai_providers import PROVIDERS
+    root = tmp_path / "ws"
+    root.mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text('{"tools": "create"}')
+    session = AgentSessionManager(None, home=home).create(PROVIDERS["openai"], "k", "m", Workspace(root, sandbox.Policy("workspace-write", False)), "bypass",
+                                                          complete=lambda *a, **k: {"text": "x", "calls": [], "usage": {}})
+    session._new_request("go")
+    session._create({"name": "put", "parameters": {"type": "object", "properties": {"text": {"type": "string"}}},
+                     "code": "import os\ndef put(text):\n    open('made.txt', 'w').write(text)\n    open(os.path.join(os.environ['AGENT_STATE'], 's'), 'a').write(text)\n"
+                             "    return open(os.path.join(os.environ['AGENT_STATE'], 's')).read()\n"})
+    return session, root
+
+
+@pytest.mark.skipif(not WINDOWS, reason="the low-integrity sandbox is Windows only")
+def test_windows_runs_created_tools_with_state_and_change_tracking(tmp_path, home):
+    session, root = _created_tool_session(tmp_path, home)
+    session._run_call({"id": "a", "name": "put", "args": {"text": "1"}})
+    out, ok = session._run_call({"id": "b", "name": "put", "args": {"text": "2"}})
+    assert ok and "12" in out and "[changed: made.txt]" in out and (root / "made.txt").read_text() == "2", out
+
+
+@pytest.mark.skipif(not _docker(), reason="needs a Docker daemon running Linux containers")
+def test_docker_runs_created_tools_with_state_and_change_tracking(tmp_path, home, monkeypatch):
+    monkeypatch.setenv("MANGA_AGENT_SANDBOX", "docker")
+    session, root = _created_tool_session(tmp_path, home)
+    session._run_call({"id": "a", "name": "put", "args": {"text": "1"}})
+    out, ok = session._run_call({"id": "b", "name": "put", "args": {"text": "2"}})
+    assert ok and "12" in out and "[changed: made.txt]" in out and (root / "made.txt").read_text() == "2", out

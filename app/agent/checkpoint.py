@@ -28,6 +28,11 @@ class Checkpoints:
         except OSError:
             pass
 
+    def remember(self, path: Path, data: bytes | None) -> None:
+        """Record a file's contents from before a change seen after the fact, unless this turn already has it."""
+        if self.turns and str(path) not in self.turns[-1]:
+            self.turns[-1][str(path)] = data
+
     def current(self) -> dict[str, bytes | None]:
         """Each file the edit tools changed in this request, as it was before the first change (None: it did not exist)."""
         return dict(self.turns[-1]) if self.turns else {}
