@@ -30,6 +30,7 @@ jobs:
       max_output: ${{ steps.cfg.outputs.max_output }}
       shards: ${{ steps.cfg.outputs.shards }}
       tools: ${{ steps.cfg.outputs.tools }}
+      agent: ${{ steps.cfg.outputs.agent }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,6 +63,7 @@ jobs:
           print(f"request={json.dumps(cfg.get('request') or {})}")
           print(f"late_request={json.dumps(cfg.get('late_request') or {})}")
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
+          print(f"agent={cfg.get('agent') if cfg.get('agent') in ('chaos', 'terminus-2') else 'chaos'}")
           print(f"tools={cfg.get('tools') if cfg.get('tools') in ('hybrid', 'create', 'full') else 'hybrid'}")
           print(f"shards={json.dumps(list(range(max(1, int(cfg.get('shards') or 1)))))}")
           PY
@@ -188,6 +190,7 @@ jobs:
           MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
           MANGA_AGENT_SHA: ${{ github.sha }}
           MANGA_AGENT_TOOLS: ${{ needs.config.outputs.tools }}
+          MANGA_AGENT_REQUEST_CFG: ${{ needs.config.outputs.request }}
         run: |
           export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"
           export MANGA_AGENT_UV="$(readlink -f "$(command -v uv)")"
@@ -196,9 +199,30 @@ jobs:
           # With no task list, each shard takes every Nth task of the sorted set so hard and easy ones spread evenly.
           [ -z "$TASKS" ] && TASKS=$(ls /tmp/tb21/tasks | sort | awk -v n="${{ strategy.job-total }}" -v k="${{ matrix.shard }}" '(NR-1)%n==k {printf "-i %s ", $0}')
           echo "tasks in this shard: $(echo "$TASKS" | grep -o -- '-i ' | wc -l)"
+          if [ "${{ needs.config.outputs.agent }}" = "terminus-2" ]; then
+            # Terminus 2, the Terminal-Bench team's own harness, runs on the runner and calls the same relay, same model and request fields.
+            AGENT=(--agent terminus-2 --model "openai/$MANGA_AGENT_MODEL" --ak "api_base=http://127.0.0.1:$PORT/v1")
+            while IFS= read -r kv; do AGENT+=(--ak "$kv"); done < <(python - <<'PY'
+          import json, os
+          req = json.loads(os.environ["MANGA_AGENT_REQUEST_CFG"])
+          if "temperature" in req:
+              print(f"temperature={json.dumps(req['temperature'])}")
+          # The rest go in extra_body, which LiteLLM forwards untouched, so an unknown model still gets reasoning_effort.
+          extra = {"max_tokens": int(os.environ["MANGA_AGENT_MAX_OUTPUT"]),
+                   "extra_body": {k: v for k, v in req.items() if k != "temperature"}}
+          print("llm_call_kwargs=" + json.dumps(extra))
+          print("model_info=" + json.dumps({"max_input_tokens": 262144, "max_output_tokens": int(os.environ["MANGA_AGENT_MAX_OUTPUT"]),
+                                            "input_cost_per_token": 0, "output_cost_per_token": 0}))
+          PY
+          )
+            export OPENAI_API_KEY=relay
+          else
+            AGENT=(--agent-import-path manga_agent:MangaAgent --model "$MANGA_AGENT_MODEL")
+          fi
+          printf '%s\n' "${AGENT[@]}" | grep -v api_base
           # Stop Harbor before the job limit so the summary and evidence steps still run.
-          timeout 325m harbor run -p /tmp/tb21/tasks $N $TASKS --agent-import-path manga_agent:MangaAgent \
-            --model "$MANGA_AGENT_MODEL" --env docker --n-concurrent "${{ needs.config.outputs.concurrent }}" --max-retries 1 \
+          timeout 325m harbor run -p /tmp/tb21/tasks $N $TASKS "${AGENT[@]}" \
+            --env docker --n-concurrent "${{ needs.config.outputs.concurrent }}" --max-retries 1 \
             --jobs-dir "$PWD/jobs" --yes 2>&1 | tail -80 || true
 
       - name: Summarize
