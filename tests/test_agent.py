@@ -3081,6 +3081,7 @@ def test_the_agent_writes_a_plugin_that_mounts_after_approval_even_in_auto_mode(
 
 
 def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_keeps_it(ws, home):
+    create_only(home, {"tools": "hybrid"})
     (ws.root / "notes.txt").write_text("a\nb\nc\n")
     code = "def count_lines(path):\n    return {'lines': len(tools.read_file(path=path).splitlines())}\n"
     params = {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}
@@ -3805,3 +3806,24 @@ def test_a_chain_thinks_repairs_a_failing_tool_while_running_and_keeps_chains_th
     session._recent = []
     out, _ = session._run_call({"id": "f", "name": "go", "args": {}})
     assert "did not allow the repaired code" in out and "undefined_name" in session.created["half"]["code"], "Auto mode reviews a repair first"
+
+
+def test_hybrid_offers_built_in_tools_and_create_and_chains_reach_built_in_tools(ws, home):
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "hybrid"}))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    names = {s["name"] for s in session.specs()}
+    assert {"read_file", "edit_file", "run_command", "create"} <= names and "tools.<name>(...) also calls the built-in tools" in session.system_prompt()
+    chain = ("def go():\n    tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 3')\n"
+             "    return tools.read_file(path='pkg/a.py').count('return 3')\n")
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": False}})
+    assert out.splitlines()[1].strip() == "1" and "[changed: pkg/a.py]" in out, out
+    assert session.command("/tools create")["message"].startswith("Đã đổi") and [s["name"] for s in session.specs()] == ["create"]
+    assert session.command("/tools full")["message"] and "create" not in {s["name"] for s in session.specs()} and "create, which writes" not in session.system_prompt()
+    assert "Bộ tool hiện tại: full" in session.command("/tools")["message"]
+
+
+def test_the_default_tool_set_is_hybrid():
+    from app.agent import registry
+    assert registry.TOOL_SETS[0] == "hybrid"

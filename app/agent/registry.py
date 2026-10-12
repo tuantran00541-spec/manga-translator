@@ -25,8 +25,9 @@ ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
 REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file", "edit_lines",
                          "apply_patch", "run_command", "web_fetch", "web_search", "web_download"})
 ROLES = ("read", "edit", "exec", "net")
-# The model starts with only the create tool and builds its own; "full" offers the built-in tool set instead.
-DEFAULT_TOOLS = "create"
+# hybrid: the built-in tools plus create and chains; create: only create; full: only the built-in tools.
+TOOL_SETS = ("hybrid", "create", "full")
+DEFAULT_TOOLS = "hybrid"
 PROFILE_FILES = {"user": (".manga-agent/profile.json",), "workspace": (".agents/profile.json",)}
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
 EVENTS = ("pre_tool", "post_tool")
@@ -94,7 +95,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["advisor"] = data["advisor"]
                 if isinstance(data.get("advisor_every"), int) and data["advisor_every"] > 0:
                     profile["advisor_every"] = data["advisor_every"]
-                if data.get("tools") in ("create", "full"):
+                if data.get("tools") in TOOL_SETS:
                     profile["tools"] = data["tools"]
                 if isinstance(data.get("learn_every"), int) and data["learn_every"] >= 0:
                     profile["learn_every"] = data["learn_every"]

@@ -223,7 +223,10 @@ in full, and keep long output short (head and tail). Each call is a fresh proces
 the AGENT_STATE folder (an environment variable), which lasts the whole session. A call still running after 5 minutes moves to the
 background and you are told when it ends. Files a tool changes are listed after its output. Tools are kept for later sessions: reuse them, fix one by creating it again
 under the same name, delete one with empty code. Prefer a few general tools (a shell, a file reader, an exact-text editor) over many narrow ones.
-Inside any tool's code, tools.<name>(...) calls another created tool in the same process and returns what it returns, so one call can
+{chain}Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
+then run the tests or command that proves it works. End with a short report: what changed, how you checked, what is left.
+Write notes, plans and helper prompts in English; answer the user in the language of their request."""
+CHAIN_PROMPT = """Inside any tool's code, tools.<name>(...) calls another created tool in the same process and returns what it returns, so one call can
 chain many steps: read, edit, run and check without coming back in between. The same tools.<name>(...) reaches the user's plugin and
 MCP tools (JSON comes back as objects), tools.think(question, answer="yes/no") asks you a question from inside the running code and
 returns your answer, so code does the sure steps and calls you only where judgment is needed; when a created tool fails inside a chain
@@ -231,9 +234,11 @@ you are shown the error and rewrite that tool on the spot, and the chain retries
 tools.skill(name) returns a skill's instructions, tools.agent(prompt, agent="explore") runs a
 helper agent and returns its report, and tools.create(...) adds a tool you can call later in the same chain. Calls from several threads
 run at the same time. Give create args to run the tool as soon as it is written;
-add keep: false for a one-off script that is not saved. Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
-then run the tests or command that proves it works. End with a short report: what changed, how you checked, what is left.
-Write notes, plans and helper prompts in English; answer the user in the language of their request."""
+add keep: false for a one-off script that is not saved."""
+HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a tool as Python code that runs in the sandbox (it is kept for later sessions). "
+                 "Use the built-in tools while exploring or debugging step by step; when the steps are known, write them as one chain with create so they "
+                 "run in a single call. Inside a chain tools.<name>(...) also calls the built-in tools (read_file, edit_file, run_command and the rest) and "
+                 "returns their text. " + CHAIN_PROMPT.replace("\n", " "))
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {
@@ -321,6 +326,7 @@ BUILTIN_COMMANDS = {
     "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn", "cache": "Xem tỉ lệ cache và những lần tiền tố yêu cầu bị đổi", "receipts": "Xem mọi file đã sửa, lệnh đã chạy và lần duyệt của phiên này",
     "plugins": "Xem plugin, tính năng đã tắt và agent ngoài (Codex, Claude Code)",
     "learn": "Xem lại phiên này và tự viết hoặc sửa skill ngay",
+    "tools": "Đổi bộ tool: /tools hybrid (có sẵn + create), create (chỉ create), full (chỉ có sẵn)",
 }
 GOAL_PROMPT = ("Goal: {text}\nWork on it across as many steps as needed until it is fully done and verified. "
                "When it is done call goal_done with a short report; if you need a decision from the user call ask_user.")
@@ -756,6 +762,12 @@ class AgentSession:
             return {"message": "\n".join(rows) or "Không có skill nào."}
         if name == "learn":
             return {"message": self._maybe_learn(force=True)}
+        if name == "tools":
+            if args not in registry.TOOL_SETS:
+                return {"message": f"Bộ tool hiện tại: {self.profile['tools']}. Đổi bằng /tools {'|'.join(registry.TOOL_SETS)} (chỉ cho phiên này; ghi \"tools\" vào profile.json để giữ lâu dài)."}
+            self.profile = {**self.profile, "tools": args}
+            self._pinned = None
+            return {"message": f"Đã đổi sang bộ tool {args} cho phiên này."}
         if name == "services":
             return {"message": "\n".join(self.workspace.services.describe())
                     + "\nChọn trong ~/.manga-agent/profile.json, ví dụ \"services\": {\"web.search\": [\"tavily\", \"duckduckgo\"]}; plugin thêm provider bằng api.provide()."}
@@ -1128,7 +1140,7 @@ class AgentSession:
         if not self.depth:
             rows += [SESSION_SPECS["schedule_create"], SESSION_SPECS["schedule_list"], SESSION_SPECS["schedule_delete"]]
         rows += [SESSION_SPECS["plugin_write"], SESSION_SPECS["plugin_remove"]]
-        if self.workspace.policy.mode != "read-only":
+        if self.workspace.policy.mode != "read-only" and self.profile["tools"] == "hybrid":
             rows.append(SESSION_SPECS["create"])
             rows += [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
         rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn, fan,
@@ -1408,10 +1420,6 @@ class AgentSession:
         args = call["args"] if isinstance(call["args"], dict) else {}
         # In plan mode a created tool may look but not change anything.
         policy = sandbox.Policy("read-only", self.workspace.policy.network) if self.plan_mode else self.workspace.policy
-        if self.profile["tools"] != "create":
-            # Next to the built-in tools a created one is a script that may call them, as run_script does.
-            script = tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
-            return self._run_script({"code": script, "timeout": 900}, policy)
         state = self._outputs_dir() / "state"
         state.mkdir(parents=True, exist_ok=True)
         docker = sandbox.backend() == "docker" and policy.mode != "full-access"
@@ -1454,6 +1462,9 @@ class AgentSession:
     def _chain_targets(self) -> set[str]:
         """What a created tool's code may reach through the agent: the user's plugin and MCP tools, and skills."""
         names = {n for n in self.registry.tools if n not in registry.GROUPS} | set(self._root().mcp_tools) | {"agent", "create", "think"}
+        if self.profile["tools"] == "hybrid":
+            # In hybrid a chain also reaches the built-in tools, through the same rules and approvals.
+            names |= {s["name"] for s in self.specs()} - {"exit_plan_mode", "goal_done"} - set(self._root().created)
         return names | ({"skill"} if self.skills else set())
 
     def _serve_chain(self, folder: Path, job: "sandbox.Job") -> None:
@@ -2253,7 +2264,7 @@ class AgentSession:
 
     def system_prompt(self) -> str:
         base = CREATE_PROMPT if self.profile["tools"] == "create" and not self.depth else SYSTEM_PROMPT
-        parts = [base.format(root=self.workspace.root, system=platform.system(),
+        parts = [base.format(root=self.workspace.root, system=platform.system(), chain=CHAIN_PROMPT,
                                       sandbox=self.workspace.policy.describe(self.workspace.root))]
         if self._pinned is None:
             self._pinned = self._volatile()
@@ -2271,6 +2282,8 @@ class AgentSession:
         else:
             parts.append(self.agent.prompt if self.agent else agents.BUILTIN["explore"].prompt)
             parts.append("Work until the job is done, then end with a complete report: the parent sees only your final reply.")
+        if self.profile["tools"] == "hybrid" and not self.depth and self.workspace.policy.mode != "read-only":
+            parts.append(HYBRID_PROMPT)
         if self.quirks.get("prompt_extra"):
             parts.append(str(self.quirks["prompt_extra"]))
         parts.append(self._pinned.get("Skills", ""))
