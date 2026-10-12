@@ -762,12 +762,14 @@ class AgentSession:
         while True:
             key = root.api_key if api_key in root.api_keys else api_key
             token = client.ASK_ON_LIMIT.set(key == root.api_key and len(root.api_keys) > 1)
+            extra = client.REQUEST_EXTRA.set(self.quirks.get("request") if isinstance(self.quirks.get("request"), dict) else {})
             try:
                 return self._raw_complete(provider, key, *args, **kwargs)
             except client.KeyLimited as exc:
                 if not root._ask_next_key(key, str(exc)):
                     raise
             finally:
+                client.REQUEST_EXTRA.reset(extra)
                 client.ASK_ON_LIMIT.reset(token)
 
     def _ask_next_key(self, key: str, detail: str) -> bool:

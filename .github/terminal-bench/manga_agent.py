@@ -62,7 +62,9 @@ class MangaAgent(BaseInstalledAgent):
         minutes = int(os.environ.get("MANGA_AGENT_MINUTES", "60"))
         # The task container is the sandbox, so nobody approves calls by default (bypass), as in the other harnesses Harbor runs.
         mode = os.environ.get("MANGA_AGENT_MODE", "bypass")
-        profile = json.dumps({"advisor": True, "token_budget": 10 ** 12, "max_steps": 2000})
+        request = json.loads(os.environ.get("MANGA_AGENT_REQUEST") or "{}")
+        profile = json.dumps({"advisor": True, "token_budget": 10 ** 12, "max_steps": 2000,
+                              "max_output_tokens": int(os.environ.get("MANGA_AGENT_MAX_OUTPUT", "65536")), "models": {".": {"request": request}}})
         var = f"MANGA_INSTRUCTION_{uuid.uuid4().hex}".upper()
         env = {"AGENT_API_KEY": "relay", "PYTHONPATH": f"{HOME}/src", "HOME": f"{HOME}/home", var: instruction}
         await self.exec_as_agent(

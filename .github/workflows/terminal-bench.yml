@@ -29,6 +29,8 @@ jobs:
       concurrent: ${{ steps.cfg.outputs.concurrent }}
       minutes: ${{ steps.cfg.outputs.minutes }}
       mode: ${{ steps.cfg.outputs.mode }}
+      request: ${{ steps.cfg.outputs.request }}
+      max_output: ${{ steps.cfg.outputs.max_output }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,6 +60,8 @@ jobs:
           print(f"concurrent={int(cfg.get('concurrent') or 2)}")
           print(f"minutes={int(cfg.get('minutes') or 60)}")
           print(f"mode={cfg.get('mode') if cfg.get('mode') in ('bypass', 'auto') else 'bypass'}")
+          print(f"request={json.dumps(cfg.get('request') or {})}")
+          print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
           PY
 
   bench:
@@ -105,6 +109,25 @@ jobs:
           curl -sS -m 30 -o /dev/null -w "models endpoint: HTTP %{http_code}\n" "http://127.0.0.1:$PORT/v1/models" || true
           (cat /opt/relay/key > /dev/null 2>&1 && echo "::error::the runner user can read the key" && exit 1) || echo "key file is not readable by the runner user"
 
+      - name: Probe the model with the run's request fields
+        env:
+          MODEL: ${{ needs.config.outputs.model }}
+          REQUEST: ${{ needs.config.outputs.request }}
+        run: |
+          python - <<'PY'
+          import json, os, time, requests
+          body = {"model": os.environ["MODEL"], "messages": [{"role": "user", "content": "What is 17 * 23? Answer with the number."}], "max_tokens": 4000}
+          for label, extra in (("with fields", json.loads(os.environ["REQUEST"])), ("plain", {})):
+              started = time.time()
+              r = requests.post(f"http://127.0.0.1:{os.environ['PORT']}/v1/chat/completions", json={**body, **extra}, timeout=600)
+              data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+              msg = ((data.get("choices") or [{}])[0].get("message") or {})
+              reasoning = msg.get("reasoning_content") or msg.get("reasoning") or ""
+              print(f"{label}: HTTP {r.status_code} in {time.time() - started:.0f}s, answer {str(msg.get('content'))[:40]!r}, reasoning chars {len(reasoning)}, usage {data.get('usage')}")
+              if r.status_code != 200:
+                  print(r.text[:300])
+          PY
+
       - name: Package the harness
         run: |
           python -m pip install -q -r requirements-test.txt
@@ -133,6 +156,8 @@ jobs:
           MANGA_AGENT_MODEL: ${{ needs.config.outputs.model }}
           MANGA_AGENT_MINUTES: ${{ needs.config.outputs.minutes }}
           MANGA_AGENT_MODE: ${{ needs.config.outputs.mode }}
+          MANGA_AGENT_REQUEST: ${{ needs.config.outputs.request }}
+          MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
           MANGA_AGENT_SHA: ${{ github.sha }}
         run: |
           export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"

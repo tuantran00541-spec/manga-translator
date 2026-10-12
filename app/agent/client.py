@@ -67,6 +67,9 @@ class KeyLimited(RuntimeError):
 
 # Set while the caller holds spare keys: a limit with no named wait is handed back instead of retried blindly.
 ASK_ON_LIMIT: ContextVar[bool] = ContextVar("ask_on_limit", default=False)
+# Extra request fields for the model in use, such as reasoning_effort or sampling, from profile.json "models".
+REQUEST_EXTRA: ContextVar[dict] = ContextVar("request_extra", default={})
+_REFUSED_EXTRA: set[tuple[str, str]] = set()
 
 
 class ToolsUnsupported(RuntimeError):
@@ -482,7 +485,18 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
         payload["stream_options"] = {"include_usage": True}
     if max_tokens:
         payload["max_tokens"] = int(max_tokens)
+    refused = (provider.api_base, model)
+    extra = {} if refused in _REFUSED_EXTRA else {k: v for k, v in REQUEST_EXTRA.get().items() if k not in ("model", "messages", "stream", "tools")}
+    payload.update(extra)
     response = _post(provider, api_key, payload, bool(on_delta))
+    if extra and response.status_code == 400 and any(k.lower() in response.text.lower() for k in extra):
+        # A provider that refuses one of the extra fields is asked again without them.
+        logger.warning("{} refused {}; asking without them from now on", provider.label, ", ".join(extra))
+        _REFUSED_EXTRA.add(refused)
+        for key in extra:
+            payload.pop(key, None)
+        response.close()
+        response = _post(provider, api_key, payload, bool(on_delta))
     if max_tokens and response.status_code == 400 and "max_tokens" in response.text.lower() or (
             max_tokens and response.status_code == 400 and "max_completion_tokens" in response.text.lower()):
         # A provider with a lower cap, or none to set, refuses the field; ask again without it.
