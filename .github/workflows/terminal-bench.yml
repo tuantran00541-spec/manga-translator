@@ -178,7 +178,8 @@ jobs:
           params = {"model": f"openai/{os.environ['MODEL']}", "api_base": f"http://127.0.0.1:{os.environ['PORT']}/v1", "api_key": "relay",
                     "use_chat_completions_api": True, "max_tokens": int(os.environ["MAX_OUTPUT"]),
                     **{k: req[k] for k in ("temperature", "top_p") if k in req}}
-          json.dump({"model_list": [{"model_name": os.environ["MODEL"], "litellm_params": params}]}, open("/tmp/bridge.yaml", "w"))
+          # Harbor gives Codex only the part of the model id after its last slash, so the bridge serves it under that name.
+          json.dump({"model_list": [{"model_name": os.environ["MODEL"].rsplit("/", 1)[-1], "litellm_params": params}]}, open("/tmp/bridge.yaml", "w"))
           PY
           # Codex gets this bridge key, never the provider key, which only the relay holds.
           export LITELLM_MASTER_KEY="sk-$(openssl rand -hex 24)"
@@ -193,7 +194,7 @@ jobs:
           # A 401, 429 or 5xx can be the provider straining under the other runs on the same key, so it gets two more tries.
           for attempt in range(3):
               r = requests.post("http://127.0.0.1:18081/v1/responses", timeout=900, headers={"Authorization": f"Bearer {os.environ['LITELLM_MASTER_KEY']}"},
-                                json={"model": os.environ["MODEL"], "input": "Use the write_file tool to write OK to /tmp/ok.txt.", "tools": [tool], "reasoning": {"effort": "medium"}})
+                                json={"model": os.environ["MODEL"].rsplit("/", 1)[-1], "input": "Use the write_file tool to write OK to /tmp/ok.txt.", "tools": [tool], "reasoning": {"effort": "medium"}})
               print(f"bridge: HTTP {r.status_code}")
               if r.status_code not in (401, 429) and r.status_code < 500:
                   break

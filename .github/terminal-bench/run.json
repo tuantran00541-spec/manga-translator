@@ -11,12 +11,9 @@
     "reasoning_effort": "high"
   },
   "max_output_tokens": 32000,
-  "late_request": {
-    "reasoning_effort": "medium"
-  },
   "shards": 2,
   "tools": "hybrid",
-  "agent": "chaos",
+  "agent": "codex",
   "limits": {
     "max_usd": 30.0,
     "price": {
