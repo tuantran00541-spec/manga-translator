@@ -282,7 +282,7 @@ INTENT_PROMPT = ("Before a program you wrote runs, write down how you picture th
                  "# Assumptions (what you decided without asking; mark the ones that are hard to undo), # Unclear (what only the user can settle). "
                  "Build on the earlier picture when the new request continues it. Keep it under 40 lines; reply with only the Markdown.")
 # Dollars per million input and output tokens above which a model the agent picks itself needs the user's yes.
-PRICE_CAP = (1.0, 5.0)
+PRICE_CAP = (1.0, 1.0)
 INTENT_CHECK = ("[Check against intent.md: say in a line what this request has done so far. If it went off what the user asked, or you "
                 "cannot tell whether it fits, stop now and ask the user (ask_user, or end your reply with the question); if it fits but is not done, go on.]")
 HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a tool as Python code that runs in the sandbox (it is kept for later sessions). "
