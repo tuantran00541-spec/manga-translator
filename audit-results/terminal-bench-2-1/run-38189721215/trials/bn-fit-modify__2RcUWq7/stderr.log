@@ -1,0 +1,35 @@
+2026-10-12 00:55:35 | WARNING  | app.agent.session:2628 - Agent session 053529acdff84315 failed
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/threading.py", line 1030, in _bootstrap
+    self._bootstrap_inner()
+  File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+    self.run()
+  File "/usr/lib/python3.12/threading.py", line 1010, in run
+    self._target(*self._args, **self._kwargs)
+> File "/opt/mg/src/app/agent/session.py", line 2626, in _loop
+    (custom or AgentSession._steps)(self, max_steps)
+  File "/opt/mg/src/app/agent/session.py", line 2507, in _steps
+    turn = self._turn()
+  File "/opt/mg/src/app/agent/session.py", line 2026, in _turn
+    return self._turn_once()
+  File "/opt/mg/src/app/agent/session.py", line 2040, in _turn_once
+    return self._call_model(client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
+  File "/opt/mg/src/app/agent/session.py", line 1990, in _call_model
+    return self._call_model_once(messages, tools, streams, started)
+  File "/opt/mg/src/app/agent/session.py", line 2011, in _call_model_once
+    return model(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
+  File "/opt/mg/src/app/agent/session.py", line 253, in __call__
+    return self.session._complete_keyed(*args, **kwargs)
+  File "/opt/mg/src/app/agent/session.py", line 767, in _complete_keyed
+    return self._raw_complete(provider, key, *args, **kwargs)
+  File "/opt/mg/src/app/agent/client.py", line 468, in complete
+    return _complete_once(provider, api_key, model, messages, tools=tools, on_delta=on_delta, max_tokens=max_tokens)
+  File "/opt/mg/src/app/agent/client.py", line 491, in _complete_once
+    response = _post(provider, api_key, payload, bool(on_delta))
+  File "/opt/mg/src/app/agent/client.py", line 313, in _post
+    validate_url(url)
+  File "/opt/mg/src/app/security.py", line 103, in validate_url
+    _check_ip(ip_obj, hostname)
+  File "/opt/mg/src/app/security.py", line 122, in _check_ip
+    raise HTTPException(
+fastapi.exceptions.HTTPException: 400: Hostname '172.17.0.1' resolves to non-public IP 172.17.0.1
