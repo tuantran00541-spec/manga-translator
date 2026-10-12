@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
+from app.agent import advisor, agents, aliases, chaincheck, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
 from app.agent.checkpoint import Checkpoints
 from app.ai_providers import auth_headers, resolve_provider
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
@@ -1509,6 +1509,9 @@ class AgentSession:
         """A created tool runs as a sandboxed Python process; past CREATED_TIMEOUT it goes on in the background, and the files it changes are tracked."""
         tool = self._root().created[call["name"]]
         args = call["args"] if isinstance(call["args"], dict) else {}
+        problems = chaincheck.check(self._with_callees(tool["code"]), self._chain_arguments(), self._alias_fixes)
+        if problems:
+            raise ToolError("The chain was not run, because its code calls tools that cannot work:\n" + "\n".join(problems[:10]))
         # In plan mode a created tool may look but not change anything.
         policy = sandbox.Policy("read-only", self.workspace.policy.network) if self.plan_mode else self.workspace.policy
         state = self._outputs_dir() / "state"
@@ -1558,6 +1561,27 @@ class AgentSession:
             self._run_seq = self._edit_seq + 1
         check = f"\n{INTENT_CHECK}" if not self.depth and self.profile["intent"] and self._intent(write=False) else ""
         return note + output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "") + check
+
+    def _chain_arguments(self) -> dict[str, set[str] | None]:
+        """Every tool a chain can call with its argument names, or None where any are accepted."""
+        known: dict[str, set[str] | None] = {}
+        created = self._root().created
+        for name in self._chain_targets() | set(created):
+            if name in created:
+                schema = created[name].get("parameters") or {}
+            elif name in ("think", "agent", "skill", "vote", "models", "create"):
+                schema = {}
+            else:
+                schema = (self._target_spec(name) or {}).get("parameters") or {}
+            props = schema.get("properties") if isinstance(schema, dict) else None
+            known[name] = set(props) if isinstance(props, dict) and props and not schema.get("additionalProperties") else None
+        return known
+
+    def _alias_fixes(self, name: str, given: list[str]) -> bool:
+        """Whether a chain's call by another harness's tool or argument name is renamed into a working call, as _run_call does."""
+        props = {s["name"]: s.get("parameters", {}).get("properties", {}) for s in self.specs()}
+        fixed = aliases.resolve(name, {k: "" for k in given}, props)
+        return bool(fixed) and fixed[0] in props and isinstance(fixed[1], dict) and all(k in props[fixed[0]] for k in fixed[1])
 
     def _intent(self, write: bool = True) -> str:
         """The request as the model pictures it, in intent.md; written once per request by the root session and built on the last one."""

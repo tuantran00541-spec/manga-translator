@@ -3901,6 +3901,23 @@ def test_the_first_chain_of_a_request_writes_how_the_model_pictures_it(ws, home)
     assert len(asked) == 3, "and only once"
 
 
+def test_a_chain_that_calls_tools_wrongly_is_stopped_before_it_runs(ws, home):
+    from app.agent import chaincheck
+    known = {"read": {"path", "offset"}, "think": None, "create": None}
+    code = ("def go():\n    tools.reed(path='a')\n    tools.read(pth='a')\n    tools.read(path='a', offset=1)\n"
+            "    tools.create(name='made', code='def made():\\n    return 1\\n')\n    tools.made()\n"
+            "    try:\n        tools.maybe()\n    except AttributeError:\n        pass\n    tools.think('q', model='x')\n    tools.search('read')\n")
+    assert chaincheck.check(code, known) == ["line 2: tools.reed is not a tool this chain can reach; did you mean read, create?",
+                                             "line 3: tools.read has no argument 'pth'; it takes offset, path"]
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "create", "intent": False}))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=lambda *a, **k: turn("ok"))
+    assert chaincheck.check("tools.bash(cmd='ls')", known, lambda n, a: n == "bash") == [], "a call the harness renames is let through"
+    chain = "def go():\n    open('ran.txt', 'w').write('x')\n    return tools.thnik('q')\n"
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": False}})
+    assert "was not run" in out and "did you mean think?" in out and not (ws.root / "ran.txt").exists(), out
+
+
 def test_model_catalogs_read_prices_however_providers_give_them(monkeypatch):
     from app.agent import roles
     rows = {"data": [
