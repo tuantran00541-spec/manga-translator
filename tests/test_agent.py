@@ -3332,6 +3332,8 @@ def test_search_skips_files_fast_and_takes_path_globs_and_web_search_answers_rep
     (ws.root / "c.py").write_text("needle = 2\n", encoding="utf-8")
     assert ws.run("search", {"pattern": "needle", "glob": "pkg/**/*.py"}) == "pkg/deep/b.py:1: needle = 1"
     assert "c.py:1:" in ws.run("search", {"pattern": "^needle = 2$"})
+    # Newest first; the times are set so files written in the same tick still sort the same way.
+    os.utime(ws.root / "pkg" / "a.py", (1_000_000, 1_000_000))
     assert ws.run("glob", {"pattern": "pkg/**/*.py"}).splitlines()[0] == "pkg/deep/b.py"
     asked = []
     monkeypatch.setattr(ws.services, "search", lambda q, c, r: asked.append(q) or "1. result")
