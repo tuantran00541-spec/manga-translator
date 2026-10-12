@@ -1,0 +1,106 @@
+{
+    "id": "d8e901b4-6ca9-46d3-9135-878f8f7b058b",
+    "task_name": "terminal-bench/qemu-alpine-ssh",
+    "trial_name": "qemu-alpine-ssh__unYMFPd",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-12__09-53-06/qemu-alpine-ssh__unYMFPd",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/qemu-alpine-ssh"
+    },
+    "source": "tasks",
+    "task_checksum": "9ddf54bc68bdc0d4680aa50ea366f45f5cea363085df1e51e56ed08afff0cec3",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/qemu-alpine-ssh",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "qemu-alpine-ssh__unYMFPd",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-12__09-53-06",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "manga_agent:MangaAgent",
+            "model_name": "qwen3.8-27b",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "1289b1c3-d1c7-48cd-8042-ab21b07e06a0",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "manga-agent",
+        "version": "b8aedb787952fbdf7c3e2b180ee88aea00646eb4",
+        "model_info": {
+            "name": "qwen3.8-27b",
+            "provider": null
+        }
+    },
+    "agent_result": null,
+    "verifier_result": null,
+    "verifier_environment_mode": "shared",
+    "exception_info": {
+        "exception_type": "NonZeroAgentExitCodeError",
+        "exception_message": "Command failed (exit 127): set -e; if ! command -v curl >/dev/null 2>&1; then (apt-get update && apt-get install -y curl ca-certificates) >/dev/null 2>&1 || apk add --no-cache curl ca-certificates >/dev/null 2>&1 || yum install -y curl >/dev/null 2>&1; fi; curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/opt/mg/bin UV_NO_MODIFY_PATH=1 sh\nstdout: None\nstderr: None",
+        "exception_traceback": "Traceback (most recent call last):\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/trial.py\", line 497, in run\n    await self._prepare()\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/trial.py\", line 543, in _prepare\n    await self._setup_agent()\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/trial.py\", line 1720, in _setup_agent\n    await asyncio.wait_for(\n    ...<2 lines>...\n    )\n  File \"/home/runner/.local/share/uv/python/cpython-3.13.16-linux-x86_64-gnu/lib/python3.13/asyncio/tasks.py\", line 514, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py\", line 1087, in setup\n    await self.install(environment)\n  File \"/home/runner/work/manga-translator/manga-translator/.github/terminal-bench/manga_agent.py\", line 42, in install\n    await self.exec_as_root(\n    ...<5 lines>...\n    )\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py\", line 1019, in exec_as_root\n    return await self._exec(\n           ^^^^^^^^^^^^^^^^^\n        environment, command, user=\"root\", env=env, cwd=cwd, timeout_sec=timeout_sec\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py\", line 999, in _exec\n    raise self._classify_exec_error(command, result)\nharbor.agents.installed.base.NonZeroAgentExitCodeError: Command failed (exit 127): set -e; if ! command -v curl >/dev/null 2>&1; then (apt-get update && apt-get install -y curl ca-certificates) >/dev/null 2>&1 || apk add --no-cache curl ca-certificates >/dev/null 2>&1 || yum install -y curl >/dev/null 2>&1; fi; curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/opt/mg/bin UV_NO_MODIFY_PATH=1 sh\nstdout: None\nstderr: None\n",
+        "occurred_at": "2026-10-12T12:08:50.181877Z"
+    },
+    "started_at": "2026-10-12T12:08:47.041647Z",
+    "finished_at": "2026-10-12T12:09:01.428234Z",
+    "environment_setup": {
+        "started_at": "2026-10-12T12:08:47.042924Z",
+        "finished_at": "2026-10-12T12:08:48.247430Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-12T12:08:48.247476Z",
+        "finished_at": "2026-10-12T12:08:50.181128Z"
+    },
+    "agent_execution": null,
+    "verifier": null,
+    "step_results": null
+}
