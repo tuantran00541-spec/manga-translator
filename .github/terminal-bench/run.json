@@ -13,12 +13,13 @@
   "max_output_tokens": 32000,
   "shards": 2,
   "tools": "hybrid",
-  "agent": "claude-code",
+  "agent": "chaos",
   "limits": {
     "max_usd": 30.0,
     "price": {
       "input": 1.47e-07,
       "output": 2.94e-07
     }
-  }
+  },
+  "trial": 2
 }
