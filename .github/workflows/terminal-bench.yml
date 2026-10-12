@@ -30,6 +30,7 @@ jobs:
       max_output: ${{ steps.cfg.outputs.max_output }}
       shards: ${{ steps.cfg.outputs.shards }}
       shard_total: ${{ steps.cfg.outputs.shard_total }}
+      limits: ${{ steps.cfg.outputs.limits }}
       tools: ${{ steps.cfg.outputs.tools }}
       agent: ${{ steps.cfg.outputs.agent }}
     steps:
@@ -70,6 +71,7 @@ jobs:
           # only_shards reruns some shards of a split, which keep the tasks they had in the full split.
           print(f"shards={json.dumps([k for k in range(total) if k in (cfg.get('only_shards') or range(total))])}")
           print(f"shard_total={total}")
+          print(f"limits={json.dumps(cfg.get('limits') or {})}")
           PY
 
   bench:
@@ -108,6 +110,7 @@ jobs:
       - name: Start the key relay as another user
         env:
           API_KEY: ${{ secrets[needs.config.outputs.secret] }}
+          LIMITS: ${{ needs.config.outputs.limits }}
         run: |
           [ -n "$API_KEY" ] || { echo "::error::secret ${{ needs.config.outputs.secret }} is not set"; exit 1; }
           python -m pip install -q requests
@@ -115,7 +118,7 @@ jobs:
           sudo install -m 755 .github/terminal-bench/proxy.py /opt/relay/proxy.py
           printf '%s' "$API_KEY" | sudo -u nobody tee /opt/relay/key > /dev/null
           sudo chmod 600 /opt/relay/key
-          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" "${{ needs.config.outputs.base }}" > /dev/null 2>&1 &
+          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" "${{ needs.config.outputs.base }}" "$LIMITS" > /dev/null 2>&1 &
           sleep 3
           mkdir -p "$OUT"
           curl -sS -m 30 -o /dev/null -w "models endpoint: HTTP %{http_code}\n" "http://127.0.0.1:$PORT/v1/models" || true

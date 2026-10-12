@@ -1,22 +1,37 @@
 {
-  "secret": "SOVINFRA_LAB_1B_TOKEN",
-  "base_url": "https://api.sovinfra.ai/v1",
-  "model": "qwen3.8-27b",
+  "secret": "MINIROUTER_API_KEY",
+  "base_url": "https://api.minirouter.sh/v1",
+  "model": "prism-ml/ternary-bonsai-2-27b",
   "n_tasks": 0,
-  "tasks": [],
-  "concurrent": 4,
+  "tasks": [
+    "bn-fit-modify",
+    "cancel-async-tasks",
+    "git-leak-recovery",
+    "log-summary-date-ranges",
+    "openssl-selfsigned-cert",
+    "regex-log",
+    "vulnerable-secret",
+    "extract-elf",
+    "filter-js-from-html",
+    "largest-eigenval"
+  ],
+  "concurrent": 2,
   "minutes": 200,
   "mode": "bypass",
-  "request": {
-    "reasoning_effort": "xhigh",
-    "temperature": 1.0,
-    "top_p": 0.95
-  },
+  "request": {},
   "max_output_tokens": 32000,
-  "late_request": {
-    "reasoning_effort": "medium"
-  },
-  "shards": 2,
+  "late_request": {},
+  "shards": 1,
   "tools": "hybrid",
-  "agent": "codex"
+  "agent": "chaos",
+  "limits": {
+    "tokens_per_minute": 100000,
+    "concurrent": 2,
+    "max_usd": 1.0,
+    "price": {
+      "input": 7.875e-08,
+      "output": 5.25e-07,
+      "request": 0.000105
+    }
+  }
 }
