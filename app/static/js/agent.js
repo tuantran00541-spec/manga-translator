@@ -602,20 +602,18 @@
   // The title drawn like a webtoon logo: blade-cut letters, worn ink, a magic circle and a red eye for the O (the one colour, kept in the art, not the layout CSS).
   const CHAOS_MARK = `<svg class="chaos-mark" viewBox="0 0 600 260" role="img" aria-label="Chaos">
     <defs>
-      <filter id="chaos-worn" x="-5%" y="-5%" width="110%" height="110%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="2" seed="7" result="grain"/>
-        <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 16 -10.4" result="holes"/>
-        <feComposite in="SourceGraphic" in2="holes" operator="out" result="speckled"/>
-        <feTurbulence type="turbulence" baseFrequency="0.04" numOctaves="2" seed="3" result="warp"/>
-        <feDisplacementMap in="speckled" in2="warp" scale="3"/>
-      </filter>
       <filter id="chaos-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter>
       <path id="chaos-ring" d="M300 130m-138 0a138 138 0 1 1 276 0a138 138 0 1 1 -276 0"/>
-      <mask id="chaos-cut">
-        <rect width="600" height="260" fill="#fff"/>
-        <path d="M498 14L120 252L108 248L486 10Z" fill="#000"/>
-        <path d="M560 40L230 256L222 252L552 36Z" fill="#000"/>
-      </mask>
+      <g id="chaos-glyphs">
+        <path d="M152 58L148 76L96 80L84 98L80 148L94 162L146 160L140 174L82 178L64 152L68 94L86 68Z"/>
+        <path d="M168 72L186 64L185 178L176 204L167 176Z"/>
+        <path d="M226 62L244 68L242 180L224 174Z"/>
+        <path d="M186 114L226 108L226 122L186 128Z"/>
+        <path d="M252 182L270 182L304 96L350 2L292 70Z"/>
+        <path d="M306 84L322 72L354 180L336 184Z"/>
+        <path d="M282 136L336 132L338 144L280 148Z"/>
+        <path d="M562 58L556 74L500 80L492 94L498 104L546 116L558 138L544 170L452 184L470 166L528 160L538 144L530 132L480 122L468 102L478 78L498 66Z"/>
+      </g>
     </defs>
     <g class="chaos-circle">
       <circle cx="300" cy="130" r="128"/><circle cx="300" cy="130" r="112"/><circle cx="300" cy="130" r="60"/>
@@ -623,25 +621,15 @@
       <path d="${STAR}"/>
       <text class="chaos-runes"><textPath href="#chaos-ring">✦ CHAOS ✦ カオス ✦ 混沌 ✦ CHAOS ✦ カオス ✦ 混沌 ✦ CHAOS ✦ カオス ✦</textPath></text>
     </g>
-    <g transform="skewX(-12) translate(28 0)" mask="url(#chaos-cut)">
-      <g class="chaos-letters" filter="url(#chaos-worn)">
-        <path d="M150 74L94 66L68 120L88 174L148 166"/>
-        <path d="M150 74L172 40L160 80Z" class="chaos-blade"/>
-        <path d="M176 62L176 176M244 58L244 172M176 120L244 112"/>
-        <path d="M176 176L168 214L188 176Z" class="chaos-blade"/>
-        <path d="M262 176L310 56L356 176M282 134L340 130"/>
-        <path d="M310 56L322 22L318 64Z" class="chaos-blade"/>
-        <path d="M542 70L478 64L462 104L534 124L522 172L452 168"/>
-        <path d="M452 168L420 196L462 162Z" class="chaos-blade"/>
-      </g>
+    <g transform="skewX(-6) translate(14 0)">
+      <use href="#chaos-glyphs" class="chaos-shade" x="3" y="4"/>
+      <use href="#chaos-glyphs" class="chaos-letters"/>
       <g class="chaos-eye">
         <path d="M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z" class="chaos-eye-glow" stroke="#ff2a36" filter="url(#chaos-glow)"/>
         <path d="M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z" class="chaos-eye-lid" stroke="#d0121b"/>
         <path d="M408 88L418 120L408 152L398 120Z" class="chaos-pupil" fill="#d0121b"/>
       </g>
     </g>
-    <path class="chaos-slash" d="M496 10L486 10L106 252L112 254Z"/>
-    <path class="chaos-slash" d="M558 34L552 36L222 254L228 256Z"/>
     <text x="572" y="60" class="chaos-kana">カ</text><text x="572" y="86" class="chaos-kana">オ</text><text x="572" y="112" class="chaos-kana">ス</text>
   </svg>`;
 

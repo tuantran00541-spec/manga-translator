@@ -315,16 +315,15 @@
   .agent-session-del { padding: 4px 6px; border: 0; background: none; color: var(--text-quiet); font: inherit; font-size: 12px; cursor: pointer; }
   .agent-log { display: flex; flex: 1 1 auto; flex-direction: column; gap: 14px; padding: 8px 0 24px; }
   .agent-empty { display: grid; place-items: center; margin: auto 0; padding: 8vh 0 0; }
-  /* The Chaos title drawn like a webtoon logo: a faint magic circle, blade-cut worn letters and a red eye. */
+  /* The Chaos title drawn like a webtoon logo: a faint magic circle, clean blade-tipped letters and a red eye. */
   .chaos-mark { width: min(600px, 100%); height: auto; color: var(--text-primary); overflow: visible; }
   .chaos-circle { fill: none; stroke: var(--text-primary); stroke-width: 1.2; opacity: .2; transform-origin: 300px 130px; }
   .chaos-ticks { stroke-width: 1.5; }
   .chaos-runes { fill: var(--text-primary); stroke: none; font: 600 11px/1 "Noto Sans CJK JP", sans-serif; letter-spacing: 3px; }
-  .chaos-letters { fill: none; stroke: var(--text-primary); stroke-width: 24px; stroke-linejoin: miter; stroke-miterlimit: 8; stroke-linecap: butt; }
-  .chaos-letters .chaos-blade { fill: var(--text-primary); stroke: var(--text-primary); stroke-width: 3px; }
+  .chaos-letters { fill: var(--text-primary); }
+  .chaos-shade { fill: var(--text-primary); opacity: .18; }
   .chaos-eye-lid { fill: none; stroke-width: 20px; stroke-linejoin: miter; }
   .chaos-eye-glow { fill: none; stroke-width: 26px; opacity: .55; }
-  .chaos-slash { fill: var(--text-primary); opacity: .85; }
   .chaos-kana { font: 900 22px/1 "Hiragino Sans", "Noto Sans CJK JP", "Yu Gothic", sans-serif; fill: var(--text-primary); }
   @media (prefers-reduced-motion: no-preference) {
     .chaos-circle { animation: chaos-turn 90s linear infinite; }
