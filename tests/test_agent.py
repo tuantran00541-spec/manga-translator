@@ -3881,6 +3881,12 @@ def test_the_first_chain_of_a_request_writes_how_the_model_pictures_it(ws, home)
     session._session_tool({"id": "e", "name": "create", "args": {"name": "look3", "code": chain.replace("look", "look3"), "args": {}, "keep": False}})
     assert len(asked) == 2 and "Earlier picture:\n# Request\nfix dates v1" in asked[1] and "also keep the API" in asked[1]
     assert "fix dates v2" in session.command("/intent")["message"]
+    session._wait_for_decision = lambda c: {"decision": "allow", "note": "keep the old format too"}
+    assert "keep the old format too" in session._session_tool({"id": "q", "name": "ask_user", "args": {"question": "Drop the old format?"}})
+    session._session_tool({"id": "f", "name": "create", "args": {"name": "look4", "code": chain.replace("look", "look4"), "args": {}, "keep": False}})
+    assert len(asked) == 3 and "Asked: Drop the old format?\nAnswered: keep the old format too" in asked[2], "an answer rewrites the picture"
+    session._session_tool({"id": "g", "name": "create", "args": {"name": "look5", "code": chain.replace("look", "look5"), "args": {}, "keep": False}})
+    assert len(asked) == 3, "and only once"
 
 
 def test_model_catalogs_read_prices_however_providers_give_them(monkeypatch):

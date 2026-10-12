@@ -472,6 +472,7 @@ class AgentSession:
         self._repl: repl.Kernel | None = None
         self.find_provider = self.list_providers = None
         self._intent_request = 0
+        self._answers: list[str] = []
         self.role = ""
         self.role_usage: dict[str, dict] = {}
         # Past lessons are sent once at each cold start: a new or resumed session, and after a compaction.
@@ -1562,7 +1563,7 @@ class AgentSession:
         if not write or not root.profile["intent"] or root._intent_request == root._request_no or not root._last_request.strip():
             return current
         root._intent_request = root._request_no
-        asked = "\n\n".join(m[:3000] for m in root._user_messages()[-4:])
+        asked = "\n\n".join([m[:3000] for m in root._user_messages()[-4:]] + root._answers[-6:])
         messages = [{"role": "system", "content": INTENT_PROMPT},
                     {"role": "user", "content": (f"Earlier picture:\n{current[:4000]}\n\n" if current else "") + f"What the user said, latest last:\n{asked}"}]
         try:
@@ -1575,6 +1576,7 @@ class AgentSession:
         text = re.sub(r"^```(?:markdown|md)?\n|\n```\s*$", "", reply["text"].strip())[:6000] + "\n"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
+        root._answers = []
         root.emit("notice", text="Wrote how I picture this request (/intent to read it).")
         return text
 
@@ -1953,6 +1955,11 @@ class AgentSession:
             answer = decision.get("note", "").strip()
             if decision["decision"] == "deny":
                 return "The user did not answer." + (f" Note: {answer}" if answer else "")
+            if answer:
+                # An answer settles part of the request, so the next chain writes intent.md again with it.
+                root = self._root()
+                root._answers.append(f"Asked: {str(args.get('question') or '')[:1000]}\nAnswered: {answer[:2000]}")
+                root._intent_request = 0
             return f"The user answered: {answer}" if answer else "The user answered with no text."
         if call["name"] == "exit_plan_mode":
             decision = self._wait_for_decision(call)
