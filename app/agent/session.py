@@ -119,6 +119,32 @@ if _fn is not None:
     if _result is not None:
         print(_result if isinstance(_result, str) else _json.dumps(_result, ensure_ascii=False, default=str))
 """
+TOOLS_LIBRARY = """import json as _json
+
+_SOURCES = _json.loads({sources!r})
+
+
+class _Tools:
+    \"\"\"Each created tool as a function: tools.name(**args) returns what the tool returns.\"\"\"
+
+    def __init__(self):
+        self._loaded = {{}}
+
+    def __getattr__(self, name):
+        if name.startswith("_") or name not in _SOURCES:
+            raise AttributeError(f"no created tool {{name!r}}; created: {{', '.join(_SOURCES)}}")
+        if name not in self._loaded:
+            space = {{"tools": self, "__name__": "agent_tool_" + name}}
+            exec(compile(_SOURCES[name], name + ".py", "exec"), space)
+            fns = [v for k, v in space.items() if callable(v) and getattr(v, "__module__", "") == space["__name__"] and not k.startswith("_")]
+            self._loaded[name] = space.get(name) if callable(space.get(name)) else (space.get("run") or space.get("main") or (fns[0] if len(fns) == 1 else None))
+        if self._loaded[name] is None:
+            raise AttributeError(f"tool {{name!r}} defines no function named {{name!r}}")
+        return self._loaded[name]
+
+
+tools = _Tools()
+"""
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
 UNREADABLE_TURNS = 4
@@ -143,7 +169,9 @@ in full, and keep long output short (head and tail). Each call is a fresh proces
 the AGENT_STATE folder (an environment variable), which lasts the whole session. A call still running after 5 minutes moves to the
 background and you are told when it ends. Files a tool changes are listed after its output. Tools are kept for later sessions: reuse them, fix one by creating it again
 under the same name, delete one with empty code. Prefer a few general tools (a shell, a file reader, an exact-text editor) over many narrow ones.
-Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
+Inside any tool's code, tools.<name>(...) calls another created tool in the same process and returns what it returns, so one call can
+chain many steps: read, edit, run and check without coming back in between. Give create args to run the tool as soon as it is written;
+add keep: false for a one-off script that is not saved. Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
 then run the tests or command that proves it works. End with a short report: what changed, how you checked, what is left.
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
 OBJ = {"type": "object", "properties": {}}
@@ -186,7 +214,8 @@ SESSION_SPECS = {
             "config": {"type": "object"}}}},
     "create": {"name": "create", "description": "create",
                "parameters": {"type": "object", "required": ["name"], "properties": {
-                   "name": {"type": "string"}, "description": {"type": "string"}, "parameters": {"type": "object"}, "code": {"type": "string"}}}},
+                   "name": {"type": "string"}, "description": {"type": "string"}, "parameters": {"type": "object"}, "code": {"type": "string"},
+                   "args": {"type": "object"}, "keep": {"type": "boolean"}}}},
     "plugin_remove": {"name": "plugin_remove", "description": "Unmount and delete a plugin.", "parameters": ID},
     "goal_done": {"name": "goal_done", "description": "Mark the goal done and verified.",
                   "parameters": {"type": "object", "required": ["summary"], "properties": {"summary": {"type": "string"}}}},
@@ -1145,7 +1174,7 @@ class AgentSession:
         tool = self._root().created.get(call["name"])
         if not tool or not isinstance(call["args"], dict):
             return call
-        return {**call, "args": {**call["args"], "_tool_code": tool["code"][:2500]}}
+        return {**call, "args": {**call["args"], "_tool_code": self._with_callees(tool["code"])[:6000]}}
 
     def _typing_outside(self, call: dict) -> bool:
         """Input to a job running outside the sandbox is a new command there, so it asks like one."""
@@ -1322,8 +1351,14 @@ class AgentSession:
         state = self._outputs_dir() / "state"
         state.mkdir(parents=True, exist_ok=True)
         docker = sandbox.backend() == "docker" and policy.mode != "full-access"
+        # The other created tools are a library the code calls in-process, so one call can chain many steps.
+        (state / "lib").mkdir(exist_ok=True)
+        sources = {n: t["code"] for n, t in self._root().created.items()}
+        (state / "lib" / "agent_tools.py").write_text(TOOLS_LIBRARY.format(sources=json.dumps(sources, ensure_ascii=False)), encoding="utf-8")
+        where = "/tmp" if docker else str(state)
         # AGENT_STATE outlives the call, so a tool can keep a working folder, variables or notes between calls.
-        prelude = f"import os as _os\n_os.environ['AGENT_STATE'] = {('/tmp' if docker else str(state))!r}\n"
+        prelude = (f"import os as _os, sys as _sys\n_os.environ['AGENT_STATE'] = {where!r}\n_sys.path.insert(0, _os.path.join({where!r}, 'lib'))\n"
+                   "from agent_tools import tools\n")
         script = prelude + tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
         payload = base64.b64encode(script.encode("utf-8")).decode("ascii")
         if len(payload) > 100_000:
@@ -1337,11 +1372,22 @@ class AgentSession:
         job = sandbox.Job(command, policy, self.workspace.root, scratch=str(state))
         output = self._await_job(job, CREATED_TIMEOUT, guard)
         changed = self._record_changes()
-        if not changed and any(word in tool["code"] for word in ("subprocess", "os.system", "os.popen")):
+        if not changed and any(word in self._with_callees(tool["code"]) for word in ("subprocess", "os.system", "os.popen")):
             # A tool that runs programs and changed nothing counts as a check, like a command did.
             self._dirty = False
             self._run_seq = self._edit_seq + 1
         return output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "")
+
+    def _with_callees(self, code: str) -> str:
+        """A created tool's code followed by the code of every created tool it calls, directly or through another."""
+        created, seen, todo, parts = self._root().created, set(), [code], [code]
+        while todo:
+            for name in re.findall(r"\btools\.([a-z][a-z0-9_]*)", todo.pop()):
+                if name in created and name not in seen:
+                    seen.add(name)
+                    todo.append(created[name]["code"])
+                    parts.append(f"# tools.{name}:\n{created[name]['code']}")
+        return "\n\n".join(parts)
 
     def _record_changes(self) -> list[str]:
         """Note files a created tool or its background job changed, so /undo and the check-your-work reminder still see them."""
@@ -1362,7 +1408,19 @@ class AgentSession:
         if call["name"] in SELF_EXTEND:
             return self._self_extend(call)
         if call["name"] == "create":
-            return self._create(args)
+            if args.get("keep") is False and str(args.get("name") or "").strip() in self._root().created:
+                raise ToolError("a one-off script needs a name no kept tool has, or it would replace and then delete that tool")
+            made = self._create(args)
+            if not isinstance(args.get("args"), dict) or not str(args.get("code") or "").strip():
+                return made
+            # Write and run in one call; the run asks for approval like any call of that tool, and keep=false drops the tool after.
+            name = str(args.get("name") or "").strip()
+            try:
+                output, _ = self._run_call({"id": f"{call.get('id', 'create')}-run", "name": name, "args": args["args"]})
+            finally:
+                if args.get("keep") is False:
+                    self._create({"name": name, "code": ""})
+            return f"{made if args.get('keep') is not False else 'Ran a one-off tool (not kept).'}\n{output}"
         if call["name"] == "skill":
             found = self.skills.get(str(args.get("name") or ""))
             if found is None:

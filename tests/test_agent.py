@@ -3679,3 +3679,26 @@ def test_created_tools_keep_state_track_changed_files_for_undo_and_move_to_the_b
     session._notifications()
     note = session.history[-1]["content"]
     assert "job1 finished with exit code 0" in note and "pkg/late.txt" in note, note
+
+
+def test_created_tools_call_each_other_in_one_process_and_create_can_run_a_one_off_chain(ws, home, monkeypatch):
+    from app.agent import guardian
+    create_only(home)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    session._create({"name": "read", "code": "def read(path):\n    return open(path).read()\n"})
+    session._create({"name": "edit", "code": "def edit(path, old, new):\n    text = tools.read(path=path)\n    assert old in text, 'old text not found'\n"
+                                             "    open(path, 'w').write(text.replace(old, new, 1))\n    return 'ok'\n"})
+    chain = ("def fix():\n    r = tools.edit(path='pkg/a.py', old='return 1', new='return 2')\n"
+             "    return {'edit': r, 'now': tools.read(path='pkg/a.py').splitlines()[1].strip()}\n")
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "fix", "code": chain, "args": {}, "keep": False}})
+    assert out.startswith("Ran a one-off tool (not kept).") and '"now": "return 2"' in out and "[changed: pkg/a.py]" in out, out
+    assert "fix" not in session.created and not (home / ".manga-agent" / "tools" / "fix.json").exists(), "a one-off script is not kept"
+    with pytest.raises(ToolError, match="one-off"):
+        session._session_tool({"id": "d", "name": "create", "args": {"name": "read", "code": "def read():\n    pass\n", "args": {}, "keep": False}})
+    session.mode, seen = "auto", []
+    monkeypatch.setattr(guardian, "review", lambda *a, **k: (seen.append(a[5]), ("deny", "no"))[1])
+    session._create({"name": "fix2", "code": chain})
+    session._run_call({"id": "e", "name": "fix2", "args": {}})
+    code = seen[0]["args"]["_tool_code"]
+    assert "# tools.edit:" in code and "# tools.read:" in code, "the reviewer sees every tool a chain calls"
