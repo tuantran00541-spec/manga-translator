@@ -29,6 +29,20 @@ def flush() -> None:
     os.chmod(STATS, 0o644)
 
 
+def without_strict(body: bytes) -> bytes:
+    """Drops tools[].function.strict, which some providers reject and which only asks for stricter schema checks."""
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return body
+    changed = False
+    for tool in data.get("tools") or [] if isinstance(data, dict) else []:
+        if isinstance(tool, dict) and isinstance(tool.get("function"), dict) and "strict" in tool["function"]:
+            del tool["function"]["strict"]
+            changed = True
+    return json.dumps(data).encode() if changed else body
+
+
 class Relay(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -51,6 +65,8 @@ class Relay(BaseHTTPRequestHandler):
             if size > MAX_BODY:
                 return self.reply(413, b'{"error": "body too large"}')
             body = self.rfile.read(size)
+        if body and self.path.split("?")[0] == "/v1/chat/completions":
+            body = without_strict(body)
         if stats["stopped"]:
             return self.reply(503, json.dumps({"error": f"relay stopped: {stats['stopped']}"}).encode())
         self.wait_for_budget()
