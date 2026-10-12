@@ -139,6 +139,12 @@ class Relay(BaseHTTPRequestHandler):
                 # A few error bodies say why the provider refused, which the agents' own logs often hide.
                 if len(stats["error_samples"]) < 8:
                     stats["error_samples"].append({"path": self.path, "status": up.status_code, "body": bytes(tail[:400]).decode("utf-8", "replace")})
+            # A provider can fail after a 200 has started streaming, in an error event inside the stream.
+            at = tail.find(b'"type":"error"') if up.status_code < 400 else -1
+            if at >= 0:
+                stats["stream_errors"] = stats.get("stream_errors", 0) + 1
+                if len(stats["error_samples"]) < 8:
+                    stats["error_samples"].append({"path": self.path, "status": "stream", "body": bytes(tail[max(0, at - 200):at + 400]).decode("utf-8", "replace")})
             if up.status_code in (401, 403) and not stats["stopped"]:
                 stats["stopped"] = f"the provider rejected the key (HTTP {up.status_code})"
         for piece in tail.decode("utf-8", "ignore").split("\n"):
