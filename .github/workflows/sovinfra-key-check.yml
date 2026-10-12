@@ -1,0 +1,43 @@
+name: SovInfra key check
+
+# One-off: whether the SovInfra keys authenticate after the user replaced them (one model list and one tiny chat each).
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/sovinfra-key-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Try each key
+        env:
+          KEY1: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          KEY2: ${{ secrets.SOVINFRA_LAB_1B_TOKEN2 }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+          base = "https://api.sovinfra.ai/v1"
+          def call(key, path, body=None):
+              req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body else None,
+                                           headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as r:
+                      return r.status, r.read()[:200].decode("utf-8", "replace")
+              except urllib.error.HTTPError as e:
+                  return e.code, e.read()[:200].decode("utf-8", "replace")
+              except Exception as e:
+                  return None, type(e).__name__
+          for name in ("KEY1", "KEY2"):
+              key = os.environ.get(name, "")
+              if not key:
+                  print(f"{name}: secret is not set")
+                  continue
+              print(f"{name} models:", *call(key, "/models"))
+              print(f"{name} chat:", *call(key, "/chat/completions", {"model": "qwen3.8-27b", "messages": [{"role": "user", "content": "Say OK."}],
+                                                                   "max_tokens": 5, "reasoning_effort": "none"}))
+          PY
