@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import requests
@@ -10,9 +11,10 @@ import requests
 KEY = open(sys.argv[1], encoding="utf-8").read().strip()
 STATS, PORT, UPSTREAM = sys.argv[2], int(sys.argv[3]), sys.argv[4].rstrip("/")
 # The agent calls http://relay/v1/<path>; only these paths go on, to UPSTREAM/<path>.
-ALLOWED = {"/v1/chat/completions": "/chat/completions", "/v1/models": "/models"}
+ALLOWED = {"/v1/chat/completions": "/chat/completions", "/v1/responses": "/responses", "/v1/models": "/models"}
 MAX_BODY = 16_000_000
-stats = {"requests": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0}
+# Status counts and the first 429 show whether the provider starts throttling the key.
+stats = {"requests": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0, "status": {}, "first_429": None}
 lock = threading.Lock()
 
 
@@ -57,29 +59,36 @@ class Relay(BaseHTTPRequestHandler):
         self.send_header("Content-Type", up.headers.get("Content-Type", "application/json"))
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
-        tail = b""
+        tail = bytearray()
         try:
             for chunk in up.iter_content(chunk_size=None):
                 if chunk:
                     self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
                     self.wfile.flush()
-                    tail = (tail + chunk)[-8000:]
+                    tail += chunk
+                    if len(tail) > 4_000_000:
+                        del tail[:-2_000_000]
             self.wfile.write(b"0\r\n\r\n")
         except OSError:
             pass
-        if up.status_code >= 400:
-            with lock:
+        with lock:
+            stats["status"][str(up.status_code)] = stats["status"].get(str(up.status_code), 0) + 1
+            if up.status_code == 429 and not stats["first_429"]:
+                stats["first_429"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            if up.status_code >= 400:
                 stats["errors"] += 1
         for piece in tail.decode("utf-8", "ignore").split("\n"):
             piece = piece[5:].strip() if piece.startswith("data:") else piece
             try:
-                usage = json.loads(piece).get("usage")
+                row = json.loads(piece)
+                # Responses API events carry usage inside "response".
+                usage = row.get("usage") or (row.get("response") or {}).get("usage")
             except (ValueError, AttributeError):
                 continue
             if isinstance(usage, dict):
                 with lock:
-                    stats["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
-                    stats["completion_tokens"] += int(usage.get("completion_tokens") or 0)
+                    stats["prompt_tokens"] += int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+                    stats["completion_tokens"] += int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
         flush()
 
     do_GET = do_POST = handle_any

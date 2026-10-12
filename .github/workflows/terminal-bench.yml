@@ -63,7 +63,7 @@ jobs:
           print(f"request={json.dumps(cfg.get('request') or {})}")
           print(f"late_request={json.dumps(cfg.get('late_request') or {})}")
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
-          print(f"agent={cfg.get('agent') if cfg.get('agent') in ('chaos', 'terminus-2') else 'chaos'}")
+          print(f"agent={cfg.get('agent') if cfg.get('agent') in ('chaos', 'terminus-2', 'codex') else 'chaos'}")
           print(f"tools={cfg.get('tools') if cfg.get('tools') in ('hybrid', 'create', 'full') else 'hybrid'}")
           print(f"shards={json.dumps(list(range(max(1, int(cfg.get('shards') or 1)))))}")
           PY
@@ -157,6 +157,20 @@ jobs:
               env.write(f"MANGA_AGENT_REQUEST={json.dumps(chosen)}\n")
           PY
 
+      - name: Check the provider serves the Responses API that Codex CLI calls
+        if: needs.config.outputs.agent == 'codex'
+        env:
+          MODEL: ${{ needs.config.outputs.model }}
+        run: |
+          python - <<'PY'
+          import os, requests, sys
+          r = requests.post(f"http://127.0.0.1:{os.environ['PORT']}/v1/responses", timeout=600,
+                            json={"model": os.environ["MODEL"], "input": "Say OK.", "max_output_tokens": 2000, "reasoning": {"effort": "low"}})
+          print(f"responses: HTTP {r.status_code}", r.text[:400])
+          if r.status_code != 200:
+              sys.exit("::error::the provider does not serve /v1/responses, so Codex CLI cannot run on it")
+          PY
+
       - name: Package the harness
         run: |
           python -m pip install -q -r requirements-test.txt
@@ -216,6 +230,11 @@ jobs:
           PY
           )
             export OPENAI_API_KEY=relay
+          elif [ "${{ needs.config.outputs.agent }}" = "codex" ]; then
+            # Codex CLI runs in the task container and reaches the relay through the Docker gateway, like our harness.
+            AGENT=(--agent codex --model "openai/$MANGA_AGENT_MODEL"
+                   --ak "reasoning_effort=$(python -c 'import json,os; print(json.loads(os.environ["MANGA_AGENT_REQUEST_CFG"]).get("reasoning_effort", "high"))')")
+            export OPENAI_API_KEY=relay OPENAI_BASE_URL="$MANGA_AGENT_BASE"
           else
             AGENT=(--agent-import-path manga_agent:MangaAgent --model "$MANGA_AGENT_MODEL")
           fi
