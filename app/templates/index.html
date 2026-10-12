@@ -122,6 +122,8 @@
             <details class="agent-menu"><summary class="agent-chip">Lịch sử</summary><div class="agent-pop agent-pop-right"><ul id="agent-sessions" class="agent-sessions"><li class="agent-muted">Chưa có phiên nào.</li></ul></div></details>
             <details class="agent-menu"><summary class="agent-chip">Thiết lập</summary><div class="agent-pop agent-pop-right">
               <label class="agent-field" for="agent-workspace"><span>Thư mục làm việc</span><input id="agent-workspace" autocomplete="off" spellcheck="false"></label>
+              <label class="agent-field" for="agent-engine"><span>Chạy lệnh ở đâu</span><select id="agent-engine"><option value="auto">Sandbox của hệ điều hành</option><option value="docker">Container Docker (cách ly hẳn)</option></select></label>
+              <label class="agent-field" for="agent-engine-image"><span>Image Docker</span><input id="agent-engine-image" autocomplete="off" spellcheck="false" placeholder="python:3.12-slim"></label>
               <p id="agent-sandbox-info" class="agent-muted"></p><div id="agent-tools-info"></div>
             </div></details>
             <button id="agent-new" class="agent-chip" type="button">Phiên mới</button>

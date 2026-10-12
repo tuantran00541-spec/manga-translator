@@ -23,6 +23,8 @@
   };
   const SANDBOX_TEXT = {
     landlock: "Lệnh chạy trong sandbox Landlock của Linux.", seatbelt: "Lệnh chạy trong sandbox Seatbelt của macOS.",
+    docker: "Lệnh chạy trong container Docker: chỉ thấy thư mục làm việc (ở /workspace).",
+    "low-integrity": "Lệnh chạy ở mức integrity thấp của Windows: chỉ ghi được trong thư mục làm việc, nhưng vẫn đọc được file và dùng mạng, nên vẫn chờ bạn duyệt.",
     none: "Máy này không có sandbox cho lệnh, nên lệnh luôn chờ bạn duyệt (trừ khi chọn Tự làm hết).",
   };
   const EXAMPLES = [
@@ -58,6 +60,12 @@
   const post = (url, body, method = "POST") => call(url, {
     method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
   });
+
+  function showEngine(engine) {
+    $("agent-engine").value = engine.engine || "auto";
+    $("agent-engine-image").value = engine.image || "";
+    $("agent-engine-image").closest("label").hidden = $("agent-engine").value !== "docker";
+  }
 
   function el(tag, cls, text) {
     const node = document.createElement(tag);
@@ -925,6 +933,7 @@
       if (launchFolder) store("set", "manga_agent_workspace", launchFolder);
       showFolder();
       $("agent-sandbox-info").textContent = SANDBOX_TEXT[config.sandbox_backend] || "";
+      showEngine(config.engine || {});
       await loadProviders();
       loadSessions();
     } catch (error) {
@@ -958,6 +967,18 @@
     $("agent-skill-draft").addEventListener("click", draftSkill);
     $("agent-model").addEventListener("change", () => syncSession({ model: $("agent-model").value.trim() }));
     $("agent-mode").addEventListener("change", () => syncSession({ mode: $("agent-mode").value }));
+    const saveEngine = async () => {
+      try {
+        const engine = await post("/api/agent/sandbox/engine", { engine: $("agent-engine").value, image: $("agent-engine-image").value.trim() });
+        if (engine.engine === "docker" && !engine.docker) window.showToast?.("Chưa thấy Docker chạy container Linux; lệnh vẫn dùng sandbox của hệ điều hành.", "error");
+        showEngine(engine);
+        $("agent-sandbox-info").textContent = SANDBOX_TEXT[engine.backend] || "";
+      } catch (error) {
+        window.showToast?.(error.message, "error");
+      }
+    };
+    $("agent-engine").addEventListener("change", saveEngine);
+    $("agent-engine-image").addEventListener("change", saveEngine);
     $("agent-sandbox").addEventListener("change", () => syncSession({ sandbox: $("agent-sandbox").value }));
     $("agent-network").addEventListener("change", () => syncSession({ network: $("agent-network").checked }));
     document.querySelectorAll(".agent-menu").forEach((menu) => menu.addEventListener("toggle", () => {

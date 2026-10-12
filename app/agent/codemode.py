@@ -40,6 +40,9 @@ MAX_CALLS = 200
 
 def run(code: str, policy: sandbox.Policy, root: Path, timeout: int, call_tool) -> tuple[int | None, str, int]:
     """(exit code or None on timeout, output, tool calls made); call_tool(name, args) returns (output, ok)."""
+    if policy.mode != "full-access" and sandbox.backend() in ("docker", "low-integrity"):
+        # The script talks to the agent over inherited pipes, which a container or a Windows token switch does not carry.
+        raise OSError("run_script needs the Linux or macOS sandbox; use run_command here")
     scratch = tempfile.mkdtemp(prefix="agent-script-")
     try:
         boot, script = Path(scratch) / "boot.py", Path(scratch) / "script.py"

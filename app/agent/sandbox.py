@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import functools
+import json
 import os
 from pathlib import Path
 import platform
@@ -14,6 +15,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 
 MODES = ("read-only", "workspace-write", "full-access")
 MAX_OUTPUT_BYTES = 8_000_000
@@ -28,6 +30,11 @@ SYSTEM_SECRETS = ("/run/user", "/run/secrets", "/var/run/secrets")
 # More folders to keep unreadable, added by whoever stores private data (the agent's own saved sessions).
 EXTRA_DENY: list[str] = []
 SECRET_NAME = re.compile(r"(?i)(^|_)(api_?key|key|token|secret|passw(or)?d|credentials?|auth|cookie|session_?id|private)(_|$)")
+# Engines that confine reads, writes and the network; low-integrity confines writes only.
+FULL = ("landlock", "seatbelt", "docker")
+DOCKER_IMAGE = "python:3.12-slim"
+DOCKER_CHECK_S = 60
+_docker_seen: list = [0.0, False]
 DROP_ENV = {"SSH_AUTH_SOCK", "DBUS_SESSION_BUS_ADDRESS", "GPG_AGENT_INFO", "GNOME_KEYRING_CONTROL", "KRB5CCNAME"}
 
 
@@ -51,14 +58,70 @@ class Policy:
     def describe(self, root: Path) -> str:
         if self.mode == "full-access":
             return "Commands run without a sandbox: full file and network access."
+        kind, net = backend(), "allowed" if self.network else "blocked"
+        if kind == "docker":
+            mount = "read-only" if self.mode == "read-only" else "writable"
+            return (f"Commands run in a Linux container ({settings()['image']}): the workspace is mounted {mount} at /workspace and nothing else "
+                    f"of this machine is visible; use /workspace paths in commands; network {net}.")
+        if kind == "low-integrity":
+            where = "nowhere except a private temp folder" if self.mode == "read-only" else f"only inside {root} and a private temp folder"
+            return f"Commands run at low integrity: they can write {where}, but can still read files and use the network."
         where = "nowhere except a private temp folder" if self.mode == "read-only" else f"only inside {root} and the temp folder"
-        net = "allowed" if self.network else "blocked"
         return f"Commands run in a sandbox: they can read everything except credential folders, write {where}; network {net}."
 
 
-@functools.lru_cache(maxsize=1)
+def settings() -> dict:
+    """The user's engine choice (auto or docker) and container image, from ~/.manga-agent/sandbox.json or MANGA_AGENT_SANDBOX."""
+    data = {}
+    try:
+        data = json.loads((Path.home() / ".manga-agent" / "sandbox.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    engine = os.environ.get("MANGA_AGENT_SANDBOX") or (data.get("engine") if isinstance(data, dict) else "") or "auto"
+    image = data.get("image") if isinstance(data, dict) and isinstance(data.get("image"), str) and data["image"].strip() else DOCKER_IMAGE
+    return {"engine": engine if engine in ("auto", "docker") else "auto", "image": image.strip()}
+
+
+def save_settings(engine: str, image: str = "") -> dict:
+    if engine not in ("auto", "docker"):
+        raise ValueError("engine must be auto or docker")
+    if image and not re.fullmatch(r"[\w./:@-]{1,200}", image):
+        raise ValueError("image must be a plain image name such as python:3.12-slim")
+    path = Path.home() / ".manga-agent" / "sandbox.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"engine": engine, "image": image or DOCKER_IMAGE}), encoding="utf-8")
+    return settings()
+
+
+def docker_ready() -> bool:
+    """True when a Docker daemon running Linux containers answers; checked at most once a minute."""
+    if time.time() - _docker_seen[0] < DOCKER_CHECK_S:
+        return _docker_seen[1]
+    ok = False
+    if shutil.which("docker"):
+        try:
+            done = subprocess.run(["docker", "info", "--format", "{{.OSType}}"], capture_output=True, text=True, timeout=10)
+            ok = done.returncode == 0 and done.stdout.strip() == "linux"
+        except (OSError, subprocess.TimeoutExpired):
+            ok = False
+    _docker_seen[:] = [time.time(), ok]
+    return ok
+
+
 def backend() -> str:
-    """The OS mechanism that confines commands here, or 'none'."""
+    """The mechanism that confines commands here: the chosen container engine when it answers, else the OS's own, or 'none'."""
+    if settings()["engine"] == "docker" and docker_ready():
+        return "docker"
+    return _os_backend()
+
+
+def full() -> bool:
+    """True when commands are kept from secrets and the network, not only from writing."""
+    return backend() in FULL
+
+
+@functools.lru_cache(maxsize=1)
+def _os_backend() -> str:
     system = platform.system()
     if system == "Linux":
         from app.agent import landlock_run
@@ -66,6 +129,8 @@ def backend() -> str:
         return "landlock" if landlock_run.abi() >= 1 else "none"
     if system == "Darwin" and shutil.which("sandbox-exec"):
         return "seatbelt"
+    if system == "Windows" and shutil.which("icacls"):
+        return "low-integrity"
     return "none"
 
 
@@ -93,6 +158,26 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
     kind = backend()
     if policy.mode == "full-access" or kind == "none":
         return command, True
+    if kind == "docker":
+        image = settings()["image"]
+        mount = f"{root}:/workspace" + (":ro" if policy.mode == "read-only" else "")
+        args = ["docker", "run", "--rm", "-i", "--init", "--name", f"manga-agent-{uuid.uuid4().hex[:12]}", "--pids-limit", "512",
+                "-v", mount, "-v", f"{scratch}:/tmp", "-w", "/workspace", "-e", "HOME=/tmp", "-e", "TMPDIR=/tmp"]
+        if not policy.network:
+            args += ["--network", "none"]
+        if hasattr(os, "getuid"):
+            args += ["--user", f"{os.getuid()}:{os.getgid()}"]
+        return args + [image, "sh", "-c", command], False
+    if kind == "low-integrity":
+        from app.agent import win_low
+
+        # Read-only commands run untrusted, below the low label a workspace keeps from earlier writing sessions.
+        level = "untrusted" if policy.mode == "read-only" else "low"
+        win_low.label(scratch, level)
+        if policy.mode == "workspace-write" and str(root) not in _labelled:
+            win_low.label(str(root), "low")
+            _labelled.add(str(root))
+        return [sys.executable, str(Path(__file__).with_name("win_low.py")), level, "--", command], False
     if kind == "landlock":
         # The launcher runs by file path, so the user's project never sees this app on its import path.
         args = [sys.executable, str(Path(__file__).with_name("landlock_run.py"))]
@@ -106,9 +191,12 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
     return ["sandbox-exec", "-p", _seatbelt_profile(policy, root, scratch), "/bin/sh", "-c", command], False
 
 
+_labelled: set[str] = set()
+
+
 def _env_for(policy: Policy, scratch: str) -> dict | None:
     env = None if policy.mode == "full-access" else clean_env()
-    if policy.mode == "read-only":
+    if policy.mode == "read-only" or (env is not None and backend() == "low-integrity"):
         env = {**(env or {}), "TMPDIR": scratch, "TMP": scratch, "TEMP": scratch}
     return env
 
@@ -207,6 +295,13 @@ class _Capture(threading.Thread):
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
+    args = proc.args if isinstance(proc.args, list) else []
+    if args[:2] == ["docker", "run"] and "--name" in args:
+        # Killing the docker client leaves the container running, so it is removed by name.
+        try:
+            subprocess.run(["docker", "rm", "-f", args[args.index("--name") + 1]], capture_output=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     try:
         if os.name == "posix":
             os.killpg(proc.pid, signal.SIGKILL)

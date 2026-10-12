@@ -65,6 +65,11 @@ class McpSwitch(BaseModel):
     enabled: bool
 
 
+class EngineChoice(BaseModel):
+    engine: str
+    image: str = Field(default="", max_length=200)
+
+
 class SkillSource(BaseModel):
     source: str = Field(min_length=3, max_length=300)
 
@@ -118,9 +123,24 @@ async def _provider_and_key(provider_id: str):
     return provider, api_keys
 
 
+def _engine() -> dict:
+    return {**sandbox.settings(), "backend": sandbox.backend(), "docker": sandbox.docker_ready()}
+
+
 @router.get("/config")
 def agent_config() -> dict:
-    return {"workspace": str(BASE_DIR), "modes": list(MODES), "sandboxes": list(sandbox.MODES), "sandbox_backend": sandbox.backend()}
+    return {"workspace": str(BASE_DIR), "modes": list(MODES), "sandboxes": list(sandbox.MODES), "sandbox_backend": sandbox.backend(),
+            "engine": _engine()}
+
+
+@router.post("/sandbox/engine")
+def set_engine(req: EngineChoice) -> dict:
+    """Choose where commands run: the OS sandbox (auto) or a Docker container."""
+    try:
+        sandbox.save_settings(req.engine, req.image.strip())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return _engine()
 
 
 def _skill_home() -> Path:

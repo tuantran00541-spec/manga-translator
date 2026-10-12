@@ -1081,7 +1081,7 @@ class AgentSession:
             return not (name == "run_command" and not via_mcp and rules.safe_readonly(str(call["args"].get("command") or "")))
         if kind == "exec":
             # In edits mode commands run on their own only inside a working OS sandbox.
-            confined = (sandbox.backend() != "none" and self.workspace.policy.mode != "full-access" and not via_mcp
+            confined = (sandbox.full() and self.workspace.policy.mode != "full-access" and not via_mcp
                         and self.workspace.services.is_local_shell())
             return bool(call["args"].get("outside_sandbox")) or not confined
         if kind == "edit" and via_mcp:
