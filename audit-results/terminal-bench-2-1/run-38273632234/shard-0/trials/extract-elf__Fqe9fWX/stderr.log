@@ -1,0 +1,12 @@
+2026-10-12 16:14:48 | WARNING  | app.agent.client:476 - bench HTTP 503: The provider is temporarily rate limiting requests for 'prism-ml/ternary-bonsai-2-27b'. Try again shortly or choose another model. Status: https://minirouter.sh/status (bench); asking again in 2s
+2026-10-12 16:14:53 | WARNING  | app.agent.client:476 - bench HTTP 503: The provider is temporarily rate limiting requests for 'prism-ml/ternary-bonsai-2-27b'. Try again shortly or choose another model. Status: https://minirouter.sh/status (bench); asking again in 4s
+2026-10-12 16:15:58 | WARNING  | app.agent.client:476 - bench HTTP 504: No first token arrived within 60s after 1 upstream attempts. Live status: https://minirouter.sh/status (bench); asking again in 6s
+2026-10-12 16:16:08 | WARNING  | app.agent.client:476 - bench HTTP 503: The provider is temporarily rate limiting requests for 'prism-ml/ternary-bonsai-2-27b'. Try again shortly or choose another model. Status: https://minirouter.sh/status (bench); asking again in 13s
+2026-10-12 16:16:50 | WARNING  | app.agent.client:476 - bench HTTP 503: The provider is temporarily rate limiting requests for 'prism-ml/ternary-bonsai-2-27b'. Try again shortly or choose another model. Status: https://minirouter.sh/status (bench); asking again in 2s
+2026-10-12 16:16:54 | WARNING  | app.agent.client:476 - bench HTTP 503: The provider is temporarily rate limiting requests for 'prism-ml/ternary-bonsai-2-27b'. Try again shortly or choose another model. Status: https://minirouter.sh/status (bench); asking again in 4s
+2026-10-12 16:17:01 | WARNING  | app.agent.client:476 - bench HTTP 503: The provider is temporarily rate limiting requests for 'prism-ml/ternary-bonsai-2-27b'. Try again shortly or choose another model. Status: https://minirouter.sh/status (bench); asking again in 7s
+2026-10-12 16:17:11 | WARNING  | app.agent.client:476 - bench HTTP 503: The provider is temporarily rate limiting requests for 'prism-ml/ternary-bonsai-2-27b'. Try again shortly or choose another model. Status: https://minirouter.sh/status (bench); asking again in 16s
+2026-10-12 16:21:04 | WARNING  | app.agent.client:476 - bench request failed: ReadTimeout (bench); asking again in 2s
+2026-10-12 16:23:06 | WARNING  | app.agent.client:476 - bench request failed: ReadTimeout (bench); asking again in 3s
+2026-10-12 16:23:49 | WARNING  | app.agent.client:476 - bench HTTP 502: {"error": "ConnectionError"} (bench); asking again in 2s
+Timed out.

@@ -1,0 +1,39 @@
+2026-10-12 17:20:46 | WARNING  | app.agent.client:476 - bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing. (bench); asking again in 2s
+2026-10-12 17:20:49 | WARNING  | app.agent.client:476 - bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing. (bench); asking again in 3s
+2026-10-12 17:20:52 | WARNING  | app.agent.client:476 - bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing. (bench); asking again in 8s
+2026-10-12 17:21:01 | WARNING  | app.agent.client:476 - bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing. (bench); asking again in 13s
+2026-10-12 17:21:14 | WARNING  | app.agent.client:476 - bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing. (bench); asking again in 27s
+2026-10-12 17:21:41 | WARNING  | app.agent.client:476 - bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing. (bench); asking again in 48s
+2026-10-12 17:22:29 | WARNING  | app.agent.client:476 - bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing. (bench); asking again in 81s
+2026-10-12 17:23:51 | WARNING  | app.agent.client:476 - bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing. (bench); asking again in 68s
+2026-10-12 17:25:00 | WARNING  | app.agent.client:476 - bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing. (bench); asking again in 74s
+2026-10-12 17:26:14 | WARNING  | app.agent.client:476 - bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing. (bench); asking again in 78s
+2026-10-12 17:27:33 | WARNING  | app.agent.session:3527 - Agent session 07d07b1b619e4381 failed
+Traceback (most recent call last):
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1032, in _bootstrap
+    self._bootstrap_inner()
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+> File "/opt/mg/src/app/agent/session.py", line 3525, in _loop
+    (custom or AgentSession._steps)(self, max_steps)
+  File "/opt/mg/src/app/agent/session.py", line 3411, in _steps
+    turn = self._turn()
+  File "/opt/mg/src/app/agent/session.py", line 2808, in _turn
+    return self._turn_once()
+  File "/opt/mg/src/app/agent/session.py", line 2822, in _turn_once
+    return self._call_model(client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
+  File "/opt/mg/src/app/agent/session.py", line 2772, in _call_model
+    return self._call_model_once(messages, tools, streams, started)
+  File "/opt/mg/src/app/agent/session.py", line 2793, in _call_model_once
+    return model(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
+  File "/opt/mg/src/app/agent/session.py", line 425, in __call__
+    return self.session._complete_keyed(*args, **kwargs)
+  File "/opt/mg/src/app/agent/session.py", line 979, in _complete_keyed
+    return self._raw_complete(provider, key, *args, **kwargs)
+  File "/opt/mg/src/app/agent/client.py", line 471, in complete
+    return _complete_once(provider, api_key, model, messages, tools=tools, on_delta=on_delta, max_tokens=max_tokens)
+  File "/opt/mg/src/app/agent/client.py", line 527, in _complete_once
+    raise error(f"{provider.label} HTTP {response.status_code}: {detail}")
+app.agent.client.TransientError: bench HTTP 503: No eligible provider route is available for 'prism-ml/ternary-bonsai-2-27b' with your current settings. Try again shortly or review your model and provider restrictions at https://minirouter.sh/dashboard/routing.
