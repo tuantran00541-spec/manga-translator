@@ -1,0 +1,457 @@
+{
+ "passed": 5,
+ "trials": 45,
+ "rate": 0.111,
+ "rows": [
+  {
+   "trial": "bn-fit-modify__dQoMhYv",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    624105,
+    273600,
+    71967
+   ]
+  },
+  {
+   "trial": "build-cython-ext__ZfAPmYb",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    476983,
+    249600,
+    71662
+   ]
+  },
+  {
+   "trial": "build-pov-ray__fx7vDqC",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2627369,
+    1945600,
+    128137
+   ]
+  },
+  {
+   "trial": "cancel-async-tasks__JiJHVZd",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    136252,
+    64000,
+    56250
+   ]
+  },
+  {
+   "trial": "circuit-fibsqrt__oagmBGu",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    164708,
+    97600,
+    171114
+   ]
+  },
+  {
+   "trial": "code-from-image__dXHWGgH",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    939131,
+    376000,
+    80887
+   ]
+  },
+  {
+   "trial": "configure-git-webserver__sCmFWJ4",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    213852,
+    113600,
+    47936
+   ]
+  },
+  {
+   "trial": "count-dataset-tokens__q4VUTbT",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    441205,
+    288000,
+    39301
+   ]
+  },
+  {
+   "trial": "custom-memory-heap-crash__Xd98MBr",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    440655,
+    206400,
+    78590
+   ]
+  },
+  {
+   "trial": "db-wal-recovery__QvUiR6G",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    462730,
+    209600,
+    71441
+   ]
+  },
+  {
+   "trial": "dna-assembly__9vfKcz8",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    29507,
+    3200,
+    50004
+   ]
+  },
+  {
+   "trial": "extract-elf__TJegtop",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "feal-differential-cryptanalysis__WNFAwmF",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "filter-js-from-html__VPKQCae",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "fix-code-vulnerability__taJPui2",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "fix-ocaml-gc__WNFdvqc",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "git-leak-recovery__z7388Lk",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "gpt2-codegolf__PBLsNAa",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "hf-model-inference__Bgybfqx",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "kv-store-grpc__LTHAgwp",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "largest-eigenval__JafRLob",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "log-summary-date-ranges__nqBmmYj",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "make-doom-for-mips__LsjEVdC",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "mcmc-sampling-stan__GD95qV9",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "model-extraction-relu-logits__urVri7Y",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "mteb-leaderboard__fBShzEf",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "multi-source-data-merger__RgTN7DB",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "openssl-selfsigned-cert__hYVMz9H",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "password-recovery__ycsvzoJ",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "path-tracing-reverse__yjAYJWL",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "polyglot-rust-c__Qoax2aH",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "protein-assembly__GKaJhEj",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "pypi-server__3CAFRBP",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "pytorch-model-recovery__4D3vKdn",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "qemu-startup__VFV7mWm",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "raman-fitting__JqGQnUg",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "regex-log__fanbPQv",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "rstan-to-pystan__gRZFhKt",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "sanitize-git-repo__XUimjtM",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "sparql-university__D6LtGF3",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "sqlite-with-gcov__cHYtUk9",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "torch-tensor-parallelism__TrSCHwY",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "tune-mjcf__2udi7Sz",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "vulnerable-secret__Fh5zkZN",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "write-compressor__bcrJ6Xi",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  }
+ ]
+}

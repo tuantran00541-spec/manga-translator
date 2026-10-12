@@ -1,0 +1,8 @@
+2026-10-12 14:30:06 | WARNING  | app.agent.client:476 - bench HTTP 503: Maintenance en cours. Veuillez réessayer dans quelques instants. Maintenance in progress. Please try again shortly. (bench); asking again in 2s
+2026-10-12 14:30:09 | WARNING  | app.agent.client:476 - bench HTTP 503: Maintenance en cours. Veuillez réessayer dans quelques instants. Maintenance in progress. Please try again shortly. (bench); asking again in 3s
+2026-10-12 14:30:12 | WARNING  | app.agent.client:476 - bench HTTP 503: Maintenance en cours. Veuillez réessayer dans quelques instants. Maintenance in progress. Please try again shortly. (bench); asking again in 7s
+2026-10-12 14:30:20 | WARNING  | app.agent.client:476 - bench HTTP 503: Maintenance en cours. Veuillez réessayer dans quelques instants. Maintenance in progress. Please try again shortly. (bench); asking again in 14s
+2026-10-12 14:46:25 | INFO     | app.agent.client:309 - bench answered 429 (1 so far, waiting 6 s): {"error":{"message":"Model capacity is busy. Please retry shortly.","type":"rate_limit_error","code":"model_capacity_limit_exceeded"}}
+2026-10-12 14:47:02 | INFO     | app.agent.client:309 - bench answered 429 (2 so far, waiting 6 s): {"error":{"message":"Model capacity is busy. Please retry shortly.","type":"rate_limit_error","code":"model_capacity_limit_exceeded"}}
+2026-10-12 14:47:10 | WARNING  | app.agent.client:476 - bench HTTP 504: Upstream service timed out. (bench); asking again in 2s
+2026-10-12 14:49:13 | WARNING  | app.agent.client:476 - bench HTTP 504: Upstream service timed out. (bench); asking again in 3s
