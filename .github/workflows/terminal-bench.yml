@@ -264,6 +264,8 @@ jobs:
             # Claude Code runs in the task container and calls the provider's Messages API through the relay.
             AGENT=(--agent claude-code --model "anthropic/$MANGA_AGENT_MODEL"
                    --ak "reasoning_effort=$(python -c 'import json,os; print(json.loads(os.environ["MANGA_AGENT_REQUEST_CFG"]).get("reasoning_effort", "high"))')")
+            # MiniRouter accepts only these two thinking display modes.
+            AGENT+=(--ak thinking_display=summarized)
             export ANTHROPIC_API_KEY=relay ANTHROPIC_BASE_URL="http://$(cat /tmp/docker-gateway):$PORT"
           else
             AGENT=(--agent-import-path manga_agent:MangaAgent --model "$MANGA_AGENT_MODEL")
