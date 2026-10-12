@@ -33,6 +33,8 @@ MAX_STEPS = 300
 MAX_JOBS = 8
 MAX_TODO_NUDGES = 3
 MAX_SCHEDULES = 10
+# Per request, across the session and its helpers: chains (runs making 2+ tools.* calls), long chains (11+ calls), helpers started from chains.
+MAX_CHAINS, MAX_LONG_CHAINS, MAX_CHAIN_AGENTS = 99, 20, 40
 CREATED_TIMEOUT = 300
 URL_TOOLS = ("web_fetch", "web_download")
 MASK_KEEP = 12
@@ -113,7 +115,7 @@ _fns = {{k: v for k, v in list(globals().items()) if _inspect.isfunction(v) and 
 _fn = _fns.get({name!r}) or _fns.get("run") or _fns.get("main") or (next(iter(_fns.values())) if len(_fns) == 1 else None)
 if _fn is not None:
     _params = list(_inspect.signature(_fn).parameters.values())
-    _whole = len(_params) == 1 and _params[0].name not in _args and _params[0].kind != _params[0].VAR_KEYWORD
+    _whole = len(_params) == 1 and _params[0].name not in _args and _params[0].kind != _params[0].VAR_KEYWORD and _params[0].default is _params[0].empty
     _result = _fn(_args) if _whole else _fn(**_args)
     if _result is not None:
         print(_result if isinstance(_result, str) else _json.dumps(_result, ensure_ascii=False, default=str))
@@ -154,12 +156,20 @@ class _Tools:
     \"\"\"Each created tool as a function: tools.name(**args) returns what the tool returns.\"\"\"
 
     def __init__(self):
-        self._loaded = {{}}
+        self._loaded, self._steps = {{}}, 0
+
+    def _step(self):
+        \"\"\"Count a call; the second makes this run a chain and the eleventh a long one, each checked against the request's budget.\"\"\"
+        self._steps += 1
+        if self._steps == 2:
+            _call("_chain", {{}})
+        elif self._steps == 11:
+            _call("_long", {{}})
 
     def __getattr__(self, name):
         if name in _REMOTE and name not in _SOURCES:
             first = {{"skill": "name", "agent": "prompt", "think": "question"}}.get(name)
-            return lambda *a, **args: _call(name, {{first: a[0], **args}} if first and a else args)
+            return lambda *a, **args: (self._step(), _call(name, {{first: a[0], **args}} if first and a else args))[1]
         if not name.startswith("_") and name not in _SOURCES:
             # A tool made earlier in this same chain is fetched from the agent.
             try:
@@ -168,7 +178,7 @@ class _Tools:
                 pass
         if name.startswith("_") or name not in _SOURCES:
             raise AttributeError(f"no tool {{name!r}}; created: {{', '.join(_SOURCES)}}; others: {{', '.join(sorted(_REMOTE))}}")
-        return lambda *a, **args: self._run(name, a, args)
+        return lambda *a, **args: (self._step(), self._run(name, a, args))[1]
 
     def _load(self, name):
         if name not in self._loaded:
@@ -233,7 +243,7 @@ returns your answer, so code does the sure steps and calls you only where judgme
 you are shown the error and rewrite that tool on the spot, and the chain retries it and carries on (auto and bypass modes);
 tools.skill(name) returns a skill's instructions, tools.agent(prompt, agent="explore") runs a
 helper agent and returns its report, and tools.create(...) adds a tool you can call later in the same chain. Calls from several threads
-run at the same time. Give create args to run the tool as soon as it is written;
+run at the same time. Each request allows 99 chains (runs making two or more tools.<name> calls), at most 20 of them longer than 10 calls, and 40 helper agents started from chains. Give create args to run the tool as soon as it is written;
 add keep: false for a one-off script that is not saved."""
 HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a tool as Python code that runs in the sandbox (it is kept for later sessions). "
                  "Use the built-in tools while exploring or debugging step by step; when the steps are known, write them as one chain with create so they "
@@ -421,6 +431,7 @@ class AgentSession:
         self._watch = watch.Watch(workspace.root)
         self.asked_s = 0.0
         self._one_offs: dict[str, dict] = {}
+        self.chain_budget: dict[str, int] = {}
         self._watch_request = self._request_no = self._edit_seq = self._run_seq = 0
         self._since_learn = self._learned_to = 0
         self._scheduler: threading.Thread | None = None
@@ -734,6 +745,7 @@ class AgentSession:
         self._final_advised = self._edited = self._plan_nudged = self._continued = False
         self._fallback_at = 0
         self._request_no += 1
+        self.chain_budget = {}
         self._prewalk = bool(self.profile["prewalk_model"]) and self.profile["prewalk_model"] != self.model and not self.depth
         self._skills_loaded = []
         self._turn_usage = self._spent()
@@ -1474,7 +1486,9 @@ class AgentSession:
         def answer(request: Path, data: dict) -> None:
             name, args = str(data.get("name") or ""), data.get("args") if isinstance(data.get("args"), dict) else {}
             try:
-                if name == "_repair":
+                if name in ("_chain", "_long"):
+                    output, ok = self._spend_chain(name)
+                elif name == "_repair":
                     output, ok = self._repair(args)
                 elif name == "_source":
                     tool = self._root().created.get(str(args.get("name") or ""))
@@ -1487,7 +1501,9 @@ class AgentSession:
                 elif name == "think":
                     output, ok = self._think(str(args.get("question") or ""), str(args.get("answer") or "")), True
                 elif name == "agent":
-                    output, ok = self._subagent("chain", str(args.get("prompt") or ""), str(args.get("agent") or "explore")), True
+                    output, ok = self._spend_chain("agent")
+                    if ok:
+                        output = self._subagent("chain", str(args.get("prompt") or ""), str(args.get("agent") or "explore"))
                 elif name == "create":
                     output, ok = self._create(args), True
                 else:
@@ -1526,6 +1542,17 @@ class AgentSession:
         self._create({k: tool[k] for k in ("name", "description", "parameters", "code")})
         self.emit("notice", text=f"The one-off chain {name} worked twice, so it is now a kept tool.")
         return f"\n[this one-off ran cleanly twice, so it is now kept as the tool {name}]"
+
+    def _spend_chain(self, kind: str) -> tuple[str, bool]:
+        """Take one chain, long chain or helper from this request's budget, shared by the whole session tree."""
+        root = self._root()
+        limit, label = {"_chain": (MAX_CHAINS, "chains"), "_long": (MAX_LONG_CHAINS, "chains of more than 10 steps"),
+                        "agent": (MAX_CHAIN_AGENTS, "helper agents started from chains")}[kind]
+        with self._usage_lock:
+            root.chain_budget[kind] = used = root.chain_budget.get(kind, 0) + 1
+        if used > limit:
+            return f"chain budget used up: at most {limit} {label} per request; finish with what you have or ask the user", False
+        return "ok", True
 
     def _think(self, question: str, answer: str = "") -> str:
         """One question from a running chain to the model, answered without tools."""

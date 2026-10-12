@@ -3830,3 +3830,30 @@ def test_hybrid_offers_built_in_tools_and_create_and_chains_reach_built_in_tools
 def test_the_default_tool_set_is_hybrid():
     from app.agent import registry
     assert registry.TOOL_SETS[0] == "hybrid"
+
+
+def test_chains_have_a_per_request_budget_long_ones_a_smaller_one_and_helpers_a_cap(ws, home, monkeypatch):
+    from app.agent import session as session_module
+    create_only(home)
+    monkeypatch.setattr(session_module, "MAX_CHAINS", 2)
+    monkeypatch.setattr(session_module, "MAX_LONG_CHAINS", 1)
+    monkeypatch.setattr(session_module, "MAX_CHAIN_AGENTS", 1)
+    monkeypatch.setattr(AgentSession, "_subagent", lambda self, d, prompt, agent="explore": "report")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    session._create({"name": "one", "code": "def one():\n    return 1\n"})
+    session._create({"name": "single", "code": "def single(i=0):\n    return tools.one()\n"})
+    session._create({"name": "pair", "code": "def pair():\n    return tools.one() + tools.one()\n"})
+    session._create({"name": "many", "code": "def many(n=11):\n    return sum(tools.one() for _ in range(n))\n"})
+    session._create({"name": "helpers", "code": "def helpers():\n    return [tools.agent('a'), tools.agent('b')]\n"})
+    run = lambda name, **args: session._run_call({"id": name + str(len(session.history)), "name": name, "args": args})[0]
+    for i in range(3):
+        assert run("single", i=i).splitlines()[0] == "1", "a run making one call is not a chain"
+    assert "11" in run("many"), "the first long chain fits"
+    assert "at most 1 chains of more than 10 steps" in run("many"), "the second long chain is stopped at step 11"
+    assert "at most 2 chains per request" in run("pair")
+    session._new_request("again")
+    out = run("helpers")
+    assert "at most 1 helper agents started from chains" in out, out
+    session._new_request("third")
+    assert run("pair").splitlines()[0] == "2", "every request starts with a fresh budget"
