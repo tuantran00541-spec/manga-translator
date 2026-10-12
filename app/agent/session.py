@@ -167,6 +167,14 @@ class _Tools:
         elif self._steps == 11:
             _call("_long", {{}})
 
+    def search(self, query="", limit=15):
+        \"\"\"Tools this code can reach whose name or description matches the words of query, best first, as name and one-line description.\"\"\"
+        return _call("_search", {{"query": query, "limit": limit}})
+
+    def describe(self, name):
+        \"\"\"One reachable tool's full description and JSON-schema parameters.\"\"\"
+        return _call("_describe", {{"name": name}})
+
     def __getattr__(self, name):
         if name in _REMOTE and name not in _SOURCES:
             first = {{"skill": "name", "agent": "prompt", "think": "question"}}.get(name)
@@ -215,6 +223,7 @@ HYBRID_HIDDEN = frozenset({"symbols", "replace_in_files", "move_file", "delete_f
                            "changes", "revert_file", "plugin_write", "plugin_remove", "spawn_agent", "wait_agent", "send_input", "close_agent", "delegate"})
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
+POST_SUMMARY_WINDOW = 30
 UNREADABLE_TURNS = 4
 TOKEN_BUDGET = 10_000_000
 URL_RE = re.compile(r"https?://([^\s/:?#]+)")
@@ -247,6 +256,8 @@ chain many steps: read, edit, run and check without coming back in between. The 
 MCP tools (JSON comes back as objects), tools.think(question, answer="yes/no") asks you a question from inside the running code and
 returns your answer, so code does the sure steps and calls you only where judgment is needed; when a created tool fails inside a chain
 you are shown the error and rewrite that tool on the spot, and the chain retries it and carries on (auto and bypass modes);
+tools.search(query) lists the tools a chain can reach (built-in, created, plugin and MCP, including connected tools whose schemas
+are not shown to you) best match first, tools.describe(name) gives one tool's parameters,
 tools.skill(name) returns a skill's instructions, tools.agent(prompt, agent="explore") runs a
 helper agent and returns its report, and tools.create(...) adds a tool you can call later in the same chain. Calls from several threads
 run at the same time. Each request allows 99 chains (runs making two or more tools.<name> calls), at most 20 of them longer than 10 calls, and 40 helper agents started from chains. Give create args to run the tool as soon as it is written;
@@ -439,6 +450,8 @@ class AgentSession:
         self._repl: repl.Kernel | None = None
         # Past lessons are sent once at each cold start: a new or resumed session, and after a compaction.
         self._digest_due = True
+        self._before_summary: dict[str, str] = {}
+        self._after_summary = self._repeats = 0
         self.asked_s = 0.0
         self._one_offs: dict[str, dict] = {}
         self.chain_budget: dict[str, int] = {}
@@ -1217,8 +1230,10 @@ class AgentSession:
         rows = [SESSION_SPECS["create"]] + [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
         # Only tools the user installed; built-in extras such as delegate stay out.
         rows += [t.spec for n, t in self.registry.tools.items() if n not in registry.GROUPS]
-        rows += [{"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
-                  "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}}} for name, (server, tool) in self.mcp_tools.items()]
+        # Past MCP_DEFER connected tools their schemas stay out, and chains find them with tools.search (OpenClaw's Code Mode).
+        if len(self.mcp_tools) <= MCP_DEFER:
+            rows += [{"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
+                      "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}}} for name, (server, tool) in self.mcp_tools.items()]
         if self.jobs:
             # Only while something runs in the background; it is how the model reads, types into or stops it.
             rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"]]
@@ -1524,6 +1539,8 @@ class AgentSession:
             try:
                 if name in ("_chain", "_long"):
                     output, ok = self._spend_chain(name)
+                elif name in ("_search", "_describe"):
+                    output, ok = self._find_tools(name, args, targets)
                 elif name == "_repair":
                     output, ok = self._repair(args)
                 elif name == "_source":
@@ -1565,6 +1582,61 @@ class AgentSession:
                     break
                 time.sleep(0.02)
         shutil.rmtree(folder, ignore_errors=True)
+
+    @staticmethod
+    def _signature(call: dict) -> str:
+        return call["name"] + json.dumps(call["args"], sort_keys=True, default=str)
+
+    def _redone(self, call: dict, output: str, ok: bool) -> str:
+        """A note when a call after a compaction repeats one from before it with the same result; the guard ends after POST_SUMMARY_WINDOW calls."""
+        self._after_summary += 1
+        same = ok and self._before_summary.get(self._signature(call)) == hashlib.sha1(output.encode()).hexdigest()
+        if self._after_summary >= POST_SUMMARY_WINDOW:
+            self._before_summary = {}
+        if not same:
+            return ""
+        self._repeats += 1
+        return ("\n[You made this exact call before the summary and got the same result. The summary may not mention it: check its Progress "
+                "before redoing more work.]")
+
+    def _target_spec(self, name: str) -> dict | None:
+        """The description and parameters of a tool a chain can reach, wherever it comes from."""
+        root = self._root()
+        if name in root.created:
+            return {k: root.created[name][k] for k in ("name", "description", "parameters")}
+        if name in root.mcp_tools:
+            server, tool = root.mcp_tools[name]
+            return {"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}", "parameters": tool.get("inputSchema") or OBJ}
+        if name in self.registry.tools:
+            return self.registry.tools[name].spec
+        extra = {"think": "Ask the model a question from inside the running code: think(question, answer='the form of the answer').",
+                 "agent": "Run a helper agent and return its report: agent(prompt, agent='explore').",
+                 "skill": f"Return a skill's instructions: skill(name). Skills: {', '.join(self.skills)}."}
+        if name in extra:
+            return {"name": name, "description": extra[name], "parameters": OBJ}
+        return next((dict(s) for s in [*SPECS, *SESSION_SPECS.values()] if s["name"] == name), None)
+
+    def _find_tools(self, kind: str, args: dict, targets: set[str]) -> tuple[str, bool]:
+        """tools.search ranks reachable tools by the query's words; tools.describe gives one tool's schema."""
+        names = sorted(targets | set(self._root().created))
+        if kind == "_describe":
+            name = str(args.get("name") or "")
+            spec = self._target_spec(name) if name in names else None
+            return (json.dumps(spec, ensure_ascii=False), True) if spec else (f"no reachable tool {name!r}; use tools.search(query)", False)
+        words = {w.lower() for w in re.findall(r"[A-Za-z0-9]{3,}", str(args.get("query") or ""))}
+        rows = []
+        for name in names:
+            spec = self._target_spec(name) or {"description": ""}
+            text = f"{name} {spec.get('description') or ''}".lower()
+            score = sum(w in text for w in words) + sum(w in name for w in words)
+            if score or not words:
+                rows.append((-score, name, " ".join(str(spec.get("description") or "").split())[:160]))
+        rows.sort()
+        try:
+            limit = max(1, min(50, int(args.get("limit") or 15)))
+        except (TypeError, ValueError):
+            limit = 15
+        return json.dumps([{"name": n, "description": d} for _, n, d in rows[:limit]], ensure_ascii=False), True
 
     def _note_one_off(self, name: str, tool: dict, output: str) -> str:
         """A one-off chain that ends cleanly is remembered; the same one ending cleanly twice becomes a kept tool."""
@@ -2178,7 +2250,10 @@ class AgentSession:
             got = ", ".join(call["args"]) if call["args"] else "no arguments at all"
             return (f"{call['name']} needs {', '.join(missing)}; this call arrived with {got}. A very long argument can be cut or garbled "
                     "on the way: write long content to a file first and pass its path where the tool takes one."), False
-        signature = call["name"] + json.dumps(call["args"], sort_keys=True, default=str)
+        signature = self._signature(call)
+        if signature in self._before_summary and self._repeats >= DOOM_LOOP:
+            return (f"Blocked: after the summary you have redone {self._repeats} calls exactly as before and got the same results. "
+                    "Read the summary's Progress and continue from there, or ask the user."), False
         self._recent = (self._recent + [signature])[-DOOM_LOOP:]
         if len(self._recent) == DOOM_LOOP and len(set(self._recent)) == 1 and call["name"] != "wait_agent":
             self._recent = []
@@ -2586,6 +2661,11 @@ class AgentSession:
         marker = [{"role": "user", "content": f"{job}[Summary of the earlier conversation]\n{summary}{self._file_lists(head)}{saved}"}]
         # Two user messages in a row are fine; an acknowledgement is only needed so the next message is not an assistant one.
         ack = [{"role": "assistant", "content": "Understood; continuing from that summary.", "calls": []}] if not tail or tail[0]["role"] == "user" else []
+        # Calls made before the summary, with a hash of what they returned, so work redone after it can be noticed.
+        results = {item["id"]: item["content"] for item in head if item["role"] == "tool"}
+        self._before_summary = {self._signature(c): hashlib.sha1(results[c["id"]].encode()).hexdigest() for item in head if item["role"] == "assistant"
+                                for c in item.get("calls") or [] if c.get("id") in results and c.get("name") not in learn.LOOK_ONLY}
+        self._after_summary = self._repeats = 0
         self.history = marker + ack + tail
         self._pinned = None
         self._digest_due = True
@@ -2940,6 +3020,8 @@ class AgentSession:
                     self.stats["tool_s"] += time.time() - started
 
         def record(call: dict, output: str, ok: bool) -> None:
+            if self._before_summary:
+                output += self._redone(call, output, ok)
             self.history.append({"role": "tool", "id": call["id"], "name": call["name"], "content": output, **({} if ok else {"failed": True})})
             # The page and the saved session keep a clipped copy; the model's history keeps all of it.
             self.emit("tool", id=call["id"], name=call["name"], ok=ok, output=clip(output, EVENT_OUTPUT))

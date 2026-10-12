@@ -3756,6 +3756,38 @@ def test_created_tools_share_one_process_where_memo_lasts_until_the_policy_chang
     assert session._repl.job is None
 
 
+def test_chains_search_and_describe_the_tools_they_can_reach(ws, home):
+    create_only(home)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    session._create({"name": "grep_code", "description": "Search the code for a pattern.", "code": "def grep_code(pattern):\n    return pattern\n"})
+    session.mcp_tools["mcp__db__query"] = ("db", {"name": "query", "description": "Run a SQL query on the database.", "inputSchema": {"type": "object", "properties": {"sql": {"type": "string"}}}})
+    chain = ("def look():\n    found = tools.search('sql database query')\n    return {'first': found[0]['name'], 'schema': tools.describe(found[0]['name'])['parameters'],"
+             " 'code': [r['name'] for r in tools.search('search code')][:1]}\n")
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "look", "code": chain, "args": {}, "keep": False}})
+    assert '"first": "mcp__db__query"' in out and '"sql"' in out and '"code": ["grep_code"]' in out, out
+    for n in range(20):
+        session.mcp_tools[f"mcp__x__t{n}"] = ("x", {"name": f"t{n}", "description": "x"})
+    assert not any(s["name"].startswith("mcp__") for s in session.specs()), "past MCP_DEFER the schemas stay out of create mode; chains find them"
+
+
+def test_redoing_work_after_a_summary_is_noted_then_blocked(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("summary")))
+    session._new_request("go")
+    calls = [{"id": f"r{n}", "name": "run_command", "args": {"command": f"echo step{n}"}} for n in range(3)]
+    session.history.append({"role": "user", "content": "build it", "from_user": True})
+    for c in calls:
+        session.history += [{"role": "assistant", "content": "", "calls": [c]}, {"role": "tool", "id": c["id"], "name": c["name"], "content": session._run_call(c)[0]}]
+    session.history += [{"role": "assistant", "content": "done", "calls": []}, {"role": "user", "content": "next", "from_user": True}]
+    assert session.compact() and len(session._before_summary) == 3
+    session._run_calls([{"id": "x", "name": "run_command", "args": {"command": "echo new"}}])
+    assert "before the summary" not in session.history[-1]["content"], "new work gets no note"
+    for c in calls:
+        session._run_calls([{**c, "id": c["id"] + "b"}])
+        assert "made this exact call before the summary" in session.history[-1]["content"]
+    assert session._run_call({**calls[0], "id": "again"})[0].startswith("Blocked: after the summary"), "three redone calls, then the guard blocks"
+
+
 def test_created_tools_call_each_other_in_one_process_and_create_can_run_a_one_off_chain(ws, home, monkeypatch):
     from app.agent import guardian
     create_only(home)
