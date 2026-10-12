@@ -209,6 +209,9 @@ class _Tools:
 
 tools = _Tools()
 """
+# Built-in tools hybrid leaves out: create, the shell, task/fan_out or the user's own commands already do their job.
+HYBRID_HIDDEN = frozenset({"symbols", "replace_in_files", "move_file", "delete_file", "apply_patch", "run_script", "web_download", "job_input",
+                           "changes", "revert_file", "plugin_write", "plugin_remove", "spawn_agent", "wait_agent", "send_input", "close_agent", "delegate"})
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
 UNREADABLE_TURNS = 4
@@ -746,6 +749,7 @@ class AgentSession:
         self._fallback_at = 0
         self._request_no += 1
         self.chain_budget = {}
+        self._edit_seq = self._run_seq = 0
         self._prewalk = bool(self.profile["prewalk_model"]) and self.profile["prewalk_model"] != self.model and not self.depth
         self._skills_loaded = []
         self._turn_usage = self._spent()
@@ -1158,6 +1162,8 @@ class AgentSession:
         rows += [SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"], SESSION_SPECS["memory"], task, spawn, fan,
                  SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         rows += [t.spec for t in self.registry.tools.values()]
+        if self.profile["tools"] == "hybrid":
+            rows = [r for r in rows if r["name"] not in HYBRID_HIDDEN]
         if self.plan_mode:
             reads = {n for n, t in self.registry.tools.items() if t.kind == "read"}
             # A connected tool that only reads (its own readOnlyHint, or the read role in profile.json) helps a plan too.
@@ -2261,8 +2267,10 @@ class AgentSession:
             self.tainted = True
         if ok and (KIND.get(name) == "edit" or role == "edit") and name != "web_download":
             self._dirty = self._edited = True
-        elif name == "run_command" or role == "exec":
+            self._edit_seq = self._run_seq + 1
+        elif name in ("run_command", "run_script") or role == "exec":
             self._dirty = False
+            self._run_seq = self._edit_seq + 1
         if name == "run_command" or name in self.mcp_tools or name in self.replaced or name in self.registry.tools or name in self._root().created:
             output = self._offload(call, output)
         if call["name"] not in SESSION_SPECS:
@@ -3053,16 +3061,8 @@ class AgentSession:
                 self._wrap_up("step limit")
 
     def _edited_after_run(self) -> bool:
-        """The latest file change in the conversation came after the latest command run."""
-        if self.profile["tools"] == "create" and not self.depth:
-            return self._edit_seq > self._run_seq
-        for item in reversed(self.history):
-            for call in reversed(item.get("calls") or []):
-                if call["name"] in ("run_command", "run_script"):
-                    return False
-                if KIND.get(call["name"]) == "edit":
-                    return True
-        return False
+        """The latest file change in this request came after the latest command run, counting built-in and created tools alike."""
+        return self._edit_seq > self._run_seq
 
     def _handoff(self, start: int) -> None:
         """When a turn dies after doing work (the provider gave out), what it changed and what is left, so nothing has to be guessed before going on."""

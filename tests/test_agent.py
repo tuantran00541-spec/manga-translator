@@ -3857,3 +3857,28 @@ def test_chains_have_a_per_request_budget_long_ones_a_smaller_one_and_helpers_a_
     assert "at most 1 helper agents started from chains" in out, out
     session._new_request("third")
     assert run("pair").splitlines()[0] == "2", "every request starts with a fresh budget"
+
+
+def test_hybrid_hides_tools_that_create_and_the_shell_cover_and_edits_count_alike(ws, home):
+    from app.agent import session as session_module
+    create_only(home, {"tools": "hybrid"})
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    names = {s["name"] for s in session.specs()}
+    assert not names & session_module.HYBRID_HIDDEN and {"run_command", "edit_file", "task", "fan_out", "create", "schedule_create"} <= names
+    session._new_request("go")
+    session._run_call({"id": "e", "name": "write_file", "args": {"path": "n.txt", "content": "x"}})
+    assert session._edited_after_run()
+    session._create({"name": "check", "code": "import subprocess\ndef check():\n    return subprocess.run(['true']).returncode\n"})
+    session._run_call({"id": "c", "name": "check", "args": {}})
+    assert not session._edited_after_run(), "a created tool that runs a program counts as a check after a built-in edit"
+
+
+def test_the_skill_list_with_paths_names_each_folder_once(tmp_path):
+    from app.agent import skills as skills_module
+    for name in ("one", "two"):
+        (tmp_path / "s" / name).mkdir(parents=True)
+        (tmp_path / "s" / name / "SKILL.md").write_text(f"---\nname: {name}\ndescription: Does {name}.\n---\nx")
+    found = {n: s for n, s in skills_module.discover(tmp_path / "nowhere", tmp_path / "nohome").items() if not s.builtin}
+    found.update({n: skills_module.Skill(n, f"Does {n}.", (tmp_path / "s" / n).resolve()) for n in ("one", "two")})
+    text = skills_module.catalog(found, paths=True)
+    assert text.count(str((tmp_path / "s").resolve())) == 1 and "- one: Does one." in text and "SKILL.md" in text.splitlines()[0]
