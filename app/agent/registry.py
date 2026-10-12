@@ -25,6 +25,8 @@ ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
 REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file", "edit_lines",
                          "apply_patch", "run_command", "web_fetch", "web_search", "web_download"})
 ROLES = ("read", "edit", "exec", "net")
+# The model starts with only the create tool and builds its own; "full" offers the built-in tool set instead.
+DEFAULT_TOOLS = "create"
 PROFILE_FILES = {"user": (".manga-agent/profile.json",), "workspace": (".agents/profile.json",)}
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
 EVENTS = ("pre_tool", "post_tool")
@@ -40,7 +42,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "learn_every": 10, "prewalk_model": "",
-                     "replace": {}, "roles": {}, "services": {}}
+                     "replace": {}, "roles": {}, "services": {}, "tools": DEFAULT_TOOLS}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -92,6 +94,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["advisor"] = data["advisor"]
                 if isinstance(data.get("advisor_every"), int) and data["advisor_every"] > 0:
                     profile["advisor_every"] = data["advisor_every"]
+                if data.get("tools") in ("create", "full"):
+                    profile["tools"] = data["tools"]
                 if isinstance(data.get("learn_every"), int) and data["learn_every"] >= 0:
                     profile["learn_every"] = data["learn_every"]
                 if isinstance(data.get("notes_context"), bool):

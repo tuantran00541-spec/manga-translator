@@ -42,7 +42,7 @@ def run(code: str, policy: sandbox.Policy, root: Path, timeout: int, call_tool) 
     """(exit code or None on timeout, output, tool calls made); call_tool(name, args) returns (output, ok)."""
     if policy.mode != "full-access" and sandbox.backend() in ("docker", "low-integrity"):
         # The script talks to the agent over inherited pipes, which a container or a Windows token switch does not carry.
-        raise OSError("run_script needs the Linux or macOS sandbox; use run_command here")
+        return _run_plain(code, policy, root, timeout)
     scratch = tempfile.mkdtemp(prefix="agent-script-")
     try:
         boot, script = Path(scratch) / "boot.py", Path(scratch) / "script.py"
@@ -91,5 +91,40 @@ def run(code: str, policy: sandbox.Policy, root: Path, timeout: int, call_tool) 
         server.join(5)
         proc.stdout.close()
         return code_out, output.text(), calls[0]
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+PLAIN = """class _Tools:
+    def __getattr__(self, name):
+        raise RuntimeError("agent tools cannot be called from a script in this sandbox; use the standard library instead")
+
+
+tools = _Tools()
+"""
+
+
+def _run_plain(code: str, policy: sandbox.Policy, root: Path, timeout: int) -> tuple[int | None, str, int]:
+    """Run the script without the tool bridge, for sandboxes that cannot pass it pipes."""
+    scratch = os.path.realpath(tempfile.mkdtemp(prefix="agent-script-"))
+    try:
+        Path(scratch, "script.py").write_text(PLAIN + code, encoding="utf-8")
+        docker = sandbox.backend() == "docker"
+        # Inside the container the scratch folder is /tmp and the image brings its own Python.
+        command = "python3 /tmp/script.py" if docker else subprocess.list2cmdline([sys.executable, str(Path(scratch, "script.py"))])
+        target, shell = sandbox.wrap(command, policy, root, scratch)
+        proc = subprocess.Popen(target, shell=shell, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                start_new_session=os.name == "posix", env=sandbox._env_for(policy, scratch))
+        output = sandbox._Capture(proc.stdout, lambda: sandbox._kill_group(proc))
+        output.start()
+        try:
+            code_out: int | None = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            code_out = None
+        sandbox._kill_group(proc)
+        proc.wait()
+        output.join(5)
+        proc.stdout.close()
+        return code_out, output.text(), 0
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

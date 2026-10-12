@@ -21,6 +21,13 @@ from app.routers.agent import is_loopback
 LANDLOCK = sandbox.backend() == "landlock"
 
 
+@pytest.fixture(autouse=True)
+def full_tools(monkeypatch):
+    """Most tests drive the built-in tools; the create-only default has tests of its own."""
+    from app.agent import registry
+    monkeypatch.setattr(registry, "DEFAULT_TOOLS", "full")
+
+
 @pytest.fixture
 def home(tmp_path):
     folder = tmp_path / "home"
@@ -3089,7 +3096,7 @@ def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_kee
     assert later._needs_approval({"name": "count_lines", "args": {}}) == later._needs_approval({"name": "run_command", "args": {"command": "make"}})
     assert later._create({"name": "count_lines", "code": "def run(args):\n    return 'v2'\n"}).startswith("Updated")
     assert later.created["count_lines"]["description"] == "Count lines."
-    with pytest.raises(ToolError, match="built-in"):
+    with pytest.raises(ToolError, match="reserved"):
         later._create({"name": "read_file", "code": "x = 1"})
     with pytest.raises(ToolError, match="Syntax"):
         later._create({"name": "bad", "code": "def ("})
@@ -3598,3 +3605,46 @@ def test_ten_lesson_files_are_merged_into_a_summary_or_kept_as_the_model_decides
     merged, usage = learn.consolidate(model({"action": "summarize", "summary": "## Tests\n- Run pytest from the repo root."}), None, "k", "m", folder)
     assert merged == "Merged 20 lesson files into SUMMARY.md" and usage == {"prompt_tokens": 5} and "mistake 19" in asked[-1]
     assert "repo root" in (folder / "SUMMARY.md").read_text() and not learn._sessions(folder) and len(list((folder / "archive").glob("*.md"))) == 20
+
+
+def create_only(home, extra=None):
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "create", **(extra or {})}))
+
+
+SHELL_TOOL = {"name": "shell", "description": "Run a shell command.", "parameters": {"type": "object", "required": ["cmd"], "properties": {"cmd": {"type": "string"}}},
+              "code": "import subprocess\ndef shell(cmd):\n    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)\n    return r.stdout + r.stderr + f'[exit {r.returncode}]'\n"}
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="the shell tool uses a POSIX shell")
+def test_create_only_mode_offers_one_tool_and_the_model_builds_the_rest(ws, home):
+    create_only(home)
+    fake = scripted(turn(calls=[{**call("create", **SHELL_TOOL), "id": "c1"}]),
+                    turn(calls=[{**call("shell", cmd="echo hi > made.txt && cat made.txt"), "id": "s1"}]), turn("Done."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    assert [s["name"] for s in session.specs()] == ["create"] and "You start with one tool, create" in session.system_prompt()
+    run_to_idle(session)
+    assert [s["name"] for s in fake.seen[1][1]] == ["create", "shell"], "a created tool is offered from the next step"
+    out = [h["content"] for h in session.history if h["role"] == "tool"][-1]
+    assert "hi" in out and "[exit 0]" in out and (ws.root / "made.txt").read_text() == "hi\n"
+    again = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    assert [s["name"] for s in again.specs()] == ["create", "shell"], "created tools are kept for later sessions"
+
+
+def test_create_only_mode_guards_names_reviews_code_and_keeps_plan_mode_read_only(ws, home, monkeypatch):
+    from app.agent import guardian
+    create_only(home)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+    for name in ("read_file", "run_command", "write_file"):
+        with pytest.raises(ToolError, match="reserved"):
+            session._create({**SHELL_TOOL, "name": name})
+    session._create(SHELL_TOOL)
+    seen = []
+    monkeypatch.setattr(guardian, "review", lambda *a, **k: (seen.append(a[5]), ("deny", "no"))[1])
+    output, ok = session._run_call({"id": "x", "name": "shell", "args": {"cmd": "ls"}})
+    assert not ok and "subprocess.run" in seen[0]["args"]["_tool_code"], "the reviewer judges the tool by its code"
+    if LANDLOCK:
+        session.mode, session.plan_mode = "bypass", True
+        assert "exit_plan_mode" in [s["name"] for s in session.specs()]
+        output, _ = session._run_call({"id": "y", "name": "shell", "args": {"cmd": "touch nope.txt"}})
+        assert not (ws.root / "nope.txt").exists(), "plan mode runs created tools read-only"

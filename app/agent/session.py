@@ -30,6 +30,7 @@ MAX_STEPS = 300
 MAX_JOBS = 8
 MAX_TODO_NUDGES = 3
 MAX_SCHEDULES = 10
+CREATED_TIMEOUT = 900
 URL_TOOLS = ("web_fetch", "web_download")
 MASK_KEEP = 12
 MASK_BATCH = 6
@@ -127,6 +128,18 @@ Look before you change, keep changes minimal and in the code's style, fix root c
 and review your edits with changes. Plan multi-step work with todo_write.
 Make independent calls (reads, searches, look-only commands) together in one reply; they run in parallel. End with a short report: what changed, how you checked, what is left.
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
+CREATE_PROMPT = """You are a coding agent inside the Manga Translator app.
+Workspace root: {root} on {system}. Paths are relative to it.
+{sandbox}
+You start with one tool, create. Build every other tool you need with it, the way you were trained to call tools:
+a name, a description, JSON-schema parameters, and Python code that defines a function of that name taking those parameters.
+A tool runs as a Python script in the sandbox with the workspace as its working folder: it can read and write files, run programs
+with subprocess and use the network if the sandbox allows; whatever it returns or prints is the result. Return exit codes and errors
+in full, and keep long output short (head and tail). Tools are kept for later sessions: reuse them, fix one by creating it again
+under the same name, delete one with empty code. Prefer a few general tools (a shell, a file reader, an exact-text editor) over many narrow ones.
+Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
+then run the tests or command that proves it works. End with a short report: what changed, how you checked, what is left.
+Write notes, plans and helper prompts in English; answer the user in the language of their request."""
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {
@@ -200,6 +213,7 @@ SESSION_SPECS = {
                    "action": {"type": "string", "enum": ["add", "remove", "list"]}, "scope": {"type": "string", "enum": ["project", "user"]},
                    "text": {"type": "string"}, "index": {"type": "integer"}}}},
 }
+BUILTIN_NAMES = frozenset({s["name"] for s in SPECS} | set(SESSION_SPECS) | set(KIND))
 BUILTIN_COMMANDS = {
     "help": "Xem các lệnh", "compact": "Tóm gọn hội thoại để giải phóng chỗ (có thể ghi điều cần giữ); /compact auto 900k đặt mức tự tóm gọn",
     "init": "Viết AGENTS.md mô tả dự án này", "skills": "Xem skill; /skills add CHỦ/REPO[/THƯ-MỤC] cài skill từ GitHub",
@@ -997,6 +1011,8 @@ class AgentSession:
             allowed = self.agent.allowed(every) if self.agent else agents.READ_TOOLS
             rows = [s for s in SPECS if s["name"] in allowed]
             return rows + ([SESSION_SPECS["skill"]] if self.skills and "skill" in allowed else [])
+        if self.profile["tools"] == "create":
+            return self._create_specs()
         listing = agents.catalog(self.agents)
         # The agent list is spelled out once, under task; the other two point to it.
         task, spawn, fan = (({**SESSION_SPECS[n], "description": SESSION_SPECS[n]["description"].format(
@@ -1041,6 +1057,19 @@ class AgentSession:
                 continue
             rows.append({"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
                          "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}}})
+        return rows
+
+    def _create_specs(self) -> list[dict]:
+        """The create tool, the tools the model made with it, the user's plugin and MCP tools, and whatever a mode needs to end."""
+        rows = [SESSION_SPECS["create"]] + [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
+        # Only tools the user installed; built-in extras such as delegate stay out.
+        rows += [t.spec for n, t in self.registry.tools.items() if n not in registry.GROUPS]
+        rows += [{"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
+                  "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}}} for name, (server, tool) in self.mcp_tools.items()]
+        if self.plan_mode:
+            rows.append(SESSION_SPECS["exit_plan_mode"])
+        elif self.goal:
+            rows.append(SESSION_SPECS["goal_done"])
         return rows
 
     def _needs_approval(self, call: dict, verdict: str | None = None) -> bool:
@@ -1098,6 +1127,13 @@ class AgentSession:
             except (KeyError, ToolError):
                 return True
         return False
+
+    def _for_review(self, call: dict) -> dict:
+        """A created tool is judged by its code, since its name and arguments say nothing about what it does."""
+        tool = self._root().created.get(call["name"])
+        if not tool or not isinstance(call["args"], dict):
+            return call
+        return {**call, "args": {**call["args"], "_tool_code": tool["code"][:2500]}}
 
     def _typing_outside(self, call: dict) -> bool:
         """Input to a job running outside the sandbox is a new command there, so it asks like one."""
@@ -1226,7 +1262,7 @@ class AgentSession:
                 tool = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            if isinstance(tool, dict) and CREATED_NAME.fullmatch(str(tool.get("name"))) and isinstance(tool.get("code"), str):
+            if isinstance(tool, dict) and CREATED_NAME.fullmatch(str(tool.get("name"))) and tool.get("name") not in BUILTIN_NAMES and isinstance(tool.get("code"), str):
                 found[tool["name"]] = tool
         return found
 
@@ -1236,8 +1272,9 @@ class AgentSession:
         if not CREATED_NAME.fullmatch(name):
             raise ToolError("name must be lower_case letters, digits and _, starting with a letter")
         created = self._root().created
-        if name not in created and name in {s["name"] for s in self.specs()}:
-            raise ToolError(f"{name} is a built-in tool; pick another name")
+        if name in BUILTIN_NAMES or name in self.registry.tools or name in self._root().mcp_tools:
+            # A built-in name carries that tool's approval kind and dispatch, so a created tool may not borrow it.
+            raise ToolError(f"{name} is reserved; pick another name, e.g. shell, read, edit")
         path = self._tools_folder() / f"{name}.json"
         code = str(args.get("code") or "")
         if not code.strip():
@@ -1265,7 +1302,9 @@ class AgentSession:
         tool = self._root().created[call["name"]]
         args = call["args"] if isinstance(call["args"], dict) else {}
         script = tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
-        return self._run_script({"code": script})
+        # In plan mode a created tool may look but not change anything.
+        policy = sandbox.Policy("read-only", self.workspace.policy.network) if self.plan_mode else None
+        return self._run_script({"code": script, "timeout": CREATED_TIMEOUT}, policy)
 
     def _session_tool(self, call: dict) -> str:
         args = call["args"]
@@ -1373,7 +1412,7 @@ class AgentSession:
             return f"Closed {child.nick} (it was {state})."
         return self._subagent(str(args.get("description") or "task"), str(args.get("prompt") or ""), str(args.get("agent") or "explore"))
 
-    def _run_script(self, args: dict) -> str:
+    def _run_script(self, args: dict, policy: "sandbox.Policy | None" = None) -> str:
         """Code mode: the script's tool calls go through the same rules and approvals as the model's own."""
         code = str(args.get("code") or "")
         if not code.strip():
@@ -1393,7 +1432,7 @@ class AgentSession:
             output, ok = self._run_call({"id": f"script-{uuid.uuid4().hex[:8]}", "name": name, "args": tool_args})
             return output, ok
 
-        code_out, output, calls = codemode.run(code, self.workspace.policy, self.workspace.root, limit, call_tool)
+        code_out, output, calls = codemode.run(code, policy or self.workspace.policy, self.workspace.root, limit, call_tool)
         status = f"[stopped after {limit} s]" if code_out is None else f"[exit code {code_out}]"
         return clip(f"{output.strip()}\n{status} [{calls} tool call{'s' if calls != 1 else ''}]", 400_000)
 
@@ -1783,7 +1822,7 @@ class AgentSession:
                 elif self.mode in ("review", "auto") and not why and not self._always_ask(call):
                     started = time.time()
                     answer, reason = guardian.review(self.complete, self.provider, self.api_key, self.profile["review_model"] or self.model,
-                                                     self._user_messages(), call, untrusted=self.tainted, rule=verdict == "ask")
+                                                     self._user_messages(), self._for_review(call), untrusted=self.tainted, rule=verdict == "ask")
                     with self._usage_lock:
                         self.stats["model_s"] += time.time() - started
                     # In Auto mode an unsure reviewer blocks; only a reviewer that could not answer hands the call to the user.
@@ -1879,7 +1918,7 @@ class AgentSession:
             self._dirty = self._edited = True
         elif name == "run_command" or role == "exec":
             self._dirty = False
-        if name == "run_command" or name in self.mcp_tools or name in self.replaced or name in self.registry.tools:
+        if name == "run_command" or name in self.mcp_tools or name in self.replaced or name in self.registry.tools or name in self._root().created:
             output = self._offload(call, output)
         if call["name"] not in SESSION_SPECS:
             _, notes = self._run_hooks("PostToolUse", call, output)
@@ -1906,7 +1945,8 @@ class AgentSession:
     # The model turn and the loop.
 
     def system_prompt(self) -> str:
-        parts = [SYSTEM_PROMPT.format(root=self.workspace.root, system=platform.system(),
+        base = CREATE_PROMPT if self.profile["tools"] == "create" and not self.depth else SYSTEM_PROMPT
+        parts = [base.format(root=self.workspace.root, system=platform.system(),
                                       sandbox=self.workspace.policy.describe(self.workspace.root))]
         if self._pinned is None:
             self._pinned = self._volatile()
@@ -1932,7 +1972,7 @@ class AgentSession:
     def _volatile(self) -> dict[str, str]:
         """The parts of the system prompt that files on disk can change: read once and kept, so the cached prefix stays the same."""
         home = self.home if self.home is not None else Path.home()
-        rows = {"Skills": skills.catalog(self.skills)}
+        rows = {"Skills": skills.catalog(self.skills, paths=self.profile["tools"] == "create" and not self.depth)}
         if not self.depth:
             rows["Project instructions"] = context.instructions(self.workspace.root, self.home)
             rows["Memory"] = memory.prompt(home, self.workspace.root)

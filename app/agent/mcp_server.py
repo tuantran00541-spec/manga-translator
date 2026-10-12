@@ -32,6 +32,8 @@ class Bridge:
         policy = sandbox.Policy("workspace-write" if write else "read-only", network)
         self.manager = AgentSessionManager(None, home=home)
         self.session = self.manager.create(PROVIDERS["openai"], "", "", Workspace(folder, policy), "bypass", complete=_never)
+        # Clients of the server call the built-in tools, whatever the user's own sessions start with.
+        self.session.profile["tools"] = "full"
         self.write, self.network = write, network
 
     def _kind(self, name: str) -> str:

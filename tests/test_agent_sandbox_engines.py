@@ -122,3 +122,25 @@ def test_docker_commands_see_only_the_workspace_and_no_network(tmp_path, home, m
     time.sleep(2)
     names = subprocess.run(["docker", "ps", "--format", "{{.Names}}"], capture_output=True, text=True).stdout
     assert code is None and "manga-agent-" not in names
+
+
+SCRIPT = "from pathlib import Path\nPath('made.txt').write_text('ok')\nprint('wrote', Path('made.txt').read_text())\ntry:\n    tools.read_file(path='x')\nexcept RuntimeError as e:\n    print('no bridge')\n"
+
+
+@pytest.mark.skipif(not WINDOWS, reason="the low-integrity sandbox is Windows only")
+def test_windows_runs_created_tool_scripts_without_the_tool_bridge(tmp_path, home):
+    from app.agent import codemode
+    root = tmp_path / "ws"
+    root.mkdir()
+    code, out, calls = codemode.run(SCRIPT, sandbox.Policy("workspace-write", False), root, 60, lambda n, a: ("", False))
+    assert code == 0 and "wrote ok" in out and "no bridge" in out and (root / "made.txt").read_text() == "ok", out
+
+
+@pytest.mark.skipif(not _docker(), reason="needs a Docker daemon running Linux containers")
+def test_docker_runs_created_tool_scripts_without_the_tool_bridge(tmp_path, home, monkeypatch):
+    from app.agent import codemode
+    monkeypatch.setenv("MANGA_AGENT_SANDBOX", "docker")
+    root = tmp_path / "ws"
+    root.mkdir()
+    code, out, calls = codemode.run(SCRIPT, sandbox.Policy("workspace-write", False), root, 300, lambda n, a: ("", False))
+    assert code == 0 and "wrote ok" in out and "no bridge" in out and (root / "made.txt").read_text() == "ok", out

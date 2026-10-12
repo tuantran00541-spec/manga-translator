@@ -79,10 +79,11 @@ def discover(workspace: Path, home: Path | None = None) -> dict[str, Skill]:
     return found
 
 
-def catalog(found: dict[str, Skill]) -> str:
-    """The skills the model may load itself; manual ones are only for the user's /commands."""
-    rows = "\n".join(f"- {s.name}: {_short(s.description)}" for s in found.values() if not s.manual)
-    return f"Skills (load with the skill tool before a task that matches, at most three per task):\n{rows}" if rows else ""
+def catalog(found: dict[str, Skill], paths: bool = False) -> str:
+    """The skills the model may load itself, by tool or (with paths) by reading the file; manual ones are only for the user's /commands."""
+    rows = "\n".join(f"- {s.name}: {_short(s.description)}" + (f" ({s.file})" if paths else "") for s in found.values() if not s.manual)
+    how = "read the SKILL.md before a task that matches" if paths else "load with the skill tool before a task that matches"
+    return f"Skills ({how}, at most three per task):\n{rows}" if rows else ""
 
 
 def _short(text: str, limit: int = 160) -> str:
