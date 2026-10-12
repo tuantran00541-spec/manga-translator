@@ -20,7 +20,7 @@ GROUPS = {
     "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "tool_search": "mcp", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
     "plugin_write": "extensions", "plugin_remove": "extensions",
 }
-COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "mcp": "mcp"}
+COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "learn": "skills", "mcp": "mcp"}
 ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
 REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file", "edit_lines",
                          "apply_patch", "run_command", "web_fetch", "web_search", "web_download"})
@@ -39,7 +39,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
-                     "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "prewalk_model": "",
+                     "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "learn_every": 10, "prewalk_model": "",
                      "replace": {}, "roles": {}, "services": {}}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
@@ -92,6 +92,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["advisor"] = data["advisor"]
                 if isinstance(data.get("advisor_every"), int) and data["advisor_every"] > 0:
                     profile["advisor_every"] = data["advisor_every"]
+                if isinstance(data.get("learn_every"), int) and data["learn_every"] >= 0:
+                    profile["learn_every"] = data["learn_every"]
                 if isinstance(data.get("notes_context"), bool):
                     profile["notes_context"] = data["notes_context"]
                 if isinstance(data.get("goal_turns"), int) and data["goal_turns"] > 0:

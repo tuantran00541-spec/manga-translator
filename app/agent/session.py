@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, kernel, mcp, memory, models, registry, rules, sandbox, schema as schemas, services, skill_install, skills
+from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, rules, sandbox, schema as schemas, services, skill_install, skills
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -124,7 +124,8 @@ SYSTEM_PROMPT = """You are a coding agent inside the Manga Translator app.
 Workspace root: {root} on {system}. Paths are relative to it.
 {sandbox}
 Look before you change, keep changes minimal and in the code's style, fix root causes, then run the tests or command that proves it works
-and review your edits with changes. Plan multi-step work with todo_write. End with a short report: what changed, how you checked, what is left.
+and review your edits with changes. Plan multi-step work with todo_write.
+Make independent calls (reads, searches, look-only commands) together in one reply; they run in parallel. End with a short report: what changed, how you checked, what is left.
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
@@ -210,6 +211,7 @@ BUILTIN_COMMANDS = {
     "undo": "Hoàn tác file agent đã sửa ở lượt gần nhất", "memory": "Xem ghi nhớ: /memory, /memory add NỘI DUNG, /memory rm project|user SỐ",
     "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn", "cache": "Xem tỉ lệ cache và những lần tiền tố yêu cầu bị đổi", "receipts": "Xem mọi file đã sửa, lệnh đã chạy và lần duyệt của phiên này",
     "plugins": "Xem plugin, tính năng đã tắt và agent ngoài (Codex, Claude Code)",
+    "learn": "Xem lại phiên này và tự viết hoặc sửa skill ngay",
 }
 GOAL_PROMPT = ("Goal: {text}\nWork on it across as many steps as needed until it is fully done and verified. "
                "When it is done call goal_done with a short report; if you need a decision from the user call ask_user.")
@@ -301,6 +303,7 @@ class AgentSession:
         self._after_compact = 0
         self._deadline = self._notice_at = 0.0
         self.schedules: list[dict] = []
+        self._since_learn = self._learned_to = 0
         self._scheduler: threading.Thread | None = None
         self._closing = False
         self._advice: list[tuple[str, str]] = []
@@ -636,6 +639,8 @@ class AgentSession:
                 return {"message": self._install_skills(args[3:].strip())}
             rows = [f"{'/' if s.manual else ''}{s.name}{' (có sẵn)' if s.builtin else ''}: {s.description[:150]}" for s in self.skills.values()]
             return {"message": "\n".join(rows) or "Không có skill nào."}
+        if name == "learn":
+            return {"message": self._maybe_learn(force=True)}
         if name == "services":
             return {"message": "\n".join(self.workspace.services.describe())
                     + "\nChọn trong ~/.manga-agent/profile.json, ví dụ \"services\": {\"web.search\": [\"tavily\", \"duckduckgo\"]}; plugin thêm provider bằng api.provide()."}
@@ -1409,9 +1414,12 @@ class AgentSession:
             time.sleep(0.05)
         undone = gitguard.restore(root, guard)
         warning = f"\n[blocked: the command changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]" if undone else ""
-        if job.code is None and not self._stop and len(self.jobs) < MAX_JOBS:
-            name = f"job{next(i for i in range(1, 100) if f'job{i}' not in self.jobs)}"
-            self.jobs[name] = job
+        with self._usage_lock:
+            # Look-only commands run in parallel, so naming a job that outlived its timeout must not race.
+            name = f"job{next(i for i in range(1, 100) if f'job{i}' not in self.jobs)}" if job.code is None and not self._stop and len(self.jobs) < MAX_JOBS else ""
+            if name:
+                self.jobs[name] = job
+        if name:
             return clip(f"{job.read().strip()}\n[still running after {limit} s; it was not stopped but moved to the background as {name}: read it with job_output, stop it with job_stop]{warning}", 400_000)
         finished = job.code is not None
         if finished:
@@ -2317,6 +2325,36 @@ class AgentSession:
             self.send(f"[Scheduled by you] {task['prompt']}")
             self.save()
 
+    def _maybe_learn(self, force: bool = False) -> str:
+        """Review the work since the last review in the background and keep what is worth reusing as skills."""
+        every = int(self.profile["learn_every"] or 0)
+        if self.depth or "skills" in self.disabled or not (force or (every and self._since_learn >= every)):
+            return "Tự học skill đang tắt (learn_every = 0 hoặc skills bị tắt)." if force else ""
+        if self.tainted:
+            # Text from the web or an MCP server could plant instructions in a skill, so such sessions teach nothing.
+            return "Phiên này đã đọc nội dung từ web/MCP nên không tự học skill, tránh bị cài lệnh lạ."
+        start = min(self._learned_to, len(self.history))
+        if not any(item["role"] == "tool" for item in self.history[start:]):
+            return "Chưa có việc gì mới để học."
+        self._since_learn, self._learned_to = 0, len(self.history)
+        transcript = self._transcript(self.history[start:])
+        threading.Thread(target=self._learn, args=(transcript,), name=f"agent-learn-{self.id}", daemon=True).start()
+        return "Đang xem lại phiên để viết hoặc sửa skill; xong sẽ báo."
+
+    def _learn(self, transcript: str) -> None:
+        home = self.home if self.home is not None else Path.home()
+        items, usage = learn.review(self.complete, self.provider, self.api_key, self.profile["review_model"] or self.model, transcript, home)
+        with self._usage_lock:
+            for key in self.usage:
+                self.usage[key] += int(usage.get(key) or 0)
+        try:
+            done = learn.write(home, items, (self.api_key,))
+        except OSError as exc:
+            done = [f"could not write: {exc}"]
+        if done:
+            self.reload_skills()
+            self.emit("notice", text="Skills: " + "; ".join(done))
+
     def _oracle(self, question: str) -> str:
         """The agent asks the advisor model for a second opinion on the recent conversation (Amp's oracle)."""
         if not question.strip():
@@ -2449,6 +2487,9 @@ class AgentSession:
             return (frozenset({path}) if name in ("list_dir", "read_file", "search", "glob", "symbols") else frozenset()), frozenset()
         if name in ("write_file", "edit_file", "edit_lines") and args.get("path"):
             return frozenset(), frozenset({path})
+        if name == "run_command" and not args.get("background") and not args.get("outside_sandbox") and rules.safe_readonly(str(args.get("command") or "")):
+            # A look-only command may read anything in the workspace, so it waits for any write in the batch.
+            return frozenset({"."}), frozenset()
         return None
 
     @staticmethod
@@ -2576,6 +2617,7 @@ class AgentSession:
                 break
             worked += 1
             self._run_calls(calls)
+            self._since_learn += 1
             self._show_images()
             self._advance_prewalk()
             self._start_advisor()
@@ -2634,6 +2676,7 @@ class AgentSession:
             if not again:
                 # Saved before going idle, so whoever sees idle also finds the session on disk.
                 self.emit("done")
+                self._maybe_learn()
                 self.save()
                 with self._lock:
                     again = bool(self.queue) and not self._stop
