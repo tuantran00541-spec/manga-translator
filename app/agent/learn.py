@@ -1,6 +1,7 @@
 """After enough tool work the agent reviews the session, keeps its mistakes and fixes as notes, and writes its own skills (Hermes Agent's learning loop)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -51,12 +52,11 @@ def _ask(complete, provider, key: str, model: str, system: str, user: str) -> tu
         return {}, {}
 
 
-def review(complete, provider, key: str, model: str, transcript: str, home: Path, session_id: str = "") -> tuple[list[dict], str | None, dict]:
+def review(complete, provider, key: str, model: str, transcript: str, home: Path, notes: Path | None = None) -> tuple[list[dict], str | None, dict]:
     """(skills to write, this session's updated lesson notes or None, usage) for the session shown."""
     current = learned(home)
     shown = "\n\n".join(f"### {name}\n{path.read_text(encoding='utf-8', errors='replace')[:4000]}" for name, path in list(current.items())[:MAX_LEARNED]) or "(none yet)"
-    notes = _lesson_file(home, session_id)
-    so_far = notes.read_text(encoding="utf-8", errors="replace")[:30000] if session_id and notes.is_file() else "(none yet)"
+    so_far = notes.read_text(encoding="utf-8", errors="replace")[:30000] if notes and notes.is_file() else "(none yet)"
     data, usage = _ask(complete, provider, key, model, PROMPT,
                        f"Learned skills:\n{shown[:60000]}\n\nLesson notes for this session so far:\n{so_far}\n\nSession:\n{transcript[-80000:]}")
     items = data.get("skills") if isinstance(data.get("skills"), list) else []
@@ -64,28 +64,52 @@ def review(complete, provider, key: str, model: str, transcript: str, home: Path
     return [i for i in items[:2] if isinstance(i, dict)], lessons, usage
 
 
-def _lesson_file(home: Path, session_id: str) -> Path:
-    return home / LESSONS / f"{re.sub(r'[^A-Za-z0-9_-]', '_', session_id)[:80] or 'session'}.md"
+def project_root(paths: list[Path], fallback: Path) -> Path:
+    """The project the work was really in: the git root (else folder) most of the touched paths sit under."""
+    def root_of(path: Path) -> Path:
+        path = path if path.is_dir() else path.parent
+        for folder in (path, *path.parents):
+            if (folder / ".git").exists():
+                return folder
+        return path
+    counts: dict[Path, int] = {}
+    for path in paths:
+        try:
+            found = root_of(path.resolve())
+        except OSError:
+            continue
+        counts[found] = counts.get(found, 0) + 1
+    return max(counts, key=lambda p: (counts[p], p == root_of(fallback.resolve()))) if counts else root_of(fallback.resolve())
 
 
-def _sessions(home: Path) -> list[Path]:
-    return sorted(p for p in (home / LESSONS).glob("*.md") if p.name != "SUMMARY.md")
+def project_folder(home: Path, root: Path) -> Path:
+    """Where one project's lesson notes live: its folder name plus a hash of its full path."""
+    slug = re.sub(r"[^A-Za-z0-9_-]", "_", root.name)[:40] or "root"
+    return home / LESSONS / f"{slug}-{hashlib.sha1(str(root).encode()).hexdigest()[:12]}"
 
 
-def write_lessons(home: Path, session_id: str, text: str, secrets: tuple[str, ...] = ()) -> bool:
-    """Replace this session's lesson notes; False when they are empty or look like they hold a secret."""
+def session_file(folder: Path, session_id: str) -> Path:
+    return folder / f"{re.sub(r'[^A-Za-z0-9_-]', '_', session_id)[:80] or 'session'}.md"
+
+
+def _sessions(folder: Path) -> list[Path]:
+    return sorted(p for p in folder.glob("*.md") if p.name != "SUMMARY.md")
+
+
+def write_lessons(folder: Path, root: Path, session_id: str, text: str, secrets: tuple[str, ...] = ()) -> bool:
+    """Replace this session's lesson notes in its project's folder; False when they are empty or look like they hold a secret."""
     text = text.strip()[:MAX_BODY * 2]
     if not text or not session_id or SECRET_LIKE.search(text) or any(s and len(s) >= 8 and s in text for s in secrets):
         return False
-    path = _lesson_file(home, session_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"# Lessons from session {session_id}\n\n{text}\n", encoding="utf-8")
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "PROJECT").write_text(f"{root}\n", encoding="utf-8")
+    session_file(folder, session_id).write_text(f"# Lessons from session {session_id} in {root}\n\n{text}\n", encoding="utf-8")
     return True
 
 
-def consolidate(complete, provider, key: str, model: str, home: Path, secrets: tuple[str, ...] = ()) -> tuple[str, dict]:
-    """Once CONSOLIDATE_AT session notes pile up, let the model merge them into SUMMARY.md (originals go to archive/) or leave them be."""
-    folder, files = home / LESSONS, _sessions(home)
+def consolidate(complete, provider, key: str, model: str, folder: Path, secrets: tuple[str, ...] = ()) -> tuple[str, dict]:
+    """Once CONSOLIDATE_AT session notes pile up in a project, let the model merge them into SUMMARY.md (originals go to archive/) or leave them be."""
+    files = _sessions(folder)
     state = folder / ".state.json"
     try:
         last = int(json.loads(state.read_text()).get("kept_at", 0))
@@ -113,13 +137,15 @@ def consolidate(complete, provider, key: str, model: str, home: Path, secrets: t
     return "", usage
 
 
-def lessons_prompt(home: Path) -> str:
+def lessons_prompt(home: Path, workspace: Path) -> str:
     """A pointer to past lesson notes for the system prompt, worded the same whatever they hold so the cached prefix stays put."""
-    folder = home / LESSONS
-    if not (folder / "SUMMARY.md").is_file() and not _sessions(home):
+    base = home / LESSONS
+    if not base.is_dir() or not any(base.glob("*/PROJECT")):
         return ""
-    return (f"Mistakes and fixes from past sessions are kept in {folder} (SUMMARY.md first, then one file per session). "
-            "Read them before work where an old mistake could repeat.")
+    here = project_folder(home, project_root([], workspace))
+    lead = f"Mistakes and fixes from past sessions in this project are in {here} (SUMMARY.md first, then one file per session). " if here.is_dir() else ""
+    return (lead + f"Notes for other projects sit in {base}, one folder per project with a PROJECT file naming its path; "
+            "when you work in one of those projects, read its notes before work where an old mistake could repeat.")
 
 
 def write(home: Path, items: list[dict], secrets: tuple[str, ...] = ()) -> list[str]:

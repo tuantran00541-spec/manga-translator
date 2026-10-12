@@ -3540,6 +3540,7 @@ def test_a_session_learns_a_skill_after_enough_tool_work_unless_it_read_the_web(
 
 
 def test_a_long_request_leaves_lesson_notes_for_its_session_that_later_sessions_are_pointed_to(ws, home):
+    from app.agent import learn
     (home / ".manga-agent").mkdir()
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"learn_every": 2}))
     notes = "- Ran pytest from the wrong folder; imports failed. Fix: run from the repo root."
@@ -3547,34 +3548,53 @@ def test_a_long_request_leaves_lesson_notes_for_its_session_that_later_sessions_
                     turn(json.dumps({"skills": [], "lessons": notes})))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
-    path = home / ".manga-agent" / "lessons" / f"{session.id}.md"
+    folder = learn.project_folder(home, ws.root.resolve())
+    path = folder / f"{session.id}.md"
     end = time.time() + 5
     while not path.exists() and time.time() < end:
         time.sleep(0.02)
-    assert path.read_text().startswith(f"# Lessons from session {session.id}") and "wrong folder" in path.read_text()
+    assert "wrong folder" in path.read_text() and (folder / "PROJECT").read_text().strip() == str(ws.root.resolve())
     assert "Lesson notes for this session so far:\n(none yet)" in fake.seen[-1][0][-1]["content"]
     later = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    assert "Mistakes and fixes from past sessions" in later.system_prompt() and later.workspace.resolve(str(path)) == path, "readable, not pasted in"
+    prompt = later.system_prompt()
+    assert f"in this project are in {folder}" in prompt and later.workspace.resolve(str(path)) == path, "readable, not pasted in"
 
 
-def test_ten_lesson_files_are_merged_into_a_summary_or_kept_as_the_model_decides(home):
+def test_notes_follow_the_project_the_work_was_in_not_the_workspace(ws, home, tmp_path):
     from app.agent import learn
-    folder = home / ".manga-agent" / "lessons"
+    other = tmp_path / "other"
+    (other / ".git").mkdir(parents=True)
+    (other / "src").mkdir()
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    items = [{"role": "assistant", "content": "", "calls": [
+        {"name": "run_command", "args": {"command": f"cd {other}/src && pytest -q"}},
+        {"name": "edit_file", "args": {"path": str(other / "src" / "m.py")}},
+        {"name": "read_file", "args": {"path": "pkg/a.py"}}]}]
+    assert learn.project_root(session._touched(items), ws.root) == other.resolve(), "two calls in the other repo outweigh one here"
+    assert learn.project_root([], ws.root) == ws.root.resolve()
+    learn.write_lessons(learn.project_folder(home, other.resolve()), other.resolve(), "s1", "- a lesson")
+    prompt = learn.lessons_prompt(home, ws.root)
+    assert "in this project" not in prompt and "one folder per project with a PROJECT file" in prompt, "a session elsewhere is told where other projects' notes are"
+
+
+def test_ten_lesson_files_are_merged_into_a_summary_or_kept_as_the_model_decides(tmp_path):
+    from app.agent import learn
+    folder, root = tmp_path / "notes", tmp_path / "proj"
     for n in range(9):
-        assert learn.write_lessons(home, f"s{n}", f"- mistake {n}")
-    assert not learn.write_lessons(home, "s-key", "token sk-abcdefghijklmnopqrstuv"), "notes that hold a secret are not kept"
+        assert learn.write_lessons(folder, root, f"s{n}", f"- mistake {n}")
+    assert not learn.write_lessons(folder, root, "s-key", "token sk-abcdefghijklmnopqrstuv"), "notes that hold a secret are not kept"
     asked = []
     def model(answer):
         def complete(provider, key, m, messages, *, tools):
             asked.append(messages[-1]["content"])
             return {"text": json.dumps(answer), "usage": {"prompt_tokens": 5}}
         return complete
-    assert learn.consolidate(model({"action": "keep"}), None, "k", "m", home) == ("", {}) and not asked, "nine files are left alone"
-    learn.write_lessons(home, "s9", "- mistake 9")
-    assert learn.consolidate(model({"action": "keep"}), None, "k", "m", home)[0] == "Kept 10 lesson files as they are"
-    assert learn.consolidate(model({"action": "summarize", "summary": "x"}), None, "k", "m", home)[0] == "" and len(asked) == 1, "kept files are not asked about again until ten more"
+    assert learn.consolidate(model({"action": "keep"}), None, "k", "m", folder) == ("", {}) and not asked, "nine files are left alone"
+    learn.write_lessons(folder, root, "s9", "- mistake 9")
+    assert learn.consolidate(model({"action": "keep"}), None, "k", "m", folder)[0] == "Kept 10 lesson files as they are"
+    assert learn.consolidate(model({"action": "summarize", "summary": "x"}), None, "k", "m", folder)[0] == "" and len(asked) == 1, "kept files are not asked about again until ten more"
     for n in range(10, 20):
-        learn.write_lessons(home, f"s{n}", f"- mistake {n}")
-    merged, usage = learn.consolidate(model({"action": "summarize", "summary": "## Tests\n- Run pytest from the repo root."}), None, "k", "m", home)
+        learn.write_lessons(folder, root, f"s{n}", f"- mistake {n}")
+    merged, usage = learn.consolidate(model({"action": "summarize", "summary": "## Tests\n- Run pytest from the repo root."}), None, "k", "m", folder)
     assert merged == "Merged 20 lesson files into SUMMARY.md" and usage == {"prompt_tokens": 5} and "mistake 19" in asked[-1]
-    assert "repo root" in (folder / "SUMMARY.md").read_text() and not learn._sessions(home) and len(list((folder / "archive").glob("*.md"))) == 20
+    assert "repo root" in (folder / "SUMMARY.md").read_text() and not learn._sessions(folder) and len(list((folder / "archive").glob("*.md"))) == 20

@@ -1936,7 +1936,7 @@ class AgentSession:
         if not self.depth:
             rows["Project instructions"] = context.instructions(self.workspace.root, self.home)
             rows["Memory"] = memory.prompt(home, self.workspace.root)
-            rows["Lessons"] = learn.lessons_prompt(home)
+            rows["Lessons"] = learn.lessons_prompt(home, self.workspace.root)
         return rows
 
     def _context_update(self) -> str:
@@ -2341,18 +2341,34 @@ class AgentSession:
             return "Chưa có việc gì mới để học."
         self._since_learn, self._learned_to = 0, len(self.history)
         transcript = self._transcript(self.history[start:])
-        threading.Thread(target=self._learn, args=(transcript,), name=f"agent-learn-{self.id}", daemon=True).start()
+        root = learn.project_root(self._touched(self.history[start:]), self.workspace.root)
+        threading.Thread(target=self._learn, args=(transcript, root), name=f"agent-learn-{self.id}", daemon=True).start()
         return "Đang xem lại phiên để viết hoặc sửa skill; xong sẽ báo."
 
-    def _learn(self, transcript: str) -> None:
+    def _touched(self, items: list[dict]) -> list[Path]:
+        """Paths the model's calls worked on, including folders its commands cd into, so notes follow the project rather than the workspace."""
+        found = []
+        for item in items:
+            for c in item.get("calls") or [] if item["role"] == "assistant" else []:
+                args = c.get("args") if isinstance(c.get("args"), dict) else {}
+                spots = [str(args["path"])] if isinstance(args.get("path"), str) and args["path"] else []
+                if c.get("name") == "run_command":
+                    spots += [m.group(2) for m in re.finditer(r"(?:^|&&|;|\|\|)\s*cd\s+([\"']?)([^\s\"'&;|]+)\1", str(args.get("command") or ""))]
+                for spot in spots:
+                    path = Path(os.path.expanduser(spot))
+                    found.append(path if path.is_absolute() else self.workspace.root / path)
+        return found
+
+    def _learn(self, transcript: str, root: Path) -> None:
         home = self.home if self.home is not None else Path.home()
         model = self.profile["review_model"] or self.model
-        items, lessons, usage = learn.review(self.complete, self.provider, self.api_key, model, transcript, home, self.id)
+        folder = learn.project_folder(home, root)
+        items, lessons, usage = learn.review(self.complete, self.provider, self.api_key, model, transcript, home, learn.session_file(folder, self.id))
         try:
             done = learn.write(home, items, (self.api_key,))
-            if lessons and learn.write_lessons(home, self.id, lessons, (self.api_key,)):
-                done.append("lesson notes for this session")
-            merged, more = learn.consolidate(self.complete, self.provider, self.api_key, model, home, (self.api_key,))
+            if lessons and learn.write_lessons(folder, root, self.id, lessons, (self.api_key,)):
+                done.append(f"lesson notes for {root.name}")
+            merged, more = learn.consolidate(self.complete, self.provider, self.api_key, model, folder, (self.api_key,))
             usage = {k: int(usage.get(k) or 0) + int(more.get(k) or 0) for k in set(usage) | set(more)}
             if merged:
                 done.append(merged)
