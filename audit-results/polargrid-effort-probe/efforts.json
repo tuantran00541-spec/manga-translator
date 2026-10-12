@@ -1,0 +1,112 @@
+[
+ {
+  "models": [
+   "whisper-large-v3-turbo",
+   "qwen-3.8-27b",
+   "kokoro-82m",
+   "cohere-transcribe-03-2026",
+   "tada-3b-ml"
+  ]
+ },
+ {
+  "effort": null,
+  "extra": null,
+  "stream": false,
+  "status": 400,
+  "s": 3.7,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "effort": "none",
+  "extra": null,
+  "stream": false,
+  "status": 400,
+  "s": 4.1,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "effort": "low",
+  "extra": null,
+  "stream": false,
+  "status": 400,
+  "s": 0.1,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "effort": "medium",
+  "extra": null,
+  "stream": false,
+  "status": 400,
+  "s": 3.4,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "effort": "high",
+  "extra": null,
+  "stream": false,
+  "status": 400,
+  "s": 3.4,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "effort": "xhigh",
+  "extra": null,
+  "stream": false,
+  "status": 400,
+  "s": 0.1,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "effort": null,
+  "extra": {
+   "chat_template_kwargs": {
+    "enable_thinking": true
+   }
+  },
+  "stream": false,
+  "status": 400,
+  "s": 0.1,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "effort": null,
+  "extra": {
+   "enable_thinking": true
+  },
+  "stream": false,
+  "status": 400,
+  "s": 0.2,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "effort": null,
+  "extra": {
+   "chat_template_kwargs": {
+    "enable_thinking": true,
+    "reasoning_effort": "xhigh"
+   }
+  },
+  "stream": false,
+  "status": 400,
+  "s": 0.2,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "effort": null,
+  "extra": {
+   "thinking": {
+    "type": "enabled"
+   }
+  },
+  "stream": false,
+  "status": 400,
+  "s": 0.2,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ },
+ {
+  "effort": "xhigh",
+  "stream": true,
+  "status": 400,
+  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+ }
+]
