@@ -314,9 +314,22 @@
   .agent-session-open:hover, .agent-session-current .agent-session-open { background: var(--surface-quiet); }
   .agent-session-del { padding: 4px 6px; border: 0; background: none; color: var(--text-quiet); font: inherit; font-size: 12px; cursor: pointer; }
   .agent-log { display: flex; flex: 1 1 auto; flex-direction: column; gap: 14px; padding: 8px 0 24px; }
-  .agent-empty { display: grid; gap: 10px; margin: auto 0; padding: 12vh 0 0; text-align: center; }
-  .agent-empty h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
-  .agent-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 6px; }
+  .agent-empty { display: grid; place-items: center; margin: auto 0; padding: 8vh 0 0; }
+  /* The Chaos title drawn like a manga logo: speed lines, screentone, inked outline and an offset ink shadow. */
+  .chaos-mark { width: min(520px, 100%); height: auto; color: var(--text-primary); overflow: visible; }
+  .chaos-burst { stroke: var(--text-primary); opacity: .22; stroke-linecap: round; }
+  .chaos-word { font: italic 900 116px/1 Impact, "Arial Black", "Helvetica Neue", "DejaVu Sans", sans-serif; letter-spacing: -2px; }
+  .chaos-ink { fill: var(--text-primary); }
+  .chaos-face { fill: var(--surface-canvas); }
+  .chaos-tone { fill: url(#chaos-tone); }
+  #chaos-tone circle { fill: var(--text-primary); opacity: .55; }
+  .chaos-line { fill: none; stroke: var(--text-primary); stroke-width: 5px; stroke-linejoin: round; paint-order: stroke; }
+  .chaos-kana { font: 900 22px/1 "Hiragino Sans", "Noto Sans CJK JP", "Yu Gothic", sans-serif; fill: var(--text-primary); }
+  .chaos-spark { fill: var(--text-primary); }
+  @media (prefers-reduced-motion: no-preference) {
+    .chaos-mark:hover .chaos-burst { animation: chaos-shake .35s steps(3) infinite; }
+    @keyframes chaos-shake { 33% { transform: translate(2px, -1px); } 66% { transform: translate(-2px, 1px); } }
+  }
   .agent-user { align-self: flex-end; max-width: 82%; padding: 9px 14px; border-radius: 18px; background: var(--surface-quiet); white-space: pre-wrap; overflow-wrap: anywhere; }
   .agent-refs { display: block; margin-top: 4px; color: var(--text-quiet); font-size: 12px; }
   .agent-prose { display: grid; gap: 8px; overflow-wrap: anywhere; }

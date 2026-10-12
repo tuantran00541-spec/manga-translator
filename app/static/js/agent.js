@@ -27,12 +27,6 @@
     "low-integrity": "Lệnh chạy ở mức integrity thấp của Windows: chỉ ghi được trong thư mục làm việc, nhưng vẫn đọc được file và dùng mạng, nên vẫn chờ bạn duyệt.",
     none: "Máy này không có sandbox cho lệnh, nên lệnh luôn chờ bạn duyệt (trừ khi chọn Tự làm hết).",
   };
-  const EXAMPLES = [
-    "Đọc app/inpaint/clustering.py rồi viết test cho split_cluster_lines",
-    "Chạy toàn bộ test và sửa những test đang hỏng",
-    "/plan Thêm test cho phần chia lát ảnh dài",
-    "/init",
-  ];
   const $ = (id) => document.getElementById(id);
   let session = null;
   let lastSeq = 0;
@@ -596,12 +590,33 @@
     }
   }
 
+  // Speed lines for the title burst, fixed so the mark looks the same on every visit.
+  const BURST = Array.from({ length: 56 }, (_, i) => {
+    const angle = (i / 56) * Math.PI * 2 + ((i * 37) % 11) / 40;
+    const inner = 118 + ((i * 53) % 7) * 9, outer = 300 + ((i * 29) % 5) * 22;
+    const width = 1 + ((i * 17) % 4);
+    return `<path d="M${(260 + Math.cos(angle) * inner).toFixed(1)} ${(130 + Math.sin(angle) * inner * 0.62).toFixed(1)}L${(260 + Math.cos(angle) * outer).toFixed(1)} ${(130 + Math.sin(angle) * outer * 0.62).toFixed(1)}" stroke-width="${width}"/>`;
+  }).join("");
+  const CHAOS_MARK = `<svg class="chaos-mark" viewBox="0 0 520 260" role="img" aria-label="Chaos">
+    <defs>
+      <pattern id="chaos-tone" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><circle cx="3.5" cy="3.5" r="1.6"/></pattern>
+      <clipPath id="chaos-clip"><text x="260" y="168" text-anchor="middle" class="chaos-word">CHAOS</text></clipPath>
+    </defs>
+    <g class="chaos-burst">${BURST}</g>
+    <g transform="rotate(-6 260 140) skewX(-10)">
+      <text x="270" y="178" text-anchor="middle" class="chaos-word chaos-ink">CHAOS</text>
+      <text x="260" y="168" text-anchor="middle" class="chaos-word chaos-face">CHAOS</text>
+      <rect x="0" y="100" width="520" height="80" class="chaos-tone" clip-path="url(#chaos-clip)"/>
+      <text x="260" y="168" text-anchor="middle" class="chaos-word chaos-line">CHAOS</text>
+    </g>
+    <text x="500" y="44" class="chaos-kana">カ</text><text x="500" y="70" class="chaos-kana">オ</text><text x="500" y="96" class="chaos-kana">ス</text>
+    <path class="chaos-spark" d="M78 52l5 15 15 5-15 5-5 15-5-15-15-5 15-5z"/>
+    <path class="chaos-spark" d="M440 204l3 9 9 3-9 3-3 9-3-9-9-3 9-3z"/>
+  </svg>`;
+
   function emptyState() {
     const box = el("div", "agent-empty");
-    box.append(el("h1", "", "Chaos"), el("p", "agent-muted", "Agent ghép nối: đọc code, sửa file và chạy test trong sandbox bằng bất kỳ model nào bạn đã thêm. Gõ / để xem lệnh."));
-    const examples = el("div", "agent-examples");
-    EXAMPLES.forEach((text) => examples.append(button(text, "agent-chip", () => { $("agent-input").value = text; autosize(); $("agent-input").focus(); })));
-    box.append(examples);
+    box.innerHTML = CHAOS_MARK;
     return box;
   }
 
