@@ -176,6 +176,8 @@ class Kernel:
         else:
             command = f"{shlex.quote(sys.executable)} {shlex.quote(str(self.folder / 'worker.py'))} {shlex.quote(str(self.folder))}"
         self.job = sandbox.Job(command, policy, root, scratch=str(self.state))
+        # The worker reads its tickets from files, so its input is closed and a program a tool runs cannot wait on it.
+        self.job.close_input()
 
     def _stop(self) -> None:
         if self.job is not None:

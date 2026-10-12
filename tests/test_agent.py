@@ -3709,7 +3709,7 @@ SHELL_TOOL = {"name": "shell", "description": "Run a shell command.", "parameter
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="the shell tool uses a POSIX shell")
 def test_create_only_mode_offers_one_tool_and_the_model_builds_the_rest(ws, home):
-    create_only(home)
+    create_only(home, {"create_shell": True})
     fake = scripted(turn(calls=[{**call("create", **SHELL_TOOL), "id": "c1"}]),
                     turn(calls=[{**call("shell", cmd="echo hi > made.txt && cat made.txt"), "id": "s1"}]), turn("Done."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
@@ -3724,7 +3724,7 @@ def test_create_only_mode_offers_one_tool_and_the_model_builds_the_rest(ws, home
 
 def test_create_only_mode_guards_names_reviews_code_and_keeps_plan_mode_read_only(ws, home, monkeypatch):
     from app.agent import guardian
-    create_only(home)
+    create_only(home, {"create_shell": True})
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
     for name in ("read_file", "run_command", "write_file"):
         with pytest.raises(ToolError, match="reserved"):
@@ -3948,6 +3948,28 @@ def test_a_chain_that_calls_tools_wrongly_is_stopped_before_it_runs(ws, home):
     chain = "def go():\n    open('ran.txt', 'w').write('x')\n    return tools.thnik('q')\n"
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": False}})
     assert "was not run" in out and "did you mean think?" in out and not (ws.root / "ran.txt").exists(), out
+
+
+def test_create_mode_refuses_a_bare_shell_tool_and_commands_never_wait_on_input(ws, home):
+    create_only(home)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    with pytest.raises(ToolError, match="hands its 'cmd' argument straight to a shell"):
+        session._create(SHELL_TOOL)
+    grep = {**SHELL_TOOL, "name": "find_text", "code": "import subprocess\ndef find_text(cmd):\n    return subprocess.run(['grep', '-rn', cmd, '.'], capture_output=True, text=True).stdout\n"}
+    with pytest.raises(ToolError, match="shells out to grep"):
+        session._create(grep)
+    ask = {"name": "ask", "description": "x", "parameters": {"type": "object", "properties": {}},
+           "code": "import subprocess, sys\ndef ask():\n    return subprocess.run([sys.executable, '-c', 'print(\"got\", input())'], capture_output=True, text=True).stderr[-40:]\n"}
+    session._create(ask)
+    started = time.time()
+    output, ok = session._run_call({"id": "a", "name": "ask", "args": {}})
+    assert "EOFError" in output and time.time() - started < 30, "a program a tool runs gets end-of-file instead of a prompt that waits"
+    hybrid = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    hybrid.profile = {**hybrid.profile, "tools": "hybrid"}
+    assert "Created" in hybrid._create(SHELL_TOOL), "only create mode refuses a shell tool"
+    started = time.time()
+    output, _ = hybrid._run_call({"id": "r", "name": "run_command", "args": {"command": "read x || echo no-input; echo done"}})
+    assert "no-input" in output and "done" in output and time.time() - started < 30, output
 
 
 def test_model_catalogs_read_prices_however_providers_give_them(monkeypatch):

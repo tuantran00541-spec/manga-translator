@@ -207,7 +207,7 @@ class Job:
     """A command left running in the background, under the same policy as any other."""
 
     def __init__(self, command: str, policy: Policy, root: Path, tty: bool = False, scratch: str | None = None):
-        self.command, self.started, self.outside = command, time.time(), policy.mode == "full-access"
+        self.command, self.started, self.outside, self.tty = command, time.time(), policy.mode == "full-access", tty and os.name == "posix"
         # A given scratch folder is the caller's to keep, so stop leaves it in place.
         self.own_scratch = scratch is None
         self.scratch = scratch or tempfile.mkdtemp(prefix="agent-job-")
@@ -228,8 +228,20 @@ class Job:
         self.out.start()
         self.cursor = 0
 
+    def close_input(self) -> None:
+        """End the job's input, so a program that asks a question (a password, a y/n) gets end-of-file instead of waiting forever."""
+        if self.tty or self.stdin is None:
+            return
+        try:
+            self.stdin.close()
+        except OSError:
+            pass
+        self.stdin = None
+
     def write(self, text: str) -> None:
         """Send text to the job's input, as if typed."""
+        if self.stdin is None:
+            raise OSError("this command's input was closed when it started; start it with start_job to type into it")
         try:
             self.stdin.write(text.encode("utf-8"))
             self.stdin.flush()
@@ -262,7 +274,8 @@ class Job:
         self.out.join(5)
         for stream in (self.stdin, self.stdout):
             try:
-                stream.close()
+                if stream is not None:
+                    stream.close()
             except OSError:
                 pass
         if self.own_scratch:

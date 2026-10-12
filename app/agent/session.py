@@ -254,7 +254,10 @@ every call shares, so read a file, parse data or compute a result once, store it
 imports stay loaded too. A call made while another still runs gets a fresh process with memo empty, and files that must outlive a restart go
 under the AGENT_STATE folder (an environment variable). A call still running after 5 minutes moves to the
 background and you are told when it ends. Files a tool changes are listed after its output. Tools are kept for later sessions: reuse them, fix one by creating it again
-under the same name, delete one with empty code. Prefer a few general tools (a shell, a file reader, an exact-text editor) over many narrow ones.
+under the same name, delete one with empty code. Prefer a few general tools written in Python (a file reader, a searcher, an exact-text editor,
+a test runner) over many narrow ones. Read, list and search files in Python, not through grep, cat, find or ls; a tool that only hands a command
+to a shell, or shells out to those programs, is refused. Keep subprocess for programs that do real work (builds, tests, installs), with the
+program fixed and its arguments as a list.
 {chain}Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
 then run the tests or command that proves it works. End with a short report: what changed, how you checked, what is left.
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
@@ -1495,6 +1498,11 @@ class AgentSession:
             compile(code, f"{name}.py", "exec")
         except SyntaxError as exc:
             raise ToolError(f"Syntax error: {exc}") from exc
+        raw = chaincheck.raw_shell(code) if self.profile["tools"] == "create" and not self.profile["create_shell"] else []
+        if raw:
+            raise ToolError("Not created: in create mode a tool does its work in Python rather than through a shell:\n" + "\n".join(raw[:5]) +
+                            "\nRead, list and search files with open, pathlib, os.walk and re; keep subprocess for programs that do real work "
+                            "(builds, tests, installs), called with a fixed program and the arguments as a list.")
         params = args.get("parameters") if isinstance(args.get("parameters"), dict) else {}
         params = {"type": "object", "properties": {}, **params}
         old = created.get(name)
@@ -1549,6 +1557,7 @@ class AgentSession:
         note = job.note if job is not None else "[ran in a fresh process because another tool call was still running, so memo started empty]\n"
         if job is None:
             job = sandbox.Job(command, policy, self.workspace.root, scratch=str(state))
+            job.close_input()
         server = threading.Thread(target=self._serve_chain, args=(rpc, job), name=f"agent-chain-{self.id}", daemon=True)
         server.start()
         output = self._await_job(job, CREATED_TIMEOUT, guard)
@@ -2123,7 +2132,11 @@ class AgentSession:
         policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
         root = self.workspace.root
         guard = gitguard.snapshot(root)
-        return self._await_job(self.workspace.services.shell(command, policy, root), limit, guard)
+        job = self.workspace.services.shell(command, policy, root)
+        # Nobody types into a plain command, so one that asks a question fails at once instead of hanging until the clock runs out.
+        if hasattr(job, "close_input"):
+            job.close_input()
+        return self._await_job(job, limit, guard)
 
     def _await_job(self, job: "sandbox.Job", limit: int, guard) -> str:
         """Wait up to limit for a started job; one still running then moves to the background instead of being killed."""
