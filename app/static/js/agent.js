@@ -590,52 +590,59 @@
     }
   }
 
-  // Ticks and runes of the magic circle behind the title, fixed so the mark looks the same on every visit.
-  const TICKS = Array.from({ length: 72 }, (_, i) => {
-    const a = (i / 72) * Math.PI * 2, r1 = i % 6 ? 122 : 114;
-    return `<path d="M${(300 + Math.cos(a) * r1).toFixed(1)} ${(130 + Math.sin(a) * r1).toFixed(1)}L${(300 + Math.cos(a) * 128).toFixed(1)} ${(130 + Math.sin(a) * 128).toFixed(1)}"/>`;
-  }).join("");
-  const STAR = Array.from({ length: 7 }, (_, i) => {
-    const a = -Math.PI / 2 + (i * 3 * 2 * Math.PI) / 7;
-    return `${i ? "L" : "M"}${(300 + Math.cos(a) * 104).toFixed(1)} ${(130 + Math.sin(a) * 104).toFixed(1)}`;
-  }).join("") + "Z";
-  // The title drawn like a webtoon logo: blade-cut letters, worn ink, a magic circle and a red eye for the O (the one colour, kept in the art, not the layout CSS).
-  const CHAOS_MARK = `<svg class="chaos-mark" viewBox="0 0 600 260" role="img" aria-label="Chaos">
-    <defs>
-      <filter id="chaos-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter>
-      <path id="chaos-ring" d="M300 130m-138 0a138 138 0 1 1 276 0a138 138 0 1 1 -276 0"/>
-      <g id="chaos-glyphs">
-        <path d="M152 58L148 76L96 80L84 98L80 148L94 162L146 160L140 174L82 178L64 152L68 94L86 68Z"/>
-        <path d="M168 72L186 64L185 178L176 204L167 176Z"/>
-        <path d="M226 62L244 68L242 180L224 174Z"/>
-        <path d="M186 114L226 108L226 122L186 128Z"/>
-        <path d="M252 182L270 182L304 96L350 2L292 70Z"/>
-        <path d="M306 84L322 72L354 180L336 184Z"/>
-        <path d="M282 136L336 132L338 144L280 148Z"/>
-        <path d="M562 58L556 74L500 80L492 94L498 104L546 116L558 138L544 170L452 184L470 166L528 160L538 144L530 132L480 122L468 102L478 78L498 66Z"/>
-      </g>
-    </defs>
-    <g class="chaos-circle">
-      <circle cx="300" cy="130" r="128"/><circle cx="300" cy="130" r="112"/><circle cx="300" cy="130" r="60"/>
-      <g class="chaos-ticks">${TICKS}</g>
-      <path d="${STAR}"/>
-      <text class="chaos-runes"><textPath href="#chaos-ring">✦ CHAOS ✦ カオス ✦ 混沌 ✦ CHAOS ✦ カオス ✦ 混沌 ✦ CHAOS ✦ カオス ✦</textPath></text>
-    </g>
-    <g transform="skewX(-6) translate(14 0)">
-      <use href="#chaos-glyphs" class="chaos-shade" x="3" y="4"/>
-      <use href="#chaos-glyphs" class="chaos-letters"/>
-      <g class="chaos-eye">
-        <path d="M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z" class="chaos-eye-glow" stroke="#ff2a36" filter="url(#chaos-glow)"/>
-        <path d="M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z" class="chaos-eye-lid" stroke="#d0121b"/>
-        <path d="M408 88L418 120L408 152L398 120Z" class="chaos-pupil" fill="#d0121b"/>
-      </g>
-    </g>
-    <text x="572" y="60" class="chaos-kana">カ</text><text x="572" y="86" class="chaos-kana">オ</text><text x="572" y="112" class="chaos-kana">ス</text>
-  </svg>`;
+  // The Chaos title drawn like a webtoon logo: blade-tipped letters, a magic circle and a red eye for the O (the one colour, kept in the art, not the layout CSS).
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const GLYPHS = [
+    "M152 58L148 76L96 80L84 98L80 148L94 162L146 160L140 174L82 178L64 152L68 94L86 68Z",
+    "M168 72L186 64L185 178L176 204L167 176Z", "M226 62L244 68L242 180L224 174Z", "M186 114L226 108L226 122L186 128Z",
+    "M252 182L270 182L304 96L350 2L292 70Z", "M306 84L322 72L354 180L336 184Z", "M282 136L336 132L338 144L280 148Z",
+    "M562 58L556 74L500 80L492 94L498 104L546 116L558 138L544 170L452 184L470 166L528 160L538 144L530 132L480 122L468 102L478 78L498 66Z",
+  ];
+  const EYE = "M370 104L392 72L428 70L448 102L440 146L414 170L380 166L366 136Z";
+
+  function svg(tag, attrs = {}, children = []) {
+    const node = document.createElementNS(SVG_NS, tag);
+    Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, String(value)));
+    node.append(...children);
+    return node;
+  }
+
+  function chaosMark() {
+    const at = (r, a) => `${(300 + Math.cos(a) * r).toFixed(1)} ${(130 + Math.sin(a) * r).toFixed(1)}`;
+    const ticks = Array.from({ length: 72 }, (_, i) => {
+      const a = (i / 72) * Math.PI * 2;
+      return svg("path", { d: `M${at(i % 6 ? 122 : 114, a)}L${at(128, a)}` });
+    });
+    const star = Array.from({ length: 7 }, (_, i) => `${i ? "L" : "M"}${at(104, -Math.PI / 2 + (i * 6 * Math.PI) / 7)}`).join("") + "Z";
+    const runes = svg("textPath", { href: "#chaos-ring" });
+    runes.textContent = "· CHAOS · カオス · 混沌 · CHAOS · カオス · 混沌 · CHAOS · カオス ·";
+    const kana = [..."カオス"].map((ch, i) => { const t = svg("text", { x: 572, y: 60 + i * 26, class: "chaos-kana" }); t.textContent = ch; return t; });
+    return svg("svg", { class: "chaos-mark", viewBox: "0 0 600 260", role: "img", "aria-label": "Chaos" }, [
+      svg("defs", {}, [
+        svg("filter", { id: "chaos-glow", x: "-50%", y: "-50%", width: "200%", height: "200%" }, [svg("feGaussianBlur", { stdDeviation: 5 })]),
+        svg("path", { id: "chaos-ring", d: "M300 130m-138 0a138 138 0 1 1 276 0a138 138 0 1 1 -276 0" }),
+        svg("g", { id: "chaos-glyphs" }, GLYPHS.map((d) => svg("path", { d }))),
+      ]),
+      svg("g", { class: "chaos-circle" }, [
+        ...[128, 112, 60].map((r) => svg("circle", { cx: 300, cy: 130, r })),
+        svg("g", { class: "chaos-ticks" }, ticks), svg("path", { d: star }), svg("text", { class: "chaos-runes" }, [runes]),
+      ]),
+      svg("g", { transform: "skewX(-6) translate(14 0)" }, [
+        svg("use", { href: "#chaos-glyphs", class: "chaos-shade", x: 3, y: 4 }),
+        svg("use", { href: "#chaos-glyphs", class: "chaos-letters" }),
+        svg("g", { class: "chaos-eye" }, [
+          svg("path", { d: EYE, class: "chaos-eye-glow", stroke: "#ff2a36", filter: "url(#chaos-glow)" }),
+          svg("path", { d: EYE, class: "chaos-eye-lid", stroke: "#d0121b" }),
+          svg("path", { d: "M408 88L418 120L408 152L398 120Z", class: "chaos-pupil", fill: "#d0121b" }),
+        ]),
+      ]),
+      ...kana,
+    ]);
+  }
 
   function emptyState() {
     const box = el("div", "agent-empty");
-    box.innerHTML = CHAOS_MARK;
+    box.append(chaosMark());
     return box;
   }
 
