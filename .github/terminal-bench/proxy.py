@@ -14,8 +14,10 @@ STATS, PORT, UPSTREAM = sys.argv[2], int(sys.argv[3]), sys.argv[4].rstrip("/")
 LIMITS = json.loads(sys.argv[5]) if len(sys.argv) > 5 else {}
 PRICE = LIMITS.get("price") or {}
 SLOTS = threading.BoundedSemaphore(int(LIMITS.get("concurrent") or 64))
+# Harbor hands Codex only the part of a model id after its last slash, so requests for that short name go out under the full id.
+MODEL = sys.argv[6] if len(sys.argv) > 6 else ""
 # The agent calls http://relay/v1/<path>; only these paths go on, to UPSTREAM/<path>.
-ALLOWED = {"/v1/chat/completions": "/chat/completions", "/v1/models": "/models"}
+ALLOWED = {"/v1/chat/completions": "/chat/completions", "/v1/responses": "/responses", "/v1/models": "/models"}
 MAX_BODY = 16_000_000
 # Status counts and the first 429 show whether the provider starts throttling the key.
 stats = {"requests": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0, "status": {}, "first_429": None, "usd": 0.0, "stopped": None}
@@ -43,6 +45,18 @@ def without_strict(body: bytes) -> bytes:
     return json.dumps(data).encode() if changed else body
 
 
+def full_model(body: bytes) -> bytes:
+    """Renames a request for the model's short name to its full id."""
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return body
+    if isinstance(data, dict) and data.get("model") == MODEL.rsplit("/", 1)[-1] != MODEL:
+        data["model"] = MODEL
+        return json.dumps(data).encode()
+    return body
+
+
 class Relay(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -67,6 +81,8 @@ class Relay(BaseHTTPRequestHandler):
             body = self.rfile.read(size)
         if body and self.path.split("?")[0] == "/v1/chat/completions":
             body = without_strict(body)
+        if body and MODEL:
+            body = full_model(body)
         if stats["stopped"]:
             return self.reply(503, json.dumps({"error": f"relay stopped: {stats['stopped']}"}).encode())
         self.wait_for_budget()
@@ -123,11 +139,14 @@ class Relay(BaseHTTPRequestHandler):
         for piece in tail.decode("utf-8", "ignore").split("\n"):
             piece = piece[5:].strip() if piece.startswith("data:") else piece
             try:
-                usage = json.loads(piece).get("usage")
+                row = json.loads(piece)
+                # Responses API events carry usage inside "response".
+                usage = row.get("usage") or (row.get("response") or {}).get("usage")
             except (ValueError, AttributeError):
                 continue
             if isinstance(usage, dict):
-                prompt, completion = int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
+                prompt = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+                completion = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
                 with lock:
                     stats["prompt_tokens"] += prompt
                     stats["completion_tokens"] += completion
