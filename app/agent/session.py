@@ -270,7 +270,8 @@ helper agent and returns its report, and tools.create(...) adds a tool you can c
 run at the same time. Each request allows 99 chains (runs making two or more tools.<name> calls), at most 20 of them longer than 10 calls, and 40 helper agents started from chains. Give create args to run the tool as soon as it is written;
 add keep: false for a one-off script that is not saved. The dict memo is shared by every tool call in the session, so a chain can leave data for the next one.
 Before the first chain of a request you write intent.md, how you picture the request; tools.intent() returns it, so a chain can check its results against Done when."""
-ROLES_PROMPT = ("Other models are yours to chain too. tools.models() lists the providers you can use{rows}; tools.models(source, query) lists one "
+ROLES_PROMPT = ("Pick models whose price suits someone just starting out; before you pick a strong, expensive model, ask the user whether they agree. "
+                "Other models are yours to chain too. tools.models() lists the providers you can use{rows}; tools.models(source, query) lists one "
                 "provider's models matching query with $ per million tokens in and out, context size and whether they read images, cheapest first. "
                 "In a chain pass model='<source>:<model id>'{pick} to tools.think or tools.agent to give that step to that model, and "
                 "tools.vote(question, models=[...], answer=...) asks several at once and says whether they agree. Pick cheap models for summaries "

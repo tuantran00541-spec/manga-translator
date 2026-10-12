@@ -3839,7 +3839,7 @@ def test_the_model_picks_models_itself_from_any_source_with_a_key(ws, home, monk
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     session.list_providers = lambda: [("minirouter", "MiniRouter")]
     session.find_provider = lambda pid: (PROVIDERS["openai"], ["mr-key"])
-    assert "tools.models()" in session.system_prompt()
+    assert "tools.models()" in session.system_prompt() and "ask the user whether they agree" in session.system_prompt()
     assert json.loads(session._models())["sources"] == {"agnes": "https://agnes.example/v1", "minirouter": "MiniRouter"}
     monkeypatch.setattr(roles, "catalog", lambda base, headers, query="", limit=40: [{"id": f"{base}|{query}", "price": {}, "context": None, "vision": False}])
     assert json.loads(session._models("minirouter", "flash"))[0]["id"] == f"{PROVIDERS['openai'].api_base}|flash"
