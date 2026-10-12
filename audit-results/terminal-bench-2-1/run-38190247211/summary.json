@@ -1,0 +1,107 @@
+{
+ "passed": 1,
+ "trials": 10,
+ "rate": 0.1,
+ "rows": [
+  {
+   "trial": "adaptive-rejection-sampler__5ZYRN98",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "bn-fit-modify__FtFKVMH",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    526302,
+    0,
+    10223
+   ]
+  },
+  {
+   "trial": "break-filter-js-from-html__TWcj2gn",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    517832,
+    0,
+    10809
+   ]
+  },
+  {
+   "trial": "build-cython-ext__CFovfNd",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "build-pmars__cimcxFs",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    652412,
+    0,
+    6993
+   ]
+  },
+  {
+   "trial": "build-pov-ray__GXdgUJP",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    700880,
+    0,
+    7757
+   ]
+  },
+  {
+   "trial": "caffe-cifar-10__VyjwVU2",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1806664,
+    0,
+    18176
+   ]
+  },
+  {
+   "trial": "cancel-async-tasks__A7vtbyx",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "chess-best-move__BgSfY9j",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "circuit-fibsqrt__NSTM74U",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    504066,
+    0,
+    7299
+   ]
+  }
+ ]
+}
