@@ -1,0 +1,130 @@
+[
+ {
+  "effort": null,
+  "stream": false,
+  "status": 200,
+  "s": 3.5,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 46,
+   "total_tokens": 713,
+   "completion_tokens": 667,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "created_cache_tokens": 0,
+    "multimodal_tokens": null
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0
+   }
+  },
+  "reasoning_chars": 0,
+  "answer_tail": "ultiples of 11.\n- $142 - 12 = 130$.\n\n130",
+  "correct": true
+ },
+ {
+  "effort": "none",
+  "stream": false,
+  "status": 200,
+  "s": 3.5,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 46,
+   "total_tokens": 722,
+   "completion_tokens": 676,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "created_cache_tokens": 0,
+    "multimodal_tokens": null
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0
+   }
+  },
+  "reasoning_chars": 0,
+  "answer_tail": "t are divisible by 7 but not by 11.\n\n130",
+  "correct": true
+ },
+ {
+  "effort": "low",
+  "stream": false,
+  "status": 422,
+  "s": 0.4,
+  "error": "{\"error\":{\"message\":\"Use reasoning_effort with one of: none, medium, xhigh. Use boolean enable_thinking and non-conflicting reasoning controls.\",\"type\":\"invalid_request_error\",\"code\":\"invalid_reasoning_effort\",\"param\":\"reasoning_effort\"}}"
+ },
+ {
+  "effort": "medium",
+  "stream": false,
+  "status": 200,
+  "s": 3.0,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 44,
+   "total_tokens": 616,
+   "completion_tokens": 572,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "created_cache_tokens": 0,
+    "multimodal_tokens": null
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 346
+   }
+  },
+  "reasoning_chars": 831,
+  "answer_tail": "Step 3: Subtract.**\n\n142 \u2212 12 = 130\n\n130",
+  "correct": true
+ },
+ {
+  "effort": "high",
+  "stream": false,
+  "status": 422,
+  "s": 0.4,
+  "error": "{\"error\":{\"message\":\"Use reasoning_effort with one of: none, medium, xhigh. Use boolean enable_thinking and non-conflicting reasoning controls.\",\"type\":\"invalid_request_error\",\"code\":\"invalid_reasoning_effort\",\"param\":\"reasoning_effort\"}}"
+ },
+ {
+  "effort": "xhigh",
+  "stream": false,
+  "status": 200,
+  "s": 1.4,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 86,
+   "total_tokens": 296,
+   "completion_tokens": 210,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "created_cache_tokens": 0,
+    "multimodal_tokens": null
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 204
+   }
+  },
+  "reasoning_chars": 533,
+  "answer_tail": "130",
+  "correct": true
+ },
+ {
+  "effort": "xhigh",
+  "stream": true,
+  "status": 200,
+  "s": 1.9,
+  "first_token_s": 0.5,
+  "reasoning_chars": 513,
+  "usage": {
+   "prompt_tokens": 86,
+   "total_tokens": 414,
+   "completion_tokens": 328,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "created_cache_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 202
+   }
+  },
+  "answer_tail": "\\]\n\nSubtract:\n\n\\[\n142 - 12 = 130\n\\]\n\n130",
+  "correct": true
+ }
+]
