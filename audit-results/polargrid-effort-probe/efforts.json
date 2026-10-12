@@ -12,49 +12,97 @@
   "effort": null,
   "extra": null,
   "stream": false,
-  "status": 400,
-  "s": 3.7,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 32.9,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 383,
+   "total_tokens": 414
+  },
+  "reasoning_chars": 0,
+  "answer_tail": " 12 $$\n    $$ \\text{Count} = 130 $$\n\n130",
+  "correct": true
  },
  {
   "effort": "none",
   "extra": null,
   "stream": false,
-  "status": 400,
-  "s": 4.1,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 32.1,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 345,
+   "total_tokens": 376
+  },
+  "reasoning_chars": 0,
+  "answer_tail": "ere are 130 such positive integers.\n\n130",
+  "correct": true
  },
  {
   "effort": "low",
   "extra": null,
   "stream": false,
-  "status": 400,
-  "s": 0.1,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 46.9,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 382,
+   "total_tokens": 413
+  },
+  "reasoning_chars": 0,
+  "answer_tail": "t are divisible by 7 but not by 11.\n\n130",
+  "correct": true
  },
  {
   "effort": "medium",
   "extra": null,
   "stream": false,
-  "status": 400,
-  "s": 3.4,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 39.5,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 353,
+   "total_tokens": 384
+  },
+  "reasoning_chars": 0,
+  "answer_tail": "t are divisible by 7 but not by 11.\n\n130",
+  "correct": true
  },
  {
   "effort": "high",
   "extra": null,
   "stream": false,
-  "status": 400,
-  "s": 3.4,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 46.5,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 351,
+   "total_tokens": 382
+  },
+  "reasoning_chars": 0,
+  "answer_tail": "ere are 130 such positive integers.\n\n130",
+  "correct": true
  },
  {
   "effort": "xhigh",
   "extra": null,
   "stream": false,
-  "status": 400,
-  "s": 0.1,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 46.9,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 384,
+   "total_tokens": 415
+  },
+  "reasoning_chars": 0,
+  "answer_tail": " 12 $$\n    $$ \\text{Count} = 130 $$\n\n130",
+  "correct": true
  },
  {
   "effort": null,
@@ -64,9 +112,17 @@
    }
   },
   "stream": false,
-  "status": 400,
-  "s": 0.1,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 44.5,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 472,
+   "total_tokens": 503
+  },
+  "reasoning_chars": 0,
+  "answer_tail": "7)\nCount = $142 - 12$\nCount = $130$\n\n130",
+  "correct": true
  },
  {
   "effort": null,
@@ -74,9 +130,17 @@
    "enable_thinking": true
   },
   "stream": false,
-  "status": 400,
-  "s": 0.2,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 37.6,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 458,
+   "total_tokens": 489
+  },
+  "reasoning_chars": 0,
+  "answer_tail": " 12 $$\n    $$ \\text{Count} = 130 $$\n\n130",
+  "correct": true
  },
  {
   "effort": null,
@@ -87,9 +151,17 @@
    }
   },
   "stream": false,
-  "status": 400,
-  "s": 0.2,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 28.6,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 335,
+   "total_tokens": 366
+  },
+  "reasoning_chars": 0,
+  "answer_tail": " 12 $$\n    $$ \\text{Count} = 130 $$\n\n130",
+  "correct": true
  },
  {
   "effort": null,
@@ -99,14 +171,31 @@
    }
   },
   "stream": false,
-  "status": 400,
-  "s": 0.2,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 33.4,
+  "finish": "stop",
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 371,
+   "total_tokens": 402
+  },
+  "reasoning_chars": 0,
+  "answer_tail": "ere are 130 such positive integers.\n\n130",
+  "correct": true
  },
  {
   "effort": "xhigh",
   "stream": true,
-  "status": 400,
-  "error": "{\"message\":\"max_tokens must be between 1 and 16384\",\"detail\":\"max_tokens must be between 1 and 16384\",\"error\":{\"message\":\"max_tokens must be between 1 and 16384\",\"type\":\"invalid_request_error\",\"code\":null}}"
+  "status": 200,
+  "s": 36.8,
+  "first_token_s": 0.2,
+  "reasoning_chars": 0,
+  "usage": {
+   "prompt_tokens": 31,
+   "completion_tokens": 340,
+   "total_tokens": 371
+  },
+  "answer_tail": "t are divisible by 7 but not by 11.\n\n130",
+  "correct": true
  }
 ]
