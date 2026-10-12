@@ -34,6 +34,19 @@ def parse(raw) -> dict[str, dict]:
     return roles
 
 
+def parse_sources(raw) -> dict[str, dict]:
+    """The valid model_sources of a profile: a base_url and the env variable holding its key, with optional daily budgets."""
+    sources = {}
+    for name, cfg in (raw.items() if isinstance(raw, dict) else []):
+        if not ROLE_NAME.fullmatch(str(name)) or not isinstance(cfg, dict) or not isinstance(cfg.get("base_url"), str) or not isinstance(cfg.get("key_env"), str):
+            continue
+        row = {"base_url": cfg["base_url"].strip(), "key_env": cfg["key_env"].strip(), "note": str(cfg.get("note") or "")[:200], "fallback": ""}
+        for key in ("daily_requests", "daily_tokens"):
+            row[key] = cfg[key] if isinstance(cfg.get(key), int) and cfg[key] > 0 else 0
+        sources[str(name)] = row
+    return sources
+
+
 def _read(home: Path) -> dict:
     try:
         data = json.loads((home / USAGE).read_text(encoding="utf-8"))
@@ -94,12 +107,13 @@ def catalog(base_url: str, headers: dict, query: str = "", limit: int = 40) -> l
     response = requests.get(f"{base_url.rstrip('/')}/models", headers={"Accept": "application/json", **headers}, timeout=30)
     response.raise_for_status()
     data = response.json()
-    rows = data.get("data") if isinstance(data, dict) else data
+    rows = (data.get("data") or data.get("models")) if isinstance(data, dict) else data
     found = []
     for row in rows if isinstance(rows, list) else []:
-        if not isinstance(row, dict) or not row.get("id") or (row.get("type") not in (None, "language", "chat")):
+        # Gemini lists models under "models" with a "models/" name instead of an id.
+        model = str(row.get("id") or str(row.get("name") or "").removeprefix("models/")) if isinstance(row, dict) else ""
+        if not model or (row.get("type") not in (None, "language", "chat")):
             continue
-        model = str(row["id"])
         if query and query.lower() not in f"{model} {row.get('name') or ''}".lower():
             continue
         inputs = (row.get("modalities") or {}).get("input") if isinstance(row.get("modalities"), dict) else None

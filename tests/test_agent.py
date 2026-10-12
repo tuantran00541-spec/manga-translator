@@ -3825,6 +3825,37 @@ def test_chains_hand_steps_to_model_roles_with_budgets_fallbacks_and_votes(ws, h
     assert '["42", false]' in out, out
 
 
+def test_the_model_picks_models_itself_from_any_source_with_a_key(ws, home, monkeypatch):
+    from app.agent import roles
+    monkeypatch.setenv("AGNES_KEY", "ak")
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "create", "model_sources": {
+        "agnes": {"base_url": "https://agnes.example/v1", "key_env": "AGNES_KEY", "daily_requests": 1}}}))
+    sent = []
+
+    def complete(provider, key, model, messages, *, tools):
+        sent.append((provider.api_base, key, model))
+        return turn("42")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
+    session.list_providers = lambda: [("minirouter", "MiniRouter")]
+    session.find_provider = lambda pid: (PROVIDERS["openai"], ["mr-key"])
+    assert "tools.models()" in session.system_prompt()
+    assert json.loads(session._models())["sources"] == {"agnes": "https://agnes.example/v1", "minirouter": "MiniRouter"}
+    monkeypatch.setattr(roles, "catalog", lambda base, headers, query="", limit=40: [{"id": f"{base}|{query}", "price": {}, "context": None, "vision": False}])
+    assert json.loads(session._models("minirouter", "flash"))[0]["id"] == f"{PROVIDERS['openai'].api_base}|flash"
+    assert session._think("6*7?", "", "minirouter:xiaomi/mimo-v2.6-flash") == "42" and sent[-1][1:] == ("mr-key", "xiaomi/mimo-v2.6-flash")
+    assert session._think("6*7?", "", "agnes:agnes-3.0-flash") == "42" and sent[-1] == ("https://agnes.example/v1", "ak", "agnes-3.0-flash")
+    with pytest.raises(ToolError, match="today's budget"):
+        session._think("q", "", "agnes:agnes-3.0-flash")
+    with pytest.raises(ToolError, match="no model source"):
+        session._think("q", "", "nope:x")
+    assert "Nguồn: minirouter (MiniRouter)" in session.command("/models")["message"]
+    session._new_request("go")
+    chain = "def ask():\n    return [tools.models()['use'][:4], tools.think('6*7?', model='minirouter:a/b')]\n"
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "ask", "code": chain, "args": {}, "keep": False}})
+    assert '["pass", "42"]' in out, out
+
+
 def test_model_catalogs_read_prices_however_providers_give_them(monkeypatch):
     from app.agent import roles
     rows = {"data": [

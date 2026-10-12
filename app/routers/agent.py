@@ -12,10 +12,10 @@ from pydantic import BaseModel, Field
 from app.agent import mcp, sandbox, skill_install, skills
 from app.agent.session import MODES, AgentSessionManager
 from app.agent.tools import Workspace
-from app.ai_providers import CLOUD_PROVIDER_ID, validate_model_name
+from app.ai_providers import CLOUD_PROVIDER_ID, PROVIDERS, validate_model_name
 from app.config import BASE_DIR
 from app.routers.visual_qc import _resolve_configured_provider
-from app.secret_store import SecretStoreUnavailable, get_provider_api_keys
+from app.secret_store import SecretStoreUnavailable, get_provider_api_keys, list_provider_configs, provider_key_status
 
 AGENT_HEADER = "1"
 
@@ -52,7 +52,18 @@ def _find_provider(provider_id: str):
     return provider, get_provider_api_keys(provider.id, provider_label=provider.label)
 
 
+def _list_providers() -> list[tuple[str, str]]:
+    """(id, label) of every built-in and custom provider that has a key, which the agent may pick models from."""
+    found = [(p.id, p.label) for p in PROVIDERS.values()]
+    try:
+        found += [(str(c.get("id") or ""), str(c.get("label") or c.get("id") or "")) for c in list_provider_configs()]
+    except SecretStoreUnavailable:
+        pass
+    return [(i, label) for i, label in found if i and provider_key_status(i, provider_label=label).get("configured")]
+
+
 agent_sessions.find_provider = _find_provider
+agent_sessions.list_providers = _list_providers
 
 
 class SessionRequest(BaseModel):
