@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import atexit
-import base64
 import collections
 import difflib
 import ctypes
@@ -141,7 +140,14 @@ def _call(name, args):
         data = _json.load(f)
     if not data["ok"]:
         raise RuntimeError(data["output"])
-    return data["output"]
+    out = data["output"]
+    # Text that is JSON comes back as the object it describes, so a chain can index into it.
+    if isinstance(out, str) and out.lstrip()[:1] in ("{{", "["):
+        try:
+            return _json.loads(out)
+        except ValueError:
+            pass
+    return out
 
 
 class _Tools:
@@ -152,7 +158,14 @@ class _Tools:
 
     def __getattr__(self, name):
         if name in _REMOTE and name not in _SOURCES:
-            return lambda *a, **args: _call(name, {{"name": a[0]}} if name == "skill" and a else args)
+            first = {{"skill": "name", "agent": "prompt"}}.get(name)
+            return lambda *a, **args: _call(name, {{first: a[0], **args}} if first and a else args)
+        if not name.startswith("_") and name not in _SOURCES:
+            # A tool made earlier in this same chain is fetched from the agent.
+            try:
+                _SOURCES[name] = _call("_source", {{"name": name}})
+            except RuntimeError:
+                pass
         if name.startswith("_") or name not in _SOURCES:
             raise AttributeError(f"no tool {{name!r}}; created: {{', '.join(_SOURCES)}}; others: {{', '.join(sorted(_REMOTE))}}")
         if name not in self._loaded:
@@ -193,7 +206,9 @@ background and you are told when it ends. Files a tool changes are listed after 
 under the same name, delete one with empty code. Prefer a few general tools (a shell, a file reader, an exact-text editor) over many narrow ones.
 Inside any tool's code, tools.<name>(...) calls another created tool in the same process and returns what it returns, so one call can
 chain many steps: read, edit, run and check without coming back in between. The same tools.<name>(...) reaches the user's plugin and
-MCP tools (they return text), and tools.skill(name) returns a skill's instructions, so a chain can mix all of them. Give create args to run the tool as soon as it is written;
+MCP tools (JSON comes back as objects), tools.skill(name) returns a skill's instructions, tools.agent(prompt, agent="explore") runs a
+helper agent and returns its report, and tools.create(...) adds a tool you can call later in the same chain. Calls from several threads
+run at the same time. Give create args to run the tool as soon as it is written;
 add keep: false for a one-off script that is not saved. Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
 then run the tests or command that proves it works. End with a short report: what changed, how you checked, what is left.
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
@@ -376,6 +391,7 @@ class AgentSession:
         self._deadline = self._notice_at = 0.0
         self.schedules: list[dict] = []
         self._watch = watch.Watch(workspace.root)
+        self.asked_s = 0.0
         self._watch_request = self._request_no = self._edit_seq = self._run_seq = 0
         self._since_learn = self._learned_to = 0
         self._scheduler: threading.Thread | None = None
@@ -1252,9 +1268,11 @@ class AgentSession:
                 previous = self.status
                 self.pending, self._decision, self.status = call, None, "waiting"
             self.emit("approval", call=call)
+            asked = time.time()
             with self._lock:
                 while self._decision is None and not self._stop:
                     self._lock.wait(timeout=1.0)
+                self.asked_s += time.time() - asked
                 decision = self._decision or {"decision": "deny", "note": "stopped"}
                 self.pending, self.status = None, previous
             return decision
@@ -1388,11 +1406,11 @@ class AgentSession:
         prelude = (f"import os as _os, sys as _sys\n_os.environ['AGENT_STATE'] = {where!r}\n_sys.path.insert(0, _os.path.join({where!r}, 'lib'))\n"
                    f"_os.environ['AGENT_RPC'] = _os.path.join({where!r}, 'rpc', {run_id!r})\nfrom agent_tools import tools\n")
         script = prelude + tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
-        payload = base64.b64encode(script.encode("utf-8")).decode("ascii")
-        if len(payload) > 100_000:
-            raise ToolError("the tool's code and arguments are too long to run; pass big content through a file")
-        python = "python3" if docker else (subprocess.list2cmdline([sys.executable]) if os.name == "nt" else shlex.quote(sys.executable))
-        command = f"{python} -c \"import base64;exec(compile(base64.b64decode('{payload}'),'{tool['name']}.py','exec'))\""
+        # The script goes in a file, so neither its code nor its arguments have a size limit.
+        (rpc / "main.py").write_text(script, encoding="utf-8")
+        target = f"/tmp/rpc/{run_id}/main.py" if docker else str(rpc / "main.py")
+        command = (f"python3 {target}" if docker else
+                   subprocess.list2cmdline([sys.executable, target]) if os.name == "nt" else f"{shlex.quote(sys.executable)} {shlex.quote(target)}")
         if not self._watch.ready or self._watch_request != self._request_no:
             self._watch.refresh()
             self._watch_request = self._request_no
@@ -1412,38 +1430,51 @@ class AgentSession:
 
     def _chain_targets(self) -> set[str]:
         """What a created tool's code may reach through the agent: the user's plugin and MCP tools, and skills."""
-        names = {n for n in self.registry.tools if n not in registry.GROUPS} | set(self._root().mcp_tools)
+        names = {n for n in self.registry.tools if n not in registry.GROUPS} | set(self._root().mcp_tools) | {"agent", "create"}
         return names | ({"skill"} if self.skills else set())
 
     def _serve_chain(self, folder: Path, job: "sandbox.Job") -> None:
         """Answer the requests a running created tool leaves in its rpc folder, each through the same rules and approvals as the model's own calls."""
         targets = self._chain_targets()
-        while True:
-            done = job.code is not None
-            for request in sorted(folder.glob("*.req")):
-                try:
-                    data = json.loads(request.read_text(encoding="utf-8"))
-                    request.unlink()
-                except (OSError, ValueError):
-                    continue
-                name, args = str(data.get("name") or ""), data.get("args") if isinstance(data.get("args"), dict) else {}
-                try:
-                    if name not in targets:
-                        output, ok = f"{name!r} cannot be reached from a tool; reachable: {', '.join(sorted(targets)) or 'none'}", False
-                    elif name == "skill":
-                        found = self.skills.get(str(args.get("name") or ""))
-                        output, ok = (skills.load(found), True) if found else (f"No skill named {args.get('name')!r}; known: {', '.join(self.skills)}", False)
-                    else:
-                        output, ok = self._run_call({"id": f"chain-{uuid.uuid4().hex[:8]}", "name": name, "args": args})
-                except Exception as exc:
-                    output, ok = f"Error: {type(exc).__name__}: {exc}", False
-                reply = folder / request.name.replace(".req", ".res")
-                reply.with_suffix(".part").write_text(json.dumps({"ok": ok, "output": output}), encoding="utf-8")
-                reply.with_suffix(".part").replace(reply)
-            if done or self._stop:
-                shutil.rmtree(folder, ignore_errors=True)
-                return
-            time.sleep(0.02)
+
+        def answer(request: Path, data: dict) -> None:
+            name, args = str(data.get("name") or ""), data.get("args") if isinstance(data.get("args"), dict) else {}
+            try:
+                if name == "_source":
+                    tool = self._root().created.get(str(args.get("name") or ""))
+                    output, ok = (tool["code"], True) if tool else ("no such created tool", False)
+                elif name not in targets:
+                    output, ok = f"{name!r} cannot be reached from a tool; reachable: {', '.join(sorted(targets)) or 'none'}", False
+                elif name == "skill":
+                    found = self.skills.get(str(args.get("name") or ""))
+                    output, ok = (skills.load(found), True) if found else (f"No skill named {args.get('name')!r}; known: {', '.join(self.skills)}", False)
+                elif name == "agent":
+                    output, ok = self._subagent("chain", str(args.get("prompt") or ""), str(args.get("agent") or "explore")), True
+                elif name == "create":
+                    output, ok = self._create(args), True
+                else:
+                    output, ok = self._run_call({"id": f"chain-{uuid.uuid4().hex[:8]}", "name": name, "args": args})
+            except Exception as exc:
+                output, ok = f"Error: {type(exc).__name__}: {exc}", False
+            reply = folder / request.name.replace(".req", ".res")
+            reply.with_suffix(".part").write_text(json.dumps({"ok": ok, "output": output}), encoding="utf-8")
+            reply.with_suffix(".part").replace(reply)
+
+        # Requests are answered side by side, so a chain that calls tools from several threads really runs them together.
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            while True:
+                done = job.code is not None
+                for request in sorted(folder.glob("*.req")):
+                    try:
+                        data = json.loads(request.read_text(encoding="utf-8"))
+                        request.unlink()
+                    except (OSError, ValueError):
+                        continue
+                    pool.submit(answer, request, data if isinstance(data, dict) else {})
+                if done or self._stop:
+                    break
+                time.sleep(0.02)
+        shutil.rmtree(folder, ignore_errors=True)
 
     def _with_callees(self, code: str) -> str:
         """A created tool's code followed by the code of every created tool it calls, directly or through another."""
@@ -1629,8 +1660,9 @@ class AgentSession:
     def _await_job(self, job: "sandbox.Job", limit: int, guard) -> str:
         """Wait up to limit for a started job; one still running then moves to the background instead of being killed."""
         root = self.workspace.root
-        end = time.time() + limit
-        while job.code is None and time.time() < end and not self._stop:
+        end, paused = time.time() + limit, self._root().asked_s
+        # Time spent waiting for the user to approve a call inside the job does not count against it.
+        while job.code is None and (time.time() < end + self._root().asked_s - paused or self._root().status == "waiting") and not self._stop:
             time.sleep(0.05)
         undone = gitguard.restore(root, guard)
         warning = f"\n[blocked: the command changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]" if undone else ""
@@ -1969,7 +2001,8 @@ class AgentSession:
         known = set(offered)
         props = {name: spec.get("parameters", {}).get("properties", {}) for name, spec in offered.items()}
         # Calls a script makes go through as written: they carry internal flags such as as_data.
-        if isinstance(call["args"], dict) and not str(call.get("id", "")).startswith("script-") and (
+        # A created tool takes whatever its own code accepts, so its arguments are never renamed or dropped.
+        if isinstance(call["args"], dict) and not str(call.get("id", "")).startswith("script-") and call["name"] not in self._root().created and (
                 call["name"] not in known or any(k not in props[call["name"]] for k in call["args"])):
             fixed = aliases.resolve(call["name"], call["args"], props)
             if fixed and fixed[2]:

@@ -3731,3 +3731,40 @@ def test_a_chain_mixes_created_tools_mcp_tools_and_skills_through_the_agent(ws, 
     assert '"doc": "doc for f"' in out and '"rule": true' in out and '"first": "def f():"' in out and '"missing": true' in out, out
     assert asked == [("lookup", {"q": "f"})], "the MCP call went through the agent's own call path"
     assert not list((session._outputs_dir() / "state" / "rpc").iterdir()), "each run's request folder is removed when it ends"
+
+
+def test_chains_have_no_ceiling_objects_agents_new_tools_parallel_calls_big_args_and_unclocked_approvals(ws, home, monkeypatch):
+    from app.agent import session as session_module
+    create_only(home)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    starts = []
+
+    class Docs:
+        def call_tool(self, name, args):
+            starts.append(time.time())
+            time.sleep(0.5)
+            return json.dumps({"hits": [args["q"]]}), True
+
+        def close(self):
+            pass
+
+    session.mcp_tools = {"mcp__docs__lookup": ("docs", {"name": "lookup", "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}}}})}
+    session.mcp_servers["docs"] = Docs()
+    monkeypatch.setattr(AgentSession, "_subagent", lambda self, d, prompt, agent="explore": f"report on {prompt} by {agent}")
+    chain = ("from concurrent.futures import ThreadPoolExecutor\n"
+             "def go(blob):\n"
+             "    with ThreadPoolExecutor(4) as p:\n        hits = list(p.map(lambda q: tools.mcp__docs__lookup(q=q)['hits'][0], ['a', 'b', 'c', 'd']))\n"
+             "    tools.create(name='twice', code='def twice(x):\\n    return x * 2\\n')\n"
+             "    return {'hits': hits, 'agent': tools.agent('the cache', agent='explore'), 'twice': tools.twice(x=21), 'blob': len(blob)}\n")
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {"blob": "x" * 300_000}, "keep": False}})
+    assert '"hits": ["a", "b", "c", "d"]' in out and '"agent": "report on the cache by explore"' in out and '"twice": 42' in out and '"blob": 300000' in out, out
+    assert max(starts) - min(starts) < 0.4, "the four MCP calls ran side by side"
+    # Waiting on the user does not move a call to the background.
+    monkeypatch.setattr(session_module, "CREATED_TIMEOUT", 1)
+    session._create({"name": "slow", "code": "import time\ndef slow():\n    time.sleep(2)\n    return 'done'\n"})
+    session.status = "waiting"
+    threading_timer = __import__("threading").Timer(2.5, lambda: setattr(session, "status", "running"))
+    threading_timer.start()
+    out, _ = session._run_call({"id": "s", "name": "slow", "args": {}})
+    assert "done" in out and "background" not in out, out
