@@ -46,7 +46,7 @@ jobs:
               print("models: not listed", type(exc).__name__, flush=True)
 
           def plain(effort, extra=None):
-              body = {"model": MODEL, "messages": [{"role": "user", "content": question}], "max_tokens": 32000,
+              body = {"model": MODEL, "messages": [{"role": "user", "content": question}], "max_tokens": 16000,
                       "temperature": 1.0, "top_p": 0.95, **(extra or {})}
               if effort is not None:
                   body["reasoning_effort"] = effort
@@ -66,7 +66,7 @@ jobs:
               return row
 
           def streamed(effort):
-              body = {"model": MODEL, "messages": [{"role": "user", "content": question}], "max_tokens": 32000, "stream": True,
+              body = {"model": MODEL, "messages": [{"role": "user", "content": question}], "max_tokens": 16000, "stream": True,
                       "stream_options": {"include_usage": True}, "reasoning_effort": effort}
               started, first, reasoning, content, usage = time.time(), None, 0, "", None
               with requests.post(f"{BASE}/chat/completions", headers=head, json=body, timeout=1200, stream=True) as r:
