@@ -1,0 +1,64 @@
+name: Models probe
+# One-off: each stored key's /models list and any price fields, so model chaining can pick models; delete once answered.
+on:
+  push:
+    branches: [claude/friendly-hypatia-xi865r]
+    paths: [.github/workflows/models-probe.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: List models per key
+        env:
+          SOVINFRA: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          POLARGRID: ${{ secrets.POLAGRID_ }}
+          MINIROUTER: ${{ secrets.MINIROUTER_API_KEY }}
+          UNOROUTER: ${{ secrets.UNO_ROUTER }}
+          AGNES: ${{ secrets.AGNES_KEY2 }}
+          AGNES1: ${{ secrets.AGNES_KEY }}
+          EXPLABS: ${{ secrets.EXP_KEY }}
+        shell: python
+        run: |
+          import json, os, pathlib, requests
+          # Each key goes only to the base URL it was already used with in this repo.
+          pairs = {"sovinfra": "https://api.sovinfra.ai/v1", "polargrid": "https://api.mia-01.edge.polargrid.ai/v1",
+                   "minirouter": "https://api.minirouter.sh/v1", "unorouter": "https://api.unorouter.com/v1",
+                   "agnes": "https://apihub.agnes-ai.com/v1", "agnes1": "https://apihub.agnes-ai.com/v1",
+                   "explabs": "https://api.experientiallabs.ai/v1"}
+          out = pathlib.Path("audit-results/models-probe")
+          out.mkdir(parents=True, exist_ok=True)
+          summary = {}
+          for name, base in pairs.items():
+              key = os.environ.get(name.upper(), "")
+              if not key:
+                  summary[name] = {"error": "secret not set"}
+                  continue
+              try:
+                  r = requests.get(f"{base}/models", headers={"Authorization": f"Bearer {key}", "Accept": "application/json"}, timeout=60)
+                  data = r.json()
+              except Exception as exc:
+                  summary[name] = {"error": f"{type(exc).__name__}"}
+                  continue
+              rows = data.get("data") if isinstance(data, dict) else data
+              rows = rows if isinstance(rows, list) else []
+              (out / f"{name}.json").write_text(json.dumps(data, indent=1, ensure_ascii=False)[:2_000_000].replace(key, "***"))
+              priced = lambda row: {k: v for k, v in row.items() if any(w in k.lower() for w in ("price", "pricing", "cost", "context", "max_tokens"))}
+              summary[name] = {"status": r.status_code, "count": len(rows),
+                               "models": [{"id": row.get("id"), **priced(row)} for row in rows if isinstance(row, dict)][:400]}
+          text = json.dumps(summary, indent=1, ensure_ascii=False)
+          for key in (os.environ.get(n.upper(), "") for n in pairs):
+              assert not key or key not in text, "a key leaked into the output"
+          (out / "summary.json").write_text(text)
+          for name, row in summary.items():
+              print(name, row.get("status"), row.get("count"), row.get("error", ""))
+      - name: Save evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/models-probe
+          message: "audit: models probe (run ${{ github.run_id }})"
