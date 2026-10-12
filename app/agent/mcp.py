@@ -23,7 +23,7 @@ except ImportError:  # Python 3.10 has no TOML reader, so Codex's config is skip
     tomllib = None
 
 PROTOCOL_VERSION = "2025-06-18"
-CLIENT_INFO = {"name": "manga-translator-agent", "version": "1.0"}
+CLIENT_INFO = {"name": "chaos", "version": "1.0"}
 REQUEST_TIMEOUT = 120
 MAX_RESULT_CHARS = 20_000
 _ENV_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")

@@ -76,7 +76,7 @@
     if (home) home.hidden = resolved !== "home";
     if (importView) importView.hidden = resolved !== "import";
     if (agentView) agentView.hidden = resolved !== "agent";
-    setPageTitle({ home: "Trang chủ", import: "Nhập nội dung", agent: "Agent" }[resolved]);
+    setPageTitle({ home: "Trang chủ", import: "Nhập nội dung", agent: "Chaos" }[resolved]);
     if (resolved === "agent") window.openAgentView?.();
     // Coming back home lists the chapters worked on since the page loaded.
     if (resolved === "home") window.loadRecentChapters?.();

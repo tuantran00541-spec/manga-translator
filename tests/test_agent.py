@@ -247,7 +247,9 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     assert len(waits) == 1 and 3 < waits[0] <= 5, "another session waits out the cooldown a 429 set"
     client._COOLDOWN.clear()
     # Agnes after its daily quota: one request a minute; the harness keeps to that pace instead of giving up after a few tries.
-    agnes = {"error": {"message": "You have used up today's text quota and are now limited to 1 request every 1 minutes. Try again after 05:18:33."}}
+    # The clock time sits hours away, so it is never trusted over the named pace whatever time the test runs.
+    later = time.gmtime(time.time() + 3 * 3600)
+    agnes = {"error": {"message": f"You have used up today's text quota and are now limited to 1 request every 1 minutes. Try again after {later.tm_hour:02d}:18:33."}}
     replies = [FakeResponse(429, agnes), FakeResponse(200, reply), FakeResponse(200, reply)]
     waits.clear()
     monkeypatch.setattr(client.requests, "post", lambda url, **kw: replies.pop(0))
@@ -350,6 +352,7 @@ def test_declining_the_next_key_ends_the_turn_with_the_error(ws, home):
 
 def test_a_named_wait_is_kept_even_with_spare_keys(monkeypatch):
     monkeypatch.setattr(client, "validate_url", lambda url: url)
+    monkeypatch.setattr(client, "_PACE", {})
     monkeypatch.setattr(client, "RATE_LIMITS", {})
     monkeypatch.setattr(client, "_COOLDOWN", {})
     waits = []

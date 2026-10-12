@@ -99,7 +99,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="agent")
+    parser = argparse.ArgumentParser(prog="chaos", description="Chaos, the Manga Translator coding agent, run from a terminal")
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("exec", "resume"):
         one = sub.add_parser(name)

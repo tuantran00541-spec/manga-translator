@@ -9,7 +9,7 @@ import sys
 import uuid
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "manga-agent", "version": "1"}
+SERVER_INFO = {"name": "chaos", "version": "1"}
 # Tools that need a person in the loop or the agent's own conversation are not offered to another client.
 HIDDEN = {"create", "ask_user", "exit_plan_mode", "goal_done", "todo_write", "memory", "task", "spawn_agent", "fan_out", "wait_agent", "send_input",
           "close_agent", "oracle", "schedule_create", "schedule_list", "schedule_delete", "context_notes", "new_context", "plugin_write",
@@ -126,7 +126,7 @@ def serve(folder: Path, write: bool = False, network: bool = False) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="manga mcp", description="Serve the agent's tools to another MCP client over stdio")
+    parser = argparse.ArgumentParser(prog="manga mcp", description="Serve Chaos's tools to another MCP client over stdio")
     parser.add_argument("--folder", default=".", help="the project folder the tools work in (default: here)")
     parser.add_argument("--write", action="store_true", help="also offer edit and command tools (still sandboxed)")
     parser.add_argument("--network", action="store_true", help="also offer web tools and let commands use the network")

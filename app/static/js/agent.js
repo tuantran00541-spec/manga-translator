@@ -598,7 +598,7 @@
 
   function emptyState() {
     const box = el("div", "agent-empty");
-    box.append(el("h1", "", "Agent"), el("p", "agent-muted", "Đọc code, sửa file và chạy test trong sandbox bằng bất kỳ model nào bạn đã thêm. Gõ / để xem lệnh."));
+    box.append(el("h1", "", "Chaos"), el("p", "agent-muted", "Agent ghép nối: đọc code, sửa file và chạy test trong sandbox bằng bất kỳ model nào bạn đã thêm. Gõ / để xem lệnh."));
     const examples = el("div", "agent-examples");
     EXAMPLES.forEach((text) => examples.append(button(text, "agent-chip", () => { $("agent-input").value = text; autosize(); $("agent-input").focus(); })));
     box.append(examples);
