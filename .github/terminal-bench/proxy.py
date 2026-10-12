@@ -57,6 +57,18 @@ def full_model(body: bytes) -> bytes:
     return body
 
 
+def forced(body: bytes) -> bytes:
+    """Sets the run's forced request fields, so a bridge cannot change the reasoning effort the run asked for."""
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return body
+    if not isinstance(data, dict):
+        return body
+    data.update(LIMITS["force"])
+    return json.dumps(data).encode()
+
+
 class Relay(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -83,6 +95,8 @@ class Relay(BaseHTTPRequestHandler):
             body = without_strict(body)
         if body and MODEL:
             body = full_model(body)
+        if body and LIMITS.get("force") and self.path.split("?")[0] == "/v1/chat/completions":
+            body = forced(body)
         if stats["stopped"]:
             return self.reply(503, json.dumps({"error": f"relay stopped: {stats['stopped']}"}).encode())
         self.wait_for_budget()

@@ -3,12 +3,7 @@
   "base_url": "https://api.minirouter.sh/v1",
   "model": "xiaomi/mimo-v2.6-flash",
   "n_tasks": 0,
-  "tasks": [
-    "regex-log",
-    "log-summary-date-ranges",
-    "openssl-selfsigned-cert",
-    "vulnerable-secret"
-  ],
+  "tasks": [],
   "concurrent": 4,
   "minutes": 200,
   "mode": "bypass",
@@ -16,7 +11,7 @@
     "reasoning_effort": "high"
   },
   "max_output_tokens": 32000,
-  "shards": 1,
+  "shards": 2,
   "tools": "hybrid",
   "agent": "claude-code",
   "limits": {
@@ -24,9 +19,12 @@
     "price": {
       "input": 1.47e-07,
       "output": 2.94e-07
+    },
+    "force": {
+      "reasoning_effort": "high"
     }
   },
-  "trial": "cc-diagnose",
+  "trial": "cc-bridge",
   "late_request": {
     "reasoning_effort": "medium"
   }

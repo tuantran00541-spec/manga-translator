@@ -179,18 +179,37 @@ jobs:
               sys.exit("::error::the provider's Responses API does not answer, so Codex CLI cannot run")
           PY
 
-      - name: Check the provider's Messages API that Claude Code calls
+      - name: Bridge Claude Code's Messages API onto chat completions
         if: needs.config.outputs.agent == 'claude-code'
         env:
           MODEL: ${{ needs.config.outputs.model }}
+          MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
         run: |
+          # MiniRouter's Messages API ends every MiMo stream with an upstream error, so LiteLLM turns Claude Code's calls into chat completions sent to the relay.
+          uv tool install -q 'litellm[proxy]==1.105.0' 2>&1 | tail -2
+          python - <<'PY'
+          import json, os
+          # hosted_vllm keeps LiteLLM on chat completions, and "*" also takes the Claude model names Claude Code uses for side tasks.
+          params = {"model": f"hosted_vllm/{os.environ['MODEL']}", "api_base": f"http://127.0.0.1:{os.environ['PORT']}/v1", "api_key": "relay",
+                    "max_tokens": int(os.environ["MAX_OUTPUT"])}
+          json.dump({"model_list": [{"model_name": "*", "litellm_params": params}]}, open("/tmp/bridge.yaml", "w"))
+          PY
+          # Claude Code gets this bridge key, never the provider key, which only the relay holds.
+          export LITELLM_MASTER_KEY="sk-$(openssl rand -hex 24)"
+          echo "::add-mask::$LITELLM_MASTER_KEY"
+          echo "BRIDGE_KEY=$LITELLM_MASTER_KEY" >> "$GITHUB_ENV"
+          nohup litellm --config /tmp/bridge.yaml --host 0.0.0.0 --port 18081 > /tmp/bridge.log 2>&1 &
+          for i in $(seq 90); do curl -sf http://127.0.0.1:18081/health/liveliness > /dev/null && break; sleep 2; done
           python - <<'PY'
           import os, requests, sys
-          r = requests.post(f"http://127.0.0.1:{os.environ['PORT']}/v1/messages", timeout=600, headers={"anthropic-version": "2023-06-01"},
-                            json={"model": os.environ["MODEL"], "max_tokens": 2000, "messages": [{"role": "user", "content": "Say OK."}]})
-          print(f"messages: HTTP {r.status_code}", r.text[:300])
+          tool = {"name": "write_file", "description": "Write text to a file.",
+                  "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "text": {"type": "string"}}, "required": ["path", "text"]}}
+          r = requests.post("http://127.0.0.1:18081/v1/messages", timeout=900, headers={"x-api-key": os.environ["LITELLM_MASTER_KEY"], "anthropic-version": "2023-06-01"},
+                            json={"model": f"anthropic/{os.environ['MODEL']}", "max_tokens": 4000, "tools": [tool],
+                                  "messages": [{"role": "user", "content": "Use the write_file tool to write OK to /tmp/ok.txt."}]})
+          print(f"bridge: HTTP {r.status_code}", r.text[:400])
           if r.status_code != 200:
-              sys.exit("::error::the provider's Messages API does not answer, so Claude Code cannot run")
+              sys.exit("::error::the Messages bridge does not work, so Claude Code cannot run")
           PY
 
       - name: Package the harness
@@ -261,12 +280,10 @@ jobs:
             AGENT+=(--ak "config={\"model_provider\": \"relay\", \"model_providers\": {\"relay\": {\"name\": \"relay\", \"base_url\": \"$MANGA_AGENT_BASE\", \"env_key\": \"OPENAI_API_KEY\", \"wire_api\": \"responses\", \"supports_websockets\": false}}}")
             export OPENAI_API_KEY=relay OPENAI_BASE_URL="$MANGA_AGENT_BASE"
           elif [ "${{ needs.config.outputs.agent }}" = "claude-code" ]; then
-            # Claude Code runs in the task container and calls the provider's Messages API through the relay.
+            # Claude Code runs in the task container and calls the Messages bridge, which reaches the provider through the relay.
             AGENT=(--agent claude-code --model "anthropic/$MANGA_AGENT_MODEL"
                    --ak "reasoning_effort=$(python -c 'import json,os; print(json.loads(os.environ["MANGA_AGENT_REQUEST_CFG"]).get("reasoning_effort", "high"))')")
-            # MiniRouter accepts only these two thinking display modes.
-            AGENT+=(--ak thinking_display=summarized)
-            export ANTHROPIC_API_KEY=relay ANTHROPIC_BASE_URL="http://$(cat /tmp/docker-gateway):$PORT"
+            export ANTHROPIC_API_KEY="$BRIDGE_KEY" ANTHROPIC_BASE_URL="http://$(cat /tmp/docker-gateway):18081"
           else
             AGENT=(--agent-import-path manga_agent:MangaAgent --model "$MANGA_AGENT_MODEL")
           fi
