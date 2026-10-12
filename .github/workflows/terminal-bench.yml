@@ -29,6 +29,7 @@ jobs:
       late_request: ${{ steps.cfg.outputs.late_request }}
       max_output: ${{ steps.cfg.outputs.max_output }}
       shards: ${{ steps.cfg.outputs.shards }}
+      shard_total: ${{ steps.cfg.outputs.shard_total }}
       tools: ${{ steps.cfg.outputs.tools }}
       agent: ${{ steps.cfg.outputs.agent }}
     steps:
@@ -65,7 +66,10 @@ jobs:
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
           print(f"agent={cfg.get('agent') if cfg.get('agent') in ('chaos', 'terminus-2', 'codex') else 'chaos'}")
           print(f"tools={cfg.get('tools') if cfg.get('tools') in ('hybrid', 'create', 'full') else 'hybrid'}")
-          print(f"shards={json.dumps(list(range(max(1, int(cfg.get('shards') or 1)))))}")
+          total = max(1, int(cfg.get('shards') or 1))
+          # only_shards reruns some shards of a split, which keep the tasks they had in the full split.
+          print(f"shards={json.dumps([k for k in range(total) if k in (cfg.get('only_shards') or range(total))])}")
+          print(f"shard_total={total}")
           PY
 
   bench:
@@ -180,12 +184,18 @@ jobs:
           nohup litellm --config /tmp/bridge.yaml --host 0.0.0.0 --port 18081 > /tmp/bridge.log 2>&1 &
           for i in $(seq 90); do curl -sf http://127.0.0.1:18081/health/liveliness > /dev/null && break; sleep 2; done
           python - <<'PY'
-          import json, os, requests, sys
+          import json, os, requests, sys, time
           tool = {"type": "function", "name": "write_file", "description": "Write text to a file.",
                   "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "text": {"type": "string"}}, "required": ["path", "text"]}}
-          r = requests.post("http://127.0.0.1:18081/v1/responses", timeout=900, headers={"Authorization": f"Bearer {os.environ['LITELLM_MASTER_KEY']}"},
-                            json={"model": os.environ["MODEL"], "input": "Use the write_file tool to write OK to /tmp/ok.txt.", "tools": [tool], "reasoning": {"effort": "medium"}})
-          print(f"bridge: HTTP {r.status_code}")
+          # A 401, 429 or 5xx can be the provider straining under the other runs on the same key, so it gets two more tries.
+          for attempt in range(3):
+              r = requests.post("http://127.0.0.1:18081/v1/responses", timeout=900, headers={"Authorization": f"Bearer {os.environ['LITELLM_MASTER_KEY']}"},
+                                json={"model": os.environ["MODEL"], "input": "Use the write_file tool to write OK to /tmp/ok.txt.", "tools": [tool], "reasoning": {"effort": "medium"}})
+              print(f"bridge: HTTP {r.status_code}")
+              if r.status_code not in (401, 429) and r.status_code < 500:
+                  break
+              print(r.text[:300])
+              time.sleep(30)
           items = [i.get("type") for i in (r.json().get("output") or [])] if r.status_code == 200 else []
           print("output items:", items, r.text[:300] if r.status_code != 200 else "")
           if r.status_code != 200:
@@ -234,7 +244,7 @@ jobs:
           N=""; [ "${{ needs.config.outputs.n_tasks }}" != 0 ] && N="-l ${{ needs.config.outputs.n_tasks }}"
           TASKS="${{ needs.config.outputs.tasks }}"
           # With no task list, each shard takes every Nth task of the sorted set so hard and easy ones spread evenly.
-          [ -z "$TASKS" ] && TASKS=$(ls /tmp/tb21/tasks | sort | awk -v n="${{ strategy.job-total }}" -v k="${{ matrix.shard }}" '(NR-1)%n==k {printf "-i %s ", $0}')
+          [ -z "$TASKS" ] && TASKS=$(ls /tmp/tb21/tasks | sort | awk -v n="${{ needs.config.outputs.shard_total }}" -v k="${{ matrix.shard }}" '(NR-1)%n==k {printf "-i %s ", $0}')
           echo "tasks in this shard: $(echo "$TASKS" | grep -o -- '-i ' | wc -l)"
           if [ "${{ needs.config.outputs.agent }}" = "terminus-2" ]; then
             # Terminus 2, the Terminal-Bench team's own harness, runs on the runner and calls the same relay, same model and request fields.

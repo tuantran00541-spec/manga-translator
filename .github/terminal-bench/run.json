@@ -18,5 +18,8 @@
   },
   "shards": 2,
   "tools": "hybrid",
-  "agent": "codex"
+  "agent": "codex",
+  "only_shards": [
+    1
+  ]
 }
