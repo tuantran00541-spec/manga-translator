@@ -20,7 +20,7 @@ MODEL = sys.argv[6] if len(sys.argv) > 6 else ""
 ALLOWED = {"/v1/chat/completions": "/chat/completions", "/v1/responses": "/responses", "/v1/messages": "/messages", "/v1/models": "/models"}
 MAX_BODY = 16_000_000
 # Status counts and the first 429 show whether the provider starts throttling the key.
-stats = {"requests": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0, "status": {}, "first_429": None, "usd": 0.0, "stopped": None}
+stats = {"requests": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0, "status": {}, "first_429": None, "usd": 0.0, "stopped": None, "error_samples": []}
 recent: list[tuple[float, int]] = []
 lock = threading.Lock()
 
@@ -136,6 +136,9 @@ class Relay(BaseHTTPRequestHandler):
                 stats["first_429"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             if up.status_code >= 400:
                 stats["errors"] += 1
+                # A few error bodies say why the provider refused, which the agents' own logs often hide.
+                if len(stats["error_samples"]) < 8:
+                    stats["error_samples"].append({"path": self.path, "status": up.status_code, "body": bytes(tail[:400]).decode("utf-8", "replace")})
             if up.status_code in (401, 403) and not stats["stopped"]:
                 stats["stopped"] = f"the provider rejected the key (HTTP {up.status_code})"
         for piece in tail.decode("utf-8", "ignore").split("\n"):

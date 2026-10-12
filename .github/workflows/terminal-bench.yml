@@ -257,6 +257,7 @@ jobs:
             AGENT=(--agent codex --model "openai/$MANGA_AGENT_MODEL"
                    --ak "reasoning_effort=$(python -c 'import json,os; print(json.loads(os.environ["MANGA_AGENT_REQUEST_CFG"]).get("reasoning_effort", "high"))')")
             # A provider of its own, because Codex's built-in openai provider first tries a WebSocket, which the relay does not carry.
+            AGENT+=(--ak disable_web_search=true)
             AGENT+=(--ak "config={\"model_provider\": \"relay\", \"model_providers\": {\"relay\": {\"name\": \"relay\", \"base_url\": \"$MANGA_AGENT_BASE\", \"env_key\": \"OPENAI_API_KEY\", \"wire_api\": \"responses\", \"supports_websockets\": false}}}")
             export OPENAI_API_KEY=relay OPENAI_BASE_URL="$MANGA_AGENT_BASE"
           elif [ "${{ needs.config.outputs.agent }}" = "claude-code" ]; then
