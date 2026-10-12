@@ -1,0 +1,447 @@
+{
+ "passed": 32,
+ "trials": 44,
+ "rate": 0.727,
+ "rows": [
+  {
+   "trial": "adaptive-rejection-sampler__KFVaen5",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    396854,
+    352512,
+    35273
+   ]
+  },
+  {
+   "trial": "break-filter-js-from-html__rVXum3E",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    228537,
+    205888,
+    5963
+   ]
+  },
+  {
+   "trial": "build-pmars__2vAfA7W",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    324216,
+    302784,
+    5708
+   ]
+  },
+  {
+   "trial": "caffe-cifar-10__Gh4iZ7y",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    6649791,
+    6521216,
+    31450
+   ]
+  },
+  {
+   "trial": "chess-best-move__maAcpfM",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    488101,
+    465088,
+    9776
+   ]
+  },
+  {
+   "trial": "cobol-modernization__Ts3YgR5",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    1460477,
+    1389504,
+    30428
+   ]
+  },
+  {
+   "trial": "compile-compcert__tvJDdsW",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1337939,
+    1279104,
+    12756
+   ]
+  },
+  {
+   "trial": "constraints-scheduling__LJBJwJr",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    233326,
+    208256,
+    12060
+   ]
+  },
+  {
+   "trial": "crack-7z-hash__Q3jUhUT",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    259574,
+    237760,
+    5203
+   ]
+  },
+  {
+   "trial": "distribution-search__c7mbT6g",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    658182,
+    617024,
+    19732
+   ]
+  },
+  {
+   "trial": "dna-insert__AFG4oCR",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    3872887,
+    3714368,
+    28968
+   ]
+  },
+  {
+   "trial": "extract-moves-from-video__NwrCqeK",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    3386565,
+    3291328,
+    22952
+   ]
+  },
+  {
+   "trial": "feal-linear-cryptanalysis__bXbwoP9",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    4088478,
+    3984064,
+    55941
+   ]
+  },
+  {
+   "trial": "financial-document-processor__JENS9Ek",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    339742,
+    315008,
+    6425
+   ]
+  },
+  {
+   "trial": "fix-git__xFZqY6h",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    194889,
+    176704,
+    4111
+   ]
+  },
+  {
+   "trial": "gcode-to-text__V44akEx",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1593854,
+    1535104,
+    26650
+   ]
+  },
+  {
+   "trial": "git-multibranch__YHZ6KgH",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    365938,
+    330944,
+    17436
+   ]
+  },
+  {
+   "trial": "headless-terminal__EjL9xhd",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    278161,
+    252544,
+    10089
+   ]
+  },
+  {
+   "trial": "install-windows-3.11__CjQXRmd",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    7486493,
+    7352896,
+    49434
+   ]
+  },
+  {
+   "trial": "large-scale-text-editing__WpbZtaw",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    381827,
+    356032,
+    11823
+   ]
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__eTpCj6F",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1488530,
+    1414848,
+    20435
+   ]
+  },
+  {
+   "trial": "mailman__DtUJrCz",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2536650,
+    2418240,
+    18605
+   ]
+  },
+  {
+   "trial": "make-mips-interpreter__QUrCfiv",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    13072497,
+    12856704,
+    55788
+   ]
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__vdtzf5F",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    452170,
+    419200,
+    13653
+   ]
+  },
+  {
+   "trial": "modernize-scientific-stack__g89zzyR",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    141333,
+    131712,
+    4755
+   ]
+  },
+  {
+   "trial": "mteb-retrieve__qDyK6xm",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    161633,
+    152704,
+    4491
+   ]
+  },
+  {
+   "trial": "nginx-request-logging__zQA2sZV",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    117134,
+    97728,
+    8279
+   ]
+  },
+  {
+   "trial": "overfull-hbox__WwnkPj9",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    633154,
+    595520,
+    20522
+   ]
+  },
+  {
+   "trial": "path-tracing__cioGkdD",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    3484327,
+    3388224,
+    39745
+   ]
+  },
+  {
+   "trial": "polyglot-c-py__PQDZufA",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    217536,
+    192512,
+    13056
+   ]
+  },
+  {
+   "trial": "portfolio-optimization__YYRQfyp",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    532418,
+    497088,
+    18782
+   ]
+  },
+  {
+   "trial": "prove-plus-comm__TZ4CWtA",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    119743,
+    113344,
+    3861
+   ]
+  },
+  {
+   "trial": "pytorch-model-cli__vGLCtts",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    597620,
+    553408,
+    22723
+   ]
+  },
+  {
+   "trial": "qemu-alpine-ssh__qMsdnp6",
+   "reward": null,
+   "exception": "NonZeroAgentExitCodeError",
+   "tokens": [
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "trial": "query-optimize__gAu5CYS",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    798128,
+    753216,
+    24608
+   ]
+  },
+  {
+   "trial": "regex-chess__KesSogV",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    15937414,
+    15715904,
+    94555
+   ]
+  },
+  {
+   "trial": "reshard-c4-data__CXrvmYD",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2036670,
+    1950080,
+    42654
+   ]
+  },
+  {
+   "trial": "sam-cell-seg__qWonZgi",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1806010,
+    1751680,
+    37422
+   ]
+  },
+  {
+   "trial": "schemelike-metacircular-eval__kSgnoaf",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    5812547,
+    5696640,
+    54076
+   ]
+  },
+  {
+   "trial": "sqlite-db-truncate__cKe2yU6",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    186264,
+    163520,
+    9619
+   ]
+  },
+  {
+   "trial": "torch-pipeline-parallelism__GbmxaKr",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    384171,
+    353600,
+    26357
+   ]
+  },
+  {
+   "trial": "train-fasttext__gDpkvi4",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2120109,
+    2016768,
+    16892
+   ]
+  },
+  {
+   "trial": "video-processing__HMXEfjB",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2994048,
+    2894848,
+    36749
+   ]
+  },
+  {
+   "trial": "winning-avg-corewars__xij6bkd",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    477372,
+    438720,
+    6515
+   ]
+  }
+ ]
+}

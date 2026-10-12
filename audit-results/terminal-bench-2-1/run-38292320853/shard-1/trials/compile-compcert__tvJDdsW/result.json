@@ -1,0 +1,141 @@
+{
+    "id": "df7a095e-c9bf-45a0-948e-06d077772f2d",
+    "task_name": "terminal-bench/compile-compcert",
+    "trial_name": "compile-compcert__tvJDdsW",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-12__18-41-52/compile-compcert__tvJDdsW",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/compile-compcert"
+    },
+    "source": "tasks",
+    "task_checksum": "f7285aa10ae9a8d0c80a0a35bfcdb994a058f0f817eeaeef080c0dc817efb842",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/compile-compcert",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "compile-compcert__tvJDdsW",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-12__18-41-52",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "codex",
+            "import_path": null,
+            "model_name": "openai/xiaomi/mimo-v2.6-flash",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {
+                "reasoning_effort": "high",
+                "disable_web_search": true,
+                "config": {
+                    "model_provider": "relay",
+                    "model_providers": {
+                        "relay": {
+                            "name": "relay",
+                            "base_url": "http://172.17.0.1:18080/v1",
+                            "env_key": "OPENAI_API_KEY",
+                            "wire_api": "responses",
+                            "supports_websockets": false
+                        }
+                    }
+                }
+            },
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "d8bdaf98-aad8-4781-905a-fbeb44ee7ec2",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "codex",
+        "version": "0.162.1",
+        "model_info": {
+            "name": "xiaomi/mimo-v2.6-flash",
+            "provider": "openai"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 1337939,
+        "n_cache_tokens": 1279104,
+        "n_output_tokens": 12756,
+        "cost_usd": null,
+        "model_usage": {
+            "openai/xiaomi/mimo-v2.6-flash": {
+                "n_input_tokens": 1337939,
+                "n_cache_tokens": 1279104,
+                "n_output_tokens": 12756,
+                "cost_usd": null
+            }
+        },
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-12T18:59:11.751368Z",
+    "finished_at": "2026-10-12T19:16:23.997456Z",
+    "environment_setup": {
+        "started_at": "2026-10-12T18:59:11.752219Z",
+        "finished_at": "2026-10-12T18:59:13.693223Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-12T18:59:13.693250Z",
+        "finished_at": "2026-10-12T19:00:24.522807Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-12T19:00:24.522916Z",
+        "finished_at": "2026-10-12T19:15:57.469817Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-12T19:15:57.729496Z",
+        "finished_at": "2026-10-12T19:16:02.844468Z"
+    },
+    "step_results": null
+}
