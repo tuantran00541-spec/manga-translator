@@ -1,0 +1,113 @@
+name: PolarGrid effort probe
+
+# One-off: how qwen-3.8-27b on PolarGrid thinks at each reasoning_effort and thinking switch, streamed and not.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/polargrid-effort-probe.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      OUT: audit-results/polargrid-effort-probe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe each effort
+        env:
+          KEY: ${{ secrets.POLAGRID_ }}
+        run: |
+          [ -n "$KEY" ] || { echo "::error::POLAGRID_ is not set"; exit 1; }
+          python -m pip install -q requests
+          mkdir -p "$OUT"
+          python - <<'PY'
+          import json, os, time, requests
+          BASE, MODEL = "https://api.mia-01.edge.polargrid.ai/v1", "qwen-3.8-27b"
+          head = {"Authorization": f"Bearer {os.environ['KEY']}", "Content-Type": "application/json"}
+          question = ("How many positive integers below 1000 are divisible by 7 but not by 11? "
+                      "End your answer with the number alone on the last line.")
+          rows = []
+
+          try:
+              ids = [m.get("id") for m in requests.get(f"{BASE}/models", headers=head, timeout=60).json().get("data", [])]
+              rows.append({"models": ids})
+              print("models:", ids, flush=True)
+          except Exception as exc:
+              print("models: not listed", type(exc).__name__, flush=True)
+
+          def plain(effort, extra=None):
+              body = {"model": MODEL, "messages": [{"role": "user", "content": question}], "max_tokens": 32000,
+                      "temperature": 1.0, "top_p": 0.95, **(extra or {})}
+              if effort is not None:
+                  body["reasoning_effort"] = effort
+              started = time.time()
+              r = requests.post(f"{BASE}/chat/completions", headers=head, json=body, timeout=1200)
+              row = {"effort": effort, "extra": extra, "stream": False, "status": r.status_code, "s": round(time.time() - started, 1)}
+              if r.ok:
+                  data = r.json()
+                  choice = data["choices"][0]
+                  msg = choice.get("message") or {}
+                  reasoning = msg.get("reasoning_content") or msg.get("reasoning") or ""
+                  answer = (msg.get("content") or "").strip()
+                  row.update(finish=choice.get("finish_reason"), usage=data.get("usage"), reasoning_chars=len(reasoning),
+                             answer_tail=answer[-40:], correct=answer.splitlines()[-1].strip().strip("*") == "130" if answer else False)
+              else:
+                  row["error"] = r.text[:300]
+              return row
+
+          def streamed(effort):
+              body = {"model": MODEL, "messages": [{"role": "user", "content": question}], "max_tokens": 32000, "stream": True,
+                      "stream_options": {"include_usage": True}, "reasoning_effort": effort}
+              started, first, reasoning, content, usage = time.time(), None, 0, "", None
+              with requests.post(f"{BASE}/chat/completions", headers=head, json=body, timeout=1200, stream=True) as r:
+                  if not r.ok:
+                      return {"effort": effort, "stream": True, "status": r.status_code, "error": r.text[:300]}
+                  for line in r.iter_lines(decode_unicode=True):
+                      if not line or not line.startswith("data:") or line.strip() == "data: [DONE]":
+                          continue
+                      chunk = json.loads(line[5:])
+                      usage = chunk.get("usage") or usage
+                      for choice in chunk.get("choices") or []:
+                          delta = choice.get("delta") or {}
+                          piece = delta.get("reasoning_content") or delta.get("reasoning") or ""
+                          if (piece or delta.get("content")) and first is None:
+                              first = time.time() - started
+                          reasoning += len(piece)
+                          content += delta.get("content") or ""
+              return {"effort": effort, "stream": True, "status": 200, "s": round(time.time() - started, 1), "first_token_s": round(first or 0, 1),
+                      "reasoning_chars": reasoning, "usage": usage, "answer_tail": content.strip()[-40:],
+                      "correct": content.strip().splitlines()[-1].strip().strip("*") == "130" if content.strip() else False}
+
+          for effort in (None, "none", "low", "medium", "high", "xhigh"):
+              rows.append(plain(effort))
+              print(json.dumps(rows[-1]), flush=True)
+          for extra in ({"chat_template_kwargs": {"enable_thinking": True}}, {"enable_thinking": True},
+                        {"chat_template_kwargs": {"enable_thinking": True, "reasoning_effort": "xhigh"}}, {"thinking": {"type": "enabled"}}):
+              rows.append(plain(None, extra))
+              print(json.dumps(rows[-1]), flush=True)
+          rows.append(streamed("xhigh"))
+          print(json.dumps(rows[-1]), flush=True)
+          json.dump(rows, open(f"{os.environ['OUT']}/efforts.json", "w"), indent=1)
+          PY
+      - name: Give git access only now
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/polargrid-effort-probe
+          message: "audit: PolarGrid effort probe (run ${{ github.run_id }})"
