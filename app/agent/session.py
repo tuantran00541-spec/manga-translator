@@ -370,7 +370,8 @@ class AgentSession:
         return (self.home if self.home is not None else Path.home()) / ".manga-agent" / "outputs" / self.id.split("-")[0]
 
     def _set_read_roots(self) -> None:
-        self.workspace.read_roots = [s.folder for s in self.skills.values()] + [self._outputs_dir()]
+        home = self.home if self.home is not None else Path.home()
+        self.workspace.read_roots = [s.folder for s in self.skills.values()] + [self._outputs_dir(), home / learn.LESSONS]
 
     # Plugins and feature groups.
 
@@ -1912,6 +1913,7 @@ class AgentSession:
         if not self.depth:
             parts.append(self._pinned.get("Project instructions", ""))
             parts.append(self._pinned.get("Memory", ""))
+            parts.append(self._pinned.get("Lessons", ""))
             parts += [self._hook_call(fn) for fn in self.registry.prompts]
             if self.plan_mode:
                 parts.append(PLAN_PROMPT)
@@ -1934,6 +1936,7 @@ class AgentSession:
         if not self.depth:
             rows["Project instructions"] = context.instructions(self.workspace.root, self.home)
             rows["Memory"] = memory.prompt(home, self.workspace.root)
+            rows["Lessons"] = learn.lessons_prompt(home)
         return rows
 
     def _context_update(self) -> str:
@@ -2343,17 +2346,24 @@ class AgentSession:
 
     def _learn(self, transcript: str) -> None:
         home = self.home if self.home is not None else Path.home()
-        items, usage = learn.review(self.complete, self.provider, self.api_key, self.profile["review_model"] or self.model, transcript, home)
+        model = self.profile["review_model"] or self.model
+        items, lessons, usage = learn.review(self.complete, self.provider, self.api_key, model, transcript, home, self.id)
+        try:
+            done = learn.write(home, items, (self.api_key,))
+            if lessons and learn.write_lessons(home, self.id, lessons, (self.api_key,)):
+                done.append("lesson notes for this session")
+            merged, more = learn.consolidate(self.complete, self.provider, self.api_key, model, home, (self.api_key,))
+            usage = {k: int(usage.get(k) or 0) + int(more.get(k) or 0) for k in set(usage) | set(more)}
+            if merged:
+                done.append(merged)
+        except OSError as exc:
+            done = [f"could not write: {exc}"]
         with self._usage_lock:
             for key in self.usage:
                 self.usage[key] += int(usage.get(key) or 0)
-        try:
-            done = learn.write(home, items, (self.api_key,))
-        except OSError as exc:
-            done = [f"could not write: {exc}"]
         if done:
             self.reload_skills()
-            self.emit("notice", text="Skills: " + "; ".join(done))
+            self.emit("notice", text="Learned: " + "; ".join(done))
 
     def _oracle(self, question: str) -> str:
         """The agent asks the advisor model for a second opinion on the recent conversation (Amp's oracle)."""

@@ -1,4 +1,4 @@
-"""After enough tool work the agent reviews the session and writes or updates its own skills (Hermes Agent's learning loop)."""
+"""After enough tool work the agent reviews the session, keeps its mistakes and fixes as notes, and writes its own skills (Hermes Agent's learning loop)."""
 from __future__ import annotations
 
 import json
@@ -12,7 +12,14 @@ A skill is how to do a CLASS of task for this user: the steps in order with the 
 Write one when: the user corrected the approach, style or format; a non-trivial technique, fix, workaround or debugging path emerged; or a learned skill below proved wrong, incomplete or outdated (then rewrite that one in full).
 Prefer updating a learned skill below over making a new one. Name at class level (lowercase-hyphens), never after one PR, error string, date or today's task.
 Do not capture: environment failures the user can fix (missing binaries, unset keys), claims that a tool is broken, transient errors that a retry fixed, one-off task narratives, unresolved failures, secrets, keys or tokens.
-Reply with one line of JSON: {"skills": [{"name": "...", "description": "when to use it, one sentence", "body": "markdown instructions"}]} with at most 2 items, or {"skills": []} when nothing is worth keeping."""
+Also keep this session's lesson notes: every mistake the agent made and how it was found and fixed (wrong assumption, failed command, bug it introduced, test that caught it), each as: what went wrong, why, the fix, the rule that avoids it next time.
+The notes so far for this session are shown; return the full updated notes in markdown without a title, or "" when the session had no mistakes worth noting.
+Reply with one line of JSON: {"skills": [{"name": "...", "description": "when to use it, one sentence", "body": "markdown instructions"}], "lessons": "markdown"} with at most 2 skills; use [] when no skill is worth keeping."""
+CONSOLIDATE = """You keep a coding agent's lesson notes: one markdown file per past session listing mistakes and their fixes, plus an optional SUMMARY.md.
+Read them and decide. If they repeat each other or a summary would help a future session more than many files, reply {"action": "summarize", "summary": "markdown"}: merge every lasting lesson into one summary grouped by topic, each as a rule plus why, keeping specifics (commands, paths, error text) that make it usable, dropping one-off noise and anything already contradicted. Otherwise reply {"action": "keep"}.
+Reply with one line of JSON."""
+LESSONS = Path(".manga-agent") / "lessons"
+CONSOLIDATE_AT = 10
 FOLDER = Path(".manga-agent") / "skills"
 MAX_LEARNED = 30
 MAX_BODY = 12_000
@@ -32,20 +39,87 @@ def learned(home: Path) -> dict[str, Path]:
     return rows
 
 
-def review(complete, provider, key: str, model: str, transcript: str, home: Path) -> tuple[list[dict], dict]:
-    """(skills to write, usage) for the session shown; nothing on any failure, since writing nothing is always safe."""
-    current = learned(home)
-    shown = "\n\n".join(f"### {name}\n{path.read_text(encoding='utf-8', errors='replace')[:4000]}" for name, path in list(current.items())[:MAX_LEARNED]) or "(none yet)"
-    messages = [{"role": "system", "content": PROMPT},
-                {"role": "user", "content": f"Learned skills:\n{shown[:60000]}\n\nSession:\n{transcript[-80000:]}"}]
+def _ask(complete, provider, key: str, model: str, system: str, user: str) -> tuple[dict, dict]:
+    """The model's one-line JSON answer and usage; an empty answer on any failure."""
     try:
-        reply = complete(provider, key, model, messages, tools=None)
+        reply = complete(provider, key, model, [{"role": "system", "content": system}, {"role": "user", "content": user}], tools=None)
         text = reply["text"]
         start, end = text.find("{"), text.rfind("}")
-        items = json.loads(text[start:end + 1]).get("skills") or []
+        data = json.loads(text[start:end + 1])
+        return (data if isinstance(data, dict) else {}), reply.get("usage") or {}
     except Exception:
-        return [], {}
-    return [i for i in items[:2] if isinstance(i, dict)], reply.get("usage") or {}
+        return {}, {}
+
+
+def review(complete, provider, key: str, model: str, transcript: str, home: Path, session_id: str = "") -> tuple[list[dict], str | None, dict]:
+    """(skills to write, this session's updated lesson notes or None, usage) for the session shown."""
+    current = learned(home)
+    shown = "\n\n".join(f"### {name}\n{path.read_text(encoding='utf-8', errors='replace')[:4000]}" for name, path in list(current.items())[:MAX_LEARNED]) or "(none yet)"
+    notes = _lesson_file(home, session_id)
+    so_far = notes.read_text(encoding="utf-8", errors="replace")[:30000] if session_id and notes.is_file() else "(none yet)"
+    data, usage = _ask(complete, provider, key, model, PROMPT,
+                       f"Learned skills:\n{shown[:60000]}\n\nLesson notes for this session so far:\n{so_far}\n\nSession:\n{transcript[-80000:]}")
+    items = data.get("skills") if isinstance(data.get("skills"), list) else []
+    lessons = data.get("lessons") if isinstance(data.get("lessons"), str) else None
+    return [i for i in items[:2] if isinstance(i, dict)], lessons, usage
+
+
+def _lesson_file(home: Path, session_id: str) -> Path:
+    return home / LESSONS / f"{re.sub(r'[^A-Za-z0-9_-]', '_', session_id)[:80] or 'session'}.md"
+
+
+def _sessions(home: Path) -> list[Path]:
+    return sorted(p for p in (home / LESSONS).glob("*.md") if p.name != "SUMMARY.md")
+
+
+def write_lessons(home: Path, session_id: str, text: str, secrets: tuple[str, ...] = ()) -> bool:
+    """Replace this session's lesson notes; False when they are empty or look like they hold a secret."""
+    text = text.strip()[:MAX_BODY * 2]
+    if not text or not session_id or SECRET_LIKE.search(text) or any(s and len(s) >= 8 and s in text for s in secrets):
+        return False
+    path = _lesson_file(home, session_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"# Lessons from session {session_id}\n\n{text}\n", encoding="utf-8")
+    return True
+
+
+def consolidate(complete, provider, key: str, model: str, home: Path, secrets: tuple[str, ...] = ()) -> tuple[str, dict]:
+    """Once CONSOLIDATE_AT session notes pile up, let the model merge them into SUMMARY.md (originals go to archive/) or leave them be."""
+    folder, files = home / LESSONS, _sessions(home)
+    state = folder / ".state.json"
+    try:
+        last = int(json.loads(state.read_text()).get("kept_at", 0))
+    except (OSError, ValueError, AttributeError):
+        last = 0
+    if len(files) < max(CONSOLIDATE_AT, last + CONSOLIDATE_AT):
+        return "", {}
+    summary = folder / "SUMMARY.md"
+    shown = "\n\n".join(f"## FILE {p.name}\n{p.read_text(encoding='utf-8', errors='replace')[:8000]}" for p in files)
+    old = summary.read_text(encoding="utf-8", errors="replace")[:30000] if summary.is_file() else "(none yet)"
+    data, usage = _ask(complete, provider, key, model, CONSOLIDATE, f"SUMMARY.md now:\n{old}\n\nSession notes:\n{shown[-150000:]}")
+    text = str(data.get("summary") or "").strip()
+    if data.get("action") == "summarize" and text and not SECRET_LIKE.search(text) and not any(s and len(s) >= 8 and s in text for s in secrets):
+        summary.write_text(f"# Lessons summary\n\n{text}\n", encoding="utf-8")
+        archive = folder / "archive"
+        archive.mkdir(exist_ok=True)
+        for path in files:
+            path.replace(archive / path.name)
+        state.write_text(json.dumps({"kept_at": 0}))
+        return f"Merged {len(files)} lesson files into SUMMARY.md", usage
+    if data.get("action") == "keep":
+        # Asked again only after another CONSOLIDATE_AT sessions add notes.
+        state.write_text(json.dumps({"kept_at": len(files)}))
+        return f"Kept {len(files)} lesson files as they are", usage
+    return "", usage
+
+
+def lessons_prompt(home: Path) -> str:
+    """A pointer to past lesson notes for the system prompt, worded the same whatever they hold so the cached prefix stays put."""
+    folder = home / LESSONS
+    if not (folder / "SUMMARY.md").is_file() and not _sessions(home):
+        return ""
+    return (f"Mistakes and fixes from past sessions are kept in {folder} (SUMMARY.md first, then one file per session). "
+            "Read them before work where an old mistake could repeat.")
 
 
 def write(home: Path, items: list[dict], secrets: tuple[str, ...] = ()) -> list[str]:
