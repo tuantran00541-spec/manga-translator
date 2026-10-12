@@ -20,7 +20,7 @@ GROUPS = {
     "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "tool_search": "mcp", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
     "plugin_write": "extensions", "plugin_remove": "extensions",
 }
-COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "learn": "skills", "models": "subagents", "mcp": "mcp"}
+COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "learn": "skills", "models": "subagents", "intent": "subagents", "mcp": "mcp"}
 ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
 REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file", "edit_lines",
                          "apply_patch", "run_command", "web_fetch", "web_search", "web_download"})
@@ -40,7 +40,7 @@ def group_of(tool: str) -> str | None:
 def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
-                     "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
+                     "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "learn_every": 10, "prewalk_model": "",
                      "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "services": {}, "tools": DEFAULT_TOOLS}
@@ -109,6 +109,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["isolate_writers"] = data["isolate_writers"]
                 if isinstance(data.get("untrusted_guard"), bool):
                     profile["untrusted_guard"] = data["untrusted_guard"]
+                if isinstance(data.get("intent"), bool):
+                    profile["intent"] = data["intent"]
                 # Any built-in tool can be served by an MCP tool instead, and an MCP tool can be given a role.
                 if isinstance(data.get("replace"), dict):
                     profile["replace"].update({k: v for k, v in data["replace"].items()

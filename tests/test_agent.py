@@ -3764,7 +3764,7 @@ def test_chains_search_and_describe_the_tools_they_can_reach(ws, home):
     session.mcp_tools["mcp__db__query"] = ("db", {"name": "query", "description": "Run a SQL query on the database.", "inputSchema": {"type": "object", "properties": {"sql": {"type": "string"}}}})
     chain = ("def look():\n    found = tools.search('sql database query')\n    return {'first': found[0]['name'], 'schema': tools.describe(found[0]['name'])['parameters'],"
              " 'code': [r['name'] for r in tools.search('search code')][:1]}\n")
-    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "look", "code": chain, "args": {}, "keep": False}})
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "look1", "code": chain.replace("look", "look1"), "args": {}, "keep": False}})
     assert '"first": "mcp__db__query"' in out and '"sql"' in out and '"code": ["grep_code"]' in out, out
     for n in range(20):
         session.mcp_tools[f"mcp__x__t{n}"] = ("x", {"name": f"t{n}", "description": "x"})
@@ -3854,6 +3854,32 @@ def test_the_model_picks_models_itself_from_any_source_with_a_key(ws, home, monk
     chain = "def ask():\n    return [tools.models()['use'][:4], tools.think('6*7?', model='minirouter:a/b')]\n"
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "ask", "code": chain, "args": {}, "keep": False}})
     assert '["pass", "42"]' in out, out
+
+
+def test_the_first_chain_of_a_request_writes_how_the_model_pictures_it(ws, home):
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "create"}))
+    asked = []
+
+    def complete(provider, key, model, messages, *, tools):
+        if messages[0]["content"].startswith("Before a program you wrote runs"):
+            asked.append(messages[1]["content"])
+            return turn(f"```markdown\n# Request\nfix dates v{len(asked)}\n# Done when\npytest -q\n```")
+        return turn("ok")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
+    assert "Chưa có bản hình dung" in session.command("/intent")["message"]
+    session.history.append({"role": "user", "content": "fix the date parser", "from_user": True})
+    session._new_request("fix the date parser")
+    chain = "def look():\n    return tools.intent()\n"
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "look", "code": chain, "args": {}, "keep": False}})
+    assert "fix dates v1" in out and "```" not in out, out
+    session._session_tool({"id": "d", "name": "create", "args": {"name": "look2", "code": chain.replace("look", "look2"), "args": {}, "keep": False}})
+    assert len(asked) == 1, "one picture per request"
+    session.history.append({"role": "user", "content": "also keep the API", "from_user": True})
+    session._new_request("also keep the API")
+    session._session_tool({"id": "e", "name": "create", "args": {"name": "look3", "code": chain.replace("look", "look3"), "args": {}, "keep": False}})
+    assert len(asked) == 2 and "Earlier picture:\n# Request\nfix dates v1" in asked[1] and "also keep the API" in asked[1]
+    assert "fix dates v2" in session.command("/intent")["message"]
 
 
 def test_model_catalogs_read_prices_however_providers_give_them(monkeypatch):

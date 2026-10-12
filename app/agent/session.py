@@ -178,6 +178,10 @@ class _Tools:
         \"\"\"One reachable tool's full description and JSON-schema parameters.\"\"\"
         return _call("_describe", {{"name": name}})
 
+    def intent(self):
+        \"\"\"The agent's written picture of the current request: what was asked, what done means and how progress is measured.\"\"\"
+        return _call("_intent", {{}})
+
     def __getattr__(self, name):
         if name in _REMOTE and name not in _SOURCES:
             first = {{"skill": "name", "agent": "prompt", "think": "question", "vote": "question", "models": "source"}}.get(name)
@@ -264,12 +268,18 @@ are not shown to you) best match first, tools.describe(name) gives one tool's pa
 tools.skill(name) returns a skill's instructions, tools.agent(prompt, agent="explore") runs a
 helper agent and returns its report, and tools.create(...) adds a tool you can call later in the same chain. Calls from several threads
 run at the same time. Each request allows 99 chains (runs making two or more tools.<name> calls), at most 20 of them longer than 10 calls, and 40 helper agents started from chains. Give create args to run the tool as soon as it is written;
-add keep: false for a one-off script that is not saved. The dict memo is shared by every tool call in the session, so a chain can leave data for the next one."""
+add keep: false for a one-off script that is not saved. The dict memo is shared by every tool call in the session, so a chain can leave data for the next one.
+Before the first chain of a request you write intent.md, how you picture the request; tools.intent() returns it, so a chain can check its results against Done when."""
 ROLES_PROMPT = ("Other models are yours to chain too. tools.models() lists the providers you can use{rows}; tools.models(source, query) lists one "
                 "provider's models matching query with $ per million tokens in and out, context size and whether they read images, cheapest first. "
                 "In a chain pass model='<source>:<model id>'{pick} to tools.think or tools.agent to give that step to that model, and "
                 "tools.vote(question, models=[...], answer=...) asks several at once and says whether they agree. Pick cheap models for summaries "
                 "and side questions, a different model family for a second opinion, a vision model for images, and vote when one answer must be right.")
+INTENT_PROMPT = ("Before a program you wrote runs, write down how you picture the user's request, in Markdown, in the user's language, under these "
+                 "headings: # Request (what was asked, in a line or two), # Picture (what the finished result looks like), # Done when (checks, as "
+                 "commands where possible), # Progress (one number a command can measure that falls as the work advances, or say none can be measured), "
+                 "# Assumptions (what you decided without asking; mark the ones that are hard to undo), # Unclear (what only the user can settle). "
+                 "Build on the earlier picture when the new request continues it. Keep it under 40 lines; reply with only the Markdown.")
 HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a tool as Python code that runs in the sandbox (it is kept for later sessions). "
                  "Use the built-in tools while exploring or debugging step by step; when the steps are known, write them as one chain with create so they "
                  "run in a single call. Inside a chain tools.<name>(...) also calls the built-in tools (read_file, edit_file, run_command and the rest) and "
@@ -361,7 +371,8 @@ BUILTIN_COMMANDS = {
     "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn", "cache": "Xem tỉ lệ cache và những lần tiền tố yêu cầu bị đổi", "receipts": "Xem mọi file đã sửa, lệnh đã chạy và lần duyệt của phiên này",
     "plugins": "Xem plugin, tính năng đã tắt và agent ngoài (Codex, Claude Code)",
     "learn": "Xem lại phiên và tự viết hoặc sửa skill ngay; /learn history xem các lần tự học, /learn undo [mã] hoàn tác một lần",
-    "models": "Vai model: /models xem các vai và lượng dùng hôm nay; /models VAI [từ khoá] xem model và giá của nhà cung cấp vai đó",
+    "models": "Nguồn và vai model: /models xem nguồn, vai và lượng dùng hôm nay; /models NGUỒN [từ khoá] xem model và giá",
+    "intent": "Xem bản agent hình dung yêu cầu hiện tại (intent.md), viết tự động khi chuỗi đầu tiên của yêu cầu chạy",
     "tools": "Đổi bộ tool: /tools hybrid (có sẵn + create), create (chỉ create), full (chỉ có sẵn)",
 }
 GOAL_PROMPT = ("Goal: {text}\nWork on it across as many steps as needed until it is fully done and verified. "
@@ -458,6 +469,7 @@ class AgentSession:
         self._watch = watch.Watch(workspace.root)
         self._repl: repl.Kernel | None = None
         self.find_provider = self.list_providers = None
+        self._intent_request = 0
         self.role = ""
         self.role_usage: dict[str, dict] = {}
         # Past lessons are sent once at each cold start: a new or resumed session, and after a compaction.
@@ -818,6 +830,8 @@ class AgentSession:
             return {"message": self._learn_command(args)}
         if name == "models":
             return {"message": self._models_command(args)}
+        if name == "intent":
+            return {"message": self._intent(write=False) or "Chưa có bản hình dung nào: nó được viết khi chuỗi đầu tiên của một yêu cầu chạy."}
         if name == "tools":
             if args not in registry.TOOL_SETS:
                 return {"message": f"Bộ tool hiện tại: {self.profile['tools']}. Đổi bằng /tools {'|'.join(registry.TOOL_SETS)} (chỉ cho phiên này; ghi \"tools\" vào profile.json để giữ lâu dài)."}
@@ -1513,6 +1527,7 @@ class AgentSession:
         target = f"/tmp/rpc/{run_id}/main.py" if docker else str(rpc / "main.py")
         command = (f"python3 {target}" if docker else
                    subprocess.list2cmdline([sys.executable, target]) if os.name == "nt" else f"{shlex.quote(sys.executable)} {shlex.quote(target)}")
+        self._intent()
         if not self._watch.ready or self._watch_request != self._request_no:
             self._watch.refresh()
             self._watch_request = self._request_no
@@ -1536,6 +1551,30 @@ class AgentSession:
             self._run_seq = self._edit_seq + 1
         return note + output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "")
 
+    def _intent(self, write: bool = True) -> str:
+        """The request as the model pictures it, in intent.md; written once per request by the root session and built on the last one."""
+        root = self._root()
+        path = root._outputs_dir() / "state" / "intent.md"
+        current = path.read_text(encoding="utf-8") if path.exists() else ""
+        if not write or not root.profile["intent"] or root._intent_request == root._request_no or not root._last_request.strip():
+            return current
+        root._intent_request = root._request_no
+        asked = "\n\n".join(m[:3000] for m in root._user_messages()[-4:])
+        messages = [{"role": "system", "content": INTENT_PROMPT},
+                    {"role": "user", "content": (f"Earlier picture:\n{current[:4000]}\n\n" if current else "") + f"What the user said, latest last:\n{asked}"}]
+        try:
+            reply = root.complete(root.provider, root.api_key, root.model, messages, tools=None)
+        except Exception:
+            return current
+        with root._usage_lock:
+            for key in root.usage:
+                root.usage[key] += int(reply.get("usage", {}).get(key) or 0)
+        text = re.sub(r"^```(?:markdown|md)?\n|\n```\s*$", "", reply["text"].strip())[:6000] + "\n"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        root.emit("notice", text="Wrote how I picture this request (/intent to read it).")
+        return text
+
     def _chain_targets(self) -> set[str]:
         """What a created tool's code may reach through the agent: the user's plugin and MCP tools, and skills."""
         names = {n for n in self.registry.tools if n not in registry.GROUPS} | set(self._root().mcp_tools) | {"agent", "create", "think"}
@@ -1558,6 +1597,8 @@ class AgentSession:
                     output, ok = self._find_tools(name, args, targets)
                 elif name == "_repair":
                     output, ok = self._repair(args)
+                elif name == "_intent":
+                    output, ok = self._intent() or "no picture of the request was written", True
                 elif name == "_source":
                     tool = self._root().created.get(str(args.get("name") or ""))
                     output, ok = (tool["code"], True) if tool else ("no such created tool", False)
