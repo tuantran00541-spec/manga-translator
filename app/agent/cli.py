@@ -96,6 +96,13 @@ def run(args: argparse.Namespace) -> int:
         print(json.dumps(result), flush=True)
     else:
         print(f"session {session.id} · {final['usage']['prompt_tokens']} in, {final['usage']['completion_tokens']} out · ${final['stats']['cost']}", file=sys.stderr)
+    if not args.stop_jobs:
+        # Servers and other background jobs the agent left running outlive the command, as they would in a shell.
+        for name, job in list(session.jobs.items()):
+            if hasattr(job, "detach") and job.alive:
+                job.detach()
+                session.jobs.pop(name)
+                print(f"left running: {name} (process group {job.proc.pid}): {job.command[:120]}", file=sys.stderr)
     manager.close_all()
     return 0
 
@@ -119,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         one.add_argument("--timeout-min", type=int, default=60)
         one.add_argument("--allow-private-base", action="store_true", help="allow an http base URL on a private or loopback IP (a local relay)")
         one.add_argument("--json", action="store_true", help="print one JSON event per line")
+        one.add_argument("--stop-jobs", action="store_true", help="stop background jobs the agent left running when the command ends")
     return run(parser.parse_args(argv))
 
 

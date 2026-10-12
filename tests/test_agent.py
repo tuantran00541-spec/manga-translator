@@ -2389,6 +2389,38 @@ def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick
     assert "[stopped after 1 s]" in tool_outputs(session)[0][2] and not session.jobs
 
 
+def test_a_server_a_finished_command_left_running_stays_up_and_outlives_the_session(ws, home, monkeypatch):
+    from app.agent import cli
+    fake = scripted(turn(calls=[call("run_command", command="echo $DEBIAN_FRONTEND; (sleep 30; echo late) &", timeout=10)]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    run_to_idle(session)
+    out = tool_outputs(session)[0][2]
+    assert "noninteractive" in out, "a package install cannot stop to ask a question"
+    assert "keep running as job1" in out and session.jobs["job1"].alive, out
+    session._notifications()
+    assert not any("job1 finished" in str(h["content"]) for h in session.history), "a job whose server still runs is not reported finished"
+    session.jobs["job1"].stop()
+    assert not session.jobs["job1"].alive
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups")
+@pytest.mark.parametrize("detach", [True, False])
+def test_a_detached_job_outlives_the_agent_process_and_keeps_writing(tmp_path, detach):
+    import signal
+    import subprocess
+    import sys
+    script = ("import sys, time; sys.path.insert(0, %r)\nfrom pathlib import Path\nfrom app.agent import sandbox\n"
+              "job = sandbox.Job('(sleep 1; echo late; sleep 30) & echo up', sandbox.Policy('full-access', True), Path('.'))\n"
+              "time.sleep(0.3)\n%s\nprint(job.proc.pid, flush=True)\n") % (str(Path.cwd()), "job.detach()" if detach else "")
+    group = int(subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30).stdout.split()[-1])
+    time.sleep(2)
+    from app.agent import sandbox
+    alive = sandbox._group_alive(group)
+    if alive:
+        os.killpg(group, signal.SIGKILL)
+    assert alive == detach, "without the drain, the server's first write after the agent exits kills it"
+
+
 def test_edits_to_different_files_run_together_and_overlapping_ones_stay_in_order(ws, home):
     import threading
     running, peak, lock = [0], [0], threading.Lock()

@@ -2143,6 +2143,17 @@ class AgentSession:
             return clip(f"{job.read().strip()}\n[still running after {limit} s; it was not stopped but moved to the background as {name}: read it with job_output, "
                         f"stop it with job_stop; you are told when it ends]{warning}", 400_000)
         finished = job.code is not None
+        with self._usage_lock:
+            # What a finished command left running, such as a server started with & or nohup, stays up as a background job.
+            kept = f"job{next(i for i in range(1, 100) if f'job{i}' not in self.jobs)}" if (
+                finished and not self._stop and _alive(job) and len(self.jobs) < MAX_JOBS) else ""
+            if kept:
+                job.announced = True
+                self.jobs[kept] = job
+        if kept:
+            time.sleep(0.2)
+            return clip(f"{job.read().strip()}\n[exit code {job.code}; it left processes running, which keep running as {kept}: "
+                        f"read their output with job_output, stop them with job_stop]{warning}", 400_000)
         if finished:
             job.out.join(5)
         output = job.out.text().strip()
@@ -2158,7 +2169,7 @@ class AgentSession:
         return job
 
     def _start_job(self, args: dict) -> str:
-        for name in [n for n, j in self.jobs.items() if j.code is not None and not j.read() and time.time() - j.started > 600]:
+        for name in [n for n, j in self.jobs.items() if not _alive(j) and not j.read() and time.time() - j.started > 600]:
             self.jobs.pop(name).stop()
         if len(self.jobs) >= MAX_JOBS:
             raise ToolError(f"{MAX_JOBS} background jobs already; stop some with job_stop")
@@ -2170,7 +2181,7 @@ class AgentSession:
         self.jobs[name] = self.workspace.services.shell(command, policy, self.workspace.root, tty=bool(args.get("tty")))
         time.sleep(1.0)
         job = self.jobs[name]
-        state = "running" if job.code is None else f"exited with code {job.code}"
+        state = "running" if job.code is None else f"exited with code {job.code}" + (", and what it started still runs" if _alive(job) else "")
         return f"Started {name} ({state}). Read it with job_output.\n{clip(job.read(), 4000)}".rstrip()
 
     def _job_output(self, name: str, wait, settle: bool = False) -> str:
@@ -2188,7 +2199,7 @@ class AgentSession:
             if len(job.out.data) == seen:
                 break
         text = job.read()
-        state = "running" if job.code is None else f"exited with code {job.code}"
+        state = "running" if job.code is None else f"exited with code {job.code}" + (", and what it started still runs" if _alive(job) else "")
         return f"[{name} {state}]\n{clip(text, 20000) if text else '(no new output)'}"
 
     def _changes(self, only: str = "") -> str:
@@ -2444,7 +2455,7 @@ class AgentSession:
         """Tell the model about helpers and background jobs that finished on their own, as Codex does with a notification message."""
         self._start_queued()
         for name, job in list(self.jobs.items()):
-            if job.code is not None and not getattr(job, "announced", False):
+            if not _alive(job) and not getattr(job, "announced", False):
                 job.announced = True
                 changed = self._record_changes()
                 note = f"[{name} finished with exit code {job.code}; read the rest of its output with job_output]"
@@ -3540,6 +3551,11 @@ class _McpBridge:
         root = self.session._root()
         server, tool = root.mcp_tools[name]
         return root.mcp_servers[server].call_tool(tool["name"], arguments)
+
+
+def _alive(job) -> bool:
+    """Whether a job or anything it started still runs; jobs from other shell services report only their own process."""
+    return job.alive if hasattr(job, "alive") else job.code is None
 
 
 class AgentSessionManager:

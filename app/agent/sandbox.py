@@ -198,7 +198,9 @@ def _env_for(policy: Policy, scratch: str) -> dict | None:
     env = None if policy.mode == "full-access" else clean_env()
     if policy.mode == "read-only" or (env is not None and backend() == "low-integrity"):
         env = {**(env or {}), "TMPDIR": scratch, "TMP": scratch, "TEMP": scratch}
-    return env
+    # A package install that asks a question, such as tzdata's time zone, would otherwise wait forever on a job's open input.
+    base = env if env is not None else os.environ
+    return {**base, "DEBIAN_FRONTEND": base.get("DEBIAN_FRONTEND", "noninteractive")}
 
 
 class Job:
@@ -243,6 +245,16 @@ class Job:
     @property
     def code(self) -> int | None:
         return self.proc.poll()
+
+    @property
+    def alive(self) -> bool:
+        """Whether the command, or anything it started such as a server, is still running."""
+        return self.proc.poll() is None or (os.name == "posix" and _group_alive(self.proc.pid))
+
+    def detach(self) -> None:
+        """Leave the job running after this process exits, its output drained so a later write cannot kill it."""
+        if os.name == "posix":
+            subprocess.Popen(["cat"], stdin=self.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
     def stop(self) -> None:
         _kill_group(self.proc)
@@ -295,6 +307,26 @@ class _Capture(threading.Thread):
     def text(self) -> str:
         cut = f"\n[output cut: {self.total - len(self.data)} bytes more]" if self.total > len(self.data) else ""
         return self.data.decode("utf-8", errors="replace") + cut
+
+
+def _group_alive(pgid: int) -> bool:
+    """Whether a process group has a member that is not a zombie; a container with no init to reap them keeps zombies around."""
+    procs = Path("/proc")
+    if not procs.is_dir():
+        try:
+            os.killpg(pgid, 0)
+            return True
+        except OSError:
+            return False
+    for entry in procs.iterdir():
+        if entry.name.isdigit():
+            try:
+                fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+            except (OSError, IndexError):
+                continue
+            if fields[0] != "Z" and int(fields[2]) == pgid:
+                return True
+    return False
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
