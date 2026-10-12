@@ -492,7 +492,7 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
     extra = {} if refused in _REFUSED_EXTRA else {k: v for k, v in REQUEST_EXTRA.get().items() if k not in ("model", "messages", "stream", "tools")}
     payload.update(extra)
     response = _post(provider, api_key, payload, bool(on_delta))
-    if extra and response.status_code == 400 and any(k.lower() in response.text.lower() for k in extra):
+    if extra and response.status_code in (400, 422) and any(k.lower() in response.text.lower() for k in extra):
         # A provider that refuses one of the extra fields is asked again without them.
         logger.warning("{} refused {}; asking without them from now on", provider.label, ", ".join(extra))
         _REFUSED_EXTRA.add(refused)

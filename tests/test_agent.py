@@ -1952,7 +1952,7 @@ def test_a_models_request_fields_from_the_profile_are_sent_and_dropped_when_refu
 
     def fake_post(provider, key, payload, stream):
         sent.append(dict(payload))
-        return FakeResponse(400, {"error": "unknown field top_k"}) if "top_k" in payload else FakeResponse(200, ok)
+        return FakeResponse(422, {"error": "unknown field top_k"}) if "top_k" in payload else FakeResponse(200, ok)
 
     monkeypatch.setattr(client, "_post", fake_post)
     monkeypatch.setattr(client, "_REFUSED_EXTRA", set())

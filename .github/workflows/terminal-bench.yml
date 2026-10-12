@@ -12,10 +12,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: terminal-bench-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   config:
     runs-on: ubuntu-22.04

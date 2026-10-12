@@ -1,17 +1,27 @@
 {
-  "secret": "POLAGRID_",
-  "base_url": "https://api.mia-01.edge.polargrid.ai/v1",
-  "model": "qwen-3.8-27b",
-  "n_tasks": 10,
-  "tasks": [],
+  "secret": "SOVINFRA_LAB_1B_TOKEN",
+  "base_url": "https://api.sovinfra.ai/v1",
+  "model": "qwen3.8-27b",
+  "n_tasks": 0,
+  "tasks": [
+    "adaptive-rejection-sampler",
+    "bn-fit-modify",
+    "break-filter-js-from-html",
+    "build-cython-ext",
+    "build-pmars",
+    "build-pov-ray",
+    "caffe-cifar-10",
+    "cancel-async-tasks",
+    "chess-best-move",
+    "circuit-fibsqrt"
+  ],
   "concurrent": 4,
   "minutes": 60,
   "mode": "bypass",
   "request": {
     "reasoning_effort": "xhigh",
     "temperature": 1.0,
-    "top_p": 0.95,
-    "top_k": 20
+    "top_p": 0.95
   },
-  "max_output_tokens": 65536
+  "max_output_tokens": 32000
 }
