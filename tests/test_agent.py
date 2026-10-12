@@ -3788,6 +3788,65 @@ def test_redoing_work_after_a_summary_is_noted_then_blocked(ws, home):
     assert session._run_call({**calls[0], "id": "again"})[0].startswith("Blocked: after the summary"), "three redone calls, then the guard blocks"
 
 
+def test_chains_hand_steps_to_model_roles_with_budgets_fallbacks_and_votes(ws, home, monkeypatch):
+    from app.agent import roles
+    monkeypatch.setenv("ROLE_KEY", "rk")
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "create", "model_roles": {
+        "cheap": {"base_url": "https://cheap.example/v1", "key_env": "ROLE_KEY", "model": "qwen-flash", "daily_requests": 1, "fallback": "other"},
+        "other": {"base_url": "https://other.example/v1", "key_env": "ROLE_KEY", "model": "luna", "note": "second opinion"},
+        "app": {"provider": "minirouter", "model": "mimo"}, "bad name": {"model": "x"}}}))
+    sent = []
+
+    def complete(provider, key, model, messages, *, tools):
+        sent.append((provider.api_base, key, model))
+        if model == "m":
+            return turn("main")
+        return turn("42" if model in ("qwen-flash", "luna") else "41")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
+    assert set(session.profile["model_roles"]) == {"cheap", "other", "app"}, "a bad role name is dropped"
+    assert "cheap (qwen-flash)" in session.system_prompt() and "other (luna: second opinion)" in session.system_prompt()
+    assert session._think("6*7?", "a number", "cheap") == "42" and sent[-1] == ("https://cheap.example/v1", "rk", "qwen-flash")
+    assert session._think("6*7?", "", "cheap") == "42" and sent[-1][2] == "luna", "cheap's one request a day is used, so its fallback answers"
+    assert roles.today(home)["cheap"]["requests"] == 1 and session.role_usage["other"]["requests"] == 1
+    with pytest.raises(ToolError, match="cannot look up"):
+        session._think("q", "", "app")
+    session.find_provider = lambda pid: (PROVIDERS["openai"], ["app-key"])
+    session._think("q", "", "app")
+    assert sent[-1][1:] == ("app-key", "mimo"), "an app provider is found by id with its own key"
+    votes = json.loads(session._vote({"question": "6*7?", "models": ["other", "app"]}))
+    assert votes["answers"] == {"other": "42", "app": "41"} and votes["agree"] is False
+    with pytest.raises(ToolError, match="no model role"):
+        session._think("q", "", "nope")
+    assert "cheap: qwen-flash @ https://cheap.example/v1 · hôm nay 1 request" in session.command("/models")["message"]
+    session._new_request("go")
+    chain = "def ask():\n    return [tools.think('6*7?', model='other'), tools.vote('6*7?', models=['other', 'app'])['agree']]\n"
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "ask", "code": chain, "args": {}, "keep": False}})
+    assert '["42", false]' in out, out
+
+
+def test_model_catalogs_read_prices_however_providers_give_them(monkeypatch):
+    from app.agent import roles
+    rows = {"data": [
+        {"id": "a/flash", "type": "language", "pricing": {"input": "0.00000015", "output": "0.0000003", "input_cache_read": "0.000000003"},
+         "context_window": 1000, "modalities": {"input": ["text", "image"]}},
+        {"id": "b/pro", "pricing": {"prompt": "0.000002", "completion": "0.000008"}, "context_length": 2000},
+        {"id": "c/img", "type": "image", "pricing": {"image": "0.03"}},
+        {"id": "d/free", "input_cost_per_million_tokens_usd": 0.0, "output_cost_per_million_tokens_usd": 0.0}]}
+
+    class Reply:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return rows
+    monkeypatch.setattr(roles.requests, "get", lambda url, headers, timeout: Reply())
+    found = roles.catalog("https://x/v1", {})
+    assert [r["id"] for r in found] == ["d/free", "a/flash", "b/pro"], "image models are left out, cheapest first"
+    assert found[1]["price"] == {"in": 0.15, "out": 0.3, "cached": 0.003} and found[1]["vision"] and found[2]["price"] == {"in": 2.0, "out": 8.0}
+    assert [r["id"] for r in roles.catalog("https://x/v1", {}, "pro")] == ["b/pro"]
+
+
 def test_created_tools_call_each_other_in_one_process_and_create_can_run_a_one_off_chain(ws, home, monkeypatch):
     from app.agent import guardian
     create_only(home)

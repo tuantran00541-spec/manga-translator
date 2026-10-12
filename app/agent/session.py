@@ -22,8 +22,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, repl, rules, sandbox, schema as schemas, services, skill_install, skills, watch
+import requests
+
+from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
 from app.agent.checkpoint import Checkpoints
+from app.ai_providers import auth_headers, resolve_provider
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
 
@@ -177,7 +180,7 @@ class _Tools:
 
     def __getattr__(self, name):
         if name in _REMOTE and name not in _SOURCES:
-            first = {{"skill": "name", "agent": "prompt", "think": "question"}}.get(name)
+            first = {{"skill": "name", "agent": "prompt", "think": "question", "vote": "question"}}.get(name)
             return lambda *a, **args: (self._step(), _call(name, {{first: a[0], **args}} if first and a else args))[1]
         if not name.startswith("_") and name not in _SOURCES:
             # A tool made earlier in this same chain is fetched from the agent.
@@ -262,6 +265,9 @@ tools.skill(name) returns a skill's instructions, tools.agent(prompt, agent="exp
 helper agent and returns its report, and tools.create(...) adds a tool you can call later in the same chain. Calls from several threads
 run at the same time. Each request allows 99 chains (runs making two or more tools.<name> calls), at most 20 of them longer than 10 calls, and 40 helper agents started from chains. Give create args to run the tool as soon as it is written;
 add keep: false for a one-off script that is not saved. The dict memo is shared by every tool call in the session, so a chain can leave data for the next one."""
+ROLES_PROMPT = ("Other models are yours to chain too, by role: {rows}. In a chain pass model=<role> to tools.think or tools.agent to give that "
+                "step to that model, and tools.vote(question, models=[roles], answer=...) asks several at once and says whether they agree. "
+                "Give cheap roles the summaries and side questions, a different model family the second opinion, and vote when one answer must be right.")
 HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a tool as Python code that runs in the sandbox (it is kept for later sessions). "
                  "Use the built-in tools while exploring or debugging step by step; when the steps are known, write them as one chain with create so they "
                  "run in a single call. Inside a chain tools.<name>(...) also calls the built-in tools (read_file, edit_file, run_command and the rest) and "
@@ -353,6 +359,7 @@ BUILTIN_COMMANDS = {
     "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn", "cache": "Xem tỉ lệ cache và những lần tiền tố yêu cầu bị đổi", "receipts": "Xem mọi file đã sửa, lệnh đã chạy và lần duyệt của phiên này",
     "plugins": "Xem plugin, tính năng đã tắt và agent ngoài (Codex, Claude Code)",
     "learn": "Xem lại phiên và tự viết hoặc sửa skill ngay; /learn history xem các lần tự học, /learn undo [mã] hoàn tác một lần",
+    "models": "Vai model: /models xem các vai và lượng dùng hôm nay; /models VAI [từ khoá] xem model và giá của nhà cung cấp vai đó",
     "tools": "Đổi bộ tool: /tools hybrid (có sẵn + create), create (chỉ create), full (chỉ có sẵn)",
 }
 GOAL_PROMPT = ("Goal: {text}\nWork on it across as many steps as needed until it is fully done and verified. "
@@ -448,6 +455,9 @@ class AgentSession:
         self.schedules: list[dict] = []
         self._watch = watch.Watch(workspace.root)
         self._repl: repl.Kernel | None = None
+        self.find_provider = None
+        self.role = ""
+        self.role_usage: dict[str, dict] = {}
         # Past lessons are sent once at each cold start: a new or resumed session, and after a compaction.
         self._digest_due = True
         self._before_summary: dict[str, str] = {}
@@ -804,6 +814,8 @@ class AgentSession:
             return {"message": "\n".join(rows) or "Không có skill nào."}
         if name == "learn":
             return {"message": self._learn_command(args)}
+        if name == "models":
+            return {"message": self._models_command(args)}
         if name == "tools":
             if args not in registry.TOOL_SETS:
                 return {"message": f"Bộ tool hiện tại: {self.profile['tools']}. Đổi bằng /tools {'|'.join(registry.TOOL_SETS)} (chỉ cho phiên này; ghi \"tools\" vào profile.json để giữ lâu dài)."}
@@ -1528,6 +1540,7 @@ class AgentSession:
         if self.profile["tools"] == "hybrid":
             # In hybrid a chain also reaches the built-in tools, through the same rules and approvals.
             names |= {s["name"] for s in self.specs()} - {"exit_plan_mode", "goal_done"} - set(self._root().created)
+        names |= {"vote"} if self.profile["model_roles"] else set()
         return names | ({"skill"} if self.skills else set())
 
     def _serve_chain(self, folder: Path, job: "sandbox.Job") -> None:
@@ -1552,11 +1565,14 @@ class AgentSession:
                     found = self.skills.get(str(args.get("name") or ""))
                     output, ok = (skills.load(found), True) if found else (f"No skill named {args.get('name')!r}; known: {', '.join(self.skills)}", False)
                 elif name == "think":
-                    output, ok = self._think(str(args.get("question") or ""), str(args.get("answer") or "")), True
+                    output, ok = self._think(str(args.get("question") or ""), str(args.get("answer") or ""), str(args.get("model") or "")), True
+                elif name == "vote":
+                    output, ok = self._vote(args), True
                 elif name == "agent":
                     output, ok = self._spend_chain("agent")
                     if ok:
-                        output = self._subagent("chain", str(args.get("prompt") or ""), str(args.get("agent") or "explore"))
+                        role = {"role": str(args["model"])} if args.get("model") else {}
+                        output = self._subagent("chain", str(args.get("prompt") or ""), str(args.get("agent") or "explore"), **role)
                 elif name == "create":
                     output, ok = self._create(args), True
                 else:
@@ -1662,13 +1678,66 @@ class AgentSession:
             return f"chain budget used up: at most {limit} {label} per request; finish with what you have or ask the user", False
         return "ok", True
 
-    def _think(self, question: str, answer: str = "") -> str:
-        """One question from a running chain to the model, answered without tools."""
+    def _role_target(self, name: str, seen: tuple = ()) -> tuple[str, object, str, str]:
+        """(role used, provider, key, model) for a model role, moving to its fallback once today's budget is spent."""
+        table = self.profile["model_roles"]
+        cfg = table.get(name)
+        if cfg is None:
+            raise ToolError(f"no model role {name!r}; roles: {', '.join(table) or 'none (add model_roles to profile.json)'}")
+        if not roles.within(self.home if self.home is not None else Path.home(), name, cfg):
+            if cfg["fallback"] and cfg["fallback"] not in (*seen, name):
+                return self._role_target(cfg["fallback"], (*seen, name))
+            raise ToolError(f"model role {name} has used today's budget and no fallback is left")
+        if "provider" in cfg:
+            find = self._root().find_provider
+            if find is None:
+                raise ToolError(f"role {name} names the app provider {cfg['provider']!r}, which this session cannot look up")
+            provider, keys = find(cfg["provider"])
+            key = keys[0] if keys else ""
+        else:
+            provider = resolve_provider(f"role-{name}", label=f"role {name}", protocol="openai", api_base=cfg["base_url"])
+            key = roles.env_key(cfg)
+        if not key:
+            raise ToolError(f"role {name} has no API key")
+        return name, provider, key, cfg["model"]
+
+    def _count_role(self, name: str, requests_made: int, tokens: int) -> None:
+        roles.add(self.home if self.home is not None else Path.home(), name, requests_made, tokens)
+        with self._usage_lock:
+            row = self._root().role_usage.setdefault(name, {"requests": 0, "tokens": 0})
+            row["requests"] += requests_made
+            row["tokens"] += tokens
+
+    def _vote(self, args: dict) -> str:
+        """Ask several model roles the same question side by side; returns each answer and whether they agree."""
+        question, answer = str(args.get("question") or ""), str(args.get("answer") or "")
+        names = [str(m) for m in args.get("models") or []][:5] if isinstance(args.get("models"), list) else []
+        if len(names) < 2:
+            raise ToolError("vote needs models=[two or more model roles]")
+        with ThreadPoolExecutor(max_workers=len(names)) as pool:
+            futures = {n: pool.submit(self._think, question, answer, n) for n in names}
+        answers = {}
+        for n, future in futures.items():
+            try:
+                answers[n] = future.result()
+            except Exception as exc:
+                answers[n] = f"Error: {exc}"
+        plain = {" ".join(a.lower().strip(" .").split()) for a in answers.values() if not a.startswith("Error:")}
+        return json.dumps({"answers": answers, "agree": len(plain) == 1 and len(plain) > 0}, ensure_ascii=False)
+
+    def _think(self, question: str, answer: str = "", model: str = "") -> str:
+        """One question from a running chain to the session's model, or to a model role, answered without tools."""
         if not question.strip():
             raise ToolError("think needs a question")
         shape = f" in this form: {answer}" if answer else ""
         messages = [{"role": "system", "content": f"A program you wrote is running and asks you this. Reply with only the answer{shape}, no other text."},
                     {"role": "user", "content": question[:200_000]}]
+        if model:
+            used, provider, key, name = self._role_target(model)
+            reply = self._raw_complete(provider, key, name, messages, tools=None)
+            usage = reply.get("usage") or {}
+            self._count_role(used, 1, int(usage.get("prompt_tokens") or 0) + int(usage.get("completion_tokens") or 0))
+            return reply["text"].strip()
         reply = self.complete(self.provider, self.api_key, self.model, messages, tools=None)
         with self._usage_lock:
             for key in self.usage:
@@ -2062,11 +2131,11 @@ class AgentSession:
         child.merge_note = note + "]"
         self.emit("notice", text=f"Merged {child.nick}'s work: {len(applied)} file(s)" + (f", {len(conflicts)} conflict(s)" if conflicts else ""))
 
-    def _spawn(self, message: str, agent_name: str, dedupe: bool = True) -> str:
+    def _spawn(self, message: str, agent_name: str, dedupe: bool = True, role: str = "") -> str:
         with self._spawn_lock:
-            return self._spawn_locked(message, agent_name, dedupe)
+            return self._spawn_locked(message, agent_name, dedupe, role)
 
-    def _spawn_locked(self, message: str, agent_name: str, dedupe: bool) -> str:
+    def _spawn_locked(self, message: str, agent_name: str, dedupe: bool, role: str = "") -> str:
         if not message.strip():
             raise ToolError("The agent needs a message")
         agent = self.agents.get(agent_name)
@@ -2100,9 +2169,15 @@ class AgentSession:
         helper = Workspace(copy or self.workspace.root, self.workspace.policy if mutating else sandbox.Policy("read-only", False),
                            read_roots=self.workspace.read_roots)
         helper.services = self.workspace.services
-        child = AgentSession(f"{self.id}-{nick}", self.provider, self.api_keys, agent.model or self.profile.get("subagent_model") or self.model, helper,
+        used, provider, keys, model = "", self.provider, self.api_keys, agent.model or self.profile.get("subagent_model") or self.model
+        if role:
+            # A helper on a model role runs on that role's provider, key and model.
+            used, provider, key, model = self._role_target(role)
+            keys = [key]
+        child = AgentSession(f"{self.id}-{nick}", provider, keys, model, helper,
                              self.mode if mutating else "bypass", complete=self._raw_complete, depth=self.depth + 1, home=self.home,
                              trust=self.trust, parent=self, agent=agent)
+        child.role = used
         child.text_tools, child.nick, child.job, child.mutating = self.text_tools, nick, job, mutating and copy is None
         child.copy, child.base = copy, base
         self.children[nick] = child
@@ -2214,15 +2289,17 @@ class AgentSession:
                 note = {"agent_id": child.nick, "agent": child.agent.name, "status": self._state(child), "result": self._result(child)}
                 self.history.append({"role": "user", "content": f"<subagent_notification>{json.dumps(note, ensure_ascii=False)}</subagent_notification>"})
 
-    def _subagent(self, description: str, prompt: str, agent_name: str = "explore") -> str:
-        """One job, started and waited for at once; the helper is closed afterwards."""
-        nick = self._spawn(prompt, agent_name, dedupe=False)
+    def _subagent(self, description: str, prompt: str, agent_name: str = "explore", role: str = "") -> str:
+        """One job, started and waited for at once (on a model role when one is named); the helper is closed afterwards."""
+        nick = self._spawn(prompt, agent_name, dedupe=False, role=role)
         child = self.children[nick]
         while self._state(child) in ("running", "queued") and not self._stop:
             self._start_queued()
             time.sleep(0.2)
         self._collect(child)
         answer = self._result(child)
+        if child.role:
+            self._count_role(child.role, child.cache_log["requests"], child.usage["prompt_tokens"] + child.usage["completion_tokens"])
         child.close()
         child.closed = True
         return answer
@@ -2424,6 +2501,9 @@ class AgentSession:
             parts.append("Work until the job is done, then end with a complete report: the parent sees only your final reply.")
         if self.profile["tools"] == "hybrid" and not self.depth and self.workspace.policy.mode != "read-only":
             parts.append(HYBRID_PROMPT)
+        if self.profile["model_roles"] and not self.depth and self.profile["tools"] != "full":
+            rows = "; ".join(f"{n} ({c['model']}{': ' + c['note'] if c['note'] else ''})" for n, c in self.profile["model_roles"].items())
+            parts.append(ROLES_PROMPT.format(rows=rows))
         if self.quirks.get("prompt_extra"):
             parts.append(str(self.quirks["prompt_extra"]))
         parts.append(self._pinned.get("Skills", ""))
@@ -2905,6 +2985,30 @@ class AgentSession:
             self.reload_skills()
             self.emit("notice", text="Learned: " + "; ".join(done) + (f" (/learn undo {entry} to roll back)" if entry else ""))
 
+    def _models_command(self, args: str) -> str:
+        """/models lists the model roles with today's use; /models ROLE [words] lists that role's provider's models with prices."""
+        table = self.profile["model_roles"]
+        name, _, query = args.strip().partition(" ")
+        if not name:
+            if not table:
+                return "Chưa có vai model nào: thêm model_roles vào ~/.manga-agent/profile.json."
+            used = roles.today(self.home if self.home is not None else Path.home())
+            rows = []
+            for n, c in table.items():
+                u = used.get(n, {})
+                cap = ", ".join(x for x in (f"{c['daily_requests']} request" if c["daily_requests"] else "", f"{c['daily_tokens']:,} token" if c["daily_tokens"] else "") if x)
+                rows.append(f"{n}: {c['model']} @ {c.get('provider') or c.get('base_url')} · hôm nay {u.get('requests', 0)} request, {u.get('tokens', 0):,} token"
+                            + (f" / tối đa {cap}" if cap else "") + (f" · dự phòng {c['fallback']}" if c["fallback"] else ""))
+            return "\n".join(rows)
+        try:
+            _, provider, key, _ = self._role_target(name)
+            found = roles.catalog(provider.api_base, auth_headers(provider, key), query.strip())
+        except (ToolError, requests.RequestException, ValueError) as exc:
+            raise ValueError(f"Không lấy được danh sách model: {exc}") from exc
+        money = lambda p, k: f"${p[k]:g}" if k in p else "?"
+        return "\n".join(f"{r['id']} · vào {money(r['price'], 'in')} ra {money(r['price'], 'out')} cache {money(r['price'], 'cached')} /1M"
+                         + (f" · {r['context']:,} ctx" if isinstance(r["context"], int) else "") + (" · ảnh" if r["vision"] else "") for r in found) or "Không có model nào khớp."
+
     def _learn_command(self, args: str) -> str:
         """/learn reviews now; /learn history lists past reviews; /learn undo [id] rolls one back."""
         home = self.home if self.home is not None else Path.home()
@@ -3276,6 +3380,8 @@ class AgentSessionManager:
 
     def __init__(self, store_dir: Path | None = None, trust: context.TrustStore | None = None, home: Path | None = None):
         self.store_dir, self.home = store_dir, home
+        # The app sets this to find a configured provider and its keys by id, which model roles may name.
+        self.find_provider = None
         self.trust = trust or context.TrustStore(store_dir / "trust.json" if store_dir else None)
         self.sessions: dict[str, AgentSession] = {}
         _harden_process()
@@ -3296,6 +3402,7 @@ class AgentSessionManager:
         session_id = session_id or uuid.uuid4().hex[:16]
         session = AgentSession(session_id, provider, api_key, model, workspace, mode, complete=complete,
                                store=self._path(session_id), trust=self.trust, home=self.home)
+        session.find_provider = self.find_provider
         self.sessions[session_id] = session
         return session
 

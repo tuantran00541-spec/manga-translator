@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 from typing import Callable
 
-from app.agent import context
+from app.agent import context, roles
 
 # The tool each group switches, so a profile can turn whole features off (shell, web, edits, subagents...).
 GROUPS = {
@@ -20,7 +20,7 @@ GROUPS = {
     "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "tool_search": "mcp", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
     "plugin_write": "extensions", "plugin_remove": "extensions",
 }
-COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "learn": "skills", "mcp": "mcp"}
+COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "learn": "skills", "models": "subagents", "mcp": "mcp"}
 ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
 REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file", "edit_lines",
                          "apply_patch", "run_command", "web_fetch", "web_search", "web_download"})
@@ -43,7 +43,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                      "compact_model": "", "untrusted_guard": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "learn_every": 10, "prewalk_model": "",
-                     "replace": {}, "roles": {}, "services": {}, "tools": DEFAULT_TOOLS}
+                     "replace": {}, "roles": {}, "model_roles": {}, "services": {}, "tools": DEFAULT_TOOLS}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -116,6 +116,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                 if isinstance(data.get("services"), dict):
                     profile["services"].update({k: v for k, v in data["services"].items()
                                                 if isinstance(v, str) or (isinstance(v, list) and all(isinstance(x, str) for x in v))})
+                if isinstance(data.get("model_roles"), dict):
+                    profile["model_roles"].update(roles.parse(data["model_roles"]))
                 if isinstance(data.get("roles"), dict):
                     profile["roles"].update({k: v for k, v in data["roles"].items() if str(k).startswith("mcp__") and v in ROLES})
     profile["disable"] = sorted(set(profile["disable"]))

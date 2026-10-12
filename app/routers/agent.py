@@ -46,6 +46,15 @@ router = APIRouter(prefix="/api/agent", tags=["agent"], dependencies=[Depends(gu
 agent_sessions = AgentSessionManager(BASE_DIR / "data" / "agent")
 
 
+def _find_provider(provider_id: str):
+    """A configured provider and its keys by id, for model roles that name one."""
+    provider = _resolve_configured_provider(provider_id)
+    return provider, get_provider_api_keys(provider.id, provider_label=provider.label)
+
+
+agent_sessions.find_provider = _find_provider
+
+
 class SessionRequest(BaseModel):
     provider: str
     model: str
