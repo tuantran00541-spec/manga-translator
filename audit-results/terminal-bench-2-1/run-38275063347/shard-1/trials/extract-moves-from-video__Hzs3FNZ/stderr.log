@@ -1,0 +1,1 @@
+left running: job1 (process group 7080): cd /app && mkdir -p ocr && ls frames/*.png | xargs -P 8 -I{} sh -c 'b=$(basename {} .png); tesseract {} ocr/$b 2>/dev/nu
