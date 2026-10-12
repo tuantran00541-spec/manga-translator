@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, rules, sandbox, schema as schemas, services, skill_install, skills, watch
+from app.agent import advisor, agents, aliases, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, repl, rules, sandbox, schema as schemas, services, skill_install, skills, watch
 from app.agent.checkpoint import Checkpoints
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
@@ -233,8 +233,10 @@ You start with one tool, create. Build every other tool you need with it, the wa
 a name, a description, JSON-schema parameters, and Python code that defines a function of that name taking those parameters.
 A tool runs as a Python script in the sandbox with the workspace as its working folder: it can read and write files, run programs
 with subprocess and use the network if the sandbox allows; whatever it returns or prints is the result. Return exit codes and errors
-in full, and keep long output short (head and tail). Each call is a fresh process: keep a working folder, variables or notes in files under
-the AGENT_STATE folder (an environment variable), which lasts the whole session. A call still running after 5 minutes moves to the
+in full, and keep long output short (head and tail). Calls run one after another in one Python process that lasts the session: memo is a dict
+every call shares, so read a file, parse data or compute a result once, store it in memo and reuse it in later calls instead of doing it again;
+imports stay loaded too. A call made while another still runs gets a fresh process with memo empty, and files that must outlive a restart go
+under the AGENT_STATE folder (an environment variable). A call still running after 5 minutes moves to the
 background and you are told when it ends. Files a tool changes are listed after its output. Tools are kept for later sessions: reuse them, fix one by creating it again
 under the same name, delete one with empty code. Prefer a few general tools (a shell, a file reader, an exact-text editor) over many narrow ones.
 {chain}Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
@@ -248,7 +250,7 @@ you are shown the error and rewrite that tool on the spot, and the chain retries
 tools.skill(name) returns a skill's instructions, tools.agent(prompt, agent="explore") runs a
 helper agent and returns its report, and tools.create(...) adds a tool you can call later in the same chain. Calls from several threads
 run at the same time. Each request allows 99 chains (runs making two or more tools.<name> calls), at most 20 of them longer than 10 calls, and 40 helper agents started from chains. Give create args to run the tool as soon as it is written;
-add keep: false for a one-off script that is not saved."""
+add keep: false for a one-off script that is not saved. The dict memo is shared by every tool call in the session, so a chain can leave data for the next one."""
 HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a tool as Python code that runs in the sandbox (it is kept for later sessions). "
                  "Use the built-in tools while exploring or debugging step by step; when the steps are known, write them as one chain with create so they "
                  "run in a single call. Inside a chain tools.<name>(...) also calls the built-in tools (read_file, edit_file, run_command and the rest) and "
@@ -339,7 +341,7 @@ BUILTIN_COMMANDS = {
     "undo": "Hoàn tác file agent đã sửa ở lượt gần nhất", "memory": "Xem ghi nhớ: /memory, /memory add NỘI DUNG, /memory rm project|user SỐ",
     "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn", "cache": "Xem tỉ lệ cache và những lần tiền tố yêu cầu bị đổi", "receipts": "Xem mọi file đã sửa, lệnh đã chạy và lần duyệt của phiên này",
     "plugins": "Xem plugin, tính năng đã tắt và agent ngoài (Codex, Claude Code)",
-    "learn": "Xem lại phiên này và tự viết hoặc sửa skill ngay",
+    "learn": "Xem lại phiên và tự viết hoặc sửa skill ngay; /learn history xem các lần tự học, /learn undo [mã] hoàn tác một lần",
     "tools": "Đổi bộ tool: /tools hybrid (có sẵn + create), create (chỉ create), full (chỉ có sẵn)",
 }
 GOAL_PROMPT = ("Goal: {text}\nWork on it across as many steps as needed until it is fully done and verified. "
@@ -434,6 +436,9 @@ class AgentSession:
         self._clock: tuple[float, float] | None = None
         self.schedules: list[dict] = []
         self._watch = watch.Watch(workspace.root)
+        self._repl: repl.Kernel | None = None
+        # Past lessons are sent once at each cold start: a new or resumed session, and after a compaction.
+        self._digest_due = True
         self.asked_s = 0.0
         self._one_offs: dict[str, dict] = {}
         self.chain_budget: dict[str, int] = {}
@@ -739,7 +744,12 @@ class AgentSession:
         if update:
             self.history.append({"role": "user", "content": update})
             self.cache_log["context updates"] += 1
-        self.history.append({"role": "user", "content": text + extra})
+        if self._digest_due and not self.depth:
+            self._digest_due = False
+            lessons = learn.digest(self.home if self.home is not None else Path.home(), self.workspace.root, text)
+            if lessons:
+                self.history.append({"role": "user", "content": lessons})
+        self.history.append({"role": "user", "content": text + extra, "from_user": True})
         threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
         return False
 
@@ -780,7 +790,7 @@ class AgentSession:
             rows = [f"{'/' if s.manual else ''}{s.name}{' (có sẵn)' if s.builtin else ''}: {s.description[:150]}" for s in self.skills.values()]
             return {"message": "\n".join(rows) or "Không có skill nào."}
         if name == "learn":
-            return {"message": self._maybe_learn(force=True)}
+            return {"message": self._learn_command(args)}
         if name == "tools":
             if args not in registry.TOOL_SETS:
                 return {"message": f"Bộ tool hiện tại: {self.profile['tools']}. Đổi bằng /tools {'|'.join(registry.TOOL_SETS)} (chỉ cho phiên này; ghi \"tools\" vào profile.json để giữ lâu dài)."}
@@ -983,6 +993,8 @@ class AgentSession:
                 shutil.rmtree(child.copy, ignore_errors=True)
         if not self.depth and getattr(self, "kernel", None) is not None:
             self.kernel.close()
+        if self._repl is not None:
+            self._repl.close()
         for server in self.mcp_servers.values():
             server.close()
         self.mcp_servers.clear()
@@ -1463,8 +1475,9 @@ class AgentSession:
         rpc.mkdir(parents=True)
         where = "/tmp" if docker else str(state)
         # AGENT_STATE outlives the call, so a tool can keep a working folder, variables or notes between calls.
-        prelude = (f"import os as _os, sys as _sys\n_os.environ['AGENT_STATE'] = {where!r}\n_sys.path.insert(0, _os.path.join({where!r}, 'lib'))\n"
-                   f"_os.environ['AGENT_RPC'] = _os.path.join({where!r}, 'rpc', {run_id!r})\nfrom agent_tools import tools\n")
+        prelude = (f"import builtins as _b, os as _os, sys as _sys\n_os.environ['AGENT_STATE'] = {where!r}\n_sys.path.insert(0, _os.path.join({where!r}, 'lib'))\n"
+                   f"_os.environ['AGENT_RPC'] = _os.path.join({where!r}, 'rpc', {run_id!r})\nfrom agent_tools import tools\n"
+                   "memo = _b.memo = getattr(_b, 'memo', {})\n")
         script = prelude + tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
         # The script goes in a file, so neither its code nor its arguments have a size limit.
         (rpc / "main.py").write_text(script, encoding="utf-8")
@@ -1475,7 +1488,13 @@ class AgentSession:
             self._watch.refresh()
             self._watch_request = self._request_no
         guard = gitguard.snapshot(self.workspace.root)
-        job = sandbox.Job(command, policy, self.workspace.root, scratch=str(state))
+        # Calls run one after another in the session's kernel, where imports and memo last; one made while another still runs gets a fresh process.
+        if self._repl is None:
+            self._repl = repl.Kernel(state)
+        job = self._repl.start(run_id, target, policy, self.workspace.root, where, docker)
+        note = job.note if job is not None else "[ran in a fresh process because another tool call was still running, so memo started empty]\n"
+        if job is None:
+            job = sandbox.Job(command, policy, self.workspace.root, scratch=str(state))
         server = threading.Thread(target=self._serve_chain, args=(rpc, job), name=f"agent-chain-{self.id}", daemon=True)
         server.start()
         output = self._await_job(job, CREATED_TIMEOUT, guard)
@@ -1486,7 +1505,7 @@ class AgentSession:
             # A tool that runs programs and changed nothing counts as a check, like a command did.
             self._dirty = False
             self._run_seq = self._edit_seq + 1
-        return output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "")
+        return note + output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "")
 
     def _chain_targets(self) -> set[str]:
         """What a created tool's code may reach through the agent: the user's plugin and MCP tools, and skills."""
@@ -2569,6 +2588,7 @@ class AgentSession:
         ack = [{"role": "assistant", "content": "Understood; continuing from that summary.", "calls": []}] if not tail or tail[0]["role"] == "user" else []
         self.history = marker + ack + tail
         self._pinned = None
+        self._digest_due = True
         self.cache_log["compactions"] += 1
         self.emit("notice", text=f"Compacted {len(head)} older conversation items.")
         return True
@@ -2746,7 +2766,11 @@ class AgentSession:
         start = min(self._learned_to, len(self.history))
         if not any(item["role"] == "tool" for item in self.history[start:]):
             return "Chưa có việc gì mới để học."
+        chains = {r["name"]: r["tool"] for r in self._one_offs.values() if r["name"] not in self._root().created}
         self._since_learn, self._learned_to = 0, len(self.history)
+        if not force and not learn.worth_review(self.history[start:], chains):
+            # Only reads that all went well leave nothing to learn, so no model is asked.
+            return ""
         transcript = self._transcript(self.history[start:])
         root = learn.project_root(self._touched(self.history[start:]), self.workspace.root)
         self._learning = threading.Thread(target=self._learn, args=(transcript, root), name=f"agent-learn-{self.id}", daemon=True)
@@ -2778,15 +2802,16 @@ class AgentSession:
         folder = learn.project_folder(home, root)
         chains = {r["name"]: r["tool"] for r in self._one_offs.values() if r["name"] not in self._root().created}
         items, lessons, usage, keep = learn.review(self.complete, self.provider, self.api_key, model, transcript, home, learn.session_file(folder, self.id), chains)
+        changes = learn.Changes()
         try:
-            done = learn.write(home, items, (self.api_key,))
+            done = learn.write(home, items, (self.api_key,), changes)
             for name in keep:
                 if name in chains and name not in self._root().created:
                     self._create({k: chains[name][k] for k in ("name", "description", "parameters", "code")})
                     done.append(f"kept the chain {name} as a tool")
-            if lessons and learn.write_lessons(folder, root, self.id, lessons, (self.api_key,)):
+            if learn.write_lessons(folder, root, self.id, lessons["add"], (self.api_key,), lessons["drop"], changes):
                 done.append(f"lesson notes for {root.name}")
-            merged, more = learn.consolidate(self.complete, self.provider, self.api_key, model, folder, (self.api_key,))
+            merged, more = learn.consolidate(self.complete, self.provider, self.api_key, model, folder, (self.api_key,), changes)
             usage = {k: int(usage.get(k) or 0) + int(more.get(k) or 0) for k in set(usage) | set(more)}
             if merged:
                 done.append(merged)
@@ -2796,8 +2821,24 @@ class AgentSession:
             for key in self.usage:
                 self.usage[key] += int(usage.get(key) or 0)
         if done:
+            entry = changes.commit(home, "auto review", self.id, done)
             self.reload_skills()
-            self.emit("notice", text="Learned: " + "; ".join(done))
+            self.emit("notice", text="Learned: " + "; ".join(done) + (f" (/learn undo {entry} to roll back)" if entry else ""))
+
+    def _learn_command(self, args: str) -> str:
+        """/learn reviews now; /learn history lists past reviews; /learn undo [id] rolls one back."""
+        home = self.home if self.home is not None else Path.home()
+        word, _, rest = args.strip().partition(" ")
+        if word == "history":
+            rows = learn.history(home)[-15:]
+            return "\n".join(f"{r['id']} · {r['at']} · {'đã hoàn tác · ' if r['undone'] else ''}{'; '.join(r['summary'])[:200]}" for r in rows) or "Chưa có lần tự học nào."
+        if word == "undo":
+            done = learn.undo(home, rest.strip())
+            if not done:
+                return "Không có lần tự học nào để hoàn tác."
+            self.reload_skills()
+            return f"Đã hoàn tác lần tự học {done}."
+        return self._maybe_learn(force=True)
 
     def _oracle(self, question: str) -> str:
         """The agent asks the advisor model for a second opinion on the recent conversation (Amp's oracle)."""
@@ -2899,7 +2940,7 @@ class AgentSession:
                     self.stats["tool_s"] += time.time() - started
 
         def record(call: dict, output: str, ok: bool) -> None:
-            self.history.append({"role": "tool", "id": call["id"], "name": call["name"], "content": output})
+            self.history.append({"role": "tool", "id": call["id"], "name": call["name"], "content": output, **({} if ok else {"failed": True})})
             # The page and the saved session keep a clipped copy; the model's history keeps all of it.
             self.emit("tool", id=call["id"], name=call["name"], ok=ok, output=clip(output, EVENT_OUTPUT))
 

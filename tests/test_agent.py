@@ -3531,14 +3531,15 @@ def test_learned_skills_are_written_only_over_learned_ones_and_never_hold_secret
     assert done == ["Learned python-tests"] and (mine / "SKILL.md").read_text().endswith("keep\n"), "a user's own skill is never touched"
     found = skills_module.discover(home / "nowhere", home)
     assert found["python-tests"].description == "Run this repo's tests: notes." and "pytest -q" in skills_module.load(found["python-tests"])
-    assert learn.write(home, [{"name": "python-tests", "description": "Run tests.", "body": "pytest -q -x"}]) == ["Updated python-tests"]
+    assert learn.write(home, [{"name": "python-tests", "description": "Run tests.", "body": "pytest -q -x"}]) == ["Updated python-tests (v2)"]
+    assert "version: 2" in (home / ".manga-agent" / "skills" / "python-tests" / "SKILL.md").read_text()
 
 
 def test_a_session_learns_a_skill_after_enough_tool_work_unless_it_read_the_web(ws, home):
     (home / ".manga-agent").mkdir()
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"learn_every": 2}))
     skill = json.dumps({"skills": [{"name": "read-pkg", "description": "Read pkg files first.", "body": "Read pkg/a.py before editing."}]})
-    fake = scripted(turn(calls=[call("read_file", path="pkg/a.py")]), turn(calls=[call("list_dir", path=".")]), turn("Done."), turn(skill))
+    fake = scripted(turn(calls=[call("read_file", path="pkg/a.py")]), turn(calls=[call("run_command", command="echo ok")]), turn("Done."), turn(skill))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     end = time.time() + 5
@@ -3557,7 +3558,7 @@ def test_a_long_request_leaves_lesson_notes_for_its_session_that_later_sessions_
     (home / ".manga-agent").mkdir()
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"learn_every": 2}))
     notes = "- Ran pytest from the wrong folder; imports failed. Fix: run from the repo root."
-    fake = scripted(turn(calls=[call("read_file", path="pkg/a.py")]), turn(calls=[call("list_dir", path=".")]), turn("Done."),
+    fake = scripted(turn(calls=[call("read_file", path="pkg/a.py")]), turn(calls=[call("run_command", command="cd . && echo ok")]), turn("Done."),
                     turn(json.dumps({"skills": [], "lessons": notes})))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
@@ -3588,6 +3589,54 @@ def test_notes_follow_the_project_the_work_was_in_not_the_workspace(ws, home, tm
     learn.write_lessons(learn.project_folder(home, other.resolve()), other.resolve(), "s1", "- a lesson")
     prompt = learn.lessons_prompt(home, ws.root)
     assert "in this project" not in prompt and "one folder per project with a PROJECT file" in prompt, "a session elsewhere is told where other projects' notes are"
+
+
+def test_reviews_need_evidence_add_lessons_without_rewriting_and_can_be_undone(home, tmp_path):
+    from app.agent import learn
+    reads = [{"role": "user", "content": "look", "from_user": True}, {"role": "assistant", "content": "", "calls": [{"name": "read_file", "args": {}}]},
+             {"role": "tool", "id": "1", "name": "read_file", "content": "x"}]
+    assert not learn.worth_review(reads, {}), "reads that all went well teach nothing, so no model is asked"
+    assert learn.worth_review(reads + [{"role": "tool", "id": "2", "name": "run_command", "content": "boom\n[exit code 2]"}], {})
+    assert learn.worth_review(reads + [{"role": "user", "content": "no, use pytest -x", "from_user": True}], {}), "a user correction counts"
+    assert learn.worth_review(reads, {"fix": {}}), "a one-off chain to keep counts"
+    folder, root, changes = tmp_path / "notes", tmp_path / "proj", learn.Changes()
+    assert learn.write_lessons(folder, root, "s1", ["- Run pytest from the root.", "- Quote paths with spaces."])
+    assert learn.write_lessons(folder, root, "s1", ["- Run pytest from the root.", "- Use -x to stop early."], drop=["Quote paths"], changes=changes)
+    text = learn.session_file(folder, "s1").read_text()
+    assert text.count("Run pytest from the root") == 1 and "Use -x" in text and "Quote paths" not in text, text
+    learn.write(home, [{"name": "py-tests", "description": "Run tests.", "body": "pytest -q"}], changes=changes)
+    entry = changes.commit(home, "test", "s1", ["two edits"])
+    assert entry and learn.history(home)[-1]["id"] == entry
+    later = learn.Changes()
+    learn.write(home, [{"action": "delete", "name": "py-tests"}], changes=later)
+    assert "py-tests" not in learn.learned(home)
+    later.commit(home, "test", "s1", ["deleted"])
+    assert learn.undo(home) and "py-tests" in learn.learned(home), "undo brings the deleted skill back"
+    assert learn.undo(home) == entry and "py-tests" not in learn.learned(home) and "Quote paths" in learn.session_file(folder, "s1").read_text()
+    assert learn.undo(home) == "" and all(r["undone"] for r in learn.history(home))
+
+
+def test_related_lessons_arrive_as_one_message_at_each_cold_start(ws, home):
+    from app.agent import learn
+    root = ws.root.resolve()
+    folder = learn.project_folder(home, root)
+    learn.write_lessons(folder, root, "old", ["- The render tests need fonts installed first.", "- Use pytest -x so the first failure stops the run."])
+    learn.write_lessons(folder, root, "new", ["- Seam bugs come from slices cut through a bubble."])
+    text = learn.digest(home, ws.root, "pytest fails on the seam tests", limit=2)
+    assert text.index("pytest -x") < text.index("Seam bugs") and "fonts" not in text, "most shared words first, then the newer note"
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("a"), turn("b"), turn("summary"), turn("d")))
+    session.send("fix the seam bug")
+    run_to_idle(session)
+    sent = [h["content"] for h in session.history if h["role"] == "user"]
+    assert sent[0].startswith("<lessons>") and "Seam bugs" in sent[0] and sent[1] == "fix the seam bug"
+    session.send("and again")
+    run_to_idle(session)
+    assert sum(h["content"].startswith("<lessons>") for h in session.history if h["role"] == "user") == 1, "once per cold start"
+    assert session.compact()
+    session.send("after the summary")
+    run_to_idle(session)
+    users = [h["content"] for h in session.history if h["role"] == "user"]
+    assert users[users.index("after the summary") - 1].startswith("<lessons>"), "a compaction is a cold start too"
 
 
 def test_ten_lesson_files_are_merged_into_a_summary_or_kept_as_the_model_decides(tmp_path):
@@ -3683,6 +3732,24 @@ def test_created_tools_keep_state_track_changed_files_for_undo_and_move_to_the_b
     session._notifications()
     note = session.history[-1]["content"]
     assert "job1 finished with exit code 0" in note and "pkg/late.txt" in note, note
+
+
+def test_created_tools_share_one_process_where_memo_lasts_until_the_policy_changes(ws, home):
+    create_only(home)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    session._create({"name": "load", "code": "import os\ndef load(path):\n    memo['text'] = open(path).read()\n    memo['pid'] = os.getpid()\n    return len(memo['text'])\n"})
+    session._create({"name": "peek", "code": "import os\ndef peek():\n    print('out')\n    return [memo.get('text', '')[:5], memo.get('pid') == os.getpid()]\n"})
+    run = lambda name, args: session._run_call({"id": name, "name": name, "args": args})[0]
+    assert "[exit code 0]" in run("load", {"path": "pkg/a.py"})
+    out = run("peek", {})
+    assert '["def f", true]' in out and "out" in out, "a later call sees memo and runs in the same process"
+    session.plan_mode = True
+    out = run("peek", {})
+    assert out.startswith("[the tool process restarted, so memo was cleared]") and '["", false]' in out, out
+    session.plan_mode = False
+    session.close()
+    assert session._repl.job is None
 
 
 def test_created_tools_call_each_other_in_one_process_and_create_can_run_a_one_off_chain(ws, home, monkeypatch):
@@ -3895,7 +3962,7 @@ def test_the_command_line_waits_for_the_learning_review_before_exiting(ws, home,
         time.sleep(1.0)
         return turn(json.dumps({"skills": [], "lessons": "- Listed the folder before reading."}))
 
-    fake = scripted(turn(calls=[call("list_dir")]), turn("All listed."), slow_review)
+    fake = scripted(turn(calls=[call("run_command", command="ls")]), turn("All listed."), slow_review)
     original = AgentSessionManager.create
     monkeypatch.setattr(AgentSessionManager, "create", lambda self, *a, **kw: original(self, *a, **{**kw, "complete": fake}))
     assert cli.main(["exec", "list it", "--base", "https://api.example.com/v1", "--model", "m", "--workspace", str(ws.root), "--json"]) == 0
