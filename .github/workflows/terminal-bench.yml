@@ -28,6 +28,7 @@ jobs:
       request: ${{ steps.cfg.outputs.request }}
       late_request: ${{ steps.cfg.outputs.late_request }}
       max_output: ${{ steps.cfg.outputs.max_output }}
+      shards: ${{ steps.cfg.outputs.shards }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +61,7 @@ jobs:
           print(f"request={json.dumps(cfg.get('request') or {})}")
           print(f"late_request={json.dumps(cfg.get('late_request') or {})}")
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
+          print(f"shards={json.dumps(list(range(max(1, int(cfg.get('shards') or 1)))))}")
           PY
 
   bench:
@@ -67,8 +69,12 @@ jobs:
     if: needs.config.outputs.ready == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.config.outputs.shards) }}
     env:
-      OUT: audit-results/terminal-bench-2-1/run-${{ github.run_id }}
+      OUT: audit-results/terminal-bench-2-1/run-${{ github.run_id }}/shard-${{ matrix.shard }}
       PORT: "18080"
     steps:
       - uses: actions/checkout@v4
@@ -182,7 +188,12 @@ jobs:
         run: |
           export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"
           N=""; [ "${{ needs.config.outputs.n_tasks }}" != 0 ] && N="-l ${{ needs.config.outputs.n_tasks }}"
-          harbor run -p /tmp/tb21/tasks $N ${{ needs.config.outputs.tasks }} --agent-import-path manga_agent:MangaAgent \
+          TASKS="${{ needs.config.outputs.tasks }}"
+          # With no task list, each shard takes every Nth task of the sorted set so hard and easy ones spread evenly.
+          [ -z "$TASKS" ] && TASKS=$(ls /tmp/tb21/tasks | sort | awk -v n="${{ strategy.job-total }}" -v k="${{ matrix.shard }}" '(NR-1)%n==k {printf "-i %s ", $0}')
+          echo "tasks in this shard: $(echo "$TASKS" | grep -o -- '-i ' | wc -l)"
+          # Stop Harbor before the job limit so the summary and evidence steps still run.
+          timeout 325m harbor run -p /tmp/tb21/tasks $N $TASKS --agent-import-path manga_agent:MangaAgent \
             --model "$MANGA_AGENT_MODEL" --env docker --n-concurrent "${{ needs.config.outputs.concurrent }}" --max-retries 1 \
             --jobs-dir "$PWD/jobs" --yes 2>&1 | tail -80 || true
 
@@ -230,5 +241,5 @@ jobs:
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/terminal-bench-2-1/run-${{ github.run_id }}
-          message: "audit: Terminal-Bench 2.1, our harness (run ${{ github.run_id }})"
+          paths: audit-results/terminal-bench-2-1/run-${{ github.run_id }}/shard-${{ matrix.shard }}
+          message: "audit: Terminal-Bench 2.1, our harness (run ${{ github.run_id }}, shard ${{ matrix.shard }})"
