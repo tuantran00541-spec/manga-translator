@@ -18,9 +18,7 @@
   "tools": "hybrid",
   "agent": "chaos",
   "limits": {
-    "tokens_per_minute": 300000,
-    "concurrent": 4,
-    "max_usd": 10.0,
+    "max_usd": 30.0,
     "price": {
       "input": 1.47e-07,
       "output": 2.94e-07
