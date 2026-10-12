@@ -269,11 +269,34 @@
   /* Agent: one reading column in quiet greys, no lines; fills and spacing separate things. */
   body[data-app-stage="landing"][data-landing-mode="agent"] :is(.app-sidebar, .app-header, .sidebar-footer, .theme-control, .sidebar-link.active, .sidebar-link > span) { border-color: transparent; }
   body[data-app-stage="landing"][data-landing-mode="agent"] .sidebar-link.active { background: var(--surface-quiet); }
-  .agent-view { display: flex; flex-direction: column; width: min(100%, 820px); min-height: calc(100vh - var(--ps-topbar, 44px)); margin: 0 auto; padding: 0 20px; font-size: 14.5px; line-height: 1.6; }
+  .agent-view { display: flex; align-items: flex-start; min-height: calc(100vh - var(--ps-topbar, 44px)); font-size: 14.5px; line-height: 1.6; }
+  .agent-main { display: flex; flex: 1 1 auto; flex-direction: column; align-self: stretch; min-width: 0; min-height: calc(100vh - var(--ps-topbar, 44px)); padding: 0 20px; }
+  .agent-main > * { width: min(100%, 820px); margin-inline: auto; }
+  .agent-main > .agent-log { margin-block: 0; }
+  .agent-side { position: sticky; top: 0; display: flex; flex: 0 0 248px; flex-direction: column; gap: 8px; height: calc(100vh - var(--ps-topbar, 44px)); overflow: auto; padding: 12px 10px; background: var(--surface-quiet); }
+  .agent-side-closed .agent-side { display: none; }
+  .agent-new { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 6px 12px; border: 0; border-radius: 10px; background: var(--surface-canvas); color: var(--text-primary); font: inherit; font-size: 13px; cursor: pointer; box-shadow: var(--shadow-quiet); }
+  .agent-new:hover { box-shadow: var(--shadow-lift); }
+  .agent-new svg, .agent-icon svg, .agent-pick svg { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .agent-side-head { margin: 10px 8px 2px; overflow: hidden; color: var(--text-quiet); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .agent-icon { display: inline-grid; flex: 0 0 auto; width: 30px; height: 30px; place-items: center; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--text-quiet); cursor: pointer; }
+  .agent-icon:hover { background: var(--surface-quiet); color: var(--text-primary); }
+  .agent-section > summary { padding: 4px 2px; font-weight: 600; cursor: pointer; list-style: none; }
+  .agent-section > summary::-webkit-details-marker { display: none; }
+  .agent-section > summary::after { content: " ›"; color: var(--text-quiet); }
+  .agent-section[open] > summary::after { content: " ⌄"; }
+  .agent-section[open] { display: grid; gap: 8px; padding-bottom: 8px; }
+  .agent-pop.agent-pop-up { top: auto; bottom: calc(100% + 8px); }
+  .agent-pop .agent-field select { width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: var(--surface-quiet); color: var(--text-primary); font: inherit; font-size: 13px; }
+  .agent-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+  .agent-bar > .agent-menu > summary { list-style: none; cursor: pointer; }
+  .agent-bar > .agent-menu > summary::-webkit-details-marker { display: none; }
+  .agent-bar .agent-pick { padding: 0 8px; }
+  .agent-bar .agent-pick span { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent-caret { width: 14px !important; height: 14px !important; }
   .agent-view [hidden] { display: none !important; }
   .agent-top { position: sticky; z-index: 6; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; background: var(--surface-canvas); }
   .agent-status { min-width: 0; margin: 0; overflow: hidden; color: var(--text-quiet); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
-  .agent-top-actions { display: flex; flex: 0 0 auto; gap: 6px; }
   .agent-chip { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 11px; border: 0; border-radius: 999px; background: var(--surface-quiet); color: var(--text-primary); font: inherit; font-size: 12.5px; cursor: pointer; list-style: none; }
   .agent-chip::-webkit-details-marker { display: none; }
   .agent-chip:hover, .agent-menu[open] > .agent-chip { background: var(--line-quiet); }
@@ -281,7 +304,14 @@
   .agent-pop { position: absolute; z-index: 8; top: calc(100% + 6px); display: grid; gap: 8px; width: min(340px, 86vw); max-height: 60vh; overflow: auto; padding: 12px; border: 0; border-radius: 12px; background: var(--surface-raised); box-shadow: var(--shadow-lift); font-size: 13px; }
   .agent-pop-right { right: 0; }
   .agent-pop-wide { width: min(460px, 92vw); max-height: 75vh; }
-  @media (max-width: 600px) { .agent-pop, .agent-pop-wide { position: fixed; top: 92px; right: 16px; left: 16px; width: auto; max-height: calc(100vh - 200px); } }
+  @media (max-width: 600px) {
+    .agent-pop, .agent-pop-wide { position: fixed; top: 92px; right: 16px; left: 16px; width: auto; max-height: calc(100vh - 200px); }
+    .agent-pop.agent-pop-up { top: auto; bottom: 120px; }
+  }
+  @media (max-width: 900px) {
+    .agent-side { position: fixed; z-index: 9; top: var(--ps-topbar, 44px); left: 0; bottom: 0; width: min(280px, 84vw); height: auto; background: var(--surface-canvas); box-shadow: var(--shadow-float); }
+    .agent-side::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--surface-quiet); }
+  }
   .agent-skill-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
   .agent-skill-list li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: start; }
   .agent-skill-list b { font-weight: 600; overflow-wrap: anywhere; }
@@ -311,8 +341,9 @@
   .agent-sessions { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
   .agent-sessions li { display: flex; align-items: center; gap: 4px; min-width: 0; }
   .agent-session-open { flex: 1 1 auto; min-width: 0; padding: 6px 8px; border: 0; border-radius: 8px; background: none; color: var(--text-primary); font: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-  .agent-session-open:hover, .agent-session-current .agent-session-open { background: var(--surface-quiet); }
+  .agent-session-open:hover, .agent-session-current .agent-session-open { background: var(--line-quiet); }
   .agent-session-del { padding: 4px 6px; border: 0; background: none; color: var(--text-quiet); font: inherit; font-size: 12px; cursor: pointer; }
+  @media (hover: hover) { .agent-session-del { opacity: 0; } .agent-sessions li:hover .agent-session-del, .agent-session-del:focus-visible { opacity: 1; } }
   .agent-log { display: flex; flex: 1 1 auto; flex-direction: column; gap: 14px; padding: 8px 0 24px; }
   .agent-empty { display: grid; place-items: center; margin: auto 0; padding: 8vh 0 0; }
   /* The Chaos title drawn like a webtoon logo: a faint magic circle, clean blade-tipped letters and a red eye. */
@@ -397,11 +428,6 @@
   .agent-bar-gap { flex: 1 1 auto; }
   .agent-pick { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 4px; border-radius: 999px; color: var(--text-quiet); font-size: 12.5px; }
   .agent-pick:hover, .agent-pick:focus-within { background: var(--surface-quiet); color: var(--text-primary); }
-  .agent-pick select { field-sizing: content; }
-  .agent-pick select, .agent-pick input { max-width: 240px; padding: 3px 4px; border: 0; outline: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
-  .agent-pick-model input { width: 140px; cursor: text; }
-  .agent-toggle input { width: 14px; height: 14px; margin: 0 0 0 4px; cursor: pointer; }
-  .agent-toggle span { padding-right: 6px; }
   .agent-round { display: inline-grid; width: 32px; height: 32px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--surface-quiet); color: var(--text-primary); cursor: pointer; }
   .agent-round svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .agent-round-primary { background: var(--accent); color: var(--accent-contrast); }
@@ -413,8 +439,8 @@
   .agent-hint { flex: 0 0 auto; padding: 2px 4px; border: 0; background: none; color: var(--text-primary); font: 600 12.5px ui-monospace, Menlo, Consolas, monospace; cursor: pointer; }
   .agent-command { white-space: pre-wrap; }
   @media (max-width: 640px) {
-    .agent-view { padding: 0 12px; }
-    .agent-pick-model input { width: 110px; }
+    .agent-main { padding: 0 12px; }
+    .agent-bar .agent-pick span { max-width: 104px; }
     .agent-user { max-width: 92%; }
   }
 }

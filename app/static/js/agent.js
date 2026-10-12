@@ -322,7 +322,10 @@
     post(`/api/agent/sessions/${session.id}/approval`, { decision, note }).then(() => {
       if (doneText) card.replaceWith(el("p", "agent-note", doneText));
       else card.remove();
-      if (decision === "allow_all") $("agent-mode").value = "auto";
+      if (decision === "allow_all") {
+        $("agent-mode").value = "auto";
+        showPicks();
+      }
       poll();
     }).catch((error) => {
       window.showToast?.(error.message, "error");
@@ -462,6 +465,26 @@
     showTodos(snap.todos);
     showInfo(snap);
     showKeyPrompt(snap.key_prompt);
+    showPicks();
+  }
+
+  // The composer's two menus name what is picked inside them.
+  const MODE_SHORT = { ask: "Hỏi mọi thứ", edits: "Tự sửa và chạy", review: "Model duyệt", auto: "Tự động", bypass: "Không duyệt" };
+  const SANDBOX_SHORT = { "read-only": "chỉ đọc", "workspace-write": "ghi trong thư mục", "full-access": "không sandbox" };
+  function showPicks() {
+    const network = $("agent-network").checked ? " · mạng" : "";
+    $("agent-perm-label").textContent = `${MODE_SHORT[$("agent-mode").value] || ""} · ${SANDBOX_SHORT[$("agent-sandbox").value] || ""}${network}`;
+    const provider = $("agent-provider").selectedOptions[0]?.textContent || "";
+    const model = $("agent-model").value.trim();
+    $("agent-model-label").textContent = model ? (provider ? `${model} · ${provider}` : model) : (provider ? `${provider} · chọn model` : "Chọn model");
+  }
+
+  // The session list sits in a side column that folds away; on a narrow screen it opens over the chat.
+  const narrow = () => window.matchMedia("(max-width: 900px)").matches;
+  function showSide(open) {
+    $("agent-view").classList.toggle("agent-side-closed", !open);
+    $("agent-side-toggle").setAttribute("aria-expanded", String(open));
+    if (!narrow()) store("set", "manga_agent_side", open ? "open" : "closed");
   }
 
   // A key that hit a limit with no wait named: ask in the middle of the screen whether to move on to the next stored key.
@@ -526,6 +549,7 @@
   async function loadModels() {
     const provider = $("agent-provider").value;
     $("agent-model").value = store("get", `manga_agent_model_${provider}`) || store("get", `manga_ai_model_${provider}`) || "";
+    showPicks();
     const list = $("agent-model-list");
     list.replaceChildren();
     if (!provider) return;
@@ -552,9 +576,13 @@
   async function loadSessions() {
     try {
       const data = await call("/api/agent/sessions");
-      const rows = (data.sessions || []).slice(0, 30).map((row) => {
+      let folder = null;
+      const rows = (data.sessions || []).slice(0, 30).flatMap((row) => {
         const item = el("li", row.id === session?.id ? "agent-session-current" : "");
-        const open = button(row.title || "(chưa có tin nhắn)", "agent-session-open", () => resume(row.id));
+        const open = button(row.title || "(chưa có tin nhắn)", "agent-session-open", () => {
+          if (narrow()) showSide(false);
+          resume(row.id);
+        });
         open.title = `${row.model} · ${row.workspace}`;
         const remove = button("Xoá", "agent-session-del", async () => {
           await call(`/api/agent/sessions/${row.id}`, { method: "DELETE" }).catch(() => {});
@@ -562,7 +590,12 @@
           loadSessions();
         });
         item.append(open, remove);
-        return item;
+        const place = (row.workspace || "").split(/[\\/]/).filter(Boolean).pop() || row.workspace || "";
+        if (place === folder) return [item];
+        folder = place;
+        const head = el("li", "agent-side-head", place);
+        head.title = row.workspace || "";
+        return [head, item];
       });
       $("agent-sessions").replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", "Chưa có phiên nào.")]));
     } catch (_) {}
@@ -580,6 +613,7 @@
       $("agent-workspace").value = snap.workspace;
       showFolder();
       $("agent-model").value = snap.model;
+      showPicks();
       snap.events.forEach((event) => { if (event.type !== "approval") render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
       document.querySelectorAll(".agent-menu[open]").forEach((menu) => { menu.open = false; });
@@ -704,6 +738,8 @@
     }
     if (!$("agent-provider").value || !$("agent-model").value.trim()) {
       window.showToast?.("Chọn dịch vụ và model trước.", "error");
+      $("agent-model-menu").open = true;
+      $("agent-model").focus();
       return;
     }
     $("agent-send").disabled = true;
@@ -960,7 +996,7 @@
     const about = $("agent-skill-desc").value.trim() || "(mô tả việc skill này giúp làm)";
     $("agent-input").value = `Dùng skill writing-skills để soạn một skill tên ${name}: ${about}. `
       + `Ghi nó vào .agents/skills/${name}/SKILL.md trong thư mục làm việc, với phần đầu name và description, rồi thử nó trên một ví dụ thật.`;
-    $("agent-skills-menu").open = false;
+    $("agent-more").open = false;
     autosize();
     $("agent-input").focus();
   }
@@ -993,7 +1029,19 @@
     });
     $("agent-input").addEventListener("input", () => { autosize(); showHints(); });
     $("agent-stop").addEventListener("click", () => session && post(`/api/agent/sessions/${session.id}/stop`).then(poll).catch(() => {}));
-    $("agent-new").addEventListener("click", () => { resetLog(); loadSessions(); });
+    $("agent-new").addEventListener("click", () => {
+      if (narrow()) showSide(false);
+      resetLog();
+      loadSessions();
+      $("agent-input").focus();
+    });
+    showSide(!narrow() && store("get", "manga_agent_side") !== "closed");
+    $("agent-side-toggle").addEventListener("click", () => showSide($("agent-view").classList.contains("agent-side-closed")));
+    // On a narrow screen the column covers the chat, so a tap outside it folds it away.
+    document.addEventListener("click", (event) => {
+      if (!narrow() || $("agent-view").classList.contains("agent-side-closed")) return;
+      if (!event.target.closest("#agent-side, #agent-side-toggle")) showSide(false);
+    });
     $("agent-provider").addEventListener("change", () => { resetLog(); loadModels(); });
     $("agent-workspace").addEventListener("change", () => { resetLog(); showFolder(); });
     $("agent-skill-body").value = SKILL_TEMPLATE;
@@ -1007,6 +1055,7 @@
     $("agent-skill-save").addEventListener("click", saveSkill);
     $("agent-skill-draft").addEventListener("click", draftSkill);
     $("agent-model").addEventListener("change", () => syncSession({ model: $("agent-model").value.trim() }));
+    $("agent-model").addEventListener("input", showPicks);
     $("agent-mode").addEventListener("change", () => syncSession({ mode: $("agent-mode").value }));
     const saveEngine = async () => {
       try {
@@ -1022,6 +1071,7 @@
     $("agent-engine-image").addEventListener("change", saveEngine);
     $("agent-sandbox").addEventListener("change", () => syncSession({ sandbox: $("agent-sandbox").value }));
     $("agent-network").addEventListener("change", () => syncSession({ network: $("agent-network").checked }));
+    ["agent-mode", "agent-sandbox", "agent-network"].forEach((id) => $(id).addEventListener("change", showPicks));
     document.querySelectorAll(".agent-menu").forEach((menu) => menu.addEventListener("toggle", () => {
       if (menu.open) document.querySelectorAll(".agent-menu[open]").forEach((other) => { if (other !== menu) other.open = false; });
     }));
