@@ -1,0 +1,54 @@
+{
+ "object": "list",
+ "data": [
+  {
+   "id": "sovapi",
+   "object": "model",
+   "created": 0,
+   "owned_by": "sovinfra",
+   "reasoning_efforts": [
+    "none",
+    "medium",
+    "xhigh"
+   ]
+  },
+  {
+   "id": "gemma-4-31b",
+   "object": "model",
+   "created": 0,
+   "owned_by": "sovinfra",
+   "name": "Gemma 4 31B FP8 · KV BF16 · H200",
+   "quantization": "fp8",
+   "kv_cache_dtype": "bf16",
+   "description": "Gemma 4 31B on H200 uses FP8 weights and a BF16 KV cache, and supports text, vision and extraction. Legacy technical identifiers are retained for API compatibility."
+  },
+  {
+   "id": "qwen3.8-27b",
+   "object": "model",
+   "created": 0,
+   "owned_by": "sovinfra",
+   "reasoning_efforts": [
+    "none",
+    "medium",
+    "xhigh"
+   ],
+   "context_length": 262144,
+   "name": "Qwen 3.8-27B FP8 · H200",
+   "description": "Qwen 3.8-27B FP8 on H200 supports code, reasoning, vision and tool calling. qwen3-coder-next remains a compatibility alias for the same model."
+  },
+  {
+   "id": "qwen3-coder-next",
+   "object": "model",
+   "created": 0,
+   "owned_by": "sovinfra",
+   "reasoning_efforts": [
+    "none",
+    "medium",
+    "xhigh"
+   ],
+   "context_length": 262144,
+   "name": "Qwen 3.8-27B FP8 · H200",
+   "description": "Qwen 3.8-27B FP8 on H200 supports code, reasoning, vision and tool calling. qwen3-coder-next remains a compatibility alias for the same model."
+  }
+ ]
+}
