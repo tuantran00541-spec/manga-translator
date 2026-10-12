@@ -3702,3 +3702,32 @@ def test_created_tools_call_each_other_in_one_process_and_create_can_run_a_one_o
     session._run_call({"id": "e", "name": "fix2", "args": {}})
     code = seen[0]["args"]["_tool_code"]
     assert "# tools.edit:" in code and "# tools.read:" in code, "the reviewer sees every tool a chain calls"
+
+
+def test_a_chain_mixes_created_tools_mcp_tools_and_skills_through_the_agent(ws, home):
+    create_only(home)
+    skill = home / ".manga-agent" / "skills" / "style"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: style\ndescription: House style.\n---\nUse tabs.\n")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    asked = []
+
+    class Docs:
+        def call_tool(self, name, args):
+            asked.append((name, args))
+            return f"doc for {args['q']}", True
+
+        def close(self):
+            pass
+
+    session.mcp_tools = {"mcp__docs__lookup": ("docs", {"name": "lookup", "description": "Look up docs.", "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}}}})}
+    session.mcp_servers["docs"] = Docs()
+    session._create({"name": "read", "code": "def read(path):\n    return open(path).read()\n"})
+    chain = ("def combo():\n    doc = tools.mcp__docs__lookup(q='f')\n    rule = tools.skill('style')\n"
+             "    first = tools.read(path='pkg/a.py').splitlines()[0]\n    try:\n        tools.nope()\n    except AttributeError as e:\n        missing = 'no tool' in str(e)\n"
+             "    return {'doc': doc, 'rule': 'Use tabs.' in rule, 'first': first, 'missing': missing}\n")
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "combo", "code": chain, "args": {}, "keep": False}})
+    assert '"doc": "doc for f"' in out and '"rule": true' in out and '"first": "def f():"' in out and '"missing": true' in out, out
+    assert asked == [("lookup", {"q": "f"})], "the MCP call went through the agent's own call path"
+    assert not list((session._outputs_dir() / "state" / "rpc").iterdir()), "each run's request folder is removed when it ends"

@@ -120,8 +120,28 @@ if _fn is not None:
         print(_result if isinstance(_result, str) else _json.dumps(_result, ensure_ascii=False, default=str))
 """
 TOOLS_LIBRARY = """import json as _json
+import os as _os
+import time as _time
+import uuid as _uuid
 
 _SOURCES = _json.loads({sources!r})
+_REMOTE = set(_json.loads({remote!r}))
+
+
+def _call(name, args):
+    \"\"\"Ask the agent to run one of its own tools (a plugin, an MCP tool or a skill) and wait for the text it returns.\"\"\"
+    rid, folder = _uuid.uuid4().hex, _os.environ["AGENT_RPC"]
+    with open(_os.path.join(folder, rid + ".tmp"), "w", encoding="utf-8") as f:
+        _json.dump({{"name": name, "args": args}}, f)
+    _os.replace(_os.path.join(folder, rid + ".tmp"), _os.path.join(folder, rid + ".req"))
+    reply = _os.path.join(folder, rid + ".res")
+    while not _os.path.exists(reply):
+        _time.sleep(0.02)
+    with open(reply, encoding="utf-8") as f:
+        data = _json.load(f)
+    if not data["ok"]:
+        raise RuntimeError(data["output"])
+    return data["output"]
 
 
 class _Tools:
@@ -131,8 +151,10 @@ class _Tools:
         self._loaded = {{}}
 
     def __getattr__(self, name):
+        if name in _REMOTE and name not in _SOURCES:
+            return lambda *a, **args: _call(name, {{"name": a[0]}} if name == "skill" and a else args)
         if name.startswith("_") or name not in _SOURCES:
-            raise AttributeError(f"no created tool {{name!r}}; created: {{', '.join(_SOURCES)}}")
+            raise AttributeError(f"no tool {{name!r}}; created: {{', '.join(_SOURCES)}}; others: {{', '.join(sorted(_REMOTE))}}")
         if name not in self._loaded:
             space = {{"tools": self, "__name__": "agent_tool_" + name}}
             exec(compile(_SOURCES[name], name + ".py", "exec"), space)
@@ -170,7 +192,8 @@ the AGENT_STATE folder (an environment variable), which lasts the whole session.
 background and you are told when it ends. Files a tool changes are listed after its output. Tools are kept for later sessions: reuse them, fix one by creating it again
 under the same name, delete one with empty code. Prefer a few general tools (a shell, a file reader, an exact-text editor) over many narrow ones.
 Inside any tool's code, tools.<name>(...) calls another created tool in the same process and returns what it returns, so one call can
-chain many steps: read, edit, run and check without coming back in between. Give create args to run the tool as soon as it is written;
+chain many steps: read, edit, run and check without coming back in between. The same tools.<name>(...) reaches the user's plugin and
+MCP tools (they return text), and tools.skill(name) returns a skill's instructions, so a chain can mix all of them. Give create args to run the tool as soon as it is written;
 add keep: false for a one-off script that is not saved. Make independent calls together in one reply. Look before you change, keep changes minimal and in the code's style, fix root causes,
 then run the tests or command that proves it works. End with a short report: what changed, how you checked, what is left.
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
@@ -1354,11 +1377,16 @@ class AgentSession:
         # The other created tools are a library the code calls in-process, so one call can chain many steps.
         (state / "lib").mkdir(exist_ok=True)
         sources = {n: t["code"] for n, t in self._root().created.items()}
-        (state / "lib" / "agent_tools.py").write_text(TOOLS_LIBRARY.format(sources=json.dumps(sources, ensure_ascii=False)), encoding="utf-8")
+        (state / "lib" / "agent_tools.py").write_text(TOOLS_LIBRARY.format(sources=json.dumps(sources, ensure_ascii=False),
+                                                                          remote=json.dumps(sorted(self._chain_targets()))), encoding="utf-8")
+        # Each run has its own request folder, so runs side by side or in the background never answer each other.
+        run_id = uuid.uuid4().hex[:12]
+        rpc = state / "rpc" / run_id
+        rpc.mkdir(parents=True)
         where = "/tmp" if docker else str(state)
         # AGENT_STATE outlives the call, so a tool can keep a working folder, variables or notes between calls.
         prelude = (f"import os as _os, sys as _sys\n_os.environ['AGENT_STATE'] = {where!r}\n_sys.path.insert(0, _os.path.join({where!r}, 'lib'))\n"
-                   "from agent_tools import tools\n")
+                   f"_os.environ['AGENT_RPC'] = _os.path.join({where!r}, 'rpc', {run_id!r})\nfrom agent_tools import tools\n")
         script = prelude + tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
         payload = base64.b64encode(script.encode("utf-8")).decode("ascii")
         if len(payload) > 100_000:
@@ -1370,13 +1398,52 @@ class AgentSession:
             self._watch_request = self._request_no
         guard = gitguard.snapshot(self.workspace.root)
         job = sandbox.Job(command, policy, self.workspace.root, scratch=str(state))
+        server = threading.Thread(target=self._serve_chain, args=(rpc, job), name=f"agent-chain-{self.id}", daemon=True)
+        server.start()
         output = self._await_job(job, CREATED_TIMEOUT, guard)
+        if job.code is not None:
+            server.join(2)
         changed = self._record_changes()
         if not changed and any(word in self._with_callees(tool["code"]) for word in ("subprocess", "os.system", "os.popen")):
             # A tool that runs programs and changed nothing counts as a check, like a command did.
             self._dirty = False
             self._run_seq = self._edit_seq + 1
         return output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "")
+
+    def _chain_targets(self) -> set[str]:
+        """What a created tool's code may reach through the agent: the user's plugin and MCP tools, and skills."""
+        names = {n for n in self.registry.tools if n not in registry.GROUPS} | set(self._root().mcp_tools)
+        return names | ({"skill"} if self.skills else set())
+
+    def _serve_chain(self, folder: Path, job: "sandbox.Job") -> None:
+        """Answer the requests a running created tool leaves in its rpc folder, each through the same rules and approvals as the model's own calls."""
+        targets = self._chain_targets()
+        while True:
+            done = job.code is not None
+            for request in sorted(folder.glob("*.req")):
+                try:
+                    data = json.loads(request.read_text(encoding="utf-8"))
+                    request.unlink()
+                except (OSError, ValueError):
+                    continue
+                name, args = str(data.get("name") or ""), data.get("args") if isinstance(data.get("args"), dict) else {}
+                try:
+                    if name not in targets:
+                        output, ok = f"{name!r} cannot be reached from a tool; reachable: {', '.join(sorted(targets)) or 'none'}", False
+                    elif name == "skill":
+                        found = self.skills.get(str(args.get("name") or ""))
+                        output, ok = (skills.load(found), True) if found else (f"No skill named {args.get('name')!r}; known: {', '.join(self.skills)}", False)
+                    else:
+                        output, ok = self._run_call({"id": f"chain-{uuid.uuid4().hex[:8]}", "name": name, "args": args})
+                except Exception as exc:
+                    output, ok = f"Error: {type(exc).__name__}: {exc}", False
+                reply = folder / request.name.replace(".req", ".res")
+                reply.with_suffix(".part").write_text(json.dumps({"ok": ok, "output": output}), encoding="utf-8")
+                reply.with_suffix(".part").replace(reply)
+            if done or self._stop:
+                shutil.rmtree(folder, ignore_errors=True)
+                return
+            time.sleep(0.02)
 
     def _with_callees(self, code: str) -> str:
         """A created tool's code followed by the code of every created tool it calls, directly or through another."""

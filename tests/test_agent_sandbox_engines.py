@@ -178,3 +178,29 @@ def test_docker_runs_created_tools_with_state_and_change_tracking(tmp_path, home
     session._run_call({"id": "a", "name": "put", "args": {"text": "1"}})
     out, ok = session._run_call({"id": "b", "name": "put", "args": {"text": "2"}})
     assert ok and "12" in out and "[changed: made.txt]" in out and (root / "made.txt").read_text() == "2", out
+
+
+def _bridge_check(tmp_path, home):
+    skill = home / ".manga-agent" / "skills" / "style"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: style\ndescription: House style.\n---\nUse tabs.\n")
+    session, root = _created_tool_session(tmp_path, home)
+    session.reload_skills()
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "mix", "keep": False, "args": {},
+                                 "code": "def mix():\n    return tools.put(text='z') + '|' + str('Use tabs.' in tools.skill('style'))\n"}})
+    assert "z|True" in out, out
+
+
+@pytest.mark.skipif(not WINDOWS, reason="the low-integrity sandbox is Windows only")
+def test_windows_chains_reach_the_agent_through_the_bridge(tmp_path, home):
+    _bridge_check(tmp_path, home)
+
+
+@pytest.mark.skipif(not _docker(), reason="needs a Docker daemon running Linux containers")
+def test_docker_chains_reach_the_agent_through_the_bridge(tmp_path, home, monkeypatch):
+    monkeypatch.setenv("MANGA_AGENT_SANDBOX", "docker")
+    _bridge_check(tmp_path, home)
+
+
+def test_chains_reach_the_agent_through_the_bridge_here(tmp_path, home):
+    _bridge_check(tmp_path, home)
