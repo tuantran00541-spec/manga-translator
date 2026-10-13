@@ -48,6 +48,11 @@ MAX_AGENT_THREADS = 6
 MAX_IMAGES = 3
 MCP_DEFER = 15
 MAX_FAN_OUT = 12
+MAX_BRANCHES = 3
+BRANCH_TIMEOUT = 600
+# Workspace tools a branch runs on its own copy instead of the real workspace.
+BRANCH_LOCAL = frozenset({"read_file", "edit_file", "write_file", "edit_lines", "replace_in_files", "move_file", "delete_file", "apply_patch",
+                          "run_command", "list_dir", "search", "glob", "symbols"})
 SCRIPT_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "fan_out"})
 SCRIPT_AGENTS = 40
 MAX_NOTES = 16_000
@@ -224,6 +229,14 @@ class _Tools:
         \"\"\"The agent's written picture of the current request: what was asked, what done means and how progress is measured.\"\"\"
         return _call("_intent", {{}})
 
+    def branch(self, branches, check=""):
+        \"\"\"Run 2-3 named pieces of code at once, each in its own copy of the workspace, then check in each copy; returns a table, applies nothing.\"\"\"
+        return _call("_branch", {{"branches": branches, "check": check}})
+
+    def adopt(self, name):
+        \"\"\"Bring the named branch's changes into the real workspace and drop the other copies.\"\"\"
+        return _call("_adopt", {{"name": name}})
+
     def __getattr__(self, name):
         if name in _REMOTE and name not in _SOURCES:
             first = {{"skill": "name", "agent": "prompt", "think": "question", "vote": "question", "models": "source"}}.get(name)
@@ -374,7 +387,12 @@ You have four tools: read_file, edit_file, run_command (the shell: list, search,
 Make independent calls together in one reply; they run in parallel.
 End with a short report: what changed, how you checked it, and anything not done.
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
-LEAN_CREATE = COMPOSE_PROMPT.format(builtins="read_file, edit_file and run_command") + CHAIN_PROMPT.replace("\n", " ")
+BRANCH_PROMPT = ("When you are not sure which approach works, try two or three in one step: tools.branch({'a': code_a, 'b': code_b}, check=check_code) "
+                 "runs each piece of code (a function body like create's) in its own copy of the workspace at the same time, then the check code in each copy. "
+                 "You get back what each branch changed, printed and how its check went; nothing is applied. Compare them against every requirement, "
+                 "then keep one with tools.adopt('a') or write new attempts, and run the check again on the real workspace before you finish. "
+                 "Branches run tools on their copy and cannot branch again.")
+LEAN_CREATE = (COMPOSE_PROMPT.format(builtins="read_file, edit_file and run_command") + CHAIN_PROMPT.replace("\n", " ") + " " + BRANCH_PROMPT)
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {
@@ -567,6 +585,7 @@ class AgentSession:
         self.schedules: list[dict] = []
         self._watch = watch.Watch(workspace.root)
         self._repl: repl.Kernel | None = None
+        self._branches: dict[str, tuple[Path, dict]] = {}
         self.find_provider = self.list_providers = None
         self._intent_request = 0
         self._answers: list[str] = []
@@ -1740,8 +1759,8 @@ class AgentSession:
         names |= {"vote", "models"} if self.profile["model_roles"] or self._sources() else set()
         return names | ({"skill"} if self.skills else set())
 
-    def _serve_chain(self, folder: Path, job: "sandbox.Job") -> None:
-        """Answer the requests a running created tool leaves in its rpc folder, each through the same rules and approvals as the model's own calls."""
+    def _serve_chain(self, folder: Path, job: "sandbox.Job", ws: Workspace | None = None) -> None:
+        """Answer the requests a running created tool leaves in its rpc folder, each through the same rules and approvals as the model's own calls; a branch's workspace tools run on its copy."""
         targets = self._chain_targets()
 
         def answer(request: Path, data: dict) -> None:
@@ -1758,6 +1777,11 @@ class AgentSession:
                 elif name == "_source":
                     tool = self._root().created.get(str(args.get("name") or ""))
                     output, ok = (tool["code"], True) if tool else ("no such created tool", False)
+                elif name in ("_branch", "_adopt"):
+                    output, ok = (("a branch cannot branch or adopt; return what it found and choose at the top", False) if ws is not None
+                                  else self._branch(args) if name == "_branch" else self._adopt(args))
+                elif ws is not None and name in BRANCH_LOCAL:
+                    output, ok = ws.run(name, self._on_copy(args, ws.root)), True
                 elif name not in targets:
                     output, ok = f"{name!r} cannot be reached from a tool; reachable: {', '.join(sorted(targets)) or 'none'}", False
                 elif name == "skill":
@@ -1815,6 +1839,111 @@ class AgentSession:
         self._repeats += 1
         return ("\n[You made this exact call before the summary and got the same result. The summary may not mention it: check its Progress "
                 "before redoing more work.]")
+
+    def _on_copy(self, value, copy: Path):
+        """Arguments with the real workspace's absolute path turned into the branch copy's."""
+        if isinstance(value, str):
+            return value.replace(str(self.workspace.root), str(copy))
+        if isinstance(value, dict):
+            return {k: self._on_copy(v, copy) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._on_copy(v, copy) for v in value]
+        return value
+
+    def _branch(self, args: dict) -> tuple[str, bool]:
+        """Run each piece of code in its own copy of the workspace at once, then the check in each; the table goes back and nothing is applied."""
+        if self.profile["tools"] != "lean":
+            return "tools.branch is only on in lean mode for now", False
+        if sandbox.backend() == "docker" and self.workspace.policy.mode != "full-access":
+            return "tools.branch needs the local sandbox", False
+        branches, check = args.get("branches"), str(args.get("check") or "")
+        if not isinstance(branches, dict) or not 2 <= len(branches) <= MAX_BRANCHES or not all(isinstance(c, str) and c.strip() for c in branches.values()):
+            return f"tools.branch takes 2 to {MAX_BRANCHES} named pieces of code: tools.branch({{'a': code_a, 'b': code_b}}, check=check_code)", False
+        self._drop_branches()
+        top = self._outputs_dir() / "branches" / uuid.uuid4().hex[:8]
+
+        def one(name: str, code: str) -> tuple:
+            copy = top / (re.sub(r"[^A-Za-z0-9_-]", "_", name)[:40] or "b")
+            base = isolate.snapshot(self.workspace.root, copy)
+            if base is None:
+                return name, copy, None, "the workspace is too big to copy", "", ""
+            ws = Workspace(copy, self.workspace.policy)
+            out = self._branch_run(ws, code)
+            verdict = self._branch_run(ws, check) if check.strip() else "(no check given)"
+            return name, copy, base, out, verdict, self._branch_diff(copy, base)
+
+        with ThreadPoolExecutor(max_workers=len(branches)) as pool:
+            rows = list(pool.map(lambda item: one(str(item[0]), item[1]), branches.items()))
+        self._branches = {name: (copy, base) for name, copy, base, *_ in rows if base is not None}
+        table = "\n\n".join(f"== branch {name} ==\n[changes]\n{diff or '(none)'}\n[output]\n{clip(out, 3000)}\n[check]\n{clip(verdict, 3000)}"
+                            for name, _, _, out, verdict, diff in rows)
+        return (table + "\n\nNothing was applied. Compare the branches against every requirement, then tools.adopt('<name>') the one to keep "
+                "or write new attempts, and run the check again on the real workspace before you finish."), True
+
+    def _branch_run(self, ws: Workspace, code: str) -> str:
+        """One piece of branch code as a sandboxed script whose workspace tools act on the branch's copy."""
+        state = self._outputs_dir() / "state"
+        (state / "lib").mkdir(parents=True, exist_ok=True)
+        sources = {n: t["code"] for n, t in self._root().created.items()}
+        (state / "lib" / "agent_tools.py").write_text(TOOLS_LIBRARY.format(sources=json.dumps(sources, ensure_ascii=False),
+                                                                          remote=json.dumps(sorted(self._chain_targets() | BRANCH_LOCAL))), encoding="utf-8")
+        run_id = uuid.uuid4().hex[:12]
+        rpc = state / "rpc" / run_id
+        rpc.mkdir(parents=True)
+        prelude = (f"import builtins as _b, os as _os, sys as _sys\n_os.environ['AGENT_STATE'] = {str(state)!r}\n_sys.path.insert(0, _os.path.join({str(state)!r}, 'lib'))\n"
+                   f"_os.environ['AGENT_RPC'] = {str(rpc)!r}\nfrom agent_tools import tools\nargs = {{}}\n")
+        (rpc / "main.py").write_text(prelude + _as_function("branch", code) + CREATED_CALL.format(args="{}", name="branch"), encoding="utf-8")
+        target = str(rpc / "main.py")
+        command = subprocess.list2cmdline([sys.executable, target]) if os.name == "nt" else f"{shlex.quote(sys.executable)} {shlex.quote(target)}"
+        job = sandbox.Job(command, ws.policy, ws.root, scratch=str(state))
+        job.close_input()
+        server = threading.Thread(target=self._serve_chain, args=(rpc, job, ws), name=f"agent-branch-{self.id}", daemon=True)
+        server.start()
+        end = time.time() + BRANCH_TIMEOUT
+        while job.code is None and time.time() < end and not self._stop:
+            time.sleep(0.05)
+        finished = job.code is not None
+        if finished:
+            job.out.join(5)
+        output, code_ = job.out.text().strip(), job.code
+        job.stop()
+        server.join(2)
+        return f"{output}\n[{f'exit code {code_}' if finished else f'stopped after {BRANCH_TIMEOUT} s'}]"
+
+    def _branch_diff(self, copy: Path, base: dict[str, str]) -> str:
+        """What a branch changed against the real workspace, as a short unified diff."""
+        now = {p.relative_to(copy).as_posix() for p in isolate._files(copy)}
+        rows = []
+        for rel in sorted(now | set(base)):
+            if rel not in now:
+                rows.append(f"deleted {rel}")
+                continue
+            if base.get(rel) == isolate._hash(copy / rel):
+                continue
+            try:
+                old = (self.workspace.root / rel).read_text(encoding="utf-8").splitlines() if rel in base else []
+                new = (copy / rel).read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeDecodeError):
+                rows.append(f"changed {rel} (not text)")
+                continue
+            rows.append("\n".join(difflib.unified_diff(old, new, f"a/{rel}", f"b/{rel}", lineterm="", n=1)) or f"new empty file {rel}")
+        return clip("\n".join(rows), 6000)
+
+    def _adopt(self, args: dict) -> tuple[str, bool]:
+        """Merge the chosen branch's copy into the real workspace and drop every copy."""
+        name = str(args.get("name") or "")
+        if name not in self._branches:
+            return f"no branch {name!r}; open branches: {', '.join(self._branches) or 'none, run tools.branch first'}", False
+        copy, base = self._branches[name]
+        applied, conflicts = isolate.merge(self.workspace.root, copy, base, f"branch-{name}", before=self.checkpoints.save)
+        self._drop_branches()
+        kept = f"; changed on both sides, kept under {isolate.CONFLICTS}/branch-{name}/: {', '.join(conflicts)}" if conflicts else ""
+        return f"Adopted branch {name}: {', '.join(applied) or 'no file changes'}{kept}. Run the check on the real workspace before you finish.", True
+
+    def _drop_branches(self) -> None:
+        for copy, _ in self._branches.values():
+            shutil.rmtree(copy, ignore_errors=True)
+        self._branches = {}
 
     def _target_spec(self, name: str) -> dict | None:
         """The description and parameters of a tool a chain can reach, wherever it comes from."""

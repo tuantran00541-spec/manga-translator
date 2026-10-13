@@ -6,7 +6,7 @@ import difflib
 import re
 
 # Methods of the tools object itself, which are not tools the harness serves.
-LIBRARY = frozenset({"search", "describe", "intent"})
+LIBRARY = frozenset({"search", "describe", "intent", "branch", "adopt"})
 
 
 def check(code: str, known: dict[str, set[str] | None], fixes=lambda name, args: False) -> list[str]:

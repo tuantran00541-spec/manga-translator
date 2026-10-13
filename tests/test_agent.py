@@ -4178,6 +4178,35 @@ def test_lean_offers_four_tools_a_keep_going_prompt_and_chains_reach_them(ws, ho
     assert session.command("/tools lean")["message"].startswith("Đã đổi")
 
 
+def test_lean_branches_try_fixes_on_copies_and_the_model_adopts_one(ws, home):
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "lean"}))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    assert "tools.branch(" in session.system_prompt()
+    real = ws.root / "pkg" / "a.py"
+    chain = ("def go():\n"
+             "    a = \"tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 2')\"\n"
+             f"    b = \"tools.edit_file(path='{real}', old_text='return 1', new_text='return 3')\\nprint('b done')\"\n"
+             "    nested = \"tools.branch({'x': 'pass', 'y': 'pass'})\"\n"
+             "    check = \"import subprocess, sys\\nr = subprocess.run([sys.executable, '-c', 'import pkg.a as m; assert m.x == 3, m.x'], capture_output=True, text=True)\\n"
+             "print('PASS' if r.returncode == 0 else 'FAIL ' + r.stderr.strip().splitlines()[-1])\"\n"
+             "    table = tools.branch({'a': a, 'b': b, 'n': nested}, check=check)\n"
+             "    before = tools.read_file(path='pkg/a.py')\n"
+             "    return {'table': table, 'untouched': 'return 1' in before}\n")
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": False}})
+    assert '"untouched": true' in out, "nothing is applied before the model chooses"
+    assert "== branch a ==" in out and "+    return 2" in out and "FAIL AssertionError: 2" in out, out
+    assert "== branch b ==" in out and "+    return 3" in out and "b done" in out and "PASS" in out, "an absolute path in the real workspace maps to the copy"
+    assert "a branch cannot branch" in out, out
+    assert real.read_text().count("return 1") == 1
+    adopted = session._session_tool({"id": "d", "name": "create", "args": {"name": "pick", "code": "def pick():\n    return tools.adopt('b')\n", "args": {}, "keep": False}})
+    assert "Adopted branch b: pkg/a.py" in adopted and "return 3" in real.read_text(), adopted
+    assert not session._branches and not any((session._outputs_dir() / "branches").glob("*/*")), "every copy is dropped after adopting"
+    missing = session._session_tool({"id": "e", "name": "create", "args": {"name": "again", "code": "def again():\n    return tools.adopt('a')\n", "args": {}, "keep": False}})
+    assert "no branch 'a'" in missing
+
+
 def test_the_default_tool_set_is_hybrid():
     from app.agent import registry
     assert registry.TOOL_SETS[0] == "hybrid"
