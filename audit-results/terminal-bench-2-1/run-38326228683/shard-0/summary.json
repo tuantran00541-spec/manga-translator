@@ -1,0 +1,47 @@
+{
+ "passed": 3,
+ "trials": 4,
+ "rate": 0.75,
+ "rows": [
+  {
+   "trial": "bn-fit-modify__9rpyUVW",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    178117,
+    132544,
+    21925
+   ]
+  },
+  {
+   "trial": "build-cython-ext__sprz3PG",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    878005,
+    720576,
+    29327
+   ]
+  },
+  {
+   "trial": "build-pov-ray__yvMwggj",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1123206,
+    876736,
+    52328
+   ]
+  },
+  {
+   "trial": "cancel-async-tasks__Z2yisyF",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    55573,
+    27520,
+    24391
+   ]
+  }
+ ]
+}
