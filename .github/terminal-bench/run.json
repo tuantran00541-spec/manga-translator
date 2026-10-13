@@ -1,28 +1,29 @@
 {
-  "secret": "AGNES_KEY",
-  "base_url": "https://apihub.agnes-ai.com/v1",
-  "model": "agnes-3.0-flash",
+  "secret": "MINIROUTER_API_KEY",
+  "base_url": "https://api.minirouter.sh/v1",
+  "model": "xiaomi/mimo-v2.6-flash",
   "n_tasks": 0,
-  "tasks": [
-    "cancel-async-tasks"
-  ],
-  "concurrent": 1,
+  "tasks": [],
+  "concurrent": 4,
   "minutes": 200,
   "mode": "bypass",
-  "request": {},
+  "request": {
+    "reasoning_effort": "high"
+  },
   "max_output_tokens": 32000,
-  "shards": 1,
+  "shards": 2,
   "agent": "chaos",
   "limits": {
-    "max_usd": 3.0,
-    "concurrent": 2,
+    "max_usd": 30.0,
     "price": {
-      "input": 5e-08,
-      "output": 1.5e-07
+      "input": 1.47e-07,
+      "output": 2.94e-07
     }
   },
-  "trial": "agnes-branch-1",
-  "late_request": {},
+  "trial": "four-tools-1",
+  "late_request": {
+    "reasoning_effort": "medium"
+  },
   "dataset": "",
   "sample": 0
 }
