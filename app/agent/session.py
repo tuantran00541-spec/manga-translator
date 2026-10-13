@@ -458,14 +458,15 @@ SESSION_SPECS = {
     "new_context": {"name": "new_context", "description": "After this step, go on in a fresh context that keeps the notebook, the request and the last few messages. "
                                                           "Write context_notes first.", "parameters": OBJ},
     "checkpoint": {"name": "checkpoint", "description": (
-        "Marks to come back to. show (the default) gives the diff of this request's edits, or since a mark with name, and lists the marks, "
-        "pinned files and dropped attempts; files=true adds the pinned files' text. save names the current state of the files you changed "
-        "(the harness also saves one before each created tool you run, before each adopt and after each PASS). pin keeps files worth "
-        "having at hand. restore puts every file back as it was at a mark, or one path as it was before this request; say why, so the "
-        "next try does not repeat it."),
+        "Marks to come back to. show (the default) lists which files this request's edits changed, or since a mark with name, with the "
+        "marks, pinned files and dropped attempts; diff=true adds the full diff, and path gives one file's diff plus its text when it is "
+        "pinned. save names the current state of the files you changed (the harness also saves one before each created tool you run, "
+        "before each adopt and after each PASS). pin keeps files worth having at hand. restore puts every file back as it was at a mark, "
+        "or one path as it was before this request; with a mark, why is required and stays listed, so the next try does not repeat it. "
+        "Commands and outside calls since the mark are not undone; restore lists them."),
         "parameters": {"type": "object", "properties": {
             "action": {"type": "string", "enum": ["show", "save", "pin", "restore"]}, "name": {"type": "string"}, "note": {"type": "string"},
-            "path": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "files": {"type": "boolean"},
+            "path": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "diff": {"type": "boolean"},
             "why": {"type": "string"}}}},
     "memory": {"name": "memory", "description": "Add, remove or list notes kept for later sessions.",
                "parameters": {"type": "object", "required": ["action"], "properties": {
@@ -1894,6 +1895,14 @@ class AgentSession:
         kept = f"; changed on both sides, kept under {isolate.CONFLICTS}/branch-{name}/: {', '.join(conflicts)}" if conflicts else ""
         return f"Adopted branch {name}: {', '.join(applied) or 'no file changes'}{kept}. Run the check on the real workspace before you finish.", True
 
+    def _log_outside(self, call: dict) -> None:
+        """Note a step whose effects reach past the workspace files, so a restore can say it was not undone."""
+        name, args = call["name"], call["args"] if isinstance(call["args"], dict) else {}
+        if name == "run_command" and not rules.safe_readonly(str(args.get("command") or "")):
+            self.checkpoints.note_ran(f"run_command: {clip(str(args.get('command') or ''), 200)}")
+        elif name in self._root().created or name in self.replaced or (name in self.mcp_tools and self._role(name) != "read"):
+            self.checkpoints.note_ran(f"{name}({clip(json.dumps(args, ensure_ascii=False, default=str), 160)})")
+
     def _auto_mark(self, label: str) -> None:
         """A mark the harness saves at a junction, numbered so later ones do not replace it."""
         self.checkpoints.auto_no += 1
@@ -2471,6 +2480,9 @@ class AgentSession:
                 raise ToolError(f"{self.workspace.rel(target)} may not be edited")
             if not name and target is None:
                 raise ToolError("restore needs the name of a mark, or a path to put back as it was before this request")
+            why = str(args.get("why") or "").strip()
+            if name and not why:
+                raise ToolError("say why you go back to this mark (why): what failed or what you learned, so the next try does not repeat it")
             state = cp.at(name) if name else cp.current()
             if target is not None and str(target) not in state:
                 changed = ", ".join(self.workspace.rel(Path(n)) for n in state) or "none"
@@ -2481,15 +2493,20 @@ class AgentSession:
                     self.workspace.seen[item] = item.stat().st_mtime_ns
                 else:
                     self.workspace.seen.pop(item, None)
-            why = str(args.get("why") or "")
-            if name and why:
+            ran = cp.ran_since(name) if name else []
+            if name:
                 cp.drop(name, why)
-            self._junction("restore", name=name, files=len(done), why=why)
+            self._junction("restore", name=name, files=len(done), why=why, not_undone=len(ran))
             where = f"as they were at mark {name}" if name else "as it was before this request"
-            return (f"Put back {where}: {', '.join(self.workspace.rel(Path(n)) for n in done)}." if done else f"Nothing to put back; the files are already {where}.")
+            text = f"Put back {where}: {', '.join(self.workspace.rel(Path(n)) for n in done)}." if done else f"Nothing to put back; the files are already {where}."
+            if ran:
+                text += ("\nNot undone, because only files go back: these ran after the mark and their effects outside the files "
+                         "(installed packages, started processes, network calls) are still there:\n" + "\n".join(f"- {r}" for r in ran[-15:]))
+            return text
         if action != "show":
             raise ToolError("action is show, save, pin or restore")
-        diff = self._diff(cp.at(name) if name else cp.current(), path)
+        before = cp.at(name) if name else cp.current()
+        diff = self._diff(before, path) if path or args.get("diff") else self._diff_stat(before)
         parts = [diff or (f"No file changed since mark {name}" if name else "No file changed by the edit tools in this request") + (f" matches {path}" if path else "") + "."]
         if cp.marks:
             parts.append("Marks: " + "; ".join(f"{n}{' (auto)' if m['auto'] else ''}{': ' + m['note'] if m['note'] else ''}" for n, m in cp.marks.items()))
@@ -2497,15 +2514,33 @@ class AgentSession:
             parts.append("Pinned: " + "; ".join(f"{p}{': ' + n if n else ''}" for p, n in cp.pins.items()))
         if cp.dropped:
             parts.append("Dropped attempts:\n" + "\n".join(f"- back to {d['mark']}: {d['why']}" for d in cp.dropped))
-        if args.get("files"):
-            for rel in cp.pins:
-                if rules.check(self.rules, "read_file", {"path": rel}, self._rel) == "deny":
-                    continue
-                try:
-                    parts.append(f"== {rel} ==\n" + clip(self.workspace.resolve(rel).read_text(encoding="utf-8", errors="replace"), 8000))
-                except OSError as exc:
-                    parts.append(f"== {rel} ==\n(cannot read: {exc})")
-        return clip("\n\n".join(parts), 80_000)
+        rel = self._rel(path) if path else ""
+        if rel in cp.pins and rules.check(self.rules, "read_file", {"path": rel}, self._rel) != "deny":
+            try:
+                parts.append(f"== {rel} ==\n" + clip(self.workspace.resolve(rel).read_text(encoding="utf-8", errors="replace"), 20_000))
+            except OSError as exc:
+                parts.append(f"== {rel} ==\n(cannot read: {exc})")
+        return clip("\n\n".join(parts), 60_000)
+
+    def _diff_stat(self, before: dict[str, bytes | None]) -> str:
+        """One line per changed file with its added and removed line counts."""
+        rows = []
+        for name, old in sorted(before.items()):
+            path = Path(name)
+            try:
+                new = path.read_bytes() if path.is_file() else None
+            except OSError:
+                new = None
+            if new == old:
+                continue
+            lines = lambda data: (data or b"").decode("utf-8", errors="replace").splitlines()
+            added = removed = 0
+            for row in list(difflib.unified_diff(lines(old), lines(new), n=0, lineterm=""))[2:]:
+                added += row.startswith("+")
+                removed += row.startswith("-")
+            state = "new" if old is None else "deleted" if new is None else f"+{added} -{removed}"
+            rows.append(f"{self.workspace.rel(path)}: {state}")
+        return ("Changed files (diff=true or path shows the lines):\n" + "\n".join(rows)) if rows else ""
 
     def _memory_tool(self, args: dict) -> str:
         home, root, scope = self.home if self.home is not None else Path.home(), self.workspace.root, str(args.get("scope") or "project")
@@ -2884,6 +2919,8 @@ class AgentSession:
                 output, ok = f"Error: {exc}", False
             except (OSError, mcp.MCPError) as exc:
                 output, ok = f"Error: {type(exc).__name__}: {exc}", False
+            if ok:
+                self._log_outside(call)
             return output, ok
 
         # Plugins may wrap every tool call: tool/execute listeners get (call, next) and return (output, ok).
