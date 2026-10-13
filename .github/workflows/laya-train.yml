@@ -72,7 +72,8 @@ jobs:
       - name: Give git access only now
         env:
           TOKEN: ${{ github.token }}
-        run: git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
       - uses: ./.github/actions/save-evidence
         with:
           paths: ${{ env.OUT }}
@@ -121,7 +122,8 @@ jobs:
         if: always()
         env:
           TOKEN: ${{ github.token }}
-        run: git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
       - uses: ./.github/actions/save-evidence
         if: always()
         with:
@@ -186,7 +188,8 @@ jobs:
         if: always()
         env:
           TOKEN: ${{ github.token }}
-        run: git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
       - uses: ./.github/actions/save-evidence
         if: always()
         with:
