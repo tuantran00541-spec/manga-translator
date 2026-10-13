@@ -111,6 +111,30 @@ MAX_PARALLEL = 3
 SELF_EXTEND = ("plugin_write", "plugin_remove")
 CREATED_NAME = re.compile(r"[a-z][a-z0-9_]{0,40}")
 # Calls a created tool's function with the model's arguments, the way function calling hands them over.
+def _signature(name: str, code: str) -> tuple[str, str, dict]:
+    """The called function's signature, docstring first line and JSON schema, so a created tool describes itself."""
+    import ast
+    tree = ast.parse(code)
+    fns = [n for n in tree.body if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")]
+    fn = next((f for want in (name, "run", "main") for f in fns if f.name == want), fns[0] if len(fns) == 1 else None)
+    if fn is None:
+        return f"{name}()", "", {"type": "object", "properties": {}}
+    kinds = {"str": "string", "int": "integer", "float": "number", "bool": "boolean", "list": "array", "dict": "object"}
+    plain = fn.args.args
+    defaults = [None] * (len(plain) - len(fn.args.defaults)) + list(fn.args.defaults)
+    props, required, shown = {}, [], []
+    for arg, default in zip(plain, defaults):
+        hint = ast.unparse(arg.annotation) if arg.annotation else ""
+        kind = kinds.get(hint.split("[")[0]) or (kinds.get(type(default.value).__name__) if isinstance(default, ast.Constant) and default.value is not None else None)
+        props[arg.arg] = {"type": kind} if kind else {}
+        if default is None:
+            required.append(arg.arg)
+        shown.append(arg.arg + (f"={ast.unparse(default)}" if default is not None else ""))
+    schema = {"type": "object", "properties": props, **({"required": required} if required else {})}
+    doc = (ast.get_docstring(fn) or "").strip().split("\n")[0]
+    return f"{name}({', '.join(shown)})", doc, schema
+
+
 CREATED_CALL = """
 
 import inspect as _inspect, json as _json
@@ -291,7 +315,8 @@ INTENT_CHECK = ("[Check against intent.md: say in a line what this request has d
 HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a tool as Python code that runs in the sandbox (it is kept for later sessions). "
                  "Use the built-in tools while exploring or debugging step by step; when the steps are known, write them as one chain with create so they "
                  "run in a single call. Inside a chain tools.<name>(...) also calls the built-in tools (read_file, edit_file, run_command and the rest) and "
-                 "returns their text. " + CHAIN_PROMPT.replace("\n", " "))
+                 "returns their text. A tool you create appears in your tool list from the next reply: call it there by name like any tool; "
+                 "tools.<name>(...) is only for calls from inside code. " + CHAIN_PROMPT.replace("\n", " "))
 LEAN_TOOLS = frozenset({"read_file", "edit_file", "run_command"})
 LEAN_PROMPT = """You are Chaos, a coding agent inside the Manga Translator app.
 Workspace root: {root} on {system}. Paths are relative to it.
@@ -313,7 +338,9 @@ End with a short report: what changed, how you checked it, and anything not done
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
 LEAN_CREATE = ("create writes a tool as Python code that runs in the sandbox (it is kept for later sessions). Use the four tools while "
                "exploring or debugging step by step; when the steps are known, or a job needs a tool you do not have, write it with create. "
-               "Inside a chain tools.<name>(...) also calls read_file, edit_file and run_command and returns their text. " + CHAIN_PROMPT.replace("\n", " "))
+               "Inside a chain tools.<name>(...) also calls read_file, edit_file and run_command and returns their text. "
+               "A tool you create appears in your tool list from the next reply: call it there by name like any tool; "
+               "tools.<name>(...) is only for calls from inside code. " + CHAIN_PROMPT.replace("\n", " "))
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {
@@ -352,10 +379,17 @@ SESSION_SPECS = {
         "parameters": {"type": "object", "required": ["id"], "properties": {
             "id": {"type": "string"}, "code": {"type": "string"}, "path": {"type": "string", "description": "A workspace file with the code."},
             "config": {"type": "object"}}}},
-    "create": {"name": "create", "description": "create",
-               "parameters": {"type": "object", "required": ["name"], "properties": {
-                   "name": {"type": "string"}, "description": {"type": "string"}, "parameters": {"type": "object"}, "code": {"type": "string"},
-                   "args": {"type": "object"}, "keep": {"type": "boolean"}}}},
+    "create": {"name": "create", "description": (
+        "Write a Python tool you can then call by name. code defines def <name>(param, ...) that returns the result; its signature becomes "
+        "the tool's parameters and its docstring the description unless you give them. Pass args to run it now; keep: false for a one-off. "
+        "Same name replaces it, empty code deletes it."),
+               "parameters": {"type": "object", "required": ["name", "code"], "properties": {
+                   "name": {"type": "string", "description": "lower_case name, also the function's name."},
+                   "description": {"type": "string", "description": "What it does, its arguments and what it returns."},
+                   "parameters": {"type": "object", "description": "JSON schema of the arguments; taken from the signature when left out."},
+                   "code": {"type": "string", "description": "Python that defines the function; return values, do not return at top level."},
+                   "args": {"type": "object", "description": "Run it with these arguments right after writing it."},
+                   "keep": {"type": "boolean", "description": "false runs it once without keeping it."}}}},
     "plugin_remove": {"name": "plugin_remove", "description": "Unmount and delete a plugin.", "parameters": ID},
     "goal_done": {"name": "goal_done", "description": "Mark the goal done and verified.",
                   "parameters": {"type": "object", "required": ["summary"], "properties": {"summary": {"type": "string"}}}},
@@ -1536,21 +1570,28 @@ class AgentSession:
         try:
             compile(code, f"{name}.py", "exec")
         except SyntaxError as exc:
-            raise ToolError(f"Syntax error: {exc}") from exc
+            hint = (f"\ncode is a module: put the steps in def {name}(...): and return from there."
+                    if "outside function" in str(exc) else "")
+            raise ToolError(f"Syntax error: {exc}{hint}") from exc
         raw = chaincheck.raw_shell(code) if self.profile["tools"] == "create" and not self.profile["create_shell"] else []
         if raw:
             raise ToolError("Not created: in create mode a tool does its work in Python rather than through a shell:\n" + "\n".join(raw[:5]) +
                             "\nRead, list and search files with open, pathlib, os.walk and re; keep subprocess for programs that do real work "
                             "(builds, tests, installs), called with a fixed program and the arguments as a list.")
-        params = args.get("parameters") if isinstance(args.get("parameters"), dict) else {}
+        signature, doc, inferred = _signature(name, code)
+        params = args.get("parameters") if isinstance(args.get("parameters"), dict) and args["parameters"].get("properties") else inferred
         params = {"type": "object", "properties": {}, **params}
         old = created.get(name)
-        tool = {"name": name, "description": str(args.get("description") or (old or {}).get("description") or name)[:1024],
-                "parameters": params, "code": code}
+        about = str(args.get("description") or doc or (old or {}).get("about", (old or {}).get("description")) or "").strip()
+        tool = {"name": name, "description": (f"{signature}: {about}" if about and signature not in about else about or signature)[:1024],
+                "about": about, "parameters": params, "code": code}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(tool, ensure_ascii=False, indent=1), encoding="utf-8")
         created[name] = tool
-        return f"{'Updated' if old else 'Created'} tool {name}; call it like any other tool. It runs in the sandbox and is kept for later sessions."
+        takes = ", ".join(params["properties"]) or "no arguments"
+        loose = "" if "def " in code else " It has no function, so it reads its arguments from the dict args."
+        return (f"{'Updated' if old else 'Created'} tool {tool['description']}. Call {name} directly as a tool ({takes}); "
+                f"it runs in the sandbox and is kept for later sessions.{loose}")
 
     def _run_created(self, call: dict) -> str:
         """A created tool runs as a sandboxed Python process; past CREATED_TIMEOUT it goes on in the background, and the files it changes are tracked."""
@@ -1578,7 +1619,7 @@ class AgentSession:
         prelude = (f"import builtins as _b, os as _os, sys as _sys\n_os.environ['AGENT_STATE'] = {where!r}\n_sys.path.insert(0, _os.path.join({where!r}, 'lib'))\n"
                    f"_os.environ['AGENT_RPC'] = _os.path.join({where!r}, 'rpc', {run_id!r})\nfrom agent_tools import tools\n"
                    "memo = _b.memo = getattr(_b, 'memo', {})\n")
-        script = prelude + tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
+        script = prelude + f"args = __import__('json').loads({json.dumps(json.dumps(args, ensure_ascii=False, default=str))})\n" + tool["code"] + CREATED_CALL.format(args=json.dumps(args, ensure_ascii=False, default=str), name=tool["name"])
         # The script goes in a file, so neither its code nor its arguments have a size limit.
         (rpc / "main.py").write_text(script, encoding="utf-8")
         target = f"/tmp/rpc/{run_id}/main.py" if docker else str(rpc / "main.py")

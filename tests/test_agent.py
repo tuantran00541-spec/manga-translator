@@ -3126,12 +3126,17 @@ def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_kee
     run_to_idle(session, "count lines")
     outputs = [e["output"] for e in session.events if e["type"] == "tool"]
     assert outputs[0].startswith("Created tool count_lines") and '{"lines": 3}' in outputs[1], outputs
-    assert next(s for s in session.specs() if s["name"] == "create")["description"] == "create"
+    assert "def <name>" in next(s for s in session.specs() if s["name"] == "create")["description"]
     later = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=scripted(), session_id="later")
-    assert {"name": "count_lines", "description": "Count lines.", "parameters": params} in later.specs()
+    assert {"name": "count_lines", "description": "count_lines(path): Count lines.", "parameters": params} in later.specs()
     assert later._needs_approval({"name": "count_lines", "args": {}}) == later._needs_approval({"name": "run_command", "args": {"command": "make"}})
     assert later._create({"name": "count_lines", "code": "def run(args):\n    return 'v2'\n"}).startswith("Updated")
-    assert later.created["count_lines"]["description"] == "Count lines."
+    assert later.created["count_lines"]["description"] == "count_lines(args): Count lines."
+    made = later._create({"name": "tally", "code": "def tally(path: str, limit=5):\n    \"\"\"Count words.\"\"\"\n    return 1\n"})
+    assert later.created["tally"]["description"] == "tally(path, limit=5): Count words." and "Call tally directly" in made
+    assert later.created["tally"]["parameters"] == {"type": "object", "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["path"]}
+    with pytest.raises(ToolError, match="def probe"):
+        later._create({"name": "probe", "code": "x = 1\nreturn x"})
     with pytest.raises(ToolError, match="reserved"):
         later._create({"name": "read_file", "code": "x = 1"})
     with pytest.raises(ToolError, match="Syntax"):
