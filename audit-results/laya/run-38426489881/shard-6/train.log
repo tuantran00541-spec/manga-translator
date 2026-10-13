@@ -1,0 +1,30 @@
+Fetching 5 files:   0%|          | 0/5 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 5 files:  40%|████      | 2/5 [00:00<00:00, 16.45it/s]Fetching 5 files: 100%|██████████| 5/5 [00:04<00:00,  1.05it/s]Fetching 5 files: 100%|██████████| 5/5 [00:04<00:00,  1.18it/s]
+train items 1710, calibration items 190, eval items 190 (calibration_slice), skipped {}, device cpu
+optimizer budget: 1710 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 54 optimizer updates over 1 epoch(s)
+epoch 1/1 step 100 loss 1.0503
+epoch 1/1 step 200 loss 0.0924
+epoch 1/1 step 300 loss 0.2022
+epoch 1/1 step 400 loss 0.8172
+epoch 1/1 step 500 loss 0.2312
+epoch 1/1 step 600 loss 0.9775
+epoch 1/1 step 700 loss 0.3481
+epoch 1/1 step 800 loss 0.7644
+epoch 1/1 mean loss 0.6486
+/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/site-packages/laya/train_cli.py:221: RuntimeWarning: laya.train: predictions collapsed to the class prior (calibration cross-entropy 0.704 is within 2% of ln K ~ 0.693). The default epoch budget is often too small on a few hundred or a thousand labelled rows. Try more epochs, more data, or another seed.
+  summary = finetune(
+/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/site-packages/laya/train_cli.py:221: RuntimeWarning: laya.train: noul calibration: the fitted temperature 5 is on the [0.5, 5] clamp
+  summary = finetune(
+
+=== Calibration Evidence (in-sample calibration slice, 190 items; not held-out) ===
+Metric                 Before         After          Delta         
+-----------------------------------------------------------------
+Accuracy               0.5158         0.5105         -0.0053       
+Loss                   0.7034         0.6935         -0.0099       
+ECE                    0.0682         0.0023         -0.0659       
+Brier (multi-class)    0.5101         0.5004         -0.0097       
+Brier (top-1)          0.2550         0.2502         -0.0048       
+Mean Confidence        0.5501         0.5128         -0.0373       
+-----------------------------------------------------------------
+
+Training complete! Model saved to ckpt
