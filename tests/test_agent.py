@@ -4128,6 +4128,27 @@ def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, hom
     assert "pkg/a.py" in out, out
 
 
+def test_the_worked_example_in_the_prompt_runs_as_written(ws, home):
+    from app.agent import session as session_module
+    (ws.root / "app").mkdir()
+    (ws.root / "tests").mkdir()
+    (ws.root / "app" / "__init__.py").write_text("")
+    (ws.root / "app" / "text.py").write_text('def slugify(text):\n    return text.lower().replace(" ", "-")\n')
+    (ws.root / "tests" / "test_text.py").write_text("from app.text import slugify\n\n\ndef test_slug():\n    assert slugify('Hello, World!') == 'hello-world'\n")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    assert session_module.EXAMPLE_BRANCH in session.system_prompt()
+    run = lambda name, code, **extra: session._session_tool({"id": name, "name": "create", "args": {"name": name, "code": code, **extra}})
+    first = run("check", session_module.EXAMPLE_CHECK, args={})
+    assert "hello,-world" in first and "[exit code 1]" in first and "failure.. " not in first, first
+    table = run("try_both", session_module.EXAMPLE_BRANCH, keep=False)
+    assert "== branch regex ==" in table and "== branch strip ==" in table and table.count("PASS") == 1, table
+    assert "replace" in (ws.root / "app" / "text.py").read_text(), "nothing is applied before adopting"
+    assert "PASS" in run("keep_it", session_module.EXAMPLE_ADOPT, keep=False)
+    (ws.root / "app" / "text.py").write_text('def slugify(text):\n    return text.lower().replace(" ", "-")\n')
+    assert "PASS" in run("fix_slug", session_module.EXAMPLE_CHAIN, keep=False), "the one-go chain fixes it too"
+
+
 def test_branches_try_fixes_on_copies_and_the_model_adopts_one(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")

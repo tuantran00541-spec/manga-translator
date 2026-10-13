@@ -335,20 +335,56 @@ LEAN_PROMPT = IDENTITY + """
 Your tools are read_file, edit_file, run_command (the shell: list, search, build, test) and create; how they fit together is below.
 
 """ + RHYTHM + "\n" + VOICE
+# One request worked end to end with create; a test runs these very pieces of code.
+EXAMPLE_CHECK = '''def check():
+    """PASS when the text tests pass, else the end of the failure."""
+    out = tools.run_command(command="python -m pytest tests/test_text.py -q")
+    return "PASS" if "[exit code 0]" in out else out[-1500:]'''
+EXAMPLE_CHAIN = '''src = tools.read_file(path="app/text.py")
+if 'return text.lower().replace(" ", "-")' not in src:
+    return src[:3000]  # not what I expected: show the file and stop
+tools.edit_file(path="app/text.py", old_text='return text.lower().replace(" ", "-")',
+                new_text='return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")')
+tools.edit_file(path="app/text.py", old_text="def slugify", new_text="import re\\n\\n\\ndef slugify")
+return tools.check()'''
+EXAMPLE_BRANCH = """regex = '''
+tools.edit_file(path="app/text.py", old_text='return text.lower().replace(" ", "-")',
+                new_text='return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")')
+tools.edit_file(path="app/text.py", old_text="def slugify", new_text="import re\\\\n\\\\n\\\\ndef slugify")
+'''
+strip = '''
+tools.edit_file(path="app/text.py", old_text='return text.lower().replace(" ", "-")',
+                new_text='return text.lower().replace(" ", "-").strip("!,.")')
+'''
+return tools.branch({"regex": regex, "strip": strip}, check="print(tools.check())")"""
+EXAMPLE_ADOPT = '''tools.adopt("regex")
+return tools.check()'''
 LEAN_CREATE = ("How your tools fit together:\n"
                "- read_file, edit_file and run_command each do one thing; use them to look around and for single steps.\n"
                "- create runs Python you write. In it tools.read_file, tools.edit_file, tools.run_command, tools.think(question) and every tool "
                "you made are plain functions, so one create call reads, edits, runs and checks without a reply in between. " + MADE_TOOLS + "\n"
                "- tools.branch({'a': code_a, 'b': code_b}, check=check_code), called inside create, runs two or three attempts at the same time, "
-               "each on its own copy of the workspace, then the check on each copy. You get back what each attempt changed, what it printed and "
-               "what its check printed; the real workspace is untouched until you keep one with tools.adopt('a'). An attempt cannot branch again.\n"
+               "each on its own copy of the workspace, then the check on each copy. Each attempt is a string of Python with the same tools. You "
+               "get back, per attempt, the diff it made, what it printed and what its check printed; the real workspace is untouched until you "
+               "keep one with tools.adopt(name), which applies it and drops the other copies. An attempt cannot branch again.\n"
                "- The rest of the harness lives only inside create: web search and fetch, ask_user, memory, todo_write, skills, view_image, "
                "helper agents (task, fan_out), schedules, plugins and MCP tools. tools.search(words) finds one, tools.describe(name) shows its "
-               "parameters, and tools.<name>(...) calls it under the same rules and approvals.\n"
-               "Write your check as a kept tool early (say check); then it runs alone, inside your code and as a branch's check='print(tools.check())'.\n"
-               "Example, when two fixes both look right:\n"
-               "  return tools.branch({'lock': fix_with_lock, 'queue': fix_with_queue}, check='print(tools.check())')\n"
-               "  # read the table, then in the next create: return tools.adopt('queue')")
+               "parameters, and tools.<name>(...) calls it under the same rules and approvals.\n\n"
+               "One request, start to finish. The user says: slugify in app/text.py turns 'Hello, World!' into 'hello,-world!' "
+               "instead of 'hello-world'.\n\n"
+               "1. Pin down done as a kept tool, and run it once to see it fail (args runs it right away):\n"
+               "create name=\"check\", args={}, code=\n" + EXAMPLE_CHECK + "\n"
+               "From now on check is yours: call it by name, or as tools.check() inside any code, including a branch's check.\n\n"
+               "2. Look, act and check in one go when the fix is clear (keep=false makes it a one-off; a top-level return ends it):\n"
+               "create name=\"fix_slug\", keep=false, code=\n" + EXAMPLE_CHAIN + "\n"
+               "It returns PASS, or the failure to read before the next try.\n\n"
+               "3. Or, when you cannot tell which of two fixes is right, try both on copies and let the check pick:\n"
+               "create name=\"try_both\", keep=false, code=\n" + EXAMPLE_BRANCH + "\n"
+               "You get a table: == branch regex == with its diff and PASS, == branch strip == with its diff and the failing test.\n\n"
+               "4. Keep the winner and check the real workspace:\n"
+               "create name=\"keep_it\", keep=false, code=\n" + EXAMPLE_ADOPT + "\n"
+               "Finish only once this returns PASS. Single reads and edits still go straight through read_file and edit_file; reach for create when "
+               "steps follow each other without needing your judgment in between, when the same work repeats, or when you want the check to choose.")
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {
@@ -390,7 +426,7 @@ SESSION_SPECS = {
     "create": {"name": "create", "description": (
         "Write a Python tool you can then call by name; inside its code tools.<name>(...) calls any other tool (built-in, created, plugin, MCP), "
         "so one call can chain many steps. code defines def <name>(param, ...) that returns the result; its signature becomes the tool's "
-        "parameters and its docstring the description unless you give them. Pass args to run it now; keep: false for a one-off. "
+        "parameters and its docstring the description unless you give them. Pass args to run it now; keep: false runs it once now and drops it. "
         "Same name replaces it, empty code deletes it."),
                "parameters": {"type": "object", "required": ["name", "code"], "properties": {
                    "name": {"type": "string", "description": "lower_case name, also the function's name."},
@@ -398,7 +434,7 @@ SESSION_SPECS = {
                    "parameters": {"type": "object", "description": "JSON schema of the arguments; taken from the signature when left out."},
                    "code": {"type": "string", "description": "Python that defines the function; return values, do not return at top level."},
                    "args": {"type": "object", "description": "Run it with these arguments right after writing it."},
-                   "keep": {"type": "boolean", "description": "false runs it once without keeping it."}}}},
+                   "keep": {"type": "boolean", "description": "false runs it once right away (args optional) without keeping it."}}}},
     "plugin_remove": {"name": "plugin_remove", "description": "Unload a plugin and delete its file.", "parameters": ID},
     "goal_done": {"name": "goal_done", "description": "Mark the goal met, after its check has passed.",
                   "parameters": {"type": "object", "required": ["summary"], "properties": {"summary": {"type": "string"}}}},
@@ -1547,7 +1583,7 @@ class AgentSession:
         created[name] = tool
         takes = ", ".join(params["properties"]) or "no arguments"
         loose = "" if "def " in code else " It has no function, so it reads its arguments from the dict args."
-        return (f"{'Updated' if old else 'Created'} tool {tool['description']}. Call {name} directly as a tool ({takes}); "
+        return (f"{'Updated' if old else 'Created'} tool {tool['description'].rstrip('.')}. Call {name} directly as a tool ({takes}); "
                 f"it runs in the sandbox and is kept for later sessions.{loose}")
 
     def _run_created(self, call: dict) -> str:
@@ -2122,13 +2158,15 @@ class AgentSession:
             if args.get("keep") is False and str(args.get("name") or "").strip() in self._root().created:
                 raise ToolError("a one-off script needs a name no kept tool has, or it would replace and then delete that tool")
             made = self._create(args)
-            if not isinstance(args.get("args"), dict) or not str(args.get("code") or "").strip():
+            # A one-off runs right away even without args; a kept tool runs now only when args are given.
+            if (not isinstance(args.get("args"), dict) and args.get("keep") is not False) or not str(args.get("code") or "").strip():
                 return made
             # Write and run in one call; the run asks for approval like any call of that tool, and keep=false drops the tool after.
             name = str(args.get("name") or "").strip()
             kept = self._root().created.get(name, {})
             try:
-                output, _ = self._run_call({"id": f"{call.get('id', 'create')}-run", "name": name, "args": args["args"]})
+                output, _ = self._run_call({"id": f"{call.get('id', 'create')}-run", "name": name,
+                                            "args": args["args"] if isinstance(args.get("args"), dict) else {}})
             finally:
                 if args.get("keep") is False:
                     self._create({"name": name, "code": ""})
