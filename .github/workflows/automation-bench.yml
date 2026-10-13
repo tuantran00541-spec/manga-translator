@@ -17,9 +17,6 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       arms: ${{ steps.cfg.outputs.arms }}
-      secret: ${{ steps.cfg.outputs.secret }}
-      base: ${{ steps.cfg.outputs.base }}
-      model: ${{ steps.cfg.outputs.model }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,16 +28,22 @@ jobs:
           import json, re, sys
           from urllib.parse import urlparse
           cfg = json.load(open(".github/automation-bench/run.json"))
-          url = urlparse(cfg["base_url"])
-          if url.scheme != "https" or not url.hostname or url.username or url.query:
-              sys.exit("base_url must be https without credentials or query")
-          if not re.fullmatch(r"[A-Za-z0-9_]+", cfg["secret"]):
-              sys.exit("secret must be a plain secret name")
-          arms = [a for a in cfg["arms"] if a in ("native", "hybrid", "lean", "create", "full")]
+          arms = []
+          # An arm is a mode name with the file's model, or an object that sets its own name, mode, key, model and note.
+          for arm in cfg["arms"]:
+              arm = {"name": arm, "tools": arm} if isinstance(arm, str) else dict(arm)
+              arm = {"secret": cfg["secret"], "base_url": cfg["base_url"], "model": cfg["model"], "request": cfg.get("request") or {},
+                     "concurrent": cfg["concurrent"], "limits": cfg.get("limits") or {}, "note": "", **arm}
+              url = urlparse(arm["base_url"])
+              if url.scheme != "https" or not url.hostname or url.username or url.query:
+                  sys.exit("base_url must be https without credentials or query")
+              if not re.fullmatch(r"[A-Za-z0-9_]+", arm["secret"]) or not re.fullmatch(r"[A-Za-z0-9_-]+", arm["name"]):
+                  sys.exit("secret and name must be plain names")
+              if arm["tools"] not in ("native", "hybrid", "lean", "create", "full"):
+                  sys.exit(f"unknown mode {arm['tools']}")
+              arm["base_url"] = arm["base_url"].rstrip("/")
+              arms.append(arm)
           print(f"arms={json.dumps(arms)}")
-          print(f"secret={cfg['secret']}")
-          print(f"base={cfg['base_url'].rstrip('/')}")
-          print(f"model={cfg['model']}")
           PY
 
   bench:
@@ -52,7 +55,7 @@ jobs:
       matrix:
         arm: ${{ fromJSON(needs.config.outputs.arms) }}
     env:
-      OUT: audit-results/automation-bench/run-${{ github.run_id }}/${{ matrix.arm }}
+      OUT: audit-results/automation-bench/run-${{ github.run_id }}/${{ matrix.arm.name }}
       PORT: "18080"
     steps:
       - uses: actions/checkout@v4
@@ -74,31 +77,35 @@ jobs:
 
       - name: Start the key relay as another user
         env:
-          API_KEY: ${{ secrets[needs.config.outputs.secret] }}
+          API_KEY: ${{ secrets[matrix.arm.secret] }}
+          LIMITS: ${{ toJSON(matrix.arm.limits) }}
         run: |
-          [ -n "$API_KEY" ] || { echo "::error::secret ${{ needs.config.outputs.secret }} is not set"; exit 1; }
-          LIMITS=$(python -c 'import json; print(json.dumps(json.load(open(".github/automation-bench/run.json"))["limits"]))')
+          [ -n "$API_KEY" ] || { echo "::error::secret ${{ matrix.arm.secret }} is not set"; exit 1; }
           sudo install -d -o nobody -m 711 /opt/relay
           sudo install -m 755 .github/terminal-bench/proxy.py /opt/relay/proxy.py
           printf '%s' "$API_KEY" | sudo -u nobody tee /opt/relay/key > /dev/null
           sudo chmod 600 /opt/relay/key
-          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" "${{ needs.config.outputs.base }}" "$LIMITS" "${{ needs.config.outputs.model }}" > /dev/null 2>&1 &
+          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" "${{ matrix.arm.base_url }}" "$LIMITS" "${{ matrix.arm.model }}" > /dev/null 2>&1 &
           sleep 3
           curl -sS -m 30 -o /dev/null -w "models endpoint: HTTP %{http_code}\n" "http://127.0.0.1:$PORT/v1/models" || true
 
       - name: Run the bench's own agent loop
-        if: matrix.arm == 'native'
+        if: matrix.arm.tools == 'native'
+        env:
+          ARM: ${{ toJSON(matrix.arm) }}
         run: |
           cd /opt/ab/src
           TASKS=$(AB_CONFIG="$(cat "$GITHUB_WORKSPACE/.github/automation-bench/run.json")" OUT=/tmp uv run python "$GITHUB_WORKSPACE/.github/automation-bench/run.py" list)
-          EFFORT=$(python -c 'import json; print(json.load(open("'"$GITHUB_WORKSPACE"'/.github/automation-bench/run.json"))["request"].get("reasoning_effort", "high"))')
-          timeout 200m uv run auto-bench --model "${{ needs.config.outputs.model }}" --base-url "http://127.0.0.1:$PORT/v1" --api-key relay \
+          EFFORT=$(python -c 'import json, os; print(json.loads(os.environ["ARM"])["request"].get("reasoning_effort", "high"))')
+          timeout 200m uv run auto-bench --model "${{ matrix.arm.model }}" --base-url "http://127.0.0.1:$PORT/v1" --api-key relay \
             --toolset api --domains sales,marketing,operations,support,finance,hr --tasks "$TASKS" --reasoning-effort "$EFFORT" \
             --max-concurrent 8 --export-json /tmp/native.json 2>&1 | tail -40 || true
           OUT="$GITHUB_WORKSPACE/$OUT" AB_CONFIG='{}' uv run python "$GITHUB_WORKSPACE/.github/automation-bench/run.py" native-summary /tmp/native.json || true
 
       - name: Run our harness as a user without the internet
-        if: matrix.arm != 'native'
+        if: matrix.arm.tools != 'native'
+        env:
+          ARM: ${{ toJSON(matrix.arm) }}
         run: |
           sudo useradd -m agent
           # The agent reaches only this machine (the relay and the task's MCP server), so it cannot look the answers up online.
@@ -114,9 +121,11 @@ jobs:
           (sudo -u agent cat /opt/ab/src/README.md > /dev/null 2>&1 && echo "::error::the agent user can read the tasks" && exit 1) || echo "tasks are not readable by the agent user"
           cd /opt/ab/src
           CFG=$(python - <<PY
-          import json
+          import json, os
           cfg = json.load(open("$GITHUB_WORKSPACE/.github/automation-bench/run.json"))
-          cfg.update(tools="${{ matrix.arm }}", base="http://127.0.0.1:$PORT/v1", agent_python="/opt/chaos-venv/bin/python")
+          arm = json.loads(os.environ["ARM"])
+          cfg.update(tools=arm["tools"], model=arm["model"], request=arm["request"], concurrent=arm["concurrent"], note=arm["note"],
+                     base="http://127.0.0.1:$PORT/v1", agent_python="/opt/chaos-venv/bin/python")
           print(json.dumps(cfg))
           PY
           )
@@ -140,5 +149,5 @@ jobs:
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/automation-bench/run-${{ github.run_id }}/${{ matrix.arm }}
-          message: "audit: AutomationBench ${{ matrix.arm }} (run ${{ github.run_id }})"
+          paths: audit-results/automation-bench/run-${{ github.run_id }}/${{ matrix.arm.name }}
+          message: "audit: AutomationBench ${{ matrix.arm.name }} (run ${{ github.run_id }})"

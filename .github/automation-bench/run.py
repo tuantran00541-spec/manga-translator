@@ -117,7 +117,8 @@ async def run_one(name: str, prompt: list, info: dict, port: int, gate: asyncio.
         for file, data in (("profile.json", profile), ("mcp.json", mcp)):
             subprocess.run(["sudo", "-u", AGENT_USER, "tee", f"{home}/home/.manga-agent/{file}"], input=json.dumps(data).encode(),
                            stdout=subprocess.DEVNULL, check=True)
-        instruction = "\n\n".join(m["content"] for m in prompt)
+        # An arm's note (such as a push toward chains) follows the task's own prompt.
+        instruction = "\n\n".join([m["content"] for m in prompt] + ([CFG["note"]] if CFG.get("note") else []))
         command = (f"cd {home}/ws && HOME={home}/home AGENT_API_KEY=relay PYTHONPATH=/opt/chaos "
                    f"{shlex.quote(CFG['agent_python'])} -m app.agent.cli exec "
                    f"{shlex.quote(instruction)} --base {shlex.quote(CFG['base'])} --model {shlex.quote(CFG['model'])} --provider bench "
