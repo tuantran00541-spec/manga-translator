@@ -1,0 +1,30 @@
+Fetching 5 files:   0%|          | 0/5 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 5 files:  20%|██        | 1/5 [00:00<00:00,  7.97it/s]Fetching 5 files:  60%|██████    | 3/5 [00:00<00:00, 13.71it/s]Fetching 5 files: 100%|██████████| 5/5 [00:03<00:00,  1.20it/s]Fetching 5 files: 100%|██████████| 5/5 [00:03<00:00,  1.49it/s]
+train items 1710, calibration items 190, eval items 190 (calibration_slice), skipped {}, device cpu
+optimizer budget: 1710 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 54 optimizer updates over 1 epoch(s)
+epoch 1/1 step 100 loss 0.5867
+epoch 1/1 step 200 loss 0.4139
+epoch 1/1 step 300 loss -0.0573
+epoch 1/1 step 400 loss 1.2524
+epoch 1/1 step 500 loss 0.8930
+epoch 1/1 step 600 loss 0.6909
+epoch 1/1 step 700 loss 0.3466
+epoch 1/1 step 800 loss 0.5790
+epoch 1/1 mean loss 0.6573
+/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/site-packages/laya/train_cli.py:221: RuntimeWarning: laya.train: predictions collapsed to the class prior (mean within-row logit range 0.0217; calibration cross-entropy 0.693 is within 2% of ln K ~ 0.693). The default epoch budget is often too small on a few hundred or a thousand labelled rows. Try more epochs, more data, or another seed.
+  summary = finetune(
+/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/site-packages/laya/train_cli.py:221: RuntimeWarning: laya.train: noul calibration: the fit came back unchanged at 1.0 (accuracy 0.49, mean confidence 0.505 on the calibration items), which usually means they gave it nothing to correct; this type's confidences are uncalibrated
+  summary = finetune(
+
+=== Calibration Evidence (in-sample calibration slice, 190 items; not held-out) ===
+Metric                 Before         After          Delta         
+-----------------------------------------------------------------
+Accuracy               0.4842         0.4895         +0.0053       
+Loss                   0.6976         0.6932         -0.0044       
+ECE                    0.0655         0.0160         -0.0495       
+Brier (multi-class)    0.5045         0.5000         -0.0045       
+Brier (top-1)          0.2522         0.2500         -0.0022       
+Mean Confidence        0.5464         0.5054         -0.0410       
+-----------------------------------------------------------------
+
+Training complete! Model saved to ckpt
