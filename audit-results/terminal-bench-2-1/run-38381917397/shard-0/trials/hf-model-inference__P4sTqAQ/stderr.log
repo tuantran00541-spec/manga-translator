@@ -1,0 +1,1 @@
+left running: job1 (process group 126): cd /app && nohup python app.py > /app/service.log 2>&1 & echo "started pid $!"; sleep 12; tail -5 /app/service.log; ss -

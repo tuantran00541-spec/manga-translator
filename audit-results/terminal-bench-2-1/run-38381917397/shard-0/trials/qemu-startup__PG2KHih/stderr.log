@@ -1,0 +1,2 @@
+left running: job1 (process group 146): qemu-system-x86_64 -display none -monitor telnet:127.0.0.1:6698,server,nowait & sleep 1; python3 - <<'EOF'
+import socket
