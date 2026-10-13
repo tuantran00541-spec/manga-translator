@@ -225,7 +225,8 @@ class Workspace:
     def resolve(self, path: str | None, *, write: bool = False) -> Path:
         target = (self.root / (path or ".")).resolve()
         roots = [self.root] + ([] if write else self.read_roots)
-        if not any(target == r or r in target.parents for r in roots):
+        # Without a sandbox commands reach every file, so the file tools may too; permission rules still apply.
+        if self.policy.mode != "full-access" and not any(target == r or r in target.parents for r in roots):
             raise ToolError(f"{path!r} is outside the workspace")
         return target
 

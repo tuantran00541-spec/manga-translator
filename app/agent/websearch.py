@@ -41,7 +41,7 @@ def _tinyfish(query: str, count: int, key: str, recency: str = "") -> list[tuple
         params["exclude_domains"] = ",".join(dict.fromkeys(site.split("/")[0] for site in wanted["not_sites"]))
     if recency:
         params["recency_minutes"] = MINUTES[recency]
-    reply = requests.get("https://api.search.tinyfish.ai", params=params, timeout=TIMEOUT, headers={"X-API-Key": key, "Accept": "application/json"})
+    reply = requests.get(os.environ.get("TINYFISH_SEARCH_URL") or "https://api.search.tinyfish.ai", params=params, timeout=TIMEOUT, headers={"X-API-Key": key, "Accept": "application/json"})
     reply.raise_for_status()
     return [(r.get("title") or r.get("site_name") or r["url"], r["url"], (r.get("snippet") or "")[:400])
             for r in reply.json().get("results") or [] if isinstance(r, dict) and r.get("url")]

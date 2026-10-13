@@ -4274,3 +4274,27 @@ def test_bench_slips_a_garbled_todo_key_a_bare_job_number_and_reading_git_are_ha
     assert rules.check(found, "run_command", {"command": "cd repo && ls -la .git/logs && git reflog"}, lambda p: p) is None
     assert rules.check(found, "run_command", {"command": "git rev-parse HEAD > .git/ORIG_HEAD"}, lambda p: p) == "deny"
     assert rules.check(found, "run_command", {"command": "cat .env"}, lambda p: p) == "deny"
+
+
+def test_file_tools_reach_any_path_only_without_a_sandbox_and_tinyfish_urls_can_be_relayed(tmp_path, monkeypatch):
+    from app.agent import sandbox, websearch
+    (tmp_path / "ws").mkdir()
+    outside = tmp_path / "outside" / "a.txt"
+    outside.parent.mkdir()
+    free = Workspace(tmp_path / "ws", sandbox.Policy("full-access"))
+    free.run("write_file", {"path": str(outside), "content": "hi\n"})
+    assert "hi" in free.run("read_file", {"path": str(outside)})
+    with pytest.raises(ToolError, match="outside the workspace"):
+        Workspace(tmp_path / "ws", sandbox.Policy("workspace-write")).run("read_file", {"path": str(outside)})
+    seen = {}
+
+    class Reply:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"results": [{"title": "t", "url": "https://x.org", "snippet": "s"}]}
+
+    monkeypatch.setenv("TINYFISH_SEARCH_URL", "http://relay:1/search")
+    monkeypatch.setattr(websearch.requests, "get", lambda url, **k: (seen.update(url=url, key=k["headers"]["X-API-Key"]), Reply())[1])
+    assert websearch._tinyfish("q", 1, "relay") == [("t", "https://x.org", "s")] and seen == {"url": "http://relay:1/search", "key": "relay"}

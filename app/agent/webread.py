@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from urllib.parse import urljoin, urlparse
 
@@ -133,7 +134,7 @@ def find(text: str, pattern: str, context: int = 2, limit: int = 40) -> str:
 
 def browsed(url: str, key: str) -> str:
     """The page as TinyFish's real browser sees it, for a page whose own HTML needs JavaScript; empty when it has nothing."""
-    reply = requests.post("https://api.fetch.tinyfish.ai", json={"urls": [url], "format": "markdown"}, timeout=(10, 60),
+    reply = requests.post(os.environ.get("TINYFISH_FETCH_URL") or "https://api.fetch.tinyfish.ai", json={"urls": [url], "format": "markdown"}, timeout=(10, 60),
                           headers={"X-API-Key": key, "Content-Type": "application/json", "Accept": "application/json"})
     reply.raise_for_status()
     rows = reply.json().get("results") or []

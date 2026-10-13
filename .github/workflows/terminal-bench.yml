@@ -124,6 +124,20 @@ jobs:
           curl -sS -m 30 -o /dev/null -w "models endpoint: HTTP %{http_code}\n" "http://127.0.0.1:$PORT/v1/models" || true
           (cat /opt/relay/key > /dev/null 2>&1 && echo "::error::the runner user can read the key" && exit 1) || echo "key file is not readable by the runner user"
 
+      - name: Start the TinyFish search relay as another user
+        env:
+          TINYFISH_KEY: ${{ secrets.TINYFISH }}
+        run: |
+          # Web search goes through its own relay, so the search key never reaches the task containers either.
+          [ -n "$TINYFISH_KEY" ] || { echo "no TINYFISH secret; web search falls back to DuckDuckGo"; exit 0; }
+          sudo install -m 755 .github/terminal-bench/search_relay.py /opt/relay/search_relay.py
+          printf '%s' "$TINYFISH_KEY" | sudo -u nobody tee /opt/relay/search_key > /dev/null
+          sudo chmod 600 /opt/relay/search_key
+          sudo -u nobody nohup "$(which python)" /opt/relay/search_relay.py /opt/relay/search_key /opt/relay/search-stats.json 18082 > /dev/null 2>&1 &
+          sleep 2
+          curl -sS -m 40 -o /dev/null -w "search relay: HTTP %{http_code}\n" "http://127.0.0.1:18082/search?query=terminal+bench&num_results=1" || true
+          echo "SEARCH_RELAY=18082" >> "$GITHUB_ENV"
+
       - name: Probe the model and pick the request fields that turn thinking on
         env:
           MODEL: ${{ needs.config.outputs.model }}
@@ -248,6 +262,7 @@ jobs:
           MANGA_AGENT_REQUEST_CFG: ${{ needs.config.outputs.request }}
         run: |
           export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"
+          [ -n "${SEARCH_RELAY:-}" ] && export MANGA_AGENT_SEARCH="http://$(cat /tmp/docker-gateway):$SEARCH_RELAY"
           export MANGA_AGENT_UV="$(readlink -f "$(command -v uv)")"
           N=""; [ "${{ needs.config.outputs.n_tasks }}" != 0 ] && N="-l ${{ needs.config.outputs.n_tasks }}"
           TASKS="${{ needs.config.outputs.tasks }}"
@@ -297,6 +312,7 @@ jobs:
         if: always()
         run: |
           cp /opt/relay/stats.json "$OUT/relay-stats.json" 2>/dev/null || true
+          cp /opt/relay/search-stats.json "$OUT/search-stats.json" 2>/dev/null || true
           python - <<'PY'
           import glob, json, os, shutil
           out = os.environ["OUT"]

@@ -85,6 +85,10 @@ class MangaAgent(BaseInstalledAgent):
                               "models": {".": {"request": request, **({"late_request": late} if late else {})}}})
         var = f"MANGA_INSTRUCTION_{uuid.uuid4().hex}".upper()
         env = {"AGENT_API_KEY": "relay", "PYTHONPATH": f"{HOME}/src", "HOME": f"{HOME}/home", var: instruction}
+        if os.environ.get("MANGA_AGENT_SEARCH"):
+            # TinyFish through the search relay, which adds the real key.
+            search = os.environ["MANGA_AGENT_SEARCH"]
+            env |= {"TINYFISH_API_KEY": "relay", "TINYFISH_SEARCH_URL": f"{search}/search", "TINYFISH_FETCH_URL": f"{search}/fetch"}
         await self.exec_as_agent(
             environment,
             command=(f"mkdir -p {HOME}/home/.manga-agent {EnvironmentPaths.agent_dir} && printf '%s' {shlex.quote(profile)} > {HOME}/home/.manga-agent/profile.json; "
