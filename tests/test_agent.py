@@ -375,7 +375,7 @@ def test_ask_mode_waits_for_approval_then_writes(ws, home):
     session.decide("allow")
     wait_for(session, "idle")
     assert (ws.root / "new.txt").read_text() == "hi"
-    assert [e["type"] for e in session.events] == ["user", "assistant", "approval", "tool", "assistant", "notice", "assistant", "done"]
+    assert [e["type"] for e in session.events if e["type"] != "junction"] == ["user", "assistant", "approval", "tool", "assistant", "notice", "assistant", "done"]
     assert session.usage == {"prompt_tokens": 3, "completion_tokens": 3, "cached_tokens": 0}
 
 
@@ -1106,7 +1106,7 @@ def test_a_helper_that_finishes_after_the_final_answer_reports_by_itself(ws, hom
     run_to_idle(session)
     notes = [m["content"] for m in session.history if m["role"] == "user" and m["content"].startswith("<subagent_notification>")]
     assert len(notes) == 1 and '"result": "slow result"' in notes[0]
-    assert session.events[-2]["text"].startswith("The helper said: <subagent_notification>")
+    assert [e for e in session.events if e["type"] == "assistant"][-1]["text"].startswith("The helper said: <subagent_notification>")
 
 
 def test_send_input_wakes_a_finished_helper_and_close_agent_releases_it(ws, home):
@@ -4128,6 +4128,17 @@ def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, hom
     assert "pkg/a.py" in out, out
 
 
+def test_stops_and_nudges_are_recorded_as_junctions_for_later_labelling(ws, home):
+    fake = scripted(turn(calls=[call("edit_file", path="pkg/a.py", old_text="return 1", new_text="return 2")]),
+                    turn("All tests pass."), turn("Done: a.py returns 2."), turn("Done: a.py returns 2."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    run_to_idle(session)
+    junctions = [(e["at"], e.get("nudge")) for e in session.events if e["type"] == "junction"]
+    assert junctions == [("nudge", "untested"), ("nudge", "unchecked_edit"), ("stop", None)], junctions
+    stop = [e for e in session.events if e["type"] == "junction"][-1]
+    assert stop["reply"] == "Done: a.py returns 2." and stop["checked_since_edit"] is False
+
+
 def test_the_worked_example_in_the_prompt_runs_as_written(ws, home):
     from app.agent import session as session_module
     (ws.root / "app").mkdir()
@@ -4172,6 +4183,8 @@ def test_branches_try_fixes_on_copies_and_the_model_adopts_one(ws, home):
     adopted = session._session_tool({"id": "d", "name": "create", "args": {"name": "pick", "code": "def pick():\n    return tools.adopt('b')\n", "args": {}, "keep": False}})
     assert "Adopted branch b: pkg/a.py" in adopted and "return 3" in real.read_text(), adopted
     assert not session._branches and not any((session._outputs_dir() / "branches").glob("*/*")), "every copy is dropped after adopting"
+    junctions = [e for e in session.events if e["type"] == "junction"]
+    assert [j["at"] for j in junctions] == ["branch", "adopt"] and "PASS" in junctions[0]["branches"]["b"]["check"] and junctions[1]["name"] == "b"
     missing = session._session_tool({"id": "e", "name": "create", "args": {"name": "again", "code": "def again():\n    return tools.adopt('a')\n", "args": {}, "keep": False}})
     assert "no branch 'a'" in missing
 
