@@ -20,7 +20,7 @@ GUIDE = """Patch format:
 +line added
 *** Delete File: path/gone.py
 *** End Patch
-Give about three unchanged lines around each change so it is found exactly."""
+Keep about three unchanged lines around each change so it lands in the right place."""
 
 
 class PatchError(ValueError):

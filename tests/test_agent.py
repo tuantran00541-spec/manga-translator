@@ -1004,7 +1004,7 @@ def test_plan_mode_is_read_only_until_the_plan_is_approved(ws, home):
     session.send("add a feature")
     wait_for(session, "waiting")
     assert session.pending["name"] == "exit_plan_mode" and session.pending["args"]["plan"] == "1. change a.py"
-    assert "write_file" not in names[0] and "exit_plan_mode" in names[0] and "PLAN MODE" in fake.seen[0][0][0]["content"]
+    assert "write_file" not in names[0] and "exit_plan_mode" in names[0] and "Plan mode: you can read and search but change nothing" in fake.seen[0][0][0]["content"]
     session.decide("allow")
     wait_for(session, "idle")
     assert "write_file" in names[1] and "exit_plan_mode" not in names[1] and (ws.root / "out.txt").exists()
@@ -1794,7 +1794,7 @@ def test_auto_mode_runs_safe_work_alone_reviews_the_rest_and_blocks_without_aski
     assert (ws.root / "a.txt").read_text() == "1" and len(reviews) == 2
     assert guardian.RULE in reviews[1][0][0]["content"] and session.status == "idle"
     blocked = [m for m in session.history if m["role"] == "tool" and "Auto mode blocked" in str(m.get("content"))]
-    assert len(blocked) == 1 and "Commands and outside actions pass an automatic reviewer" in session.system_prompt()
+    assert len(blocked) == 1 and "An automatic reviewer checks commands and outside actions" in session.system_prompt()
 
 
 def test_auto_mode_tells_the_reviewer_about_untrusted_content_and_asks_when_it_is_down(ws, home):
@@ -1953,7 +1953,7 @@ def test_the_output_limit_is_sent_dropped_when_refused_and_a_cut_off_call_gets_a
     monkeypatch.setattr(client, "_post", fake_post)
     turn_ = client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[], max_tokens=8192)
     assert "max_tokens" in sent[0] and "max_tokens" not in sent[1]
-    assert turn_["finish"] == "length" and "output length limit" in turn_["calls"][0]["error"]
+    assert turn_["finish"] == "length" and "reached the output limit" in turn_["calls"][0]["error"]
 
 
 def test_a_models_request_fields_from_the_profile_are_sent_and_dropped_when_refused(ws, home, monkeypatch):
@@ -2079,7 +2079,7 @@ def test_the_reviewer_can_deny_with_a_reason_and_repeated_denials_stop_the_turn(
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "review", complete=fake)
     run_to_idle(session, "tidy up")
     refusals = [o for n, ok, o in tool_outputs(session) if not ok]
-    assert len(refusals) == 3 and "Do not pursue the same outcome" in refusals[0] and "sends a secret out" in refusals[0]
+    assert len(refusals) == 3 and "Do not reach the same outcome by another route" in refusals[0] and "sends a secret out" in refusals[0]
     assert not (ws.root / "a.txt").exists() and any(e["type"] == "error" and "denied too many calls" in e["text"] for e in session.events)
 
 
@@ -2619,7 +2619,7 @@ def test_auto_compaction_starts_near_the_configured_token_count_once_and_not_aga
     summaries = []
 
     def complete(provider, key, model, messages, *, tools):
-        if messages[0]["content"] == "You write precise handover summaries.":
+        if messages[0]["content"] == "You write exact handover notes.":
             summaries.append(1)
             return turn("Summary of the work so far.")
         n = sum(m["role"] == "assistant" for m in messages)
@@ -2659,7 +2659,7 @@ def test_a_context_error_that_names_the_window_moves_the_compaction_mark_under_i
     calls = []
 
     def complete(provider, key, model, messages, *, tools):
-        if messages[0]["content"] == "You write precise handover summaries.":
+        if messages[0]["content"] == "You write exact handover notes.":
             return turn("Summary.")
         calls.append(1)
         if len(calls) == 1:
@@ -2916,7 +2916,7 @@ def test_a_claim_that_tests_pass_after_an_untested_edit_is_sent_back_once(ws, ho
                     turn("All 3 tests pass."), turn(calls=[call("run_command", command="echo 3 passed")]), turn("All 3 tests pass."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session, "go")
-    nudges = [h for h in session.history if h["role"] == "user" and h["content"].startswith("[Check] Your reply says the tests pass")]
+    nudges = [h for h in session.history if h["role"] == "user" and h["content"].startswith("[Your reply says the tests pass")]
     assert len(nudges) == 1 and session.history[-1]["content"] == "All 3 tests pass." and len(fake.seen) == 5
     quiet = scripted(turn(calls=[call("write_file", path="b.txt", content="x")]), turn(calls=[call("run_command", command="echo ok")]), turn("Tests pass."))
     clean = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=quiet)
@@ -3718,7 +3718,7 @@ def test_create_only_mode_offers_one_tool_and_the_model_builds_the_rest(ws, home
     fake = scripted(turn(calls=[{**call("create", **SHELL_TOOL), "id": "c1"}]),
                     turn(calls=[{**call("shell", cmd="echo hi > made.txt && cat made.txt"), "id": "s1"}]), turn("Done."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    assert [s["name"] for s in session.specs()] == ["create"] and "You start with one tool, create" in session.system_prompt()
+    assert [s["name"] for s in session.specs()] == ["create"] and "Your one tool is create" in session.system_prompt()
     run_to_idle(session)
     assert [s["name"] for s in fake.seen[1][1]] == ["create", "shell"], "a created tool is offered from the next step"
     out = [h["content"] for h in session.history if h["role"] == "tool"][-1]
@@ -3876,7 +3876,7 @@ def test_the_model_picks_models_itself_from_any_source_with_a_key(ws, home, monk
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     session.list_providers = lambda: [("minirouter", "MiniRouter")]
     session.find_provider = lambda pid: (PROVIDERS["openai"], ["mr-key"])
-    assert "tools.models()" in session.system_prompt() and "ask the user whether they agree" in session.system_prompt()
+    assert "tools.models()" in session.system_prompt() and "ask the user before picking a strong, expensive one" in session.system_prompt()
     assert json.loads(session._models())["sources"] == {"agnes": "https://agnes.example/v1", "minirouter": "MiniRouter"}
     monkeypatch.setattr(roles, "catalog", lambda base, headers, query="", limit=40: [{"id": f"{base}|{query}", "price": {}, "context": None, "vision": False}])
     assert json.loads(session._models("minirouter", "flash"))[0]["id"] == f"{PROVIDERS['openai'].api_base}|flash"
@@ -3911,7 +3911,7 @@ def test_the_first_chain_of_a_request_writes_how_the_model_pictures_it(ws, home)
     asked = []
 
     def complete(provider, key, model, messages, *, tools):
-        if messages[0]["content"].startswith("Before a program you wrote runs"):
+        if messages[0]["content"].startswith("You write down how a coding agent pictures"):
             asked.append(messages[1]["content"])
             return turn(f"```markdown\n# Request\nfix dates v{len(asked)}\n# Done when\npytest -q\n```")
         return turn("ok")
@@ -4152,7 +4152,7 @@ def test_hybrid_offers_built_in_tools_and_create_and_chains_reach_built_in_tools
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
     names = {s["name"] for s in session.specs()}
-    assert {"read_file", "edit_file", "run_command", "create"} <= names and "built-in (read_file, edit_file, run_command and the rest)" in session.system_prompt()
+    assert {"read_file", "edit_file", "run_command", "create"} <= names and "every tool you can call, built-in, made by you, plugin or MCP" in session.system_prompt()
     chain = ("def go():\n    tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 3')\n"
              "    return tools.read_file(path='pkg/a.py').count('return 3')\n")
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": False}})
@@ -4169,7 +4169,7 @@ def test_lean_offers_four_tools_a_keep_going_prompt_and_chains_reach_them(ws, ho
     session._new_request("go")
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create"]
     prompt = session.system_prompt()
-    assert "You have four tools" in prompt and "A check you have not seen pass is not done" in prompt and "built-in (read_file, edit_file and run_command)" in prompt
+    assert "Your tools are read_file, edit_file, run_command" in prompt and "Finish only after you have seen the check pass" in prompt and "tools.read_file, tools.edit_file, tools.run_command" in prompt
     chain = ("def go():\n    tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 3')\n"
              "    return tools.read_file(path='pkg/a.py').count('return 3')\n")
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": True}})
@@ -4330,3 +4330,11 @@ def test_file_tools_reach_any_path_only_without_a_sandbox_and_tinyfish_urls_can_
     monkeypatch.setenv("TINYFISH_SEARCH_URL", "http://relay:1/search")
     monkeypatch.setattr(websearch.requests, "get", lambda url, **k: (seen.update(url=url, key=k["headers"]["X-API-Key"]), Reply())[1])
     assert websearch._tinyfish("q", 1, "relay") == [("t", "https://x.org", "s")] and seen == {"url": "http://relay:1/search", "key": "relay"}
+
+
+def test_a_shell_tip_names_only_a_tool_the_model_has(ws):
+    ws.offered = {"read_file", "edit_file", "run_command", "create"}
+    assert "[Tip:" not in ws._shell_hint("grep -r needle .") and "[Tip:" not in ws._shell_hint("find . -name '*.py'")
+    assert "read_file shows the file" in ws._shell_hint("cat pkg/a.py")
+    ws.offered = None
+    assert "search looks through the project" in ws._shell_hint("grep -r needle .")

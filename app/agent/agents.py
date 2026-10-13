@@ -32,13 +32,13 @@ class Agent:
 
 BUILTIN = {
     "explore": Agent("explore", "Read-only researcher: finds code and answers questions about the workspace or the web.",
-                     "You are a read-only helper: research and answer with one complete report; you cannot change files.", READ_TOOLS),
+                     "You are a helper that only reads: look things up in the workspace or on the web and answer with one complete report. You cannot change files.", READ_TOOLS),
     "plan": Agent("plan", "Designs an implementation plan without changing anything or running commands.",
-                  "You design implementation plans. Read what you need, then answer with the files to change, the steps in order, "
-                  "the risks and how to verify. You cannot change files or run commands.", READ_TOOLS),
+                  "You design how to carry out a change. Read what you need, then answer with the files to change, the steps in order, "
+                  "the risks and the check that will prove it worked. You cannot change files or run commands.", READ_TOOLS),
     "coder": Agent("coder", "Implements one focused change, runs the checks and reports.",
-                   "You implement exactly the change you are given: look first, edit with small steps, run the checks, "
-                   "then report what changed and how you verified it."),
+                   "You make exactly the change you are given: look first, edit in small steps, run the check, "
+                   "then report what changed and what the check printed."),
 }
 
 

@@ -47,14 +47,14 @@ IN_RE = re.compile(r"(?:try again|retry) in (\d+(?:\.\d+)?) ?(ms|milliseconds?|s
 # A block may lack its closing tag when the model stops early or opens the next call.
 TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*(?:</tool_call>|(?=<tool_call>)|\Z)", re.S)
 PARAMETER_RE = re.compile(r"<parameter=(\w+)>\s*(.*?)\s*</parameter>", re.S)
-TEXT_TOOLS_GUIDE = """You call tools by writing, anywhere in your reply, one block per call:
+TEXT_TOOLS_GUIDE = """To call a tool, write one block per call anywhere in your reply:
 <tool_call>{"name": "read_file", "arguments": {"path": "app/main.py"}}</tool_call>
-Results come back in <tool_result> blocks. Stop after your tool calls and wait for the results. Tools:
+The results come back in <tool_result> blocks; end your reply after the calls and wait for them. Tools:
 """
 
 
-CUT_OFF = ("Your reply hit the output length limit and this call was cut off before it ended. Send it in smaller pieces: "
-           "create the file with a short write_file, then add the rest with edit_file or run_command (cat >> file <<'EOF').")
+CUT_OFF = ("Your reply reached the output limit and this call was cut off before its end. Send it in smaller parts: start the file "
+           "small, then extend it with edit_file or a shell append (cat >> file <<'EOF').")
 
 
 class TransientError(RuntimeError):

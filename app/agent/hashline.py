@@ -7,9 +7,9 @@ import zlib
 DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 ANCHOR = re.compile(r"^\s*(\d+)#([0-9a-z]{2})")
 OPS = ("replace", "delete", "insert_after", "insert_before")
-GUIDE = ("Edit lines by anchor. Read the file with anchors=true; each line shows as N#hh|text. "
-         "Each edit has op (replace, delete, insert_after or insert_before), anchor (such as 12#a7), "
-         "optional end (an anchor, to replace or delete the range anchor..end) and text (the new lines, without anchors).")
+GUIDE = ("Change lines named by anchors. Read the file with anchors=true to see each line as N#hh|text. Each edit has op (replace, "
+         "delete, insert_after or insert_before), anchor (like 12#a7), an optional end anchor to cover the range anchor..end, and text "
+         "(the new lines, without anchors).")
 
 
 class HashlineError(Exception):

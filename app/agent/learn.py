@@ -9,17 +9,17 @@ from pathlib import Path
 
 from app.agent import skills
 
-PROMPT = """You maintain the skill library of a coding agent. Read the session below and decide whether a future session would do this class of task better with a skill.
-A skill is how to do a CLASS of task for this user: the steps in order with the commands and tool calls that worked, decision points, the user's preferences for the result, and pitfalls (a general rule plus one clause of why).
-Write one when: the user corrected the approach, style or format; a non-trivial technique, fix, workaround or debugging path emerged; or a learned skill below proved wrong, incomplete or outdated.
-Make the smallest edit the evidence supports: update one learned skill below rather than add a new one, delete one only when this session shows it is wrong, and leave the rest alone. Name at class level (lowercase-hyphens), never after one PR, error string, date or today's task.
-Do not capture: environment failures the user can fix (missing binaries, unset keys), claims that a tool is broken, transient errors that a retry fixed, one-off task narratives, unresolved failures, secrets, keys or tokens.
-Also keep this session's lesson notes: every mistake the agent made and how it was found and fixed (wrong assumption, failed command, bug it introduced, test that caught it), each as: what went wrong, why, the fix, the rule that avoids it next time.
-The notes so far for this session are shown; return only new lessons (never repeat or rewrite one already there), and in drop the exact text of any earlier lesson this session proved wrong.
-One-off chains (scripts the agent ran once without keeping) that ended cleanly are listed; name in keep_tools the ones general enough to reuse as tools.
+PROMPT = """You keep the skill library of a coding agent. Read the session below and decide whether a future session would handle this kind of task better with a skill.
+A skill tells how to do a KIND of task for this user: the steps in order with the commands and tool calls that worked, the points where a choice is made, how the user wants the result, and the traps (a general rule plus a short why).
+Write one when the user corrected the approach, style or format; when a non-obvious technique, fix, workaround or way of debugging came out of the work; or when a learned skill below proved wrong, incomplete or out of date.
+Make the smallest edit the evidence supports: update one learned skill below rather than add a new one, delete one only when this session shows it wrong, and leave the rest alone. Name skills after the kind of task (lowercase-hyphens), never after one PR, error text, date or today's task.
+Leave out: environment problems the user can fix (missing programs, unset keys), claims that a tool is broken, errors a retry cleared, one-off stories, failures left unsolved, and secrets, keys or tokens.
+Also keep this session's lesson notes: each mistake the agent made and how it was found and fixed (a wrong assumption, a failed command, a bug it caused, a test that caught it), written as what went wrong, why, the fix, and the rule that avoids it next time.
+The notes this session already has are shown; return only new lessons (never repeat or reword one), and in drop give the exact text of any earlier lesson this session proved wrong.
+One-off chains (scripts run once without keeping) that ended cleanly are listed; put in keep_tools the ones general enough to reuse.
 Reply with one line of JSON: {"edits": [{"action": "create|update|delete", "name": "...", "description": "when to use it, one sentence", "body": "full markdown instructions", "reason": "the evidence"}], "lessons": ["new lesson"], "drop": ["old lesson text"], "keep_tools": ["name"]} with at most 2 edits; use [] when nothing is worth keeping."""
-CONSOLIDATE = """You keep a coding agent's lesson notes: one markdown file per past session listing mistakes and their fixes, plus an optional SUMMARY.md.
-Read them and decide. If they repeat each other or a summary would help a future session more than many files, reply {"action": "summarize", "summary": "markdown"}: merge every lasting lesson into one summary grouped by topic, each as a rule plus why, keeping specifics (commands, paths, error text) that make it usable, dropping one-off noise and anything already contradicted. Otherwise reply {"action": "keep"}.
+CONSOLIDATE = """You keep a coding agent's lesson notes: one markdown file per past session listing mistakes and their fixes, and maybe a SUMMARY.md.
+Read them and decide. When they repeat each other, or one summary would serve a future session better than many files, reply {"action": "summarize", "summary": "markdown"}: fold every lesson that still holds into one summary grouped by topic, each as a rule with its why, keeping the specifics (commands, paths, error text) that make it usable and dropping one-off noise and anything later contradicted. Otherwise reply {"action": "keep"}.
 Reply with one line of JSON."""
 LESSONS = Path(".manga-agent") / "lessons"
 HISTORY = Path(".manga-agent") / "learn-history.jsonl"

@@ -41,25 +41,25 @@ KIND = {"list_dir": "read", "read_file": "read", "symbols": "read", "view_image"
         "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "replace_in_files": "edit", "move_file": "edit", "delete_file": "edit", "run_command": "exec", "run_script": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
 
 SPECS = [
-    {"name": "list_dir", "description": "List a folder.",
+    {"name": "list_dir", "description": "List what a folder holds, depth 1 to 4.",
      "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "depth": {"type": "integer", "description": "1 to 4"}}}},
-    {"name": "read_file", "description": "Read a file with line numbers.",
+    {"name": "read_file", "description": "Read a text file with line numbers; offset and limit read part of it.",
      "parameters": {"type": "object", "required": ["path"], "properties": {
          "path": {"type": "string"}, "offset": {"type": "integer"}, "limit": {"type": "integer"},
          "anchors": {"type": "boolean", "description": "Show lines as N#hh|text for edit_lines."}}}},
-    {"name": "symbols", "description": "Outline a file's classes and functions, or find where a name is defined.",
+    {"name": "symbols", "description": "List a file's classes and functions, or find where a name is defined.",
      "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "name": {"type": "string"}}}},
     {"name": "view_image", "description": "Look at an image file.",
      "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "search", "description": "Regex search in files (grep).",
+    {"name": "search", "description": "Search files for a regular expression and list the matching file:line rows.",
      "parameters": {"type": "object", "required": ["pattern"], "properties": {
          "pattern": {"type": "string"}, "path": {"type": "string"}, "glob": {"type": "string"}, "ignore_case": {"type": "boolean"},
          "context": {"type": "integer"}, "files_only": {"type": "boolean"}}}},
-    {"name": "glob", "description": "Find files by path pattern, newest first.",
+    {"name": "glob", "description": "Find files whose path matches a pattern, newest first.",
      "parameters": {"type": "object", "required": ["pattern"], "properties": {"pattern": {"type": "string"}, "path": {"type": "string"}}}},
-    {"name": "write_file", "description": "Create or overwrite a file.",
+    {"name": "write_file", "description": "Create a file or replace all of its content.",
      "parameters": {"type": "object", "required": ["path", "content"], "properties": {"path": {"type": "string"}, "content": {"type": "string"}}}},
-    {"name": "edit_file", "description": "Replace old_text with new_text (unique unless replace_all); edits applies several in order.",
+    {"name": "edit_file", "description": "Change a file by replacing old_text with new_text; old_text must match one place unless replace_all is set. edits applies several replacements in order.",
      "parameters": {"type": "object", "required": ["path"], "properties": {
          "path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"},
          "replace_all": {"type": "boolean"},
@@ -70,7 +70,7 @@ SPECS = [
          "path": {"type": "string"}, "edits": {"type": "array", "items": {"type": "object", "required": ["op", "anchor"], "properties": {
              "op": {"type": "string", "enum": list(hashline.OPS)}, "anchor": {"type": "string"},
              "end": {"type": "string"}, "text": {"type": "string"}}}}}}},
-    {"name": "replace_in_files", "description": "Replace text across many files (literal unless regex); try dry_run first.",
+    {"name": "replace_in_files", "description": "Replace text in many files at once (literal unless regex); look with dry_run first.",
      "parameters": {"type": "object", "required": ["pattern", "replacement"], "properties": {
          "pattern": {"type": "string"}, "replacement": {"type": "string"}, "path": {"type": "string"}, "glob": {"type": "string"},
          "regex": {"type": "boolean"}, "ignore_case": {"type": "boolean"}, "dry_run": {"type": "boolean"}}}},
@@ -79,20 +79,20 @@ SPECS = [
          "path": {"type": "string"}, "to": {"type": "string"}, "overwrite": {"type": "boolean"}}}},
     {"name": "delete_file", "description": "Delete a file.",
      "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "apply_patch", "description": "Add, update, move or delete files in one patch.\n" + patches.GUIDE,
+    {"name": "apply_patch", "description": "Add, change, move or delete several files in one patch.\n" + patches.GUIDE,
      "parameters": {"type": "object", "required": ["patch"], "properties": {"patch": {"type": "string"}}}},
-    {"name": "run_command", "description": "Run a shell command in the workspace sandbox.",
+    {"name": "run_command", "description": "Run a shell command in the workspace sandbox; returns its output and exit code.",
      "parameters": {"type": "object", "required": ["command"], "properties": {
          "command": {"type": "string"}, "timeout": {"type": "integer", "description": "Seconds, at most 1800."},
-         "background": {"type": "boolean", "description": "Return a job id at once; read with job_output, stop with job_stop."},
-         "tty": {"type": "boolean", "description": "With background: give it a terminal for job_input."},
-         "outside_sandbox": {"type": "boolean", "description": "Only when the sandbox blocks what the task needs; say why."}}}},
-    {"name": "run_script", "description": "Run Python in the sandbox where tools are functions returning text, e.g. tools.read_file(path=...), "
+         "background": {"type": "boolean", "description": "Start it and return a job id at once; read it with job_output, stop it with job_stop."},
+         "tty": {"type": "boolean", "description": "With background: run it on a terminal so job_input can type into it."},
+         "outside_sandbox": {"type": "boolean", "description": "Only when the sandbox stops what the task needs; say why."}}}},
+    {"name": "run_script", "description": "Run Python in the sandbox in which tools are functions that return text: tools.read_file(path=...), "
                                           "tools.search(pattern=...), tools.glob(...), tools.list_dir(...), tools.symbols(...), tools.web_fetch(url=...), "
                                           "tools.web_search(query=...), tools.fan_out(jobs=[{\"prompt\": ...}], schema={...}) -> JSON list of {job, report}. "
-                                          "Only what it prints comes back; use it for many lookups in one step.",
+                                          "Only what it prints comes back; good for many lookups in one step.",
      "parameters": {"type": "object", "required": ["code"], "properties": {"code": {"type": "string"}, "timeout": {"type": "integer"}}}},
-    {"name": "web_fetch", "description": "Fetch a web page as Markdown; offset reads on, find returns matching lines.",
+    {"name": "web_fetch", "description": "Fetch a web page as Markdown; offset reads further, find returns the matching lines.",
      "parameters": {"type": "object", "required": ["url"], "properties": {
          "url": {"type": "string"}, "max_chars": {"type": "integer"}, "offset": {"type": "integer"}, "find": {"type": "string"}}}},
     {"name": "web_search", "description": "Search the web.",
@@ -173,12 +173,12 @@ def _checkers() -> dict:
 CHECKERS = _checkers()
 
 
-# Shell commands a project tool does better, each with the tip that follows its output (omp's bash interceptor, as advice instead of a refusal).
-SHELL_HINTS = ((re.compile(r"^(cat|head|tail|less|more)\s+[^|<>;&]*$"), "read_file shows a file with line numbers and records that you read it, which edit_file and write_file rely on"),
-               (re.compile(r"^(grep\s+(-\w*r|--recursive)|rg\s|ag\s|ack\s)"), "search looks through the project for a pattern, skips ignored and data folders and lists file:line"),
-               (re.compile(r"^find\s.*-i?name\b"), "glob finds files by name pattern and skips ignored folders"),
-               (re.compile(r"^(curl|wget)\s.*https?://"), "web_fetch reads a URL (HTML as Markdown, JSON pretty-printed), keeps the page for offset and find, and marks it as web content"),
-               (re.compile(r"^(sed|perl)\s+(-\w*i|--in-place)"), "edit_file changes text and shows what changed; a file changed with sed -i must be read again before edit_file can change it"))
+# Shell commands a built-in tool does better, each with the tool and the tip that follows the command's output when that tool is offered.
+SHELL_HINTS = ((re.compile(r"^(cat|head|tail|less|more)\s+[^|<>;&]*$"), "read_file", "read_file shows the file with line numbers and notes that you read it, which edit_file relies on"),
+               (re.compile(r"^(grep\s+(-\w*r|--recursive)|rg\s|ag\s|ack\s)"), "search", "search looks through the project for a pattern, skips ignored and data folders and lists file:line"),
+               (re.compile(r"^find\s.*-i?name\b"), "glob", "glob finds files by name pattern and skips ignored folders"),
+               (re.compile(r"^(curl|wget)\s.*https?://"), "web_fetch", "web_fetch reads a URL (HTML as Markdown, JSON indented), keeps the page for offset and find, and marks it as web content"),
+               (re.compile(r"^(sed|perl)\s+(-\w*i|--in-place)"), "edit_file", "edit_file changes text and shows what changed; after sed -i, read the file again before edit_file changes it"))
 SHELL_HINT_LIMIT = 3
 SEARCH_STREAK = 3  # Searches in a row before the result suggests reading instead.
 PAGE_CACHE_S, PAGE_CACHE_SIZE = 600, 20  # A fetched page is kept this long for offset and find.
@@ -216,6 +216,8 @@ class Workspace:
         self.seen: dict[Path, int] = {}
         self.hints = 0
         self.searches_in_row = 0
+        # The tools the model is offered, so a tip never points at one it does not have; None offers every tip.
+        self.offered: set[str] | None = None
         self.pages: dict[str, tuple[str, list[str], float]] = {}
         self.searched: dict[str, tuple[str, float]] = {}
         self.new_images: list[tuple[str, str]] = []
@@ -655,7 +657,7 @@ class Workspace:
 
     def _shell_hint(self, command: str) -> str:
         bare = re.sub(r"^\s*cd\s+\S+\s*&&\s*", "", command).strip()
-        tip = next((tip for pattern, tip in SHELL_HINTS if pattern.search(bare)), "")
+        tip = next((tip for pattern, tool, tip in SHELL_HINTS if pattern.search(bare) and (self.offered is None or tool in self.offered)), "")
         if not tip or self.hints >= SHELL_HINT_LIMIT:
             return ""
         self.hints += 1
