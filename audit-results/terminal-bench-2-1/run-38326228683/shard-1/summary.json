@@ -1,0 +1,37 @@
+{
+ "passed": 2,
+ "trials": 3,
+ "rate": 0.667,
+ "rows": [
+  {
+   "trial": "adaptive-rejection-sampler__cfRvUxB",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2728,
+    0,
+    32000
+   ]
+  },
+  {
+   "trial": "break-filter-js-from-html__8kJHvP7",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    247988,
+    201216,
+    25091
+   ]
+  },
+  {
+   "trial": "build-pmars__3WoDmCV",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    749215,
+    588608,
+    38605
+   ]
+  }
+ ]
+}
