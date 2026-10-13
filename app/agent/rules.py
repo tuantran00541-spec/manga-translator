@@ -103,13 +103,20 @@ def _verdict(rules: list[Rule], category: str, subject: str) -> str | None:
     return found
 
 
+# Programs that write the paths they are given, so an edit rule's deny covers them.
+WRITERS = {"cp", "mv", "rm", "ln", "touch", "tee", "chmod", "chown", "install", "truncate", "dd", "rsync", "patch", "sed", "perl", "unzip", "tar"}
+
+
 def _names_denied_path(rules: list[Rule], command: str) -> bool:
-    """Best effort: a command naming a path that an edit or read rule denies is denied too; the sandbox is the real wall."""
+    """Best effort: a command naming a path a read rule denies, or writing one an edit rule denies, is denied too; the sandbox is the real wall."""
     specific = [r for r in rules if r[2] not in ("*", "**")]
-    for token in re.split(r"[\s<>|&;()'\"=]+", command):
-        token = token.removeprefix("./")
-        if token and not token.startswith("-") and any(_verdict(specific, c, token) == "deny" for c in ("edit", "read")):
-            return True
+    for part in SPLIT.split(command):
+        words = part.split()
+        writes = bool(words) and (words[0].rsplit("/", 1)[-1] in WRITERS or ">" in part)
+        for token in re.split(r"[\s<>|&;()'\"=]+", part):
+            token = token.removeprefix("./")
+            if token and not token.startswith("-") and any(_verdict(specific, c, token) == "deny" for c in (("edit", "read") if writes else ("read",))):
+                return True
     return False
 
 

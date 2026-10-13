@@ -1623,7 +1623,7 @@ def test_web_download_saves_a_file_inside_the_workspace_only(ws, monkeypatch):
 def test_a_background_job_keeps_running_between_calls_and_stops_on_request(ws, home):
     script = "python3 -u -c \"import time; print('ready', flush=True); time.sleep(300)\""
     fake = scripted(turn(calls=[call("run_command", command=script, background=True)]),
-                    turn(calls=[call("job_output", id="job1", wait_s=5)]),
+                    turn(calls=[call("job_output", id="1", wait_s=5)]),
                     turn(calls=[call("job_stop", id="job1"), call("job_output", id="job9")]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
@@ -2893,6 +2893,24 @@ def test_a_reply_that_spent_its_whole_budget_on_reasoning_is_asked_again_with_a_
     run_to_idle(session, "go")
     assert sizes == [8192, 16384, 32768] and session.history[-1]["content"] == "Done."
     assert sum("raising the reply limit" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
+
+
+def test_thinking_cut_off_at_the_top_limit_is_kept_and_the_next_reply_thinks_less(ws, home, monkeypatch):
+    efforts = []
+
+    def fake(provider, key, model, messages, *, tools, on_delta=None, max_tokens=None):
+        efforts.append(client.REQUEST_EXTRA.get().get("reasoning_effort"))
+        if len(efforts) == 1:
+            return {"text": "", "calls": [], "reasoning": "the bug is in parse()", "usage": {"completion_tokens": max_tokens}, "debug": {"finish": "length"}}
+        return turn("Done.")
+
+    monkeypatch.setattr(client, "complete", fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=client.complete)
+    session._max_out = 32000
+    session.quirks = {**session.quirks, "request": {"reasoning_effort": "high"}, "late_request": {"reasoning_effort": "medium"}}
+    run_to_idle(session, "go")
+    assert efforts == ["high", "medium"] and session.history[-1]["content"] == "Done."
+    assert any("the bug is in parse()" in str(m.get("content")) for m in session.history if m["role"] == "user")
 
 
 def test_a_turn_that_dies_after_changing_files_says_what_it_changed_and_what_is_left(ws, home):
@@ -4247,3 +4265,12 @@ def test_late_request_fields_take_over_in_the_last_third_of_a_clocked_run(ws, ho
     assert session._request_fields()["reasoning_effort"] == "xhigh"
     now[0] += 20
     assert session._request_fields() == {"reasoning_effort": "medium", "top_p": 0.9}, "past two thirds of the clock the late fields win"
+
+
+def test_bench_slips_a_garbled_todo_key_a_bare_job_number_and_reading_git_are_handled():
+    from app.agent import aliases, rules
+    assert aliases._fix_items({"titems": '[{"content": "a", "status": "done"}]'}) == {"items": [{"content": "a", "status": "completed"}]}
+    found = [(None,) + r for r in rules.DEFAULT]
+    assert rules.check(found, "run_command", {"command": "cd repo && ls -la .git/logs && git reflog"}, lambda p: p) is None
+    assert rules.check(found, "run_command", {"command": "git rev-parse HEAD > .git/ORIG_HEAD"}, lambda p: p) == "deny"
+    assert rules.check(found, "run_command", {"command": "cat .env"}, lambda p: p) == "deny"

@@ -1,6 +1,7 @@
 """Tool and argument names other agent harnesses use, mapped onto this harness's tools so a model's habit still works."""
 from __future__ import annotations
 
+import json
 import re
 
 # Sources: tool definitions of Claude Code, Codex, Gemini CLI, Cursor, Windsurf, Cline, Roo Code, Kimi CLI, oh-my-pi,
@@ -103,6 +104,16 @@ def _fix_items(args: dict) -> dict:
     """Plan steps and edit lists come with other harnesses' field names inside them too."""
     if isinstance(args.get("edits"), dict):
         args["edits"] = [args["edits"]]
+    if "items" not in args:
+        # A garbled key (titems, todo) still carries the list.
+        stray = [k for k, v in args.items() if isinstance(v, list) or isinstance(v, str) and v.lstrip().startswith("[{")]
+        if len(stray) == 1 and any(w in normalize(stray[0]) for w in ("item", "todo")):
+            args["items"] = args.pop(stray[0])
+    if isinstance(args.get("items"), str) and args["items"].lstrip().startswith("["):
+        try:
+            args["items"] = json.loads(args["items"])
+        except ValueError:
+            pass
     for key, inner in (("items", ITEM_KEYS), ("edits", {k: v[0] for k, v in ARGS.items() if v[0] in ("old_text", "new_text")})):
         if isinstance(args.get(key), list):
             args[key] = [{inner.get(normalize(k), k): v for k, v in item.items()} if isinstance(item, dict) else item for item in args[key]]
