@@ -3135,8 +3135,8 @@ def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_kee
     made = later._create({"name": "tally", "code": "def tally(path: str, limit=5):\n    \"\"\"Count words.\"\"\"\n    return 1\n"})
     assert later.created["tally"]["description"] == "tally(path, limit=5): Count words." and "Call tally directly" in made
     assert later.created["tally"]["parameters"] == {"type": "object", "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["path"]}
-    with pytest.raises(ToolError, match="def probe"):
-        later._create({"name": "probe", "code": "x = 1\nreturn x"})
+    later._create({"name": "probe", "code": "x = args.get('n', 1)\nreturn x"})
+    assert later.created["probe"]["code"].startswith("def probe(**args):"), "a function body with a top-level return is wrapped"
     with pytest.raises(ToolError, match="reserved"):
         later._create({"name": "read_file", "code": "x = 1"})
     with pytest.raises(ToolError, match="Syntax"):
@@ -4148,7 +4148,7 @@ def test_lean_offers_four_tools_a_keep_going_prompt_and_chains_reach_them(ws, ho
     session._new_request("go")
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create"]
     prompt = session.system_prompt()
-    assert "You have four tools" in prompt and "If you have not seen a check pass, the work is not done" in prompt and "built-in (read_file, edit_file and run_command)" in prompt
+    assert "You have four tools" in prompt and "A check you have not seen pass is not done" in prompt and "built-in (read_file, edit_file and run_command)" in prompt
     chain = ("def go():\n    tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 3')\n"
              "    return tools.read_file(path='pkg/a.py').count('return 3')\n")
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": True}})

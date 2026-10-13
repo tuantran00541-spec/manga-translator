@@ -111,6 +111,24 @@ MAX_PARALLEL = 3
 SELF_EXTEND = ("plugin_write", "plugin_remove")
 CREATED_NAME = re.compile(r"[a-z][a-z0-9_]{0,40}")
 # Calls a created tool's function with the model's arguments, the way function calling hands them over.
+def _as_function(name: str, code: str) -> str:
+    """Code written as a function body (a top-level return) becomes def <name>(**args), as DeepSeek Harness's run_code takes it."""
+    import ast
+    try:
+        compile(code, f"{name}.py", "exec")
+        return code
+    except SyntaxError as exc:
+        if "outside function" not in str(exc):
+            return code
+    try:
+        body = ast.parse(code).body
+    except SyntaxError:
+        return code
+    wrapper = ast.parse(f"def {name}(**args):\n    pass\n")
+    wrapper.body[0].body = body or [ast.Pass()]
+    return ast.unparse(ast.fix_missing_locations(wrapper)) + "\n"
+
+
 def _signature(name: str, code: str) -> tuple[str, str, dict]:
     """The called function's signature, docstring first line and JSON schema, so a created tool describes itself."""
     import ast
@@ -259,12 +277,30 @@ UNREADABLE_TURNS = 4
 TOKEN_BUDGET = 10_000_000
 URL_RE = re.compile(r"https?://([^\s/:?#]+)")
 PLAN_TOOLS = agents.READ_TOOLS | {"oracle", "todo_write", "task", "fan_out", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
+# How to work, after Codex's autonomy and validation rules and oh-my-pi's delivery contract.
+WORK_RULES = """You work on your own until the request is completely solved and checked. Do not end your turn to report progress, describe a plan,
+propose next steps or ask whether to continue; ask the user only for a choice only they can make.
+- Read the request again before you start and list every requirement in it: file paths, names, formats, exact outputs, limits, versions.
+- Look before you change: read the files and run the commands that show how things are now. Never guess what a file holds or what a
+  command prints, and never open files you only guess exist.
+- Think about the next step, then take it; do not re-plan the whole task each time. A large file or answer starts as a small working
+  version that later edits extend.
+- When something fails, find out why and fix the cause. Retry an empty, partial or failing result a different way, never the same way twice;
+  never give up because a step is hard or slow.
+- Fix root causes, keep changes minimal and in the code's style, and do not solve an easier problem than the one asked. Do not re-read a
+  file after an edit succeeded: the tool result is the proof.
+- For a bug, reproduce it before the fix and confirm it gone after. Test from the code you changed outward.
+- Before you end, verify the result against every requirement: run the program, the tests or the exact command the request implies,
+  look at the real output, and check the files are where and in the form asked. A check you have not seen pass is not done.
+- If time is short, finish and verify the most important part rather than leave everything half done. Never stop early while time
+  remains, and never spend words on time, tokens or budgets instead of working."""
 SYSTEM_PROMPT = """You are Chaos, a coding agent inside the Manga Translator app.
 Workspace root: {root} on {system}. Paths are relative to it.
 {sandbox}
-Look before you change, keep changes minimal and in the code's style, fix root causes, then run the tests or command that proves it works
-and review your edits with changes. Plan multi-step work with todo_write.
-Make independent calls (reads, searches, look-only commands) together in one reply; they run in parallel. End with a short report: what changed, how you checked, what is left.
+""" + WORK_RULES + """
+Plan work of more than a few steps with todo_write (not simple work) and keep it current; review your edits with changes.
+Make independent calls (reads, searches, look-only commands) together in one reply; they run in parallel.
+End with a short report: what changed, how you checked it, and anything not done.
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
 CREATE_PROMPT = """You are Chaos, a coding agent inside the Manga Translator app.
 Workspace root: {root} on {system}. Paths are relative to it.
@@ -320,7 +356,10 @@ COMPOSE_PROMPT = ("This harness is built to be composed: every tool it has, buil
                   "same way every time. Explore and debug step by step with the other tools; once the steps are known, write them as one chain, above "
                   "all for edit, run the tests, check the result; for the same work over many files or inputs; for a check you will repeat; and for "
                   "work that needs a plugin or MCP tool between other steps. A tool you create appears in your tool list from the next reply: call it "
-                  "there by name like any tool; tools.<name>(...) is only for calls from inside code. ")
+                  "there by name like any tool; tools.<name>(...) is only for calls from inside code. Code for create is a Python function "
+                  "def <name>(...) or just the body of one: a top-level return works and args then holds the arguments. A failed tools.<name>(...) "
+                  "raises an exception carrying the tool's error, so catch it to handle the failure and go on. Only what the code prints or returns "
+                  "comes back to you: return what you need, not whole files or logs. ")
 HYBRID_PROMPT = COMPOSE_PROMPT.format(builtins="read_file, edit_file, run_command and the rest") + CHAIN_PROMPT.replace("\n", " ")
 LEAN_TOOLS = frozenset({"read_file", "edit_file", "run_command"})
 LEAN_PROMPT = """You are Chaos, a coding agent inside the Manga Translator app.
@@ -328,17 +367,8 @@ Workspace root: {root} on {system}. Paths are relative to it.
 {sandbox}
 You have four tools: read_file, edit_file, run_command (the shell: list, search, create files, build, test) and create.
 
-You are working on your own until the task is finished. Keep going until the request is completely solved and checked; do not end your
-turn to report progress, describe a plan, propose next steps or ask whether to continue. Ask the user only when the request cannot go on
-without an answer only they have.
-- Read the request again before you start and list every requirement in it: file paths, names, formats, exact outputs, limits, versions.
-- Look before you change: read the files and run the commands that show how things are now. Do not guess what a file holds or what a
-  command prints; check.
-- When something fails, find out why and fix the cause; try a different approach rather than repeating one that failed, and never give
-  up because a step is hard or slow.
-- Before you end, verify the result against every requirement: run the tests, the program or the exact command the request implies,
-  look at the real output, and check the files are where and in the form asked. If you have not seen a check pass, the work is not done.
-- If time is short, finish and verify the most important part rather than leaving everything half done; never stop early while time remains.
+""" + WORK_RULES + """
+Make independent calls together in one reply; they run in parallel.
 End with a short report: what changed, how you checked it, and anything not done.
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
 LEAN_CREATE = COMPOSE_PROMPT.format(builtins="read_file, edit_file and run_command") + CHAIN_PROMPT.replace("\n", " ")
@@ -1569,12 +1599,11 @@ class AgentSession:
             created.pop(name)
             path.unlink(missing_ok=True)
             return f"Deleted tool {name}."
+        code = _as_function(name, code)
         try:
             compile(code, f"{name}.py", "exec")
         except SyntaxError as exc:
-            hint = (f"\ncode is a module: put the steps in def {name}(...): and return from there."
-                    if "outside function" in str(exc) else "")
-            raise ToolError(f"Syntax error: {exc}{hint}") from exc
+            raise ToolError(f"Syntax error: {exc}") from exc
         raw = chaincheck.raw_shell(code) if self.profile["tools"] == "create" and not self.profile["create_shell"] else []
         if raw:
             raise ToolError("Not created: in create mode a tool does its work in Python rather than through a shell:\n" + "\n".join(raw[:5]) +
