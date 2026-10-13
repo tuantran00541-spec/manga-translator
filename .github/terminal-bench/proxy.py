@@ -31,14 +31,16 @@ def flush() -> None:
     os.chmod(STATS, 0o644)
 
 
-def without_strict(body: bytes) -> bytes:
-    """Drops tools[].function.strict, which some providers reject and which only asks for stricter schema checks."""
+def without_refused(body: bytes) -> bytes:
+    """Drops optional fields some providers refuse: tools[].function.strict and prompt_cache_key, both only hints."""
     try:
         data = json.loads(body)
     except ValueError:
         return body
-    changed = False
-    for tool in data.get("tools") or [] if isinstance(data, dict) else []:
+    if not isinstance(data, dict):
+        return body
+    changed = data.pop("prompt_cache_key", None) is not None
+    for tool in data.get("tools") or []:
         if isinstance(tool, dict) and isinstance(tool.get("function"), dict) and "strict" in tool["function"]:
             del tool["function"]["strict"]
             changed = True
@@ -92,7 +94,7 @@ class Relay(BaseHTTPRequestHandler):
                 return self.reply(413, b'{"error": "body too large"}')
             body = self.rfile.read(size)
         if body and self.path.split("?")[0] == "/v1/chat/completions":
-            body = without_strict(body)
+            body = without_refused(body)
         if body and MODEL:
             body = full_model(body)
         if body and LIMITS.get("force") and self.path.split("?")[0] == "/v1/chat/completions":
