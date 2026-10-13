@@ -70,6 +70,7 @@ class SessionRequest(BaseModel):
     provider: str
     model: str
     mode: str = "edits"
+    effort: str = ""
     workspace: str = ""
     sandbox: str = "workspace-write"
     network: bool = False
@@ -116,6 +117,7 @@ class KeyChoice(BaseModel):
 
 class SessionUpdate(BaseModel):
     mode: str | None = None
+    effort: str | None = None
     model: str | None = None
     sandbox: str | None = None
     network: bool | None = None
@@ -241,6 +243,7 @@ async def create_session(req: SessionRequest) -> dict:
             raise ValueError(f"sandbox must be one of {', '.join(sandbox.MODES)}")
         workspace = Workspace(req.workspace.strip() or BASE_DIR, sandbox.Policy(req.sandbox, req.network))
         session = await run_in_threadpool(agent_sessions.create, provider, api_key, model, workspace, req.mode)
+        session.set_effort(req.effort)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return session.snapshot()
@@ -428,6 +431,8 @@ def update_session(session_id: str, req: SessionUpdate) -> dict:
             if req.mode not in MODES:
                 raise ValueError(f"mode must be one of {', '.join(MODES)}")
             session.mode = req.mode
+        if req.effort is not None:
+            session.set_effort(req.effort)
         if req.model is not None:
             session.set_model(validate_model_name(req.model, default=""))
         if req.sandbox is not None or req.network is not None:

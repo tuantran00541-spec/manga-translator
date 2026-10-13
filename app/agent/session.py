@@ -103,6 +103,8 @@ KEEP_RECENT_CHARS = 60_000
 COMPACT_REARM = 1.25  # After a compaction, the context must grow by this factor before the next one.
 ROLLOVER_KEEP_CHARS = 15_000
 WINDOW_SHARE = 0.8  # Compact at this share of the model's real window, leaving room for the reply (pi keeps a reserve the same way).
+EFFORTS = ("", "low", "medium", "high", "xhigh")  # "" leaves reasoning to the model and profile.json
+EFFORT_WORDS = {"mặc định": "", "default": "", "thấp": "low", "vừa": "medium", "cao": "high", "rất cao": "xhigh"}
 LATE_SHARE = 1 / 3  # The share of a run's clock left when late_request replaces the usual request fields.
 TIME_GRACE_S = 180  # The agent writes its report this long before a run's clock stops it.
 TIME_NOTICE = ("[Time notice] About {minutes} minutes are left. Finish the step you are on and run the check on what you have; then stop "
@@ -479,6 +481,7 @@ BUILTIN_COMMANDS = {
     "init": "Viết AGENTS.md mô tả dự án này", "skills": "Xem skill; /skills add CHỦ/REPO[/THƯ-MỤC] cài skill từ GitHub",
     "mcp": "Xem MCP server và công cụ của chúng", "services": "Xem provider đang chạy sau tìm web, tải trang và lệnh", "model": "Đổi model: /model TÊN",
     "mode": "Đổi cách duyệt: /mode ask|edits|auto",
+    "effort": "Đổi mức suy nghĩ: /effort mặc định|thấp|vừa|cao|rất cao",
     "sandbox": "Đổi sandbox: /sandbox read-only|workspace-write|full-access [net]",
     "clear": "Mở phiên mới", "plan": "Chế độ lập kế hoạch (chỉ đọc đến khi bạn duyệt): /plan [việc] hoặc /plan off",
     "goal": "Giao mục tiêu để agent tự làm nhiều lượt: /goal MỤC TIÊU hoặc /goal off",
@@ -616,6 +619,7 @@ class AgentSession:
         self.cache_log: collections.Counter = collections.Counter()
         self._fired: dict[str, int] = {}
         self.plan_mode = False
+        self.effort = ""
         self.goal: dict | None = None
         self._recent: list[str] = []
         self._approval_lock = threading.RLock()
@@ -777,7 +781,7 @@ class AgentSession:
                     "model": self.model, "mode": self.mode, "workspace": str(self.workspace.root), "title": self.title,
                     "sandbox": sandbox_info, "text_tools": self.text_tools, "usage": dict(self.usage), "stats": self._stats(), "live": self._live_view(),
                     "pending": self.pending, "todos": self.todos, "key_prompt": self.key_prompt, "keys": len(self.api_keys),
-                    "plan_mode": self.plan_mode, "goal": self.goal and self.goal["text"], "queued": len(self.queue),
+                    "plan_mode": self.plan_mode, "effort": self.effort, "goal": self.goal and self.goal["text"], "queued": len(self.queue),
                     "rate_limited": dict(self.rate_limited), "info_rev": digest, "events": [e for e in self.events if e["seq"] > after]}
             if rev != digest:
                 snap.update(info)
@@ -808,7 +812,7 @@ class AgentSession:
         data = {"id": self.id, "provider": self.provider.id, "model": self.model, "mode": self.mode, "title": self.title,
                 "workspace": str(self.workspace.root), "sandbox": [self.workspace.policy.mode, self.workspace.policy.network],
                 "created_at": self.created_at, "updated_at": self.updated_at, "usage": self.usage, "todos": self.todos, "notes": self.notes,
-                "text_tools": self.text_tools, "plan_mode": self.plan_mode, "goal": self.goal, "schedules": self.schedules, "compact_at": self.compact_at,
+                "text_tools": self.text_tools, "plan_mode": self.plan_mode, "effort": self.effort, "goal": self.goal, "schedules": self.schedules, "compact_at": self.compact_at,
                 "history": [{k: v for k, v in h.items() if k != "images"} for h in self.history], "events": self.events}
         tmp = self.store.with_suffix(".tmp")
         # A small card beside the session, so the list of saved sessions never parses whole conversations.
@@ -828,6 +832,7 @@ class AgentSession:
         self.history, self.events = list(data.get("history") or []), list(data.get("events") or [])
         self.todos, self.title = list(data.get("todos") or []), str(data.get("title") or "")
         self.notes = str(data.get("notes") or "")
+        self.effort = data.get("effort") if data.get("effort") in EFFORTS else ""
         if isinstance(data.get("compact_at"), int) and data["compact_at"] >= 0:
             self.compact_at = data["compact_at"]
         self.schedules = [t for t in (data.get("schedules") or []) if isinstance(t, dict) and {"id", "prompt", "next_at", "every"} <= set(t)][:MAX_SCHEDULES]
@@ -844,6 +849,13 @@ class AgentSession:
         """Switch the model; its prompt quirks come with it."""
         self.model = model
         self.quirks = models.quirks(model, self.profile["models"])
+
+    def set_effort(self, effort: str) -> None:
+        """How hard the model thinks from the next request on; "" leaves it to the model and profile.json."""
+        effort = EFFORT_WORDS.get(effort.strip().lower(), effort.strip().lower())
+        if effort not in EFFORTS:
+            raise ValueError("effort must be one of: default, low, medium, high, xhigh")
+        self.effort = effort
 
     def set_policy(self, mode: str, network: bool) -> None:
         if mode not in sandbox.MODES:
@@ -967,6 +979,10 @@ class AgentSession:
             if args:
                 self.set_model(args)
             return {"message": f"Model: {self.model}"}
+        if name == "effort":
+            if args:
+                self.set_effort(args)
+            return {"message": f"Mức suy nghĩ: {self.effort or 'mặc định'}"}
         if name == "mode" and args in MODES:
             self.mode = args
             return {"message": f"Quyền: {args}"}
@@ -1091,6 +1107,8 @@ class AgentSession:
     def _request_fields(self) -> dict:
         """Extra request fields for this model; with a clock, late_request takes over in the last third (say, less reasoning when time runs short)."""
         fields = dict(self.quirks.get("request")) if isinstance(self.quirks.get("request"), dict) else {}
+        if self._root().effort:
+            fields["reasoning_effort"] = self._root().effort
         clock, late = self._root()._clock, self.quirks.get("late_request")
         if clock and isinstance(late, dict) and time.time() - clock[0] > clock[1] * (1 - LATE_SHARE):
             fields.update(late)

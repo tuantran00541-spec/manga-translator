@@ -455,6 +455,11 @@
     if (snap.plan_mode) parts.push("planning");
     if (snap.goal) parts.push(`goal: ${snap.goal}`);
     $("agent-status").textContent = parts.join(" · ");
+    // A /effort typed in the chat moves the picker too.
+    if (typeof snap.effort === "string" && $("agent-effort").value !== snap.effort) {
+      $("agent-effort").value = snap.effort;
+      showPicks();
+    }
     const log = $("agent-log");
     log.querySelector(".agent-working")?.remove();
     log.querySelector(".agent-live")?.remove();
@@ -473,12 +478,20 @@
   // The composer's two menus name what is picked inside them.
   const MODE_SHORT = { ask: "Hỏi mọi thứ", edits: "Tự sửa và chạy", review: "Model duyệt", auto: "Tự động", bypass: "Không duyệt" };
   const SANDBOX_SHORT = { "read-only": "chỉ đọc", "workspace-write": "ghi trong thư mục", "full-access": "không sandbox" };
+  const EFFORT_SHORT = { low: "nghĩ ít", medium: "nghĩ vừa", high: "nghĩ kỹ", xhigh: "nghĩ rất kỹ" };
   function showPicks() {
     const network = $("agent-network").checked ? " · mạng" : "";
     $("agent-perm-label").textContent = `${MODE_SHORT[$("agent-mode").value] || ""} · ${SANDBOX_SHORT[$("agent-sandbox").value] || ""}${network}`;
     const provider = $("agent-provider").selectedOptions[0]?.textContent || "";
     const model = $("agent-model").value.trim();
-    $("agent-model-label").textContent = model ? (provider ? `${model} · ${provider}` : model) : (provider ? `${provider} · chọn model` : "Chọn model");
+    const effort = EFFORT_SHORT[$("agent-effort").value] ? ` · ${EFFORT_SHORT[$("agent-effort").value]}` : "";
+    $("agent-model-label").textContent = (model ? (provider ? `${model} · ${provider}` : model) : (provider ? `${provider} · chọn model` : "Chọn model")) + effort;
+  }
+
+  // The effort picked for a model comes back when that model is chosen again.
+  const effortKey = () => `manga_agent_effort_${$("agent-provider").value}_${$("agent-model").value.trim()}`;
+  function loadEffort() {
+    $("agent-effort").value = store("get", effortKey()) || "";
   }
 
   // The session list sits in a side column that folds away; on a narrow screen it opens over the chat.
@@ -551,6 +564,7 @@
   async function loadModels() {
     const provider = $("agent-provider").value;
     $("agent-model").value = store("get", `manga_agent_model_${provider}`) || store("get", `manga_ai_model_${provider}`) || "";
+    loadEffort();
     showPicks();
     const list = $("agent-model-list");
     list.replaceChildren();
@@ -615,6 +629,7 @@
       $("agent-workspace").value = snap.workspace;
       showFolder();
       $("agent-model").value = snap.model;
+      $("agent-effort").value = snap.effort || "";
       showPicks();
       snap.events.forEach((event) => { if (event.type !== "approval") render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
@@ -698,7 +713,7 @@
   async function ensureSession() {
     if (session) return session;
     const body = {
-      provider: $("agent-provider").value, model: $("agent-model").value.trim(), mode: $("agent-mode").value,
+      provider: $("agent-provider").value, model: $("agent-model").value.trim(), mode: $("agent-mode").value, effort: $("agent-effort").value,
       workspace: $("agent-workspace").value.trim(), sandbox: $("agent-sandbox").value, network: $("agent-network").checked,
     };
     session = await post("/api/agent/sessions", body);
@@ -1056,7 +1071,16 @@
     $("agent-skill-file").addEventListener("change", uploadSkills);
     $("agent-skill-save").addEventListener("click", saveSkill);
     $("agent-skill-draft").addEventListener("click", draftSkill);
-    $("agent-model").addEventListener("change", () => syncSession({ model: $("agent-model").value.trim() }));
+    $("agent-model").addEventListener("change", () => {
+      loadEffort();
+      showPicks();
+      syncSession({ model: $("agent-model").value.trim(), effort: $("agent-effort").value });
+    });
+    $("agent-effort").addEventListener("change", () => {
+      store("set", effortKey(), $("agent-effort").value);
+      showPicks();
+      syncSession({ effort: $("agent-effort").value });
+    });
     $("agent-model").addEventListener("input", showPicks);
     $("agent-mode").addEventListener("change", () => syncSession({ mode: $("agent-mode").value }));
     const saveEngine = async () => {

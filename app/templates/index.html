@@ -150,6 +150,7 @@
                 <details id="agent-model-menu" class="agent-menu"><summary class="agent-pick" title="Dịch vụ và model"><span id="agent-model-label">Chọn model</span><svg class="agent-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></summary><div class="agent-pop agent-pop-up agent-pop-right">
                   <label class="agent-field" for="agent-provider"><span>Dịch vụ</span><select id="agent-provider"></select></label>
                   <label class="agent-field" for="agent-model"><span>Model</span><input id="agent-model" list="agent-model-list" placeholder="tên model" autocomplete="off" spellcheck="false" required><datalist id="agent-model-list"></datalist></label>
+                  <label class="agent-field" for="agent-effort"><span>Mức suy nghĩ: cao hơn thì kỹ hơn nhưng chậm và tốn hơn</span><select id="agent-effort"><option value="">Mặc định của model</option><option value="low">Thấp</option><option value="medium">Vừa</option><option value="high">Cao</option><option value="xhigh">Rất cao</option></select></label>
                 </div></details>
                 <button id="agent-stop" class="agent-round" type="button" aria-label="Dừng" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg></button>
                 <button id="agent-send" class="agent-round agent-round-primary" type="submit" aria-label="Gửi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg></button>

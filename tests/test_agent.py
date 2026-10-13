@@ -4360,3 +4360,36 @@ def test_checkpoint_pins_files_and_the_harness_marks_runs_and_passes(ws, home):
     marks = list(session.checkpoints.marks)
     assert any(m.endswith("-before-ok") for m in marks) and any(m.endswith("-pass-ok") for m in marks), marks
     assert all(session.checkpoints.marks[m]["auto"] for m in marks)
+
+
+def test_the_picked_effort_is_sent_beats_the_profile_and_yields_to_late_request(ws, home, monkeypatch):
+    from app.agent import session as session_module
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"models": {".": {"request": {"reasoning_effort": "xhigh", "top_p": 0.9},
+                                                                                     "late_request": {"reasoning_effort": "low"}}}}))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    assert session._request_fields()["reasoning_effort"] == "xhigh", "no pick leaves the profile's field"
+    assert session.command("/effort vừa")["message"] == "Mức suy nghĩ: medium"
+    assert session._request_fields() == {"reasoning_effort": "medium", "top_p": 0.9} and session.snapshot()["effort"] == "medium"
+    assert session.command("/effort mặc định")["message"] == "Mức suy nghĩ: mặc định" and session._request_fields()["reasoning_effort"] == "xhigh"
+    with pytest.raises(ValueError):
+        session.set_effort("max")
+    session.set_effort("high")
+    now = [1000.0]
+    monkeypatch.setattr(session_module.time, "time", lambda: now[0])
+    session.set_deadline(900)
+    now[0] += 700
+    assert session._request_fields()["reasoning_effort"] == "low", "a bench's late_request still wins when time runs short"
+
+
+def test_the_effort_is_set_through_the_api_and_kept_on_resume(api):
+    http, root, agents = api
+    head = {"X-Manga-Agent": "1"}
+    created = http.post("/api/agent/sessions", json={"provider": "openai", "model": "m", "workspace": root, "effort": "high"}, headers=head)
+    assert created.status_code == 200 and created.json()["effort"] == "high", created.text
+    sid = created.json()["id"]
+    assert http.patch(f"/api/agent/sessions/{sid}", json={"effort": "low"}, headers=head).json()["effort"] == "low"
+    assert http.patch(f"/api/agent/sessions/{sid}", json={"effort": "max"}, headers=head).status_code == 400
+    agents.sessions[sid].save()
+    agents.sessions.pop(sid).close()
+    assert http.post(f"/api/agent/sessions/{sid}/resume", headers=head).json()["effort"] == "low"
