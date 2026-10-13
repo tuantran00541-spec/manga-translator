@@ -12,19 +12,16 @@
   },
   "max_output_tokens": 32000,
   "shards": 2,
-  "tools": "hybrid",
-  "agent": "claude-code",
+  "tools": "lean",
+  "agent": "chaos",
   "limits": {
     "max_usd": 30.0,
     "price": {
       "input": 1.47e-07,
       "output": 2.94e-07
-    },
-    "force": {
-      "reasoning_effort": "high"
     }
   },
-  "trial": "cc-bridge",
+  "trial": "lean-1",
   "late_request": {
     "reasoning_effort": "medium"
   }
