@@ -38,9 +38,13 @@ jobs:
       - name: Build the rows from the trial logs
         run: python .github/laya/build.py evidence/audit-results/terminal-bench-2-1 data
       - name: Fine-tune laya-typed-decisions
+        # Two items of 512 tokens per pass keep ModernBERT-large's fp32 training inside the runner's 16 GB.
         run: |
+          set -o pipefail
+          free -g
+          (while sleep 60; do echo "[mem] $(free -m | awk '/Mem/ {print $3 " MB used of " $2}')"; done) &
           laya-train --data data/train.jsonl --eval data/eval.jsonl --base typed-decisions --out ckpt \
-            --device cpu --epochs 3 --micro-batch 8 --grad-accum 4 --seed 0 2>&1 | tee train.log
+            --device cpu --epochs 3 --micro-batch 2 --grad-accum 16 --max-len 512 --seed 0 2>&1 | tee train.log
       - name: Score base and tuned against the baselines
         run: python .github/laya/evaluate.py data "$OUT" base=typed-decisions tuned=ckpt
       - name: Keep the logs with the scores

@@ -49,7 +49,7 @@ def main(data, models, out):
     for name, path in models.items():
         agent = laya.load(path, device="cpu")
         started = time.time()
-        results = agent.predict_batch([r["state"] for r in rows], question, batch_size=8)
+        results = agent.predict_batch([r["state"] for r in rows], question, batch_size=4)
         took = time.time() - started
         scores = [res["answers"]["verified"]["noul"] for res in results]
         summary[name] = {**report(scores, labels), "cpu_ms_per_row": round(1000 * took / len(rows), 1)}
