@@ -1,0 +1,28 @@
+Fetching 5 files:   0%|          | 0/5 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 5 files:  40%|████      | 2/5 [00:00<00:00,  9.95it/s]Fetching 5 files:  80%|████████  | 4/5 [00:00<00:00, 12.37it/s]Fetching 5 files: 100%|██████████| 5/5 [00:02<00:00,  1.74it/s]
+train items 1710, calibration items 190, eval items 190 (calibration_slice), skipped {}, device cpu
+optimizer budget: 1710 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 54 optimizer updates over 1 epoch(s)
+epoch 1/1 step 100 loss 0.9714
+epoch 1/1 step 200 loss 1.0428
+epoch 1/1 step 300 loss 1.7128
+epoch 1/1 step 400 loss 0.0438
+epoch 1/1 step 500 loss -0.1736
+epoch 1/1 step 600 loss 0.6485
+epoch 1/1 step 700 loss 0.8944
+epoch 1/1 step 800 loss 1.0309
+epoch 1/1 mean loss 0.6528
+/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/site-packages/laya/train_cli.py:221: RuntimeWarning: laya.train: predictions collapsed to the class prior (calibration cross-entropy 0.686 is within 2% of ln K ~ 0.693). The default epoch budget is often too small on a few hundred or a thousand labelled rows. Try more epochs, more data, or another seed.
+  summary = finetune(
+
+=== Calibration Evidence (in-sample calibration slice, 190 items; not held-out) ===
+Metric                 Before         After          Delta         
+-----------------------------------------------------------------
+Accuracy               0.4842         0.5737         +0.0895       
+Loss                   0.7054         0.6852         -0.0202       
+ECE                    0.0667         0.0457         -0.0210       
+Brier (multi-class)    0.5121         0.4921         -0.0200       
+Brier (top-1)          0.2561         0.2461         -0.0100       
+Mean Confidence        0.5475         0.5460         -0.0015       
+-----------------------------------------------------------------
+
+Training complete! Model saved to ckpt
