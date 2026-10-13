@@ -1,0 +1,6 @@
+left running: job2 (process group 1066): rm -f /tmp/qemu-monitor.sock
+nohup qemu-system-i386 \
+  -machine pc,accel=tcg -m 64 -cpu pentium \
+  -drive file=/app/is
+left running: job3 (process group 1278): nohup websockify --web /usr/share/novnc 6080 127.0.0.1:5901 > /var/log/websockify.log 2>&1 &
+sleep 2; ss -tlnp | grep -E
