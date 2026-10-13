@@ -1,0 +1,28 @@
+/testbed/requests/packages/urllib3/connectionpool.py:388: SyntaxWarning: invalid escape sequence '\*'
+  :param \**response_kw:
+/testbed/requests/packages/urllib3/connectionpool.py:565: SyntaxWarning: invalid escape sequence '\*'
+  :param \**kw:
+/testbed/requests/packages/urllib3/poolmanager.py:40: SyntaxWarning: invalid escape sequence '\*'
+  :param \**connection_pool_kw:
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/opt/mg/src/app/agent/cli.py", line 14, in <module>
+    from app.agent import client, sandbox
+  File "/opt/mg/src/app/agent/client.py", line 13, in <module>
+    import requests
+  File "/testbed/requests/__init__.py", line 52, in <module>
+    from . import utils
+  File "/testbed/requests/utils.py", line 23, in <module>
+    from .compat import parse_http_list as _parse_list_header
+  File "/testbed/requests/compat.py", line 7, in <module>
+    from .packages import charade as chardet
+  File "/testbed/requests/packages/__init__.py", line 3, in <module>
+    from . import urllib3
+  File "/testbed/requests/packages/urllib3/__init__.py", line 24, in <module>
+    from .poolmanager import PoolManager, ProxyManager, proxy_from_url
+  File "/testbed/requests/packages/urllib3/poolmanager.py", line 9, in <module>
+    from ._collections import RecentlyUsedContainer
+  File "/testbed/requests/packages/urllib3/_collections.py", line 7, in <module>
+    from collections import MutableMapping
+ImportError: cannot import name 'MutableMapping' from 'collections' (/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/collections/__init__.py)

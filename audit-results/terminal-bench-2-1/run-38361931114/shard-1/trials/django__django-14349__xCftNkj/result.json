@@ -1,0 +1,127 @@
+{
+    "id": "a36e751b-e0fc-4063-84b0-7b16e93c534d",
+    "task_name": "django__django-14349",
+    "trial_name": "django__django-14349__xCftNkj",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-13__07-22-42/django__django-14349__xCftNkj",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/django__django-14349"
+    },
+    "source": "tasks",
+    "task_checksum": "a043b8d356f34f065699a38b1a956a4e01c07d68c6d785a0167610011c6f9db1",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/django__django-14349",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "django__django-14349__xCftNkj",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-13__07-22-42",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "manga_agent:MangaAgent",
+            "model_name": "xiaomi/mimo-v2.6-flash",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "8da9319d-94f1-41d5-8049-af4503e98fc0",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "manga-agent",
+        "version": "0f8b926665f75c754e1c5e8c2bc8b062cdd93e54",
+        "model_info": {
+            "name": "mimo-v2.6-flash",
+            "provider": "xiaomi"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 755958,
+        "n_cache_tokens": 575872,
+        "n_output_tokens": 45876,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": "idle",
+            "stats": {
+                "model_seconds": 2133.4,
+                "tool_seconds": 344.7,
+                "cache_pct": 76,
+                "cost": null
+            }
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-13T07:58:06.146220Z",
+    "finished_at": "2026-10-13T08:42:26.831155Z",
+    "environment_setup": {
+        "started_at": "2026-10-13T07:58:06.147078Z",
+        "finished_at": "2026-10-13T07:58:34.689148Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-13T07:58:34.689174Z",
+        "finished_at": "2026-10-13T07:58:37.400902Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-13T07:58:37.400988Z",
+        "finished_at": "2026-10-13T08:42:00.055415Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-13T08:42:00.401080Z",
+        "finished_at": "2026-10-13T08:42:13.094887Z"
+    },
+    "step_results": null
+}

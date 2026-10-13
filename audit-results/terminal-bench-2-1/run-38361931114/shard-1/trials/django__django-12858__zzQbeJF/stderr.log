@@ -1,0 +1,5 @@
+2026-10-13 07:53:29 | WARNING  | app.agent.client:476 - bench HTTP 502: {"error": "ConnectionError"} (bench); asking again in 2s
+2026-10-13 07:57:50 | WARNING  | app.agent.client:476 - bench HTTP 502: {"error": "ConnectionError"} (bench); asking again in 4s
+2026-10-13 08:00:06 | WARNING  | app.agent.client:476 - bench HTTP 503: The gateway is at its concurrent-request ceiling, so this request was not sent to a provider and nothing was charged. Retry after the Retry-After delay. Live status: https://minirouter.sh/status (bench); asking again in 2s
+2026-10-13 08:02:11 | WARNING  | app.agent.client:476 - bench HTTP 503: The gateway is at its concurrent-request ceiling, so this request was not sent to a provider and nothing was charged. Retry after the Retry-After delay. Live status: https://minirouter.sh/status (bench); asking again in 2s
+2026-10-13 08:12:56 | WARNING  | app.agent.client:476 - bench HTTP 502: {"error": "ConnectionError"} (bench); asking again in 2s
