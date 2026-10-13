@@ -1,0 +1,1 @@
+left running: job1 (process group 121): cd /app && nohup python3 app.py > /app/service.log 2>&1 & echo "PID $!" && sleep 12 && cat /app/service.log
