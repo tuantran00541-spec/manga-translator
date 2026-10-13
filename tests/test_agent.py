@@ -4131,7 +4131,7 @@ def test_hybrid_offers_built_in_tools_and_create_and_chains_reach_built_in_tools
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
     names = {s["name"] for s in session.specs()}
-    assert {"read_file", "edit_file", "run_command", "create"} <= names and "tools.<name>(...) also calls the built-in tools" in session.system_prompt()
+    assert {"read_file", "edit_file", "run_command", "create"} <= names and "built-in (read_file, edit_file, run_command and the rest)" in session.system_prompt()
     chain = ("def go():\n    tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 3')\n"
              "    return tools.read_file(path='pkg/a.py').count('return 3')\n")
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": False}})
@@ -4148,7 +4148,7 @@ def test_lean_offers_four_tools_a_keep_going_prompt_and_chains_reach_them(ws, ho
     session._new_request("go")
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create"]
     prompt = session.system_prompt()
-    assert "You have four tools" in prompt and "If you have not seen a check pass, the work is not done" in prompt and "also calls read_file, edit_file and run_command" in prompt
+    assert "You have four tools" in prompt and "If you have not seen a check pass, the work is not done" in prompt and "built-in (read_file, edit_file and run_command)" in prompt
     chain = ("def go():\n    tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 3')\n"
              "    return tools.read_file(path='pkg/a.py').count('return 3')\n")
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": True}})

@@ -312,11 +312,16 @@ INTENT_PROMPT = ("Before a program you wrote runs, write down how you picture th
 PRICE_CAP = (1.0, 1.0)
 INTENT_CHECK = ("[Check against intent.md: say in a line what this request has done so far. If it went off what the user asked, or you "
                 "cannot tell whether it fits, stop now and ask the user (ask_user, or end your reply with the question); if it fits but is not done, go on.]")
-HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a tool as Python code that runs in the sandbox (it is kept for later sessions). "
-                 "Use the built-in tools while exploring or debugging step by step; when the steps are known, write them as one chain with create so they "
-                 "run in a single call. Inside a chain tools.<name>(...) also calls the built-in tools (read_file, edit_file, run_command and the rest) and "
-                 "returns their text. A tool you create appears in your tool list from the next reply: call it there by name like any tool; "
-                 "tools.<name>(...) is only for calls from inside code. " + CHAIN_PROMPT.replace("\n", " "))
+# How the harness is built, told once to every tool set that has create.
+COMPOSE_PROMPT = ("This harness is built to be composed: every tool it has, built-in ({builtins}), created, plugin and MCP alike, plus skills, "
+                  "helper agents and your own judgment (tools.think), is reachable from Python as tools.<name>(...), so tools join into chains. create is "
+                  "where that happens and the tool that matters most for speed: it writes a tool as Python code that runs in the sandbox and is kept for "
+                  "later sessions. A chain does in one call what would otherwise take a reply per step, so it saves turns, time and tokens and runs the "
+                  "same way every time. Explore and debug step by step with the other tools; once the steps are known, write them as one chain, above "
+                  "all for edit, run the tests, check the result; for the same work over many files or inputs; for a check you will repeat; and for "
+                  "work that needs a plugin or MCP tool between other steps. A tool you create appears in your tool list from the next reply: call it "
+                  "there by name like any tool; tools.<name>(...) is only for calls from inside code. ")
+HYBRID_PROMPT = COMPOSE_PROMPT.format(builtins="read_file, edit_file, run_command and the rest") + CHAIN_PROMPT.replace("\n", " ")
 LEAN_TOOLS = frozenset({"read_file", "edit_file", "run_command"})
 LEAN_PROMPT = """You are Chaos, a coding agent inside the Manga Translator app.
 Workspace root: {root} on {system}. Paths are relative to it.
@@ -336,11 +341,7 @@ without an answer only they have.
 - If time is short, finish and verify the most important part rather than leaving everything half done; never stop early while time remains.
 End with a short report: what changed, how you checked it, and anything not done.
 Write notes, plans and helper prompts in English; answer the user in the language of their request."""
-LEAN_CREATE = ("create writes a tool as Python code that runs in the sandbox (it is kept for later sessions). Use the four tools while "
-               "exploring or debugging step by step; when the steps are known, or a job needs a tool you do not have, write it with create. "
-               "Inside a chain tools.<name>(...) also calls read_file, edit_file and run_command and returns their text. "
-               "A tool you create appears in your tool list from the next reply: call it there by name like any tool; "
-               "tools.<name>(...) is only for calls from inside code. " + CHAIN_PROMPT.replace("\n", " "))
+LEAN_CREATE = COMPOSE_PROMPT.format(builtins="read_file, edit_file and run_command") + CHAIN_PROMPT.replace("\n", " ")
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {
@@ -380,8 +381,9 @@ SESSION_SPECS = {
             "id": {"type": "string"}, "code": {"type": "string"}, "path": {"type": "string", "description": "A workspace file with the code."},
             "config": {"type": "object"}}}},
     "create": {"name": "create", "description": (
-        "Write a Python tool you can then call by name. code defines def <name>(param, ...) that returns the result; its signature becomes "
-        "the tool's parameters and its docstring the description unless you give them. Pass args to run it now; keep: false for a one-off. "
+        "Write a Python tool you can then call by name; inside its code tools.<name>(...) calls any other tool (built-in, created, plugin, MCP), "
+        "so one call can chain many steps. code defines def <name>(param, ...) that returns the result; its signature becomes the tool's "
+        "parameters and its docstring the description unless you give them. Pass args to run it now; keep: false for a one-off. "
         "Same name replaces it, empty code deletes it."),
                "parameters": {"type": "object", "required": ["name", "code"], "properties": {
                    "name": {"type": "string", "description": "lower_case name, also the function's name."},
