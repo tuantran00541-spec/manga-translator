@@ -1,0 +1,1 @@
+left running: job1 (process group 120): cd /app && python3 -m py_compile app.py && echo SYNTAX_OK && nohup python3 app.py > /app/server.log 2>&1 & sleep 1; echo

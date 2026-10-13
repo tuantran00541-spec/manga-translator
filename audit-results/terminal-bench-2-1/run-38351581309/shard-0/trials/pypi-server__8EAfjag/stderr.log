@@ -1,0 +1,1 @@
+left running: job1 (process group 142): nohup pypi-server run -p 8080 -a . -P . /app/pypi-packages > /tmp/pypiserver.log 2>&1 & sleep 2; echo "pid=$!"; ss -ltnp

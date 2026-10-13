@@ -1,0 +1,1 @@
+2026-10-13 08:06:01 | WARNING  | app.agent.client:476 - bench HTTP 503: The gateway is at its concurrent-request ceiling, so this request was not sent to a provider and nothing was charged. Retry after the Retry-After delay. Live status: https://minirouter.sh/status (bench); asking again in 2s
