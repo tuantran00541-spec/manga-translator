@@ -1,0 +1,1 @@
+left running: job1 (process group 152): cd /app && qemu-system-x86_64 -m 2048 -smp 2 -cdrom /app/alpine.iso -boot d -display none -vga std -serial telnet:127.0.
