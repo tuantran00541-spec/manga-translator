@@ -1,0 +1,3 @@
+left running: job1 (process group 296): set -x
+mkdir -p /run/mailman3 && chown list:list /run/mailman3
+su -s /bin/sh list -c "mailman -C /etc/mailman3/mailman.c
