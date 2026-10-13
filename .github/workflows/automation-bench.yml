@@ -1,0 +1,135 @@
+name: AutomationBench
+
+# One-off: the bench's own agent loop against our harness (hybrid and lean) on a sample of AutomationBench, same model;
+# settings come from .github/automation-bench/run.json, and a relay holds the API key.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/automation-bench.yml"
+      - ".github/automation-bench/**"
+
+permissions:
+  contents: write
+
+jobs:
+  config:
+    runs-on: ubuntu-22.04
+    outputs:
+      arms: ${{ steps.cfg.outputs.arms }}
+      secret: ${{ steps.cfg.outputs.secret }}
+      base: ${{ steps.cfg.outputs.base }}
+      model: ${{ steps.cfg.outputs.model }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read the run settings
+        id: cfg
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, re, sys
+          from urllib.parse import urlparse
+          cfg = json.load(open(".github/automation-bench/run.json"))
+          url = urlparse(cfg["base_url"])
+          if url.scheme != "https" or not url.hostname or url.username or url.query:
+              sys.exit("base_url must be https without credentials or query")
+          if not re.fullmatch(r"[A-Za-z0-9_]+", cfg["secret"]):
+              sys.exit("secret must be a plain secret name")
+          arms = [a for a in cfg["arms"] if a in ("native", "hybrid", "lean", "create", "full")]
+          print(f"arms={json.dumps(arms)}")
+          print(f"secret={cfg['secret']}")
+          print(f"base={cfg['base_url'].rstrip('/')}")
+          print(f"model={cfg['model']}")
+          PY
+
+  bench:
+    needs: config
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: ${{ fromJSON(needs.config.outputs.arms) }}
+    env:
+      OUT: audit-results/automation-bench/run-${{ github.run_id }}/${{ matrix.arm }}
+      PORT: "18080"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Get AutomationBench where the agent user cannot read it
+        run: |
+          python -m pip install -q uv requests
+          # The tasks hold their own answers (assertions), so only the runner user can read the checkout.
+          sudo install -d -o "$USER" -m 700 /opt/ab
+          git clone -q https://github.com/zapier/AutomationBench /opt/ab/src
+          git -C /opt/ab/src checkout -q 4a8e1061254004d9dac807054eed33fad7d1ff14
+          cd /opt/ab/src && uv sync -q 2>&1 | tail -2
+          mkdir -p "$GITHUB_WORKSPACE/$OUT"
+
+      - name: Start the key relay as another user
+        env:
+          API_KEY: ${{ secrets[needs.config.outputs.secret] }}
+        run: |
+          [ -n "$API_KEY" ] || { echo "::error::secret ${{ needs.config.outputs.secret }} is not set"; exit 1; }
+          LIMITS=$(python -c 'import json; print(json.dumps(json.load(open(".github/automation-bench/run.json"))["limits"]))')
+          sudo install -d -o nobody -m 711 /opt/relay
+          sudo install -m 755 .github/terminal-bench/proxy.py /opt/relay/proxy.py
+          printf '%s' "$API_KEY" | sudo -u nobody tee /opt/relay/key > /dev/null
+          sudo chmod 600 /opt/relay/key
+          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" "${{ needs.config.outputs.base }}" "$LIMITS" "${{ needs.config.outputs.model }}" > /dev/null 2>&1 &
+          sleep 3
+          curl -sS -m 30 -o /dev/null -w "models endpoint: HTTP %{http_code}\n" "http://127.0.0.1:$PORT/v1/models" || true
+
+      - name: Run the bench's own agent loop
+        if: matrix.arm == 'native'
+        run: |
+          cd /opt/ab/src
+          TASKS=$(AB_CONFIG="$(cat "$GITHUB_WORKSPACE/.github/automation-bench/run.json")" OUT=/tmp uv run python "$GITHUB_WORKSPACE/.github/automation-bench/run.py" list)
+          EFFORT=$(python -c 'import json; print(json.load(open("'"$GITHUB_WORKSPACE"'/.github/automation-bench/run.json"))["request"].get("reasoning_effort", "high"))')
+          timeout 200m uv run auto-bench --model "${{ needs.config.outputs.model }}" --base-url "http://127.0.0.1:$PORT/v1" --api-key relay \
+            --toolset api --domains sales,marketing,operations,support,finance,hr --tasks "$TASKS" --reasoning-effort "$EFFORT" \
+            --max-concurrent 8 --export-json /tmp/native.json 2>&1 | tail -40 || true
+          OUT="$GITHUB_WORKSPACE/$OUT" AB_CONFIG='{}' uv run python "$GITHUB_WORKSPACE/.github/automation-bench/run.py" native-summary /tmp/native.json || true
+
+      - name: Run our harness as a user without the internet
+        if: matrix.arm != 'native'
+        run: |
+          sudo useradd -m agent
+          # The agent reaches only this machine (the relay and the task's MCP server), so it cannot look the answers up online.
+          sudo iptables -A OUTPUT -m owner --uid-owner agent -d 127.0.0.0/8 -j ACCEPT
+          sudo iptables -A OUTPUT -m owner --uid-owner agent -j REJECT
+          sudo install -d -m 755 /opt/chaos
+          sudo cp -r app /opt/chaos/app
+          sudo python -m venv /opt/chaos-venv
+          sudo /opt/chaos-venv/bin/pip install -q requests loguru pydantic fastapi pillow numpy beautifulsoup4 lxml
+          sudo -u agent /opt/chaos-venv/bin/python -c "import sys; sys.path.insert(0, '/opt/chaos'); import app.agent.cli; print('agent imports ok')"
+          (sudo -u agent cat /opt/ab/src/README.md > /dev/null 2>&1 && echo "::error::the agent user can read the tasks" && exit 1) || echo "tasks are not readable by the agent user"
+          cd /opt/ab/src
+          CFG=$(python - <<PY
+          import json
+          cfg = json.load(open("$GITHUB_WORKSPACE/.github/automation-bench/run.json"))
+          cfg.update(tools="${{ matrix.arm }}", base="http://127.0.0.1:$PORT/v1", agent_python="/opt/chaos-venv/bin/python")
+          print(json.dumps(cfg))
+          PY
+          )
+          AB_CONFIG="$CFG" OUT="$GITHUB_WORKSPACE/$OUT" timeout 200m uv run python "$GITHUB_WORKSPACE/.github/automation-bench/run.py" 2>&1 | tail -80 || true
+
+      - name: Summarize
+        if: always()
+        run: |
+          cp /opt/relay/stats.json "$OUT/relay-stats.json" 2>/dev/null || true
+          cat "$OUT/summary.json" 2>/dev/null || echo "no summary"
+          python -c "import json; s=json.load(open('$OUT/relay-stats.json')); print({k: s.get(k) for k in ('requests','errors','prompt_tokens','completion_tokens','usd','stopped')})" || true
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/automation-bench/run-${{ github.run_id }}/${{ matrix.arm }}
+          message: "audit: AutomationBench ${{ matrix.arm }} (run ${{ github.run_id }})"
