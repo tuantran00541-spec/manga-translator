@@ -20,10 +20,14 @@
       "output": 2.94e-07
     }
   },
-  "trial": "four-tools-1",
+  "trial": "final-1",
   "late_request": {
     "reasoning_effort": "medium"
   },
   "dataset": "",
-  "sample": 0
+  "sample": 0,
+  "stop_gate": {
+    "checkpoint_run": 38389577315,
+    "max": 1
+  }
 }

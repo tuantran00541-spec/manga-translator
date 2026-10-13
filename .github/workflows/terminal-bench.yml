@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   config:
@@ -34,6 +35,8 @@ jobs:
       agent: ${{ steps.cfg.outputs.agent }}
       dataset: ${{ steps.cfg.outputs.dataset }}
       sample: ${{ steps.cfg.outputs.sample }}
+      gate_run: ${{ steps.cfg.outputs.gate_run }}
+      gate_max: ${{ steps.cfg.outputs.gate_max }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,11 +81,69 @@ jobs:
               sys.exit("dataset must be name@version")
           print(f"dataset={dataset}")
           print(f"sample={int(cfg.get('sample') or 0)}")
+          # The Laya stop judge: the run whose laya-verified-checkpoint artifact holds the tuned model.
+          gate = cfg.get("stop_gate") or {}
+          print(f"gate_run={int(gate.get('checkpoint_run') or 0)}")
+          print(f"gate_max={int(gate.get('max', 1))}")
           PY
 
-  bench:
+  gate:
+    # Exports the tuned judge as int8, checks it answers like the full model on held-out runs, and picks its threshold.
     needs: config
-    if: needs.config.outputs.ready == 'true'
+    if: needs.config.outputs.ready == 'true' && needs.config.outputs.gate_run != '0'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    outputs:
+      threshold: ${{ steps.cut.outputs.threshold }}
+    env:
+      OUT: audit-results/laya/gate-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-evidence
+          path: evidence
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: audit-results/terminal-bench-2-1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: laya-verified-checkpoint
+          path: ckpt
+          run-id: ${{ needs.config.outputs.gate_run }}
+          github-token: ${{ github.token }}
+      - name: Install Laya on CPU torch
+        run: |
+          python -m pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --quiet laya==0.4.6
+      - name: Score the full and the int8 judge on held-out runs
+        id: cut
+        run: |
+          python .github/laya/build.py evidence/audit-results/terminal-bench-2-1 data
+          python .github/laya/evaluate.py data "$OUT" tuned=ckpt int8=int8:ckpt
+          cp data/stats.json "$OUT"/
+          echo "threshold=$(python -c "import json; print(json.load(open('$OUT/summary.json'))['int8']['threshold'])")" >> "$GITHUB_OUTPUT"
+      - name: Give git access only now that scoring is done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: ${{ env.OUT }}
+          message: "audit: Laya stop judge int8 export check (run ${{ github.run_id }})"
+
+  bench:
+    needs: [config, gate]
+    if: always() && needs.config.outputs.ready == 'true' && (needs.gate.result == 'success' || needs.gate.result == 'skipped')
     runs-on: ubuntu-22.04
     timeout-minutes: 350
     strategy:
@@ -150,6 +211,24 @@ jobs:
           sleep 2
           curl -sS -m 40 -o /dev/null -w "search relay: HTTP %{http_code}\n" "http://127.0.0.1:18082/search?query=terminal+bench&num_results=1" || true
           echo "SEARCH_RELAY=18082" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        if: needs.config.outputs.gate_run != '0'
+        with:
+          name: laya-verified-checkpoint
+          path: /tmp/laya-ckpt
+          run-id: ${{ needs.config.outputs.gate_run }}
+          github-token: ${{ github.token }}
+      - name: Start the Laya stop judge (int8, CPU)
+        if: needs.config.outputs.gate_run != '0'
+        run: |
+          python -m venv /tmp/laya-venv
+          /tmp/laya-venv/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          /tmp/laya-venv/bin/pip install --quiet laya==0.4.6
+          nohup /tmp/laya-venv/bin/python .github/laya/gate.py int8:/tmp/laya-ckpt 18090 > /tmp/gate.log 2>&1 &
+          for i in $(seq 1 120); do curl -sf -m 5 http://127.0.0.1:18090/health > /dev/null && break; sleep 5; done
+          curl -sS -m 120 -X POST -d '{"state": "Final reply: Done, all tests pass."}' http://127.0.0.1:18090/score
+          echo "GATE_PORT=18090" >> "$GITHUB_ENV"
 
       - name: Probe the model and pick the request fields that turn thinking on
         env:
@@ -272,9 +351,12 @@ jobs:
           MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
           MANGA_AGENT_SHA: ${{ github.sha }}
           MANGA_AGENT_REQUEST_CFG: ${{ needs.config.outputs.request }}
+          MANGA_AGENT_GATE_CUT: ${{ needs.gate.outputs.threshold }}
+          MANGA_AGENT_GATE_MAX: ${{ needs.config.outputs.gate_max }}
         run: |
           export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"
           [ -n "${SEARCH_RELAY:-}" ] && export MANGA_AGENT_SEARCH="http://$(cat /tmp/docker-gateway):$SEARCH_RELAY"
+          [ -n "${GATE_PORT:-}" ] && [ -n "$MANGA_AGENT_GATE_CUT" ] && export MANGA_AGENT_GATE="http://$(cat /tmp/docker-gateway):$GATE_PORT/score"
           export MANGA_AGENT_UV="$(readlink -f "$(command -v uv)")"
           N=""; [ "${{ needs.config.outputs.n_tasks }}" != 0 ] && N="-l ${{ needs.config.outputs.n_tasks }}"
           TASKS="${{ needs.config.outputs.tasks }}"
@@ -355,6 +437,10 @@ jobs:
           print(json.dumps(rows, indent=1)[:4000])
           PY
           gzip -f "$OUT"/trials/*/events.jsonl 2>/dev/null || true
+
+      - name: Keep the stop judge's log
+        if: always()
+        run: mkdir -p "$OUT" && (cp /tmp/gate.log "$OUT"/ 2>/dev/null || true)
 
       - name: Give git access only now that the agents are done
         if: always()

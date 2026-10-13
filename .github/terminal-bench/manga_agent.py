@@ -82,7 +82,9 @@ class MangaAgent(BaseInstalledAgent):
         late = json.loads(os.environ.get("MANGA_AGENT_LATE_REQUEST") or "{}")
         profile = json.dumps({"advisor": True, "token_budget": 10 ** 12, "max_steps": 2000,
                               "max_output_tokens": int(os.environ.get("MANGA_AGENT_MAX_OUTPUT", "65536")),
-                              "models": {".": {"request": request, **({"late_request": late} if late else {})}}})
+                              "models": {".": {"request": request, **({"late_request": late} if late else {})}},
+                              **({"stop_gate": {"url": os.environ["MANGA_AGENT_GATE"], "threshold": float(os.environ["MANGA_AGENT_GATE_CUT"]),
+                                                "max": int(os.environ.get("MANGA_AGENT_GATE_MAX") or 1)}} if os.environ.get("MANGA_AGENT_GATE") else {})})
         var = f"MANGA_INSTRUCTION_{uuid.uuid4().hex}".upper()
         env = {"AGENT_API_KEY": "relay", "PYTHONPATH": f"{HOME}/src", "HOME": f"{HOME}/home", var: instruction}
         if os.environ.get("MANGA_AGENT_SEARCH"):
