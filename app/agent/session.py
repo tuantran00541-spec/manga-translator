@@ -338,7 +338,7 @@ Your tools are read_file, edit_file, run_command (the shell: list, search, build
 # One request worked end to end with create; a test runs these very pieces of code.
 EXAMPLE_CHECK = '''def check():
     """PASS when the text tests pass, else the end of the failure."""
-    out = tools.run_command(command="python -m pytest tests/test_text.py -q")
+    out = tools.run_command(command="python3 -m pytest tests/test_text.py -q")
     return "PASS" if "[exit code 0]" in out else out[-1500:]'''
 EXAMPLE_CHAIN = '''src = tools.read_file(path="app/text.py")
 if 'return text.lower().replace(" ", "-")' not in src:
