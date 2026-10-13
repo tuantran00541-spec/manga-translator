@@ -1,0 +1,1 @@
+left running: job2 (process group 180): cd /app && nohup qemu-system-x86_64 -m 2048 -smp 2 -cpu max -cdrom /app/alpine.iso -boot d -display none -chardev socket

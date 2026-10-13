@@ -1,0 +1,4 @@
+left running: job1 (process group 908): cat > /etc/nginx/sites-available/novnc <<'EOF'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
