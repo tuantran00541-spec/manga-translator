@@ -5,7 +5,7 @@
   "request": {
     "reasoning_effort": "high"
   },
-  "arms": ["native", "hybrid", "lean"],
+  "arms": ["full", "hybrid", "lean"],
   "domains": ["sales", "marketing", "operations", "support", "finance", "hr"],
   "per_domain": 10,
   "concurrent": 8,

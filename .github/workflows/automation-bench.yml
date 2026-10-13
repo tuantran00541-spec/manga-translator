@@ -106,7 +106,9 @@ jobs:
           sudo iptables -A OUTPUT -m owner --uid-owner agent -j REJECT
           sudo install -d -m 755 /opt/chaos
           sudo cp -r app /opt/chaos/app
-          sudo python -m venv /opt/chaos-venv
+          # The app makes its data and log folders next to the code on import.
+          sudo chown -R agent /opt/chaos
+          sudo "$(which python)" -m venv /opt/chaos-venv
           sudo /opt/chaos-venv/bin/pip install -q requests loguru pydantic fastapi pillow numpy beautifulsoup4 lxml
           sudo -u agent /opt/chaos-venv/bin/python -c "import sys; sys.path.insert(0, '/opt/chaos'); import app.agent.cli; print('agent imports ok')"
           (sudo -u agent cat /opt/ab/src/README.md > /dev/null 2>&1 && echo "::error::the agent user can read the tasks" && exit 1) || echo "tasks are not readable by the agent user"
@@ -126,6 +128,13 @@ jobs:
           cp /opt/relay/stats.json "$OUT/relay-stats.json" 2>/dev/null || true
           cat "$OUT/summary.json" 2>/dev/null || echo "no summary"
           python -c "import json; s=json.load(open('$OUT/relay-stats.json')); print({k: s.get(k) for k in ('requests','errors','prompt_tokens','completion_tokens','usd','stopped')})" || true
+
+      - name: Give git access only now that the agents are done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
 
       - name: Save evidence to audit-evidence
         if: always()
