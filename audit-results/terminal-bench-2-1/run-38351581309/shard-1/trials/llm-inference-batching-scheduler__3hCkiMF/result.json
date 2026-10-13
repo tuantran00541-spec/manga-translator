@@ -1,0 +1,127 @@
+{
+    "id": "38f2928a-b1de-423b-96d0-bde27686d8e8",
+    "task_name": "terminal-bench/llm-inference-batching-scheduler",
+    "trial_name": "llm-inference-batching-scheduler__3hCkiMF",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-13__05-30-58/llm-inference-batching-scheduler__3hCkiMF",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/llm-inference-batching-scheduler"
+    },
+    "source": "tasks",
+    "task_checksum": "2635be7269a496a4edefb77c595bc3acf8782ee84b3dab2056dfb25ac9e317a1",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/llm-inference-batching-scheduler",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "llm-inference-batching-scheduler__3hCkiMF",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-13__05-30-58",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "manga_agent:MangaAgent",
+            "model_name": "xiaomi/mimo-v2.6-flash",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "13362324-8a77-4e85-b35c-6c432e7b645a",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "manga-agent",
+        "version": "8aed1819c99c831e584cb404eda624548862e32f",
+        "model_info": {
+            "name": "mimo-v2.6-flash",
+            "provider": "xiaomi"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 442716,
+        "n_cache_tokens": 353024,
+        "n_output_tokens": 84089,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": "running",
+            "stats": {
+                "model_seconds": 1720.8,
+                "tool_seconds": 1.9,
+                "cache_pct": 80,
+                "cost": null
+            }
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-13T06:50:46.181685Z",
+    "finished_at": "2026-10-13T07:20:06.120660Z",
+    "environment_setup": {
+        "started_at": "2026-10-13T06:50:46.182543Z",
+        "finished_at": "2026-10-13T06:50:47.729114Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-13T06:50:47.729137Z",
+        "finished_at": "2026-10-13T06:50:49.729277Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-13T06:50:49.729356Z",
+        "finished_at": "2026-10-13T07:19:50.787725Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-13T07:19:51.009498Z",
+        "finished_at": "2026-10-13T07:19:54.537647Z"
+    },
+    "step_results": null
+}
