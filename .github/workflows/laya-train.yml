@@ -1,6 +1,6 @@
 name: Laya train
 
-# One-off: fine-tune Laya on the Terminal-Bench trial logs to judge, when the agent stops, whether the task really passes.
+# One-off: fine-tune the Laya stop judge on public SWE trajectories in parallel shards, average them, then tune on our Terminal-Bench runs.
 on:
   push:
     branches-ignore: [main]
@@ -10,13 +10,17 @@ on:
 
 permissions:
   contents: write
+  actions: read
+
+env:
+  OUT: audit-results/laya/run-${{ github.run_id }}
+  # The judge the bench used so far, kept as the score to beat.
+  OLD_RUN: "38389577315"
 
 jobs:
-  train:
+  data:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
-    env:
-      OUT: audit-results/laya/run-${{ github.run_id }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,42 +35,160 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - run: python -m pip install --quiet huggingface_hub pyarrow
+      - name: Our runs, with cut-off runs and early finish claims from failed runs (train tasks only)
+        run: python .github/laya/build.py evidence/audit-results/terminal-bench-2-1 data
+      - name: Download the public trajectories
+        run: |
+          python - <<'EOF'
+          import collections
+          from huggingface_hub import HfApi, hf_hub_download
+          files = {"tarsur": [hf_hub_download("tarsur385/swev-trm-trajectories-25models", f, repo_type="dataset")
+                              for f in ("swev_trm_train_full32_norm.json", "swev_trm_val_full32_norm.json")],
+                   "nebius": [hf_hub_download("nebius/SWE-rebench-openhands-trajectories", "trajectories.parquet", repo_type="dataset")]}
+          # The smallest file of each scaffold, model and task set, so every one of them is in the mix.
+          by = collections.defaultdict(list)
+          for f in HfApi().list_repo_tree("nvidia/Open-SWE-Traces", repo_type="dataset", path_in_repo="data", recursive=True):
+              if f.path.endswith(".parquet"):
+                  by[f.path.rsplit("/", 1)[0]].append(f)
+          files["nvidia"] = [hf_hub_download("nvidia/Open-SWE-Traces", min(v, key=lambda f: f.size).path, repo_type="dataset") for v in by.values()]
+          with open("sources.txt", "w") as out:
+              out.write(" ".join(f"{k}={','.join(v)}" for k, v in files.items()))
+          EOF
+          df -h . | tail -1
+      - name: Convert, balance and split into shards
+        run: |
+          python .github/laya/external.py shards 8 tarsur:4800,nebius:4800,nvidia:5600 $(cat sources.txt) | tee data/external.txt
+          wc -l shards/*.jsonl
+          cp data/train.jsonl shards/tb-train.jsonl
+          cp data/eval.jsonl data/stats.json shards/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laya-data
+          path: shards
+          retention-days: 3
+      - name: Keep the data stats
+        run: mkdir -p "$OUT" && cp data/stats.json data/external.txt "$OUT"/
+      - name: Give git access only now
+        env:
+          TOKEN: ${{ github.token }}
+        run: git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - uses: ./.github/actions/save-evidence
+        with:
+          paths: ${{ env.OUT }}
+          message: "audit: Laya data for the sharded tuning (run ${{ github.run_id }})"
+
+  shard:
+    needs: data
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        k: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: laya-data
+          path: data
       - name: Install Laya on CPU torch
         run: |
           python -m pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install --quiet laya==0.4.6
-      - name: Build the rows from the trial logs
-        run: python .github/laya/build.py evidence/audit-results/terminal-bench-2-1 data
-      - name: Fine-tune laya-typed-decisions
-        # Two items of 512 tokens per pass keep ModernBERT-large's fp32 training inside the runner's 16 GB.
+      - name: Fine-tune on this shard (one pass; about 1,900 rows fit the job's clock)
         run: |
           set -o pipefail
-          free -g
-          (while sleep 60; do echo "[mem] $(free -m | awk '/Mem/ {print $3 " MB used of " $2}')"; done) &
-          laya-train --data data/train.jsonl --eval data/eval.jsonl --base typed-decisions --out ckpt \
-            --device cpu --epochs 3 --micro-batch 2 --grad-accum 16 --max-len 512 --seed 0 2>&1 | tee train.log
-      - name: Score base and tuned against the baselines
-        run: python .github/laya/evaluate.py data "$OUT" base=typed-decisions tuned=ckpt
-      - name: Keep the logs with the scores
-        if: always()
-        run: |
-          mkdir -p "$OUT"
-          cp data/stats.json train.log "$OUT"/ 2>/dev/null || true
+          laya-train --data data/shard-${{ matrix.k }}.jsonl --base typed-decisions --out ckpt \
+            --device cpu --epochs 1 --micro-batch 2 --grad-accum 16 --max-len 512 --seed ${{ matrix.k }} 2>&1 | tee train.log
+          rm -rf ckpt/checkpoint_latest
+      - name: Score this shard alone on our held-out runs
+        run: python .github/laya/evaluate.py data "$OUT/shard-${{ matrix.k }}" shard=ckpt
       - uses: actions/upload-artifact@v4
-        if: success()
         with:
-          name: laya-verified-checkpoint
+          name: laya-shard-${{ matrix.k }}
           path: ckpt
-          retention-days: 14
-      - name: Give git access only now that training is done
+          retention-days: 3
+      - name: Keep the log
+        if: always()
+        run: mkdir -p "$OUT/shard-${{ matrix.k }}" && cp train.log "$OUT/shard-${{ matrix.k }}/" 2>/dev/null || true
+      - name: Give git access only now
         if: always()
         env:
           TOKEN: ${{ github.token }}
-        run: |
-          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
-      - name: Save evidence to audit-evidence
+        run: git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - uses: ./.github/actions/save-evidence
         if: always()
-        uses: ./.github/actions/save-evidence
         with:
-          paths: ${{ env.OUT }}
-          message: "audit: Laya verified-stop tuning (run ${{ github.run_id }})"
+          paths: ${{ env.OUT }}/shard-${{ matrix.k }}
+          message: "audit: Laya shard ${{ matrix.k }} (run ${{ github.run_id }})"
+
+  merge:
+    needs: shard
+    if: always() && needs.shard.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Make room for nine checkpoints
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: laya-data
+          path: data
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: laya-shard-*
+          path: shards
+      - uses: actions/download-artifact@v4
+        with:
+          name: laya-verified-checkpoint
+          path: old
+          run-id: ${{ env.OLD_RUN }}
+          github-token: ${{ github.token }}
+      - name: Install Laya on CPU torch
+        run: |
+          python -m pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --quiet laya==0.4.6
+      - name: Average the shards that finished
+        run: |
+          ls -d shards/laya-shard-*
+          python .github/laya/soup.py soup $(ls -d shards/laya-shard-*)
+      - name: Tune the soup on our own runs
+        run: |
+          set -o pipefail
+          laya-train --data data/tb-train.jsonl --base soup --out ckpt \
+            --device cpu --epochs 2 --micro-batch 2 --grad-accum 16 --max-len 512 --seed 0 2>&1 | tee train.log
+          rm -rf ckpt/checkpoint_latest
+      - name: Score old, soup, new and new int8 on our held-out runs
+        run: python .github/laya/evaluate.py data "$OUT/merge" old=old soup=soup tuned=ckpt int8=int8:ckpt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laya-verified-checkpoint
+          path: ckpt
+          retention-days: 30
+      - name: Keep the log
+        if: always()
+        run: mkdir -p "$OUT/merge" && cp train.log "$OUT/merge/" 2>/dev/null || true
+      - name: Give git access only now
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - uses: ./.github/actions/save-evidence
+        if: always()
+        with:
+          paths: ${{ env.OUT }}/merge
+          message: "audit: Laya soup and final tuning (run ${{ github.run_id }})"
