@@ -22,7 +22,7 @@ TOOLS = {
     "delete_file": ("remove_file", "rm", "delete", "unlink", "delete_path", "remove"),
     "replace_in_files": ("search_and_replace", "find_and_replace", "replace_all_in_files", "multi_file_replace", "sed"),
     "create": ("create_tool", "define_tool", "make_tool"),
-    "changes": ("diff", "git_diff", "show_changes", "view_changes"),
+    "checkpoint": ("changes", "diff", "git_diff", "show_changes", "view_changes"),
     "web_search": ("search_web", "google_web_search", "info_search_web", "websearch", "internet_search", "brave_search"),
     "web_fetch": ("fetch", "fetch_url", "read_url_content", "web_scrape", "read_web_page", "fetch_from_web", "webfetch",
                   "url_fetch", "browse", "open_url", "get_url", "http_get", "fetch_webpage"),

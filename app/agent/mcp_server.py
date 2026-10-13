@@ -13,7 +13,7 @@ SERVER_INFO = {"name": "chaos", "version": "1"}
 # Tools that need a person in the loop or the agent's own conversation are not offered to another client.
 HIDDEN = {"create", "ask_user", "exit_plan_mode", "goal_done", "todo_write", "memory", "task", "spawn_agent", "fan_out", "wait_agent", "send_input",
           "close_agent", "oracle", "schedule_create", "schedule_list", "schedule_delete", "context_notes", "new_context", "plugin_write",
-          "plugin_remove", "skill", "job_input", "delegate", "changes", "revert_file"}
+          "plugin_remove", "skill", "job_input", "delegate", "checkpoint"}
 
 
 def _never(*args, **kwargs):

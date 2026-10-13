@@ -368,6 +368,7 @@ LEAN_CREATE = ("How your tools fit together:\n"
                "get back, per attempt, the diff it made, what it printed and what its check printed; the real workspace is untouched until you "
                "keep one with tools.adopt(name), which applies it and drops the other copies. An attempt cannot branch again.\n"
                "- The rest of the harness lives only inside create: web search and fetch, ask_user, memory, todo_write, skills, view_image, "
+               "checkpoint (diffs, named marks and going back to one), "
                "helper agents (task, fan_out), schedules, plugins and MCP tools. tools.search(words) finds one, tools.describe(name) shows its "
                "parameters, and tools.<name>(...) calls it under the same rules and approvals.\n\n"
                "One request, start to finish. The user says: slugify in app/text.py turns 'Hello, World!' into 'hello,-world!' "
@@ -456,10 +457,16 @@ SESSION_SPECS = {
                       "parameters": {"type": "object", "properties": {"text": {"type": "string"}}}},
     "new_context": {"name": "new_context", "description": "After this step, go on in a fresh context that keeps the notebook, the request and the last few messages. "
                                                           "Write context_notes first.", "parameters": OBJ},
-    "changes": {"name": "changes", "description": "Show the diff of what your edits changed in this request.",
-                "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}},
-    "revert_file": {"name": "revert_file", "description": "Undo what this request's edits did to one file.",
-                    "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
+    "checkpoint": {"name": "checkpoint", "description": (
+        "Marks to come back to. show (the default) gives the diff of this request's edits, or since a mark with name, and lists the marks, "
+        "pinned files and dropped attempts; files=true adds the pinned files' text. save names the current state of the files you changed "
+        "(the harness also saves one before each created tool you run, before each adopt and after each PASS). pin keeps files worth "
+        "having at hand. restore puts every file back as it was at a mark, or one path as it was before this request; say why, so the "
+        "next try does not repeat it."),
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string", "enum": ["show", "save", "pin", "restore"]}, "name": {"type": "string"}, "note": {"type": "string"},
+            "path": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "files": {"type": "boolean"},
+            "why": {"type": "string"}}}},
     "memory": {"name": "memory", "description": "Add, remove or list notes kept for later sessions.",
                "parameters": {"type": "object", "required": ["action"], "properties": {
                    "action": {"type": "string", "enum": ["add", "remove", "list"]}, "scope": {"type": "string", "enum": ["project", "user"]},
@@ -1335,9 +1342,7 @@ class AgentSession:
         rows = list(SPECS)
         if self.skills:
             rows.append(SESSION_SPECS["skill"])
-        rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"], SESSION_SPECS["changes"]]
-        if self.workspace.policy.mode != "read-only":
-            rows.append(SESSION_SPECS["revert_file"])
+        rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"], SESSION_SPECS["checkpoint"]]
         if self.profile["oracle"]:
             rows.append(SESSION_SPECS["oracle"])
         rows += [SESSION_SPECS["schedule_create"], SESSION_SPECS["schedule_list"], SESSION_SPECS["schedule_delete"],
@@ -1349,7 +1354,7 @@ class AgentSession:
         rows += [{"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
                   "parameters": tool.get("inputSchema") or OBJ} for name, (server, tool) in self.mcp_tools.items()]
         if self.plan_mode:
-            reads = agents.READ_TOOLS | {"oracle", "todo_write", "task", "fan_out", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
+            reads = agents.READ_TOOLS | {"checkpoint", "oracle", "todo_write", "task", "fan_out", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
             reads |= {n for n, t in self.registry.tools.items() if t.kind == "read"}
             # A connected tool that only reads (its own readOnlyHint, or the read role in profile.json) helps a plan too.
             reads |= {n for n, (_, tool) in self.mcp_tools.items()
@@ -1376,9 +1381,9 @@ class AgentSession:
         if name == "create":
             # Writing a tool is an edit; running it is a command and asks like one.
             return self.mode in ("ask", "review") and verdict != "allow"
-        if name == "revert_file":
-            # Putting a file back is an edit, so it asks wherever edits ask.
-            return self.mode in ("ask", "review") and verdict != "allow"
+        if name == "checkpoint":
+            # Putting files back is an edit, so it asks wherever edits ask.
+            return call["args"].get("action") == "restore" and self.mode in ("ask", "review") and verdict != "allow"
         if self.mode == "bypass" or name in SESSION_SPECS or verdict == "allow":
             return False
         if verdict == "ask":
@@ -1627,6 +1632,9 @@ class AgentSession:
             self._watch.refresh()
             self._watch_request = self._request_no
         guard = gitguard.snapshot(self.workspace.root)
+        top = not self.plan_mode and not str(call.get("id", "")).startswith(("chain-", "script-", "mcp-"))
+        if top:
+            self._auto_mark(f"before-{tool['name']}")
         # Calls run one after another in the session's kernel, where imports and memo last; one made while another still runs gets a fresh process.
         if self._repl is None:
             self._repl = repl.Kernel(state)
@@ -1645,6 +1653,8 @@ class AgentSession:
             # A tool that runs programs and changed nothing counts as a check, like a command did.
             self._dirty = False
             self._run_seq = self._edit_seq + 1
+        if top and re.search(r"^PASS\b", output, re.M):
+            self._auto_mark(f"pass-{tool['name']}")
         check = f"\n{INTENT_CHECK}" if not self.depth and self.profile["intent"] and self._intent(write=False) else ""
         return note + output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "") + check
 
@@ -1877,11 +1887,17 @@ class AgentSession:
         if name not in self._branches:
             return f"no branch {name!r}; open branches: {', '.join(self._branches) or 'none, run tools.branch first'}", False
         copy, base = self._branches[name]
+        self._auto_mark(f"before-adopt-{name}")
         applied, conflicts = isolate.merge(self.workspace.root, copy, base, f"branch-{name}", before=self.checkpoints.save)
         self._drop_branches()
         self._junction("adopt", name=name, applied=len(applied), conflicts=len(conflicts))
         kept = f"; changed on both sides, kept under {isolate.CONFLICTS}/branch-{name}/: {', '.join(conflicts)}" if conflicts else ""
         return f"Adopted branch {name}: {', '.join(applied) or 'no file changes'}{kept}. Run the check on the real workspace before you finish.", True
+
+    def _auto_mark(self, label: str) -> None:
+        """A mark the harness saves at a junction, numbered so later ones do not replace it."""
+        self.checkpoints.auto_no += 1
+        self.checkpoints.mark(f"{self.checkpoints.auto_no}-{label}", auto=True)
 
     def _drop_branches(self) -> None:
         for copy, _ in self._branches.values():
@@ -2239,10 +2255,8 @@ class AgentSession:
         if call["name"] == "new_context":
             self._rollover = True
             return "A new context window starts after this step." + ("" if self.notes else " Your notebook is empty: save it with context_notes now.")
-        if call["name"] == "changes":
-            return self._changes(str(args.get("path") or ""))
-        if call["name"] == "revert_file":
-            return self._revert(str(args.get("path") or ""))
+        if call["name"] == "checkpoint":
+            return self._checkpoint(args)
         if call["name"] == "job_output":
             return self._job_output(str(args.get("id") or ""), args.get("wait_s"))
         if call["name"] in ("schedule_create", "schedule_list", "schedule_delete"):
@@ -2406,9 +2420,8 @@ class AgentSession:
         state = "running" if job.code is None else f"exited with code {job.code}" + (", and what it started still runs" if _alive(job) else "")
         return f"[{name} {state}]\n{clip(text, 20000) if text else '(no new output)'}"
 
-    def _changes(self, only: str = "") -> str:
-        """A unified diff of this request's edits, file by file."""
-        before = self.checkpoints.current()
+    def _diff(self, before: dict[str, bytes | None], only: str = "") -> str:
+        """A unified diff from the given earlier contents to the files as they are now, file by file."""
         if only:
             target = str(self.workspace.resolve(only))
             before = {k: v for k, v in before.items() if k == target}
@@ -2427,27 +2440,72 @@ class AgentSession:
             lines = lambda data: (data or b"").decode("utf-8", errors="replace").splitlines(keepends=True)
             diff = difflib.unified_diff(lines(old), lines(new), "/dev/null" if old is None else f"a/{rel}", "/dev/null" if new is None else f"b/{rel}")
             blocks.append("".join(diff).rstrip("\n"))
-        if not blocks:
-            return "No file changed by the edit tools in this request" + (f" matches {only}" if only else "") + "."
         return clip("\n".join(blocks), 60_000)
 
-    def _revert(self, path: str) -> str:
-        if self.workspace.policy.mode == "read-only":
-            raise ToolError("The session is read-only")
-        target = self.workspace.resolve(path, write=True)
-        before = self.checkpoints.current()
-        if str(target) not in before:
-            changed = ", ".join(self.workspace.rel(Path(n)) for n in before) or "none"
-            raise ToolError(f"{path!r} was not changed by the edit tools in this request; changed: {changed}")
-        old = before[str(target)]
-        if old is None:
-            target.unlink(missing_ok=True)
-            self.workspace.seen.pop(target, None)
-            return f"Deleted {self.workspace.rel(target)} again; it did not exist before this request."
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(old)
-        self.workspace.seen[target] = target.stat().st_mtime_ns
-        return f"Put {self.workspace.rel(target)} back as it was before this request."
+    def _checkpoint(self, args: dict) -> str:
+        """Show, save, pin or restore: the one tool for looking back at edits and undoing them."""
+        cp, action = self.checkpoints, str(args.get("action") or "show")
+        name, path = str(args.get("name") or "").strip(), str(args.get("path") or "")
+        if name and action in ("show", "restore") and name not in cp.marks:
+            raise ToolError(f"no mark {name!r}; marks: {', '.join(cp.marks) or 'none'}")
+        if action == "save":
+            if not name:
+                raise ToolError("save needs a name")
+            held = cp.mark(name, str(args.get("note") or ""))
+            return f"Saved mark {name} ({held} changed files so far)."
+        if action == "pin":
+            paths = args.get("paths") or ([path] if path else [])
+            if not paths:
+                raise ToolError("pin needs paths")
+            for item in map(str, paths):
+                rel = self.workspace.rel(self.workspace.resolve(item))
+                if rules.check(self.rules, "read_file", {"path": rel}, self._rel) == "deny":
+                    raise ToolError(f"{rel} may not be read")
+                cp.pins[rel] = str(args.get("note") or "")
+            return "Pinned: " + ", ".join(cp.pins)
+        if action == "restore":
+            if self.workspace.policy.mode == "read-only" or self.plan_mode:
+                raise ToolError("Nothing can be restored while the session only reads")
+            target = self.workspace.resolve(path, write=True) if path else None
+            if target is not None and rules.check(self.rules, "edit_file", {"path": str(target)}, self._rel) == "deny":
+                raise ToolError(f"{self.workspace.rel(target)} may not be edited")
+            if not name and target is None:
+                raise ToolError("restore needs the name of a mark, or a path to put back as it was before this request")
+            state = cp.at(name) if name else cp.current()
+            if target is not None and str(target) not in state:
+                changed = ", ".join(self.workspace.rel(Path(n)) for n in state) or "none"
+                raise ToolError(f"{path!r} was not changed {'since mark ' + name if name else 'by the edit tools in this request'}; changed: {changed}")
+            done = cp.restore(state, str(target) if target is not None else "")
+            for item in map(Path, done):
+                if item.exists():
+                    self.workspace.seen[item] = item.stat().st_mtime_ns
+                else:
+                    self.workspace.seen.pop(item, None)
+            why = str(args.get("why") or "")
+            if name and why:
+                cp.drop(name, why)
+            self._junction("restore", name=name, files=len(done), why=why)
+            where = f"as they were at mark {name}" if name else "as it was before this request"
+            return (f"Put back {where}: {', '.join(self.workspace.rel(Path(n)) for n in done)}." if done else f"Nothing to put back; the files are already {where}.")
+        if action != "show":
+            raise ToolError("action is show, save, pin or restore")
+        diff = self._diff(cp.at(name) if name else cp.current(), path)
+        parts = [diff or (f"No file changed since mark {name}" if name else "No file changed by the edit tools in this request") + (f" matches {path}" if path else "") + "."]
+        if cp.marks:
+            parts.append("Marks: " + "; ".join(f"{n}{' (auto)' if m['auto'] else ''}{': ' + m['note'] if m['note'] else ''}" for n, m in cp.marks.items()))
+        if cp.pins:
+            parts.append("Pinned: " + "; ".join(f"{p}{': ' + n if n else ''}" for p, n in cp.pins.items()))
+        if cp.dropped:
+            parts.append("Dropped attempts:\n" + "\n".join(f"- back to {d['mark']}: {d['why']}" for d in cp.dropped))
+        if args.get("files"):
+            for rel in cp.pins:
+                if rules.check(self.rules, "read_file", {"path": rel}, self._rel) == "deny":
+                    continue
+                try:
+                    parts.append(f"== {rel} ==\n" + clip(self.workspace.resolve(rel).read_text(encoding="utf-8", errors="replace"), 8000))
+                except OSError as exc:
+                    parts.append(f"== {rel} ==\n(cannot read: {exc})")
+        return clip("\n\n".join(parts), 80_000)
 
     def _memory_tool(self, args: dict) -> str:
         home, root, scope = self.home if self.home is not None else Path.home(), self.workspace.root, str(args.get("scope") or "project")

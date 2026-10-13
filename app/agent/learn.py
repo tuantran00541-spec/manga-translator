@@ -141,7 +141,7 @@ def worth_review(items: list[dict], chains: dict | None) -> bool:
     return False
 
 
-LOOK_ONLY = frozenset({"read_file", "list_dir", "search", "glob", "symbols", "changes", "todo_write", "think"})
+LOOK_ONLY = frozenset({"read_file", "list_dir", "search", "glob", "symbols", "todo_write", "think"})
 
 
 def review(complete, provider, key: str, model: str, transcript: str, home: Path, notes: Path | None = None,

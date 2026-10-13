@@ -11,7 +11,7 @@ from app.agent import patch as patches
 ACTIONS = ("allow", "ask", "deny")
 CATEGORY = {"run_command": "bash", "read_file": "read", "list_dir": "read", "search": "read", "glob": "read",
             "write_file": "edit", "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "replace_in_files": "edit", "move_file": "edit",
-            "delete_file": "edit", "revert_file": "edit",
+            "delete_file": "edit",
             "web_fetch": "webfetch", "web_download": "webfetch", "web_search": "websearch", "task": "task", "spawn_agent": "task", "skill": "skill"}
 # Claude Code's tool names in its settings.json permission lists.
 CLAUDE_CATEGORY = {"Bash": "bash", "Read": "read", "Edit": "edit", "Write": "edit", "WebFetch": "webfetch", "Task": "task"}
@@ -130,7 +130,7 @@ def subjects(name: str, args: dict, path_of) -> list[str]:
         except patches.PatchError:
             return []
         return [path_of(p) for h in hunks for p in (h.path, h.move_to) if p]
-    if name in ("read_file", "list_dir", "search", "glob", "write_file", "edit_file", "edit_lines", "replace_in_files", "delete_file", "revert_file"):
+    if name in ("read_file", "list_dir", "search", "glob", "write_file", "edit_file", "edit_lines", "replace_in_files", "delete_file"):
         return [path_of(args.get("path") or ".")]
     if name == "move_file":
         return [path_of(args.get("path") or "."), path_of(args.get("to") or ".")]

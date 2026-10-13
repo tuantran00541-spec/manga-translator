@@ -3497,13 +3497,13 @@ def test_replace_in_files_previews_then_changes_every_file(ws):
 
 def test_move_and_delete_files_then_review_and_revert_through_the_session(ws, home):
     fake = scripted(turn(calls=[call("move_file", path="pkg/a.py", to="lib/a.py"), call("write_file", path="new.txt", content="hi")]),
-                    turn(calls=[call("delete_file", path="new.txt"), call("changes")]),
-                    turn(calls=[call("revert_file", path="pkg/a.py"), call("revert_file", path="lib/a.py")]), turn("done"))
+                    turn(calls=[call("delete_file", path="new.txt"), call("checkpoint")]),
+                    turn(calls=[call("checkpoint", action="restore", path="pkg/a.py"), call("checkpoint", action="restore", path="lib/a.py")]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session, "reorganise")
     outputs = {name: output for name, ok, output in tool_outputs(session)}
     assert "Moved pkg/a.py to lib/a.py" in outputs["move_file"] and outputs["delete_file"] == "Deleted new.txt"
-    diff = outputs["changes"]
+    diff = [output for name, ok, output in tool_outputs(session) if name == "checkpoint"][0]
     assert "--- a/pkg/a.py" in diff and "+++ b/lib/a.py" in diff and "new.txt" not in diff, "a file created and deleted again shows no change"
     assert (ws.root / "pkg" / "a.py").is_file() and not (ws.root / "lib" / "a.py").exists(), "both ends of the move are put back"
     assert session.command("/undo")["message"].startswith("Đã hoàn tác")
@@ -3515,16 +3515,17 @@ def test_move_and_delete_files_then_review_and_revert_through_the_session(ws, ho
 
 def test_new_tools_follow_the_rules_and_the_approval_modes(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted())
-    assert session._needs_approval(call("delete_file", path="x")) and session._needs_approval(call("revert_file", path="x"))
-    assert not session._needs_approval(call("changes"))
+    assert session._needs_approval(call("delete_file", path="x")) and session._needs_approval(call("checkpoint", action="restore", path="x"))
+    assert not session._needs_approval(call("checkpoint")) and not session._needs_approval(call("checkpoint", action="save", name="a"))
     edits = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=scripted())
-    assert not edits._needs_approval(call("move_file", path="a", to="b")) and not edits._needs_approval(call("revert_file", path="a"))
+    assert not edits._needs_approval(call("move_file", path="a", to="b")) and not edits._needs_approval(call("checkpoint", action="restore", path="a"))
     output, ok = edits._run_call(call("delete_file", path=".env"))
     assert not ok and "Denied" in output, "the .env rule covers the new edit tools"
     output, ok = edits._run_call({"id": "chain-x", "name": "rename_file", "args": {"path": "pkg/a.py", "destination": "pkg/b.py"}})
     assert ok and "move_file" in output and (ws.root / "pkg" / "b.py").is_file()
     reader = manager(home).create(PROVIDERS["openai"], "k", "m", Workspace(ws.root, sandbox.Policy("read-only")), "bypass", complete=scripted())
-    assert "revert_file" not in {s["name"] for s in reader.specs()}
+    output, ok = reader._run_call(call("checkpoint", action="restore", path="pkg/a.py"))
+    assert not ok and "only reads" in output
 
 
 def test_look_only_commands_run_in_parallel_but_wait_for_writes():
@@ -4310,3 +4311,41 @@ def test_a_shell_tip_names_only_a_tool_the_model_has(ws):
     assert "read_file shows the file" in ws._shell_hint("cat pkg/a.py")
     ws.offered = None
     assert "search looks through the project" in ws._shell_hint("grep -r needle .")
+
+
+def test_checkpoint_saves_marks_goes_back_across_requests_and_keeps_why(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    run = lambda **args: session._run_call(call("checkpoint", **args))
+    write = lambda path, text: session._run_call(call("write_file", path=path, content=text))
+    write("x.py", "v1\n")
+    output, ok = run(action="save", name="v1", note="first try")
+    assert ok and "1 changed files" in output
+    write("x.py", "v2\n")
+    write("y.py", "new\n")
+    output, _ = run(name="v1")
+    assert "-v1" in output and "+v2" in output and "+++ b/y.py" in output and "v1: first try" in output
+    session._new_request("again")
+    write("x.py", "v3\n")
+    output, ok = run(action="restore", name="v1", why="v2 broke the parser")
+    assert ok and (ws.root / "x.py").read_text() == "v1\n" and not (ws.root / "y.py").exists(), "a mark reaches back over later requests"
+    assert "back to v1: v2 broke the parser" in run()[0], "why an attempt was dropped stays in view"
+    assert [e for e in session.events if e["type"] == "junction" and e["at"] == "restore"][-1]["why"] == "v2 broke the parser"
+    output, ok = run(action="restore", name="nope")
+    assert not ok and "v1" in output
+
+
+def test_checkpoint_pins_files_and_the_harness_marks_runs_and_passes(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    run = lambda **args: session._run_call(call("checkpoint", **args))
+    assert run(action="pin", paths=["pkg/a.py"], note="core")[1]
+    output, _ = run(files=True)
+    assert "Pinned: pkg/a.py: core" in output and "== pkg/a.py ==" in output and "return 1" in output
+    (ws.root / ".env").write_text("SECRET=1\n")
+    output, ok = run(action="pin", paths=[".env"])
+    assert not ok and "may not be read" in output
+    session._session_tool({"id": "ok", "name": "create", "args": {"name": "ok", "code": "def ok():\n    return 'PASS'\n", "args": {}}})
+    marks = list(session.checkpoints.marks)
+    assert any(m.endswith("-before-ok") for m in marks) and any(m.endswith("-pass-ok") for m in marks), marks
+    assert all(session.checkpoints.marks[m]["auto"] for m in marks)
