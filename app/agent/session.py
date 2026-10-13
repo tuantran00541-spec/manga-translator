@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.agent import advisor, agents, aliases, chaincheck, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
+from app.agent import advisor, agents, aliases, chaincheck, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, stopgate, watch
 from app.agent.checkpoint import Checkpoints
 from app.ai_providers import auth_headers, resolve_provider
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
@@ -75,6 +75,9 @@ GARBLED_NUDGE = ("[Your last reply ({text!r}) does not read as an answer after t
 UNTESTED_NUDGE = ("[Your reply says the tests pass, but files changed after the last command you ran, so that result describes older code. "
                   "Run the check again and report what it prints now.]")
 PASS_CLAIM = re.compile(r"\b(?:pass(?:ed|es|ing)?|green|succeed(?:ed|s)?)\b|xanh|\bđạt\b", re.I)
+JUDGE_NUDGE = ("[Before you finish: a judge trained on many past runs scores this stop at {score:.2f} for passing the task's own grader, "
+              "below the {threshold:.2f} that runs which passed usually reach. Read the task again requirement by requirement, run the checks "
+              "that prove each one (the exact files, paths, names, formats and outputs it asks for), fix what is missing, then finish.]")
 ANNOUNCED_NUDGE = "[You said what you would do next but made no tool call. Make that call now; if you are done, write your final report instead.]"
 RULINGS = ("Nobody is watching this run. When something is ambiguous, conflicting or missing, choose, write one line "
            "'Ruling: <choice> - <why> - <what it costs if wrong>', and go on; a wrong ruling is cheap to undo, a stalled run is not. "
@@ -755,6 +758,25 @@ class AgentSession:
         kern = getattr(self, "kernel", None)
         if kern is not None and kern.subscribers("session/event"):
             kern.emit("session/event", {**event, "session": self.id})
+
+    def _stop_gate(self) -> bool:
+        """Ask the trained judge about this stop; a low score sends the agent back to check, unless too little time is left."""
+        gate, clock = self.profile["stop_gate"], self._root()._clock
+        if clock and time.time() - clock[0] > clock[1] * 0.85:
+            return False
+        start = max((i for i, e in enumerate(self.events) if e.get("type") == "user"), default=0)
+        state, _ = stopgate.state_of(self.events[start:])
+        try:
+            found = stopgate.score(gate["url"], state)
+        except (OSError, ValueError, KeyError) as exc:
+            self._junction("gate", error=str(exc)[:300])
+            return False
+        self._junction("gate", score=round(found, 4), threshold=gate["threshold"])
+        if found >= gate["threshold"]:
+            return False
+        self.history.append({"role": "user", "content": JUDGE_NUDGE.format(score=found, threshold=gate["threshold"])})
+        self.emit("notice", text=f"The stop judge scores this finish at {found:.2f}; asking the agent to check the task once more.")
+        return True
 
     def _junction(self, at: str, **data) -> None:
         """Record a point where the harness decided something, so a bench log can label it later by how the run ended."""
@@ -3700,6 +3722,7 @@ class AgentSession:
         """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
         broken = empties = worked = todo_nudges = 0
         garbled = announced = untested = False
+        gated = 0
         for _ in range(max_steps):
             if self._stop:
                 self.emit("notice", text="Stopped.")
@@ -3791,6 +3814,9 @@ class AgentSession:
                     self._junction("nudge", nudge="todo", reply=turn["text"], open=len(open_items))
                     continue
                 if self._final_advice() or self._more_work():
+                    continue
+                if gated < ((self.profile["stop_gate"] or {}).get("max") or 0) and not self.depth and self._stop_gate():
+                    gated += 1
                     continue
                 self._junction("stop", reply=turn["text"], checked_since_edit=not self._edited_after_run(), steps=worked)
                 break

@@ -1,11 +1,11 @@
-"""Score the base and the tuned Laya on held-out tasks against simple baselines; writes summary.json and per-row predictions."""
+"""Score Laya checkpoints (int8: quantizes one) on held-out tasks against simple baselines; writes summary.json and per-row predictions."""
 import json
 from pathlib import Path
 import re
 import sys
 import time
 
-import laya
+from gate import load
 
 # The harness's own claim regex (app/agent/session.py PASS_CLAIM), the baseline to beat.
 PASS_CLAIM = re.compile(r"\b(?:pass(?:ed|es|ing)?|green|succeed(?:ed|s)?)\b|xanh|\bđạt\b", re.I)
@@ -35,7 +35,8 @@ def report(scores, labels):
     passes = sorted(s for s, y in zip(scores, labels) if y)
     cut = passes[int(0.1 * len(passes))] if passes else 0.5
     return {"accuracy": round(sum((s >= 0.5) == y for s, y in zip(scores, labels)) / len(labels), 4), "auc": auc(scores, labels),
-            "ece": ece(scores, labels), "fails_caught_at_10pct_false_alarm": round(sum(s < cut for s in fails) / max(len(fails), 1), 4)}
+            "ece": ece(scores, labels), "fails_caught_at_10pct_false_alarm": round(sum(s < cut for s in fails) / max(len(fails), 1), 4),
+            "threshold": round(cut, 4)}
 
 
 def main(data, models, out):
@@ -47,7 +48,7 @@ def main(data, models, out):
                "claim_regex": report([1.0 if PASS_CLAIM.search(r["meta"]["final"]) else 0.0 for r in rows], labels)}
     predictions = {r["meta"]["trial"]: {"label": y} for r, y in zip(rows, labels)}
     for name, path in models.items():
-        agent = laya.load(path, device="cpu")
+        agent = load(path)
         started = time.time()
         results = agent.predict_batch([r["state"] for r in rows], question, batch_size=4)
         took = time.time() - started
@@ -55,6 +56,13 @@ def main(data, models, out):
         summary[name] = {**report(scores, labels), "cpu_ms_per_row": round(1000 * took / len(rows), 1)}
         for r, s in zip(rows, scores):
             predictions[r["meta"]["trial"]][name] = s
+    if "tuned" in models and "int8" in models:
+        # How often the int8 export answers differently from the full model, at 0.5 and at the gate's threshold.
+        pairs = [(p["tuned"], p["int8"]) for p in predictions.values()]
+        cut = summary["int8"]["threshold"]
+        summary["int8_vs_tuned"] = {"flips_at_half": sum((a >= 0.5) != (b >= 0.5) for a, b in pairs),
+                                    "flips_at_threshold": sum((a >= cut) != (b >= cut) for a, b in pairs),
+                                    "max_abs_diff": round(max(abs(a - b) for a, b in pairs), 4)}
     out.mkdir(parents=True, exist_ok=True)
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
     (out / "predictions.json").write_text(json.dumps(predictions, indent=1))

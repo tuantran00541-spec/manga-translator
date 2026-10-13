@@ -5,34 +5,14 @@ import json
 from pathlib import Path
 import sys
 
-QUESTION = {"verified": {"type": "noul", "instructions": (
-    "The coding agent has stopped and says it is finished. Is the task really done and shown to work, "
-    "so that the task's own grader will pass it?")}}
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from app.agent.stopgate import QUESTION, state_of  # noqa: E402
 
 
 def events(path):
     opener = gzip.open if path.suffix == ".gz" else open
     with opener(path, "rt", encoding="utf-8", errors="replace") as f:
         return [json.loads(line) for line in f if line.startswith("{")]
-
-
-def tail(text, n):
-    text = " ".join(str(text or "").split())
-    return text if len(text) <= n else "…" + text[-n:]
-
-
-def state_of(rows):
-    """The final reply first, then the last steps, then the task, so truncation drops the least useful part."""
-    task = next((r.get("text") for r in rows if r.get("type") == "user"), "")
-    final = next(r for r in reversed(rows) if r.get("type") == "assistant")
-    calls = {c.get("id"): c for r in rows if r.get("type") == "assistant" for c in r.get("calls") or []}
-    steps = []
-    for r in [r for r in rows if r.get("type") == "tool"][-3:]:
-        args = (calls.get(r.get("id")) or {}).get("args") or {}
-        what = args.get("command") or args.get("path") or args.get("name") or ""
-        steps.append(f"{r.get('name')} {tail(what, 160)} -> {'ok' if r.get('ok', True) else 'failed'}: {tail(r.get('output'), 350)}")
-    return (f"Final reply: {tail(final.get('text'), 900)}\n\nLast steps:\n" + "\n".join(steps) +
-            f"\n\nTask: {tail(task, 600)}"), final.get("text") or ""
 
 
 def main(root, out):

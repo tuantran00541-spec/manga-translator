@@ -40,7 +40,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "learn_every": 10, "prewalk_model": "",
-                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "services": {}}
+                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "services": {}, "stop_gate": None}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -65,6 +65,9 @@ def load_profile(workspace: Path, home: Path) -> dict:
                         profile[key].update({k: v for k, v in data[key].items() if isinstance(v, dict)})
                 if isinstance(data.get("vision"), bool):
                     profile["vision"] = data["vision"]
+                gate = data.get("stop_gate")
+                if isinstance(gate, dict) and isinstance(gate.get("url"), str) and isinstance(gate.get("threshold"), (int, float)):
+                    profile["stop_gate"] = {"url": gate["url"], "threshold": float(gate["threshold"]), "max": max(0, min(3, int(gate.get("max", 1))))}
                 if isinstance(data.get("review_model"), str):
                     profile["review_model"] = data["review_model"].strip()[:100]
                 if isinstance(data.get("max_steps"), int) and data["max_steps"] > 0:
