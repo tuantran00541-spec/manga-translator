@@ -31,7 +31,6 @@ jobs:
       shards: ${{ steps.cfg.outputs.shards }}
       shard_total: ${{ steps.cfg.outputs.shard_total }}
       limits: ${{ steps.cfg.outputs.limits }}
-      tools: ${{ steps.cfg.outputs.tools }}
       agent: ${{ steps.cfg.outputs.agent }}
       dataset: ${{ steps.cfg.outputs.dataset }}
       sample: ${{ steps.cfg.outputs.sample }}
@@ -68,7 +67,6 @@ jobs:
           print(f"late_request={json.dumps(cfg.get('late_request') or {})}")
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
           print(f"agent={cfg.get('agent') if cfg.get('agent') in ('chaos', 'terminus-2', 'codex', 'claude-code') else 'chaos'}")
-          print(f"tools={cfg.get('tools') if cfg.get('tools') in ('hybrid', 'lean', 'create', 'full') else 'hybrid'}")
           total = max(1, int(cfg.get('shards') or 1))
           # only_shards reruns some shards of a split, which keep the tasks they had in the full split.
           print(f"shards={json.dumps([k for k in range(total) if k in (cfg.get('only_shards') or range(total))])}")
@@ -273,7 +271,6 @@ jobs:
           MANGA_AGENT_MODE: ${{ needs.config.outputs.mode }}
           MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
           MANGA_AGENT_SHA: ${{ github.sha }}
-          MANGA_AGENT_TOOLS: ${{ needs.config.outputs.tools }}
           MANGA_AGENT_REQUEST_CFG: ${{ needs.config.outputs.request }}
         run: |
           export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"

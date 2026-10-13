@@ -1,6 +1,6 @@
 name: AutomationBench
 
-# One-off: the bench's own agent loop against our harness (hybrid and lean) on a sample of AutomationBench, same model;
+# One-off: the bench's own agent loop against our harness on a sample of AutomationBench, same model;
 # settings come from .github/automation-bench/run.json, and a relay holds the API key.
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
           from urllib.parse import urlparse
           cfg = json.load(open(".github/automation-bench/run.json"))
           arms = []
-          # An arm is a mode name with the file's model, or an object that sets its own name, mode, key, model and note.
+          # An arm is "native" or "chaos" with the file's model, or an object that sets its own name, harness, key, model and note.
           for arm in cfg["arms"]:
               arm = {"name": arm, "tools": arm} if isinstance(arm, str) else dict(arm)
               arm = {"secret": cfg["secret"], "base_url": cfg["base_url"], "model": cfg["model"], "request": cfg.get("request") or {},
@@ -39,8 +39,8 @@ jobs:
                   sys.exit("base_url must be https without credentials or query")
               if not re.fullmatch(r"[A-Za-z0-9_]+", arm["secret"]) or not re.fullmatch(r"[A-Za-z0-9_-]+", arm["name"]):
                   sys.exit("secret and name must be plain names")
-              if arm["tools"] not in ("native", "hybrid", "lean", "create", "full"):
-                  sys.exit(f"unknown mode {arm['tools']}")
+              if arm["tools"] not in ("native", "chaos"):
+                  sys.exit(f"unknown harness {arm['tools']}")
               arm["base_url"] = arm["base_url"].rstrip("/")
               arms.append(arm)
           print(f"arms={json.dumps(arms)}")

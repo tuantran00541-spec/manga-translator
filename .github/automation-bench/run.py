@@ -111,7 +111,7 @@ async def run_one(name: str, prompt: list, info: dict, port: int, gate: asyncio.
     async with gate:
         home = Path(f"/home/{AGENT_USER}/runs/{name}")
         subprocess.run(["sudo", "-u", AGENT_USER, "mkdir", "-p", f"{home}/home/.manga-agent", f"{home}/ws"], check=True)
-        profile = {"advisor": True, "token_budget": 10 ** 12, "max_steps": CFG["max_steps"], "tools": CFG["tools"],
+        profile = {"advisor": True, "token_budget": 10 ** 12, "max_steps": CFG["max_steps"],
                    "max_output_tokens": CFG["max_output_tokens"], "models": {".": {"request": CFG["request"]}}}
         mcp = {"mcpServers": {"world": {"type": "http", "url": f"http://127.0.0.1:{port}/mcp/{token}"}}}
         for file, data in (("profile.json", profile), ("mcp.json", mcp)):

@@ -17,7 +17,7 @@ GROUPS = {
     "delete_file": "edit", "revert_file": "edit", "changes": "files",
     "run_command": "shell", "run_script": "shell", "job_output": "shell", "job_input": "shell", "job_stop": "shell", "web_fetch": "web", "web_search": "web", "web_download": "web", "skill": "skills", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
     "task": "subagents", "fan_out": "subagents", "oracle": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
-    "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "tool_search": "mcp", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
+    "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
     "plugin_write": "extensions", "plugin_remove": "extensions",
 }
 COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "learn": "skills", "models": "subagents", "intent": "subagents", "mcp": "mcp"}
@@ -25,9 +25,6 @@ ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
 REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file", "edit_lines",
                          "apply_patch", "run_command", "web_fetch", "web_search", "web_download"})
 ROLES = ("read", "edit", "exec", "net")
-# hybrid: the built-in tools plus create and chains; lean: read_file, edit_file, run_command and create; create: only create; full: only the built-in tools.
-TOOL_SETS = ("hybrid", "lean", "create", "full")
-DEFAULT_TOOLS = "hybrid"
 PROFILE_FILES = {"user": (".manga-agent/profile.json",), "workspace": (".agents/profile.json",)}
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
 EVENTS = ("pre_tool", "post_tool")
@@ -40,10 +37,10 @@ def group_of(tool: str) -> str | None:
 def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
-                     "compact_model": "", "untrusted_guard": True, "intent": True, "create_shell": False, "token_budget": 10_000_000, "max_steps": 300,
+                     "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "learn_every": 10, "prewalk_model": "",
-                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "services": {}, "tools": DEFAULT_TOOLS}
+                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "services": {}}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -95,8 +92,6 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["advisor"] = data["advisor"]
                 if isinstance(data.get("advisor_every"), int) and data["advisor_every"] > 0:
                     profile["advisor_every"] = data["advisor_every"]
-                if data.get("tools") in TOOL_SETS:
-                    profile["tools"] = data["tools"]
                 if isinstance(data.get("learn_every"), int) and data["learn_every"] >= 0:
                     profile["learn_every"] = data["learn_every"]
                 if isinstance(data.get("notes_context"), bool):
@@ -111,8 +106,6 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["untrusted_guard"] = data["untrusted_guard"]
                 if isinstance(data.get("intent"), bool):
                     profile["intent"] = data["intent"]
-                if isinstance(data.get("create_shell"), bool):
-                    profile["create_shell"] = data["create_shell"]
                 # Any built-in tool can be served by an MCP tool instead, and an MCP tool can be given a role.
                 if isinstance(data.get("replace"), dict):
                     profile["replace"].update({k: v for k, v in data["replace"].items()

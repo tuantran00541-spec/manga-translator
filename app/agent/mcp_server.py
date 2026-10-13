@@ -13,7 +13,7 @@ SERVER_INFO = {"name": "chaos", "version": "1"}
 # Tools that need a person in the loop or the agent's own conversation are not offered to another client.
 HIDDEN = {"create", "ask_user", "exit_plan_mode", "goal_done", "todo_write", "memory", "task", "spawn_agent", "fan_out", "wait_agent", "send_input",
           "close_agent", "oracle", "schedule_create", "schedule_list", "schedule_delete", "context_notes", "new_context", "plugin_write",
-          "plugin_remove", "skill", "job_input", "delegate", "tool_search", "changes", "revert_file"}
+          "plugin_remove", "skill", "job_input", "delegate", "changes", "revert_file"}
 
 
 def _never(*args, **kwargs):
@@ -32,8 +32,6 @@ class Bridge:
         policy = sandbox.Policy("workspace-write" if write else "read-only", network)
         self.manager = AgentSessionManager(None, home=home)
         self.session = self.manager.create(PROVIDERS["openai"], "", "", Workspace(folder, policy), "bypass", complete=_never)
-        # Clients of the server call the built-in tools, whatever the user's own sessions start with.
-        self.session.profile["tools"] = "full"
         self.write, self.network = write, network
 
     def _kind(self, name: str) -> str:
@@ -62,7 +60,7 @@ class Bridge:
     def tools(self) -> list[dict]:
         self.session._ensure_mcp()
         rows = []
-        for spec in self.session.specs():
+        for spec in self.session.specs(self.session.library_specs()):
             if not self._offered(spec):
                 continue
             schema = json.loads(json.dumps(spec.get("parameters") or {"type": "object", "properties": {}}))

@@ -21,13 +21,6 @@ from app.routers.agent import is_loopback
 LANDLOCK = sandbox.backend() == "landlock"
 
 
-@pytest.fixture(autouse=True)
-def full_tools(monkeypatch):
-    """Most tests drive the built-in tools; the create-only default has tests of its own."""
-    from app.agent import registry
-    monkeypatch.setattr(registry, "DEFAULT_TOOLS", "full")
-
-
 @pytest.fixture
 def home(tmp_path):
     folder = tmp_path / "home"
@@ -290,8 +283,13 @@ def turn(text="", calls=()):
     return {"text": text, "calls": list(calls), "reasoning": "", "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
 
 
+# The tools the model calls itself; the rest of the harness is reached from code run with create.
+MODEL_TOOLS = {"read_file", "edit_file", "run_command", "create", "exit_plan_mode", "goal_done", "job_output", "job_input", "job_stop"}
+
+
 def call(tool, **args):
-    return {"id": f"{tool}-{len(args)}", "name": tool, "args": args}
+    """A model's call, or for a library tool the call code run with create makes (the chain- id)."""
+    return {"id": f"{'' if tool in MODEL_TOOLS else 'chain-'}{tool}-{len(args)}", "name": tool, "args": args}
 
 
 def wait_for(session, status, timeout=10.0):
@@ -570,7 +568,7 @@ def test_profile_swaps_built_in_tools_for_mcp_tools_and_gives_them_roles(ws, hom
     assert session.profile["replace"] == {"read_file": "mcp__fs__read_text", "run_command": "mcp__fs__sh", "web_search": "mcp__gone__search"}, \
         "only built-in file, command and web tools can be swapped"
     assert session.profile["roles"] == {"mcp__fs__write_text": "edit"}
-    specs = {s["name"]: s for s in session.specs()}
+    specs = {s["name"]: s for s in session.specs() + session.specs(session.library_specs())}
     assert specs["read_file"]["description"].startswith("[MCP fs] Read a file over MCP"), "the model keeps the familiar name"
     assert "mcp__fs__read_text" not in specs and "mcp__fs__sh" not in specs, "a swapped-in tool is not listed twice"
     assert "count" in specs["web_search"]["parameters"]["properties"], "an unconnected server leaves our tool in place"
@@ -604,9 +602,9 @@ def test_plugins_provide_the_services_behind_search_fetch_and_commands(ws, home,
                                                                   "shell": "tagged"}}))
     monkeypatch.setattr(sandbox, "backend", lambda: "landlock")
     session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    output, ok = session._run_call({"id": "1", "name": "web_search", "args": {"query": "seam test"}})
+    output, ok = session._run_call({"id": "chain-1", "name": "web_search", "args": {"query": "seam test"}})
     assert ok and "https://fake.example/seam-test" in output, output
-    output, ok = session._run_call({"id": "2", "name": "web_fetch", "args": {"url": "https://anything.example/"}})
+    output, ok = session._run_call({"id": "chain-2", "name": "web_fetch", "args": {"url": "https://anything.example/"}})
     assert ok and "Plugin page" in output, output
     session.mode = "edits"
     assert session._needs_approval(call("run_command", command="ls")), "a command a plugin runs is outside our sandbox, so it asks"
@@ -793,8 +791,8 @@ HARNESS_CALLS = [
 def test_tool_calls_written_for_other_harnesses_run_here(ws, home, harness, name, args, expect):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     for setup in HARNESS_CALLS[:HARNESS_CALLS.index((harness, name, args, expect))]:
-        session._run_call({"id": "s", "name": setup[1], "args": json.loads(json.dumps(setup[2]))})
-    output, ok = session._run_call({"id": "1", "name": name, "args": json.loads(json.dumps(args))})
+        session._run_call({"id": "chain-s", "name": setup[1], "args": json.loads(json.dumps(setup[2]))})
+    output, ok = session._run_call({"id": "chain-1", "name": name, "args": json.loads(json.dumps(args))})
     assert ok and expect in output, output
 
 
@@ -808,8 +806,8 @@ def test_a_command_under_another_harness_name_still_waits_for_approval(ws, home)
 
 def test_unknown_tools_and_editor_commands_we_lack_are_still_refused(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    assert session._run_call({"id": "1", "name": "teleport", "args": {}})[0].startswith("Unknown tool 'teleport'")
-    assert session._run_call({"id": "2", "name": "str_replace_editor", "args": {"command": "undo_edit", "path": "x"}})[0].startswith("Unknown tool")
+    assert session._run_call({"id": "chain-1", "name": "teleport", "args": {}})[0].startswith("Unknown tool 'teleport'")
+    assert session._run_call({"id": "chain-2", "name": "str_replace_editor", "args": {"command": "undo_edit", "path": "x"}})[0].startswith("Unknown tool")
     output, ok = session._run_call({"id": "3", "name": "read_file", "args": {"path": "pkg/a.py"}})
     assert ok and not output.startswith("["), "a call already in our names gets no note"
 
@@ -937,8 +935,8 @@ def test_several_task_calls_in_one_reply_run_together(ws, home):
         gate.wait()
         return turn(f"report {messages[1]['content']}")
 
-    fake = scripted(turn(calls=[{"id": "t1", "name": "task", "args": {"description": "a", "prompt": "A"}},
-                                {"id": "t2", "name": "task", "args": {"description": "b", "prompt": "B"}}]),
+    fake = scripted(turn(calls=[{"id": "chain-t1", "name": "task", "args": {"description": "a", "prompt": "A"}},
+                                {"id": "chain-t2", "name": "task", "args": {"description": "b", "prompt": "B"}}]),
                     helper, helper, turn("merged"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
@@ -1004,10 +1002,10 @@ def test_plan_mode_is_read_only_until_the_plan_is_approved(ws, home):
     session.send("add a feature")
     wait_for(session, "waiting")
     assert session.pending["name"] == "exit_plan_mode" and session.pending["args"]["plan"] == "1. change a.py"
-    assert "write_file" not in names[0] and "exit_plan_mode" in names[0] and "Plan mode: you can read and search but change nothing" in fake.seen[0][0][0]["content"]
+    assert not {"write_file", "edit_file", "run_command"} & names[0] and "exit_plan_mode" in names[0] and "Plan mode: you can read and search but change nothing" in fake.seen[0][0][0]["content"]
     session.decide("allow")
     wait_for(session, "idle")
-    assert "write_file" in names[1] and "exit_plan_mode" not in names[1] and (ws.root / "out.txt").exists()
+    assert "edit_file" in names[1] and "exit_plan_mode" not in names[1] and (ws.root / "out.txt").exists()
 
 
 def test_ask_user_returns_the_answer(ws, home):
@@ -1053,12 +1051,12 @@ def test_rules_also_catch_shell_commands_that_name_a_denied_path():
 # Codex-style helper agents: spawn, wait, send_input, close.
 
 def routed(parent_turns, child_reply):
-    """One fake model for a session and its helpers: helpers are told apart by having no spawn_agent tool."""
+    """One fake model for a session and its helpers: helpers are told apart by having no create tool."""
     state = {"parent": 0}
     lock = __import__("threading").Lock()
 
     def complete(provider, key, model, messages, *, tools):
-        if "spawn_agent" not in {t["name"] for t in tools}:
+        if "create" not in {t["name"] for t in tools}:
             return child_reply(messages, tools) if callable(child_reply) else turn(child_reply)
         with lock:
             step = parent_turns[min(state["parent"], len(parent_turns) - 1)]
@@ -1069,9 +1067,9 @@ def routed(parent_turns, child_reply):
 
 
 def test_spawn_wait_and_the_duplicate_and_thread_guards(ws, home):
-    spawn = lambda m, **kw: {"id": f"s-{m}", "name": "spawn_agent", "args": {"message": m, **kw}}
+    spawn = lambda m, **kw: {"id": f"chain-s-{m}", "name": "spawn_agent", "args": {"message": m, **kw}}
     fake = routed([turn(calls=[spawn("look at A"), spawn("look at B"), spawn("look at A")]),
-                   turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("both seen")],
+                   turn(calls=[{"id": "chain-w", "name": "wait_agent", "args": {}}]), turn("both seen")],
                   lambda messages, tools: turn("report for " + messages[1]["content"]))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
@@ -1086,7 +1084,7 @@ def test_spawn_wait_and_the_duplicate_and_thread_guards(ws, home):
 def test_too_many_running_agents_are_refused(ws, home):
     import threading
     release = threading.Event()
-    spawns = [{"id": f"s{i}", "name": "spawn_agent", "args": {"message": f"job {i}"}} for i in range(8)]
+    spawns = [{"id": f"chain-s{i}", "name": "spawn_agent", "args": {"message": f"job {i}"}} for i in range(8)]
 
     def slow_child(messages, tools):
         release.wait(5)
@@ -1100,7 +1098,7 @@ def test_too_many_running_agents_are_refused(ws, home):
 
 
 def test_a_helper_that_finishes_after_the_final_answer_reports_by_itself(ws, home):
-    fake = routed([turn(calls=[{"id": "s", "name": "spawn_agent", "args": {"message": "slow job"}}]),
+    fake = routed([turn(calls=[{"id": "chain-s", "name": "spawn_agent", "args": {"message": "slow job"}}]),
                    turn("I started it and have nothing else."),
                    lambda messages, tools: turn("The helper said: " + messages[-1]["content"])],
                   lambda messages, tools: (time.sleep(0.5), turn("slow result"))[1])
@@ -1112,12 +1110,12 @@ def test_a_helper_that_finishes_after_the_final_answer_reports_by_itself(ws, hom
 
 
 def test_send_input_wakes_a_finished_helper_and_close_agent_releases_it(ws, home):
-    fake = routed([turn(calls=[{"id": "s", "name": "spawn_agent", "args": {"message": "first"}}]),
-                   turn(calls=[{"id": "w1", "name": "wait_agent", "args": {"ids": ["ash"]}}]),
-                   turn(calls=[{"id": "i", "name": "send_input", "args": {"id": "ash", "message": "second"}}]),
-                   turn(calls=[{"id": "w2", "name": "wait_agent", "args": {"ids": ["ash"]}}]),
-                   turn(calls=[{"id": "c", "name": "close_agent", "args": {"id": "ash"}},
-                               {"id": "bad", "name": "wait_agent", "args": {"ids": ["ash"]}}]),
+    fake = routed([turn(calls=[{"id": "chain-s", "name": "spawn_agent", "args": {"message": "first"}}]),
+                   turn(calls=[{"id": "chain-w1", "name": "wait_agent", "args": {"ids": ["ash"]}}]),
+                   turn(calls=[{"id": "chain-i", "name": "send_input", "args": {"id": "ash", "message": "second"}}]),
+                   turn(calls=[{"id": "chain-w2", "name": "wait_agent", "args": {"ids": ["ash"]}}]),
+                   turn(calls=[{"id": "chain-c", "name": "close_agent", "args": {"id": "ash"}},
+                               {"id": "chain-bad", "name": "wait_agent", "args": {"ids": ["ash"]}}]),
                    turn("done")],
                   lambda messages, tools: turn("answer to " + messages[-1]["content"]))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
@@ -1128,9 +1126,9 @@ def test_send_input_wakes_a_finished_helper_and_close_agent_releases_it(ws, home
 
 
 def test_a_helpers_edit_asks_the_user_even_while_the_parent_waits(ws, home):
-    fake = routed([turn(calls=[{"id": "s", "name": "spawn_agent", "args": {"message": "make it", "agent": "coder"}},
+    fake = routed([turn(calls=[{"id": "chain-s", "name": "spawn_agent", "args": {"message": "make it", "agent": "coder"}},
                                ]),
-                   turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("finished")],
+                   turn(calls=[{"id": "chain-w", "name": "wait_agent", "args": {}}]), turn("finished")],
                   lambda messages, tools: turn("wrote it") if any(m["role"] == "tool" for m in messages)
                   else turn(calls=[call("write_file", path="helper.txt", content="hi")]))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
@@ -1228,7 +1226,8 @@ def write_plugin(folder, name, code):
 
 
 def tool_names(session):
-    return {s["name"] for s in session.specs()}
+    """What the agent can reach: its own tools and the library inside create."""
+    return {s["name"] for s in session.specs() + session.specs(session.library_specs())}
 
 
 def test_a_profile_switches_whole_features_off(ws, home):
@@ -1327,7 +1326,7 @@ def test_deepseek_gets_the_current_turns_reasoning_sent_back(ws, home):
     from app.ai_providers import PROVIDERS as P
     history = [{"role": "user", "content": "old"}, {"role": "assistant", "content": "", "calls": [], "reasoning": "old thoughts"},
                {"role": "user", "content": "now"},
-               {"role": "assistant", "content": "", "calls": [{"id": "1", "name": "list_dir", "args": {}}], "reasoning": "step thoughts"},
+               {"role": "assistant", "content": "", "calls": [{"id": "chain-1", "name": "list_dir", "args": {}}], "reasoning": "step thoughts"},
                {"role": "tool", "id": "1", "name": "list_dir", "content": "x"}]
     sent = client.render(history, "sys", False, [], reasoning=True)
     assert [m.get("reasoning_content") for m in sent if m["role"] == "assistant"] == [None, "step thoughts"]
@@ -1406,9 +1405,9 @@ def test_helpers_that_edit_files_run_one_after_the_other_when_copies_are_off(ws,
         order.append(("end", messages[1]["content"]))
         return turn("made it")
 
-    spawn = lambda m: {"id": m, "name": "spawn_agent", "args": {"message": m, "agent": "coder"}}
+    spawn = lambda m: {"id": "chain-" + m, "name": "spawn_agent", "args": {"message": m, "agent": "coder"}}
     fake = routed([turn(calls=[spawn("make file one"), spawn("make file two")]),
-                   turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("both done")], child)
+                   turn(calls=[{"id": "chain-w", "name": "wait_agent", "args": {}}]), turn("both done")], child)
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.profile["isolate_writers"] = False
     run_to_idle(session)
@@ -1445,8 +1444,8 @@ def test_helpers_and_summaries_can_use_a_cheaper_model(ws, home):
 
     def complete(provider, key, model, messages, *, tools):
         models.append(model)
-        if "spawn_agent" in {t["name"] for t in tools or []}:
-            return turn(calls=[{"id": "s", "name": "task", "args": {"description": "d", "prompt": "p"}}]) if len(models) == 1 else turn("done")
+        if "create" in {t["name"] for t in tools or []}:
+            return turn(calls=[{"id": "chain-s", "name": "task", "args": {"description": "d", "prompt": "p"}}]) if len(models) == 1 else turn("done")
         return turn("helper report")
 
     session = manager(home).create(PROVIDERS["openai"], "k", "main-model", ws, "bypass", complete=complete)
@@ -1696,7 +1695,7 @@ def test_read_only_tool_calls_in_one_reply_run_together_and_writes_stay_in_order
         return original(self, path, depth)
 
     monkeypatch.setattr(Workspace, "_tool_list_dir", waiting)
-    fake = scripted(turn(calls=[{"id": f"l{i}", "name": "list_dir", "args": {"depth": i + 1}} for i in range(3)]
+    fake = scripted(turn(calls=[{"id": f"chain-l{i}", "name": "list_dir", "args": {"depth": i + 1}} for i in range(3)]
                          + [call("write_file", path="w.txt", content="1"), call("read_file", path="w.txt")]), turn("ok"), turn("checked"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
@@ -1736,7 +1735,7 @@ def test_view_image_is_offered_only_to_models_that_can_see_and_reaches_them_as_a
     blind = manager(home).create(PROVIDERS["openai"], "k", "plain-model", ws, "bypass", complete=scripted())
     sighted = manager(home).create(PROVIDERS["openai"], "k", "gpt-4o", ws, "bypass", session_id="seeing", complete=scripted(
         turn(calls=[call("view_image", path="dot.png")]), turn("A dot."), ))
-    assert "view_image" not in {s["name"] for s in blind.specs()} and "view_image" in {s["name"] for s in sighted.specs()}
+    assert "view_image" not in tool_names(blind) and "view_image" in tool_names(sighted)
     run_to_idle(sighted)
     sent = sighted.complete.seen[1][0]
     parts = next(m["content"] for m in sent if m["role"] == "user" and isinstance(m["content"], list))
@@ -1830,36 +1829,35 @@ def test_the_command_line_runs_a_task_and_prints_json_events(ws, home, monkeypat
     assert (home / ".manga-agent" / "sessions" / f"{session_id}.json").is_file()
 
 
-def test_many_connected_tools_are_found_by_search_instead_of_listed(ws, home):
+def test_connected_tools_stay_out_of_the_list_and_chains_find_them_by_search(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted())
     session.mcp_tools = {f"mcp__s__tool{i}": ("s", {"name": f"tool{i}", "description": "makes tickets" if i == 3 else "does thing"}) for i in range(20)}
-    names = {s["name"] for s in session.specs()}
-    assert "tool_search" in names and not any(n.startswith("mcp__s__") for n in names)
-    found = session._session_tool({"name": "tool_search", "args": {"query": "tickets"}})
-    assert "mcp__s__tool3" in found and "mcp__s__tool3" in {s["name"] for s in session.specs()}
+    assert not any(n.startswith("mcp__s__") for n in {s["name"] for s in session.specs()})
+    found, ok = session._find_tools("_search", {"query": "tickets"}, session._chain_targets())
+    assert ok and "mcp__s__tool3" in found.splitlines()[0], found
 
 
 def test_a_second_editing_helper_works_in_a_copy_and_its_changes_are_merged_back(ws, home):
     import threading
     gate = threading.Event()
-    spawn = lambda n, text: {"id": f"s{n}", "name": "spawn_agent", "args": {"message": text, "agent": "coder"}}
+    spawn = lambda n, text: {"id": f"chain-s{n}", "name": "spawn_agent", "args": {"message": text, "agent": "coder"}}
 
     def team(provider, key, model, messages, *, tools):
         first = next(m["content"] for m in messages if m["role"] == "user")
         done = any(m["role"] == "tool" for m in messages)
         if first == "go":
             step = sum(1 for m in messages if m["role"] == "assistant")
-            return [turn(calls=[spawn(1, "write one"), spawn(2, "write two")]), turn(calls=[{"id": "w", "name": "wait_agent", "args": {}}]), turn("all done")][min(step, 2)]
+            return [turn(calls=[spawn(1, "write one"), spawn(2, "write two")]), turn(calls=[{"id": "chain-w", "name": "wait_agent", "args": {}}]), turn("all done")][min(step, 2)]
         if first == "write one":
             if not done:
                 gate.wait(10)
-                return turn(calls=[{"id": "a", "name": "write_file", "args": {"path": "one.txt", "content": "1"}},
-                                   {"id": "b", "name": "write_file", "args": {"path": "shared.txt", "content": "from one"}}])
+                return turn(calls=[{"id": "chain-a", "name": "write_file", "args": {"path": "one.txt", "content": "1"}},
+                                   {"id": "chain-b", "name": "write_file", "args": {"path": "shared.txt", "content": "from one"}}])
             return turn("one finished")
         if not done:
             gate.set()
-            return turn(calls=[{"id": "a", "name": "write_file", "args": {"path": "two.txt", "content": "2"}},
-                               {"id": "b", "name": "write_file", "args": {"path": "shared.txt", "content": "from two"}}])
+            return turn(calls=[{"id": "chain-a", "name": "write_file", "args": {"path": "two.txt", "content": "2"}},
+                               {"id": "chain-b", "name": "write_file", "args": {"path": "shared.txt", "content": "from two"}}])
         return turn("two finished")
 
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=team)
@@ -2038,7 +2036,7 @@ def test_one_long_turn_is_compacted_in_the_middle_keeping_the_recent_part_and_th
 
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=summarise)
     session.history = long_history(60)
-    session.history.insert(5, {"role": "assistant", "content": "", "calls": [{"id": "w", "name": "write_file", "args": {"path": "out.txt", "content": "z"}}]})
+    session.history.insert(5, {"role": "assistant", "content": "", "calls": [{"id": "chain-w", "name": "write_file", "args": {"path": "out.txt", "content": "z"}}]})
     session.history.insert(6, {"role": "tool", "id": "w", "name": "write_file", "content": "Wrote out.txt"})
     assert session.compact(keep=30_000)
     first = session.history[0]["content"]
@@ -2097,7 +2095,7 @@ def test_fan_out_runs_many_jobs_and_returns_every_report_in_one_call(ws, home):
         return turn("report on " + messages[1]["content"])
 
     jobs = [{"description": f"module {n}", "prompt": f"look at module {n}"} for n in range(9)]
-    fake = routed([turn(calls=[{"id": "f", "name": "fan_out", "args": {"jobs": jobs}}]), turn("all in")], child)
+    fake = routed([turn(calls=[{"id": "chain-f", "name": "fan_out", "args": {"jobs": jobs}}]), turn("all in")], child)
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     out = tool_outputs(session)[0][2]
@@ -2340,7 +2338,7 @@ def test_fan_out_with_a_schema_asks_once_to_fix_a_report_and_reports_null_when_i
             return turn('Done. {"findings": [{"file": "a.py"}]}')
         return turn("I looked around and everything seems fine.")
 
-    fake = routed([turn(calls=[{"id": "f", "name": "fan_out", "args": {"jobs": jobs, "schema": schema}}]), turn("ok")], child)
+    fake = routed([turn(calls=[{"id": "chain-f", "name": "fan_out", "args": {"jobs": jobs, "schema": schema}}]), turn("ok")], child)
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     out = tool_outputs(session)[0][2]
@@ -2443,15 +2441,15 @@ def test_edits_to_different_files_run_together_and_overlapping_ones_stay_in_orde
     reads = [call("read_file", path=f"{n}.txt") for n in "abc"]
     session._run_calls(reads)
     peak[0] = 0
-    edits = [{"id": f"e{n}", "name": "write_file", "args": {"path": f"{n}.txt", "content": "two\n"}} for n in "abc"]
+    edits = [{"id": f"chain-e{n}", "name": "write_file", "args": {"path": f"{n}.txt", "content": "two\n"}} for n in "abc"]
     session._run_calls(edits)
     assert peak[0] == 3, "writes to different files overlap"
     peak[0] = 0
-    same = [{"id": "w1", "name": "write_file", "args": {"path": "a.txt", "content": "3\n"}}, {"id": "r1", "name": "read_file", "args": {"path": "a.txt"}}]
+    same = [{"id": "chain-w1", "name": "write_file", "args": {"path": "a.txt", "content": "3\n"}}, {"id": "r1", "name": "read_file", "args": {"path": "a.txt"}}]
     session._run_calls(same)
     assert peak[0] == 1, "a read of a file being written waits for it"
     order = [h["id"] for h in session.history if h["role"] == "tool"]
-    assert order[-5:] == ["ea", "eb", "ec", "w1", "r1"], order
+    assert order[-5:] == ["chain-ea", "chain-eb", "chain-ec", "chain-w1", "r1"], order
     assert session._footprint(call("run_command", command="make install")) is None, "a command that may write runs alone"
 
 
@@ -2494,7 +2492,7 @@ def test_the_oracle_tool_asks_the_advisor_model_and_is_offered_only_when_switche
         return [turn(calls=[call("oracle", question="Why would the deadlock appear only under load?")]), turn("Thanks.")][min(len([m for m in messages if m["role"] == "tool"]), 1)]
 
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
-    assert "oracle" in {t["name"] for t in session.specs()}
+    assert "oracle" in tool_names(session)
     run_to_idle(session, "debug the hang")
     assert tool_outputs(session)[0][2] == "Check the lock ordering first."
     assert seen[0][0] == "big" and "debug the hang" in seen[0][1] and "deadlock appear only under load" in seen[0][1]
@@ -2528,7 +2526,7 @@ def test_a_script_can_run_rounds_of_helpers_and_use_their_reports_as_data(ws, ho
 
 def test_a_session_schedules_prompts_for_itself_asks_before_it_outside_auto_and_keeps_them_across_a_restart(ws, home, tmp_path):
     fake = scripted(turn(calls=[call("schedule_create", prompt="check the deploy", in_minutes=1, every_minutes=5)]), turn("scheduled"),
-                    turn("deploy fine"), turn(calls=[{"id": "d", "name": "schedule_list", "args": {}}]), turn("listed"))
+                    turn("deploy fine"), turn(calls=[{"id": "chain-d", "name": "schedule_list", "args": {}}]), turn("listed"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session, "watch the deploy")
     assert "Scheduled" in tool_outputs(session)[0][2] and len(session.schedules) == 1
@@ -3056,7 +3054,7 @@ def test_a_kernel_plugin_adds_tools_wraps_calls_and_model_requests_and_switches_
     tree = session.command("/plugins")["message"]
     assert "greeter [user] active (cần tools, session)" in tree and "web-search-tinyfish [builtin] disabled" in tree
     assert "ghost needs a .py file inside ~/.manga-agent/plugins" in tree, "a row cannot load a file outside the plugins folder"
-    assert session._run_call({"id": "1", "name": "greet", "args": {"name": "Kai"}}) == ("chào Kai", True)
+    assert session._run_call({"id": "chain-1", "name": "greet", "args": {"name": "Kai"}}) == ("chào Kai", True)
     assert session._run_call({"id": "2", "name": "read_file", "args": {"path": "secret.txt"}}) == ("[blocked by greeter]", False)
     assert "key ***** here" in session._run_call({"id": "3", "name": "read_file", "args": {"path": "notes.txt"}})[0]
     assert session.workspace.services.active("web.search") == ["tavily", "duckduckgo"]
@@ -3069,12 +3067,12 @@ def test_a_kernel_plugin_adds_tools_wraps_calls_and_model_requests_and_switches_
     assert "greet" not in {s["name"] for s in session.specs()}, "a plugin's tool leaves with it"
     assert "nope" in session._run_call({"id": "4", "name": "read_file", "args": {"path": "secret.txt"}})[0], "and so does its wrapper"
     session.command("/plugins enable greeter")
-    assert session._run_call({"id": "5", "name": "greet", "args": {"name": "Mai"}}) == ("chào Mai", True)
+    assert session._run_call({"id": "chain-5", "name": "greet", "args": {"name": "Mai"}}) == ("chào Mai", True)
 
     (folder / "plugins" / "greeter.py").write_text(GREETER.replace('"hi"', '"yo"'), encoding="utf-8")
     (folder / "plugins.json").write_text(json.dumps({"rows": []}))
     session.command("/plugins reload")
-    assert session._run_call({"id": "6", "name": "greet", "args": {"name": "Lan"}}) == ("yo Lan", True), "reload reads the files again"
+    assert session._run_call({"id": "chain-6", "name": "greet", "args": {"name": "Lan"}}) == ("yo Lan", True), "reload reads the files again"
 
 
 def test_switching_off_every_shell_provider_stops_commands_cleanly(ws, home, tmp_path):
@@ -3116,7 +3114,6 @@ def test_the_agent_writes_a_plugin_that_mounts_after_approval_even_in_auto_mode(
 
 
 def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_keeps_it(ws, home):
-    create_only(home, {"tools": "hybrid"})
     (ws.root / "notes.txt").write_text("a\nb\nc\n")
     code = "def count_lines(path):\n    return {'lines': len(tools.read_file(path=path).splitlines())}\n"
     params = {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}
@@ -3148,7 +3145,7 @@ def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_kee
 def test_plugin_write_failures_from_the_evolve_run_say_what_is_wrong(ws, home, tmp_path):
     session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     plugins = home / ".manga-agent" / "plugins"
-    output, ok = session._run_call({"id": "1", "name": "plugin_write", "args": {}})
+    output, ok = session._run_call({"id": "chain-1", "name": "plugin_write", "args": {}})
     assert not ok and "needs id" in output and "no arguments at all" in output and session.pending is None, "an empty call never reaches approval"
     with pytest.raises(ToolError, match="apply"):
         session._self_extend({"name": "plugin_write", "args": {"id": "x", "code": "print('ok')"}})
@@ -3165,7 +3162,7 @@ def test_plugin_write_failures_from_the_evolve_run_say_what_is_wrong(ws, home, t
         session._self_extend({"name": "plugin_write", "args": {"id": "deck", "path": "big.py"}})
     (ws.root / "big.py").write_text((ws.root / "big.py").read_text().replace(', "check_pptx")', ', "read")'))
     assert "active" in session._self_extend({"name": "plugin_write", "args": {"id": "deck", "path": "big.py"}})
-    specs = {s["name"]: s for s in session.specs()}
+    specs = {s["name"]: s for s in session.specs(session.library_specs())}
     assert specs["make_pptx"]["parameters"] == {"type": "object", "properties": {}} and "kind" not in specs["make_pptx"]
     assert session.registry.tools["make_pptx"].kind == "edit", "a kind given inside the spec is honoured"
     with pytest.raises(ValueError, match="plugin deck already registered it"):
@@ -3213,7 +3210,7 @@ def test_an_mcp_tool_can_be_the_provider_behind_a_seam(ws, home, tmp_path):
     (folder / "profile.json").write_text(json.dumps({"services": {"web.search": ["mcp__fs__find", "duckduckgo"], "shell": "mcp__fs__sh"}}))
     agents = manager(home, tmp_path / "store")
     session = agents.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    output, ok = session._run_call({"id": "1", "name": "web_search", "args": {"query": "manga fonts", "count": 3}})
+    output, ok = session._run_call({"id": "chain-1", "name": "web_search", "args": {"query": "manga fonts", "count": 3}})
     assert ok and output == 'mcp find {"max_results": 3, "q": "manga fonts"}', output
     output, ok = session._run_call({"id": "2", "name": "run_command", "args": {"command": "ls -la"}})
     assert ok and 'mcp sh {"command": "ls -la"}' in output and "[exit code 0]" in output, output
@@ -3236,14 +3233,14 @@ def test_mcp_servers_are_rows_of_the_plugin_tree_that_stop_and_start_live(ws, ho
     session._ensure_mcp()
     tree = session.command("/plugins")["message"]
     assert "mcp:fs [mcp] active" in tree and "mcp:calc [mcp] active" in tree, tree
-    assert session._run_call({"id": "1", "name": "mcp__calc__add", "args": {"a": 2, "b": 2}}) == ("4", True)
+    assert session._run_call({"id": "chain-1", "name": "mcp__calc__add", "args": {"a": 2, "b": 2}}) == ("4", True)
     process = session.mcp_servers["calc"].transport.proc
     session.command("/plugins disable mcp:calc")
     assert "mcp__calc__add" not in session.mcp_tools and "calc" not in session.mcp_servers
     assert process.wait(timeout=10) is not None, "switching the row off stops the server process"
     assert session.mcp_status["calc"]["state"] == "stopped"
     session.command("/plugins enable mcp:calc")
-    assert session._run_call({"id": "2", "name": "mcp__calc__add", "args": {"a": 1, "b": 5}}) == ("6", True)
+    assert session._run_call({"id": "chain-2", "name": "mcp__calc__add", "args": {"a": 1, "b": 5}}) == ("6", True)
     agents.close_all()
 
 
@@ -3387,8 +3384,8 @@ def test_plan_mode_offers_read_only_mcp_tools(ws, home):
     session.mcp_tools = {"mcp__docs__lookup": ("docs", {"name": "lookup", "annotations": {"readOnlyHint": True}}),
                          "mcp__docs__write": ("docs", {"name": "write"})}
     session.plan_mode = True
-    names = {s["name"] for s in session.specs()}
-    assert "mcp__docs__lookup" in names and "mcp__docs__write" not in names and "exit_plan_mode" in names
+    names = tool_names(session)
+    assert "mcp__docs__lookup" in names and "mcp__docs__write" not in names and "exit_plan_mode" in names and "edit_file" not in names
 
 
 def test_a_failing_mcp_server_says_why(tmp_path):
@@ -3524,7 +3521,7 @@ def test_new_tools_follow_the_rules_and_the_approval_modes(ws, home):
     assert not edits._needs_approval(call("move_file", path="a", to="b")) and not edits._needs_approval(call("revert_file", path="a"))
     output, ok = edits._run_call(call("delete_file", path=".env"))
     assert not ok and "Denied" in output, "the .env rule covers the new edit tools"
-    output, ok = edits._run_call({"id": "x", "name": "rename_file", "args": {"path": "pkg/a.py", "destination": "pkg/b.py"}})
+    output, ok = edits._run_call({"id": "chain-x", "name": "rename_file", "args": {"path": "pkg/a.py", "destination": "pkg/b.py"}})
     assert ok and "move_file" in output and (ws.root / "pkg" / "b.py").is_file()
     reader = manager(home).create(PROVIDERS["openai"], "k", "m", Workspace(ws.root, sandbox.Policy("read-only")), "bypass", complete=scripted())
     assert "revert_file" not in {s["name"] for s in reader.specs()}
@@ -3703,33 +3700,12 @@ def test_ten_lesson_files_are_merged_into_a_summary_or_kept_as_the_model_decides
     assert "repo root" in (folder / "SUMMARY.md").read_text() and not learn._sessions(folder) and len(list((folder / "archive").glob("*.md"))) == 20
 
 
-def create_only(home, extra=None):
-    (home / ".manga-agent").mkdir(exist_ok=True)
-    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "create", **(extra or {})}))
-
-
 SHELL_TOOL = {"name": "shell", "description": "Run a shell command.", "parameters": {"type": "object", "required": ["cmd"], "properties": {"cmd": {"type": "string"}}},
               "code": "import subprocess\ndef shell(cmd):\n    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)\n    return r.stdout + r.stderr + f'[exit {r.returncode}]'\n"}
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="the shell tool uses a POSIX shell")
-def test_create_only_mode_offers_one_tool_and_the_model_builds_the_rest(ws, home):
-    create_only(home, {"create_shell": True})
-    fake = scripted(turn(calls=[{**call("create", **SHELL_TOOL), "id": "c1"}]),
-                    turn(calls=[{**call("shell", cmd="echo hi > made.txt && cat made.txt"), "id": "s1"}]), turn("Done."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    assert [s["name"] for s in session.specs()] == ["create"] and "Your one tool is create" in session.system_prompt()
-    run_to_idle(session)
-    assert [s["name"] for s in fake.seen[1][1]] == ["create", "shell"], "a created tool is offered from the next step"
-    out = [h["content"] for h in session.history if h["role"] == "tool"][-1]
-    assert "hi" in out and "[exit 0]" in out and (ws.root / "made.txt").read_text() == "hi\n"
-    again = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    assert [s["name"] for s in again.specs()] == ["create", "shell"], "created tools are kept for later sessions"
-
-
-def test_create_only_mode_guards_names_reviews_code_and_keeps_plan_mode_read_only(ws, home, monkeypatch):
+def test_created_tools_guard_names_have_code_reviewed_and_run_read_only_in_plan_mode(ws, home, monkeypatch):
     from app.agent import guardian
-    create_only(home, {"create_shell": True})
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
     for name in ("read_file", "run_command", "write_file"):
         with pytest.raises(ToolError, match="reserved"):
@@ -3737,19 +3713,18 @@ def test_create_only_mode_guards_names_reviews_code_and_keeps_plan_mode_read_onl
     session._create(SHELL_TOOL)
     seen = []
     monkeypatch.setattr(guardian, "review", lambda *a, **k: (seen.append(a[5]), ("deny", "no"))[1])
-    output, ok = session._run_call({"id": "x", "name": "shell", "args": {"cmd": "ls"}})
+    output, ok = session._run_call({"id": "chain-x", "name": "shell", "args": {"cmd": "ls"}})
     assert not ok and "subprocess.run" in seen[0]["args"]["_tool_code"], "the reviewer judges the tool by its code"
     if LANDLOCK:
         session.mode, session.plan_mode = "bypass", True
         assert "exit_plan_mode" in [s["name"] for s in session.specs()]
-        output, _ = session._run_call({"id": "y", "name": "shell", "args": {"cmd": "touch nope.txt"}})
+        output, _ = session._run_call({"id": "chain-y", "name": "shell", "args": {"cmd": "touch nope.txt"}})
         assert not (ws.root / "nope.txt").exists(), "plan mode runs created tools read-only"
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="the shell tool uses a POSIX shell")
 def test_created_tools_keep_state_track_changed_files_for_undo_and_move_to_the_background(ws, home, monkeypatch):
     from app.agent import session as session_module
-    create_only(home)
     stateful = {"name": "sh", "description": "Shell that remembers its folder.", "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}},
                 "code": ("import os, subprocess\ndef sh(cmd):\n    f = os.path.join(os.environ['AGENT_STATE'], 'cwd')\n"
                          "    cwd = open(f).read().strip() if os.path.exists(f) else os.getcwd()\n"
@@ -3776,7 +3751,6 @@ def test_created_tools_keep_state_track_changed_files_for_undo_and_move_to_the_b
 
 
 def test_created_tools_share_one_process_where_memo_lasts_until_the_policy_changes(ws, home):
-    create_only(home)
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
     session._create({"name": "load", "code": "import os\ndef load(path):\n    memo['text'] = open(path).read()\n    memo['pid'] = os.getpid()\n    return len(memo['text'])\n"})
@@ -3794,7 +3768,6 @@ def test_created_tools_share_one_process_where_memo_lasts_until_the_policy_chang
 
 
 def test_chains_search_and_describe_the_tools_they_can_reach(ws, home):
-    create_only(home)
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
     session._create({"name": "grep_code", "description": "Search the code for a pattern.", "code": "def grep_code(pattern):\n    return pattern\n"})
@@ -3931,7 +3904,7 @@ def test_the_first_chain_of_a_request_writes_how_the_model_pictures_it(ws, home)
     assert len(asked) == 2 and "Earlier picture:\n# Request\nfix dates v1" in asked[1] and "also keep the API" in asked[1]
     assert "fix dates v2" in session.command("/intent")["message"]
     session._wait_for_decision = lambda c: {"decision": "allow", "note": "keep the old format too"}
-    assert "keep the old format too" in session._session_tool({"id": "q", "name": "ask_user", "args": {"question": "Drop the old format?"}})
+    assert "keep the old format too" in session._session_tool({"id": "chain-q", "name": "ask_user", "args": {"question": "Drop the old format?"}})
     session._session_tool({"id": "f", "name": "create", "args": {"name": "look4", "code": chain.replace("look", "look4"), "args": {}, "keep": False}})
     assert len(asked) == 3 and "Asked: Drop the old format?\nAnswered: keep the old format too" in asked[2], "an answer rewrites the picture"
     session._session_tool({"id": "g", "name": "create", "args": {"name": "look5", "code": chain.replace("look", "look5"), "args": {}, "keep": False}})
@@ -3955,25 +3928,17 @@ def test_a_chain_that_calls_tools_wrongly_is_stopped_before_it_runs(ws, home):
     assert "was not run" in out and "did you mean think?" in out and not (ws.root / "ran.txt").exists(), out
 
 
-def test_create_mode_refuses_a_bare_shell_tool_and_commands_never_wait_on_input(ws, home):
-    create_only(home)
+def test_commands_and_created_tools_never_wait_on_input(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    with pytest.raises(ToolError, match="hands its 'cmd' argument straight to a shell"):
-        session._create(SHELL_TOOL)
-    grep = {**SHELL_TOOL, "name": "find_text", "code": "import subprocess\ndef find_text(cmd):\n    return subprocess.run(['grep', '-rn', cmd, '.'], capture_output=True, text=True).stdout\n"}
-    with pytest.raises(ToolError, match="shells out to grep"):
-        session._create(grep)
+    assert "Created" in session._create(SHELL_TOOL), "a tool may hand its argument to a shell"
     ask = {"name": "ask", "description": "x", "parameters": {"type": "object", "properties": {}},
            "code": "import subprocess, sys\ndef ask():\n    return subprocess.run([sys.executable, '-c', 'print(\"got\", input())'], capture_output=True, text=True).stderr[-40:]\n"}
     session._create(ask)
     started = time.time()
-    output, ok = session._run_call({"id": "a", "name": "ask", "args": {}})
+    output, ok = session._run_call({"id": "chain-a", "name": "ask", "args": {}})
     assert "EOFError" in output and time.time() - started < 30, "a program a tool runs gets end-of-file instead of a prompt that waits"
-    hybrid = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    hybrid.profile = {**hybrid.profile, "tools": "hybrid"}
-    assert "Created" in hybrid._create(SHELL_TOOL), "only create mode refuses a shell tool"
     started = time.time()
-    output, _ = hybrid._run_call({"id": "r", "name": "run_command", "args": {"command": "read x || echo no-input; echo done"}})
+    output, _ = session._run_call({"id": "r", "name": "run_command", "args": {"command": "read x || echo no-input; echo done"}})
     assert "no-input" in output and "done" in output and time.time() - started < 30, output
 
 
@@ -4001,7 +3966,6 @@ def test_model_catalogs_read_prices_however_providers_give_them(monkeypatch):
 
 def test_created_tools_call_each_other_in_one_process_and_create_can_run_a_one_off_chain(ws, home, monkeypatch):
     from app.agent import guardian
-    create_only(home)
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
     session._create({"name": "read", "code": "def read(path):\n    return open(path).read()\n"})
@@ -4017,13 +3981,12 @@ def test_created_tools_call_each_other_in_one_process_and_create_can_run_a_one_o
     session.mode, seen = "auto", []
     monkeypatch.setattr(guardian, "review", lambda *a, **k: (seen.append(a[5]), ("deny", "no"))[1])
     session._create({"name": "fix2", "code": chain})
-    session._run_call({"id": "e", "name": "fix2", "args": {}})
+    session._run_call({"id": "chain-e", "name": "fix2", "args": {}})
     code = seen[0]["args"]["_tool_code"]
     assert "# tools.edit:" in code and "# tools.read:" in code, "the reviewer sees every tool a chain calls"
 
 
 def test_a_chain_mixes_created_tools_mcp_tools_and_skills_through_the_agent(ws, home):
-    create_only(home)
     skill = home / ".manga-agent" / "skills" / "style"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("---\nname: style\ndescription: House style.\n---\nUse tabs.\n")
@@ -4074,7 +4037,6 @@ def test_a_lean_chain_reaches_mcp_tools_the_model_does_not_see(ws, home):
 
 def test_chains_have_no_ceiling_objects_agents_new_tools_parallel_calls_big_args_and_unclocked_approvals(ws, home, monkeypatch):
     from app.agent import session as session_module
-    create_only(home)
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
     starts = []
@@ -4105,13 +4067,12 @@ def test_chains_have_no_ceiling_objects_agents_new_tools_parallel_calls_big_args
     session.status = "waiting"
     threading_timer = __import__("threading").Timer(2.5, lambda: setattr(session, "status", "running"))
     threading_timer.start()
-    out, _ = session._run_call({"id": "s", "name": "slow", "args": {}})
+    out, _ = session._run_call({"id": "chain-s", "name": "slow", "args": {}})
     assert "done" in out and "background" not in out, out
 
 
 def test_a_chain_thinks_repairs_a_failing_tool_while_running_and_keeps_chains_that_work(ws, home, monkeypatch):
     from app.agent import guardian
-    create_only(home)
     asked = []
 
     def model(provider, key, m, messages, *, tools):
@@ -4142,29 +4103,12 @@ def test_a_chain_thinks_repairs_a_failing_tool_while_running_and_keeps_chains_th
     monkeypatch.setattr(guardian, "review", lambda *a, **k: ("deny", "unsafe") if "x // 2" in a[5]["args"]["_tool_code"] else ("allow", "ok"))
     session._create({"name": "half", "code": "def half(x):\n    return x / undefined_name\n"})
     session._recent = []
-    out, _ = session._run_call({"id": "f", "name": "go", "args": {}})
+    out, _ = session._run_call({"id": "chain-f", "name": "go", "args": {}})
     assert "did not allow the repaired code" in out and "undefined_name" in session.created["half"]["code"], "Auto mode reviews a repair first"
 
 
-def test_hybrid_offers_built_in_tools_and_create_and_chains_reach_built_in_tools(ws, home):
-    (home / ".manga-agent").mkdir(exist_ok=True)
-    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "hybrid"}))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    session._new_request("go")
-    names = {s["name"] for s in session.specs()}
-    assert {"read_file", "edit_file", "run_command", "create"} <= names and "every tool you can call, built-in, made by you, plugin or MCP" in session.system_prompt()
-    chain = ("def go():\n    tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 3')\n"
-             "    return tools.read_file(path='pkg/a.py').count('return 3')\n")
-    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": False}})
-    assert out.splitlines()[1].strip() == "1" and "[changed: pkg/a.py]" in out, out
-    assert session.command("/tools create")["message"].startswith("Đã đổi") and [s["name"] for s in session.specs()] == ["create"]
-    assert session.command("/tools full")["message"] and "create" not in {s["name"] for s in session.specs()} and "create, which writes" not in session.system_prompt()
-    assert "Bộ tool hiện tại: full" in session.command("/tools")["message"]
-
-
-def test_lean_offers_four_tools_a_keep_going_prompt_and_chains_reach_them(ws, home):
-    (home / ".manga-agent").mkdir(exist_ok=True)
-    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "lean"}))
+def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, home):
+    write_profile(home, {"tools": "hybrid"})
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create"]
@@ -4175,12 +4119,16 @@ def test_lean_offers_four_tools_a_keep_going_prompt_and_chains_reach_them(ws, ho
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": True}})
     assert out.splitlines()[1].strip() == "1" and "[changed: pkg/a.py]" in out, out
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create", "go"], "a kept tool joins the four"
-    assert session.command("/tools lean")["message"].startswith("Đã đổi")
+    assert "The rest of the harness lives only inside create" in prompt
+    with pytest.raises(ValueError, match="Unknown command /tools"):
+        session.command("/tools hybrid")
+    library = {s["name"] for s in session.library_specs()}
+    assert {"search", "web_fetch", "ask_user", "todo_write", "task", "memory"} <= library and "create" not in library
+    out = session._session_tool({"id": "d", "name": "create", "args": {"name": "find", "code": "def find():\n    return tools.glob(pattern='**/*.py')\n", "args": {}, "keep": False}})
+    assert "pkg/a.py" in out, out
 
 
-def test_lean_branches_try_fixes_on_copies_and_the_model_adopts_one(ws, home):
-    (home / ".manga-agent").mkdir(exist_ok=True)
-    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "lean"}))
+def test_branches_try_fixes_on_copies_and_the_model_adopts_one(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
     assert "tools.branch(" in session.system_prompt()
@@ -4207,14 +4155,8 @@ def test_lean_branches_try_fixes_on_copies_and_the_model_adopts_one(ws, home):
     assert "no branch 'a'" in missing
 
 
-def test_the_default_tool_set_is_hybrid():
-    from app.agent import registry
-    assert registry.TOOL_SETS[0] == "hybrid"
-
-
 def test_chains_have_a_per_request_budget_long_ones_a_smaller_one_and_helpers_a_cap(ws, home, monkeypatch):
     from app.agent import session as session_module
-    create_only(home)
     monkeypatch.setattr(session_module, "MAX_CHAINS", 2)
     monkeypatch.setattr(session_module, "MAX_LONG_CHAINS", 1)
     monkeypatch.setattr(session_module, "MAX_CHAIN_AGENTS", 1)
@@ -4239,17 +4181,13 @@ def test_chains_have_a_per_request_budget_long_ones_a_smaller_one_and_helpers_a_
     assert run("pair").splitlines()[0] == "2", "every request starts with a fresh budget"
 
 
-def test_hybrid_hides_tools_that_create_and_the_shell_cover_and_edits_count_alike(ws, home):
-    from app.agent import session as session_module
-    create_only(home, {"tools": "hybrid"})
+def test_a_library_edit_and_a_created_check_count_alike(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    names = {s["name"] for s in session.specs()}
-    assert not names & session_module.HYBRID_HIDDEN and {"run_command", "edit_file", "task", "fan_out", "create", "schedule_create"} <= names
     session._new_request("go")
-    session._run_call({"id": "e", "name": "write_file", "args": {"path": "n.txt", "content": "x"}})
+    session._run_call({"id": "chain-e", "name": "write_file", "args": {"path": "n.txt", "content": "x"}})
     assert session._edited_after_run()
     session._create({"name": "check", "code": "import subprocess\ndef check():\n    return subprocess.run(['true']).returncode\n"})
-    session._run_call({"id": "c", "name": "check", "args": {}})
+    session._run_call({"id": "chain-c", "name": "check", "args": {}})
     assert not session._edited_after_run(), "a created tool that runs a program counts as a check after a built-in edit"
 
 
