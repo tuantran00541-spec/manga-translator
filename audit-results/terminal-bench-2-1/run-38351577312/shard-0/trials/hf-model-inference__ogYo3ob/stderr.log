@@ -1,0 +1,1 @@
+left running: job1 (process group 140): cd /app && nohup python3 app.py > /app/server.log 2>&1 & disown; echo "pid=$!"; for i in $(seq 1 60); do sleep 1; if cur
