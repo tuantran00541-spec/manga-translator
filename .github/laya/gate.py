@@ -17,9 +17,8 @@ def load(path: str):
     int8 = path.startswith("int8:")
     agent = laya.load(path.removeprefix("int8:"), device="cpu")
     if int8:
-        # The fused attention fast path reads .weight as a tensor, which quantized linears no longer have.
-        torch.backends.mha.set_fastpath_enabled(False)
-        agent.model = torch.ao.quantization.quantize_dynamic(agent.model, {torch.nn.Linear}, dtype=torch.qint8)
+        # Only the encoder, which holds nearly all the weights; the heads read .weight as a tensor, which quantized linears lack.
+        agent.model.encoder = torch.ao.quantization.quantize_dynamic(agent.model.encoder, {torch.nn.Linear}, dtype=torch.qint8)
     return agent
 
 

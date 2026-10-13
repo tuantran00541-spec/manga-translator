@@ -56,6 +56,7 @@ def main(data, models, out):
         summary[name] = {**report(scores, labels), "cpu_ms_per_row": round(1000 * took / len(rows), 1)}
         for r, s in zip(rows, scores):
             predictions[r["meta"]["trial"]][name] = s
+        write(out, summary, predictions)
     if "tuned" in models and "int8" in models:
         # How often the int8 export answers differently from the full model, at 0.5 and at the gate's threshold.
         pairs = [(p["tuned"], p["int8"]) for p in predictions.values()]
@@ -63,10 +64,15 @@ def main(data, models, out):
         summary["int8_vs_tuned"] = {"flips_at_half": sum((a >= 0.5) != (b >= 0.5) for a, b in pairs),
                                     "flips_at_threshold": sum((a >= cut) != (b >= cut) for a, b in pairs),
                                     "max_abs_diff": round(max(abs(a - b) for a, b in pairs), 4)}
+    write(out, summary, predictions)
+    print(json.dumps(summary, indent=1))
+
+
+def write(out, summary, predictions):
+    """Saved after every model, so a later failure keeps the scores already made."""
     out.mkdir(parents=True, exist_ok=True)
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
     (out / "predictions.json").write_text(json.dumps(predictions, indent=1))
-    print(json.dumps(summary, indent=1))
 
 
 if __name__ == "__main__":
