@@ -1,0 +1,31 @@
+Fetching 5 files:   0%|          | 0/5 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 5 files:  80%|████████  | 4/5 [00:00<00:00, 26.49it/s]Fetching 5 files: 100%|██████████| 5/5 [00:03<00:00,  1.61it/s]
+eval items 223 from data/eval.jsonl (skipped {}, 0 overlapping training/calibration items)
+train items 450, calibration items 49, eval items 223 (data/eval.jsonl), skipped {}, device cpu
+optimizer budget: 450 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 45 optimizer updates over 3 epoch(s)
+epoch 1/3 step 100 loss -0.0068
+epoch 1/3 step 200 loss -0.0363
+epoch 1/3 mean loss 1.3460
+epoch 2/3 step 100 loss 0.0064
+epoch 2/3 step 200 loss -0.5529
+epoch 2/3 mean loss 1.2841
+epoch 3/3 step 100 loss 0.0000
+epoch 3/3 step 200 loss 8.9669
+epoch 3/3 mean loss 1.2705
+/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/site-packages/laya/train_cli.py:221: RuntimeWarning: laya.train: noul calibration: fitted on only 49 calibration items
+  summary = finetune(
+/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/site-packages/laya/train_cli.py:221: RuntimeWarning: laya.train: noul calibration: the fitted temperature 5 is on the [0.5, 5] clamp
+  summary = finetune(
+
+=== Evaluation (before vs after fine-tuning on 223 held-out items from data/eval.jsonl) ===
+Metric                 Before         After          Delta         
+-----------------------------------------------------------------
+Accuracy               0.6278         0.8744         +0.2466       
+Loss                   0.6703         0.3915         -0.2788       
+ECE                    0.0844         0.0752         -0.0092       
+Brier (multi-class)    0.4773         0.2136         -0.2637       
+Brier (top-1)          0.2387         0.1068         -0.1319       
+Mean Confidence        0.5434         0.9163         +0.3729       
+-----------------------------------------------------------------
+
+Training complete! Model saved to ckpt
