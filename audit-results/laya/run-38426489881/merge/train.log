@@ -1,0 +1,25 @@
+train items 761, calibration items 84, eval items 84 (calibration_slice), skipped {}, device cpu
+optimizer budget: 761 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 48 optimizer updates over 2 epoch(s)
+epoch 1/2 step 100 loss 0.5162
+epoch 1/2 step 200 loss 0.1097
+epoch 1/2 step 300 loss 0.0067
+epoch 1/2 mean loss 0.5115
+epoch 2/2 step 100 loss -0.2521
+epoch 2/2 step 200 loss 10.8524
+epoch 2/2 step 300 loss 0.0000
+epoch 2/2 mean loss 1.6047
+/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/site-packages/laya/train_cli.py:221: RuntimeWarning: laya.train: noul calibration: the fitted temperature 5 is on the [0.5, 5] clamp
+  summary = finetune(
+
+=== Calibration Evidence (in-sample calibration slice, 84 items; not held-out) ===
+Metric                 Before         After          Delta         
+-----------------------------------------------------------------
+Accuracy               0.4762         0.8333         +0.3571       
+Loss                   0.6931         0.6489         -0.0442       
+ECE                    0.0273         0.1509         +0.1236       
+Brier (multi-class)    0.4999         0.3081         -0.1918       
+Brier (top-1)          0.2500         0.1541         -0.0959       
+Mean Confidence        0.5035         0.9710         +0.4675       
+-----------------------------------------------------------------
+
+Training complete! Model saved to ckpt
