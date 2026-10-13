@@ -62,7 +62,7 @@ class MangaAgent(BaseInstalledAgent):
     def _minutes(self) -> int:
         """The task's own agent time limit less a minute for start-up, so the agent's clock matches the one that stops it."""
         cap = int(os.environ.get("MANGA_AGENT_MINUTES", "60"))
-        task = Path(self.logs_dir).parent.name.split("__")[0]
+        task = Path(self.logs_dir).parent.name.rsplit("__", 1)[0]
         try:
             with open(Path(os.environ.get("MANGA_AGENT_TASKS_DIR", "/tmp/tb21/tasks")) / task / "task.toml", "rb") as f:
                 seconds = float(tomllib.load(f)["agent"]["timeout_sec"])

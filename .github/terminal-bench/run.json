@@ -21,8 +21,10 @@
       "output": 2.94e-07
     }
   },
-  "trial": "hybrid-3",
+  "trial": "swe-hybrid-1",
   "late_request": {
     "reasoning_effort": "medium"
-  }
+  },
+  "dataset": "swebench-verified@1.0",
+  "sample": 50
 }
