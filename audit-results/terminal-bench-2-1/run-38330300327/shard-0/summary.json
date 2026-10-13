@@ -1,0 +1,457 @@
+{
+ "passed": 32,
+ "trials": 45,
+ "rate": 0.711,
+ "rows": [
+  {
+   "trial": "bn-fit-modify__c5uwUFM",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    641846,
+    548672,
+    27123
+   ]
+  },
+  {
+   "trial": "build-cython-ext__NHVLRN6",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1047947,
+    883264,
+    28156
+   ]
+  },
+  {
+   "trial": "build-pov-ray__5VdvkUS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3273043,
+    2896640,
+    92460
+   ]
+  },
+  {
+   "trial": "cancel-async-tasks__tY9x9un",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    60866,
+    31488,
+    24191
+   ]
+  },
+  {
+   "trial": "circuit-fibsqrt__pUm8KYb",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    37130,
+    32384,
+    96145
+   ]
+  },
+  {
+   "trial": "code-from-image__kiCxHLC",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    331958,
+    250432,
+    29355
+   ]
+  },
+  {
+   "trial": "configure-git-webserver__DhuVGry",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    489950,
+    447552,
+    27466
+   ]
+  },
+  {
+   "trial": "count-dataset-tokens__UEC5yPQ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    377803,
+    338176,
+    20273
+   ]
+  },
+  {
+   "trial": "custom-memory-heap-crash__jueqPW9",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    885502,
+    736704,
+    70992
+   ]
+  },
+  {
+   "trial": "db-wal-recovery__5ixcsER",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    369918,
+    289152,
+    22250
+   ]
+  },
+  {
+   "trial": "dna-assembly__NjAcwwb",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    378547,
+    227328,
+    86718
+   ]
+  },
+  {
+   "trial": "extract-elf__iybdNUs",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    151647,
+    71808,
+    43740
+   ]
+  },
+  {
+   "trial": "feal-differential-cryptanalysis__7tqDaah",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    926338,
+    835712,
+    69385
+   ]
+  },
+  {
+   "trial": "filter-js-from-html__BAyJxPC",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    420107,
+    362432,
+    71706
+   ]
+  },
+  {
+   "trial": "fix-code-vulnerability__kV4M3qy",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    156131,
+    131520,
+    9129
+   ]
+  },
+  {
+   "trial": "fix-ocaml-gc__9u55itR",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1611925,
+    1397952,
+    45997
+   ]
+  },
+  {
+   "trial": "git-leak-recovery__nxEn5jx",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    208183,
+    163264,
+    11786
+   ]
+  },
+  {
+   "trial": "gpt2-codegolf__W3ApB9h",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    36104,
+    28928,
+    35733
+   ]
+  },
+  {
+   "trial": "hf-model-inference__eHE3xrh",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    108391,
+    88448,
+    9445
+   ]
+  },
+  {
+   "trial": "kv-store-grpc__KQ3wiMb",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    277421,
+    241536,
+    19397
+   ]
+  },
+  {
+   "trial": "largest-eigenval__czsUYr6",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    190975,
+    151232,
+    30620
+   ]
+  },
+  {
+   "trial": "log-summary-date-ranges__3WeWqhb",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    138549,
+    104384,
+    12603
+   ]
+  },
+  {
+   "trial": "make-doom-for-mips__zmvYnx2",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    732939,
+    534784,
+    27986
+   ]
+  },
+  {
+   "trial": "mcmc-sampling-stan__WTkYRxM",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    619134,
+    555648,
+    31610
+   ]
+  },
+  {
+   "trial": "model-extraction-relu-logits__Tuw5Xjk",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    8488,
+    3840,
+    32051
+   ]
+  },
+  {
+   "trial": "mteb-leaderboard__7frKfGU",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    246007,
+    221120,
+    6785
+   ]
+  },
+  {
+   "trial": "multi-source-data-merger__9hLPWrn",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    81848,
+    70592,
+    6437
+   ]
+  },
+  {
+   "trial": "openssl-selfsigned-cert__FywqfoS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    168860,
+    124480,
+    13122
+   ]
+  },
+  {
+   "trial": "password-recovery__2qBnAJX",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    294944,
+    234560,
+    17710
+   ]
+  },
+  {
+   "trial": "path-tracing-reverse__wP8cAiS",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    807436,
+    686144,
+    80583
+   ]
+  },
+  {
+   "trial": "polyglot-rust-c__eoitzG7",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    196398,
+    166208,
+    26933
+   ]
+  },
+  {
+   "trial": "protein-assembly__m7T3jXy",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1026080,
+    770112,
+    73494
+   ]
+  },
+  {
+   "trial": "pypi-server__PtF7NeW",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    305749,
+    211392,
+    19624
+   ]
+  },
+  {
+   "trial": "pytorch-model-recovery__CGJSPhr",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    133005,
+    118400,
+    9498
+   ]
+  },
+  {
+   "trial": "qemu-startup__sYTQXYn",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    452608,
+    358848,
+    25168
+   ]
+  },
+  {
+   "trial": "raman-fitting__BVPEtEH",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    150049,
+    105408,
+    41006
+   ]
+  },
+  {
+   "trial": "regex-log__SAeLYfq",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    483275,
+    439232,
+    38095
+   ]
+  },
+  {
+   "trial": "rstan-to-pystan__8Yqhcw4",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    819306,
+    719616,
+    38188
+   ]
+  },
+  {
+   "trial": "sanitize-git-repo__coyfmkv",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    357093,
+    261376,
+    22875
+   ]
+  },
+  {
+   "trial": "sparql-university__DAdsRgn",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    420765,
+    377600,
+    15514
+   ]
+  },
+  {
+   "trial": "sqlite-with-gcov__rM2zRGC",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    479414,
+    388736,
+    21515
+   ]
+  },
+  {
+   "trial": "torch-tensor-parallelism__RsxTjtN",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    407534,
+    322176,
+    33948
+   ]
+  },
+  {
+   "trial": "tune-mjcf__2YAehB3",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    431551,
+    390272,
+    20635
+   ]
+  },
+  {
+   "trial": "vulnerable-secret__iR57fwe",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    150656,
+    119168,
+    6508
+   ]
+  },
+  {
+   "trial": "write-compressor__bUzbvUx",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    43726,
+    12608,
+    28013
+   ]
+  }
+ ]
+}

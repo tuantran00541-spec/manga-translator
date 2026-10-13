@@ -1,0 +1,1 @@
+left running: job1 (process group 131): cd /app && pkill -f "python3 app.py" 2>/dev/null; nohup python3 app.py > /app/server.log 2>&1 & sleep 1; echo started
