@@ -1,0 +1,127 @@
+{
+    "id": "f68996d6-a5c4-45aa-844e-a263af29776e",
+    "task_name": "psf__requests-1142",
+    "trial_name": "psf__requests-1142__tgon96s",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-13__07-22-03/psf__requests-1142__tgon96s",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/psf__requests-1142"
+    },
+    "source": "tasks",
+    "task_checksum": "a8b77719c949f4638e8839b367338fdec867dfb50487cbc32f6ae4ce10e677fa",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/psf__requests-1142",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "psf__requests-1142__tgon96s",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-13__07-22-03",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "manga_agent:MangaAgent",
+            "model_name": "xiaomi/mimo-v2.6-flash",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "4ba21399-c14f-4f55-bd08-e21e0307749c",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "manga-agent",
+        "version": "92b73fe8e82132058c9c2e4800608f871fc1f41a",
+        "model_info": {
+            "name": "mimo-v2.6-flash",
+            "provider": "xiaomi"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 0,
+        "n_cache_tokens": 0,
+        "n_output_tokens": 0,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": null,
+            "stats": null
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": {
+        "exception_type": "NonZeroAgentExitCodeError",
+        "exception_message": "Command failed (exit 1): mkdir -p /opt/mg/home/.manga-agent /logs/agent && printf '%s' '{\"advisor\": true, \"token_budget\": 1000000000000, \"max_steps\": 2000, \"tools\": \"hybrid\", \"max_output_tokens\": 32000, \"models\": {\".\": {\"request\": {\"reasoning_effort\": \"high\"}, \"late_request\": {\"reasoning_effort\": \"medium\"}}}}' > /opt/mg/home/.manga-agent/profile.json; INSTR=\"$MANGA_INSTRUCTION_D90D5128C3E6415B8E4B8CA90829112E\"; unset MANGA_INSTRUCTION_D90D5128C3E6415B8E4B8CA90829112E; /opt/mg/venv/bin/python -m app.agent.cli exec \"$INSTR\" --base http://172.17.0.1:18080/v1 --model xiaomi/mimo-v2.6-flash --provider bench --allow-private-base --workspace \"$PWD\" --mode bypass --sandbox full-access --timeout-min 49 --json > /logs/agent/events.jsonl 2> /logs/agent/stderr.log < /dev/null\nstdout: None\nstderr: None",
+        "exception_traceback": "Traceback (most recent call last):\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/single_step.py\", line 76, in _run_agent\n    await self._run_agent_phase(\n    ...<5 lines>...\n    )\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/trial.py\", line 651, in _run_agent_phase\n    await asyncio.wait_for(\n    ...<6 lines>...\n    )\n  File \"/home/runner/.local/share/uv/python/cpython-3.13.16-linux-x86_64-gnu/lib/python3.13/asyncio/tasks.py\", line 514, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py\", line 186, in wrapper\n    return await fn(self, instruction, *args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/manga-translator/manga-translator/.github/terminal-bench/manga_agent.py\", line 92, in run\n    await self.exec_as_agent(\n    ...<7 lines>...\n    )\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py\", line 1032, in exec_as_agent\n    return await self._exec(\n           ^^^^^^^^^^^^^^^^^\n        environment, command, env=env, cwd=cwd, timeout_sec=timeout_sec\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/runner/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py\", line 999, in _exec\n    raise self._classify_exec_error(command, result)\nharbor.agents.installed.base.NonZeroAgentExitCodeError: Command failed (exit 1): mkdir -p /opt/mg/home/.manga-agent /logs/agent && printf '%s' '{\"advisor\": true, \"token_budget\": 1000000000000, \"max_steps\": 2000, \"tools\": \"hybrid\", \"max_output_tokens\": 32000, \"models\": {\".\": {\"request\": {\"reasoning_effort\": \"high\"}, \"late_request\": {\"reasoning_effort\": \"medium\"}}}}' > /opt/mg/home/.manga-agent/profile.json; INSTR=\"$MANGA_INSTRUCTION_D90D5128C3E6415B8E4B8CA90829112E\"; unset MANGA_INSTRUCTION_D90D5128C3E6415B8E4B8CA90829112E; /opt/mg/venv/bin/python -m app.agent.cli exec \"$INSTR\" --base http://172.17.0.1:18080/v1 --model xiaomi/mimo-v2.6-flash --provider bench --allow-private-base --workspace \"$PWD\" --mode bypass --sandbox full-access --timeout-min 49 --json > /logs/agent/events.jsonl 2> /logs/agent/stderr.log < /dev/null\nstdout: None\nstderr: None\n",
+        "occurred_at": "2026-10-13T08:46:10.952400Z"
+    },
+    "started_at": "2026-10-13T08:46:05.201810Z",
+    "finished_at": "2026-10-13T08:46:34.887673Z",
+    "environment_setup": {
+        "started_at": "2026-10-13T08:46:05.202984Z",
+        "finished_at": "2026-10-13T08:46:07.059716Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-13T08:46:07.059736Z",
+        "finished_at": "2026-10-13T08:46:10.362092Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-13T08:46:10.362165Z",
+        "finished_at": "2026-10-13T08:46:10.951253Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-13T08:46:11.428561Z",
+        "finished_at": "2026-10-13T08:46:22.279804Z"
+    },
+    "step_results": null
+}

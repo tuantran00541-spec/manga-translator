@@ -1,0 +1,227 @@
+{
+ "passed": 21,
+ "trials": 22,
+ "rate": 0.955,
+ "rows": [
+  {
+   "trial": "astropy__astropy-14365__DMYYakP",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    664024,
+    607616,
+    16686
+   ]
+  },
+  {
+   "trial": "django__django-11095__8Lze6R4",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    639874,
+    547648,
+    17380
+   ]
+  },
+  {
+   "trial": "django__django-11477__duy9Qem",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    767677,
+    651008,
+    24885
+   ]
+  },
+  {
+   "trial": "django__django-12050__hsmMcQY",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    997607,
+    903040,
+    30441
+   ]
+  },
+  {
+   "trial": "django__django-12858__KFzpWiU",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1250754,
+    1111552,
+    44849
+   ]
+  },
+  {
+   "trial": "django__django-13363__qQVcMZ7",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    725430,
+    624128,
+    16533
+   ]
+  },
+  {
+   "trial": "django__django-13810__MRWna9b",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    525605,
+    465984,
+    12403
+   ]
+  },
+  {
+   "trial": "django__django-14349__DDT9ZZo",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    283058,
+    226752,
+    17631
+   ]
+  },
+  {
+   "trial": "django__django-14792__famkYjs",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1292704,
+    1084864,
+    61131
+   ]
+  },
+  {
+   "trial": "django__django-15380__9SAMup3",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    697691,
+    574464,
+    15132
+   ]
+  },
+  {
+   "trial": "django__django-15930__ooNwFXi",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    429541,
+    315072,
+    16166
+   ]
+  },
+  {
+   "trial": "django__django-16502__VBEcv8f",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    632166,
+    563904,
+    24182
+   ]
+  },
+  {
+   "trial": "django__django-17087__P5kVbBu",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    510411,
+    447808,
+    19445
+   ]
+  },
+  {
+   "trial": "matplotlib__matplotlib-24570__KYkV9GG",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    852618,
+    765632,
+    22979
+   ]
+  },
+  {
+   "trial": "psf__requests-1142__tgon96s",
+   "reward": 0.0,
+   "exception": "NonZeroAgentExitCodeError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "pydata__xarray-4966__NsjQmVp",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    828129,
+    635392,
+    58753
+   ]
+  },
+  {
+   "trial": "pytest-dev__pytest-10051__h5EXm4j",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    489500,
+    452096,
+    19697
+   ]
+  },
+  {
+   "trial": "scikit-learn__scikit-learn-10844__nxaVTFv",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    571025,
+    501568,
+    18728
+   ]
+  },
+  {
+   "trial": "scikit-learn__scikit-learn-14894__iXWXVpg",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    401542,
+    340672,
+    11777
+   ]
+  },
+  {
+   "trial": "sphinx-doc__sphinx-7454__PvogW6x",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1334470,
+    1138880,
+    29725
+   ]
+  },
+  {
+   "trial": "sphinx-doc__sphinx-8638__9pDEzwD",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    638866,
+    545472,
+    27417
+   ]
+  },
+  {
+   "trial": "sympy__sympy-13031__SF5hida",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    392123,
+    292160,
+    25636
+   ]
+  }
+ ]
+}
