@@ -292,6 +292,28 @@ HYBRID_PROMPT = ("Besides the built-in tools you have create, which writes a too
                  "Use the built-in tools while exploring or debugging step by step; when the steps are known, write them as one chain with create so they "
                  "run in a single call. Inside a chain tools.<name>(...) also calls the built-in tools (read_file, edit_file, run_command and the rest) and "
                  "returns their text. " + CHAIN_PROMPT.replace("\n", " "))
+LEAN_TOOLS = frozenset({"read_file", "edit_file", "run_command"})
+LEAN_PROMPT = """You are Chaos, a coding agent inside the Manga Translator app.
+Workspace root: {root} on {system}. Paths are relative to it.
+{sandbox}
+You have four tools: read_file, edit_file, run_command (the shell: list, search, create files, build, test) and create.
+
+You are working on your own until the task is finished. Keep going until the request is completely solved and checked; do not end your
+turn to report progress, describe a plan, propose next steps or ask whether to continue. Ask the user only when the request cannot go on
+without an answer only they have.
+- Read the request again before you start and list every requirement in it: file paths, names, formats, exact outputs, limits, versions.
+- Look before you change: read the files and run the commands that show how things are now. Do not guess what a file holds or what a
+  command prints; check.
+- When something fails, find out why and fix the cause; try a different approach rather than repeating one that failed, and never give
+  up because a step is hard or slow.
+- Before you end, verify the result against every requirement: run the tests, the program or the exact command the request implies,
+  look at the real output, and check the files are where and in the form asked. If you have not seen a check pass, the work is not done.
+- If time is short, finish and verify the most important part rather than leaving everything half done; never stop early while time remains.
+End with a short report: what changed, how you checked it, and anything not done.
+Write notes, plans and helper prompts in English; answer the user in the language of their request."""
+LEAN_CREATE = ("create writes a tool as Python code that runs in the sandbox (it is kept for later sessions). Use the four tools while "
+               "exploring or debugging step by step; when the steps are known, or a job needs a tool you do not have, write it with create. "
+               "Inside a chain tools.<name>(...) also calls read_file, edit_file and run_command and returns their text. " + CHAIN_PROMPT.replace("\n", " "))
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {
@@ -1215,6 +1237,8 @@ class AgentSession:
             return rows + ([SESSION_SPECS["skill"]] if self.skills and "skill" in allowed else [])
         if self.profile["tools"] == "create":
             return self._create_specs()
+        if self.profile["tools"] == "lean":
+            return self._lean_specs()
         listing = agents.catalog(self.agents)
         # The agent list is spelled out once, under task; the other two point to it.
         task, spawn, fan = (({**SESSION_SPECS[n], "description": SESSION_SPECS[n]["description"].format(
@@ -1261,6 +1285,21 @@ class AgentSession:
                 continue
             rows.append({"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
                          "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}}})
+        return rows
+
+    def _lean_specs(self) -> list[dict]:
+        """Read, edit, run and create, plus the tools the model made, and whatever a running job or a mode needs."""
+        rows = [s for s in SPECS if s["name"] in LEAN_TOOLS]
+        if self.workspace.policy.mode != "read-only":
+            rows.append(SESSION_SPECS["create"])
+            rows += [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
+        if self.jobs:
+            # Only while something runs in the background; it is how the model reads, types into or stops it.
+            rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"]]
+        if self.plan_mode:
+            rows.append(SESSION_SPECS["exit_plan_mode"])
+        elif self.goal:
+            rows.append(SESSION_SPECS["goal_done"])
         return rows
 
     def _create_specs(self) -> list[dict]:
@@ -1620,8 +1659,8 @@ class AgentSession:
     def _chain_targets(self) -> set[str]:
         """What a created tool's code may reach through the agent: the user's plugin and MCP tools, and skills."""
         names = {n for n in self.registry.tools if n not in registry.GROUPS} | set(self._root().mcp_tools) | {"agent", "create", "think"}
-        if self.profile["tools"] == "hybrid":
-            # In hybrid a chain also reaches the built-in tools, through the same rules and approvals.
+        if self.profile["tools"] in ("hybrid", "lean"):
+            # In hybrid and lean a chain also reaches the built-in tools, through the same rules and approvals.
             names |= {s["name"] for s in self.specs()} - {"exit_plan_mode", "goal_done"} - set(self._root().created)
         names |= {"vote", "models"} if self.profile["model_roles"] or self._sources() else set()
         return names | ({"skill"} if self.skills else set())
@@ -2670,7 +2709,7 @@ class AgentSession:
     # The model turn and the loop.
 
     def system_prompt(self) -> str:
-        base = CREATE_PROMPT if self.profile["tools"] == "create" and not self.depth else SYSTEM_PROMPT
+        base = {"create": CREATE_PROMPT, "lean": LEAN_PROMPT}.get(self.profile["tools"], SYSTEM_PROMPT) if not self.depth else SYSTEM_PROMPT
         parts = [base.format(root=self.workspace.root, system=platform.system(), chain=CHAIN_PROMPT,
                                       sandbox=self.workspace.policy.describe(self.workspace.root))]
         if self._pinned is None:
@@ -2691,6 +2730,8 @@ class AgentSession:
             parts.append("Work until the job is done, then end with a complete report: the parent sees only your final reply.")
         if self.profile["tools"] == "hybrid" and not self.depth and self.workspace.policy.mode != "read-only":
             parts.append(HYBRID_PROMPT)
+        if self.profile["tools"] == "lean" and not self.depth and self.workspace.policy.mode != "read-only":
+            parts.append(LEAN_CREATE)
         if not self.depth and self.profile["tools"] != "full" and (self.profile["model_roles"] or self._sources()):
             table = self.profile["model_roles"]
             rows = "; ".join(f"{n} ({c['model']}{': ' + c['note'] if c['note'] else ''})" for n, c in table.items())

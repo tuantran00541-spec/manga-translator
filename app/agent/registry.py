@@ -25,8 +25,8 @@ ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
 REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file", "edit_lines",
                          "apply_patch", "run_command", "web_fetch", "web_search", "web_download"})
 ROLES = ("read", "edit", "exec", "net")
-# hybrid: the built-in tools plus create and chains; create: only create; full: only the built-in tools.
-TOOL_SETS = ("hybrid", "create", "full")
+# hybrid: the built-in tools plus create and chains; lean: read_file, edit_file, run_command and create; create: only create; full: only the built-in tools.
+TOOL_SETS = ("hybrid", "lean", "create", "full")
 DEFAULT_TOOLS = "hybrid"
 PROFILE_FILES = {"user": (".manga-agent/profile.json",), "workspace": (".agents/profile.json",)}
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}$")

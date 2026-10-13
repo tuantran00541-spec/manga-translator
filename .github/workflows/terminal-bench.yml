@@ -66,7 +66,7 @@ jobs:
           print(f"late_request={json.dumps(cfg.get('late_request') or {})}")
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
           print(f"agent={cfg.get('agent') if cfg.get('agent') in ('chaos', 'terminus-2', 'codex', 'claude-code') else 'chaos'}")
-          print(f"tools={cfg.get('tools') if cfg.get('tools') in ('hybrid', 'create', 'full') else 'hybrid'}")
+          print(f"tools={cfg.get('tools') if cfg.get('tools') in ('hybrid', 'lean', 'create', 'full') else 'hybrid'}")
           total = max(1, int(cfg.get('shards') or 1))
           # only_shards reruns some shards of a split, which keep the tasks they had in the full split.
           print(f"shards={json.dumps([k for k in range(total) if k in (cfg.get('only_shards') or range(total))])}")
