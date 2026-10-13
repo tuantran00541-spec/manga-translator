@@ -12,7 +12,7 @@
   },
   "max_output_tokens": 32000,
   "shards": 2,
-  "tools": "hybrid",
+  "tools": "lean",
   "agent": "chaos",
   "limits": {
     "max_usd": 30.0,
@@ -21,7 +21,7 @@
       "output": 2.94e-07
     }
   },
-  "trial": "hybrid-new",
+  "trial": "lean-4",
   "late_request": {
     "reasoning_effort": "medium"
   }
