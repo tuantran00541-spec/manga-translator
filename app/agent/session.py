@@ -84,8 +84,6 @@ ORACLE_PROMPT = ("You are a senior engineer a coding agent consults. You see its
                  "and what to check. Cite only what the conversation shows; say so when something you would need is not visible. No preamble, no restating the question.")
 TODO_NUDGE = ("[Your todo list still has unfinished items: {items}. Do the next one now by calling a tool. If the work is really done or an item no longer applies, "
               "update the list with todo_write, then give your final report.]")
-THOUGHT_CUT = ("[Your last reply ran out of room while thinking and wrote nothing. Your thinking ended with:\n{tail}\n"
-               "Do not start that thinking over: act on it now with a tool call, or write down what you settled and the next step.]")
 EMPTY_NUDGE = "[Your last reply was empty. Continue the task: call a tool or answer the user in text.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -587,8 +585,6 @@ class AgentSession:
         self.compact_at = int(window * WINDOW_SHARE) if window else int(self.profile["compact_at_tokens"])
         self.max_steps = self.profile["max_steps"]
         self._max_out = int(self.profile["max_output_tokens"])
-        # Set after a reply was cut off mid-thought, so the next one uses late_request's lighter fields.
-        self._lighter = False
         self.quirks = models.quirks(model, self.profile["models"])
         self.disabled = set(self.profile["disable"])
         self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
@@ -1048,7 +1044,7 @@ class AgentSession:
         """Extra request fields for this model; with a clock, late_request takes over in the last third (say, less reasoning when time runs short)."""
         fields = dict(self.quirks.get("request")) if isinstance(self.quirks.get("request"), dict) else {}
         clock, late = self._root()._clock, self.quirks.get("late_request")
-        if isinstance(late, dict) and (self._lighter or clock and time.time() - clock[0] > clock[1] * (1 - LATE_SHARE)):
+        if clock and isinstance(late, dict) and time.time() - clock[0] > clock[1] * (1 - LATE_SHARE):
             fields.update(late)
         return fields
 
@@ -3515,12 +3511,6 @@ class AgentSession:
                 empties += 1
                 used = turn["usage"].get("completion_tokens") or 0
                 debug = turn.get("debug") or {}
-                # Thinking cut off at the reply limit is kept as a note and the next reply thinks less, so the same thinking is not redone from scratch.
-                if debug.get("finish") == "length" and turn.get("reasoning") and self._max_out * 2 > MAX_OUT_CEILING and empties <= EMPTY_RETRIES:
-                    self._lighter = True
-                    self.history.append({"role": "user", "content": THOUGHT_CUT.format(tail=turn["reasoning"][-6000:])})
-                    self.emit("notice", text=f"The model spent all {used} tokens reasoning and wrote nothing; kept its thinking and asked it to act.")
-                    continue
                 # A reasoning model that spends the whole reply budget thinking writes nothing; it gets a larger budget, not the same one again.
                 if debug.get("finish") == "length" and self._max_out < MAX_OUT_CEILING:
                     self._max_out = min(self._max_out * 2, MAX_OUT_CEILING)
@@ -3539,7 +3529,7 @@ class AgentSession:
                     if empties == 2:
                         self.history.append({"role": "user", "content": EMPTY_NUDGE})
                 continue
-            empties, self._lighter = 0, False
+            empties = 0
             self.history.append({"role": "assistant", "content": turn["text"], "calls": calls,
                                  **({"reasoning": turn["reasoning"][-20000:]} if self.echo_reasoning and turn["reasoning"] else {})})
             self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)

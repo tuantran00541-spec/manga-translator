@@ -2895,24 +2895,6 @@ def test_a_reply_that_spent_its_whole_budget_on_reasoning_is_asked_again_with_a_
     assert sum("raising the reply limit" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
 
 
-def test_thinking_cut_off_at_the_top_limit_is_kept_and_the_next_reply_thinks_less(ws, home, monkeypatch):
-    efforts = []
-
-    def fake(provider, key, model, messages, *, tools, on_delta=None, max_tokens=None):
-        efforts.append(client.REQUEST_EXTRA.get().get("reasoning_effort"))
-        if len(efforts) == 1:
-            return {"text": "", "calls": [], "reasoning": "the bug is in parse()", "usage": {"completion_tokens": max_tokens}, "debug": {"finish": "length"}}
-        return turn("Done.")
-
-    monkeypatch.setattr(client, "complete", fake)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=client.complete)
-    session._max_out = 32000
-    session.quirks = {**session.quirks, "request": {"reasoning_effort": "high"}, "late_request": {"reasoning_effort": "medium"}}
-    run_to_idle(session, "go")
-    assert efforts == ["high", "medium"] and session.history[-1]["content"] == "Done."
-    assert any("the bug is in parse()" in str(m.get("content")) for m in session.history if m["role"] == "user")
-
-
 def test_a_turn_that_dies_after_changing_files_says_what_it_changed_and_what_is_left(ws, home):
     replies = iter([turn(calls=[call("todo_write", items=[{"content": "write a.txt", "status": "completed"}, {"content": "test it", "status": "pending"}])]),
                     turn(calls=[call("write_file", path="a.txt", content="x")])])
