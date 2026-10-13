@@ -1,0 +1,4 @@
+left running: job1 (process group 319): cat > /tmp/setup.sh <<'SH'
+set -x
+echo "### 1. restore mailman.cfg from packaged sample + local edits"
+cp /usr/share/mai
