@@ -2615,6 +2615,9 @@ class AgentSession:
         if call.get("error"):
             return call["error"], False
         offered = {s["name"]: s for s in self.specs()}
+        if str(call.get("id", "")).startswith("chain-") and call["name"] not in offered and (spec := self._target_spec(call["name"])):
+            # A chain reaches tools the model's own list leaves out, such as MCP tools in lean mode.
+            offered[call["name"]] = spec
         known = set(offered)
         props = {name: spec.get("parameters", {}).get("properties", {}) for name, spec in offered.items()}
         # Calls a script makes go through as written: they carry internal flags such as as_data.

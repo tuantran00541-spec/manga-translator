@@ -4051,6 +4051,27 @@ def test_a_chain_mixes_created_tools_mcp_tools_and_skills_through_the_agent(ws, 
     assert not list((session._outputs_dir() / "state" / "rpc").iterdir()), "each run's request folder is removed when it ends"
 
 
+def test_a_lean_chain_reaches_mcp_tools_the_model_does_not_see(ws, home):
+    (home / ".manga-agent").mkdir(exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"tools": "lean"}))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+
+    class Docs:
+        def call_tool(self, name, args):
+            return f"doc for {args['q']}", True
+
+        def close(self):
+            pass
+
+    session.mcp_tools = {"mcp__docs__lookup": ("docs", {"name": "lookup", "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}}}})}
+    session.mcp_servers["docs"] = Docs()
+    assert "mcp__docs__lookup" not in [s["name"] for s in session.specs()]
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": "def go():\n    return tools.mcp__docs__lookup(q='f')\n",
+                                                                      "args": {}, "keep": False}})
+    assert "doc for f" in out, out
+
+
 def test_chains_have_no_ceiling_objects_agents_new_tools_parallel_calls_big_args_and_unclocked_approvals(ws, home, monkeypatch):
     from app.agent import session as session_module
     create_only(home)
