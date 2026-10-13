@@ -1,0 +1,2 @@
+left running: job1 (process group 166): nohup pypi-server run -p 8080 -i 0.0.0.0 -a . -P . -v /app/vectorops/dist > /app/pypiserver.log 2>&1 &
+sleep 3; echo "pi
