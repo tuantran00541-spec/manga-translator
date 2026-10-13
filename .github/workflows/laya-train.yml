@@ -1,0 +1,68 @@
+name: Laya train
+
+# One-off: fine-tune Laya on the Terminal-Bench trial logs to judge, when the agent stops, whether the task really passes.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/laya-train.yml"
+      - ".github/laya/**"
+
+permissions:
+  contents: write
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      OUT: audit-results/laya/run-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-evidence
+          path: evidence
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: audit-results/terminal-bench-2-1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Laya on CPU torch
+        run: |
+          python -m pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --quiet laya==0.4.6
+      - name: Build the rows from the trial logs
+        run: python .github/laya/build.py evidence/audit-results/terminal-bench-2-1 data
+      - name: Fine-tune laya-typed-decisions
+        run: |
+          laya-train --data data/train.jsonl --eval data/eval.jsonl --base typed-decisions --out ckpt \
+            --device cpu --epochs 3 --micro-batch 8 --grad-accum 4 --seed 0 2>&1 | tee train.log
+      - name: Score base and tuned against the baselines
+        run: python .github/laya/evaluate.py data "$OUT" base=typed-decisions tuned=ckpt
+      - name: Keep the logs with the scores
+        if: always()
+        run: |
+          mkdir -p "$OUT"
+          cp data/stats.json train.log "$OUT"/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: laya-verified-checkpoint
+          path: ckpt
+          retention-days: 14
+      - name: Give git access only now that training is done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: ${{ env.OUT }}
+          message: "audit: Laya verified-stop tuning (run ${{ github.run_id }})"
