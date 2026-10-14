@@ -1,0 +1,4 @@
+Fetching 5 files:   0%|          | 0/5 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 5 files:  80%|████████  | 4/5 [00:00<00:00, 32.95it/s]Fetching 5 files: 100%|██████████| 5/5 [00:05<00:00,  1.20s/it]
+train items 761, calibration items 84, eval items 84 (calibration_slice), skipped {}, device cpu
+optimizer budget: 761 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 48 optimizer updates over 2 epoch(s)
