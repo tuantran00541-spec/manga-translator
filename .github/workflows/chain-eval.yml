@@ -70,3 +70,5 @@ jobs:
         with:
           paths: ${{ env.OUT }}
           message: "audit: chain eval (run ${{ github.run_id }})"
+
+# Manual re-run trigger
