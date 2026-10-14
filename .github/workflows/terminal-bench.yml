@@ -36,6 +36,7 @@ jobs:
       dataset: ${{ steps.cfg.outputs.dataset }}
       sample: ${{ steps.cfg.outputs.sample }}
       gate_run: ${{ steps.cfg.outputs.gate_run }}
+      gate_name: ${{ steps.cfg.outputs.gate_name }}
       gate_max: ${{ steps.cfg.outputs.gate_max }}
     steps:
       - uses: actions/checkout@v4
@@ -81,14 +82,18 @@ jobs:
               sys.exit("dataset must be name@version")
           print(f"dataset={dataset}")
           print(f"sample={int(cfg.get('sample') or 0)}")
-          # The Laya stop judge: the run whose laya-verified-checkpoint artifact holds the tuned model.
+          # The Laya stop judge: the run and artifact that hold the tuned model.
           gate = cfg.get("stop_gate") or {}
           print(f"gate_run={int(gate.get('checkpoint_run') or 0)}")
+          name = str(gate.get("checkpoint_name") or "laya-verified-checkpoint")
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+              sys.exit("stop_gate.checkpoint_name must be a plain artifact name")
+          print(f"gate_name={name}")
           print(f"gate_max={int(gate.get('max', 1))}")
           PY
 
   gate:
-    # Exports the tuned judge as int8, checks it answers like the full model on held-out runs, and picks its threshold.
+    # Scores the tuned judge on held-out runs and picks its threshold; int8 flipped too many answers, so the bench serves full precision.
     needs: config
     if: needs.config.outputs.ready == 'true' && needs.config.outputs.gate_run != '0'
     runs-on: ubuntu-22.04
@@ -113,7 +118,7 @@ jobs:
           python-version: "3.11"
       - uses: actions/download-artifact@v4
         with:
-          name: laya-verified-checkpoint
+          name: ${{ needs.config.outputs.gate_name }}
           path: ckpt
           run-id: ${{ needs.config.outputs.gate_run }}
           github-token: ${{ github.token }}
@@ -121,13 +126,13 @@ jobs:
         run: |
           python -m pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install --quiet laya==0.4.6
-      - name: Score the full and the int8 judge on held-out runs
+      - name: Score the judge on held-out runs
         id: cut
         run: |
           python .github/laya/build.py evidence/audit-results/terminal-bench-2-1 data
-          python .github/laya/evaluate.py data "$OUT" tuned=ckpt int8=int8:ckpt
+          python .github/laya/evaluate.py data "$OUT" tuned=ckpt
           cp data/stats.json "$OUT"/
-          echo "threshold=$(python -c "import json; print(json.load(open('$OUT/summary.json'))['int8']['threshold'])")" >> "$GITHUB_OUTPUT"
+          echo "threshold=$(python -c "import json; print(json.load(open('$OUT/summary.json'))['tuned']['threshold'])")" >> "$GITHUB_OUTPUT"
       - name: Give git access only now that scoring is done
         if: always()
         env:
@@ -139,7 +144,7 @@ jobs:
         uses: ./.github/actions/save-evidence
         with:
           paths: ${{ env.OUT }}
-          message: "audit: Laya stop judge int8 export check (run ${{ github.run_id }})"
+          message: "audit: Laya stop judge check (run ${{ github.run_id }})"
 
   bench:
     needs: [config, gate]
@@ -215,17 +220,17 @@ jobs:
       - uses: actions/download-artifact@v4
         if: needs.config.outputs.gate_run != '0'
         with:
-          name: laya-verified-checkpoint
+          name: ${{ needs.config.outputs.gate_name }}
           path: /tmp/laya-ckpt
           run-id: ${{ needs.config.outputs.gate_run }}
           github-token: ${{ github.token }}
-      - name: Start the Laya stop judge (int8, CPU)
+      - name: Start the Laya stop judge (full precision, CPU)
         if: needs.config.outputs.gate_run != '0'
         run: |
           python -m venv /tmp/laya-venv
           /tmp/laya-venv/bin/pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           /tmp/laya-venv/bin/pip install --quiet laya==0.4.6
-          nohup /tmp/laya-venv/bin/python .github/laya/gate.py int8:/tmp/laya-ckpt 18090 > /tmp/gate.log 2>&1 &
+          nohup /tmp/laya-venv/bin/python .github/laya/gate.py /tmp/laya-ckpt 18090 > /tmp/gate.log 2>&1 &
           for i in $(seq 1 120); do curl -sf -m 5 http://127.0.0.1:18090/health > /dev/null && break; sleep 5; done
           curl -sS -m 120 -X POST -d '{"state": "Final reply: Done, all tests pass."}' http://127.0.0.1:18090/score
           echo "GATE_PORT=18090" >> "$GITHUB_ENV"

@@ -1,4 +1,4 @@
-"""Serve the tuned Laya stop judge over HTTP on the bench runner, as int8 on CPU: POST /score {"state"} -> {"verified"}."""
+"""Serve the tuned Laya stop judge over HTTP on the bench runner, on CPU (int8: prefix optional): POST /score {"state"} -> {"verified"}."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
