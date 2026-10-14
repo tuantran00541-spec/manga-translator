@@ -12,7 +12,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from app.agent import client, context, kernel, mcp, patch, sandbox, skills
+from app.agent import client, context, kernel, mcp, patch, registry, sandbox, skills
 from app.agent.session import AgentSession, AgentSessionManager
 from app.agent.tools import ToolError, Workspace
 from app.ai_providers import PROVIDERS
@@ -4120,8 +4120,8 @@ def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, hom
     assert "The rest of the harness lives only inside create" in prompt
 
 
-def test_without_the_shell_tool_and_with_min_calls_a_lone_call_is_refused_and_chains_run(ws, home):
-    write_profile(home, {"shell_tool": False, "min_calls": 2})
+def test_by_default_there_is_no_shell_tool_and_a_lone_call_is_refused_while_chains_run(ws, home, monkeypatch):
+    monkeypatch.setattr(registry, "CHAIN_DEFAULTS", {"shell_tool": False, "min_calls": 2})
     one = call("create", name="go", keep=False, code="return tools.run_command(command='echo lone')")
     two = call("create", name="go", keep=False, code="tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 2')\n"
                                                      "return tools.run_command(command='echo chained && cat pkg/a.py')")

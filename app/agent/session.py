@@ -338,9 +338,20 @@ MADE_TOOLS = ("The code is a function def name(...) or just its body (a top-leve
 LEAN_TOOLS = frozenset({"read_file", "edit_file", "run_command"})
 # With the profile's shell_tool off, the shell is reached only as tools.run_command inside create, so steps get chained.
 NO_SHELL = (("Your tools are read_file, edit_file, run_command (the shell: list, search, build, test) and create",
-             "Your tools are read_file, edit_file and create; the shell is tools.run_command(command=...) inside create"),
+             "Your tools are read_file, edit_file and create. There is no shell tool: commands run as tools.run_command(command=...) "
+             "inside create, and every reply is a chain of calls"),
+            ("2. Look. Read the files and run the commands that show how things are now,",
+             "2. Look. In one chain, read the files and run the commands that show how things are now,"),
             ("- read_file, edit_file and run_command each do one thing; use them to look around and for single steps.",
-             "- read_file and edit_file each do one thing. There is no shell tool: run commands with tools.run_command inside create."))
+             "- Work in chains, always. Before each reply, plan the next several steps and send them together: one create whose code "
+             "looks (reads, lists, runs commands), acts and runs the check, printing only what you need, or several calls side by side. "
+             "A reply with a single call, or a create whose code makes a single tools.<name>(...) call, is refused and nothing in it runs."),
+            ("1. Pin down done as a kept tool, and run it once to see it fail (args runs it right away):\ncreate name=",
+             "1. Look and pin down done in the same reply, two calls side by side: read_file path=\"app/text.py\", and a kept check run once "
+             "to see it fail (args runs it right away):\ncreate name="),
+            ("Single reads and edits still go straight through read_file and edit_file; reach for create when steps follow each other without "
+             "needing your judgment in between, when the same work repeats, or when you want the check to choose.",
+             "Every reply is a chain like these: several steps in one create, or several calls in one reply, never one lone call."))
 # Calls that steer the session rather than do work; a reply made only of these is never held to min_calls.
 CONTROL_CALLS = frozenset({"job_output", "job_input", "job_stop", "exit_plan_mode", "goal_done"})
 MIN_CALLS_RULE = ("Every reply that uses tools must make at least {n} tool calls, counting each tools.<name>(...) inside create code; "
