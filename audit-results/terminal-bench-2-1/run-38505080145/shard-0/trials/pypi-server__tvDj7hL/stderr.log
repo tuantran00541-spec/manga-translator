@@ -1,0 +1,1 @@
+left running: job1 (process group 174): nohup pypi-server run -p 8080 /app/pypi-packages > /tmp/pypiserver.log 2>&1 & echo "started pid $!"; sleep 3; echo "--- 

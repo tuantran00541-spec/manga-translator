@@ -1,0 +1,4 @@
+left running: job2 (process group 155): cd /app && nohup python3 -u app.py > /app/service.log 2>&1 &
+echo "service pid $!"
+for i in $(seq 1 60); do
+  if python3
