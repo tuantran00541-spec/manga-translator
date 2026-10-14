@@ -1,0 +1,26 @@
+{
+ "rows": 266,
+ "passed": 216,
+ "always_pass": {
+  "accuracy": 0.812,
+  "auc": 0.5,
+  "ece": 0.188,
+  "fails_caught_at_10pct_false_alarm": 0.0,
+  "threshold": 1.0
+ },
+ "claim_regex": {
+  "accuracy": 0.6353,
+  "auc": 0.5987,
+  "ece": 0.3647,
+  "fails_caught_at_10pct_false_alarm": 0.0,
+  "threshold": 0.0
+ },
+ "tuned": {
+  "accuracy": 0.891,
+  "auc": 0.8001,
+  "ece": 0.1076,
+  "fails_caught_at_10pct_false_alarm": 0.66,
+  "threshold": 0.7292,
+  "cpu_ms_per_row": 2598.9
+ }
+}
