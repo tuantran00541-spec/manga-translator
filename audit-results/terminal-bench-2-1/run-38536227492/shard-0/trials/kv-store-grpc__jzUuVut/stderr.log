@@ -1,0 +1,1 @@
+left running: job1 (process group 145): cd /app && nohup python3 server.py > /tmp/server.log 2>&1 < /dev/null & disown; sleep 3; echo "server.log:"; cat /tmp/se
