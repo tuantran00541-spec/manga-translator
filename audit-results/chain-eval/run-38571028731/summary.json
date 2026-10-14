@@ -1,0 +1,154 @@
+{
+ "summary": {
+  "chain": {
+   "passed": 1,
+   "of": 2,
+   "refused": 66,
+   "chained_calls": 24
+  },
+  "shell": {
+   "passed": 2,
+   "of": 2,
+   "refused": 0,
+   "chained_calls": 11
+  }
+ },
+ "rows": [
+  {
+   "arm": "chain",
+   "task": "bug-hunt",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 882,
+   "replies_with_calls": 29,
+   "calls_per_reply": 1.28,
+   "tools": {
+    "read_file": 21,
+    "create": 9,
+    "edit_file": 3,
+    "list_dir": 1,
+    "check": 1,
+    "job_output": 1,
+    "job_stop": 1
+   },
+   "refused": 23,
+   "chained_calls": 5,
+   "tools_in_create_code": {
+    "run_command": 4,
+    "check": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 202064,
+    "completion_tokens": 9721,
+    "cached_tokens": 105984
+   },
+   "stats": {
+    "model_seconds": 514.3,
+    "tool_seconds": 353.7,
+    "cache_pct": 52,
+    "cost": 0.0116
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "bug-hunt",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 865,
+   "replies_with_calls": 40,
+   "calls_per_reply": 1.02,
+   "tools": {
+    "run_command": 31,
+    "create": 7,
+    "read_file": 2,
+    "edit_file": 1
+   },
+   "refused": 0,
+   "chained_calls": 9,
+   "tools_in_create_code": {
+    "run_command": 9
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 424514,
+    "completion_tokens": 7950,
+    "cached_tokens": 354816
+   },
+   "stats": {
+    "model_seconds": 668.1,
+    "tool_seconds": 144.3,
+    "cache_pct": 84,
+    "cost": 0.0224
+   }
+  },
+  {
+   "arm": "chain",
+   "task": "wordcount-json",
+   "passed": false,
+   "check": "ranslator/.github/chain-eval/tasks/wordcount-json/check.py\", line 6, in <module>\n    assert run(\"sample.txt\").stdout == \"lines: 4\\nwords: 12\\nunique: 8\\nthe 3\\ncat 2\\nsat 2\\nran 1\\na 1\\n\", run(\"sample.txt\").stdout\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: lines: 2\nwords: 8\nunique: 5\nhello 3\nfoo 2\nworld 1\nbar 1\nbaz 1\n\n",
+   "seconds": 990,
+   "replies_with_calls": 47,
+   "calls_per_reply": 1.17,
+   "tools": {
+    "create": 34,
+    "read_file": 16,
+    "edit_file": 3,
+    "tools.run_command": 1,
+    "tools.list_dir": 1
+   },
+   "refused": 43,
+   "chained_calls": 19,
+   "tools_in_create_code": {
+    "check": 15,
+    "run_command": 4
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 748659,
+    "completion_tokens": 18200,
+    "cached_tokens": 661504
+   },
+   "stats": {
+    "model_seconds": 840.2,
+    "tool_seconds": 12.1,
+    "cache_pct": 88,
+    "cost": 0.0402
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "wordcount-json",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 290,
+   "replies_with_calls": 15,
+   "calls_per_reply": 1.13,
+   "tools": {
+    "run_command": 10,
+    "read_file": 2,
+    "create": 2,
+    "edit_file": 2,
+    "check": 1
+   },
+   "refused": 0,
+   "chained_calls": 2,
+   "tools_in_create_code": {
+    "edit_file": 1,
+    "run_command": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 89222,
+    "completion_tokens": 4171,
+    "cached_tokens": 56832
+   },
+   "stats": {
+    "model_seconds": 223.6,
+    "tool_seconds": 63.6,
+    "cache_pct": 64,
+    "cost": 0.0051
+   }
+  }
+ ]
+}
