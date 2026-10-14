@@ -61,7 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arm: [all, frozen]
+        arm: [all]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,20 +86,31 @@ jobs:
           [ "${{ matrix.arm }}" = frozen ] && freeze=10
           yolo detect train model=yolo26n.pt data=kiuyha-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
             time=3.9 epochs=30 patience=100 freeze=$freeze optimizer=AdamW lr0=0.0005 cos_lr=True \
-            degrees=5 fliplr=0.0 plots=False project=runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
-      - name: Export to ONNX at the app's size
+            degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
+      # Ultralytics may write elsewhere than asked, so the weights are found wherever they landed and kept before anything else runs.
+      - name: Keep the weights
+        if: always()
         run: |
-          cp runs/tune/weights/best.pt kiuyha-tuned.pt 2>/dev/null || cp runs/tune/weights/last.pt kiuyha-tuned.pt
-          yolo export model=kiuyha-tuned.pt format=onnx imgsz=1280 opset=17
-          ls -la kiuyha-tuned.*
-      # Uploaded before scoring, so a scoring failure cannot lose the model.
+          best=$(find "$PWD/runs" / -path '*/tune/weights/best.pt' 2>/dev/null | head -1)
+          [ -n "$best" ] || best=$(find "$PWD/runs" / -path '*/tune/weights/last.pt' 2>/dev/null | head -1)
+          cp "$best" kiuyha-tuned.pt && cp "$(dirname "$(dirname "$best")")/results.csv" . 2>/dev/null || true
+          ls -la kiuyha-tuned.pt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: kiuyha-tuned-${{ matrix.arm }}
           path: |
             kiuyha-tuned.pt
-            kiuyha-tuned.onnx
-            runs/tune/results.csv
+            results.csv
+          retention-days: 30
+      - name: Export to ONNX at the app's size
+        run: |
+          yolo export model=kiuyha-tuned.pt format=onnx imgsz=1280 opset=17
+          ls -la kiuyha-tuned.onnx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kiuyha-tuned-${{ matrix.arm }}-onnx
+          path: kiuyha-tuned.onnx
           retention-days: 30
       - name: Score old against tuned on the held-out checks
         run: python .github/kiuyha/evaluate.py kiuyha-data "$OUT/${{ matrix.arm }}" yolo26n.pt kiuyha-tuned.pt
@@ -107,7 +118,7 @@ jobs:
         if: always()
         run: |
           mkdir -p "$OUT/${{ matrix.arm }}"
-          cp train.log runs/tune/results.csv kiuyha-data/stats.json "$OUT/${{ matrix.arm }}/" 2>/dev/null || true
+          cp train.log results.csv kiuyha-data/stats.json "$OUT/${{ matrix.arm }}/" 2>/dev/null || true
       - name: Give git access only now
         if: always()
         env:
