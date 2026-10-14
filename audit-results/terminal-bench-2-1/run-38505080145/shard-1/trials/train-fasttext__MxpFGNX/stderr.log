@@ -1,0 +1,4 @@
+left running: job3 (process group 2280): cd /app && cat > batch2.py << 'EOF'
+import sys, json, time, os, fasttext
+configs = json.loads(sys.argv[1])
+resf = open("
