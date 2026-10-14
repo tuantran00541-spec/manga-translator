@@ -3664,16 +3664,13 @@ def test_related_lessons_arrive_as_one_message_at_each_cold_start(ws, home):
     text = learn.digest(home, ws.root, "pytest fails on the seam tests", limit=2)
     assert text.index("pytest -x") < text.index("Seam bugs") and "fonts" not in text, "most shared words first, then the newer note"
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("a"), turn("b"), turn("summary"), turn("d")))
-    session.send("fix the seam bug")
-    run_to_idle(session)
+    run_to_idle(session, "fix the seam bug")
     sent = [h["content"] for h in session.history if h["role"] == "user"]
     assert sent[0].startswith("<lessons>") and "Seam bugs" in sent[0] and sent[1] == "fix the seam bug"
-    session.send("and again")
-    run_to_idle(session)
+    run_to_idle(session, "and again")
     assert sum(h["content"].startswith("<lessons>") for h in session.history if h["role"] == "user") == 1, "once per cold start"
     assert session.compact()
-    session.send("after the summary")
-    run_to_idle(session)
+    run_to_idle(session, "after the summary")
     users = [h["content"] for h in session.history if h["role"] == "user"]
     assert users[users.index("after the summary") - 1].startswith("<lessons>"), "a compaction is a cold start too"
 
