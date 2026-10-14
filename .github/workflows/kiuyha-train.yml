@@ -10,14 +10,19 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 env:
   OUT: audit-results/kiuyha-train/run-${{ github.run_id }}
   PYTHONPATH: "."
   PYTHONUNBUFFERED: "1"
+  # The run whose kiuyha-data artifact is reused; empty builds a new set.
+  DATA_RUN: "38535523379"
 
 jobs:
   data:
+    # Skipped while DATA_RUN names a set already built (job conditions cannot read env, so this mirrors it).
+    if: false
     runs-on: ubuntu-22.04
     timeout-minutes: 150
     steps:
@@ -51,7 +56,6 @@ jobs:
           retention-days: 7
 
   tune:
-    needs: data
     runs-on: ubuntu-latest
     timeout-minutes: 345
     strategy:
@@ -69,6 +73,8 @@ jobs:
         with:
           name: kiuyha-data
           path: .
+          run-id: ${{ env.DATA_RUN }}
+          github-token: ${{ github.token }}
       - name: Install Ultralytics on CPU torch
         run: |
           python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
@@ -83,7 +89,7 @@ jobs:
             degrees=5 fliplr=0.0 plots=False project=runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
       - name: Export to ONNX at the app's size
         run: |
-          cp runs/tune/weights/best.pt kiuyha-tuned.pt
+          cp runs/tune/weights/best.pt kiuyha-tuned.pt 2>/dev/null || cp runs/tune/weights/last.pt kiuyha-tuned.pt
           yolo export model=kiuyha-tuned.pt format=onnx imgsz=1280 opset=17
           ls -la kiuyha-tuned.*
       # Uploaded before scoring, so a scoring failure cannot lose the model.
