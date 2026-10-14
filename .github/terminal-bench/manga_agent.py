@@ -80,6 +80,9 @@ class MangaAgent(BaseInstalledAgent):
         mode = os.environ.get("MANGA_AGENT_MODE", "bypass")
         request = json.loads(os.environ.get("MANGA_AGENT_REQUEST") or "{}")
         late = json.loads(os.environ.get("MANGA_AGENT_LATE_REQUEST") or "{}")
+        # Short tasks get their own request fields (say, medium reasoning), as long thinking eats a 15-minute clock.
+        if minutes < int(os.environ.get("MANGA_AGENT_SHORT_MINUTES") or 0):
+            request |= json.loads(os.environ.get("MANGA_AGENT_SHORT_REQUEST") or "{}")
         profile = json.dumps({"advisor": True, "token_budget": 10 ** 12, "max_steps": 2000,
                               "max_output_tokens": int(os.environ.get("MANGA_AGENT_MAX_OUTPUT", "65536")),
                               "models": {".": {"request": request, **({"late_request": late} if late else {})}},

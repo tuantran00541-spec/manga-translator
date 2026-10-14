@@ -28,6 +28,8 @@ jobs:
       mode: ${{ steps.cfg.outputs.mode }}
       request: ${{ steps.cfg.outputs.request }}
       late_request: ${{ steps.cfg.outputs.late_request }}
+      short_request: ${{ steps.cfg.outputs.short_request }}
+      short_minutes: ${{ steps.cfg.outputs.short_minutes }}
       max_output: ${{ steps.cfg.outputs.max_output }}
       shards: ${{ steps.cfg.outputs.shards }}
       shard_total: ${{ steps.cfg.outputs.shard_total }}
@@ -69,6 +71,8 @@ jobs:
           print(f"mode={cfg.get('mode') if cfg.get('mode') in ('bypass', 'auto') else 'bypass'}")
           print(f"request={json.dumps(cfg.get('request') or {})}")
           print(f"late_request={json.dumps(cfg.get('late_request') or {})}")
+          print(f"short_request={json.dumps(cfg.get('short_request') or {})}")
+          print(f"short_minutes={int(cfg.get('short_minutes') or 0)}")
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
           print(f"agent={cfg.get('agent') if cfg.get('agent') in ('chaos', 'terminus-2', 'codex', 'claude-code') else 'chaos'}")
           total = max(1, int(cfg.get('shards') or 1))
@@ -352,6 +356,8 @@ jobs:
           MANGA_AGENT_MINUTES: ${{ needs.config.outputs.minutes }}
           MANGA_AGENT_TASKS_DIR: /tmp/tb21/tasks
           MANGA_AGENT_LATE_REQUEST: ${{ needs.config.outputs.late_request }}
+          MANGA_AGENT_SHORT_REQUEST: ${{ needs.config.outputs.short_request }}
+          MANGA_AGENT_SHORT_MINUTES: ${{ needs.config.outputs.short_minutes }}
           MANGA_AGENT_MODE: ${{ needs.config.outputs.mode }}
           MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
           MANGA_AGENT_SHA: ${{ github.sha }}
