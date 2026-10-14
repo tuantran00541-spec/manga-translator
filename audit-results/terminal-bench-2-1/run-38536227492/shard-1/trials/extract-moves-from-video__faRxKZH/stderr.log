@@ -1,0 +1,1 @@
+left running: job2 (process group 2776): cd /tmp && mkdir -p so && ls s_*.jpg | xargs -P 4 -I{} sh -c 'b=$(basename {} .jpg); tesseract {} so/$b 2>/dev/null' ; l

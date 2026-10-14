@@ -1,0 +1,6 @@
+2026-10-14 13:16:22 | WARNING  | app.agent.client:476 - bench HTTP 502: {"error": "ConnectionError"} (bench); asking again in 2s
+2026-10-14 13:18:28 | WARNING  | app.agent.client:476 - bench stream broke: ConnectionError (bench); asking again in 2s
+2026-10-14 13:21:12 | WARNING  | app.agent.client:476 - bench stream broke: ConnectionError (bench); asking again in 2s
+2026-10-14 13:23:53 | WARNING  | app.agent.client:476 - bench HTTP 502: The long-request connection ended. This request was not retried. (bench); asking again in 2s
+2026-10-14 13:23:55 | WARNING  | app.agent.client:476 - bench HTTP 502: The long-request connection ended. This request was not retried. (bench); asking again in 3s
+2026-10-14 13:23:59 | WARNING  | app.agent.client:476 - bench HTTP 502: The long-request connection ended. This request was not retried. (bench); asking again in 7s
