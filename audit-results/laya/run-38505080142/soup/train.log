@@ -1,0 +1,2 @@
+train items 761, calibration items 84, eval items 84 (calibration_slice), skipped {}, device cpu
+optimizer budget: 761 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 48 optimizer updates over 2 epoch(s)
