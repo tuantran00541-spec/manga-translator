@@ -40,7 +40,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "learn_every": 10, "prewalk_model": "",
-                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "services": {}, "stop_gate": None}
+                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "services": {}, "stop_gate": None, "shell_tool": True, "min_calls": 1}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -93,6 +93,10 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["timeout_to_background"] = data["timeout_to_background"]
                 if isinstance(data.get("advisor"), bool):
                     profile["advisor"] = data["advisor"]
+                if isinstance(data.get("shell_tool"), bool):
+                    profile["shell_tool"] = data["shell_tool"]
+                if isinstance(data.get("min_calls"), int) and 1 <= data["min_calls"] <= 10:
+                    profile["min_calls"] = data["min_calls"]
                 if isinstance(data.get("advisor_every"), int) and data["advisor_every"] > 0:
                     profile["advisor_every"] = data["advisor_every"]
                 if isinstance(data.get("learn_every"), int) and data["learn_every"] >= 0:

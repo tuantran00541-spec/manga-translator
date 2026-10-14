@@ -20,7 +20,7 @@
       "output": 2.94e-07
     }
   },
-  "trial": "final-3",
+  "trial": "final-4",
   "late_request": {
     "reasoning_effort": "medium"
   },
@@ -34,5 +34,9 @@
   "short_request": {
     "reasoning_effort": "medium"
   },
-  "short_minutes": 20
+  "short_minutes": 20,
+  "harness": {
+    "shell_tool": false,
+    "min_calls": 2
+  }
 }

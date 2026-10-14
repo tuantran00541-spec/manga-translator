@@ -336,6 +336,17 @@ MADE_TOOLS = ("The code is a function def name(...) or just its body (a top-leve
               "it runs once; otherwise it stays as a tool you call by name from your next reply on, and in later sessions. You see only what "
               "the code prints or returns. A failing tools.<name>(...) raises an exception that carries the tool's error.")
 LEAN_TOOLS = frozenset({"read_file", "edit_file", "run_command"})
+# With the profile's shell_tool off, the shell is reached only as tools.run_command inside create, so steps get chained.
+NO_SHELL = (("Your tools are read_file, edit_file, run_command (the shell: list, search, build, test) and create",
+             "Your tools are read_file, edit_file and create; the shell is tools.run_command(command=...) inside create"),
+            ("- read_file, edit_file and run_command each do one thing; use them to look around and for single steps.",
+             "- read_file and edit_file each do one thing. There is no shell tool: run commands with tools.run_command inside create."))
+# Calls that steer the session rather than do work; a reply made only of these is never held to min_calls.
+CONTROL_CALLS = frozenset({"job_output", "job_input", "job_stop", "exit_plan_mode", "goal_done"})
+MIN_CALLS_RULE = ("Every reply that uses tools must make at least {n} tool calls, counting each tools.<name>(...) inside create code; "
+                  "a reply with fewer is refused whole and none of its calls run.")
+FEW_CALLS = ("Refused: every reply must make at least {n} tool calls, counting each tools.<name>(...) inside create code, and this one made "
+             "{got}, so none of them ran. Batch your steps: one create whose code reads, runs, edits and checks in one go, or several calls in one reply.")
 LEAN_PROMPT = IDENTITY + """
 Your tools are read_file, edit_file, run_command (the shell: list, search, build, test) and create; how they fit together is below.
 
@@ -1361,7 +1372,8 @@ class AgentSession:
     def _lean_specs(self) -> list[dict]:
         """The model's own tools: read, edit, run and create, plus the tools the model made, and whatever a running job or a mode needs."""
         # A plan only looks: read_file, and create, whose code runs read-only then.
-        rows = [s for s in SPECS if s["name"] in (("read_file",) if self.plan_mode else LEAN_TOOLS)]
+        lean = LEAN_TOOLS if self.profile.get("shell_tool", True) else LEAN_TOOLS - {"run_command"}
+        rows = [s for s in SPECS if s["name"] in (("read_file",) if self.plan_mode else lean)]
         if self.workspace.policy.mode != "read-only":
             rows.append(SESSION_SPECS["create"])
             rows += [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
@@ -3023,6 +3035,11 @@ class AgentSession:
             parts.append("Keep working until the job is done, then end with one complete report: your final reply is all the parent sees.")
         if not self.depth and self.workspace.policy.mode != "read-only":
             parts.append(LEAN_CREATE)
+        if not self.depth and not self.profile.get("shell_tool", True):
+            for old, new in NO_SHELL:
+                parts = [part.replace(old, new) for part in parts]
+        if not self.depth and self.profile.get("min_calls", 1) > 1:
+            parts.append(MIN_CALLS_RULE.format(n=self.profile["min_calls"]))
         if not self.depth and (self.profile["model_roles"] or self._sources()):
             table = self.profile["model_roles"]
             rows = "; ".join(f"{n} ({c['model']}{': ' + c['note'] if c['note'] else ''})" for n, c in table.items())
@@ -3620,7 +3637,7 @@ class AgentSession:
             self.history.append({"role": "user", "content": PREWALK_CONTINUE})
             return True
         if self._dirty and not self._gated and self.workspace.policy.mode != "read-only" and (
-                any(r["name"] == "run_command" for r in self.specs())):
+                any(r["name"] in ("run_command", "create") for r in self.specs())):
             self._gated = True
             self.history.append({"role": "user", "content": GATE_NUDGE})
             self.emit("notice", text="Files changed but nothing was checked; reminding the agent to run a check.")
@@ -3654,6 +3671,12 @@ class AgentSession:
             # The page and the saved session keep a clipped copy; the model's history keeps all of it.
             self.emit("tool", id=call["id"], name=call["name"], ok=ok, output=clip(output, EVENT_OUTPUT))
 
+        few = self._call_count(calls)
+        if few is not None:
+            for call in calls:
+                record(call, FEW_CALLS.format(n=self.profile["min_calls"], got=few), False)
+            self.emit("notice", text=f"Refused a reply with {few} tool call(s); at least {self.profile['min_calls']} are required.")
+            return
         # Calls whose files do not overlap run together, up to ten at once; anything else runs alone, in order, and results are always recorded in the order given (Kimi Code).
         index = 0
         while index < len(calls):
@@ -3673,6 +3696,17 @@ class AgentSession:
             else:
                 record(batch[0], *one(batch[0]))
             index += len(batch)
+
+    def _call_count(self, calls: list[dict]) -> int | None:
+        """The reply's tool calls, counting each tools.<name>( in create code, when that is under min_calls; else None."""
+        need = self.profile.get("min_calls", 1)
+        if need <= 1 or self.depth or self.plan_mode or all(c["name"] in CONTROL_CALLS for c in calls):
+            return None
+        count = 0
+        for call in calls:
+            code = str(call["args"].get("code") or "") if call["name"] == "create" and isinstance(call["args"], dict) else ""
+            count += len(re.findall(r"\btools\.\w+\s*\(", code)) if call["name"] == "create" else 1
+        return count if count < need else None
 
     @staticmethod
     def _footprint(call: dict) -> tuple[frozenset, frozenset] | None:

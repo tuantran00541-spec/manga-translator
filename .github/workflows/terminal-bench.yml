@@ -30,6 +30,7 @@ jobs:
       late_request: ${{ steps.cfg.outputs.late_request }}
       short_request: ${{ steps.cfg.outputs.short_request }}
       short_minutes: ${{ steps.cfg.outputs.short_minutes }}
+      harness: ${{ steps.cfg.outputs.harness }}
       max_output: ${{ steps.cfg.outputs.max_output }}
       shards: ${{ steps.cfg.outputs.shards }}
       shard_total: ${{ steps.cfg.outputs.shard_total }}
@@ -73,6 +74,8 @@ jobs:
           print(f"late_request={json.dumps(cfg.get('late_request') or {})}")
           print(f"short_request={json.dumps(cfg.get('short_request') or {})}")
           print(f"short_minutes={int(cfg.get('short_minutes') or 0)}")
+          # Harness switches passed into the agent profile as is (say shell_tool, min_calls).
+          print(f"harness={json.dumps(cfg.get('harness') or {})}")
           print(f"max_output={int(cfg.get('max_output_tokens') or 65536)}")
           print(f"agent={cfg.get('agent') if cfg.get('agent') in ('chaos', 'terminus-2', 'codex', 'claude-code') else 'chaos'}")
           total = max(1, int(cfg.get('shards') or 1))
@@ -358,6 +361,7 @@ jobs:
           MANGA_AGENT_LATE_REQUEST: ${{ needs.config.outputs.late_request }}
           MANGA_AGENT_SHORT_REQUEST: ${{ needs.config.outputs.short_request }}
           MANGA_AGENT_SHORT_MINUTES: ${{ needs.config.outputs.short_minutes }}
+          MANGA_AGENT_HARNESS: ${{ needs.config.outputs.harness }}
           MANGA_AGENT_MODE: ${{ needs.config.outputs.mode }}
           MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
           MANGA_AGENT_SHA: ${{ github.sha }}

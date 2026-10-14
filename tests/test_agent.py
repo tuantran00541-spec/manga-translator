@@ -4118,6 +4118,23 @@ def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, hom
     assert out.splitlines()[1].strip() == "1" and "[changed: pkg/a.py]" in out, out
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create", "go"], "a kept tool joins the four"
     assert "The rest of the harness lives only inside create" in prompt
+
+
+def test_without_the_shell_tool_and_with_min_calls_a_lone_call_is_refused_and_chains_run(ws, home):
+    write_profile(home, {"shell_tool": False, "min_calls": 2})
+    one = call("create", name="go", keep=False, code="return tools.run_command(command='echo lone')")
+    two = call("create", name="go", keep=False, code="tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 2')\n"
+                                                     "return tools.run_command(command='echo chained && cat pkg/a.py')")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass",
+                                   complete=scripted(turn(calls=[one]), turn(calls=[call("read_file", path="pkg/a.py")]), turn(calls=[two]), turn("done")))
+    session._new_request("go")
+    assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "create"]
+    prompt = session.system_prompt()
+    assert "There is no shell tool" in prompt and "run_command (the shell" not in prompt and "at least 2 tool calls" in prompt
+    run_to_idle(session)
+    outputs = [h["content"] for h in session.history if h["role"] == "tool"]
+    assert outputs[0].startswith("Refused") and outputs[1].startswith("Refused") and "lone" not in outputs[0], outputs
+    assert "chained" in outputs[2] and "return 2" in outputs[2], outputs[2]
     with pytest.raises(ValueError, match="Unknown command /tools"):
         session.command("/tools hybrid")
     library = {s["name"] for s in session.library_specs()}
