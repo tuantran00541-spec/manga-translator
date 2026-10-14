@@ -1,0 +1,55 @@
+{
+ "rows": 243,
+ "passed": 196,
+ "always_pass": {
+  "accuracy": 0.8066,
+  "auc": 0.5,
+  "ece": 0.1934,
+  "fails_caught_at_10pct_false_alarm": 0.0,
+  "threshold": 1.0
+ },
+ "claim_regex": {
+  "accuracy": 0.6132,
+  "auc": 0.5985,
+  "ece": 0.3868,
+  "fails_caught_at_10pct_false_alarm": 0.0,
+  "threshold": 0.0
+ },
+ "old": {
+  "accuracy": 0.8724,
+  "auc": 0.803,
+  "ece": 0.0739,
+  "fails_caught_at_10pct_false_alarm": 0.6596,
+  "threshold": 0.9688,
+  "cpu_ms_per_row": 2008.0
+ },
+ "soup": {
+  "accuracy": 0.2757,
+  "auc": 0.6805,
+  "ece": 0.3094,
+  "fails_caught_at_10pct_false_alarm": 0.2766,
+  "threshold": 0.4942,
+  "cpu_ms_per_row": 2045.3
+ },
+ "tuned": {
+  "accuracy": 0.8889,
+  "auc": 0.8057,
+  "ece": 0.111,
+  "fails_caught_at_10pct_false_alarm": 0.6596,
+  "threshold": 0.7212,
+  "cpu_ms_per_row": 1998.0
+ },
+ "int8": {
+  "accuracy": 0.8642,
+  "auc": 0.7382,
+  "ece": 0.1556,
+  "fails_caught_at_10pct_false_alarm": 0.5532,
+  "threshold": 0.6887,
+  "cpu_ms_per_row": 596.7
+ },
+ "int8_vs_tuned": {
+  "flips_at_half": 22,
+  "flips_at_threshold": 30,
+  "max_abs_diff": 0.7413
+ }
+}

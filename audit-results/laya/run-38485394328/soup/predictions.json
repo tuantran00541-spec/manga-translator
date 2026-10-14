@@ -1,0 +1,1703 @@
+{
+ "run-38190247211/trials/bn-fit-modify__FtFKVMH": {
+  "label": false,
+  "old": 0.514,
+  "soup": 0.4945,
+  "tuned": 0.0107,
+  "int8": 0.6928
+ },
+ "run-38190247211/trials/break-filter-js-from-html__TWcj2gn": {
+  "label": false,
+  "old": 0.367,
+  "soup": 0.4957,
+  "tuned": 0.0119,
+  "int8": 0.7179
+ },
+ "run-38190247211/trials/caffe-cifar-10__VyjwVU2": {
+  "label": false,
+  "old": 0.3836,
+  "soup": 0.4936,
+  "tuned": 0.013,
+  "int8": 0.7284
+ },
+ "run-38194236105/trials/bn-fit-modify__aerGUyH": {
+  "label": true,
+  "old": 0.9751,
+  "soup": 0.4998,
+  "tuned": 0.9872,
+  "int8": 0.7668
+ },
+ "run-38194236105/trials/break-filter-js-from-html__pVhZCcA": {
+  "label": true,
+  "old": 0.9735,
+  "soup": 0.4981,
+  "tuned": 0.9877,
+  "int8": 0.7422
+ },
+ "run-38194236105/trials/caffe-cifar-10__qdBATiK": {
+  "label": true,
+  "old": 0.5338,
+  "soup": 0.495,
+  "tuned": 0.0142,
+  "int8": 0.2729
+ },
+ "run-38194236105/trials/custom-memory-heap-crash__a88Rhxq": {
+  "label": true,
+  "old": 0.9769,
+  "soup": 0.4999,
+  "tuned": 0.9878,
+  "int8": 0.7567
+ },
+ "run-38194236105/trials/extract-elf__KUJrWQM": {
+  "label": false,
+  "old": 0.9741,
+  "soup": 0.4966,
+  "tuned": 0.9859,
+  "int8": 0.6042
+ },
+ "run-38194236105/trials/financial-document-processor__oo97piS": {
+  "label": true,
+  "old": 0.9756,
+  "soup": 0.4952,
+  "tuned": 0.9626,
+  "int8": 0.7235
+ },
+ "run-38194236105/trials/fix-git__WNr6mSe": {
+  "label": true,
+  "old": 0.9686,
+  "soup": 0.4968,
+  "tuned": 0.9834,
+  "int8": 0.6958
+ },
+ "run-38194236105/trials/fix-ocaml-gc__aF4rZEx": {
+  "label": true,
+  "old": 0.974,
+  "soup": 0.5001,
+  "tuned": 0.9891,
+  "int8": 0.7522
+ },
+ "run-38194236105/trials/git-multibranch__6pukZhG": {
+  "label": true,
+  "old": 0.9784,
+  "soup": 0.4952,
+  "tuned": 0.9864,
+  "int8": 0.6205
+ },
+ "run-38194236105/trials/largest-eigenval__RF76LbW": {
+  "label": true,
+  "old": 0.9762,
+  "soup": 0.4961,
+  "tuned": 0.9852,
+  "int8": 0.7726
+ },
+ "run-38194236105/trials/modernize-scientific-stack__Xckpo2b": {
+  "label": true,
+  "old": 0.9747,
+  "soup": 0.499,
+  "tuned": 0.9882,
+  "int8": 0.7009
+ },
+ "run-38194236105/trials/nginx-request-logging__6J64VgZ": {
+  "label": true,
+  "old": 0.9733,
+  "soup": 0.4972,
+  "tuned": 0.99,
+  "int8": 0.7085
+ },
+ "run-38194236105/trials/openssl-selfsigned-cert__JkPUHpC": {
+  "label": true,
+  "old": 0.9599,
+  "soup": 0.4972,
+  "tuned": 0.9895,
+  "int8": 0.7584
+ },
+ "run-38213751011/trials/cancel-async-tasks__tcLXVpQ": {
+  "label": true,
+  "old": 0.9744,
+  "soup": 0.4968,
+  "tuned": 0.9852,
+  "int8": 0.72
+ },
+ "run-38213751011/trials/extract-elf__mynrexo": {
+  "label": false,
+  "old": 0.9747,
+  "soup": 0.4949,
+  "tuned": 0.9862,
+  "int8": 0.7772
+ },
+ "run-38213751011/trials/make-mips-interpreter__woVcoGD": {
+  "label": false,
+  "old": 0.386,
+  "soup": 0.4987,
+  "tuned": 0.0139,
+  "int8": 0.512
+ },
+ "run-38213751011/trials/merge-diff-arc-agi-task__Bt27VS6": {
+  "label": true,
+  "old": 0.9737,
+  "soup": 0.4995,
+  "tuned": 0.73,
+  "int8": 0.9856
+ },
+ "run-38232353264/shard-0/trials/bn-fit-modify__sUHVjVz": {
+  "label": true,
+  "old": 0.9716,
+  "soup": 0.499,
+  "tuned": 0.9851,
+  "int8": 0.7477
+ },
+ "run-38232353264/shard-0/trials/cancel-async-tasks__ya8mcJT": {
+  "label": true,
+  "old": 0.974,
+  "soup": 0.4956,
+  "tuned": 0.6065,
+  "int8": 0.7086
+ },
+ "run-38232353264/shard-0/trials/custom-memory-heap-crash__Hdw9aXJ": {
+  "label": true,
+  "old": 0.9762,
+  "soup": 0.4982,
+  "tuned": 0.9881,
+  "int8": 0.7585
+ },
+ "run-38232353264/shard-0/trials/extract-elf__bfcdDxC": {
+  "label": false,
+  "old": 0.975,
+  "soup": 0.4936,
+  "tuned": 0.9754,
+  "int8": 0.2659
+ },
+ "run-38232353264/shard-0/trials/fix-ocaml-gc__wKgPdi2": {
+  "label": true,
+  "old": 0.9749,
+  "soup": 0.4999,
+  "tuned": 0.9828,
+  "int8": 0.7252
+ },
+ "run-38232353264/shard-0/trials/openssl-selfsigned-cert__SBhyFdY": {
+  "label": true,
+  "old": 0.9733,
+  "soup": 0.4983,
+  "tuned": 0.989,
+  "int8": 0.7396
+ },
+ "run-38232353264/shard-0/trials/protein-assembly__im5V9Xt": {
+  "label": false,
+  "old": 0.3367,
+  "soup": 0.4945,
+  "tuned": 0.0111,
+  "int8": 0.4252
+ },
+ "run-38232353264/shard-0/trials/pypi-server__i6qWeR2": {
+  "label": true,
+  "old": 0.9759,
+  "soup": 0.5023,
+  "tuned": 0.9843,
+  "int8": 0.7308
+ },
+ "run-38232353264/shard-0/trials/raman-fitting__fqtkL3n": {
+  "label": false,
+  "old": 0.9735,
+  "soup": 0.5011,
+  "tuned": 0.9861,
+  "int8": 0.9903
+ },
+ "run-38232353264/shard-0/trials/sparql-university__FwMX8hU": {
+  "label": false,
+  "old": 0.8637,
+  "soup": 0.4974,
+  "tuned": 0.0119,
+  "int8": 0.7252
+ },
+ "run-38232353264/shard-0/trials/vulnerable-secret__Po9rCp8": {
+  "label": true,
+  "old": 0.9761,
+  "soup": 0.4989,
+  "tuned": 0.9843,
+  "int8": 0.6802
+ },
+ "run-38232353264/shard-1/trials/break-filter-js-from-html__ZKcQjHP": {
+  "label": true,
+  "old": 0.9721,
+  "soup": 0.4961,
+  "tuned": 0.986,
+  "int8": 0.743
+ },
+ "run-38232353264/shard-1/trials/caffe-cifar-10__6hERUQp": {
+  "label": true,
+  "old": 0.9739,
+  "soup": 0.4984,
+  "tuned": 0.9845,
+  "int8": 0.7155
+ },
+ "run-38232353264/shard-1/trials/financial-document-processor__jrQsYAY": {
+  "label": false,
+  "old": 0.9737,
+  "soup": 0.4932,
+  "tuned": 0.9898,
+  "int8": 0.6057
+ },
+ "run-38232353264/shard-1/trials/fix-git__9w9aMQK": {
+  "label": true,
+  "old": 0.9754,
+  "soup": 0.4937,
+  "tuned": 0.9864,
+  "int8": 0.7481
+ },
+ "run-38232353264/shard-1/trials/git-multibranch__JAfvzzN": {
+  "label": true,
+  "old": 0.976,
+  "soup": 0.4974,
+  "tuned": 0.989,
+  "int8": 0.7327
+ },
+ "run-38232353264/shard-1/trials/mailman__yJ2r3MU": {
+  "label": false,
+  "old": 0.4394,
+  "soup": 0.4966,
+  "tuned": 0.0119,
+  "int8": 0.6889
+ },
+ "run-38232353264/shard-1/trials/make-mips-interpreter__eV5rheB": {
+  "label": false,
+  "old": 0.3532,
+  "soup": 0.4965,
+  "tuned": 0.0086,
+  "int8": 0.1613
+ },
+ "run-38232353264/shard-1/trials/merge-diff-arc-agi-task__RZpo64j": {
+  "label": true,
+  "old": 0.9756,
+  "soup": 0.5001,
+  "tuned": 0.9891,
+  "int8": 0.9894
+ },
+ "run-38232353264/shard-1/trials/modernize-scientific-stack__Tnm6gTn": {
+  "label": true,
+  "old": 0.975,
+  "soup": 0.4984,
+  "tuned": 0.9875,
+  "int8": 0.7489
+ },
+ "run-38232353264/shard-1/trials/nginx-request-logging__ikmR9Qs": {
+  "label": true,
+  "old": 0.9744,
+  "soup": 0.4975,
+  "tuned": 0.9845,
+  "int8": 0.7302
+ },
+ "run-38232353264/shard-1/trials/query-optimize__enfLce3": {
+  "label": false,
+  "old": 0.9734,
+  "soup": 0.5006,
+  "tuned": 0.9809,
+  "int8": 0.9887
+ },
+ "run-38232353264/shard-1/trials/sam-cell-seg__kXyghnW": {
+  "label": true,
+  "old": 0.9783,
+  "soup": 0.4974,
+  "tuned": 0.9866,
+  "int8": 0.7338
+ },
+ "run-38232353264/shard-1/trials/torch-pipeline-parallelism__hqgYuWg": {
+  "label": true,
+  "old": 0.9762,
+  "soup": 0.4998,
+  "tuned": 0.9875,
+  "int8": 0.9895
+ },
+ "run-38232353264/shard-1/trials/winning-avg-corewars__avMzG6o": {
+  "label": true,
+  "old": 0.9709,
+  "soup": 0.496,
+  "tuned": 0.9905,
+  "int8": 0.7105
+ },
+ "run-38263038425/shard-0/trials/bn-fit-modify__dQoMhYv": {
+  "label": true,
+  "old": 0.9781,
+  "soup": 0.4996,
+  "tuned": 0.9853,
+  "int8": 0.7123
+ },
+ "run-38263038425/shard-0/trials/cancel-async-tasks__JiJHVZd": {
+  "label": true,
+  "old": 0.3935,
+  "soup": 0.4945,
+  "tuned": 0.7392,
+  "int8": 0.6915
+ },
+ "run-38263038425/shard-1/trials/break-filter-js-from-html__qdsRWYN": {
+  "label": true,
+  "old": 0.9787,
+  "soup": 0.5,
+  "tuned": 0.9866,
+  "int8": 0.7874
+ },
+ "run-38275063347/shard-0/trials/bn-fit-modify__4s3Pj3X": {
+  "label": true,
+  "old": 0.9756,
+  "soup": 0.4974,
+  "tuned": 0.9874,
+  "int8": 0.901
+ },
+ "run-38275063347/shard-0/trials/custom-memory-heap-crash__QAWqNMc": {
+  "label": true,
+  "old": 0.9781,
+  "soup": 0.4974,
+  "tuned": 0.9799,
+  "int8": 0.7204
+ },
+ "run-38275063347/shard-0/trials/fix-ocaml-gc__oawHQpu": {
+  "label": true,
+  "old": 0.9732,
+  "soup": 0.4983,
+  "tuned": 0.9843,
+  "int8": 0.787
+ },
+ "run-38275063347/shard-0/trials/openssl-selfsigned-cert__sAfqEpo": {
+  "label": true,
+  "old": 0.9755,
+  "soup": 0.4973,
+  "tuned": 0.9882,
+  "int8": 0.7754
+ },
+ "run-38275063347/shard-0/trials/pypi-server__nEuV8vw": {
+  "label": true,
+  "old": 0.9725,
+  "soup": 0.4966,
+  "tuned": 0.9735,
+  "int8": 0.9791
+ },
+ "run-38275063347/shard-0/trials/raman-fitting__Y35BGa9": {
+  "label": false,
+  "old": 0.45,
+  "soup": 0.4963,
+  "tuned": 0.5937,
+  "int8": 0.7959
+ },
+ "run-38275063347/shard-0/trials/sparql-university__xgKzgkp": {
+  "label": true,
+  "old": 0.9726,
+  "soup": 0.4982,
+  "tuned": 0.9858,
+  "int8": 0.7286
+ },
+ "run-38275063347/shard-0/trials/vulnerable-secret__h6X6xCR": {
+  "label": true,
+  "old": 0.9729,
+  "soup": 0.4972,
+  "tuned": 0.9881,
+  "int8": 0.7256
+ },
+ "run-38275063347/shard-1/trials/break-filter-js-from-html__RoJuhse": {
+  "label": true,
+  "old": 0.9724,
+  "soup": 0.4955,
+  "tuned": 0.9837,
+  "int8": 0.7321
+ },
+ "run-38275063347/shard-1/trials/caffe-cifar-10__GdVKhXX": {
+  "label": true,
+  "old": 0.9743,
+  "soup": 0.496,
+  "tuned": 0.9874,
+  "int8": 0.7476
+ },
+ "run-38275063347/shard-1/trials/feal-linear-cryptanalysis__XdoUjdx": {
+  "label": true,
+  "old": 0.9745,
+  "soup": 0.5006,
+  "tuned": 0.9869,
+  "int8": 0.7757
+ },
+ "run-38275063347/shard-1/trials/financial-document-processor__3PV39mf": {
+  "label": true,
+  "old": 0.9756,
+  "soup": 0.4904,
+  "tuned": 0.9874,
+  "int8": 0.6893
+ },
+ "run-38275063347/shard-1/trials/fix-git__viFFKyb": {
+  "label": true,
+  "old": 0.9761,
+  "soup": 0.4975,
+  "tuned": 0.9871,
+  "int8": 0.7413
+ },
+ "run-38275063347/shard-1/trials/git-multibranch__5u3cCeu": {
+  "label": true,
+  "old": 0.9726,
+  "soup": 0.4961,
+  "tuned": 0.9875,
+  "int8": 0.7139
+ },
+ "run-38275063347/shard-1/trials/make-mips-interpreter__p3zDfVT": {
+  "label": false,
+  "old": 0.3326,
+  "soup": 0.496,
+  "tuned": 0.0111,
+  "int8": 0.3563
+ },
+ "run-38275063347/shard-1/trials/merge-diff-arc-agi-task__xumMirE": {
+  "label": true,
+  "old": 0.9705,
+  "soup": 0.4991,
+  "tuned": 0.9852,
+  "int8": 0.8052
+ },
+ "run-38275063347/shard-1/trials/modernize-scientific-stack__mVx75uz": {
+  "label": true,
+  "old": 0.9772,
+  "soup": 0.4971,
+  "tuned": 0.9885,
+  "int8": 0.7093
+ },
+ "run-38275063347/shard-1/trials/nginx-request-logging__tJyj4Ay": {
+  "label": true,
+  "old": 0.9715,
+  "soup": 0.4933,
+  "tuned": 0.9891,
+  "int8": 0.714
+ },
+ "run-38275063347/shard-1/trials/query-optimize__gwaU39P": {
+  "label": true,
+  "old": 0.9762,
+  "soup": 0.4955,
+  "tuned": 0.8102,
+  "int8": 0.6174
+ },
+ "run-38275063347/shard-1/trials/sam-cell-seg__cFSFaTc": {
+  "label": false,
+  "old": 0.978,
+  "soup": 0.505,
+  "tuned": 0.9883,
+  "int8": 0.7169
+ },
+ "run-38275063347/shard-1/trials/torch-pipeline-parallelism__VgusUvr": {
+  "label": false,
+  "old": 0.9463,
+  "soup": 0.5045,
+  "tuned": 0.0108,
+  "int8": 0.4554
+ },
+ "run-38275063347/shard-1/trials/winning-avg-corewars__fHSYyyR": {
+  "label": false,
+  "old": 0.708,
+  "soup": 0.4943,
+  "tuned": 0.0183,
+  "int8": 0.0544
+ },
+ "run-38312707724/shard-0/trials/bn-fit-modify__cU4yzFi": {
+  "label": true,
+  "old": 0.9709,
+  "soup": 0.4989,
+  "tuned": 0.9883,
+  "int8": 0.9831
+ },
+ "run-38312707724/shard-0/trials/cancel-async-tasks__cKXt9Aq": {
+  "label": true,
+  "old": 0.9745,
+  "soup": 0.5014,
+  "tuned": 0.9885,
+  "int8": 0.701
+ },
+ "run-38312707724/shard-0/trials/custom-memory-heap-crash__5iNpuLf": {
+  "label": true,
+  "old": 0.9812,
+  "soup": 0.498,
+  "tuned": 0.9641,
+  "int8": 0.9853
+ },
+ "run-38312707724/shard-0/trials/extract-elf__uaAezKG": {
+  "label": false,
+  "old": 0.505,
+  "soup": 0.4905,
+  "tuned": 0.015,
+  "int8": 0.2687
+ },
+ "run-38312707724/shard-0/trials/fix-ocaml-gc__RpTqXNP": {
+  "label": true,
+  "old": 0.973,
+  "soup": 0.4977,
+  "tuned": 0.9875,
+  "int8": 0.7393
+ },
+ "run-38312707724/shard-0/trials/largest-eigenval__rpabkEY": {
+  "label": true,
+  "old": 0.9747,
+  "soup": 0.4971,
+  "tuned": 0.9753,
+  "int8": 0.708
+ },
+ "run-38312707724/shard-0/trials/openssl-selfsigned-cert__b2yJywS": {
+  "label": true,
+  "old": 0.9744,
+  "soup": 0.4952,
+  "tuned": 0.9902,
+  "int8": 0.7096
+ },
+ "run-38312707724/shard-0/trials/protein-assembly__AAhSpCg": {
+  "label": false,
+  "old": 0.3102,
+  "soup": 0.4963,
+  "tuned": 0.009,
+  "int8": 0.4372
+ },
+ "run-38312707724/shard-0/trials/pypi-server__woEefJF": {
+  "label": true,
+  "old": 0.9742,
+  "soup": 0.498,
+  "tuned": 0.9891,
+  "int8": 0.7253
+ },
+ "run-38312707724/shard-0/trials/sparql-university__rDp43gN": {
+  "label": true,
+  "old": 0.9688,
+  "soup": 0.495,
+  "tuned": 0.605,
+  "int8": 0.7492
+ },
+ "run-38312707724/shard-0/trials/vulnerable-secret__2p2Cm8A": {
+  "label": true,
+  "old": 0.9749,
+  "soup": 0.4975,
+  "tuned": 0.9864,
+  "int8": 0.7353
+ },
+ "run-38312707724/shard-1/trials/break-filter-js-from-html__WPzifaX": {
+  "label": true,
+  "old": 0.9744,
+  "soup": 0.4976,
+  "tuned": 0.9884,
+  "int8": 0.7417
+ },
+ "run-38312707724/shard-1/trials/caffe-cifar-10__EYHaTxR": {
+  "label": true,
+  "old": 0.9796,
+  "soup": 0.5001,
+  "tuned": 0.9854,
+  "int8": 0.7521
+ },
+ "run-38312707724/shard-1/trials/feal-linear-cryptanalysis__QFPetcL": {
+  "label": true,
+  "old": 0.9721,
+  "soup": 0.4969,
+  "tuned": 0.986,
+  "int8": 0.725
+ },
+ "run-38312707724/shard-1/trials/financial-document-processor__BJPNnSc": {
+  "label": true,
+  "old": 0.9771,
+  "soup": 0.4948,
+  "tuned": 0.993,
+  "int8": 0.7026
+ },
+ "run-38312707724/shard-1/trials/fix-git__mdrrdTj": {
+  "label": true,
+  "old": 0.974,
+  "soup": 0.4946,
+  "tuned": 0.9914,
+  "int8": 0.7003
+ },
+ "run-38312707724/shard-1/trials/git-multibranch__ZDvKXHq": {
+  "label": true,
+  "old": 0.9742,
+  "soup": 0.4968,
+  "tuned": 0.9775,
+  "int8": 0.7123
+ },
+ "run-38312707724/shard-1/trials/merge-diff-arc-agi-task__bA3fgjx": {
+  "label": true,
+  "old": 0.9728,
+  "soup": 0.4993,
+  "tuned": 0.9878,
+  "int8": 0.7125
+ },
+ "run-38312707724/shard-1/trials/modernize-scientific-stack__Ft8KWA5": {
+  "label": true,
+  "old": 0.9766,
+  "soup": 0.4983,
+  "tuned": 0.9855,
+  "int8": 0.6991
+ },
+ "run-38312707724/shard-1/trials/nginx-request-logging__7RcafBh": {
+  "label": true,
+  "old": 0.9773,
+  "soup": 0.4953,
+  "tuned": 0.9833,
+  "int8": 0.5012
+ },
+ "run-38312752230/shard-0/trials/bn-fit-modify__kJxBM9y": {
+  "label": true,
+  "old": 0.9682,
+  "soup": 0.505,
+  "tuned": 0.9876,
+  "int8": 0.7221
+ },
+ "run-38312752230/shard-0/trials/cancel-async-tasks__CCrQUGz": {
+  "label": true,
+  "old": 0.4205,
+  "soup": 0.4957,
+  "tuned": 0.0086,
+  "int8": 0.7216
+ },
+ "run-38312752230/shard-0/trials/custom-memory-heap-crash__cpfepqp": {
+  "label": true,
+  "old": 0.972,
+  "soup": 0.4972,
+  "tuned": 0.3212,
+  "int8": 0.7021
+ },
+ "run-38312752230/shard-0/trials/extract-elf__F5qVpkS": {
+  "label": false,
+  "old": 0.9744,
+  "soup": 0.4942,
+  "tuned": 0.982,
+  "int8": 0.6945
+ },
+ "run-38312752230/shard-0/trials/fix-ocaml-gc__YJRsMys": {
+  "label": true,
+  "old": 0.9751,
+  "soup": 0.5,
+  "tuned": 0.9834,
+  "int8": 0.7406
+ },
+ "run-38312752230/shard-0/trials/openssl-selfsigned-cert__VMnwVEa": {
+  "label": true,
+  "old": 0.9718,
+  "soup": 0.499,
+  "tuned": 0.9861,
+  "int8": 0.7174
+ },
+ "run-38312752230/shard-0/trials/protein-assembly__QR4JvBF": {
+  "label": false,
+  "old": 0.3557,
+  "soup": 0.4975,
+  "tuned": 0.0091,
+  "int8": 0.0339
+ },
+ "run-38312752230/shard-0/trials/pypi-server__Mf86z4a": {
+  "label": true,
+  "old": 0.9797,
+  "soup": 0.4999,
+  "tuned": 0.9883,
+  "int8": 0.7422
+ },
+ "run-38312752230/shard-0/trials/sparql-university__CaXJkj5": {
+  "label": true,
+  "old": 0.9726,
+  "soup": 0.4996,
+  "tuned": 0.7292,
+  "int8": 0.6887
+ },
+ "run-38312752230/shard-0/trials/vulnerable-secret__t395BAt": {
+  "label": true,
+  "old": 0.9719,
+  "soup": 0.498,
+  "tuned": 0.9888,
+  "int8": 0.7201
+ },
+ "run-38312752230/shard-1/trials/break-filter-js-from-html__2EdkHqi": {
+  "label": true,
+  "old": 0.9756,
+  "soup": 0.499,
+  "tuned": 0.9847,
+  "int8": 0.7641
+ },
+ "run-38312752230/shard-1/trials/caffe-cifar-10__8h6Z34c": {
+  "label": true,
+  "old": 0.9727,
+  "soup": 0.498,
+  "tuned": 0.9878,
+  "int8": 0.7214
+ },
+ "run-38312752230/shard-1/trials/feal-linear-cryptanalysis__DHLrRVH": {
+  "label": true,
+  "old": 0.9766,
+  "soup": 0.4971,
+  "tuned": 0.9885,
+  "int8": 0.7223
+ },
+ "run-38312752230/shard-1/trials/financial-document-processor__LTkCvNB": {
+  "label": true,
+  "old": 0.9759,
+  "soup": 0.4925,
+  "tuned": 0.759,
+  "int8": 0.7347
+ },
+ "run-38312752230/shard-1/trials/fix-git__8WGTL2A": {
+  "label": true,
+  "old": 0.967,
+  "soup": 0.4998,
+  "tuned": 0.9891,
+  "int8": 0.7327
+ },
+ "run-38312752230/shard-1/trials/git-multibranch__Syxswdf": {
+  "label": true,
+  "old": 0.9723,
+  "soup": 0.4957,
+  "tuned": 0.9875,
+  "int8": 0.7315
+ },
+ "run-38312752230/shard-1/trials/merge-diff-arc-agi-task__Uc3KFvS": {
+  "label": true,
+  "old": 0.9764,
+  "soup": 0.4977,
+  "tuned": 0.6611,
+  "int8": 0.7266
+ },
+ "run-38312752230/shard-1/trials/modernize-scientific-stack__C2WhZri": {
+  "label": true,
+  "old": 0.9776,
+  "soup": 0.4976,
+  "tuned": 0.9864,
+  "int8": 0.7854
+ },
+ "run-38312752230/shard-1/trials/nginx-request-logging__g7XgedZ": {
+  "label": true,
+  "old": 0.9745,
+  "soup": 0.4959,
+  "tuned": 0.6612,
+  "int8": 0.6565
+ },
+ "run-38312752230/shard-1/trials/query-optimize__otUoHuE": {
+  "label": false,
+  "old": 0.9757,
+  "soup": 0.492,
+  "tuned": 0.0411,
+  "int8": 0.739
+ },
+ "run-38312752230/shard-1/trials/sam-cell-seg__biqksJo": {
+  "label": false,
+  "old": 0.9727,
+  "soup": 0.5006,
+  "tuned": 0.9886,
+  "int8": 0.7089
+ },
+ "run-38326228683/shard-0/trials/bn-fit-modify__9rpyUVW": {
+  "label": true,
+  "old": 0.9731,
+  "soup": 0.4986,
+  "tuned": 0.9839,
+  "int8": 0.7517
+ },
+ "run-38326228683/shard-1/trials/break-filter-js-from-html__8kJHvP7": {
+  "label": true,
+  "old": 0.9754,
+  "soup": 0.4952,
+  "tuned": 0.9869,
+  "int8": 0.9304
+ },
+ "run-38328231499/shard-0/trials/bn-fit-modify__u8dKNCD": {
+  "label": true,
+  "old": 0.9738,
+  "soup": 0.4976,
+  "tuned": 0.9859,
+  "int8": 0.9863
+ },
+ "run-38328231499/shard-1/trials/break-filter-js-from-html__SVX8BqD": {
+  "label": true,
+  "old": 0.9754,
+  "soup": 0.5002,
+  "tuned": 0.9671,
+  "int8": 0.7882
+ },
+ "run-38330291977/shard-0/trials/bn-fit-modify__q9WueKi": {
+  "label": true,
+  "old": 0.9769,
+  "soup": 0.4953,
+  "tuned": 0.9835,
+  "int8": 0.721
+ },
+ "run-38330291977/shard-0/trials/cancel-async-tasks__TavscbR": {
+  "label": false,
+  "old": 0.3395,
+  "soup": 0.4913,
+  "tuned": 0.0109,
+  "int8": 0.4557
+ },
+ "run-38330291977/shard-0/trials/custom-memory-heap-crash__QX8XjpQ": {
+  "label": true,
+  "old": 0.9752,
+  "soup": 0.4992,
+  "tuned": 0.985,
+  "int8": 0.7075
+ },
+ "run-38330291977/shard-0/trials/fix-ocaml-gc__gScBRfG": {
+  "label": true,
+  "old": 0.9737,
+  "soup": 0.4987,
+  "tuned": 0.9866,
+  "int8": 0.7438
+ },
+ "run-38330291977/shard-0/trials/largest-eigenval__RQ8gCyy": {
+  "label": false,
+  "old": 0.363,
+  "soup": 0.5016,
+  "tuned": 0.0108,
+  "int8": 0.6977
+ },
+ "run-38330291977/shard-0/trials/openssl-selfsigned-cert__NUuPEmm": {
+  "label": true,
+  "old": 0.5797,
+  "soup": 0.4947,
+  "tuned": 0.6891,
+  "int8": 0.6162
+ },
+ "run-38330291977/shard-0/trials/protein-assembly__hNfgQo8": {
+  "label": false,
+  "old": 0.3048,
+  "soup": 0.494,
+  "tuned": 0.0121,
+  "int8": 0.6739
+ },
+ "run-38330291977/shard-0/trials/pypi-server__U9qqBqZ": {
+  "label": true,
+  "old": 0.9775,
+  "soup": 0.5027,
+  "tuned": 0.9899,
+  "int8": 0.7618
+ },
+ "run-38330291977/shard-0/trials/sparql-university__6vDFvaB": {
+  "label": true,
+  "old": 0.9741,
+  "soup": 0.4934,
+  "tuned": 0.9912,
+  "int8": 0.6829
+ },
+ "run-38330291977/shard-0/trials/vulnerable-secret__uvyMhHt": {
+  "label": true,
+  "old": 0.9748,
+  "soup": 0.5017,
+  "tuned": 0.9869,
+  "int8": 0.7215
+ },
+ "run-38330291977/shard-1/trials/break-filter-js-from-html__Pb3rXLW": {
+  "label": true,
+  "old": 0.978,
+  "soup": 0.4971,
+  "tuned": 0.9893,
+  "int8": 0.7268
+ },
+ "run-38330291977/shard-1/trials/caffe-cifar-10__MwnsxAk": {
+  "label": true,
+  "old": 0.9739,
+  "soup": 0.4993,
+  "tuned": 0.9489,
+  "int8": 0.7165
+ },
+ "run-38330291977/shard-1/trials/feal-linear-cryptanalysis__4eimBYy": {
+  "label": true,
+  "old": 0.9743,
+  "soup": 0.497,
+  "tuned": 0.9822,
+  "int8": 0.7162
+ },
+ "run-38330291977/shard-1/trials/fix-git__6xCzK6Q": {
+  "label": true,
+  "old": 0.9738,
+  "soup": 0.4994,
+  "tuned": 0.9819,
+  "int8": 0.7507
+ },
+ "run-38330291977/shard-1/trials/git-multibranch__gBYh96f": {
+  "label": true,
+  "old": 0.9724,
+  "soup": 0.4951,
+  "tuned": 0.9896,
+  "int8": 0.7147
+ },
+ "run-38330291977/shard-1/trials/merge-diff-arc-agi-task__ZVXwREf": {
+  "label": false,
+  "old": 0.3291,
+  "soup": 0.4989,
+  "tuned": 0.0107,
+  "int8": 0.2205
+ },
+ "run-38330291977/shard-1/trials/modernize-scientific-stack__sfsKDVM": {
+  "label": true,
+  "old": 0.9778,
+  "soup": 0.4987,
+  "tuned": 0.9874,
+  "int8": 0.7325
+ },
+ "run-38330291977/shard-1/trials/nginx-request-logging__QivNcUg": {
+  "label": true,
+  "old": 0.9775,
+  "soup": 0.4967,
+  "tuned": 0.987,
+  "int8": 0.712
+ },
+ "run-38330291977/shard-1/trials/query-optimize__YQCxuFC": {
+  "label": false,
+  "old": 0.9738,
+  "soup": 0.4931,
+  "tuned": 0.9864,
+  "int8": 0.5085
+ },
+ "run-38330291977/shard-1/trials/sam-cell-seg__eepLsnK": {
+  "label": true,
+  "old": 0.978,
+  "soup": 0.4992,
+  "tuned": 0.9873,
+  "int8": 0.7173
+ },
+ "run-38330300327/shard-0/trials/bn-fit-modify__c5uwUFM": {
+  "label": true,
+  "old": 0.9774,
+  "soup": 0.5,
+  "tuned": 0.991,
+  "int8": 0.8767
+ },
+ "run-38330300327/shard-0/trials/custom-memory-heap-crash__jueqPW9": {
+  "label": true,
+  "old": 0.9803,
+  "soup": 0.4972,
+  "tuned": 0.9871,
+  "int8": 0.7151
+ },
+ "run-38330300327/shard-0/trials/extract-elf__iybdNUs": {
+  "label": false,
+  "old": 0.3603,
+  "soup": 0.4939,
+  "tuned": 0.0126,
+  "int8": 0.4364
+ },
+ "run-38330300327/shard-0/trials/fix-ocaml-gc__9u55itR": {
+  "label": true,
+  "old": 0.9801,
+  "soup": 0.4965,
+  "tuned": 0.9854,
+  "int8": 0.9724
+ },
+ "run-38330300327/shard-0/trials/largest-eigenval__czsUYr6": {
+  "label": false,
+  "old": 0.3258,
+  "soup": 0.4965,
+  "tuned": 0.0111,
+  "int8": 0.5066
+ },
+ "run-38330300327/shard-0/trials/openssl-selfsigned-cert__FywqfoS": {
+  "label": true,
+  "old": 0.9759,
+  "soup": 0.4978,
+  "tuned": 0.9874,
+  "int8": 0.7064
+ },
+ "run-38330300327/shard-0/trials/protein-assembly__m7T3jXy": {
+  "label": true,
+  "old": 0.355,
+  "soup": 0.4973,
+  "tuned": 0.0122,
+  "int8": 0.0182
+ },
+ "run-38330300327/shard-0/trials/pypi-server__PtF7NeW": {
+  "label": true,
+  "old": 0.9753,
+  "soup": 0.4974,
+  "tuned": 0.9895,
+  "int8": 0.9506
+ },
+ "run-38330300327/shard-0/trials/sparql-university__DAdsRgn": {
+  "label": true,
+  "old": 0.9772,
+  "soup": 0.496,
+  "tuned": 0.7547,
+  "int8": 0.6938
+ },
+ "run-38330300327/shard-0/trials/vulnerable-secret__iR57fwe": {
+  "label": true,
+  "old": 0.9771,
+  "soup": 0.498,
+  "tuned": 0.9898,
+  "int8": 0.7372
+ },
+ "run-38330300327/shard-1/trials/break-filter-js-from-html__42Wt3M2": {
+  "label": true,
+  "old": 0.9739,
+  "soup": 0.4959,
+  "tuned": 0.9804,
+  "int8": 0.8694
+ },
+ "run-38330300327/shard-1/trials/caffe-cifar-10__jHMkBHj": {
+  "label": true,
+  "old": 0.9719,
+  "soup": 0.501,
+  "tuned": 0.9802,
+  "int8": 0.7441
+ },
+ "run-38330300327/shard-1/trials/feal-linear-cryptanalysis__8jR9THZ": {
+  "label": true,
+  "old": 0.9736,
+  "soup": 0.4992,
+  "tuned": 0.9869,
+  "int8": 0.9848
+ },
+ "run-38330300327/shard-1/trials/financial-document-processor__Lnp5rTb": {
+  "label": true,
+  "old": 0.9729,
+  "soup": 0.4928,
+  "tuned": 0.9913,
+  "int8": 0.7519
+ },
+ "run-38330300327/shard-1/trials/fix-git__6VwLfjv": {
+  "label": true,
+  "old": 0.8526,
+  "soup": 0.4946,
+  "tuned": 0.0306,
+  "int8": 0.5883
+ },
+ "run-38330300327/shard-1/trials/git-multibranch__PYdNNyD": {
+  "label": true,
+  "old": 0.3202,
+  "soup": 0.4937,
+  "tuned": 0.0102,
+  "int8": 0.5623
+ },
+ "run-38330300327/shard-1/trials/mailman__G6Tq6wH": {
+  "label": false,
+  "old": 0.3286,
+  "soup": 0.4938,
+  "tuned": 0.0112,
+  "int8": 0.2543
+ },
+ "run-38330300327/shard-1/trials/make-mips-interpreter__guoAnYU": {
+  "label": false,
+  "old": 0.6818,
+  "soup": 0.4947,
+  "tuned": 0.0128,
+  "int8": 0.1317
+ },
+ "run-38330300327/shard-1/trials/merge-diff-arc-agi-task__H43sEq4": {
+  "label": true,
+  "old": 0.9768,
+  "soup": 0.499,
+  "tuned": 0.9773,
+  "int8": 0.7757
+ },
+ "run-38330300327/shard-1/trials/modernize-scientific-stack__wzng4aW": {
+  "label": true,
+  "old": 0.9736,
+  "soup": 0.499,
+  "tuned": 0.9857,
+  "int8": 0.7236
+ },
+ "run-38330300327/shard-1/trials/nginx-request-logging__KXK7g6u": {
+  "label": true,
+  "old": 0.9739,
+  "soup": 0.4948,
+  "tuned": 0.9888,
+  "int8": 0.6937
+ },
+ "run-38330300327/shard-1/trials/query-optimize__PVgDjPj": {
+  "label": false,
+  "old": 0.9741,
+  "soup": 0.4974,
+  "tuned": 0.9867,
+  "int8": 0.7886
+ },
+ "run-38330300327/shard-1/trials/sam-cell-seg__yBPeksR": {
+  "label": true,
+  "old": 0.9744,
+  "soup": 0.4977,
+  "tuned": 0.9841,
+  "int8": 0.7549
+ },
+ "run-38330300327/shard-1/trials/winning-avg-corewars__AQFXkKe": {
+  "label": true,
+  "old": 0.9747,
+  "soup": 0.4947,
+  "tuned": 0.9868,
+  "int8": 0.6904
+ },
+ "run-38351577312/shard-0/trials/bn-fit-modify__A66EMFe": {
+  "label": true,
+  "old": 0.9727,
+  "soup": 0.4993,
+  "tuned": 0.9837,
+  "int8": 0.796
+ },
+ "run-38351577312/shard-0/trials/cancel-async-tasks__4QAADys": {
+  "label": false,
+  "old": 0.3257,
+  "soup": 0.4928,
+  "tuned": 0.0087,
+  "int8": 0.28
+ },
+ "run-38351577312/shard-0/trials/custom-memory-heap-crash__fHoov5n": {
+  "label": true,
+  "old": 0.9717,
+  "soup": 0.4998,
+  "tuned": 0.9851,
+  "int8": 0.7611
+ },
+ "run-38351577312/shard-0/trials/fix-ocaml-gc__ppAgFoL": {
+  "label": true,
+  "old": 0.9778,
+  "soup": 0.4951,
+  "tuned": 0.9861,
+  "int8": 0.7015
+ },
+ "run-38351577312/shard-0/trials/largest-eigenval__n9mXA79": {
+  "label": false,
+  "old": 0.9741,
+  "soup": 0.5012,
+  "tuned": 0.9865,
+  "int8": 0.982
+ },
+ "run-38351577312/shard-0/trials/openssl-selfsigned-cert__Qt2pbDk": {
+  "label": true,
+  "old": 0.9769,
+  "soup": 0.4968,
+  "tuned": 0.9852,
+  "int8": 0.7522
+ },
+ "run-38351577312/shard-0/trials/protein-assembly__c83M5Sz": {
+  "label": false,
+  "old": 0.3086,
+  "soup": 0.4957,
+  "tuned": 0.0111,
+  "int8": 0.7524
+ },
+ "run-38351577312/shard-0/trials/pypi-server__wnQGb4G": {
+  "label": true,
+  "old": 0.9727,
+  "soup": 0.497,
+  "tuned": 0.9876,
+  "int8": 0.7202
+ },
+ "run-38351577312/shard-0/trials/vulnerable-secret__fUW7bRy": {
+  "label": true,
+  "old": 0.9746,
+  "soup": 0.4958,
+  "tuned": 0.9847,
+  "int8": 0.7235
+ },
+ "run-38351577312/shard-1/trials/break-filter-js-from-html__9nPiFpV": {
+  "label": true,
+  "old": 0.9741,
+  "soup": 0.4959,
+  "tuned": 0.986,
+  "int8": 0.763
+ },
+ "run-38351577312/shard-1/trials/caffe-cifar-10__JrgJUyU": {
+  "label": true,
+  "old": 0.9779,
+  "soup": 0.502,
+  "tuned": 0.9875,
+  "int8": 0.6966
+ },
+ "run-38351577312/shard-1/trials/feal-linear-cryptanalysis__SxoUFhb": {
+  "label": false,
+  "old": 0.3366,
+  "soup": 0.4934,
+  "tuned": 0.0111,
+  "int8": 0.6746
+ },
+ "run-38351577312/shard-1/trials/financial-document-processor__kyTVkbm": {
+  "label": true,
+  "old": 0.9742,
+  "soup": 0.483,
+  "tuned": 0.99,
+  "int8": 0.7239
+ },
+ "run-38351577312/shard-1/trials/fix-git__mAnAk8F": {
+  "label": true,
+  "old": 0.9666,
+  "soup": 0.4942,
+  "tuned": 0.9687,
+  "int8": 0.7186
+ },
+ "run-38351577312/shard-1/trials/git-multibranch__WvJtgdp": {
+  "label": true,
+  "old": 0.9738,
+  "soup": 0.4977,
+  "tuned": 0.9859,
+  "int8": 0.7234
+ },
+ "run-38351577312/shard-1/trials/mailman__sxKJbUt": {
+  "label": true,
+  "old": 0.3305,
+  "soup": 0.4921,
+  "tuned": 0.0124,
+  "int8": 0.3658
+ },
+ "run-38351577312/shard-1/trials/make-mips-interpreter__VnyvPdu": {
+  "label": false,
+  "old": 0.3242,
+  "soup": 0.4943,
+  "tuned": 0.0116,
+  "int8": 0.0448
+ },
+ "run-38351577312/shard-1/trials/merge-diff-arc-agi-task__BvBWtdg": {
+  "label": true,
+  "old": 0.9703,
+  "soup": 0.4981,
+  "tuned": 0.9812,
+  "int8": 0.7524
+ },
+ "run-38351577312/shard-1/trials/modernize-scientific-stack__oM5Ht8C": {
+  "label": true,
+  "old": 0.9811,
+  "soup": 0.4934,
+  "tuned": 0.9851,
+  "int8": 0.7417
+ },
+ "run-38351577312/shard-1/trials/nginx-request-logging__sAjDCTM": {
+  "label": true,
+  "old": 0.9757,
+  "soup": 0.4968,
+  "tuned": 0.9869,
+  "int8": 0.7246
+ },
+ "run-38351577312/shard-1/trials/query-optimize__nLmKdsK": {
+  "label": false,
+  "old": 0.9779,
+  "soup": 0.4987,
+  "tuned": 0.9826,
+  "int8": 0.7626
+ },
+ "run-38351577312/shard-1/trials/sam-cell-seg__feSAnVn": {
+  "label": true,
+  "old": 0.9737,
+  "soup": 0.4975,
+  "tuned": 0.9843,
+  "int8": 0.7796
+ },
+ "run-38351577312/shard-1/trials/winning-avg-corewars__vqRASXK": {
+  "label": false,
+  "old": 0.3322,
+  "soup": 0.4942,
+  "tuned": 0.0258,
+  "int8": 0.1681
+ },
+ "run-38351581309/shard-0/trials/bn-fit-modify__GfMjeTC": {
+  "label": true,
+  "old": 0.9742,
+  "soup": 0.499,
+  "tuned": 0.9846,
+  "int8": 0.7518
+ },
+ "run-38351581309/shard-0/trials/cancel-async-tasks__7qzJjSM": {
+  "label": true,
+  "old": 0.3437,
+  "soup": 0.4942,
+  "tuned": 0.0109,
+  "int8": 0.6335
+ },
+ "run-38351581309/shard-0/trials/custom-memory-heap-crash__6jRHR8y": {
+  "label": true,
+  "old": 0.9803,
+  "soup": 0.4966,
+  "tuned": 0.9872,
+  "int8": 0.7684
+ },
+ "run-38351581309/shard-0/trials/extract-elf__TxjDowN": {
+  "label": true,
+  "old": 0.9772,
+  "soup": 0.499,
+  "tuned": 0.9838,
+  "int8": 0.758
+ },
+ "run-38351581309/shard-0/trials/fix-ocaml-gc__AJ72jsj": {
+  "label": true,
+  "old": 0.974,
+  "soup": 0.4955,
+  "tuned": 0.9876,
+  "int8": 0.735
+ },
+ "run-38351581309/shard-0/trials/openssl-selfsigned-cert__hfPjZnL": {
+  "label": true,
+  "old": 0.974,
+  "soup": 0.497,
+  "tuned": 0.9888,
+  "int8": 0.7232
+ },
+ "run-38351581309/shard-0/trials/protein-assembly__JhvWJMt": {
+  "label": false,
+  "old": 0.4013,
+  "soup": 0.4955,
+  "tuned": 0.0136,
+  "int8": 0.0248
+ },
+ "run-38351581309/shard-0/trials/pypi-server__8EAfjag": {
+  "label": true,
+  "old": 0.9709,
+  "soup": 0.5008,
+  "tuned": 0.9888,
+  "int8": 0.7058
+ },
+ "run-38351581309/shard-0/trials/sparql-university__rr97rGE": {
+  "label": true,
+  "old": 0.9744,
+  "soup": 0.4949,
+  "tuned": 0.9855,
+  "int8": 0.7233
+ },
+ "run-38351581309/shard-0/trials/vulnerable-secret__W9grrGN": {
+  "label": true,
+  "old": 0.9745,
+  "soup": 0.5012,
+  "tuned": 0.9873,
+  "int8": 0.7639
+ },
+ "run-38351581309/shard-1/trials/break-filter-js-from-html__kj6ZJMg": {
+  "label": true,
+  "old": 0.9755,
+  "soup": 0.4999,
+  "tuned": 0.9884,
+  "int8": 0.7299
+ },
+ "run-38351581309/shard-1/trials/caffe-cifar-10__Ndq6E7J": {
+  "label": true,
+  "old": 0.9765,
+  "soup": 0.5017,
+  "tuned": 0.9875,
+  "int8": 0.7578
+ },
+ "run-38351581309/shard-1/trials/feal-linear-cryptanalysis__HkveEN7": {
+  "label": true,
+  "old": 0.9748,
+  "soup": 0.4939,
+  "tuned": 0.9798,
+  "int8": 0.71
+ },
+ "run-38351581309/shard-1/trials/fix-git__eQcXJML": {
+  "label": true,
+  "old": 0.7238,
+  "soup": 0.4933,
+  "tuned": 0.7057,
+  "int8": 0.74
+ },
+ "run-38351581309/shard-1/trials/git-multibranch__B2EhpHn": {
+  "label": true,
+  "old": 0.9731,
+  "soup": 0.5004,
+  "tuned": 0.9883,
+  "int8": 0.7546
+ },
+ "run-38351581309/shard-1/trials/merge-diff-arc-agi-task__izSY3KJ": {
+  "label": true,
+  "old": 0.9734,
+  "soup": 0.5066,
+  "tuned": 0.9868,
+  "int8": 0.7457
+ },
+ "run-38351581309/shard-1/trials/modernize-scientific-stack__p3zvFtm": {
+  "label": true,
+  "old": 0.975,
+  "soup": 0.4979,
+  "tuned": 0.9858,
+  "int8": 0.7358
+ },
+ "run-38351581309/shard-1/trials/nginx-request-logging__oTTThKq": {
+  "label": true,
+  "old": 0.9727,
+  "soup": 0.4973,
+  "tuned": 0.9873,
+  "int8": 0.7212
+ },
+ "run-38351581309/shard-1/trials/query-optimize__oxU75jy": {
+  "label": false,
+  "old": 0.9725,
+  "soup": 0.493,
+  "tuned": 0.9845,
+  "int8": 0.7225
+ },
+ "run-38351581309/shard-1/trials/sam-cell-seg__HN5naSa": {
+  "label": true,
+  "old": 0.9774,
+  "soup": 0.5018,
+  "tuned": 0.984,
+  "int8": 0.9698
+ },
+ "run-38361928216/shard-0/trials/django__django-11790__zNgYwQj": {
+  "label": true,
+  "old": 0.9757,
+  "soup": 0.4917,
+  "tuned": 0.7212,
+  "int8": 0.7078
+ },
+ "run-38361928216/shard-0/trials/pydata__xarray-3151__pcwCQPp": {
+  "label": true,
+  "old": 0.9735,
+  "soup": 0.4982,
+  "tuned": 0.986,
+  "int8": 0.7903
+ },
+ "run-38361928216/shard-0/trials/pylint-dev__pylint-4551__uDyRqP7": {
+  "label": true,
+  "old": 0.9749,
+  "soup": 0.4985,
+  "tuned": 0.9842,
+  "int8": 0.7526
+ },
+ "run-38361928216/shard-0/trials/scikit-learn__scikit-learn-9288__rMp4zJf": {
+  "label": true,
+  "old": 0.9715,
+  "soup": 0.4992,
+  "tuned": 0.9848,
+  "int8": 0.7237
+ },
+ "run-38361928216/shard-0/trials/sphinx-doc__sphinx-9602__u2bpmNi": {
+  "label": true,
+  "old": 0.9765,
+  "soup": 0.4985,
+  "tuned": 0.9867,
+  "int8": 0.743
+ },
+ "run-38361928216/shard-1/trials/astropy__astropy-14365__DMYYakP": {
+  "label": true,
+  "old": 0.9745,
+  "soup": 0.499,
+  "tuned": 0.9845,
+  "int8": 0.7137
+ },
+ "run-38361928216/shard-1/trials/django__django-11095__8Lze6R4": {
+  "label": true,
+  "old": 0.9743,
+  "soup": 0.5008,
+  "tuned": 0.9857,
+  "int8": 0.7168
+ },
+ "run-38361928216/shard-1/trials/django__django-12858__KFzpWiU": {
+  "label": true,
+  "old": 0.9725,
+  "soup": 0.4979,
+  "tuned": 0.9862,
+  "int8": 0.75
+ },
+ "run-38361928216/shard-1/trials/django__django-14792__famkYjs": {
+  "label": true,
+  "old": 0.682,
+  "soup": 0.4957,
+  "tuned": 0.6617,
+  "int8": 0.6765
+ },
+ "run-38361928216/shard-1/trials/django__django-15930__ooNwFXi": {
+  "label": true,
+  "old": 0.9756,
+  "soup": 0.5014,
+  "tuned": 0.9804,
+  "int8": 0.732
+ },
+ "run-38361928216/shard-1/trials/django__django-17087__P5kVbBu": {
+  "label": true,
+  "old": 0.9711,
+  "soup": 0.4959,
+  "tuned": 0.9879,
+  "int8": 0.7347
+ },
+ "run-38361931114/shard-0/trials/django__django-11790__umPuopj": {
+  "label": true,
+  "old": 0.973,
+  "soup": 0.4975,
+  "tuned": 0.9888,
+  "int8": 0.732
+ },
+ "run-38361931114/shard-0/trials/pydata__xarray-3151__BHrEP2W": {
+  "label": true,
+  "old": 0.9771,
+  "soup": 0.4994,
+  "tuned": 0.9737,
+  "int8": 0.7253
+ },
+ "run-38361931114/shard-0/trials/pylint-dev__pylint-4551__Fi3NpKH": {
+  "label": true,
+  "old": 0.9717,
+  "soup": 0.4987,
+  "tuned": 0.9821,
+  "int8": 0.7347
+ },
+ "run-38361931114/shard-0/trials/scikit-learn__scikit-learn-9288__jYCkbmx": {
+  "label": true,
+  "old": 0.9725,
+  "soup": 0.4959,
+  "tuned": 0.985,
+  "int8": 0.7441
+ },
+ "run-38361931114/shard-1/trials/astropy__astropy-14365__Vp6QRH3": {
+  "label": true,
+  "old": 0.9734,
+  "soup": 0.4952,
+  "tuned": 0.9879,
+  "int8": 0.3387
+ },
+ "run-38361931114/shard-1/trials/django__django-11095__iZovQk6": {
+  "label": true,
+  "old": 0.9757,
+  "soup": 0.4989,
+  "tuned": 0.9866,
+  "int8": 0.7827
+ },
+ "run-38361931114/shard-1/trials/django__django-12858__zzQbeJF": {
+  "label": true,
+  "old": 0.975,
+  "soup": 0.4974,
+  "tuned": 0.9885,
+  "int8": 0.7061
+ },
+ "run-38361931114/shard-1/trials/django__django-14792__NFdSwXz": {
+  "label": true,
+  "old": 0.3679,
+  "soup": 0.4954,
+  "tuned": 0.5834,
+  "int8": 0.7077
+ },
+ "run-38361931114/shard-1/trials/django__django-15930__3nMr8AA": {
+  "label": true,
+  "old": 0.9734,
+  "soup": 0.5018,
+  "tuned": 0.9878,
+  "int8": 0.7391
+ },
+ "run-38361931114/shard-1/trials/django__django-17087__Vq2bj9T": {
+  "label": true,
+  "old": 0.9718,
+  "soup": 0.5034,
+  "tuned": 0.9876,
+  "int8": 0.7204
+ },
+ "run-38381917397/shard-0/trials/bn-fit-modify__88s2gKF": {
+  "label": true,
+  "old": 0.9744,
+  "soup": 0.4939,
+  "tuned": 0.9872,
+  "int8": 0.9896
+ },
+ "run-38381917397/shard-0/trials/custom-memory-heap-crash__AfdL7pH": {
+  "label": true,
+  "old": 0.9726,
+  "soup": 0.4949,
+  "tuned": 0.9463,
+  "int8": 0.771
+ },
+ "run-38381917397/shard-0/trials/extract-elf__XTikwE5": {
+  "label": true,
+  "old": 0.3451,
+  "soup": 0.4941,
+  "tuned": 0.0169,
+  "int8": 0.7128
+ },
+ "run-38381917397/shard-0/trials/fix-ocaml-gc__ZTCdwnS": {
+  "label": true,
+  "old": 0.9777,
+  "soup": 0.4971,
+  "tuned": 0.9757,
+  "int8": 0.7266
+ },
+ "run-38381917397/shard-0/trials/openssl-selfsigned-cert__FoM73DT": {
+  "label": true,
+  "old": 0.9728,
+  "soup": 0.4994,
+  "tuned": 0.9827,
+  "int8": 0.7152
+ },
+ "run-38381917397/shard-0/trials/protein-assembly__RU8HpR4": {
+  "label": false,
+  "old": 0.9687,
+  "soup": 0.4949,
+  "tuned": 0.986,
+  "int8": 0.7815
+ },
+ "run-38381917397/shard-0/trials/pypi-server__iRVVTHS": {
+  "label": true,
+  "old": 0.9742,
+  "soup": 0.4954,
+  "tuned": 0.977,
+  "int8": 0.636
+ },
+ "run-38381917397/shard-0/trials/sparql-university__uZgWHHt": {
+  "label": true,
+  "old": 0.9736,
+  "soup": 0.4925,
+  "tuned": 0.985,
+  "int8": 0.7108
+ },
+ "run-38381917397/shard-0/trials/vulnerable-secret__5fg9xWA": {
+  "label": true,
+  "old": 0.9742,
+  "soup": 0.4988,
+  "tuned": 0.9813,
+  "int8": 0.7
+ },
+ "run-38381917397/shard-1/trials/break-filter-js-from-html__rwxhiNR": {
+  "label": true,
+  "old": 0.9727,
+  "soup": 0.4973,
+  "tuned": 0.9875,
+  "int8": 0.8089
+ },
+ "run-38381917397/shard-1/trials/caffe-cifar-10__tVf2fTa": {
+  "label": true,
+  "old": 0.9707,
+  "soup": 0.4964,
+  "tuned": 0.9663,
+  "int8": 0.7295
+ },
+ "run-38381917397/shard-1/trials/feal-linear-cryptanalysis__YtGQy46": {
+  "label": true,
+  "old": 0.974,
+  "soup": 0.4983,
+  "tuned": 0.9854,
+  "int8": 0.9715
+ },
+ "run-38381917397/shard-1/trials/financial-document-processor__gat4HDc": {
+  "label": true,
+  "old": 0.973,
+  "soup": 0.4924,
+  "tuned": 0.9621,
+  "int8": 0.496
+ },
+ "run-38381917397/shard-1/trials/fix-git__GEYnHT6": {
+  "label": true,
+  "old": 0.9765,
+  "soup": 0.4919,
+  "tuned": 0.0105,
+  "int8": 0.5186
+ },
+ "run-38381917397/shard-1/trials/git-multibranch__V5GVTFG": {
+  "label": true,
+  "old": 0.5672,
+  "soup": 0.4957,
+  "tuned": 0.7013,
+  "int8": 0.529
+ },
+ "run-38381917397/shard-1/trials/make-mips-interpreter__r7SN7G9": {
+  "label": false,
+  "old": 0.3191,
+  "soup": 0.495,
+  "tuned": 0.0118,
+  "int8": 0.0143
+ },
+ "run-38381917397/shard-1/trials/merge-diff-arc-agi-task__BB9S6dH": {
+  "label": true,
+  "old": 0.9755,
+  "soup": 0.5008,
+  "tuned": 0.9769,
+  "int8": 0.9862
+ },
+ "run-38381917397/shard-1/trials/modernize-scientific-stack__iW4gpES": {
+  "label": true,
+  "old": 0.9737,
+  "soup": 0.5,
+  "tuned": 0.9813,
+  "int8": 0.7798
+ },
+ "run-38381917397/shard-1/trials/nginx-request-logging__t3UVfLt": {
+  "label": true,
+  "old": 0.974,
+  "soup": 0.4969,
+  "tuned": 0.9842,
+  "int8": 0.7129
+ },
+ "run-38381917397/shard-1/trials/query-optimize__rCbgSHg": {
+  "label": false,
+  "old": 0.9752,
+  "soup": 0.4944,
+  "tuned": 0.9871,
+  "int8": 0.7236
+ }
+}
