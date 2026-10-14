@@ -1,0 +1,27 @@
+Fetching 5 files:   0%|          | 0/5 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 5 files:  60%|██████    | 3/5 [00:00<00:00, 29.63it/s]Fetching 5 files: 100%|██████████| 5/5 [00:09<00:00,  1.89s/it]
+train items 761, calibration items 84, eval items 84 (calibration_slice), skipped {}, device cpu
+optimizer budget: 761 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 48 optimizer updates over 2 epoch(s)
+epoch 1/2 step 100 loss -0.1004
+epoch 1/2 step 200 loss -0.0781
+epoch 1/2 step 300 loss 0.2725
+epoch 1/2 mean loss 1.1464
+epoch 2/2 step 100 loss -0.2520
+epoch 2/2 step 200 loss 4.6215
+epoch 2/2 step 300 loss -0.0000
+epoch 2/2 mean loss 1.7055
+/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/site-packages/laya/train_cli.py:221: RuntimeWarning: laya.train: noul calibration: the fitted temperature 5 is on the [0.5, 5] clamp
+  summary = finetune(
+
+=== Calibration Evidence (in-sample calibration slice, 84 items; not held-out) ===
+Metric                 Before         After          Delta         
+-----------------------------------------------------------------
+Accuracy               0.5476         0.8214         +0.2738       
+Loss                   0.6883         0.7390         +0.0507       
+ECE                    0.0247         0.1687         +0.1440       
+Brier (multi-class)    0.4949         0.3479         -0.1470       
+Brier (top-1)          0.2475         0.1740         -0.0735       
+Mean Confidence        0.5392         0.9802         +0.4410       
+-----------------------------------------------------------------
+
+Training complete! Model saved to ckpt
