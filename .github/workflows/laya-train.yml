@@ -70,7 +70,7 @@ jobs:
           set -o pipefail
           base=typed-decisions
           [ "${{ matrix.start }}" = soup ] && base=base
-          laya-train --data data/tb-train.jsonl --base "$base" --out ckpt \
+          laya-train --data .github/laya/train-mixed.jsonl --base "$base" --out ckpt \
             --device cpu --epochs 2 --micro-batch 2 --grad-accum 16 --max-len 512 --seed 0 2>&1 | tee train.log
           rm -rf ckpt/checkpoint_latest
       # Uploaded before scoring, so a scoring failure cannot lose the checkpoint.
