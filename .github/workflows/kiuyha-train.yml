@@ -81,21 +81,21 @@ jobs:
         with:
           name: kiuyha-tuned-all
           path: .
-          run-id: 38571241947
+          run-id: 38672322338
           github-token: ${{ github.token }}
       - name: Install Ultralytics on CPU torch
         run: |
           python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           python -m pip install "ultralytics==8.4.164" onnx onnxslim
-      - name: Add Total-Text train (curved/artistic words) to the set
-        run: python .github/kiuyha/fetch_art.py kiuyha-data
+      - name: Add hard-case data (Total-Text hard + webtoon + AnimeText hard)
+        run: python .github/kiuyha/fetch_hard.py kiuyha-data
       - name: Tune
         run: |
           sed -i "s#^path: .*#path: $PWD/kiuyha-data#" kiuyha-data/data.yaml
           freeze=0
           [ "${{ matrix.arm }}" = frozen ] && freeze=10
           yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
-            time=3.9 epochs=30 patience=100 freeze=$freeze optimizer=AdamW lr0=0.0005 cos_lr=True \
+            time=5.0 epochs=40 patience=100 freeze=$freeze optimizer=AdamW lr0=0.0005 cos_lr=True \
             degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
       # Ultralytics may write elsewhere than asked, so the weights are found wherever they landed and kept before anything else runs.
       - name: Keep the weights
