@@ -1,0 +1,53 @@
+train items 3647, calibration items 400, eval items 400 (calibration_slice), skipped {}, device cpu
+optimizer budget: 3647 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 228 optimizer updates over 2 epoch(s)
+epoch 1/2 step 100 loss 0.4849
+epoch 1/2 step 200 loss 0.1608
+epoch 1/2 step 300 loss 0.8126
+epoch 1/2 step 400 loss 0.5511
+epoch 1/2 step 500 loss 0.4383
+epoch 1/2 step 600 loss 0.5597
+epoch 1/2 step 700 loss 0.2639
+epoch 1/2 step 800 loss 0.7348
+epoch 1/2 step 900 loss 1.3279
+epoch 1/2 step 1000 loss 0.6043
+epoch 1/2 step 1100 loss 1.1087
+epoch 1/2 step 1200 loss 0.2463
+epoch 1/2 step 1300 loss -0.0893
+epoch 1/2 step 1400 loss 0.4462
+epoch 1/2 step 1500 loss 0.2370
+epoch 1/2 step 1600 loss 0.4182
+epoch 1/2 step 1700 loss 0.6051
+epoch 1/2 step 1800 loss 0.2245
+epoch 1/2 mean loss 0.6341
+epoch 2/2 step 100 loss 0.5882
+epoch 2/2 step 200 loss 0.6016
+epoch 2/2 step 300 loss -0.0818
+epoch 2/2 step 400 loss 0.1022
+epoch 2/2 step 500 loss 0.3300
+epoch 2/2 step 600 loss 1.0651
+epoch 2/2 step 700 loss 0.6907
+epoch 2/2 step 800 loss -0.1860
+epoch 2/2 step 900 loss 1.7302
+epoch 2/2 step 1000 loss 0.5648
+epoch 2/2 step 1100 loss 1.0610
+epoch 2/2 step 1200 loss 0.2306
+epoch 2/2 step 1300 loss 0.2688
+epoch 2/2 step 1400 loss 0.4555
+epoch 2/2 step 1500 loss 0.3716
+epoch 2/2 step 1600 loss 0.6417
+epoch 2/2 step 1700 loss 0.1782
+epoch 2/2 step 1800 loss 1.7981
+epoch 2/2 mean loss 0.6492
+
+=== Calibration Evidence (in-sample calibration slice, 400 items; not held-out) ===
+Metric                 Before         After          Delta         
+-----------------------------------------------------------------
+Accuracy               0.5300         0.6025         +0.0725       
+Loss                   0.6922         0.6545         -0.0377       
+ECE                    0.0272         0.0307         +0.0035       
+Brier (multi-class)    0.4990         0.4627         -0.0363       
+Brier (top-1)          0.2495         0.2313         -0.0182       
+Mean Confidence        0.5028         0.6242         +0.1214       
+-----------------------------------------------------------------
+
+Training complete! Model saved to ckpt
