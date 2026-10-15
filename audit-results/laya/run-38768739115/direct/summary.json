@@ -1,0 +1,39 @@
+{
+ "rows": 243,
+ "passed": 196,
+ "always_pass": {
+  "accuracy": 0.8066,
+  "auc": 0.5,
+  "ece": 0.1934,
+  "fails_caught_at_10pct_false_alarm": 0.0,
+  "threshold": 1.0
+ },
+ "claim_regex": {
+  "accuracy": 0.6132,
+  "auc": 0.5985,
+  "ece": 0.3868,
+  "fails_caught_at_10pct_false_alarm": 0.0,
+  "threshold": 0.0
+ },
+ "tuned": {
+  "accuracy": 0.6214,
+  "auc": 0.6422,
+  "ece": 0.2969,
+  "fails_caught_at_10pct_false_alarm": 0.234,
+  "threshold": 0.3691,
+  "cpu_ms_per_row": 2093.4
+ },
+ "int8": {
+  "accuracy": 0.5556,
+  "auc": 0.4795,
+  "ece": 0.2879,
+  "fails_caught_at_10pct_false_alarm": 0.1277,
+  "threshold": 0.4178,
+  "cpu_ms_per_row": 653.9
+ },
+ "int8_vs_tuned": {
+  "flips_at_half": 106,
+  "flips_at_threshold": 58,
+  "max_abs_diff": 0.4185
+ }
+}

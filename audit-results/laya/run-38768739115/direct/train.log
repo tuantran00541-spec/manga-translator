@@ -1,0 +1,57 @@
+Fetching 5 files:   0%|          | 0/5 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 5 files:  20%|██        | 1/5 [00:00<00:00,  8.75it/s]Fetching 5 files:  80%|████████  | 4/5 [00:00<00:00, 19.87it/s]Fetching 5 files: 100%|██████████| 5/5 [00:07<00:00,  1.41s/it]
+train items 3647, calibration items 400, eval items 400 (calibration_slice), skipped {}, device cpu
+optimizer budget: 3647 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 228 optimizer updates over 2 epoch(s)
+epoch 1/2 step 100 loss 0.3683
+epoch 1/2 step 200 loss 0.3557
+epoch 1/2 step 300 loss 0.8731
+epoch 1/2 step 400 loss 0.6357
+epoch 1/2 step 500 loss 0.1563
+epoch 1/2 step 600 loss 0.5020
+epoch 1/2 step 700 loss 0.2096
+epoch 1/2 step 800 loss 0.9532
+epoch 1/2 step 900 loss 1.2421
+epoch 1/2 step 1000 loss 0.4958
+epoch 1/2 step 1100 loss 1.5637
+epoch 1/2 step 1200 loss 0.2578
+epoch 1/2 step 1300 loss 0.4341
+epoch 1/2 step 1400 loss 0.6867
+epoch 1/2 step 1500 loss 0.3691
+epoch 1/2 step 1600 loss 0.6094
+epoch 1/2 step 1700 loss 0.7674
+epoch 1/2 step 1800 loss 1.1327
+epoch 1/2 mean loss 0.6387
+epoch 2/2 step 100 loss 0.7535
+epoch 2/2 step 200 loss 0.6008
+epoch 2/2 step 300 loss 0.0510
+epoch 2/2 step 400 loss 0.2360
+epoch 2/2 step 500 loss 0.7280
+epoch 2/2 step 600 loss 0.9208
+epoch 2/2 step 700 loss 0.8391
+epoch 2/2 step 800 loss -0.2561
+epoch 2/2 step 900 loss 0.7185
+epoch 2/2 step 1000 loss 0.6573
+epoch 2/2 step 1100 loss 1.2079
+epoch 2/2 step 1200 loss 0.4317
+epoch 2/2 step 1300 loss -0.0447
+epoch 2/2 step 1400 loss 0.8993
+epoch 2/2 step 1500 loss 0.3344
+epoch 2/2 step 1600 loss 1.3559
+epoch 2/2 step 1700 loss 0.4203
+epoch 2/2 step 1800 loss 1.2834
+epoch 2/2 mean loss 0.6553
+/opt/hostedtoolcache/Python/3.11.17/x64/lib/python3.11/site-packages/laya/train_cli.py:221: RuntimeWarning: laya.train: predictions collapsed to the class prior (calibration cross-entropy 0.692 is within 2% of ln K ~ 0.693). The default epoch budget is often too small on a few hundred or a thousand labelled rows. Try more epochs, more data, or another seed.
+  summary = finetune(
+
+=== Calibration Evidence (in-sample calibration slice, 400 items; not held-out) ===
+Metric                 Before         After          Delta         
+-----------------------------------------------------------------
+Accuracy               0.5700         0.5925         +0.0225       
+Loss                   0.6788         0.6655         -0.0133       
+ECE                    0.0649         0.0296         -0.0353       
+Brier (multi-class)    0.4858         0.4728         -0.0130       
+Brier (top-1)          0.2429         0.2364         -0.0065       
+Mean Confidence        0.5398         0.5989         +0.0591       
+-----------------------------------------------------------------
+
+Training complete! Model saved to ckpt
