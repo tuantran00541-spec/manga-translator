@@ -1,0 +1,18 @@
+train items 3647, calibration items 400, eval items 400 (calibration_slice), skipped {}, device cpu
+optimizer budget: 3647 train item(s), effective batch up to 32 (micro_batch 2 x grad_accum 16), 228 optimizer updates over 2 epoch(s)
+epoch 1/2 step 100 loss 0.0334
+epoch 1/2 step 200 loss 0.8953
+epoch 1/2 step 300 loss 1.3095
+epoch 1/2 step 400 loss 0.2921
+epoch 1/2 step 500 loss -0.1315
+epoch 1/2 step 600 loss 0.3898
+epoch 1/2 step 700 loss 1.0098
+epoch 1/2 step 800 loss 0.5761
+epoch 1/2 step 900 loss 0.7225
+epoch 1/2 step 1000 loss 1.5256
+epoch 1/2 step 1100 loss 1.4736
+epoch 1/2 step 1200 loss -0.4081
+epoch 1/2 step 1300 loss -0.9250
+epoch 1/2 step 1400 loss 1.1688
+epoch 1/2 step 1500 loss -0.1965
+epoch 1/2 step 1600 loss 0.2280
