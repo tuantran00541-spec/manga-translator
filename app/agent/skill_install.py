@@ -44,13 +44,13 @@ def user_dir(home: Path) -> Path:
     return home / ".manga-agent" / "skills"
 
 
-def install(spec: str, home: Path) -> list[str]:
+def install(spec: str, home: Path, replace: bool = False) -> list[str]:
     """Copy every skill folder found under the repo path; returns their names."""
     owner, repo, ref, sub = parse(spec)
-    return _install_archive(_fetch(owner, repo, ref), sub, home, spec)
+    return _install_archive(_fetch(owner, repo, ref), sub, home, spec, replace=replace)
 
 
-def install_zip(data: bytes, home: Path) -> list[str]:
+def install_zip(data: bytes, home: Path, replace: bool = False) -> list[str]:
     """Every skill folder inside an uploaded zip, wherever it sits."""
     if len(data) > MAX_ZIP_BYTES:
         raise ValueError("file zip quá lớn (tối đa 40 MB)")
@@ -58,15 +58,17 @@ def install_zip(data: bytes, home: Path) -> list[str]:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
         raise ValueError("không đọc được file zip") from exc
-    return _install_archive(archive, "", home, "file zip", wrapped=False)
+    return _install_archive(archive, "", home, "file zip", wrapped=False, replace=replace)
 
 
-def install_file(text: str, home: Path) -> str:
+def install_file(text: str, home: Path, replace: bool = False) -> str:
     """A lone SKILL.md becomes a skill folder named by its front matter."""
     head, _ = frontmatter(text[:20_000])
     name = head.get("name", "")
     if not NAME_RE.match(name) or not head.get("description"):
         raise ValueError("SKILL.md cần phần đầu có name (chữ thường, số, gạch ngang) và description")
+    if not replace and (user_dir(home) / name).exists():
+        raise ValueError(f"skill '{name}' đã tồn tại — từ chối ghi đè (nguy cơ squatting); dùng replace=True để thay thế")
     _write(home, name, text)
     return name
 
@@ -108,7 +110,8 @@ def _write(home: Path, name: str, text: str) -> None:
     (folder / "SKILL.md").write_text(text, encoding="utf-8")
 
 
-def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str, wrapped: bool = True) -> list[str]:
+def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str, wrapped: bool = True,
+                   replace: bool = False) -> list[str]:
     """Copy the skill folders of an archive; GitHub zips wrap everything in one top folder."""
     entries = [i for i in archive.infolist() if not i.is_dir()]
     root = entries[0].filename.split("/", 1)[0] if entries and wrapped else ""
@@ -119,14 +122,24 @@ def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str
     if not folders:
         raise ValueError(f"không thấy SKILL.md nào trong {source}")
     target = user_dir(home)
-    done = []
+    # Resolve every name first: a clash fails before anything is written.
+    planned = []
     for folder in folders[:MAX_SKILLS]:
         lead = folder + "/" if folder else ""
-        files = [i for i in entries if i.filename.startswith(lead)][:MAX_FILES]
         head, _ = frontmatter(archive.read(f"{lead}SKILL.md")[:20_000].decode("utf-8", errors="replace"))
         name = head.get("name") or folder.rsplit("/", 1)[-1]
         if not NAME_RE.match(name):
             continue
+        planned.append((folder, lead, name))
+    if not planned:
+        raise ValueError("các skill tìm thấy có tên không hợp lệ")
+    if not replace:
+        for _folder, _lead, name in planned:
+            if (target / name).exists():
+                raise ValueError(f"skill '{name}' đã tồn tại — từ chối ghi đè (nguy cơ squatting); dùng replace=True để thay thế")
+    done = []
+    for folder, lead, name in planned:
+        files = [i for i in entries if i.filename.startswith(lead)][:MAX_FILES]
         with tempfile.TemporaryDirectory() as temp:
             staging = Path(temp) / name
             for info in files:
@@ -142,6 +155,4 @@ def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str
                 shutil.rmtree(final)
             shutil.move(str(staging), str(final))
         done.append(name)
-    if not done:
-        raise ValueError("các skill tìm thấy có tên không hợp lệ")
     return done

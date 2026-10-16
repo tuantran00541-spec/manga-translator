@@ -12,10 +12,15 @@ import shlex
 import shutil
 import subprocess
 import threading
+from urllib.parse import urljoin
 
 import requests
+from fastapi import HTTPException
 
 from app.logging_config import logger
+from app.security import validate_url
+
+from app.agent import sandbox
 
 try:
     import tomllib
@@ -26,7 +31,27 @@ PROTOCOL_VERSION = "2025-06-18"
 CLIENT_INFO = {"name": "chaos", "version": "1.0"}
 REQUEST_TIMEOUT = 120
 MAX_RESULT_CHARS = 20_000
+# A fresh nextCursor on every tools/list page would hang startup; cap the pages.
+MAX_TOOL_LIST_PAGES = 50
+# Redirects are followed manually so each hop goes through the SSRF guard again.
+_MAX_HTTP_REDIRECTS = 5
+_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _ENV_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+_ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# The harness judges read-only by tool name; a server's own readOnlyHint never skips approval.
+_READONLY_NAME_PREFIXES = ("get_", "list_", "read_", "fetch_", "search_", "describe_", "query_", "show_", "lookup_")
+_READONLY_NAMES = frozenset({"get", "list", "read", "fetch", "search", "describe", "query", "show", "status", "version", "ping", "help"})
+
+
+def harness_read_only(tool: str) -> bool:
+    """True when the harness itself judges an MCP tool read-only from its name.
+
+    The server's readOnlyHint annotation is deliberately NOT consulted here:
+    a server controls its annotations, so a destructive tool may self-certify
+    as read-only and would otherwise run approval-free in auto/edits mode.
+    """
+    name = str(tool or "").strip().lower()
+    return name in _READONLY_NAMES or name.startswith(_READONLY_NAME_PREFIXES)
 
 
 class MCPError(RuntimeError):
@@ -85,7 +110,11 @@ def _pairs(value, what: str) -> dict[str, str]:
 
 
 def clean_config(config) -> dict:
-    """One server's settings checked and reduced to what the client uses: a command with args and env, or a URL with headers."""
+    """One server's settings checked and reduced to what the client uses: a command with args and env, or a URL with headers.
+
+    ``env_allowlist`` names host variables a stdio server genuinely needs (e.g. its own API key);
+    they are restored after the harness process env is scrubbed (see _StdioTransport).
+    """
     if not isinstance(config, dict):
         raise ValueError("a server's settings must be a JSON object")
     kind = str(config.get("type") or config.get("transport") or ("http" if config.get("url") else "stdio")).lower()
@@ -118,6 +147,10 @@ def clean_config(config) -> dict:
     out.update(command=command, args=[str(a) for a in args])
     if env := _pairs(config.get("env"), "env"):
         out["env"] = env
+    if isinstance(config.get("env_allowlist"), list):
+        allowed = [n.strip() for n in config["env_allowlist"] if isinstance(n, str) and _ENV_NAME_RE.fullmatch(n.strip())]
+        if allowed:
+            out["env_allowlist"] = allowed
     if isinstance(config.get("cwd"), str) and config["cwd"].strip():
         out["cwd"] = config["cwd"].strip()
     return out
@@ -253,7 +286,14 @@ class _StdioTransport:
         command = config.get("command")
         if not command:
             raise MCPError("stdio server has no command")
-        env = {**os.environ, **{str(k): str(v) for k, v in (config.get("env") or {}).items()}}
+        # Scrubbed so the server never inherits the harness's provider keys and tokens.
+        env = sandbox.clean_env()
+        # A server names genuinely-needed host variables in env_allowlist; the rest stays hidden.
+        for name in config.get("env_allowlist") or ():
+            if isinstance(name, str) and _ENV_NAME_RE.fullmatch(name) and name in os.environ:
+                env[name] = os.environ[name]
+        # Config-declared env layers on top, so declared values still reach the server.
+        env.update({str(k): str(v) for k, v in (config.get("env") or {}).items()})
         # Windows needs the full name of launchers such as npx.cmd.
         command = shutil.which(command, path=env.get("PATH")) or command
         self.proc = subprocess.Popen([command, *[str(a) for a in config.get("args") or []]], cwd=config.get("cwd") or cwd,
@@ -328,21 +368,47 @@ class _HttpTransport:
         self.url = config.get("url")
         if not self.url:
             raise MCPError("http server has no url")
+        # The configured URL goes through the same SSRF guard as the harness's web tools.
+        try:
+            validate_url(self.url)
+        except HTTPException as exc:
+            raise MCPError(f"refusing MCP server URL {self.url!r}: {exc.detail}") from exc
         self.headers = {str(k): str(v) for k, v in (config.get("headers") or {}).items()}
         token = config.get("bearer_token") or (os.environ.get(config["bearer_token_env_var"]) if config.get("bearer_token_env_var") else None)
         if token:
             self.headers["Authorization"] = f"Bearer {token}"
         self.session_id: str | None = None
 
+    def _check_url(self, url: str, what: str) -> None:
+        try:
+            validate_url(url)
+        except HTTPException as exc:
+            raise MCPError(f"refusing MCP server {what} {url!r}: {exc.detail}") from exc
+
     def _post(self, message: dict, timeout: float) -> requests.Response:
         headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
                    "MCP-Protocol-Version": PROTOCOL_VERSION, **self.headers}
         if self.session_id:
             headers["Mcp-Session-Id"] = self.session_id
-        try:
-            response = requests.post(self.url, json=message, headers=headers, timeout=timeout, stream=True)
-        except requests.RequestException as exc:
-            raise MCPError(f"cannot reach {self.url} ({type(exc).__name__})") from exc
+        # Follow redirects manually (re-POSTing) so every hop is re-checked by the SSRF guard.
+        url, redirects = self.url, 0
+        while True:
+            try:
+                response = requests.post(url, json=message, headers=headers, timeout=timeout, stream=True,
+                                         allow_redirects=False)
+            except requests.RequestException as exc:
+                raise MCPError(f"cannot reach {url} ({type(exc).__name__})") from exc
+            if response.status_code not in _REDIRECT_STATUS_CODES:
+                break
+            location = response.headers.get("Location")
+            response.close()
+            redirects += 1
+            if not location:
+                raise MCPError(f"MCP server at {url} redirected without a Location header")
+            if redirects > _MAX_HTTP_REDIRECTS:
+                raise MCPError(f"MCP server at {self.url} redirected too many times (>{_MAX_HTTP_REDIRECTS})")
+            url = urljoin(url, location)
+            self._check_url(url, "redirect")
         if response.headers.get("Mcp-Session-Id"):
             self.session_id = response.headers["Mcp-Session-Id"]
         if response.status_code >= 400:
@@ -398,12 +464,17 @@ class Server:
         try:
             self._call("initialize", {"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": CLIENT_INFO}, 60)
             self.transport.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
-            cursor = None
+            cursor, pages = None, 0
             while True:
                 page = self._call("tools/list", {"cursor": cursor} if cursor else {}, 60)
                 self.tools += [t for t in page.get("tools") or [] if isinstance(t, dict) and t.get("name")]
+                pages += 1
                 cursor = page.get("nextCursor")
                 if not cursor or len(self.tools) > 500:
+                    break
+                if pages >= MAX_TOOL_LIST_PAGES:
+                    logger.warning("MCP server %s still paginating tools/list after %d pages; stopping",
+                                   name, MAX_TOOL_LIST_PAGES)
                     break
         except Exception:
             self.close()

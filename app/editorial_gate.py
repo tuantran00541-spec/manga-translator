@@ -17,6 +17,8 @@ EDITORIAL_DISPOSITIONS = frozenset(
 EDITORIAL_DROP_DISPOSITIONS = frozenset(
     {"duplicate", "non_story", "noise", "preserve"}
 )
+# System-set, never human-reviewed: untranslated text blocks export instead of vanishing silently.
+UNTRANSLATED_DISPOSITION = "untranslated"
 CLEANUP_DISPOSITIONS = frozenset(
     {"manual_cleaned", "preserve_source", "false_positive", "covered_by_duplicate"}
 )
@@ -481,6 +483,20 @@ def editorial_preflight(
                 continue
             if oid:
                 checked_objects.add(oid)
+
+            if _norm(obj.get("editorial_disposition")) == UNTRANSLATED_DISPOSITION:
+                # Fail closed: block export until the text is translated or a human reviews it.
+                _append_blocker(
+                    blockers,
+                    blocker_keys,
+                    _blocker(
+                        "untranslated_object",
+                        page_index,
+                        obj=obj,
+                        reason="text object was never translated (e.g. the slice ran out of budget); translate it or set a reviewed disposition before export",
+                    ),
+                )
+                continue
 
             source_text = str(obj.get("ocr_text") or "").strip()
             translation = str(obj.get("translation") or "").strip()

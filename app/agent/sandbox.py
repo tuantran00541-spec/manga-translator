@@ -29,7 +29,10 @@ HOME_SECRETS = (".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".git-cr
 SYSTEM_SECRETS = ("/run/user", "/run/secrets", "/var/run/secrets")
 # More folders to keep unreadable, added by whoever stores private data (the agent's own saved sessions).
 EXTRA_DENY: list[str] = []
-SECRET_NAME = re.compile(r"(?i)(^|_)(api_?key|key|token|secret|passw(or)?d|credentials?|auth|cookie|session_?id|private)(_|$)")
+SECRET_NAME = re.compile(r"(?i)(api_?key|key|token|secret|passw(or)?d|credentials?|auth|cookie|session_?id|private|bearer)")
+# Substring match without word boundaries: real secret names carry suffixes
+# (AGNES_KEY2) or embed the keyword mid-token (MYSECRET), which a boundary
+# would miss. Everyday vars (PATH, HOME, ...) contain none of these.
 # Engines that confine reads, writes and the network; low-integrity confines writes only.
 FULL = ("landlock", "seatbelt", "docker")
 DOCKER_IMAGE = "python:3.12-slim"
@@ -50,6 +53,20 @@ def secret_paths() -> list[str]:
     return sorted({os.path.realpath(p) for p in found if p.exists()})
 
 
+# The only dotenv files left readable; every other .env* is a secret.
+DOTENV_PUBLIC = {".env.example", ".env.sample"}
+
+
+def workspace_secrets(root: Path) -> list[str]:
+    """Workspace dotenv files (.env, .env.local, ...), as real paths: denied read at the
+    sandbox layer too, so a quote-evasion that slips past the rule scan still cannot read them."""
+    try:
+        hits = [p for p in Path(root).glob(".env*") if p.is_file() and p.name not in DOTENV_PUBLIC]
+    except OSError:
+        return []
+    return sorted({os.path.realpath(p) for p in hits})
+
+
 @dataclass(frozen=True)
 class Policy:
     mode: str = "workspace-write"
@@ -58,7 +75,13 @@ class Policy:
     def describe(self, root: Path) -> str:
         if self.mode == "full-access":
             return "Commands run without a sandbox: full file and network access."
-        kind, net = backend(), "allowed" if self.network else "blocked"
+        kind = backend()
+        if kind == "none":
+            # No confinement is possible on this machine: saying anything else would lie to the model.
+            return ("Commands run UNSANDBOXED with the full privileges of this user: no sandbox backend is available "
+                    "on this machine, so there is no file confinement, no network block, and no credential-folder "
+                    "protection — treat every command as running with your user's full access.")
+        net = "allowed" if self.network else "blocked"
         if kind == "docker":
             mount = "read-only" if self.mode == "read-only" else "writable"
             return (f"Commands run in a Linux container ({settings()['image']}): the workspace is mounted {mount} at /workspace and nothing else "
@@ -149,7 +172,7 @@ def _seatbelt_profile(policy: Policy, root: Path, scratch: str) -> str:
              '(allow file-write* (literal "/dev/null") (literal "/dev/tty") (subpath "/dev/fd"))']
     paths = [os.path.realpath(p) for p in writable_roots(policy, root, scratch) if p != "/dev"]
     forms.append("(allow file-write* " + " ".join(f'(subpath "{p}")' for p in paths) + ")")
-    forms += [f'(deny file-read* (subpath "{p}"))' for p in secret_paths()]
+    forms += [f'(deny file-read* (subpath "{p}"))' for p in secret_paths() + workspace_secrets(root)]
     if not policy.network:
         forms.append('(deny network-outbound (remote ip))')
     return " ".join(forms)
@@ -183,7 +206,7 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
         args = [sys.executable, str(Path(__file__).with_name("landlock_run.py"))]
         for path in writable_roots(policy, root, scratch):
             args += ["--write", path]
-        for path in secret_paths():
+        for path in secret_paths() + workspace_secrets(root):
             args += ["--deny-read", path]
         if not policy.network:
             args.append("--no-network")

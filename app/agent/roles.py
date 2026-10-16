@@ -12,7 +12,10 @@ import requests
 
 ROLE_NAME = re.compile(r"[a-z][a-z0-9_-]{0,30}")
 USAGE = Path(".manga-agent") / "role-usage.json"
+_BACKUP = Path(".manga-agent") / "role-usage.json.bak"
 _LOCK = threading.Lock()
+# A corrupt usage file falls back to the last good data, never a fresh zero.
+_GOOD: dict[str, dict] = {}
 
 
 def parse(raw) -> dict[str, dict]:
@@ -47,40 +50,89 @@ def parse_sources(raw) -> dict[str, dict]:
     return sources
 
 
-def _read(home: Path) -> dict:
-    try:
-        data = json.loads((home / USAGE).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+def _read(home: Path) -> dict | None:
+    """Usage data, or None when nothing trustworthy exists; a corrupt file never resets a budget."""
+    main, backup = home / USAGE, home / _BACKUP
+    if not main.exists() and not backup.exists():
         return {}
-    return data if isinstance(data, dict) else {}
+    key = str(home)
+    for path in (main, backup):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            _GOOD[key] = data
+            return data
+    return _GOOD.get(key)
+
+
+def _backup_good(path: Path, home: Path) -> None:
+    """Keep the previous parsable state as the fallback a fail-closed read uses."""
+    try:
+        raw = path.read_text(encoding="utf-8")
+        json.loads(raw)
+    except (OSError, ValueError):
+        return
+    try:
+        (home / _BACKUP).write_text(raw, encoding="utf-8")
+    except OSError:
+        pass
 
 
 def today(home: Path) -> dict[str, dict]:
     """Requests and tokens each role used today (local date)."""
     data = _read(home)
-    return data.get("days", {}).get(time.strftime("%Y-%m-%d"), {}) if isinstance(data.get("days"), dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    days = data.get("days")
+    return days.get(time.strftime("%Y-%m-%d"), {}) if isinstance(days, dict) else {}
 
 
 def within(home: Path, name: str, cfg: dict) -> bool:
-    """Whether a role still has today's request and token budget."""
-    used = today(home).get(name, {})
-    return not ((cfg["daily_requests"] and used.get("requests", 0) >= cfg["daily_requests"]) or
-                (cfg["daily_tokens"] and used.get("tokens", 0) >= cfg["daily_tokens"]))
+    """Whether a role still has today's request and token budget.
 
-
-def add(home: Path, name: str, requests_made: int, tokens: int) -> None:
-    """Count a role's use toward today's budget; only the last week of days is kept."""
+    A corrupt file fails closed (False). Hold ``_LOCK`` across a within()->add() pair,
+    or pass ``cfg`` to add() for one atomic check-and-count.
+    """
     with _LOCK:
         data = _read(home)
+        if data is None:
+            return False
+        days = data.get("days")
+        used = days.get(time.strftime("%Y-%m-%d"), {}).get(name, {}) if isinstance(days, dict) else {}
+        return not ((cfg["daily_requests"] and used.get("requests", 0) >= cfg["daily_requests"]) or
+                    (cfg["daily_tokens"] and used.get("tokens", 0) >= cfg["daily_tokens"]))
+
+
+def add(home: Path, name: str, requests_made: int, tokens: int, cfg: dict | None = None) -> bool:
+    """Count a role's use toward today's budget; only the last week of days is kept.
+
+    Writes are atomic so a crash never leaves a torn file. With ``cfg`` given, the check
+    and the increment are one atomic step: over budget -> nothing is counted, False returns.
+    """
+    with _LOCK:
+        data = _read(home) or {}
         days = data.get("days") if isinstance(data.get("days"), dict) else {}
         day = days.setdefault(time.strftime("%Y-%m-%d"), {})
+        if cfg is not None:
+            used = day.get(name, {})
+            if ((cfg["daily_requests"] and used.get("requests", 0) + requests_made > cfg["daily_requests"]) or
+                    (cfg["daily_tokens"] and used.get("tokens", 0) + tokens > cfg["daily_tokens"])):
+                return False
         row = day.setdefault(name, {"requests": 0, "tokens": 0})
         row["requests"] += requests_made
         row["tokens"] += tokens
         data["days"] = {k: days[k] for k in sorted(days)[-7:]}
         path = home / USAGE
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data), encoding="utf-8")
+        if path.is_file():
+            _backup_good(path, home)
+        tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}-{threading.get_ident()}")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        os.replace(tmp, path)
+        _GOOD[str(home)] = data
+        return True
 
 
 def price(row: dict) -> dict:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -170,44 +171,144 @@ def provider(name: str, value: Any) -> Plugin:
     return Plugin(lambda ctx, config: ctx.provide(name, value))
 
 
-def load_module(path: Path, label: str):
-    """Run a plugin file from its source every time, so a reload never picks up a stale cached .pyc."""
-    spec = importlib.util.spec_from_file_location(label, path)
+def load_module_bytes(source: bytes, label: str, filename: str = "<plugin>"):
+    """Execute plugin source from already-read bytes; the file is never re-read (H8).
+
+    The trust digest is computed over these exact bytes, so what was pinned is
+    what runs — a writer swapping the file between the digest and the load
+    cannot slip untrusted code under a trusted digest.
+    """
+    spec = importlib.util.spec_from_file_location(label, filename)
     module = importlib.util.module_from_spec(spec)
-    exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module.__dict__)
+    exec(compile(source, filename, "exec"), module.__dict__)
     return module
 
 
-def patch_rows(ctx: Context, home: Path) -> list[str]:
-    """Apply ~/.manga-agent/plugins.json: a row with a known id changes its config or disables it, a new row mounts a plugin file."""
-    path, problems = home / ".manga-agent" / "plugins.json", []
+def load_module(path: Path, label: str):
+    """Run a plugin file from its source every time, so a reload never picks up a stale cached .pyc."""
+    return load_module_bytes(path.read_bytes(), label, str(path))
+
+
+def _plugins_manifest(home: Path) -> tuple[bytes | None, list[dict], list[str]]:
+    """Read ~/.manga-agent/plugins.json and every .py row it mounts, once each.
+
+    Returns (raw, rows, problems): raw is the plugins.json bytes (None when the
+    file is absent), rows is one dict per row with id/config/disabled/plugin /
+    target/src (src is the .py bytes, None when unreadable), problems lists
+    manifest errors. Bytes are read exactly once; the trust digest and the
+    executed code come from these same bytes.
+    """
+    path = home / ".manga-agent" / "plugins.json"
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_bytes()
     except FileNotFoundError:
-        return problems
-    except (OSError, ValueError) as exc:
-        return [f"plugins.json: {exc}"]
+        return None, [], []
+    except OSError as exc:
+        return None, [], [f"plugins.json: {exc}"]
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        return raw, [], [f"plugins.json: {exc}"]
     folder = (home / ".manga-agent" / "plugins").resolve()
+    rows: list[dict] = []
+    problems: list[str] = []
     for entry in (data.get("rows") if isinstance(data, dict) else None) or []:
         if not isinstance(entry, dict) or not ID_RE.match(str(entry.get("id", "")).lower()):
             problems.append(f"plugins.json: bad row {entry!r}"[:200])
             continue
         if isinstance(entry.get("mcp"), dict):
             continue  # an MCP server row; the session mounts it as mcp:ID
-        row_id, config = entry["id"], entry.get("config") if isinstance(entry.get("config"), dict) else None
-        if row_id in ctx.rows and not entry.get("plugin"):
-            row = ctx.rows[row_id]
-            row.config = config if config is not None else row.config
-            row.disabled = bool(entry.get("disabled", row.disabled))
+        item: dict = {
+            "id": entry["id"],
+            "config": entry.get("config") if isinstance(entry.get("config"), dict) else None,
+            "disabled": entry.get("disabled"),
+            "plugin": None,
+            "target": None,
+            "src": None,
+            "problem": None,
+        }
+        plugin_name = entry.get("plugin")
+        if plugin_name:
+            item["plugin"] = str(plugin_name)
+            target = (folder / str(plugin_name)).resolve()
+            if folder not in target.parents or target.suffix != ".py" or not target.is_file():
+                item["problem"] = f"plugins.json: {item['id']} needs a .py file inside ~/.manga-agent/plugins"
+            else:
+                try:
+                    item["src"] = target.read_bytes()
+                except OSError as exc:
+                    item["problem"] = f"plugins.json: {item['id']}: cannot read {plugin_name}: {exc}"
+                item["target"] = target
+        rows.append(item)
+    return raw, rows, problems
+
+
+def _manifest_digest(raw: bytes, rows: list[dict]) -> str:
+    """Digest of the plugins.json bytes plus every .py row it mounts.
+
+    The raw bytes pin the rows, their configs and disabled flags; the per-row
+    sources pin the code itself, so editing a .py without touching plugins.json
+    also invalidates the pin.
+    """
+    h = hashlib.sha256()
+    h.update(b"plugins.json\0" + raw + b"\0")
+    for item in rows:
+        h.update(str(item["id"]).encode() + b"\0" + (item["plugin"] or "").encode() + b"\0")
+        h.update(item["src"] if item["src"] is not None else b"<unreadable>\0")
+    return h.hexdigest()
+
+
+def plugins_digest(home: Path) -> str | None:
+    """The pin for ~/.manga-agent/plugins.json, or None when there is no file to pin.
+
+    Mirrors the workspace-plugin trust flow: the session requires
+    trust.trusted(workspace, "plugins.json", digest) before mounting any row,
+    and trust_plugins() allow()s the digest explicitly (default-deny).
+    """
+    raw, rows, _ = _plugins_manifest(home)
+    if raw is None:
+        return None
+    return _manifest_digest(raw, rows)
+
+
+def patch_rows(ctx: Context, home: Path, trust=None, workspace: Path | None = None) -> list[str]:
+    """Apply ~/.manga-agent/plugins.json: a row with a known id changes its config or disables it, a new row mounts a plugin file.
+
+    Every row mounts only when the manifest digest is pinned in the trust
+    store (C4) — the same trust flow as workspace plugins: trust.trusted()
+    for the check, an explicit allow() (e.g. via trust_plugins()) to pin. An
+    unpinned or changed plugins.json refuses to mount any row, loudly: the
+    refusal is returned in problems (surfaced by /plugins) and logged.
+    """
+    raw, rows, problems = _plugins_manifest(home)
+    if raw is None:
+        return problems
+    digest = _manifest_digest(raw, rows)
+    if trust is None or workspace is None or not trust.trusted(workspace, "plugins.json", digest):
+        msg = ("plugins.json is not pinned in the trust store: refusing to mount its rows "
+               "(review ~/.manga-agent/plugins.json, then pin it via trust_plugins()).")
+        problems.append(msg)
+        logger.warning("Refusing to mount plugins.json rows: digest {} is not trusted", digest[:16])
+        return problems
+    for item in rows:
+        if item["problem"]:
+            problems.append(item["problem"])
             continue
-        target = (folder / str(entry.get("plugin", ""))).resolve()
-        if folder not in target.parents or target.suffix != ".py" or not target.is_file():
-            problems.append(f"plugins.json: {row_id} needs a .py file inside ~/.manga-agent/plugins")
+        row_id = item["id"]
+        if row_id in ctx.rows and not item["plugin"]:
+            row = ctx.rows[row_id]
+            row.config = item["config"] if item["config"] is not None else row.config
+            if item["disabled"] is not None:
+                row.disabled = bool(item["disabled"])
+            continue
+        if item["src"] is None:
+            problems.append(item["problem"] or f"plugins.json: {row_id}: no code to mount")
             continue
         try:
-            module = load_module(target, f"manga_agent_row_{row_id.replace('-', '_').replace('.', '_')}")
+            module = load_module_bytes(item["src"], f"manga_agent_row_{row_id.replace('-', '_').replace('.', '_')}",
+                                       str(item["target"]))
         except Exception as exc:
             problems.append(f"{row_id}: {type(exc).__name__}: {exc}"[:300])
             continue
-        ctx.rows[row_id] = Row(row_id, module, config or {}, bool(entry.get("disabled")), "user")
+        ctx.rows[row_id] = Row(row_id, module, item["config"] or {}, bool(item["disabled"]), "user")
     return problems

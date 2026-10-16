@@ -4,6 +4,8 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from app.agent import learn
+
 MAX_ENTRY = 400
 MAX_ENTRIES = 60
 MAX_PROMPT_CHARS = 6000
@@ -35,6 +37,9 @@ def add(home: Path, workspace: Path, scope: str, text: str) -> int:
     text = " ".join(str(text).split())[:MAX_ENTRY]
     if not text:
         raise ValueError("text is empty")
+    if learn.has_secret(text, learn.known_secrets()):
+        # A note carrying a secret is refused, not persisted into future prompts.
+        raise ValueError("not saved: the note looks like it contains a secret")
     rows = entries(home, workspace, scope)
     if text not in rows:
         rows.append(text)

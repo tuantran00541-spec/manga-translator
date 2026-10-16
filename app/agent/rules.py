@@ -20,6 +20,8 @@ SETTINGS = {"user": (".manga-agent/settings.json", ".claude/settings.json"),
 DEFAULT = [("read", ".env", "deny"), ("read", ".env.*", "deny"), ("read", "*.env", "deny"),
            ("edit", ".env", "deny"), ("edit", ".env.*", "deny"), ("edit", "*.env", "deny"),
            ("read", ".env.example", "allow"), ("read", ".env.sample", "allow"),
+           # /proc/<pid>/environ is the environment by another name.
+           ("read", "/proc/*/environ", "deny"),
            # Git's hooks and config run commands later, outside any sandbox.
            ("edit", ".git/*", "deny"), ("edit", "*/.git/*", "deny")] + [
     # What can destroy work or leave the project: asked for unless the user's own rules or Auto mode say otherwise.
@@ -33,7 +35,58 @@ SAFE_COMMANDS = {"ls", "cat", "head", "tail", "wc", "pwd", "echo", "grep", "rg",
 SAFE_GIT = {"status", "log", "diff", "show", "rev-parse", "ls-files", "blame", "describe", "shortlog"}
 # Interpreters and wrappers run anything, so a saved allow for them is the exact command, never a prefix.
 WRAPPERS = {"python", "python3", "node", "bash", "sh", "zsh", "env", "xargs", "eval", "exec", "ssh", "perl", "ruby", "npx", "uv", "uvx", "pip", "npm", "make", "docker", "find", "time", "nohup", "watch"}
-SPLIT = re.compile(r"&&|\|\||;|\||\n")
+# `&&` must come before `&` so a double ampersand still matches as one operator.
+SPLIT = re.compile(r"&&|\|\||&|;|\||\n")
+# Tricks that execute even inside double quotes: always scanned on the raw command.
+_SUBST_TRICKS = re.compile(r"`|\$\(|<\(|>\(")
+# Redirection / backgrounding operators are literal inside quotes: scanned on the masked command.
+_REDIRECT_OPS = re.compile(r">>|>|<<|<")
+_SHELL_OPS = re.compile(r"[><&]")
+# /proc/<pid>/environ (self, a numeric pid, or $$) exposes the process environment.
+_PROC_ENVIRON = re.compile(r"/proc/(?:self|\d+|\$\$)/environ")
+
+
+def _mask_quotes(command: str) -> str:
+    """Copy of command with single/double-quoted spans (and backslash escapes) blanked out.
+
+    Operators inside quotes are literal text to the shell, so operator scans must ignore them;
+    `$(...)` and backticks still execute inside double quotes and are scanned separately on the raw text.
+    """
+    out: list[str] = []
+    i, n, quote = 0, len(command), ""
+    while i < n:
+        c = command[i]
+        if c == "\\" and i + 1 < n:
+            out.append("  ")
+            i += 2
+            continue
+        if quote:
+            out.append(" ")
+            if c == quote:
+                quote = ""
+        elif c in ("'", '"'):
+            quote = c
+            out.append(" ")
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _dequote(text: str) -> str:
+    """Strip shell quote characters so `.e''nv` scans as `.env`."""
+    return text.replace("'", "").replace('"', "")
+
+
+def _shell_parts(command: str) -> list[str]:
+    """Split a command on shell operators, ignoring operators inside quotes (original text kept)."""
+    masked = _mask_quotes(command)
+    parts, start = [], 0
+    for m in SPLIT.finditer(masked):
+        parts.append(command[start:m.start()])
+        start = m.end()
+    parts.append(command[start:])
+    return parts
 
 Rule = tuple[str, str, str, str]
 
@@ -61,7 +114,11 @@ def _from_claude(table: dict, scope: str) -> list[Rule]:
 
 
 def load(workspace: Path, home: Path) -> list[Rule]:
-    """Defaults, then user rules, then workspace rules; a workspace can only tighten, never allow."""
+    """Defaults, then user rules, then workspace rules; a layer can only tighten, never loosen.
+
+    Loosening is enforced again at verdict time (_verdict): a deny anywhere wins, so a
+    workspace (or user) rule can never weaken an earlier deny to ask/allow.
+    """
     rows: list[Rule] = [("default", *r) for r in DEFAULT]
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in SETTINGS[scope]:
@@ -96,10 +153,29 @@ def _match(category: str, pattern: str, subject: str) -> bool:
 
 
 def _verdict(rules: list[Rule], category: str, subject: str) -> str | None:
+    """Last matching rule wins, with one exception: a deny sticks across layers.
+
+    A deny from an earlier (more trusted) layer can never be weakened to ask/allow by a
+    later layer — this is what makes "only tighten" real. The only carve-out is an
+    explicit allow later in the SAME layer (e.g. DEFAULT denies `.env.*` but allows
+    `.env.example`), which is that layer's own deliberate exception, not a weakening.
+    """
     found = None
-    for _, rule_category, pattern, action in rules:
+    denied = False
+    denied_scope: str | None = None
+    allowed_after = False
+    for scope, rule_category, pattern, action in rules:
         if rule_category in (category, "*") and _match(category, pattern, subject):
-            found = action
+            if action == "deny":
+                denied, denied_scope, allowed_after = True, scope, False
+            elif action == "allow":
+                if denied and scope == denied_scope:
+                    allowed_after = True
+                found = action
+            else:
+                found = action
+    if denied and not allowed_after:
+        return "deny"
     return found
 
 
@@ -108,13 +184,17 @@ WRITERS = {"cp", "mv", "rm", "ln", "touch", "tee", "chmod", "chown", "install", 
 
 
 def _names_denied_path(rules: list[Rule], command: str) -> bool:
-    """Best effort: a command naming a path a read rule denies, or writing one an edit rule denies, is denied too; the sandbox is the real wall."""
+    """Best effort: a command naming a path a read rule denies, or writing one an edit rule denies, is denied too; the sandbox is the real wall.
+
+    Tokens are dequoted before scanning so `.e''nv` still matches the `.env` deny rules.
+    """
     specific = [r for r in rules if r[2] not in ("*", "**")]
-    for part in SPLIT.split(command):
+    for part in _shell_parts(command):
+        masked = _mask_quotes(part)
         words = part.split()
-        writes = bool(words) and (words[0].rsplit("/", 1)[-1] in WRITERS or ">" in part)
-        for token in re.split(r"[\s<>|&;()'\"=]+", part):
-            token = token.removeprefix("./")
+        writes = bool(words) and (words[0].rsplit("/", 1)[-1] in WRITERS or ">" in masked)
+        for token in re.split(r"[\s<>|&;()=]+", part):
+            token = _dequote(token).removeprefix("./")
             if token and not token.startswith("-") and any(_verdict(specific, c, token) == "deny" for c in (("edit", "read") if writes else ("read",))):
                 return True
     return False
@@ -123,7 +203,7 @@ def _names_denied_path(rules: list[Rule], command: str) -> bool:
 def subjects(name: str, args: dict, path_of) -> list[str]:
     """What the rules for this call match against: commands, paths, URLs or names."""
     if name == "run_command":
-        return [part.strip() for part in SPLIT.split(str(args.get("command") or "")) if part.strip()]
+        return [part.strip() for part in _shell_parts(str(args.get("command") or "")) if part.strip()]
     if name == "apply_patch":
         try:
             hunks = patches.parse(str(args.get("patch") or ""))
@@ -158,7 +238,9 @@ def check(rules: list[Rule], name: str, args: dict, path_of) -> str | None:
         return "deny"
     if "ask" in verdicts:
         return "ask"
-    shell_tricks = name == "run_command" and re.search(r"`|\$\(|<\(|>\(", str(args.get("command") or ""))
+    command = str(args.get("command") or "")
+    shell_tricks = name == "run_command" and bool(
+        _SUBST_TRICKS.search(command) or _SHELL_OPS.search(_mask_quotes(command)))
     if verdicts and all(v == "allow" for v in verdicts):
         return "ask" if shell_tricks else "allow"
     return None
@@ -166,9 +248,12 @@ def check(rules: list[Rule], name: str, args: dict, path_of) -> str | None:
 
 def safe_readonly(command: str) -> bool:
     """True for a command that only reads: plain calls of look-only programs, no redirects, substitutions or compound tricks beyond pipes."""
-    if re.search(r"`|\$\(|<\(|>|<<", command):
+    if _SUBST_TRICKS.search(command) or _REDIRECT_OPS.search(_mask_quotes(command)):
         return False
-    parts = [p.strip() for p in SPLIT.split(command) if p.strip()]
+    # /proc/<pid>/environ leaks through a "safe" reader like cat.
+    if _PROC_ENVIRON.search(_dequote(command)):
+        return False
+    parts = [p.strip() for p in _shell_parts(command) if p.strip()]
     for part in parts:
         words = part.split()
         if not words:
@@ -187,7 +272,9 @@ def remembered(name: str, args: dict, verdict: str | None) -> tuple[str, str] | 
     if name == "run_command":
         command = str(args.get("command") or "").strip()
         words = command.split()
-        if not words or SPLIT.search(command) or re.search(r"`|\$\(|<\(|>\(|>", command) or args.get("outside_sandbox"):
+        masked = _mask_quotes(command)
+        if (not words or SPLIT.search(masked) or _SUBST_TRICKS.search(command)
+                or _SHELL_OPS.search(masked) or args.get("outside_sandbox")):
             return None
         if words[0] in WRAPPERS:
             return "bash", command

@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import time
 from pathlib import Path
 
-from app.agent import skills
+from app.agent import sandbox, skills
 
 PROMPT = """You keep the skill library of a coding agent. Read the session below and decide whether a future session would handle this kind of task better with a skill.
 A skill tells how to do a KIND of task for this user: the steps in order with the commands and tool calls that worked, the points where a choice is made, how the user wants the result, and the traps (a general rule plus a short why).
@@ -28,6 +29,29 @@ FOLDER = Path(".manga-agent") / "skills"
 MAX_LEARNED = 30
 MAX_BODY = 12_000
 SECRET_LIKE = re.compile(r"\b(sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,})|Bearer\s+[A-Za-z0-9._-]{20,}")
+
+
+def known_secrets(extra: tuple[str, ...] = ()) -> tuple[str, ...]:
+    """Secret values that never persist into lessons, skills, or memory."""
+    found = [v for k, v in os.environ.items() if v and sandbox.SECRET_NAME.search(k)]
+    found.extend(extra)
+    seen, out = set(), []
+    for value in found:
+        value = str(value)
+        if len(value) >= 8 and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return tuple(out)
+
+
+def has_secret(text: str, secrets: tuple[str, ...] = ()) -> bool:
+    """True when ``text`` looks like it carries a secret: a SECRET_LIKE pattern or a known secret value."""
+    return bool(SECRET_LIKE.search(text)) or any(s and len(s) >= 8 and s in text for s in secrets)
+
+
+def _all_secrets(secrets: tuple[str, ...]) -> tuple[str, ...]:
+    """The caller-passed known values plus everything known_secrets() finds in the environment."""
+    return tuple(dict.fromkeys((*secrets, *known_secrets())))
 
 
 def learned(home: Path) -> dict[str, Path]:
@@ -204,7 +228,7 @@ def write_lessons(folder: Path, root: Path, session_id: str, add: str | list[str
     new = [add] if isinstance(add, str) else list(add)
     new = [t.strip() for t in new if t and t.strip()]
     text = "\n".join(new)
-    if not session_id or SECRET_LIKE.search(text) or any(s and len(s) >= 8 and s in text for s in secrets):
+    if not session_id or has_secret(text, _all_secrets(secrets)):  # Every known secret value, not just the caller's.
         return False
     path = session_file(folder, session_id)
     old = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else f"# Lessons from session {session_id} in {root}\n"
@@ -239,7 +263,7 @@ def consolidate(complete, provider, key: str, model: str, folder: Path, secrets:
     old = summary.read_text(encoding="utf-8", errors="replace")[:30000] if summary.is_file() else "(none yet)"
     data, usage = _ask(complete, provider, key, model, CONSOLIDATE, f"SUMMARY.md now:\n{old}\n\nSession notes:\n{shown[-150000:]}")
     text = str(data.get("summary") or "").strip()
-    if data.get("action") == "summarize" and text and not SECRET_LIKE.search(text) and not any(s and len(s) >= 8 and s in text for s in secrets):
+    if data.get("action") == "summarize" and text and not has_secret(text, _all_secrets(secrets)):  # Every known secret value, not just the caller's.
         archive = folder / "archive"
         if changes is not None:
             for path in [summary, *files, *(archive / p.name for p in files)]:
@@ -320,7 +344,7 @@ def digest(home: Path, workspace: Path, request: str, limit: int = 8, max_chars:
 
 def write(home: Path, items: list[dict], secrets: tuple[str, ...] = (), changes: Changes | None = None) -> list[str]:
     """Apply each valid create, update or delete to the learned skills, counting versions; never touches a skill the user or an installer put there."""
-    current, done = learned(home), []
+    current, done, secrets = learned(home), [], _all_secrets(secrets)
     for item in items:
         name = str(item.get("name") or "").strip().lower()
         if str(item.get("action") or "").lower() == "delete":
@@ -334,7 +358,7 @@ def write(home: Path, items: list[dict], secrets: tuple[str, ...] = (), changes:
         body = str(item.get("body") or "").strip()
         if not skills.NAME_RE.match(name) or not description or not body or len(body) > MAX_BODY:
             continue
-        if SECRET_LIKE.search(body + description) or any(s and len(s) >= 8 and s in body for s in secrets):
+        if has_secret(body + description, secrets):  # Every known secret value, not just the caller's.
             continue
         folder = home / FOLDER / name
         if (folder / "SKILL.md").exists() and name not in current:

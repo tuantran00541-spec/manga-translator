@@ -65,5 +65,16 @@ class Watch:
                     self.content[path] = Path(path).read_bytes()
                 except OSError:
                     pass
+        self._cap_content()
         self.known = now
         return done
+
+    def _cap_content(self) -> None:
+        """Evict the oldest-kept contents first until the total is back under MAX_TOTAL_BYTES."""
+        total = sum(len(b) for b in self.content.values())
+        if total <= MAX_TOTAL_BYTES:
+            return
+        for path in list(self.content):
+            total -= len(self.content.pop(path))
+            if total <= MAX_TOTAL_BYTES:
+                break

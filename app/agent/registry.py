@@ -206,6 +206,101 @@ class Registry:
         self.loops[name] = fn
 
 
+class _EventSink:
+    """Append-only event sink with no back-reference to the session.
+
+    Holds the session's event list and lock directly. A plugin introspecting
+    this gets a plain list and a lock — neither leads back to the live
+    AgentSession, unlike a bound method (whose __self__ is the session).
+    """
+
+    __slots__ = ("_events", "_lock")
+
+    def __init__(self, events: list, lock):
+        # No guard on this class, but keep the bypass explicit.
+        object.__setattr__(self, "_events", events)
+        object.__setattr__(self, "_lock", lock)
+
+    def append(self, kind: str, **data) -> None:
+        import time as _time
+        with self._lock:
+            event = {"seq": len(self._events) + 1, "type": kind,
+                     "time": round(_time.time(), 3), **data}
+            self._events.append(event)
+            self._lock.notify_all()
+
+
+class PluginSession:
+    """The capability-scoped session API handed to kernel plugins via the ctx "session" service.
+
+    Replaces the old live AgentSession: a plugin can no longer flip
+    session.mode to bypass, read the provider api_key, rewrite session.rules,
+    call trust_plugins(), or reach session.kernel. It sees a read-only view of
+    safe fields (id, mode, workspace_root) plus two narrow actions: emit an
+    event and register a tool. Every attribute write or delete raises.
+
+    Security: this object holds NO reference to the live AgentSession — only
+    plain values (id/mode/workspace_root strings) and an _EventSink (a list +
+    lock, neither of which references the session). Name-mangled attributes are
+    not a security boundary, so the session object itself is never stored.
+    """
+
+    __slots__ = ("_PluginSession__sid", "_PluginSession__mode",
+                 "_PluginSession__wsroot", "_PluginSession__sink",
+                 "_PluginSession__tools")
+
+    def __init__(self, session_id: str, mode: str, workspace_root: Path,
+                 sink: _EventSink, tools=None):
+        object.__setattr__(self, "_PluginSession__sid", session_id)
+        object.__setattr__(self, "_PluginSession__mode", mode)
+        object.__setattr__(self, "_PluginSession__wsroot", workspace_root)
+        object.__setattr__(self, "_PluginSession__sink", sink)
+        object.__setattr__(self, "_PluginSession__tools", tools)
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"{type(self).__name__} is read-only: plugins cannot set {name!r}")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"{type(self).__name__} is read-only: plugins cannot delete {name!r}")
+
+    def bind_tools(self, tools) -> None:
+        """Attach the kernel's tool service once, while the session builds the registry; not a plugin API."""
+        object.__setattr__(self, "_PluginSession__tools", tools)
+
+    def _sync_mode(self, mode: str) -> None:
+        """Session-internal: refresh the mode snapshot. Not a plugin API (setting
+        it only changes what this facade reports, never the real session)."""
+        object.__setattr__(self, "_PluginSession__mode", mode)
+
+    @property
+    def id(self) -> str:
+        return self.__sid
+
+    @property
+    def mode(self) -> str:
+        return self.__mode
+
+    @property
+    def workspace_root(self) -> Path:
+        return self.__wsroot
+
+    def emit(self, kind: str, **data) -> None:
+        """Append an event to the session's event log (it cannot touch history, rules or mode)."""
+        if not isinstance(kind, str) or not kind:
+            raise ValueError("event kind must be a non-empty string")
+        self.__sink.append(kind, **data)
+
+    def register_tool(self, spec: dict, handler: Callable, kind: str = "exec", always_ask: bool = False) -> None:
+        """Register a tool through the kernel's tool service, like ctx.get("tools").register does."""
+        tools = self.__tools
+        if tools is None:
+            raise RuntimeError("PluginSession is not bound to a registry yet")
+        tools.register(spec, handler, kind=kind, always_ask=always_ask)
+
+    def __repr__(self) -> str:
+        return f"PluginSession(id={self.id!r}, mode={self.mode!r})"
+
+
 def plugin_files(workspace: Path, home: Path) -> list[tuple[str, Path]]:
     found = []
     for scope, folder in (("user", home / ".manga-agent" / "plugins"), ("workspace", workspace / ".agents" / "plugins")):
@@ -222,21 +317,72 @@ def workspace_digest(files: list[tuple[str, Path]]) -> str:
     return h.hexdigest()
 
 
+def plugin_sources(workspace: Path, home: Path) -> list[tuple[str, Path, bytes | None]]:
+    """Every plugin file's bytes, read exactly once.
+
+    The trust digest and the executed code both come from these same bytes, so
+    a writer swapping a file between the digest and the load cannot slip
+    untrusted code under a trusted digest.
+    """
+    out: list[tuple[str, Path, bytes | None]] = []
+    for scope, path in plugin_files(workspace, home):
+        try:
+            out.append((scope, path, path.read_bytes()))
+        except OSError:
+            out.append((scope, path, None))
+    return out
+
+
+def sources_digest(sources: list[tuple[str, Path, bytes | None]]) -> str:
+    """Digest of the exact bytes load_plugins is about to execute (single-read).
+
+    Uses the same construction as workspace_digest, so a digest pinned via
+    trust_plugins() matches the one checked at load time.
+    """
+    h = hashlib.sha256()
+    for scope, path, data in sources:
+        if scope == "workspace" and data is not None:
+            h.update(path.name.encode() + b"\0" + data)
+    return h.hexdigest()
+
+
+def user_sources_digest(sources: list[tuple[str, Path, bytes | None]]) -> str:
+    """Digest of the user-scope plugin bytes, pinned under "plugins-user" like workspace plugins."""
+    h = hashlib.sha256()
+    for scope, path, data in sources:
+        if scope == "user" and data is not None:
+            h.update(path.name.encode() + b"\0" + data)
+    return h.hexdigest()
+
+
 def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.TrustStore) -> None:
-    """Python files that define register(api); a workspace's own plugins run only once the user trusts their exact contents."""
-    files = plugin_files(workspace, home)
-    trusted = trust.trusted(workspace, "plugins", workspace_digest(files))
-    for scope, path in files:
+    """Python files that define register(api); a workspace's own plugins run only once the user trusts their exact contents.
+
+    User-scope plugins need the same explicit trust: an unpinned or changed
+    file is reported as "untrusted" and never executed (default-deny, like the
+    fixed (g)/(h) flow). The UI surfaces this via needs_trust; trust_plugins()
+    pins both scopes.
+    """
+    sources = plugin_sources(workspace, home)
+    trusted_workspace = trust.trusted(workspace, "plugins", sources_digest(sources))
+    trusted_user = trust.trusted(workspace, "plugins-user", user_sources_digest(sources))
+    for scope, path, data in sources:
         row = {"name": path.stem, "scope": scope, "state": "loaded", "error": ""}
         reg.plugins.append(row)
-        if scope == "workspace" and not trusted:
+        if data is None:
+            row.update(state="failed", error="could not read the plugin file")
+            continue
+        if scope == "workspace" and not trusted_workspace:
+            row["state"] = "untrusted"
+            continue
+        if scope == "user" and not trusted_user:
             row["state"] = "untrusted"
             continue
         reg._current = path.stem
         try:
-            from app.agent.kernel import load_module
+            from app.agent.kernel import load_module_bytes
 
-            module = load_module(path, f"manga_agent_plugin_{scope}_{path.stem}")
+            module = load_module_bytes(data, f"manga_agent_plugin_{scope}_{path.stem}", str(path))
             if callable(getattr(module, "apply", None)) and not callable(getattr(module, "register", None)):
                 reg.kernel_modules.append((scope, path.stem, module))
                 row["state"] = "kernel"
@@ -251,12 +397,20 @@ def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.Trus
 class KernelTools:
     """The "tools" service of the kernel: a plugin's tools go into the registry and leave with the plugin."""
 
-    def __init__(self, ctx, reg: Registry):
+    def __init__(self, ctx, reg: Registry, session_api: "PluginSession | None" = None):
         self.ctx, self.reg = ctx, reg
+        # Plugin handlers get the capability facade, never the live session.
+        self._session_api = session_api
 
     def register(self, spec: dict, handler: Callable, kind: str = "exec", always_ask: bool = False) -> None:
         """handler(session, args) returns the text the model reads; kind is read, edit, exec or net."""
-        self.reg.tool(spec, handler, kind=kind, group=self.ctx._owner or None, always_ask=always_ask)
+        api = self._session_api
+        if api is not None and callable(handler):
+            def wrapped(_live_session, args, _handler=handler, _api=api):
+                return _handler(_api, args)
+        else:
+            wrapped = handler
+        self.reg.tool(spec, wrapped, kind=kind, group=self.ctx._owner or None, always_ask=always_ask)
         name = spec["name"]
         self.ctx.effect(lambda: self.reg.tools.pop(name, None))
 

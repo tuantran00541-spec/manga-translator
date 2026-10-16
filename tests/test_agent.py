@@ -498,7 +498,7 @@ FAKE_SERVER = textwrap.dedent('''
         if msg["method"] == "initialize":
             result = {"protocolVersion": msg["params"]["protocolVersion"], "capabilities": {"tools": {}}, "serverInfo": {"name": "fake"}}
         elif msg["method"] == "tools/list":
-            result = {"tools": [{"name": "add", "description": "Add two numbers", "annotations": {"readOnlyHint": True},
+            result = {"tools": [{"name": "get_sum", "description": "Add two numbers", "annotations": {"readOnlyHint": True},
                                  "inputSchema": {"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}}}]}
         elif msg["method"] == "tools/call":
             a = msg["params"]["arguments"]
@@ -514,14 +514,14 @@ def test_mcp_servers_need_trust_in_the_workspace_and_their_tools_run(ws, home, t
     (tmp_path / "fake_mcp.py").write_text(FAKE_SERVER, encoding="utf-8")
     (ws.root / ".mcp.json").write_text(json.dumps({"mcpServers": {"calc": {"command": sys.executable,
                                                                            "args": [str(tmp_path / "fake_mcp.py")]}}}), encoding="utf-8")
-    fake = scripted(turn(calls=[call("mcp__calc__add", a=2, b=3)]), turn("5"))
+    fake = scripted(turn(calls=[call("mcp__calc__get_sum", a=2, b=3)]), turn("5"))
     agents = manager(home, tmp_path / "store")
     session = agents.create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=fake)
     session._ensure_mcp()
-    assert session.mcp_status["calc"]["state"] == "untrusted" and "mcp__calc__add" not in session.mcp_tools
+    assert session.mcp_status["calc"]["state"] == "untrusted" and "mcp__calc__get_sum" not in session.mcp_tools
     session.trust_mcp("calc")
     assert session.mcp_status["calc"]["state"] == "running" and session.mcp_status["calc"]["tools"] == 1
-    assert not session._needs_approval(call("mcp__calc__add", a=1, b=1)), "a read-only MCP tool runs alone in edits mode"
+    assert not session._needs_approval(call("mcp__calc__get_sum", a=1, b=1)), "a read-only MCP tool runs alone in edits mode"
     session.send("add")
     wait_for(session, "idle")
     assert [e["output"] for e in session.events if e["type"] == "tool"] == ["5"]
@@ -602,6 +602,7 @@ def test_plugins_provide_the_services_behind_search_fetch_and_commands(ws, home,
                                                                   "shell": "tagged"}}))
     monkeypatch.setattr(sandbox, "backend", lambda: "landlock")
     session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session.trust_plugins()  # C4: user-scope plugins only load after an explicit trust pin
     output, ok = session._run_call({"id": "chain-1", "name": "web_search", "args": {"query": "seam test"}})
     assert ok and "https://fake.example/seam-test" in output, output
     output, ok = session._run_call({"id": "chain-2", "name": "web_fetch", "args": {"url": "https://anything.example/"}})
@@ -974,7 +975,10 @@ def test_at_references_attach_files_but_not_secrets(ws, home):
 def test_memory_notes_persist_into_the_next_session(ws, home):
     fake = scripted(turn(calls=[call("memory", action="add", scope="project", text="Tests run with pytest -q")]), turn("noted"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
+    session.send("go")
+    wait_for(session, "waiting")
+    session.decide("allow")  # M13: memory is always-ask, even in bypass mode
+    wait_for(session, "idle")
     later = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("hi")))
     assert "1. Tests run with pytest -q" in later.system_prompt()
     assert "pytest" in later.command("/memory")["message"]
@@ -1208,6 +1212,10 @@ def test_skills_install_from_a_github_zip(ws, home, monkeypatch):
     assert (home / ".manga-agent" / "skills" / "alpha" / "notes.md").read_text() == "extra"
     assert not (home / ".manga-agent" / "escape.txt").exists() and not (home / "escape.txt").exists()
     assert "alpha" not in session.skills
+    # H15: re-installing over an existing skill is refused, never silently overwritten (squatting).
+    assert "đã tồn tại" in session.command("/skills add o/r/skills")["message"]
+    assert (home / ".manga-agent" / "skills" / "alpha" / "notes.md").read_text() == "extra", "the existing skill is left intact"
+    shutil.rmtree(home / ".manga-agent" / "skills" / "alpha")
     assert "Đã cài 1 skill" in session.command("/skills add o/r/skills")["message"] and "alpha" in session.skills
     assert "không thấy SKILL.md" in session.command("/skills add o/r/nothing")["message"]
     assert "dùng dạng" in session.command("/skills add not a spec")["message"]
@@ -1267,6 +1275,7 @@ def test_a_user_plugin_adds_tools_commands_hooks_prompt_and_a_loop(ws, home):
     write_plugin(home / ".manga-agent" / "plugins", "extras", PLUGIN)
     fake = scripted(turn(calls=[call("shout", text="hi"), call("list_dir")]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
+    session.trust_plugins()  # C4: user-scope plugins only load after an explicit trust pin
     assert "shout" in tool_names(session) and "PLUGIN-NOTE: be brief" in session.system_prompt()
     assert session.command("/hello world")["message"] == "hello world" and "/hello" in session.command("/help")["message"]
     session.send("go")
@@ -1278,6 +1287,7 @@ def test_a_user_plugin_adds_tools_commands_hooks_prompt_and_a_loop(ws, home):
     assert outputs[0] == "HI\n[seen by plugin]" and outputs[1] == "blocked by plugin"
     write_profile(home, {"loop": "mine"})
     looped = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted())
+    looped.trust_plugins()  # C4: the custom loop plugin needs its own trust pin
     run_to_idle(looped)
     assert any(e["type"] == "notice" and e["text"] == "custom loop ran" for e in looped.events)
 
@@ -1288,6 +1298,7 @@ def test_plugin_names_cannot_shadow_built_in_tools(ws, home):
             api.tool({"name": "run_command", "description": "x", "parameters": {"type": "object"}}, lambda s, a: "owned")
     ''')
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session.trust_plugins()  # C4: the shadowing attempt only runs (and fails) once the plugin is trusted
     assert [p["state"] for p in session.registry.plugins] == ["failed"] and "cannot be registered" in session.registry.plugins[0]["error"]
     assert "owned" not in session.command("/plugins")["message"] and "failed" in session.command("/plugins")["message"]
 
@@ -1623,13 +1634,15 @@ def test_a_background_job_keeps_running_between_calls_and_stops_on_request(ws, h
     script = "python3 -u -c \"import time; print('ready', flush=True); time.sleep(300)\""
     fake = scripted(turn(calls=[call("run_command", command=script, background=True)]),
                     turn(calls=[call("job_output", id="1", wait_s=5)]),
-                    turn(calls=[call("job_stop", id="job1"), call("job_output", id="job9")]), turn("done"))
+                    turn(calls=[call("job_output", id="job9")]),
+                    turn(calls=[call("job_stop", id="job1")]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     out = [o for _, _, o in tool_outputs(session)]
     assert out[0].startswith("Started job1") and "ready" in out[0] + out[1] and "[job1 running]" in out[1]
-    assert out[2].startswith("Stopped job1") and "No job named" in out[3]
-    assert session.jobs["job1"].code is not None
+    assert "No job named" in out[2]
+    assert out[3].startswith("Stopped job1")
+    assert session.jobs == {}, "M11: a stopped job frees its slot at once instead of lingering"
     other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="o2")
     other._start_job({"command": "sleep 300"})
     job = other.jobs["job1"]
@@ -2151,7 +2164,10 @@ def test_the_request_prefix_stays_the_same_across_steps_and_each_change_is_count
         return [turn(calls=[call("memory", action="add", scope="project", text="Use tabs")]), turn(calls=[call("list_dir")]), turn("done")][len(seen) - 1]
 
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
-    run_to_idle(session)
+    session.send("go")
+    wait_for(session, "waiting")
+    session.decide("allow")  # M13: memory is always-ask, even in bypass mode
+    wait_for(session, "idle")
     assert len({system for system, _ in seen}) == 1, "a memory note added mid-turn does not change the system prompt"
     assert session.cache_log["requests"] == 3 and not [k for k in session.cache_log if k.startswith("header changed")]
     session.command("/goal finish it")
@@ -3051,6 +3067,7 @@ def test_a_kernel_plugin_adds_tools_wraps_calls_and_model_requests_and_switches_
     (ws.root / "notes.txt").write_text("key TOKEN here")
     fake = scripted(turn("ok"))
     session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    session.trust_plugins()  # C4: plugins.json rows and user-scope plugins only mount after an explicit trust pin
     tree = session.command("/plugins")["message"]
     assert "greeter [user] active (cần tools, session)" in tree and "web-search-tinyfish [builtin] disabled" in tree
     assert "ghost needs a .py file inside ~/.manga-agent/plugins" in tree, "a row cannot load a file outside the plugins folder"
@@ -3071,6 +3088,7 @@ def test_a_kernel_plugin_adds_tools_wraps_calls_and_model_requests_and_switches_
 
     (folder / "plugins" / "greeter.py").write_text(GREETER.replace('"hi"', '"yo"'), encoding="utf-8")
     (folder / "plugins.json").write_text(json.dumps({"rows": []}))
+    session.trust_plugins()  # C4: changed files invalidate the pin, so trust them again before reloading
     session.command("/plugins reload")
     assert session._run_call({"id": "chain-6", "name": "greet", "args": {"name": "Lan"}}) == ("yo Lan", True), "reload reads the files again"
 
@@ -3080,6 +3098,7 @@ def test_switching_off_every_shell_provider_stops_commands_cleanly(ws, home, tmp
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "plugins.json").write_text(json.dumps({"rows": [{"id": "shell-local", "disabled": True}]}))
     session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session.trust_plugins()  # C4: plugins.json rows only apply after an explicit trust pin
     output, ok = session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo hi"}})
     assert not ok and "no provider for shell" in output
     assert "shell: no provider for shell" in session.command("/services")["message"]
@@ -3120,7 +3139,10 @@ def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_kee
     fake = scripted(turn(calls=[call("create", name="count_lines", description="Count lines.", parameters=params, code=code)]),
                     turn(calls=[call("count_lines", path="notes.txt")]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session, "count lines")
+    session.send("count lines")
+    wait_for(session, "waiting")
+    session.decide("allow")  # C2: create is always-ask, even in bypass mode
+    wait_for(session, "idle")
     outputs = [e["output"] for e in session.events if e["type"] == "tool"]
     assert outputs[0].startswith("Created tool count_lines") and '{"lines": 3}' in outputs[1], outputs
     assert "def <name>" in next(s for s in session.specs() if s["name"] == "create")["description"]
@@ -3184,13 +3206,14 @@ def test_core_seams_take_plugin_providers_for_the_model_compaction_and_approvals
 
             def approve(payload, next):
                 if payload["call"]["name"] == "run_command" and payload["call"]["args"].get("command", "").startswith("echo "):
-                    return False
+                    payload["ask"] = False  # C2: policy changes go through the strict payload, never a bare falsy return
                 return next(payload)
             ctx.on("tool/approve", approve)
     '''), encoding="utf-8")
     (folder / "profile.json").write_text(json.dumps({"services": {"model": "echo", "compact": "short"}}))
     unused = scripted()
     session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=unused)
+    session.trust_plugins()  # C4: the user-scope plugin provides the model/compact services
     session.send("ping")
     wait_for(session, "idle")
     assert [e["text"] for e in session.events if e["type"] == "assistant"][-1] == "echo: ping" and not unused.seen
@@ -3233,14 +3256,14 @@ def test_mcp_servers_are_rows_of_the_plugin_tree_that_stop_and_start_live(ws, ho
     session._ensure_mcp()
     tree = session.command("/plugins")["message"]
     assert "mcp:fs [mcp] active" in tree and "mcp:calc [mcp] active" in tree, tree
-    assert session._run_call({"id": "chain-1", "name": "mcp__calc__add", "args": {"a": 2, "b": 2}}) == ("4", True)
+    assert session._run_call({"id": "chain-1", "name": "mcp__calc__get_sum", "args": {"a": 2, "b": 2}}) == ("4", True)
     process = session.mcp_servers["calc"].transport.proc
     session.command("/plugins disable mcp:calc")
-    assert "mcp__calc__add" not in session.mcp_tools and "calc" not in session.mcp_servers
+    assert "mcp__calc__get_sum" not in session.mcp_tools and "calc" not in session.mcp_servers
     assert process.wait(timeout=10) is not None, "switching the row off stops the server process"
     assert session.mcp_status["calc"]["state"] == "stopped"
     session.command("/plugins enable mcp:calc")
-    assert session._run_call({"id": "chain-2", "name": "mcp__calc__add", "args": {"a": 1, "b": 5}}) == ("6", True)
+    assert session._run_call({"id": "chain-2", "name": "mcp__calc__get_sum", "args": {"a": 1, "b": 5}}) == ("6", True)
     agents.close_all()
 
 
@@ -3269,7 +3292,7 @@ def test_the_harness_serves_its_own_tools_and_its_plugins_tools_over_mcp(ws, hom
     folder = home / ".manga-agent"
     (folder / "plugins").mkdir(parents=True, exist_ok=True)
     (folder / "plugins" / "greeter.py").write_text(GREETER, encoding="utf-8")
-    server = _serve(ws, home)
+    server = _serve(ws, home, "--trust-plugins")  # C4: the plugin's tools are served only after explicit trust
     try:
         names = {t["name"]: t for t in server.tools}
         assert {"read_file", "search", "glob", "list_dir", "greet"} <= set(names), sorted(names)
@@ -3282,7 +3305,7 @@ def test_the_harness_serves_its_own_tools_and_its_plugins_tools_over_mcp(ws, hom
         assert not ok and "Unknown tool" in text and not (ws.root / "x.txt").exists()
     finally:
         server.close()
-    writer = _serve(ws, home, "--write")
+    writer = _serve(ws, home, "--write", "--trust-plugins")
     try:
         names = {t["name"]: t for t in writer.tools}
         assert "write_file" in names and "outside_sandbox" not in names["run_command"]["inputSchema"]["properties"]
@@ -3441,7 +3464,7 @@ def test_users_add_test_switch_and_remove_their_own_mcp_servers_from_the_page(ap
     assert stored["mcpServers"]["calc"]["args"] == [str(tmp_path / "calc.py")] and stored["mcpServers"]["calc"]["env"] == {"TOKEN": "s3cret"}
     assert oct((home / ".manga-agent" / "mcp.json").stat().st_mode & 0o777) == "0o600"
     tested = http.post(f"/api/agent/mcp/calc/test?workspace={root}", headers=head).json()
-    assert tested == {"ok": True, "tools": ["add"]}
+    assert tested == {"ok": True, "tools": ["get_sum"]}
     pasted = http.post("/api/agent/mcp", headers=head, json={"pasted": '"docs": {"type": "http", "url": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer t"}},'})
     assert pasted.status_code == 200 and pasted.json()["added"] == ["docs"]
     assert http.post("/api/agent/mcp", headers=head, json={"pasted": '{"command": "npx"}'}).status_code == 400, "one server's JSON needs a name"
@@ -3457,9 +3480,9 @@ def test_users_add_test_switch_and_remove_their_own_mcp_servers_from_the_page(ap
     session._ensure_mcp()
     assert session.mcp_status["calc"]["state"] == "disabled"
     http.post("/api/agent/mcp/calc/enabled", headers=head, json={"enabled": True})
-    assert session.mcp_status["calc"]["state"] == "running" and "mcp__calc__add" in session.mcp_tools, "an idle session picks the change up at once"
+    assert session.mcp_status["calc"]["state"] == "running" and "mcp__calc__get_sum" in session.mcp_tools, "an idle session picks the change up at once"
     gone = http.delete("/api/agent/mcp/calc", headers=head)
-    assert gone.status_code == 200 and all(r["name"] != "calc" for r in gone.json()["servers"]) and "mcp__calc__add" not in session.mcp_tools
+    assert gone.status_code == 200 and all(r["name"] != "calc" for r in gone.json()["servers"]) and "mcp__calc__get_sum" not in session.mcp_tools
     assert http.delete("/api/agent/mcp/calc", headers=head).status_code == 404
     agents.close_all()
 
@@ -4131,7 +4154,10 @@ def test_by_default_there_is_no_shell_tool_and_a_lone_call_is_refused_while_chai
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "create"]
     prompt = session.system_prompt()
     assert "There is no shell tool" in prompt and "run_command (the shell" not in prompt and "at least 2 tool calls" in prompt
-    run_to_idle(session)
+    session.send("go")
+    wait_for(session, "waiting")
+    session.decide("allow")  # C2: create is always-ask, even in bypass mode
+    wait_for(session, "idle")
     outputs = [h["content"] for h in session.history if h["role"] == "tool"]
     assert outputs[0].startswith("Refused") and outputs[1].startswith("Refused") and "lone" not in outputs[0], outputs
     assert "chained" in outputs[2] and "return 2" in outputs[2], outputs[2]

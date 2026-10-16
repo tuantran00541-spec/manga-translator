@@ -23,7 +23,8 @@ def _never(*args, **kwargs):
 class Bridge:
     """One headless agent session whose tools are served; calls go through the same rules, sandbox and plugin waterfalls."""
 
-    def __init__(self, folder: Path, write: bool = False, network: bool = False, home: Path | None = None):
+    def __init__(self, folder: Path, write: bool = False, network: bool = False, home: Path | None = None,
+                 trust_plugins: bool = False):
         from app.agent import sandbox
         from app.agent.session import AgentSessionManager
         from app.agent.tools import Workspace
@@ -32,6 +33,9 @@ class Bridge:
         policy = sandbox.Policy("workspace-write" if write else "read-only", network)
         self.manager = AgentSessionManager(None, home=home)
         self.session = self.manager.create(PROVIDERS["openai"], "", "", Workspace(folder, policy), "bypass", complete=_never)
+        if trust_plugins:
+            # User-scope plugins load only through this opt-in ceremony, never by default.
+            self.session.trust_plugins()
         self.write, self.network = write, network
 
     def _kind(self, name: str) -> str:
@@ -103,11 +107,11 @@ def handle(bridge: Bridge, message: dict) -> dict | None:
     return {"jsonrpc": "2.0", "id": message["id"], "result": result}
 
 
-def serve(folder: Path, write: bool = False, network: bool = False) -> None:
+def serve(folder: Path, write: bool = False, network: bool = False, trust_plugins: bool = False) -> None:
     # stdout carries the protocol only; anything else the app prints goes to stderr.
     out = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8", buffering=1)
     sys.stdout = sys.stderr
-    bridge = Bridge(folder, write, network)
+    bridge = Bridge(folder, write, network, trust_plugins=trust_plugins)
     try:
         for line in sys.stdin:
             line = line.strip()
@@ -128,8 +132,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--folder", default=".", help="the project folder the tools work in (default: here)")
     parser.add_argument("--write", action="store_true", help="also offer edit and command tools (still sandboxed)")
     parser.add_argument("--network", action="store_true", help="also offer web tools and let commands use the network")
+    parser.add_argument("--trust-plugins", action="store_true",
+                        help="trust ~/.manga-agent/plugins and plugins.json; user-scope plugins load and "
+                             "their tools are served. Without this they stay untrusted and are not served.")
     args = parser.parse_args(argv)
-    serve(Path(args.folder).expanduser().resolve(), args.write, args.network)
+    serve(Path(args.folder).expanduser().resolve(), args.write, args.network, args.trust_plugins)
 
 
 if __name__ == "__main__":

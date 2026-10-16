@@ -106,6 +106,8 @@ def restrict(writable: list[str], network: bool, deny_read: list[str] | None = N
         allow(path, write | reads)
     for path in _allowed_siblings(deny_read or []) if deny_read else []:
         allow(path, reads)
+    # Landlock has no deny rules: a PATH_BENEATH grant on a parent covers denied files inside it.
+    # The --deny-read list is for the seatbelt/docker backends; on landlock the rule layer is the defense.
     if _libc.prctl(NO_NEW_PRIVS, 1, 0, 0, 0) != 0 or _libc.syscall(RESTRICT_SELF, ruleset, 0) < 0:
         raise OSError(ctypes.get_errno(), "landlock_restrict_self failed")
     os.close(ruleset)
