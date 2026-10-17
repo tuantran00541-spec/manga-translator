@@ -841,7 +841,8 @@ class AIModeRunner:
             })
 
     def _settle_blanks(self) -> int:
-        """Objects the translator left blank on purpose (credits, watermarks, art) are reviewed non-story text."""
+        """Split blanks by evidence, not guesswork: attempted blanks are reviewed non-story text, never-attempted ones block export."""
+        from app.editorial_gate import UNTRANSLATED_DISPOSITION
         from app.region_policy import text_object_in_preserve_region
 
         chapter_id = self.job.chapter_id
@@ -856,8 +857,11 @@ class AIModeRunner:
                             or obj.get("overlap_dropped") or obj.get("editorial_reviewed")
                             or str(obj.get("translation") or "").strip() or text_object_in_preserve_region(page, obj)):
                         continue
-                    # Export refuses story text with no source and no translation; A.I mode chose to letter nothing here.
-                    obj["editorial_disposition"], obj["editorial_reviewed"] = "non_story", True
+                    if obj.get("translation_attempted"):
+                        obj["editorial_disposition"], obj["editorial_reviewed"] = "non_story", True
+                    else:
+                        # Left unreviewed on purpose: the gate blocks export on this disposition.
+                        obj["editorial_disposition"] = UNTRANSLATED_DISPOSITION
                     settled += 1
             if settled:
                 save_manifest_raw(chapter_id, manifest)

@@ -1,0 +1,48 @@
+{
+  "secret": "MINIROUTER_API_KEY",
+  "base_url": "https://api.minirouter.sh/v1",
+  "model": "xiaomi/mimo-v2.6-flash",
+  "request": {
+    "reasoning_effort": "high"
+  },
+  "arms": [
+    {
+      "name": "agnes-lean-chains",
+      "tools": "chaos",
+      "secret": "AGNES_KEY",
+      "base_url": "https://apihub.agnes-ai.com/v1",
+      "model": "agnes-3.0-flash",
+      "request": {},
+      "concurrent": 3,
+      "limits": {
+        "max_usd": 3.0,
+        "concurrent": 3,
+        "price": {
+          "input": 5e-08,
+          "output": 1.5e-07
+        }
+      },
+      "note": "Work in chains: the world's API tools are reached only from code, so write tools with create whose code calls tools.mcp__world__api_search and tools.mcp__world__api_fetch, and put each stage's lookups, checks and updates into one chain instead of one call per reply. Reuse and extend the tools you made for the next stage."
+    }
+  ],
+  "domains": [
+    "sales",
+    "marketing",
+    "operations",
+    "support",
+    "finance",
+    "hr"
+  ],
+  "per_domain": 10,
+  "concurrent": 8,
+  "max_steps": 50,
+  "minutes": 20,
+  "max_output_tokens": 32000,
+  "limits": {
+    "max_usd": 15.0,
+    "price": {
+      "input": 1.47e-07,
+      "output": 2.94e-07
+    }
+  }
+}

@@ -177,8 +177,98 @@ def validate_protocol(value: str | None) -> str:
     return protocol
 
 
+# Where each well-known host serves its OpenAI-compatible API, so a bare host or a pasted endpoint still works.
+KNOWN_API_BASES: dict[str, str] = {
+    "api.openai.com": "/v1",
+    "api.anthropic.com": "/v1",
+    "generativelanguage.googleapis.com": "/v1beta/openai",
+    "api.deepseek.com": "/v1",
+    "openrouter.ai": "/api/v1",
+    "api.groq.com": "/openai/v1",
+    "api.together.xyz": "/v1",
+    "api.fireworks.ai": "/inference/v1",
+    "api.mistral.ai": "/v1",
+    "api.x.ai": "/v1",
+    "api.cerebras.ai": "/v1",
+    "api.sambanova.ai": "/v1",
+    "api.perplexity.ai": "",
+    "api.moonshot.ai": "/v1",
+    "api.moonshot.cn": "/v1",
+    "api.z.ai": "/api/paas/v4",
+    "open.bigmodel.cn": "/api/paas/v4",
+    "dashscope.aliyuncs.com": "/compatible-mode/v1",
+    "dashscope-intl.aliyuncs.com": "/compatible-mode/v1",
+    "api.siliconflow.cn": "/v1",
+    "api.siliconflow.com": "/v1",
+    "integrate.api.nvidia.com": "/v1",
+    "router.huggingface.co": "/v1",
+    "models.github.ai": "/inference",
+    "apihub.agnes-ai.com": "/v1",
+}
+_AZURE_SUFFIXES = (".openai.azure.com", ".services.ai.azure.com", ".cognitiveservices.azure.com")
+_ENDPOINT_TAILS = ("/chat/completions", "/completions", "/responses", "/embeddings", "/messages", "/models")
+_VERSION_TAIL = re.compile(r"/v\d+[a-z0-9]*$")
+
+
+def is_azure_host(host: str | None) -> bool:
+    return bool(host) and str(host).lower().endswith(_AZURE_SUFFIXES)
+
+
+def normalize_api_base(value: str | None) -> str:
+    """The API root from whatever the user pasted: a bare host, a docs URL or a full endpoint."""
+    raw = (value or "").strip()
+    if raw and "://" not in raw:
+        raw = "https://" + raw
+    try:
+        parsed = urlparse(raw)
+    except ValueError:
+        return raw.rstrip("/")
+    if not parsed.hostname:
+        return raw.rstrip("/")
+    host = parsed.hostname.lower()
+    path = re.sub(r"/{2,}", "/", parsed.path or "").rstrip("/")
+    lowered = path.lower()
+    for tail in _ENDPOINT_TAILS:
+        if lowered.endswith(tail):
+            path, lowered = path[: -len(tail)].rstrip("/"), lowered[: -len(tail)].rstrip("/")
+            break
+    known = KNOWN_API_BASES.get(host)
+    if known is not None and (not path or known.lower().startswith(lowered + "/")):
+        path = known
+    elif is_azure_host(host) and not lowered.endswith("/openai/v1"):
+        # Azure's v1 API needs no api-version; deployment URLs map onto it.
+        path = "/openai/v1"
+    scheme = (parsed.scheme or "https").lower()
+    netloc = host if parsed.port in (None, 443) else f"{host}:{parsed.port}"
+    return f"{scheme}://{netloc}{path}"
+
+
+def api_base_candidates(api_base: str) -> list[str]:
+    """Roots to try, in order, when a host is not one we know."""
+    base = api_base.rstrip("/")
+    host = (urlparse(base).hostname or "").lower()
+    if host in KNOWN_API_BASES or is_azure_host(host) or _VERSION_TAIL.search(base):
+        return [base]
+    return [base, f"{base}/v1", f"{base}/api/v1", f"{base}/openai/v1"]
+
+
+def auth_headers(provider: "AIProvider", api_key: str) -> dict:
+    """Bearer auth, plus the api-key header Azure expects."""
+    key = (api_key or "").strip()
+    headers = {"Authorization": f"Bearer {key}"}
+    if is_azure_host(urlparse(provider.api_base).hostname):
+        headers["api-key"] = key
+    return headers
+
+
 def validate_api_base(value: str | None) -> str:
-    api_base = (value or "").strip().rstrip("/")
+    try:
+        pasted = urlparse((value or "").strip() if "://" in (value or "") else "https://" + (value or "").strip())
+        if pasted.username is not None or pasted.password is not None:
+            raise ValueError("Credentials are not allowed inside the AI API URL")
+    except ValueError as exc:
+        raise ValueError(str(exc) if "Credentials" in str(exc) else "AI API base URL is invalid") from exc
+    api_base = normalize_api_base(value)
     if not api_base or len(api_base) > 2048:
         raise ValueError("AI API base URL is required")
     try:
@@ -187,12 +277,6 @@ def validate_api_base(value: str | None) -> str:
         raise ValueError("AI API base URL is invalid") from exc
     if parsed.scheme != "https" or not parsed.hostname:
         raise ValueError("AI API base URL must be a public HTTPS URL")
-    if parsed.username is not None or parsed.password is not None:
-        raise ValueError("Credentials are not allowed inside the AI API URL")
-    if parsed.query or parsed.fragment:
-        raise ValueError(
-            "AI API base URL must not contain a query or fragment"
-        )
     return api_base
 
 

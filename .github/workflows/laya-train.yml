@@ -1,0 +1,101 @@
+name: Laya train
+
+# One-off: tune the Laya stop judge on our Terminal-Bench runs, from the averaged SWE shards and straight from the base, and score both against the old judge.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/laya-train.yml"
+      - ".github/laya/**"
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  OUT: audit-results/laya/run-${{ github.run_id }}
+  # The run whose data and eight SWE shard checkpoints are reused (kept three days).
+  SHARDS_RUN: "38426489881"
+  # The judge the bench used so far, kept as the score to beat.
+  OLD_RUN: "38389577315"
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        start: [soup, direct]
+    steps:
+      - name: Make room for the checkpoints
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: laya-data
+          path: data
+          run-id: ${{ env.SHARDS_RUN }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        if: matrix.start == 'soup'
+        with:
+          pattern: laya-shard-*
+          path: shards
+          run-id: ${{ env.SHARDS_RUN }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        if: matrix.start == 'soup'
+        with:
+          name: laya-verified-checkpoint
+          path: old
+          run-id: ${{ env.OLD_RUN }}
+          github-token: ${{ github.token }}
+      - name: Install Laya on CPU torch
+        run: |
+          python -m pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --quiet laya==0.4.6
+      - name: Average the shards
+        if: matrix.start == 'soup'
+        run: python .github/laya/soup.py base $(ls -d shards/laya-shard-*)
+      - name: Tune on our own runs
+        run: |
+          set -o pipefail
+          base=typed-decisions
+          [ "${{ matrix.start }}" = soup ] && base=base
+          laya-train --data .github/laya/train-mixed.jsonl --base "$base" --out ckpt \
+            --device cpu --epochs 2 --micro-batch 2 --grad-accum 16 --max-len 512 --seed 0 \
+            --freeze-encoder 2>&1 | tee train.log
+          rm -rf ckpt/checkpoint_latest
+      # Uploaded before scoring, so a scoring failure cannot lose the checkpoint.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laya-ckpt-${{ matrix.start }}
+          path: ckpt
+          retention-days: 30
+      - name: Score on our held-out runs
+        run: |
+          models="tuned=ckpt int8=int8:ckpt"
+          [ "${{ matrix.start }}" = soup ] && models="old=old soup=base $models"
+          python .github/laya/evaluate.py data "$OUT/${{ matrix.start }}" $models
+      - name: Keep the log
+        if: always()
+        run: mkdir -p "$OUT/${{ matrix.start }}" && cp train.log "$OUT/${{ matrix.start }}/" 2>/dev/null || true
+      - name: Give git access only now
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - uses: ./.github/actions/save-evidence
+        if: always()
+        with:
+          paths: ${{ env.OUT }}/${{ matrix.start }}
+          message: "audit: Laya tuned from ${{ matrix.start }} (run ${{ github.run_id }})"

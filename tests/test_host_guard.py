@@ -43,6 +43,7 @@ def test_a_crashing_keyring_backend_reads_as_unavailable_storage(monkeypatch):
         raise Panic("rust panic")
 
     monkeypatch.setattr(keyring, "get_password", crash)
+    monkeypatch.setattr(secret_store, "_os_store_works", True)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     status = secret_store.provider_key_status("gemini")

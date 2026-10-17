@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from app.ai_providers import (
     CLOUD_PROVIDER_ID, PROVIDERS, cloud_job_key, normalize_provider_id, resolve_provider, validate_provider_label
@@ -55,6 +56,67 @@ class _GuardedKeyring:
         return call
 
 
+def _secrets_file() -> Path:
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "manga-translator" / "secrets.json"
+
+
+class _FileKeyring:
+    """Keys in a file only this user can read, for machines without an OS secret store (headless Linux, WSL, servers)."""
+
+    def __init__(self, error):
+        self._error = error
+
+    def _read(self) -> dict:
+        path = _secrets_file()
+        try:
+            return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        except (OSError, ValueError) as exc:
+            raise self._error(f"cannot read {path}: {exc}") from exc
+
+    def _write(self, data: dict) -> None:
+        path = _secrets_file()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            temp = path.with_suffix(".tmp")
+            with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as handle:
+                json.dump(data, handle)
+            os.replace(temp, path)
+        except OSError as exc:
+            raise self._error(f"cannot write {path}: {exc}") from exc
+
+    def get_password(self, service: str, account: str) -> str | None:
+        return self._read().get(f"{service}/{account}")
+
+    def set_password(self, service: str, account: str, value: str) -> None:
+        data = self._read()
+        data[f"{service}/{account}"] = value
+        self._write(data)
+
+    def delete_password(self, service: str, account: str) -> None:
+        data = self._read()
+        if data.pop(f"{service}/{account}", None) is None:
+            raise self._error("password not found")
+        self._write(data)
+
+
+_os_store_works: bool | None = None
+
+
+def _os_store_usable(keyring) -> bool:
+    """False when keyring found no backend, or its backend crashes while being picked."""
+    global _os_store_works
+    if _os_store_works is None:
+        try:
+            from keyring.backends import fail  # type: ignore
+
+            _os_store_works = not isinstance(keyring.get_keyring(), fail.Keyring)
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except BaseException:
+            _os_store_works = False
+    return _os_store_works
+
+
 def _keyring_module():
     try:
         import keyring  # type: ignore
@@ -63,7 +125,13 @@ def _keyring_module():
         raise SecretStoreUnavailable(
             "Secure secret storage is unavailable. Install the 'keyring' dependency."
         ) from exc
+    if not _os_store_usable(keyring):
+        return _FileKeyring(KeyringError), KeyringError
     return _GuardedKeyring(keyring, KeyringError), KeyringError
+
+
+def _store_source() -> str:
+    return "os_secure_storage" if _os_store_works is not False else "local_file"
 
 
 def _get_api_key(account: str, env_names: tuple[str, ...], provider: str) -> str | None:
@@ -86,7 +154,7 @@ def _set_api_key(account: str, value: str, provider: str) -> None:
     value = (value or "").strip()
     if not value:
         raise ValueError(f"{provider} API key is required")
-    if len(value) > 4096:
+    if len(value) > 65536:
         raise ValueError(f"{provider} API key is unexpectedly long")
 
     keyring, KeyringError = _keyring_module()
@@ -116,12 +184,13 @@ def _key_status(
     provider: str,
 ) -> dict:
     if any(os.getenv(name) for name in env_names):
-        return {"configured": True, "source": "environment"}
+        return {"configured": True, "source": "environment", "count": 1}
     try:
-        configured = bool(_get_api_key(account, env_names, provider))
+        keys = split_keys(_get_api_key(account, env_names, provider))
         return {
-            "configured": configured,
-            "source": "os_secure_storage" if configured else "none",
+            "configured": bool(keys),
+            "source": _store_source() if keys else "none",
+            "count": len(keys),
         }
     except SecretStoreUnavailable as exc:
         return {
@@ -163,9 +232,23 @@ def deepseek_key_status() -> dict:
     )
 
 
-def get_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> str | None:
-    if provider_id == CLOUD_PROVIDER_ID:
-        return cloud_job_key()
+MAX_KEYS = 10
+
+
+def split_keys(raw: str | None) -> list[str]:
+    """Stored keys in order: a JSON list, or one plain key."""
+    raw = (raw or "").strip()
+    if raw.startswith("["):
+        try:
+            values = json.loads(raw)
+        except ValueError:
+            values = None
+        if isinstance(values, list):
+            return [str(v).strip() for v in values if str(v).strip()]
+    return [raw] if raw else []
+
+
+def _raw_provider_key(provider_id: str, provider_label: str | None) -> str | None:
     provider_id, env_names, label = _provider_meta(provider_id, provider_label)
     if provider_id == "gemini":
         return get_gemini_api_key()
@@ -174,13 +257,41 @@ def get_provider_api_key(provider_id: str, *, provider_label: str | None = None)
     return _get_api_key(_provider_account(provider_id), env_names, label)
 
 
-def set_provider_api_key(provider_id: str, value: str, *, provider_label: str | None = None) -> None:
+def get_provider_api_keys(provider_id: str, *, provider_label: str | None = None) -> list[str]:
+    if provider_id == CLOUD_PROVIDER_ID:
+        key = cloud_job_key()
+        return [key] if key else []
+    return split_keys(_raw_provider_key(provider_id, provider_label))
+
+
+def get_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> str | None:
+    """The first stored key; agent mode is the one place that moves on to the others."""
+    keys = get_provider_api_keys(provider_id, provider_label=provider_label)
+    return keys[0] if keys else None
+
+
+def set_provider_api_key(provider_id: str, value: str, *, provider_label: str | None = None, append: bool = False) -> int:
+    """Store one key, or add it after the stored ones; returns how many keys are stored."""
     provider_id, _env_names, label = _provider_meta(provider_id, provider_label)
     account = {
         "gemini": _GEMINI_ACCOUNT,
         "deepseek": _DEEPSEEK_ACCOUNT,
     }.get(provider_id, _provider_account(provider_id))
-    _set_api_key(account, value, label)
+    value = (value or "").strip()
+    if value.startswith("["):
+        raise ValueError(f"{label} API key is invalid")
+    keys = [value]
+    if append:
+        keyring, KeyringError = _keyring_module()
+        try:
+            stored = split_keys(keyring.get_password(_SERVICE_NAME, account))
+        except KeyringError as exc:
+            raise SecretStoreUnavailable(f"Cannot read {label} API key from OS secure storage: {exc}") from exc
+        keys = stored + [k for k in keys if k not in stored]
+        if len(keys) > MAX_KEYS:
+            raise ValueError(f"At most {MAX_KEYS} keys per provider")
+    _set_api_key(account, keys[0] if len(keys) == 1 else json.dumps(keys), label)
+    return len(keys)
 
 
 def delete_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> None:

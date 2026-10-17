@@ -102,31 +102,36 @@
       datalist.id = listId;
 
       const save = button("Lưu", "ui-btn ui-btn-primary ui-btn-compact");
+      const add = button("Thêm key");
+      add.title = "Giữ các key đã lưu và thêm key này vào sau; agent sẽ hỏi đổi key khi key đang dùng bị giới hạn";
+      add.hidden = true;
       const load = button("Tải");
       load.title = "Tải danh sách model";
       const clear = button("Xóa key", "ai-link-btn");
       clear.hidden = true;
 
-      save.addEventListener("click", async () => {
+      const store = async (append) => {
         if (!key.value.trim()) return window.showToast?.(`Nhập ${labels[id]} API key trước.`, "error");
-        save.disabled = true;
+        save.disabled = add.disabled = true;
         try {
           const response = await fetch(`/api/visual_qc/providers/${id}/key`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ api_key: key.value.trim() }),
+            body: JSON.stringify({ api_key: key.value.trim(), append }),
           });
           const data = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
           key.value = "";
-          window.showToast?.(`Đã lưu key ${labels[id]}.`, "success");
+          window.showToast?.(append ? `Đã thêm key, ${labels[id]} có ${data.count} key.` : `Đã lưu key ${labels[id]}.`, "success");
           await refresh();
         } catch (err) {
           window.showToast?.("Không thể lưu key: " + err.message, "error");
         } finally {
-          save.disabled = false;
+          save.disabled = add.disabled = false;
         }
-      });
+      };
+      save.addEventListener("click", () => store(false));
+      add.addEventListener("click", () => store(true));
 
       clear.addEventListener("click", async () => {
         clear.disabled = true;
@@ -170,16 +175,18 @@
         }
       });
 
-      body.append(inlineField(key, save), inlineField(model, load), datalist, clear);
+      const keyRow = inlineField(key, save);
+      keyRow.append(add);
+      body.append(keyRow, inlineField(model, load), datalist, clear);
       cardsHost.append(details);
-      cards[id] = { providerStatus, clear, model, key };
+      cards[id] = { providerStatus, clear, model, key, add };
     });
 
     const customForm = exclusive(el("details", "ai-provider-card ai-provider-row ai-custom-provider-form"));
     const customSummary = el("summary", "ai-provider-summary");
     customSummary.append(el("span", "ai-provider-name", "+ Thêm provider tùy chỉnh"));
     const customBody = el("div", "ai-provider-body");
-    const customNote = el("p", "ai-provider-note", "OpenAI-compatible, API root HTTPS, model nhận ảnh.");
+    const customNote = el("p", "ai-provider-note", "OpenAI-compatible, model nhận ảnh. Dán host, link endpoint hay base URL đều được; app tự tìm đúng đường dẫn.");
     const input = (placeholder, label, type = "text", className = "ui-input") => {
       const node = el("input", className);
       node.type = type;
@@ -190,37 +197,39 @@
     const customLabel = input("Tên hiển thị", "Tên provider tùy chỉnh");
     const customId = input("Mã, ví dụ local-vision", "Mã provider tùy chỉnh");
     customId.pattern = "[a-z0-9][a-z0-9_-]{0,63}";
-    const customBase = input("https://api.example.com/v1", "API root HTTPS của provider", "url");
+    const customBase = input("Base URL, ví dụ api.groq.com", "Base URL của provider");
     const customModel = input("Model vision", "Model vision của provider tùy chỉnh");
     const customKey = input("API key", "API key của provider tùy chỉnh", "password", "api-key-input");
     customKey.autocomplete = "new-password";
     const customStatus = el("span", "ai-provider-status");
     const customSave = button("Lưu provider", "ui-btn ui-btn-primary ui-btn-compact");
+    const customAdd = button("Thêm key");
+    customAdd.title = "Giữ các key đã lưu và thêm key này vào sau";
     const customClear = button("Xóa provider", "ai-link-btn");
     customClear.disabled = true;
     const namePair = el("div", "ai-field-pair");
     namePair.append(customLabel, customId);
     const customActions = el("div", "ai-provider-actions");
-    customActions.append(customSave, customClear);
+    customActions.append(customSave, customAdd, customClear);
     customBody.append(customNote, customStatus, namePair, customBase, customModel, customKey, customActions);
     customForm.append(customSummary, customBody);
     config.append(head, cardsHost);
 
     const customProviderId = () => customId.value.trim().toLowerCase();
-    customSave.addEventListener("click", async () => {
+    const saveCustom = async (append) => {
       const id = customProviderId();
       if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) return window.showToast?.("Mã provider dùng chữ thường, số, dấu gạch ngang hoặc gạch dưới.", "error");
       if (builtinProviders.includes(id)) return window.showToast?.("Mã này đã dành riêng cho provider có sẵn. Hãy chọn mã khác.", "error");
       if (!customLabel.value.trim() || !customBase.value.trim() || !customModel.value.trim() || !customKey.value.trim()) {
         return window.showToast?.("Nhập tên, mã, API root, model vision và API key.", "error");
       }
-      customSave.disabled = true;
+      customSave.disabled = customAdd.disabled = true;
       try {
         const response = await fetch(`/api/visual_qc/providers/${encodeURIComponent(id)}/key`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             api_key: customKey.value.trim(), provider_label: customLabel.value.trim(),
-            provider_protocol: "openai", provider_api_base: customBase.value.trim(),
+            provider_protocol: "openai", provider_api_base: customBase.value.trim(), append,
           }),
         });
         const data = await response.json().catch(() => ({}));
@@ -228,14 +237,17 @@
         localStorage.setItem(`manga_ai_model_${id}`, customModel.value.trim());
         localStorage.setItem(`manga_translation_vision_model_${id}`, customModel.value.trim());
         customKey.value = "";
-        window.showToast?.(`Đã lưu provider ${customLabel.value.trim()}.`, "success");
+        if (data.api_base) customBase.value = data.api_base;
+        window.showToast?.(`Đã lưu provider ${customLabel.value.trim()} (${data.api_base || ""}, ${data.count || 1} key).`, "success");
         await refresh();
       } catch (err) {
         window.showToast?.("Không thể lưu provider: " + err.message, "error");
       } finally {
-        customSave.disabled = false;
+        customSave.disabled = customAdd.disabled = false;
       }
-    });
+    };
+    customSave.addEventListener("click", () => saveCustom(false));
+    customAdd.addEventListener("click", () => saveCustom(true));
     customClear.addEventListener("click", async () => {
       const id = customProviderId();
       if (!id) return;
@@ -262,6 +274,8 @@
       node.classList.toggle("configured", configured);
     };
 
+    const connected = (info) => !info.configured ? "Chưa có key" : info.count > 1 ? `Đã kết nối · ${info.count} key` : "Đã kết nối";
+
     async function refresh() {
       try {
         const response = await fetch("/api/visual_qc/settings");
@@ -272,8 +286,9 @@
           const info = data.providers?.[id] || {};
           const refs = cards[id];
           if (!refs.model.value) refs.model.value = info.model || "";
-          setStatus(refs.providerStatus, Boolean(info.configured), info.configured ? "Đã kết nối" : "Chưa có key");
+          setStatus(refs.providerStatus, Boolean(info.configured), connected(info));
           refs.clear.hidden = !info.configured || info.source === "environment";
+          refs.add.hidden = !info.configured || info.source === "environment";
           refs.key.placeholder = info.configured ? "Nhập key mới để thay" : "API key";
           if (info.configured) ready += 1;
         });
@@ -283,7 +298,7 @@
         customInfos.forEach((info) => {
           const { details, providerStatus, body } = providerRow(info.label || info.id);
           details.classList.add("ai-custom-provider-card");
-          setStatus(providerStatus, Boolean(info.configured), info.configured ? "Đã kết nối" : "Chưa có key");
+          setStatus(providerStatus, Boolean(info.configured), connected(info));
           const detailsText = el("p", "ai-provider-note", `${info.api_base} · ${localStorage.getItem(`manga_ai_model_${info.id}`) || "chưa chọn model"}`);
           const edit = button("Chỉnh sửa");
           edit.addEventListener("click", () => {

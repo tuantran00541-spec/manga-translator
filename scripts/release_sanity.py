@@ -169,7 +169,8 @@ def _module_name(path: Path) -> str:
 
 
 def check_python_module_reachability() -> None:
-    app_paths = sorted(Path("app").rglob("*.py"))
+    # Skills bundled for the Agent carry their own scripts; they are data, not app modules.
+    app_paths = sorted(p for p in Path("app").rglob("*.py") if "builtin_skills" not in p.parts)
     existing = {
         _module_name(path)
         for path in app_paths
@@ -212,7 +213,7 @@ def check_python_module_reachability() -> None:
                 if candidate in existing:
                     incoming[candidate].append(f"{path}:{node.lineno}")
 
-    entrypoints = {"app.main"}
+    entrypoints = {"app.main", "app.agent.cli"}
     failures = [
         f"{module} has no incoming runtime import"
         for module in sorted(existing)

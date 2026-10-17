@@ -1,0 +1,5 @@
+data/sales.csv lists sales: date, region, product, units, unit_price. Write report.py (Python 3, standard library only) that reads it and writes out/summary.json with:
+- "revenue_by_region": region -> total revenue (units * unit_price) rounded to 2 decimals, regions lower-cased and stripped of spaces;
+- "top_product": the product with the most units sold;
+- "skipped_rows": how many rows were left out because units is empty or negative.
+Run it so out/summary.json exists. Rows with empty or negative units are skipped and count nowhere else.

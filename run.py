@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -8,6 +9,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import urllib.request
 import webbrowser
 from pathlib import Path
@@ -49,9 +51,9 @@ def _health(url: str) -> dict | None:
 
 
 def _is_ours(url: str) -> bool:
-    """True when this app answers at ``url``, not some other program on the port."""
+    """True when this app answers at ``url``, even degraded by missing models, not some other program on the port."""
     body = _health(url)
-    return bool(body) and body.get("status") == "ok" and "models_missing" in body
+    return bool(body) and body.get("status") in ("ok", "degraded") and "models_missing" in body
 
 
 def _port_free(port: int) -> bool:
@@ -80,10 +82,29 @@ def _running_port() -> int | None:
     return None
 
 
+def _launch_dir() -> Path | None:
+    """The folder `manga` was typed in, for the Agent tab; None from an icon, home, a drive root or the app's own folder."""
+    if not (sys.stdin and sys.stdin.isatty()):
+        return None
+    try:
+        here = Path.cwd().resolve()
+    except OSError:
+        return None
+    if here in (Path.home().resolve(), Path(here.anchor)) or here == BASE_DIR or BASE_DIR in here.parents:
+        return None
+    return here
+
+
+def _page(url: str) -> str:
+    """The app URL, carrying the launch folder for the Agent tab when there is one."""
+    folder = _launch_dir()
+    return f"{url}/?workspace={urllib.parse.quote(str(folder))}" if folder else url
+
+
 def _open_when_up(url: str) -> None:
     for _ in range(240):
         if _is_ours(url):
-            webbrowser.open(url)
+            webbrowser.open(_page(url))
             return
         time.sleep(0.5)
 
@@ -112,6 +133,52 @@ def _run_installer(source: Path, info: dict) -> None:
     subprocess.run(command, check=True, env=env)
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _update_pin(info: dict) -> str | None:
+    """Pinned SHA-256 for the update ZIP: MANGA_UPDATE_SHA256 wins, then the install marker's update_sha256."""
+    for raw in (os.environ.get("MANGA_UPDATE_SHA256"), info.get("update_sha256")):
+        pin = str(raw or "").strip().lower()
+        if not pin:
+            continue
+        if len(pin) != 64 or any(c not in "0123456789abcdef" for c in pin):
+            raise SystemExit(f"Mã pin SHA-256 không hợp lệ ({str(raw)[:16]}…); phải là 64 ký tự hex.")
+        return pin
+    return None
+
+
+def _verify_archive(archive: Path, ref: str, info: dict) -> None:
+    """Integrity gate for the downloaded update ZIP: verify BEFORE unpack and BEFORE the installer runs.
+
+    The ZIP's SHA-256 must match the pinned value; a missing pin or a mismatch
+    refuses the update (fail closed). Tradeoff: the download URL tracks a moving
+    branch head, so the pin goes stale on every upstream commit -- until the
+    project publishes per-release checksums, the pin must be refreshed per
+    update from a trusted channel (e.g. the maintainer's release notes). This is
+    also the hook where a signature check (cosign/sigstore, once the project
+    publishes signatures) should be added next to -- or in place of -- the pin.
+    """
+    pin = _update_pin(info)
+    if pin is None:
+        raise SystemExit(
+            "Không cập nhật: chưa có mã pin SHA-256 cho bản cập nhật nên không thể kiểm tra tính toàn vẹn. "
+            "Đặt biến môi trường MANGA_UPDATE_SHA256 hoặc thêm trường \"update_sha256\" vào .manga-install.json "
+            f"với SHA-256 của file zip {ref} (lấy từ kênh tin cậy, ví dụ ghi chú phát hành), rồi chạy lại."
+        )
+    digest = _sha256_file(archive)
+    if digest != pin:
+        raise SystemExit(
+            f"Không cập nhật: SHA-256 của bản tải về ({digest[:16]}…) không khớp mã pin ({pin[:16]}…). "
+            "File có thể đã bị thay đổi ở nguồn hoặc trên đường truyền; từ chối cài đặt."
+        )
+
+
 def _update() -> None:
     """Get the latest code and rerun the installer, which keeps models, chapters and the environment."""
     if _running_port() is not None:
@@ -126,6 +193,7 @@ def _update() -> None:
         archive = Path(work) / "source.zip"
         print(f"Đang tải bản mới ({ref})…", flush=True)
         urllib.request.urlretrieve(f"https://codeload.github.com/{REPO}/zip/refs/heads/{ref}", archive)
+        _verify_archive(archive, ref, info)
         shutil.unpack_archive(archive, work)
         source = next(p for p in Path(work).iterdir() if p.is_dir())
         _run_installer(source, info)
@@ -140,8 +208,15 @@ def _safe_console() -> None:
 
 def main(argv: list[str] | None = None) -> None:
     _safe_console()
+    words = [w for w in (sys.argv[1:] if argv is None else argv) if w != "--open"]
+    if words[:1] == ["mcp"]:
+        # `manga mcp`: serve the agent's tools to another MCP client over stdio instead of opening the app.
+        from app.agent.mcp_server import main as serve_mcp
+
+        serve_mcp(words[1:])
+        return
     parser = argparse.ArgumentParser(prog="manga", description="Manga Translator")
-    parser.add_argument("command", nargs="?", choices=["update"], help="update: get the latest version")
+    parser.add_argument("command", nargs="?", choices=["update", "mcp"], help="update: get the latest version; mcp: serve the agent's tools over MCP (stdio)")
     parser.add_argument("--open", action="store_true", help="open the app in the browser once it is up")
     parser.add_argument("--window", action="store_true", help="show the app in its own window instead of the browser")
     parser.add_argument("--version", action="version", version=f"Manga Translator {VERSION} ({BASE_DIR})")
@@ -154,8 +229,8 @@ def main(argv: list[str] | None = None) -> None:
     if port is None:
         url = _url(_running_port() or PORT)
         logger.info(f"Manga Translator is already running at {url}")
-        if not (args.window and _show_window(url)):
-            webbrowser.open(url)
+        if not (args.window and _show_window(_page(url))):
+            webbrowser.open(_page(url))
         return
     if port != PORT:
         logger.warning(f"Port {PORT} is used by another program; using {port}")
@@ -224,7 +299,7 @@ def _serve_in_window(port: int) -> None:
         while thread.is_alive() and not _is_ours(url):
             time.sleep(0.3)
 
-    if _show_window(url, on_ready=wait_until_up):
+    if _show_window(_page(url), on_ready=wait_until_up):
         server.should_exit = True
         thread.join(timeout=10)
         return
