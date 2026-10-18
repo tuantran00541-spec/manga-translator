@@ -29,6 +29,7 @@ class ChapterProcessingJob:
     done_indices: list[int] = field(default_factory=list)
     current_batch: list[int] = field(default_factory=list)
     errors: list[dict] = field(default_factory=list)
+    screen: Callable | None = field(default=None, repr=False)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -57,6 +58,7 @@ class ChapterProcessingJobManager:
         *,
         page_indices: list[int],
         workers: int,
+        screen: Callable | None = None,
     ) -> dict:
         planned = list(dict.fromkeys(int(index) for index in page_indices))
         if not planned:
@@ -76,6 +78,7 @@ class ChapterProcessingJobManager:
                 chapter_id=chapter_id,
                 page_indices=planned,
                 workers=max(1, min(8, int(workers))),
+                screen=screen,
             )
             self._jobs[job.job_id] = job
             self._latest_by_chapter[chapter_id] = job.job_id
@@ -141,6 +144,7 @@ class ChapterProcessingJobManager:
                 list(job.page_indices),
                 job.workers,
                 on_page_done,
+                **({"screen": job.screen} if job.screen is not None else {}),
             )
             with self._lock:
                 job.completed = total

@@ -12,6 +12,7 @@ import copy
 import functools
 import json
 import re
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -142,7 +143,7 @@ class AIModeRunner:
             "editorial_blockers": 0, "blocker_samples": [], "source_lang": None,
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
             "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [], "unboxed_pages": [],
-            "repaint_retried": 0, "residue_left": [],
+            "repaint_retried": 0, "residue_left": [], "art_kept": 0,
             "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "errors": [], "samples": []},
         })
         self._memory = None
@@ -305,8 +306,10 @@ class AIModeRunner:
         if not indices:
             self._progress(0, 0, "Không có lát nào cần clean")
             return
+        screen = self._art_screen()
         snapshot = chapter_processing_jobs.start(
             self.job.chapter_id, page_indices=indices, workers=self.settings.workers,
+            **({"screen": screen} if screen is not None else {}),
         )
         job_id = snapshot["job_id"]
         # Checkpoint 3 starts on each slice as soon as it is clean, so its A.I calls overlap the cleanup.
@@ -332,6 +335,22 @@ class AIModeRunner:
             self._review_task.cancel()
             raise
         self._review_queue.put_nowait(None)
+
+    def _art_screen(self):
+        """The art screen for this provider, counting the boxes it keeps as drawn."""
+        from app.ai_mode.art_screen import screen_for
+
+        screen = screen_for(self.provider, self.api_key)
+        if screen is None:
+            return None
+        lock = threading.Lock()
+
+        def counted(image, boxes) -> set[int]:
+            art = screen(image, boxes)
+            with lock:
+                self.report["art_kept"] += len(art)
+            return art
+        return counted
 
     async def _read_glossary(self, indices: list[int]) -> dict:
         """Names, terms and forms of address for the whole chapter; empty when the read fails."""
