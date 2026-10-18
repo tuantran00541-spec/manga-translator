@@ -673,15 +673,18 @@ def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
     region = {"x1": 0, "y1": 0, "x2": 50, "y2": 20}
     manifest = {"pages": [
         {"text_objects": [{"id": "said", "translation": "Chào", "region": region},
-                          {"id": "credit", "translation": "", "region": region},
-                          {"id": "gone", "translation": "", "source_missing": True, "region": region}]},
+                          {"id": "credit", "translation": "", "translation_attempted": True, "region": region},
+                          {"id": "gone", "translation": "", "source_missing": True, "region": region},
+                          {"id": "unread", "translation": "", "region": region}]},
         {"skipped": True, "text_objects": [{"id": "skip", "translation": "", "region": region}]},
     ]}
     saved = []
     monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter: manifest)
     monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter, data: saved.append(chapter))
     runner = _runner(monkeypatch, "render", manifest)
-    assert runner._settle_blanks() == 1 and saved == [CHAPTER]
+    assert runner._settle_blanks() == 2 and saved == [CHAPTER]
     objects = manifest["pages"][0]["text_objects"]
     assert objects[1]["editorial_disposition"] == "non_story" and objects[1]["editorial_reviewed"] is True
+    # A blank the translator never tried stays unreviewed, so export blocks on it.
+    assert objects[3]["editorial_disposition"] == "untranslated" and not objects[3].get("editorial_reviewed")
     assert "editorial_disposition" not in objects[0] and "editorial_disposition" not in objects[2]

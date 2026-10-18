@@ -3,7 +3,7 @@ embedded keywords, and describe() is honest about the 'none' backend."""
 from pathlib import Path
 import sys
 
-sys.path.insert(0, "/home/hatch/workspace/manga-translator")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 import pytest
 

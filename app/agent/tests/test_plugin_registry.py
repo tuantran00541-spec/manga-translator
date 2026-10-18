@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, "/home/hatch/workspace/manga-translator")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from app.agent import context, kernel, registry, skill_install
 from app.agent.session import AgentSessionManager
@@ -415,7 +415,6 @@ def test_c1_facade_holds_no_live_session_reference():
     """The PluginSession must not reference the live AgentSession anywhere —
     not even via name-mangled attributes, closures, or bound methods.
     A plugin introspecting the facade must not be able to reach the session."""
-    import gc
     import threading
     from app.agent import registry as reg_mod
 

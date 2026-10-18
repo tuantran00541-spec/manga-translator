@@ -1,6 +1,6 @@
 """Shell-rule hardening: operator splitting, environ/deny handling, and rule merges.
 
-Run: /home/hatch/workspace/venv/bin/python -m pytest app/agent/tests/test_shell_rules.py -v
+Run: python -m pytest app/agent/tests/test_shell_rules.py -v
 """
 import ast
 import json
@@ -9,13 +9,12 @@ import re
 import sys
 from pathlib import Path
 
-import pytest
 
-sys.path.insert(0, "/home/hatch/workspace/manga-translator")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from app.agent import rules, sandbox
 
-AGENT = "/home/hatch/workspace/manga-translator/app/agent"
+AGENT = str(Path(__file__).resolve().parents[1])
 DEFAULT_RULES = [("default", *r) for r in rules.DEFAULT]
 ALLOW_ECHO_LS = [("user", "bash", "echo *", "allow"), ("user", "bash", "ls *", "allow")]
 

@@ -1,18 +1,16 @@
 """Taint and memory hardening: taint sticks across requests and rollover,
 memory resists laundering, and schedule hosts are never auto-trusted.
 
-Run: /home/hatch/workspace/venv/bin/python -m pytest app/agent/tests/test_taint_memory.py -v
+Run: python -m pytest app/agent/tests/test_taint_memory.py -v
 """
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 from pathlib import Path
 
-import pytest
 
-sys.path.insert(0, "/home/hatch/workspace/manga-translator")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from app.agent import memory, sandbox
 from app.agent.session import AgentSessionManager

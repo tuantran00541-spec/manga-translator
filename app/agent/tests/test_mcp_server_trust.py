@@ -12,12 +12,10 @@ These tests prove both halves:
 2. Legitimate flow works: with trust_plugins=True (the --trust-plugins flag), it IS served.
 """
 import textwrap
-from pathlib import Path
 
 import pytest
 
 from app.agent.mcp_server import Bridge
-from app.agent.tools import Workspace
 
 GREETER = textwrap.dedent('''
     inject = ["tools"]

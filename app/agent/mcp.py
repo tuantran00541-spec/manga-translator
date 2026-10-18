@@ -473,7 +473,7 @@ class Server:
                 if not cursor or len(self.tools) > 500:
                     break
                 if pages >= MAX_TOOL_LIST_PAGES:
-                    logger.warning("MCP server %s still paginating tools/list after %d pages; stopping",
+                    logger.warning("MCP server {} still paginating tools/list after {} pages; stopping",
                                    name, MAX_TOOL_LIST_PAGES)
                     break
         except Exception:
