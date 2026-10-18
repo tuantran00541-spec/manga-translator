@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       models:
-        description: "Model ids separated by spaces; empty picks every MiniRouter model with 'decision' in its id"
+        description: "Model ids separated by spaces; empty tries both Perplexity deciders"
         required: false
 
 permissions:
@@ -40,7 +40,7 @@ jobs:
 
           rows = call("/models").get("data", [])
           json.dump(rows, open(f"{out}/models.json", "w"), indent=1)
-          picked = os.environ.get("MODELS", "").split() or [r["id"] for r in rows if "decision" in json.dumps(r).lower()]
+          picked = os.environ.get("MODELS", "").split() or ["perplexity/pplx-decider-v1.2", "perplexity/pplx-decider-flash-v1.2"]
           for r in rows:
               if r["id"] in picked:
                   print("MODEL", json.dumps(r)[:600])
