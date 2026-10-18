@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 
@@ -80,15 +81,32 @@ def main() -> int:
     parser.add_argument("url")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--chapter-id", default="c1a90001")
+    parser.add_argument("--screen", action="store_true", help="keep art the decider sees no lettering in (MINIROUTER_API_KEY)")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
+
+    screen, kept = None, []
+    if args.screen:
+        from app.ai_mode.art_screen import screen_for
+        from app.ai_providers import resolve_provider
+
+        inner = screen_for(resolve_provider("minirouter", label="MiniRouter", protocol="openai",
+                                            api_base="https://api.minirouter.sh/v1"), os.environ["MINIROUTER_API_KEY"])
+
+        def screen(image, boxes):
+            art = inner(image, boxes)
+            for index in sorted(art):
+                b = boxes[index]
+                tile = image[max(0, b.y1 - 30):b.y2 + 30, max(0, b.x1 - 30):b.x2 + 30]
+                kept.append(cv2.resize(tile, (200, max(1, int(tile.shape[0] * 200 / max(1, tile.shape[1]))))))
+            return art
 
     pipeline = build_processing_pipeline()
     started = time.perf_counter()
     pages = pipeline.download_chapter(args.url, args.chapter_id, workers=2)["pages"]
     download_s = time.perf_counter() - started
     started = time.perf_counter()
-    pipeline.process_pages(args.chapter_id, list(range(len(pages))))
+    pipeline.process_pages(args.chapter_id, list(range(len(pages))), screen=screen)
     process_s = time.perf_counter() - started
     print(f"{len(pages)} slices processed in {process_s:.1f} s", flush=True)
 
@@ -107,6 +125,11 @@ def main() -> int:
         y0, y1 = int(core.get("core_y1", 0)), int(core.get("core_y2", original.shape[0]))
         before, after = np.ascontiguousarray(original[y0:y1]), np.ascontiguousarray(clean[y0:y1])
         text, rest = found(before), found(after)
+        art = np.zeros(text.shape, bool)
+        for b in page.get("boxes") or []:
+            if b.get("screened_art"):
+                art[max(0, b["y1"] - y0):max(0, b["y2"] - y0), b["x1"]:b["x2"]] = True
+        rest &= ~art
         count, labels = cv2.connectedComponents(cv2.dilate(text.astype(np.uint8), np.ones((15, 15), np.uint8)))
         per_slice.append((count - 1, number, page, y0, y1))
         for i in range(1, count):
@@ -128,12 +151,18 @@ def main() -> int:
         side = cv2.resize(side, None, fx=900 / side.shape[1], fy=900 / side.shape[1])
         cv2.imwrite(str(args.out / f"sample-{rank}-slice{number:03d}.jpg"), side, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
+    if kept:
+        rows = [np.concatenate([t[:200] if t.shape[0] >= 200 else cv2.copyMakeBorder(t, 0, 200 - t.shape[0], 0, 0, cv2.BORDER_CONSTANT)
+                                for t in kept[i:i + 8]] + [np.zeros((200, 200, 3), np.uint8)] * (8 - len(kept[i:i + 8])), axis=1)
+                for i in range(0, len(kept), 8)]
+        for n in range(0, len(rows), 6):
+            cv2.imwrite(str(args.out / f"art-kept-{n // 6 + 1}.jpg"), np.concatenate(rows[n:n + 6], axis=0), [cv2.IMWRITE_JPEG_QUALITY, 85])
     report = {
         "url": args.url, "slices": len(pages), "cpu": cpu_model(),
         "download_s": round(download_s, 1), "process_s": round(process_s, 1),
         "per_slice_s": round(process_s / max(1, len(pages)), 2),
         "time_s": stage_seconds(load_manifest_raw(args.chapter_id)),
-        "blocks": blocks, "blocks_left": left, "left": lefts,
+        "blocks": blocks, "blocks_left": left, "art_kept": len(kept), "left": lefts,
     }
     (args.out / "report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(json.dumps({k: v for k, v in report.items() if k != "left"}, indent=1))

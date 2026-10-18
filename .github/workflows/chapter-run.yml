@@ -76,7 +76,9 @@ jobs:
           test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha_text_1280.onnx
 
       - name: Process the whole chapter
-        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run
+        env:
+          MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
+        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run --screen
 
       - name: Save evidence to audit-evidence
         if: always()
