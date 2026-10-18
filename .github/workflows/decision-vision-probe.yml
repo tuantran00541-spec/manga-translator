@@ -16,89 +16,111 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Send a manga page to each decision model
+      - name: Ask each decider whether cleaned crops still show text
         env:
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
           MODELS: ${{ github.event.inputs.models }}
         run: |
           mkdir -p audit-results/decision-probe
           python3 -m pip install -q pillow
+          git fetch -q origin audit-evidence
           python3 - <<'PY'
-          import base64, json, os, time, urllib.request
+          import base64, io, json, os, subprocess, time, urllib.request
+          from concurrent.futures import ThreadPoolExecutor
+          from PIL import Image
           base, key = "https://api.minirouter.sh/v1", os.environ["MINIROUTER_API_KEY"]
           out = "audit-results/decision-probe"
+          models = os.environ.get("MODELS", "").split() or ["perplexity/pplx-decider-v1.2", "perplexity/pplx-decider-flash-v1.2"]
 
-          def call(path, body=None):
-              req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body else None,
-                                           headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
-              with urllib.request.urlopen(req, timeout=300) as r:
-                  return json.loads(r.read())
+          def blob(path):
+              return Image.open(io.BytesIO(subprocess.check_output(["git", "show", f"FETCH_HEAD:{path}"]))).convert("RGB")
 
-          rows = call("/models").get("data", [])
-          json.dump(rows, open(f"{out}/models.json", "w"), indent=1)
-          picked = os.environ.get("MODELS", "").split() or ["perplexity/pplx-decider-v1.2", "perplexity/pplx-decider-flash-v1.2"]
-          for r in rows:
-              if r["id"] in picked:
-                  print("MODEL", json.dumps(r)[:600])
-          print("picked:", picked)
+          def data_url(img):
+              # Requests must stay under 32 KiB, so shrink until the JPEG fits.
+              side, quality = 768, 80
+              while True:
+                  im = img.copy()
+                  im.thumbnail((side, side))
+                  buf = io.BytesIO()
+                  im.save(buf, "JPEG", quality=quality)
+                  if len(buf.getvalue()) < 20000:
+                      return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+                  side, quality = int(side * 0.85), max(50, quality - 5)
 
-          import io
-          from PIL import Image
-          buf = io.BytesIO()
-          Image.open("docs/images/demo-raw.jpg").crop((100, 380, 305, 540)).save(buf, "JPEG", quality=70)
-          image = base64.b64encode(buf.getvalue()).decode()
-          url = f"data:image/jpeg;base64,{image}"
-          # The real line, a line not on the page, and a pick between them; a blind model answers all alike.
-          q = {"real": {"type": "boolean", "instructions": "Does the image show the words 'looking for you for months'?"},
-               "fake": {"type": "boolean", "instructions": "Does the image show the words 'the dragon has returned'?"},
-               "pick": {"type": "choice", "instructions": "Which sentence is written in the image?",
-                        "criteria": {"months": "We've been looking for you for months.", "dragon": "The dragon has returned to the city.",
-                                     "sword": "Give me back my sword, old man."}}}
-          tries = {"no_image": "A webtoon page.",
-                   "state_image_part": [{"type": "image_url", "image_url": {"url": url}}],
-                   "state_image_object": {"image": url}}
-          # Lines with a known verdict: good, wrong meaning, untranslated, unnatural.
-          lines = [("We've been looking for you for months.", "Bọn ta đã tìm ngươi suốt mấy tháng trời.", 1),
-                   ("We've been looking for you for months.", "Chúng tôi đã quên bạn từ lâu rồi.", 0),
-                   ("What do you think you're doing?", "What do you think you're doing?", 0),
-                   ("What do you think you're doing?", "Ngươi nghĩ ngươi đang làm gì vậy hả?", 1),
-                   ("Don't move! The gate is opening!", "Đừng có động đậy! Cánh cổng đang mở ra!", 1),
-                   ("Don't move! The gate is opening!", "Không di chuyển! Cổng là mở!", 0),
-                   ("I'll kill you myself.", "Ta sẽ tự tay giết ngươi.", 1),
-                   ("I'll kill you myself.", "Tôi sẽ giết bản thân mình.", 0)]
-          grade = {"ok": {"type": "boolean", "instructions": "Is the Vietnamese line a faithful, natural manhwa translation of the English line?"},
-                   "quality": {"type": "score", "instructions": "How good is the Vietnamese translation of the English line?", "criteria": ["wrong or untranslated", "meaning ok but stiff", "faithful and natural"]}}
-          results = []
-          for model in picked:
-              row = {"model": model}
-              for name, state in tries.items():
-                  t = time.time()
-                  try:
-                      row[name] = {"reply": call("/evaluate", {"model": model, "state": state, "questions": q}), "seconds": round(time.time() - t, 1)}
-                  except Exception as e:
-                      row[name] = {"error": f"{e} {e.read().decode()[:500] if hasattr(e, 'read') else ''}"}
-              graded, t = [], time.time()
-              for src, vi, want in lines:
-                  try:
-                      r = call("/evaluate", {"model": model, "state": {"english": src, "vietnamese": vi}, "questions": grade})
-                      p_ok = r["answers"]["ok"].get("probability")
-                      graded.append({"en": src, "vi": vi, "want": want, "p_ok": p_ok, "score": r["answers"]["quality"].get("score"),
-                                     "right": (p_ok or 0) >= 0.5 if want else (p_ok or 0) < 0.5, "usage": r.get("usage")})
-                  except Exception as e:
-                      graded.append({"en": src, "vi": vi, "error": f"{e} {e.read().decode()[:300] if hasattr(e, 'read') else ''}"})
-              row["grading"] = {"right": sum(1 for g in graded if g.get("right")), "of": len(lines),
-                                "seconds": round(time.time() - t, 1), "lines": graded}
-              results.append(row)
-              print("=" * 70, "\n", json.dumps(row, ensure_ascii=False, indent=1))
-          json.dump(results, open(f"{out}/results.json", "w"), ensure_ascii=False, indent=1)
+          items = []
+          # Hand labels: does the cleaned half still show letters, and can they be read.
+          hand = {"final/shadow-slave-1/leftovers/01-slice003-ghost.jpg": "ghost",
+                  "final/shadow-slave-1/leftovers/02-slice087-text.jpg": "text",
+                  "noluna/shadow-slave-1/leftovers/03-slice133-text.jpg": "clean",
+                  "final/solo-swordmaster-1/leftovers/01-slice055-text.jpg": "text",
+                  "final/the-world-after-the-end-254/leftovers/01-slice048-text.jpg": "clean",
+                  "luna/the-hero-cannot-rest-1/leftovers/01-slice061-text.jpg": "ghost",
+                  "luna/the-hero-cannot-rest-1/leftovers/02-slice132-ghost.jpg": "ghost",
+                  "sov-luna/solo-swordmaster-1/leftovers/01-slice127-ghost.jpg": "ghost",
+                  "transcript/solo-swordmaster-1/leftovers/02-slice102-text.jpg": "text",
+                  "readme-peppercarrot/en-ep38_The-Healer.html/leftovers/01-slice003-ghost.jpg": "clean"}
+          for name, label in hand.items():
+              img = blob("audit-results/ai-cost/" + name)
+              w, h = img.size
+              raw_label = "clean" if "world-after" in name else "text"
+              items.append({"set": "leftover-raw", "name": name, "label": raw_label, "img": img.crop((0, 0, w // 2 - 8, h))})
+              items.append({"set": "leftover-clean", "name": name, "label": label, "img": img.crop((w // 2 + 8, 0, w, h))})
+          rows = json.loads(subprocess.check_output(["git", "show", "FETCH_HEAD:audit-results/flow-bench/summary.json"]))["rows"]
+          for row in rows:
+              img = blob("audit-results/flow-bench/blocks/" + row["block"])
+              w, h = img.size
+              third = w // 3
+              # The top band holds the panel captions, which must not be read as text.
+              items.append({"set": "bench-raw", "name": row["block"], "label": "text", "img": img.crop((3, 26, third - 3, h))})
+              items.append({"set": "bench-clean", "name": row["block"], "label": "text" if row["left_current"] else "clean",
+                            "img": img.crop((third + 3, 26, 2 * third - 3, h))})
+          for it in items:
+              it["url"] = data_url(it.pop("img"))
+          print("items:", len(items))
+
+          questions = {"any": {"type": "boolean", "instructions": "Are there any letters, words or parts of letters visible in this image, even faint or smeared?"},
+                       "read": {"type": "boolean", "instructions": "Is there text in this image that a reader could still read?"}}
+
+          def ask(model, it):
+              body = json.dumps({"model": model, "state": [{"type": "image_url", "image_url": {"url": it["url"]}}], "questions": questions}).encode()
+              req = urllib.request.Request(base + "/evaluate", data=body, headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+              t = time.time()
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as r:
+                      reply = json.loads(r.read())
+                  a = reply["answers"]
+                  return {"any": a["any"]["probability"], "read": a["read"]["probability"], "usage": reply.get("usage"), "seconds": round(time.time() - t, 2)}
+              except Exception as e:
+                  return {"error": f"{e} {e.read().decode()[:300] if hasattr(e, 'read') else ''}"}
+
+          report = {}
+          for model in models:
+              t = time.time()
+              with ThreadPoolExecutor(8) as pool:
+                  answers = list(pool.map(lambda it: ask(model, it), items))
+              rows_out = [{k: v for k, v in it.items() if k != "url"} | a for it, a in zip(items, answers)]
+              summary = {"seconds": round(time.time() - t, 1), "errors": sum("error" in a for a in answers),
+                         "input_tokens": sum((a.get("usage") or {}).get("inputTokens", 0) for a in answers)}
+              for s in ("leftover-raw", "leftover-clean", "bench-raw", "bench-clean"):
+                  part = [r for r in rows_out if r["set"] == s and "error" not in r]
+                  for q in ("any", "read"):
+                      tp = sum(r[q] >= 0.5 and r["label"] != "clean" for r in part)
+                      fn = sum(r[q] < 0.5 and r["label"] != "clean" for r in part)
+                      fp = sum(r[q] >= 0.5 and r["label"] == "clean" for r in part)
+                      tn = sum(r[q] < 0.5 and r["label"] == "clean" for r in part)
+                      summary[f"{s}/{q}"] = {"tp": tp, "fn": fn, "fp": fp, "tn": tn}
+              report[model] = summary
+              print(model, json.dumps(summary, indent=1))
+              json.dump(rows_out, open(f"{out}/{model.split('/')[-1]}.json", "w"), indent=1)
+          json.dump(report, open(f"{out}/summary.json", "w"), indent=1)
           PY
       - if: always()
         uses: ./.github/actions/save-evidence
         with:
           paths: audit-results/decision-probe
-          message: "audit: decision model vision probe (run ${{ github.run_id }})"
+          message: "audit: decider residue probe (run ${{ github.run_id }})"
