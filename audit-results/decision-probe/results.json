@@ -1,7 +1,12 @@
 [
  {
-  "model": "openai/gpt-oss-safeguard-20b",
-  "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Field 'image_input' is not supported on this billing snapshot. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_3ddba513d34b4229b54389fcbeb61e64\"}}",
-  "seconds": 0.5
+  "model": "perplexity/pplx-decider-v1.2",
+  "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision models require POST /v1/evaluate or /v1/decisions. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_0ca69677b31c4bdaacaf81d424d9f716\"}}",
+  "seconds": 0.2
+ },
+ {
+  "model": "perplexity/pplx-decider-flash-v1.2",
+  "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision models require POST /v1/evaluate or /v1/decisions. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_02674bfa4bc94f73ac780b0be2607be2\"}}",
+  "seconds": 0.6
  }
 ]
