@@ -3140,8 +3140,6 @@ def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_kee
                     turn(calls=[call("count_lines", path="notes.txt")]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.send("count lines")
-    wait_for(session, "waiting")
-    session.decide("allow")  # C2: create is always-ask, even in bypass mode
     wait_for(session, "idle")
     outputs = [e["output"] for e in session.events if e["type"] == "tool"]
     assert outputs[0].startswith("Created tool count_lines") and '{"lines": 3}' in outputs[1], outputs
@@ -4155,8 +4153,6 @@ def test_by_default_there_is_no_shell_tool_and_a_lone_call_is_refused_while_chai
     prompt = session.system_prompt()
     assert "There is no shell tool" in prompt and "run_command (the shell" not in prompt and "at least 2 tool calls" in prompt
     session.send("go")
-    wait_for(session, "waiting")
-    session.decide("allow")  # C2: create is always-ask, even in bypass mode
     wait_for(session, "idle")
     outputs = [h["content"] for h in session.history if h["role"] == "tool"]
     assert outputs[0].startswith("Refused") and outputs[1].startswith("Refused") and "[exit code" not in outputs[0], outputs

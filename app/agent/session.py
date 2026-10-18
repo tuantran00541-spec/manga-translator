@@ -769,8 +769,9 @@ class AgentSession:
         home_path = self.home if self.home is not None else Path.home()
         sources = registry.plugin_sources(self.workspace.root, home_path)
         self.trust.allow(self.workspace.root, "plugins", registry.sources_digest(sources))
-        # User-scope plugins get the same trust flow under a separate key.
-        self.trust.allow(self.workspace.root, "plugins-user", registry.user_sources_digest(sources))
+        for scope, path, data in sources:
+            if scope == "user" and data is not None:
+                registry.trust_user_plugin(self.trust, home_path, path, data)
         # Trust the bytes you execute, not the path.
         plugins_digest = kernel.plugins_digest(home_path)
         if plugins_digest is not None:
@@ -1535,8 +1536,8 @@ class AgentSession:
         if name == "memory":
             return self.mode not in HANDS_OFF and call["args"].get("action") != "list"
         if name == "create":
-            # Writing a tool is an edit; running it is a command and asks like one.
-            return self.mode in ("ask", "review") and verdict != "allow"
+            # Writing a tool asks where edits ask and gets the reviewer in Auto mode; running it is a command and asks like one.
+            return self.mode in ("ask", "review", "auto") and verdict != "allow"
         if name == "checkpoint":
             # Putting files back is an edit, so it asks wherever edits ask.
             return call["args"].get("action") == "restore" and self.mode in ("ask", "review") and verdict != "allow"
@@ -1545,6 +1546,9 @@ class AgentSession:
         if verdict == "ask":
             return True
         if name in URL_TOOLS and self.mode in ("edits", "auto") and (urlparse(str(call["args"].get("url") or "")).hostname or "") not in self.web_ok:
+            return True
+        if name in self.mcp_tools and self._role(name) != "read" and self.tainted and self.profile["untrusted_guard"]:
+            # A name that looks read-only can still send data out, so after untrusted content it asks like any outside call.
             return True
         if name in self.mcp_tools and not self._role(name):
             # A server writes its own annotations, so its readOnlyHint never skips approval.
@@ -1626,7 +1630,7 @@ class AgentSession:
 
     def _always_ask(self, call: dict) -> bool:
         plugin = self.registry.tools.get(call["name"])
-        return bool(plugin and plugin.always_ask) or call["name"] in ("memory", "create", *SELF_EXTEND) or self._typing_outside(call) or bool(
+        return bool(plugin and plugin.always_ask) or call["name"] in ("memory", *SELF_EXTEND) or self._typing_outside(call) or bool(
             call["name"] == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access")
 
     def _plugin_approval_vote(self, call: dict, ask: bool) -> bool:
@@ -1753,6 +1757,8 @@ class AgentSession:
             if isinstance(exc, ToolError):
                 raise
             raise ToolError(f"The plugin failed to load, nothing was saved: {type(exc).__name__}: {exc}") from exc
+        # The user approved these exact bytes, so later sessions load them too.
+        registry.trust_user_plugin(self.trust, folder.parent.parent, path, path.read_bytes())
         config = args.get("config") if isinstance(args.get("config"), dict) else {}
         self.kernel.mount(kernel.Row(pid, module, config, False, "agent"))
         mounted = self.kernel.rows[pid]
@@ -3162,8 +3168,12 @@ class AgentSession:
                     if decision["decision"] == "allow_all":
                         self.mode = "auto"
                         self._sync_plugin_mode()
-                        if self.parent is not None:
-                            self.parent.mode = "auto"
+                        # Allow all is the user's answer for the whole tree, so every session up to the root moves too.
+                        above = self.parent
+                        while above is not None:
+                            above.mode = "auto"
+                            above._sync_plugin_mode()
+                            above = above.parent
                     elif decision["decision"] not in ("allow", "allow_always"):
                         note = f" Note from the user: {decision['note']}" if decision.get("note") else ""
                         return f"The user refused this {call['name']} call.{note}", False

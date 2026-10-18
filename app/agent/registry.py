@@ -346,13 +346,13 @@ def sources_digest(sources: list[tuple[str, Path, bytes | None]]) -> str:
     return h.hexdigest()
 
 
-def user_sources_digest(sources: list[tuple[str, Path, bytes | None]]) -> str:
-    """Digest of the user-scope plugin bytes, pinned under "plugins-user" like workspace plugins."""
-    h = hashlib.sha256()
-    for scope, path, data in sources:
-        if scope == "user" and data is not None:
-            h.update(path.name.encode() + b"\0" + data)
-    return h.hexdigest()
+def user_trusted(trust: context.TrustStore, home: Path, path: Path, data: bytes) -> bool:
+    """A user plugin is trusted file by file, for every workspace, by the digest of its exact bytes."""
+    return trust.trusted(home, f"plugin-user:{path.name}", hashlib.sha256(data).hexdigest())
+
+
+def trust_user_plugin(trust: context.TrustStore, home: Path, path: Path, data: bytes) -> None:
+    trust.allow(home, f"plugin-user:{path.name}", hashlib.sha256(data).hexdigest())
 
 
 def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.TrustStore) -> None:
@@ -365,7 +365,6 @@ def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.Trus
     """
     sources = plugin_sources(workspace, home)
     trusted_workspace = trust.trusted(workspace, "plugins", sources_digest(sources))
-    trusted_user = trust.trusted(workspace, "plugins-user", user_sources_digest(sources))
     for scope, path, data in sources:
         row = {"name": path.stem, "scope": scope, "state": "loaded", "error": ""}
         reg.plugins.append(row)
@@ -375,7 +374,7 @@ def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.Trus
         if scope == "workspace" and not trusted_workspace:
             row["state"] = "untrusted"
             continue
-        if scope == "user" and not trusted_user:
+        if scope == "user" and not user_trusted(trust, home, path, data):
             row["state"] = "untrusted"
             continue
         reg._current = path.stem

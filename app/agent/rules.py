@@ -260,9 +260,25 @@ def safe_readonly(command: str) -> bool:
             continue
         if words[0] == "git" and len(words) > 1 and words[1] in SAFE_GIT and not any(w.startswith("--output") for w in words):
             continue
-        if words[0] == "env" or words[0] not in SAFE_COMMANDS:
+        if words[0] == "env" or words[0] not in SAFE_COMMANDS or _writes_or_runs(words):
             return False
     return bool(parts)
+
+
+# Flags with which a look-only program writes a file or runs another program.
+_OUTPUT_FLAG = {"sort": "o", "tree": "o"}
+
+
+def _writes_or_runs(words: list[str]) -> bool:
+    """rg --pre runs a program, sort -o and tree -o write a file, uniq IN OUT writes OUT and date -s sets the clock."""
+    name, rest = words[0], [_dequote(w) for w in words[1:]]
+    if name == "rg" and any(w.startswith("--pre") for w in rest):
+        return True
+    if name in _OUTPUT_FLAG and any(w.startswith("--output") or (re.fullmatch(r"-[A-Za-z]+.*", w) and _OUTPUT_FLAG[name] in w.split("=")[0]) for w in rest):
+        return True
+    if name == "uniq" and len([w for w in rest if not w.startswith("-")]) > 1:
+        return True
+    return name == "date" and any(w.startswith(("-s", "--set")) for w in rest)
 
 
 def remembered(name: str, args: dict, verdict: str | None) -> tuple[str, str] | None:

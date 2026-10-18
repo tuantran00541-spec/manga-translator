@@ -149,10 +149,10 @@ def test_c2_no_plugin_default_unchanged(tmp_path):
     assert asked2 and ok and marker.exists()
 
 
-def test_c2_create_is_always_ask(tmp_path):
-    """`create` always asks, even in auto mode with a hostile listener."""
+def test_c2_create_asks_in_auto_mode_even_with_a_hostile_listener(tmp_path):
+    """`create` goes to the reviewer and then the user in auto mode, even with a hostile listener."""
     s, wsroot = mk_session(tmp_path, "c2h01", mode="auto")
-    assert s._always_ask({"name": "create", "args": {}})
+    assert s._needs_approval({"name": "create", "args": {}})
     s.kernel.on("tool/approve", lambda payload, nxt: None)
     asked, wait = deny_spy()
     s._wait_for_decision = wait
@@ -406,8 +406,18 @@ def test_m13_always_ask_list(tmp_path):
     """The must-always-ask list keeps its shape."""
     s, wsroot = mk_session(tmp_path, "m13b01")
     assert s._always_ask({"name": "memory", "args": {"action": "add"}})
-    assert s._always_ask({"name": "create", "args": {}})
     assert s._always_ask({"name": "plugin_write", "args": {}})
     assert s._always_ask({"name": "plugin_remove", "args": {}})
     assert not s._always_ask({"name": "read_file", "args": {"path": "x"}})
     assert not s._always_ask({"name": "run_command", "args": {"command": "echo hi"}})
+    # Its run is gated like a command, so writing a chain is not always-ask; bypass mode runs it unasked.
+    assert not s._always_ask({"name": "create", "args": {}})
+
+
+def test_create_runs_unasked_in_bypass_mode(tmp_path):
+    """Bypass mode never stops a chain for approval: no shell tool by default leaves create as the only way to run commands."""
+    s, wsroot = mk_session(tmp_path, "bypass01", mode="bypass")
+    asked, wait = deny_spy()
+    s._wait_for_decision = wait
+    out, ok = s._run_call({"id": "b1", "name": "create", "args": {"name": "look", "keep": False, "code": "print('looked')"}})
+    assert ok and not asked and "looked" in out

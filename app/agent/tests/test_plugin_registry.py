@@ -161,14 +161,14 @@ def _write_evil_manifest(home: Path):
 
 
 def test_c4_unpinned_plugins_json_refused_loudly(home, wsroot):
-    """PoC r5-10 replay: no trust pin -> no mount, no builtin disable, loud refusal."""
+    """PoC r5-10 replay: no trust pin -> no mount and a loud refusal; switching a built-in off still holds, since it only tightens."""
     _write_evil_manifest(home)
     ctx = kernel.Context()
     ctx.rows["web-search-duckduckgo"] = kernel.Row("web-search-duckduckgo", object(), {}, False, "builtin")
     problems = kernel.patch_rows(ctx, home)  # no trust store passed at all
     assert "evil" not in ctx.rows
     assert ctx.get("evil-svc") is None
-    assert ctx.rows["web-search-duckduckgo"].disabled is False
+    assert ctx.rows["web-search-duckduckgo"].disabled is True
     assert any("not pinned" in p for p in problems)
 
 

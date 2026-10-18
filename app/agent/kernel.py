@@ -289,6 +289,10 @@ def patch_rows(ctx: Context, home: Path, trust=None, workspace: Path | None = No
                "(review ~/.manga-agent/plugins.json, then pin it via trust_plugins()).")
         problems.append(msg)
         logger.warning("Refusing to mount plugins.json rows: digest {} is not trusted", digest[:16])
+        # Switching a row off only tightens, so it holds even while the file is not pinned.
+        for item in rows:
+            if item["id"] in ctx.rows and not item["plugin"] and item["disabled"] is True:
+                ctx.rows[item["id"]].disabled = True
         return problems
     for item in rows:
         if item["problem"]:

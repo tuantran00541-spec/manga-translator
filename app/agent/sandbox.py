@@ -60,11 +60,18 @@ DOTENV_PUBLIC = {".env.example", ".env.sample"}
 def workspace_secrets(root: Path) -> list[str]:
     """Workspace dotenv files (.env, .env.local, ...), as real paths: denied read at the
     sandbox layer too, so a quote-evasion that slips past the rule scan still cannot read them."""
-    try:
-        hits = [p for p in Path(root).glob(".env*") if p.is_file() and p.name not in DOTENV_PUBLIC]
-    except OSError:
-        return []
-    return sorted({os.path.realpath(p) for p in hits})
+    hits, top = [], str(root)
+    for folder, dirs, names in os.walk(top):
+        # Four levels down covers app/.env and services/api/.env without walking dependency trees.
+        if folder[len(top):].count(os.sep) >= ENV_DEPTH:
+            dirs[:] = []
+        dirs[:] = [d for d in dirs if d not in ENV_SKIP]
+        hits += [os.path.join(folder, n) for n in names if n.startswith(".env") and n not in DOTENV_PUBLIC]
+    return sorted({os.path.realpath(p) for p in hits if os.path.isfile(p)})
+
+
+ENV_DEPTH = 4
+ENV_SKIP = {".git", "node_modules", ".venv", "venv", "__pycache__", ".mypy_cache", ".pytest_cache", "site-packages", "data", "models"}
 
 
 @dataclass(frozen=True)
