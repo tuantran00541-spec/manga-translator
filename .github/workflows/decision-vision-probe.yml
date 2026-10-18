@@ -27,6 +27,7 @@ jobs:
           MODELS: ${{ github.event.inputs.models }}
         run: |
           mkdir -p audit-results/decision-probe
+          python3 -m pip install -q pillow
           python3 - <<'PY'
           import base64, json, os, time, urllib.request
           base, key = "https://api.minirouter.sh/v1", os.environ["MINIROUTER_API_KEY"]
@@ -46,28 +47,46 @@ jobs:
                   print("MODEL", json.dumps(r)[:600])
           print("picked:", picked)
 
-          image = base64.b64encode(open("docs/images/demo-raw.jpg", "rb").read()).decode()
-          truth = ["?", "What do you think you're doing?", "We've been looking for you for months."]
-          prompt = ("This is a webtoon page (305x680 px). List every piece of text in reading order as JSON: "
-                    '{"lines":[{"text":"exact English text","box":[x1,y1,x2,y2],"vi":"natural Vietnamese translation"}]}. '
-                    "Reply with JSON only.")
+          import io
+          from PIL import Image
+          buf = io.BytesIO()
+          Image.open("docs/images/demo-raw.jpg").crop((100, 380, 305, 540)).save(buf, "JPEG", quality=70)
+          image = base64.b64encode(buf.getvalue()).decode()
+          url = f"data:image/jpeg;base64,{image}"
+          q = {"text": {"type": "boolean", "instructions": "Does the image show the words 'looking for you for months'?"}}
+          tries = {"state_image_part": [{"type": "image_url", "image_url": {"url": url}}],
+                   "state_image_object": {"image": url}}
+          # Lines with a known verdict: good, wrong meaning, untranslated, unnatural.
+          lines = [("We've been looking for you for months.", "Bọn ta đã tìm ngươi suốt mấy tháng trời.", 1),
+                   ("We've been looking for you for months.", "Chúng tôi đã quên bạn từ lâu rồi.", 0),
+                   ("What do you think you're doing?", "What do you think you're doing?", 0),
+                   ("What do you think you're doing?", "Ngươi nghĩ ngươi đang làm gì vậy hả?", 1),
+                   ("Don't move! The gate is opening!", "Đừng có động đậy! Cánh cổng đang mở ra!", 1),
+                   ("Don't move! The gate is opening!", "Không di chuyển! Cổng là mở!", 0),
+                   ("I'll kill you myself.", "Ta sẽ tự tay giết ngươi.", 1),
+                   ("I'll kill you myself.", "Tôi sẽ giết bản thân mình.", 0)]
+          grade = {"ok": {"type": "boolean", "instructions": "Is the Vietnamese line a faithful, natural manhwa translation of the English line?"},
+                   "quality": {"type": "score", "criteria": ["wrong or untranslated", "meaning ok but stiff", "faithful and natural"]}}
           results = []
           for model in picked:
               row = {"model": model}
-              for attempt in range(2):
+              for name, state in tries.items():
                   t = time.time()
                   try:
-                      resp = call("/chat/completions", {"model": model, "max_tokens": 1500, "messages": [{"role": "user", "content": [
-                          {"type": "text", "text": prompt},
-                          {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image}"}}]}]})
-                      text = resp["choices"][0]["message"].get("content") or ""
-                      row.update(seconds=round(time.time() - t, 1), usage=resp.get("usage"), reply=text)
-                      low = text.lower().replace("’", "'")
-                      row["found"] = [s for s in truth if s.lower() in low]
-                      break
+                      row[name] = {"reply": call("/evaluate", {"model": model, "state": state, "questions": q}), "seconds": round(time.time() - t, 1)}
                   except Exception as e:
-                      body = e.read().decode()[:800] if hasattr(e, "read") else ""
-                      row.update(error=f"{e} {body}", seconds=round(time.time() - t, 1))
+                      row[name] = {"error": f"{e} {e.read().decode()[:500] if hasattr(e, 'read') else ''}"}
+              graded, t = [], time.time()
+              for src, vi, want in lines:
+                  try:
+                      r = call("/evaluate", {"model": model, "state": {"english": src, "vietnamese": vi}, "questions": grade})
+                      p_ok = r["answers"]["ok"].get("probability")
+                      graded.append({"en": src, "vi": vi, "want": want, "p_ok": p_ok, "score": r["answers"]["quality"].get("score"),
+                                     "right": (p_ok or 0) >= 0.5 if want else (p_ok or 0) < 0.5, "usage": r.get("usage")})
+                  except Exception as e:
+                      graded.append({"en": src, "vi": vi, "error": f"{e} {e.read().decode()[:300] if hasattr(e, 'read') else ''}"})
+              row["grading"] = {"right": sum(1 for g in graded if g.get("right")), "of": len(lines),
+                                "seconds": round(time.time() - t, 1), "lines": graded}
               results.append(row)
               print("=" * 70, "\n", json.dumps(row, ensure_ascii=False, indent=1))
           json.dump(results, open(f"{out}/results.json", "w"), ensure_ascii=False, indent=1)
