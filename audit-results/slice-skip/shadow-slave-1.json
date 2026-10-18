@@ -1,0 +1,3893 @@
+[
+ {
+  "slice": 0,
+  "story": 0.9,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9003937414854211,
+     "credit": 0.04526581024613428,
+     "none": 0.054340448268444655
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 1,
+  "story": 0.915,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9145441757783734,
+     "credit": 0.035896060663131675,
+     "none": 0.04955976355849478
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.010293396290328119,
+     "credit": 0.00564503784629064,
+     "none": 0.9840615658633813
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 2,
+  "story": 0.981,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.017061833035780533,
+     "credit": 0.007664513820874064,
+     "none": 0.9752736531433455
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.013840148327365766,
+     "credit": 0.012214703422420257,
+     "none": 0.9739451482502139
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9806034646608588,
+     "credit": 0.005598847147463739,
+     "none": 0.01379768819167744
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.006805748470401263,
+     "credit": 0.004024517897791152,
+     "none": 0.9891697336318077
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 3,
+  "story": 0.987,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9866830880805209,
+     "credit": 0.002799156540606358,
+     "none": 0.010517755378872808
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.01769666825053734,
+     "credit": 0.027721107243647396,
+     "none": 0.9545822245058152
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.037135730876283635,
+     "credit": 0.025628370292335396,
+     "none": 0.937235898831381
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 4,
+  "story": 0.962,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.026692636974038605,
+     "credit": 0.020520354809658733,
+     "none": 0.9527870082163026
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.6448854164799953,
+     "credit": 0.01612446435614242,
+     "none": 0.3389901191638622
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9618235301735473,
+     "credit": 0.024911961740374085,
+     "none": 0.013264508086078894
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 5,
+  "story": 0.967,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9672914132735543,
+     "credit": 0.017848285860623727,
+     "none": 0.014860300865821892
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.011289482592609156,
+     "credit": 0.011115833417662748,
+     "none": 0.977594683989728
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 6,
+  "story": 0.054,
+  "scan_skip": true,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.05352945494240212,
+     "credit": 0.8012994916044696,
+     "none": 0.14517105345312845
+    },
+    "choice": "credit"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.01106886683307109,
+     "credit": 0.9837083740747764,
+     "none": 0.00522275909215233
+    },
+    "choice": "credit"
+   }
+  ]
+ },
+ {
+  "slice": 7,
+  "story": 0.35,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.3503272857730449,
+     "credit": 0.15967535185687481,
+     "none": 0.48999736237008046
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.019306293824631227,
+     "credit": 0.03520064097770066,
+     "none": 0.9454930651976681
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 8,
+  "story": 0.013,
+  "scan_skip": true,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.010611791569869891,
+     "credit": 0.006196669321476886,
+     "none": 0.9831915391086532
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.013171845374743741,
+     "credit": 0.006997122275437238,
+     "none": 0.9798310323498189
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 9,
+  "story": 0.008,
+  "scan_skip": true,
+  "errors": 1,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.00746369731744957,
+     "credit": 0.004405547387292162,
+     "none": 0.9881307552952584
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.00788177282359404,
+     "credit": 0.0031932826711703077,
+     "none": 0.9889249445052357
+    },
+    "choice": "none"
+   },
+   {
+    "error": "503 Server Error: Service Unavailable for url: https://api.minirouter.sh/v1/evaluate"
+   }
+  ]
+ },
+ {
+  "slice": 10,
+  "story": 0.012,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.006680101094076323,
+     "credit": 0.002426291352185987,
+     "none": 0.9908936075537377
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.011500817872769626,
+     "credit": 0.004364472980842048,
+     "none": 0.9841347091463883
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 11,
+  "story": 0.897,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.8973851472710389,
+     "credit": 0.05670115188455021,
+     "none": 0.04591370084441085
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 12,
+  "story": 0.025,
+  "scan_skip": true,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.007663736731114767,
+     "credit": 0.003044265034131222,
+     "none": 0.989291998234754
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.025410616810988766,
+     "credit": 0.009526846104916654,
+     "none": 0.9650625370840946
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 13,
+  "story": 0.993,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.009039817954655492,
+     "credit": 0.003464642185397011,
+     "none": 0.9874955398599474
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9934214307283921,
+     "credit": 0.001704265866258478,
+     "none": 0.004874303405349381
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 14,
+  "story": 0.01,
+  "scan_skip": false,
+  "errors": 1,
+  "tiles": [
+   {
+    "error": "413 Client Error: Payload Too Large for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.010311078964286983,
+     "credit": 0.00533801156911391,
+     "none": 0.9843509094665991
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.005614995923778115,
+     "credit": 0.0028141123158949015,
+     "none": 0.991570891760327
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 15,
+  "story": 0.993,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9925314785047133,
+     "credit": 0.002342188737662971,
+     "none": 0.005126332757623456
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.008195463458253198,
+     "credit": 0.004000573419029751,
+     "none": 0.9878039631227171
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 16,
+  "story": 0.994,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.006661633761919066,
+     "credit": 0.003861544146304425,
+     "none": 0.9894768220917766
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9938301128062127,
+     "credit": 0.001483315419603075,
+     "none": 0.0046865717741842155
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.009875422593585752,
+     "credit": 0.005497973592611686,
+     "none": 0.9846266038138026
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 17,
+  "story": 0.022,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.008326025435058127,
+     "credit": 0.003867934892024687,
+     "none": 0.9878060396729172
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.022029125524971754,
+     "credit": 0.008758612219707862,
+     "none": 0.9692122622553204
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 18,
+  "story": 0.989,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9894851407997326,
+     "credit": 0.0025168433569025036,
+     "none": 0.007998015843364993
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.009593842196859709,
+     "credit": 0.01588914464053015,
+     "none": 0.9745170131626101
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 19,
+  "story": 0.012,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.008386371870472495,
+     "credit": 0.0007789011326446695,
+     "none": 0.9908347269968828
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.011583640437875789,
+     "credit": 0.004639445187525411,
+     "none": 0.9837769143745988
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 20,
+  "story": 0.028,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.027661471946139868,
+     "credit": 0.0011146142986561294,
+     "none": 0.971223913755204
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.01612344437187131,
+     "credit": 0.005027150767981056,
+     "none": 0.9788494048601476
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 21,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9960368281920566,
+     "credit": 0.001034432546370508,
+     "none": 0.00292873926157292
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.2679253824980807,
+     "credit": 0.007791089317208325,
+     "none": 0.7242835281847111
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9956830931319438,
+     "credit": 0.001173755246329342,
+     "none": 0.0031431516217266878
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 22,
+  "story": 0.976,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9758558821724147,
+     "credit": 0.0015605809772303765,
+     "none": 0.022583536850354816
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.40727879924826077,
+     "credit": 0.011781900492219433,
+     "none": 0.5809393002595199
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 23,
+  "story": 0.994,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9940039421860662,
+     "credit": 0.002745674048217933,
+     "none": 0.003250383765715641
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.023393465284813977,
+     "credit": 0.001135269014603519,
+     "none": 0.9754712657005825
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.044577700879469356,
+     "credit": 0.015218473217282072,
+     "none": 0.9402038259032486
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 24,
+  "story": 0.02,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.005414080384284521,
+     "credit": 0.000966869413810753,
+     "none": 0.9936190502019047
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.019827807531354515,
+     "credit": 0.007095716440168586,
+     "none": 0.9730764760284769
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 25,
+  "story": 0.026,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02621098963358409,
+     "credit": 0.0022572196457064805,
+     "none": 0.9715317907207093
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.013463409162328995,
+     "credit": 0.009824911563015279,
+     "none": 0.9767116792746557
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 26,
+  "story": 0.208,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.20823725508003493,
+     "credit": 0.01822241554432416,
+     "none": 0.7735403293756409
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.04419161974240611,
+     "credit": 0.0018758971513357923,
+     "none": 0.9539324831062581
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 27,
+  "story": 0.009,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.007046456022798776,
+     "credit": 0.0010352918463840987,
+     "none": 0.9919182521308171
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.008549284877837099,
+     "credit": 0.0029583206173344535,
+     "none": 0.9884923945048285
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 28,
+  "story": 0.094,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.09386178223002122,
+     "credit": 0.0035578752249833586,
+     "none": 0.9025803425449954
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.009071017985782128,
+     "credit": 0.002728927854341618,
+     "none": 0.9882000541598762
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 29,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9686395661710706,
+     "credit": 0.0019481488085513125,
+     "none": 0.02941228502037792
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.997201395183795,
+     "credit": 0.0008127618598648741,
+     "none": 0.001985842956340011
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02741835980645566,
+     "credit": 0.019550490289179833,
+     "none": 0.9530311499043647
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 30,
+  "story": 0.965,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.5247021184918369,
+     "credit": 0.0184216570457294,
+     "none": 0.45687622446243364
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9649106698525995,
+     "credit": 0.0038890718605577995,
+     "none": 0.031200258286842752
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.16707902745182193,
+     "credit": 0.00906830973044629,
+     "none": 0.8238526628177317
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 31,
+  "story": 0.106,
+  "scan_skip": false,
+  "errors": 1,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.03457143982438596,
+     "credit": 0.0018572453523089086,
+     "none": 0.9635713148233052
+    },
+    "choice": "none"
+   },
+   {
+    "error": "413 Client Error: Payload Too Large for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.10601790939406633,
+     "credit": 0.009473070626834995,
+     "none": 0.8845090199790987
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 32,
+  "story": 0.992,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9915640009903531,
+     "credit": 0.0011196709098168093,
+     "none": 0.007316328099830044
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.014144419387392193,
+     "credit": 0.01674977254043219,
+     "none": 0.9691058080721756
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 33,
+  "story": 0.991,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.12846952781320778,
+     "credit": 0.02227764348966446,
+     "none": 0.8492528286971278
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9912319280260815,
+     "credit": 0.0017253296511324646,
+     "none": 0.007042742322785996
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.020235037249037916,
+     "credit": 0.008296020231882115,
+     "none": 0.9714689425190801
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 34,
+  "story": 0.122,
+  "scan_skip": true,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.12170820060364186,
+     "credit": 0.06364458773027742,
+     "none": 0.8146472116660807
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.016895797419176375,
+     "credit": 0.021010411964649745,
+     "none": 0.9620937906161737
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 35,
+  "story": 0.991,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9909640343339069,
+     "credit": 0.001304495827632172,
+     "none": 0.007731469838460954
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.035973324159063014,
+     "credit": 0.015775262472074104,
+     "none": 0.9482514133688628
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 36,
+  "story": 0.085,
+  "scan_skip": true,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.08545470413945633,
+     "credit": 0.011839321754903568,
+     "none": 0.9027059741056401
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.027221830774894797,
+     "credit": 0.011888453321604615,
+     "none": 0.9608897159035006
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 37,
+  "story": 0.089,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.053252262447372654,
+     "credit": 0.005652519051389171,
+     "none": 0.9410952185012382
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.08873190795531005,
+     "credit": 0.008259758646931663,
+     "none": 0.9030083333977582
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 38,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9972356523737199,
+     "credit": 0.0008697375389636932,
+     "none": 0.0018946100873165395
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.4232541031331537,
+     "credit": 0.00666541462680234,
+     "none": 0.5700804822400439
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 39,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9969346495582784,
+     "credit": 0.0008462398831616693,
+     "none": 0.0022191105585599954
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.09729146107794255,
+     "credit": 0.016410968335756553,
+     "none": 0.8862975705863009
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 40,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9965001623907676,
+     "credit": 0.001080937797587748,
+     "none": 0.002418899811644604
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.004850261919751425,
+     "credit": 0.0021722351175639002,
+     "none": 0.9929775029626847
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.015386467630078778,
+     "credit": 0.005643383781481608,
+     "none": 0.9789701485884396
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 41,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.005921926610577961,
+     "credit": 0.0032797138265155622,
+     "none": 0.9907983595629064
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9962554128838138,
+     "credit": 0.0008401769165975484,
+     "none": 0.002904410199588644
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9864724652781935,
+     "credit": 0.00273050609840282,
+     "none": 0.01079702862340363
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 42,
+  "story": 0.994,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9942646067497779,
+     "credit": 0.0009061445559666029,
+     "none": 0.004829248694255562
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.03101640707879321,
+     "credit": 0.008526677822563621,
+     "none": 0.9604569150986432
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 43,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9963345278359199,
+     "credit": 0.0007267156491211251,
+     "none": 0.002938756514958864
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.26401580951086345,
+     "credit": 0.0075698081741802006,
+     "none": 0.7284143823149565
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.013516778889346341,
+     "credit": 0.006699968586446664,
+     "none": 0.9797832525242071
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 44,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9947614568331201,
+     "credit": 0.0010553691997065263,
+     "none": 0.004183173967173276
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9934013383366918,
+     "credit": 0.0010753691983693202,
+     "none": 0.005523292464938837
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.06524148854264272,
+     "credit": 0.011643092909840318,
+     "none": 0.923115418547517
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 45,
+  "story": 0.976,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9762528411125556,
+     "credit": 0.005800332710263524,
+     "none": 0.01794682617718084
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.01322190392692603,
+     "credit": 0.016941920683524927,
+     "none": 0.969836175389549
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 46,
+  "story": 0.008,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.008321110441881848,
+     "credit": 0.004261531789804009,
+     "none": 0.9874173577683141
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.007071539336197607,
+     "credit": 0.003936022614952534,
+     "none": 0.9889924380488498
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 47,
+  "story": 0.909,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.006124550471757042,
+     "credit": 0.004085452392932556,
+     "none": 0.9897899971353105
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9094172475991147,
+     "credit": 0.04891889308323587,
+     "none": 0.0416638593176494
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.7607343498549807,
+     "credit": 0.11182950215156842,
+     "none": 0.12743614799345082
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 48,
+  "story": 0.934,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9341077463333561,
+     "credit": 0.03361344868126391,
+     "none": 0.03227880498537997
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.01447436820416393,
+     "credit": 0.01184452262998154,
+     "none": 0.9736811091658546
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.011320452955612662,
+     "credit": 0.012475701458168337,
+     "none": 0.9762038455862191
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 49,
+  "story": 0.987,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9873966431353155,
+     "credit": 0.004231127415230751,
+     "none": 0.008372229449453747
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.04072010982671902,
+     "credit": 0.04345736318290947,
+     "none": 0.9158225269903715
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 50,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.996264813577502,
+     "credit": 0.0011043626473923938,
+     "none": 0.002630823775105899
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9879004393024376,
+     "credit": 0.002293700702170823,
+     "none": 0.009805859995391531
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9899905361331766,
+     "credit": 0.002126636696791617,
+     "none": 0.007882827170031748
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02858510545567568,
+     "credit": 0.02628602206541559,
+     "none": 0.9451288724789088
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 51,
+  "story": 0.994,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9859272635453828,
+     "credit": 0.0020882700438365474,
+     "none": 0.01198446641078065
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9938294791671846,
+     "credit": 0.0016280321435618481,
+     "none": 0.0045424886892536315
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 52,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9931541320531228,
+     "credit": 0.0016832292058001103,
+     "none": 0.005162638741076917
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9948468976365015,
+     "credit": 0.0013750761496729726,
+     "none": 0.003778026213825563
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.10531178643017022,
+     "credit": 0.027928673449861514,
+     "none": 0.8667595401199684
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 53,
+  "story": 0.993,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9927839388880882,
+     "credit": 0.002501158763221534,
+     "none": 0.0047149023486902485
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 54,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 1,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.11682088236350077,
+     "credit": 0.006514285133888703,
+     "none": 0.8766648325026105
+    },
+    "choice": "none"
+   },
+   {
+    "error": "413 Client Error: Payload Too Large for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9961968739001393,
+     "credit": 0.0011763824957923346,
+     "none": 0.0026267436040683235
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 55,
+  "story": 0.977,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9765883345199186,
+     "credit": 0.0013192374606580983,
+     "none": 0.022092428019423467
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 56,
+  "story": 0.993,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.017519135027039282,
+     "credit": 0.0009359274122144058,
+     "none": 0.9815449375607463
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.05599979775347348,
+     "credit": 0.016981331425301806,
+     "none": 0.9270188708212247
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9929551798226659,
+     "credit": 0.0025739027910686428,
+     "none": 0.0044709173862654975
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 57,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9952896219288437,
+     "credit": 0.001235787115559798,
+     "none": 0.0034745909555964696
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.024229832422349603,
+     "credit": 0.023040356391202336,
+     "none": 0.9527298111864481
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 58,
+  "story": 0.192,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.022860638428885263,
+     "credit": 0.0013743932452407515,
+     "none": 0.9757649683258739
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.19215804717322535,
+     "credit": 0.021865283500523677,
+     "none": 0.7859766693262509
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 59,
+  "story": 0.982,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02877747729081437,
+     "credit": 0.001440786584321152,
+     "none": 0.9697817361248645
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.98193455490428,
+     "credit": 0.00154264737421483,
+     "none": 0.01652279772150513
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.27307825643396955,
+     "credit": 0.02775876609025571,
+     "none": 0.6991629774757747
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 60,
+  "story": 0.009,
+  "scan_skip": false,
+  "errors": 2,
+  "tiles": [
+   {
+    "error": "413 Client Error: Payload Too Large for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "error": "413 Client Error: Payload Too Large for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.00910830705670618,
+     "credit": 0.0012537384380986942,
+     "none": 0.9896379545051952
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 61,
+  "story": 0.993,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9934930050111117,
+     "credit": 0.002291468004622958,
+     "none": 0.004215526984265262
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.007871100783138124,
+     "credit": 0.007602955910346227,
+     "none": 0.9845259433065155
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02515870370436247,
+     "credit": 0.05081589616621778,
+     "none": 0.9240254001294197
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 62,
+  "story": 0.98,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9797888988672432,
+     "credit": 0.002166164755311314,
+     "none": 0.018044936377445538
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.8898955728084004,
+     "credit": 0.014085215076991916,
+     "none": 0.09601921211460775
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 63,
+  "story": 0.993,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.012527845675856417,
+     "credit": 0.004113175084226235,
+     "none": 0.9833589792399174
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9929345750184772,
+     "credit": 0.002102343031241458,
+     "none": 0.004963081950281419
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.020545079535195344,
+     "credit": 0.01873788773493884,
+     "none": 0.9607170327298657
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 64,
+  "story": 0.07,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.00715081694698141,
+     "credit": 0.0032279459822739816,
+     "none": 0.9896212370707446
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.06974342694543759,
+     "credit": 0.027901893209960407,
+     "none": 0.9023546798446022
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 65,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9956193795616314,
+     "credit": 0.0014701619121163776,
+     "none": 0.0029104585262522487
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 66,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9969967526504784,
+     "credit": 0.0010356941482405338,
+     "none": 0.001967553201281096
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.01930688098218508,
+     "credit": 0.004918552026803015,
+     "none": 0.9757745669910118
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9918589351978578,
+     "credit": 0.001833759083781086,
+     "none": 0.006307305718361158
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.08311990022626964,
+     "credit": 0.03585355958166901,
+     "none": 0.8810265401920613
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 67,
+  "story": 0.993,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9931997986618581,
+     "credit": 0.002098347054922,
+     "none": 0.004701854283219664
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.015059774153940294,
+     "credit": 0.012390591180066893,
+     "none": 0.9725496346659928
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 68,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02878838548840676,
+     "credit": 0.0012010504737782546,
+     "none": 0.9700105640378149
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.009101518510672231,
+     "credit": 0.006007056767158578,
+     "none": 0.9848914247221693
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9957292050951732,
+     "credit": 0.0018095888191375208,
+     "none": 0.0024612060856893385
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 69,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9957585488326861,
+     "credit": 0.001453478283664343,
+     "none": 0.0027879728836494814
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.03267150709407811,
+     "credit": 0.028208482446699962,
+     "none": 0.9391200104592219
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 70,
+  "story": 0.176,
+  "scan_skip": false,
+  "errors": 1,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.17633832650343156,
+     "credit": 0.019231459052410575,
+     "none": 0.8044302144441577
+    },
+    "choice": "none"
+   },
+   {
+    "error": "413 Client Error: Payload Too Large for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.009679601129898586,
+     "credit": 0.005759344739300223,
+     "none": 0.9845610541308011
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 71,
+  "story": 0.994,
+  "scan_skip": false,
+  "errors": 1,
+  "tiles": [
+   {
+    "error": "413 Client Error: Payload Too Large for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.014786142336125947,
+     "credit": 0.016431851718004774,
+     "none": 0.9687820059458694
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9938526438003034,
+     "credit": 0.0022605034496649625,
+     "none": 0.0038868527500317213
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.045074294691373425,
+     "credit": 0.009390133324378228,
+     "none": 0.9455355719842483
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 72,
+  "story": 0.988,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9878334801450628,
+     "credit": 0.004014760060881161,
+     "none": 0.008151759794056098
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.021743659136231143,
+     "credit": 0.019498456849413946,
+     "none": 0.9587578840143549
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 73,
+  "story": 0.994,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9938043895214143,
+     "credit": 0.0020386513704995,
+     "none": 0.004156959108086481
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 74,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.01226356392860164,
+     "credit": 0.006681224692659647,
+     "none": 0.9810552113787386
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.996550781134017,
+     "credit": 0.001098576755361073,
+     "none": 0.002350642110622017
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.08179075640312163,
+     "credit": 0.02515772007903824,
+     "none": 0.8930515235178401
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 75,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9908035862369671,
+     "credit": 0.0019227423340582568,
+     "none": 0.007273671428974641
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.013327472912770425,
+     "credit": 0.007720425623823263,
+     "none": 0.9789521014634063
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9951101810666914,
+     "credit": 0.001980757378436331,
+     "none": 0.002909061554872246
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 76,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9972934411973848,
+     "credit": 0.0010701569377871564,
+     "none": 0.0016364018648280484
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.016726785993184425,
+     "credit": 0.018288918488075526,
+     "none": 0.9649842955187401
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 77,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9954516054252428,
+     "credit": 0.0011620644910550681,
+     "none": 0.0033863300837020795
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.011916544471909547,
+     "credit": 0.00990822797003228,
+     "none": 0.9781752275580581
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.016811897542065732,
+     "credit": 0.007927473988361938,
+     "none": 0.9752606284695723
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 78,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9962338703021212,
+     "credit": 0.0015092637128297426,
+     "none": 0.0022568659850490265
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 79,
+  "story": 0.994,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9935645624635547,
+     "credit": 0.002367852305798791,
+     "none": 0.004067585230646641
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 80,
+  "story": 0.011,
+  "scan_skip": true,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.008628682276302709,
+     "credit": 0.00848409445834724,
+     "none": 0.9828872232653499
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.010917292321610985,
+     "credit": 0.006944627090917958,
+     "none": 0.9821380805874711
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 81,
+  "story": 0.975,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.012135120220432125,
+     "credit": 0.015420212241696147,
+     "none": 0.9724446675378718
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.00836334039972753,
+     "credit": 0.005860587943347114,
+     "none": 0.9857760716569254
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9747046182900835,
+     "credit": 0.009694597844412957,
+     "none": 0.015600783865503414
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 82,
+  "story": 0.984,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9839955778714625,
+     "credit": 0.0020717296359282736,
+     "none": 0.013932692492609255
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.03911371496817547,
+     "credit": 0.016803566583646214,
+     "none": 0.9440827184481783
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 83,
+  "story": 0.989,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9886183424439271,
+     "credit": 0.003910601750452178,
+     "none": 0.0074710558056208095
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 84,
+  "story": 0.991,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.0090661003244388,
+     "credit": 0.006577195243314708,
+     "none": 0.9843567044322464
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9850637773051154,
+     "credit": 0.0029755256616326013,
+     "none": 0.01196069703325219
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.990922862050881,
+     "credit": 0.002865912612284475,
+     "none": 0.006211225336834682
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 85,
+  "story": 0.014,
+  "scan_skip": true,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.011673653046768357,
+     "credit": 0.010413348935625144,
+     "none": 0.9779129980176066
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.0073687343487646734,
+     "credit": 0.006199492010382985,
+     "none": 0.9864317736408523
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.014149088025981613,
+     "credit": 0.0207170159527328,
+     "none": 0.9651338960212855
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 86,
+  "story": 0.984,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9841860017898922,
+     "credit": 0.003621354999030266,
+     "none": 0.01219264321107748
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.3597134934624851,
+     "credit": 0.03289094905958808,
+     "none": 0.607395557477927
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.032784402064704586,
+     "credit": 0.011463037590937064,
+     "none": 0.9557525603443583
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 87,
+  "story": 0.972,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9716105161784756,
+     "credit": 0.004680543563128998,
+     "none": 0.023708940258395397
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9533610450327149,
+     "credit": 0.006696981167207791,
+     "none": 0.03994197380007737
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 88,
+  "story": 0.998,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9975458414641553,
+     "credit": 0.0008133931446739048,
+     "none": 0.001640765391170824
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.018198715807606736,
+     "credit": 0.011352567079364682,
+     "none": 0.9704487171130286
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 89,
+  "story": 0.998,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9975261827889466,
+     "credit": 0.0008987886362664957,
+     "none": 0.001575028574786927
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.008910468653189351,
+     "credit": 0.004504510984926514,
+     "none": 0.9865850203618842
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.015433971383850392,
+     "credit": 0.021087832595878812,
+     "none": 0.9634781960202708
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 90,
+  "story": 0.998,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9975182804035077,
+     "credit": 0.0007610729300681329,
+     "none": 0.0017206466664241478
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.030536566849818914,
+     "credit": 0.0026602924578023445,
+     "none": 0.9668031406923787
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9952888871850311,
+     "credit": 0.0012503610108045204,
+     "none": 0.0034607518041644024
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 91,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9970520723254624,
+     "credit": 0.0010228440390958442,
+     "none": 0.0019250836354417148
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9758407694489579,
+     "credit": 0.002228344910123584,
+     "none": 0.021930885640918354
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 92,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9941732968167002,
+     "credit": 0.002411702056113445,
+     "none": 0.0034150011271862858
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9962936462047404,
+     "credit": 0.0011604803615638548,
+     "none": 0.0025458734336957106
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.020128333353539172,
+     "credit": 0.006421320295003524,
+     "none": 0.9734503463514573
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 93,
+  "story": 0.968,
+  "scan_skip": false,
+  "errors": 2,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9679378686069051,
+     "credit": 0.0015034243624642047,
+     "none": 0.030558707030630548
+    },
+    "choice": "story"
+   },
+   {
+    "error": "503 Server Error: Service Unavailable for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "error": "503 Server Error: Service Unavailable for url: https://api.minirouter.sh/v1/evaluate"
+   }
+  ]
+ },
+ {
+  "slice": 94,
+  "story": 0.994,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9943834160465534,
+     "credit": 0.0013405937906167992,
+     "none": 0.004275990162829866
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.11329270245872806,
+     "credit": 0.005374327676155949,
+     "none": 0.881332969865116
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 95,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9951070680265206,
+     "credit": 0.0015683301266469507,
+     "none": 0.0033246018468326257
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.043104056596931714,
+     "credit": 0.0043257142556372636,
+     "none": 0.952570229147431
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9737373521272779,
+     "credit": 0.005690117243517897,
+     "none": 0.020572530629204316
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 96,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.03561098320940823,
+     "credit": 0.010905115802095933,
+     "none": 0.9534839009884958
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9971069806678491,
+     "credit": 0.0009128125642945169,
+     "none": 0.001980206767856395
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 97,
+  "story": 0.023,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.010244885903853808,
+     "credit": 0.005637122205553841,
+     "none": 0.9841179918905923
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02331161069762601,
+     "credit": 0.0015384269030278104,
+     "none": 0.975149962399346
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 98,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.025567515037568107,
+     "credit": 0.0038203776609019766,
+     "none": 0.9706121073015299
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9949563543535986,
+     "credit": 0.0011559908983262248,
+     "none": 0.0038876547480750766
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02971182770360334,
+     "credit": 0.012777033398245737,
+     "none": 0.9575111388981509
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 99,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.995824059613454,
+     "credit": 0.001034261878459137,
+     "none": 0.003141678508086841
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.008040419471401971,
+     "credit": 0.0056384920208464116,
+     "none": 0.9863210885077516
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.0390016615148445,
+     "credit": 0.027492437031912714,
+     "none": 0.9335059014532427
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 100,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9935489977787432,
+     "credit": 0.0028853170804232597,
+     "none": 0.003565685140833486
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9972136382036905,
+     "credit": 0.000931704881621666,
+     "none": 0.0018546569146879511
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 101,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.995455495224734,
+     "credit": 0.00125691148900344,
+     "none": 0.003287593286262632
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.011702371987649974,
+     "credit": 0.0036871183869785634,
+     "none": 0.9846105096253714
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 102,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9974586737178607,
+     "credit": 0.0009503413038729336,
+     "none": 0.001590984978266456
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.010313703226198909,
+     "credit": 0.0023170637886189204,
+     "none": 0.9873692329851822
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9969448788677202,
+     "credit": 0.0008786523634809254,
+     "none": 0.0021764687687988683
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 103,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9973484321728976,
+     "credit": 0.0008619953808585427,
+     "none": 0.001789572446243912
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.011757407867173558,
+     "credit": 0.015388608946815534,
+     "none": 0.972853983186011
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 104,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.997360851911335,
+     "credit": 0.0008824391645846561,
+     "none": 0.001756708924080472
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9956674462782557,
+     "credit": 0.0012150829117983366,
+     "none": 0.0031174708099460796
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9845014726811652,
+     "credit": 0.0014490118018504984,
+     "none": 0.014049515516984435
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 105,
+  "story": 0.992,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9918759271150442,
+     "credit": 0.0013747232908156769,
+     "none": 0.006749349594140061
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.05276220748737979,
+     "credit": 0.004732639420420906,
+     "none": 0.9425051530921993
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 106,
+  "story": 0.998,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9978768495969199,
+     "credit": 0.000783894056792844,
+     "none": 0.0013392563462872953
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.04322491984096287,
+     "credit": 0.008584271053316004,
+     "none": 0.9481908091057211
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.39260615306201463,
+     "credit": 0.006544028388856161,
+     "none": 0.6008498185491291
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 107,
+  "story": 0.992,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.992325479690395,
+     "credit": 0.0018503540337276138,
+     "none": 0.005824166275877474
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.007810520971166491,
+     "credit": 0.00450377727035553,
+     "none": 0.9876857017584779
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 108,
+  "story": 0.987,
+  "scan_skip": false,
+  "errors": 2,
+  "tiles": [
+   {
+    "error": "503 Server Error: Service Unavailable for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "error": "503 Server Error: Service Unavailable for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9871986001175805,
+     "credit": 0.003054294210982879,
+     "none": 0.00974710567143669
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 109,
+  "story": 0.992,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9920876685270622,
+     "credit": 0.0025443902416991005,
+     "none": 0.005367941231238702
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.009593842196859709,
+     "credit": 0.01588914464053015,
+     "none": 0.9745170131626101
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 110,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9948212796928413,
+     "credit": 0.0015455458184407845,
+     "none": 0.003633174488717938
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.01816409538394304,
+     "credit": 0.008326084094208387,
+     "none": 0.9735098205218486
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 111,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.995198227974444,
+     "credit": 0.0012893278864438624,
+     "none": 0.0035124441391121064
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.014080383652497409,
+     "credit": 0.008342156310605895,
+     "none": 0.9775774600368967
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9875330425090955,
+     "credit": 0.002581653871565106,
+     "none": 0.00988530361933934
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 112,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9966465376721128,
+     "credit": 0.0012017271496707962,
+     "none": 0.00215173517821648
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.6769934072963514,
+     "credit": 0.0066829720010414114,
+     "none": 0.3163236207026073
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 113,
+  "story": 0.986,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9848022680302664,
+     "credit": 0.0014227791411915319,
+     "none": 0.013774952828542242
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9432758716645244,
+     "credit": 0.0021104471254325312,
+     "none": 0.05461368121004307
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02851061115424334,
+     "credit": 0.0036661558478272138,
+     "none": 0.9678232329979294
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9860947274479146,
+     "credit": 0.0027582733685171433,
+     "none": 0.011146999183568304
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 114,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9966353475563351,
+     "credit": 0.00079757283411001,
+     "none": 0.002567079609555001
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02687508655325986,
+     "credit": 0.008485668172095609,
+     "none": 0.9646392452746446
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 115,
+  "story": 0.998,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9975145843356057,
+     "credit": 0.0007527184340125805,
+     "none": 0.0017326972303815923
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.017777541785021573,
+     "credit": 0.002641765766800559,
+     "none": 0.9795806924481778
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9978197251119013,
+     "credit": 0.0006864010429532859,
+     "none": 0.0014938738451454494
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 116,
+  "story": 0.998,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9976504188025048,
+     "credit": 0.0007932947518614692,
+     "none": 0.0015562864456338495
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.009593842196859709,
+     "credit": 0.01588914464053015,
+     "none": 0.9745170131626101
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 117,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.995058701651612,
+     "credit": 0.001644551555204065,
+     "none": 0.0032967467931839817
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.01800349818923666,
+     "credit": 0.007237793865527846,
+     "none": 0.9747587079452354
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 118,
+  "story": 0.996,
+  "scan_skip": false,
+  "errors": 1,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9961028561465476,
+     "credit": 0.0011512673564310245,
+     "none": 0.00274587649702143
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.007895269698176362,
+     "credit": 0.003050511771563098,
+     "none": 0.9890542185302607
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.014112215137633303,
+     "credit": 0.004001283467527418,
+     "none": 0.9818865013948391
+    },
+    "choice": "none"
+   },
+   {
+    "error": "502 Server Error: Bad Gateway for url: https://api.minirouter.sh/v1/evaluate"
+   }
+  ]
+ },
+ {
+  "slice": 119,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9974706224458854,
+     "credit": 0.0008280017821664082,
+     "none": 0.0017013757719482048
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.020681979438147337,
+     "credit": 0.009244822048976252,
+     "none": 0.9700731985128763
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 120,
+  "story": 0.997,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9968843608529742,
+     "credit": 0.0009406428680830807,
+     "none": 0.002174996278942718
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.009245442905779038,
+     "credit": 0.004660951072969239,
+     "none": 0.9860936060212517
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.99611391133496,
+     "credit": 0.0009729831879544664,
+     "none": 0.0029131054770857503
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.981556540163685,
+     "credit": 0.0020904244235839028,
+     "none": 0.016353035412731122
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 121,
+  "story": 0.994,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9941800983129724,
+     "credit": 0.001428493333868149,
+     "none": 0.004391408353159454
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.09285268921024689,
+     "credit": 0.261712164557065,
+     "none": 0.645435146232688
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 122,
+  "story": 0.992,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.016672672286355703,
+     "credit": 0.007161109049489257,
+     "none": 0.976166218664155
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.992474851403243,
+     "credit": 0.0017684964945242352,
+     "none": 0.005756652102232848
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 123,
+  "story": 0.965,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9651812137472715,
+     "credit": 0.0017528015384966184,
+     "none": 0.03306598471423189
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.018779273913739458,
+     "credit": 0.012058792052895438,
+     "none": 0.9691619340333651
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 124,
+  "story": 0.99,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.989583216673567,
+     "credit": 0.0013735941934817464,
+     "none": 0.00904318913295136
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9759233367719307,
+     "credit": 0.002894094907472883,
+     "none": 0.02118256832059657
+    },
+    "choice": "story"
+   }
+  ]
+ },
+ {
+  "slice": 125,
+  "story": 0.995,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9946290166193413,
+     "credit": 0.0012720496751869705,
+     "none": 0.004098933705471726
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.009248602980568624,
+     "credit": 0.003906736449983231,
+     "none": 0.9868446605694481
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 126,
+  "story": 0.993,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9926214428314685,
+     "credit": 0.0015911625139109315,
+     "none": 0.00578739465462057
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9906313901890537,
+     "credit": 0.002597104316211694,
+     "none": 0.00677150549473474
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.035320555473128575,
+     "credit": 0.046648707699377186,
+     "none": 0.9180307368274943
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 127,
+  "story": 0.993,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9928207539053859,
+     "credit": 0.001952652586412043,
+     "none": 0.005226593508201983
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.016993554487322374,
+     "credit": 0.006434580104708206,
+     "none": 0.9765718654079695
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 128,
+  "story": 0.957,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.9567725278281979,
+     "credit": 0.00266412530999668,
+     "none": 0.040563346861805405
+    },
+    "choice": "story"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.00843810374505349,
+     "credit": 0.0051223510919913085,
+     "none": 0.9864395451629552
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 129,
+  "story": 0.011,
+  "scan_skip": true,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.010640461683841444,
+     "credit": 0.008832317866439253,
+     "none": 0.9805272204497194
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 130,
+  "story": 0.24,
+  "scan_skip": false,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.2404885328664183,
+     "credit": 0.022299524092550295,
+     "none": 0.7372119430410314
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 131,
+  "story": 0.22,
+  "scan_skip": false,
+  "errors": 1,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.21969002191676926,
+     "credit": 0.01520237529016538,
+     "none": 0.7651076027930653
+    },
+    "choice": "none"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.10825421938298264,
+     "credit": 0.016233959768263057,
+     "none": 0.8755118208487542
+    },
+    "choice": "none"
+   },
+   {
+    "error": "413 Client Error: Payload Too Large for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.015600735165315467,
+     "credit": 0.008714196522592423,
+     "none": 0.9756850683120921
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 132,
+  "story": 0.014,
+  "scan_skip": false,
+  "errors": 1,
+  "tiles": [
+   {
+    "error": "413 Client Error: Payload Too Large for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.014357258075089373,
+     "credit": 0.010034692888485394,
+     "none": 0.9756080490364252
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 133,
+  "story": 0.03,
+  "scan_skip": true,
+  "errors": 0,
+  "tiles": [
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.02982303109661414,
+     "credit": 0.9660262351773585,
+     "none": 0.004150733726027386
+    },
+    "choice": "credit"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.029883264091728937,
+     "credit": 0.03748529910893287,
+     "none": 0.9326314367993382
+    },
+    "choice": "none"
+   }
+  ]
+ },
+ {
+  "slice": 134,
+  "story": 0.026,
+  "scan_skip": true,
+  "errors": 1,
+  "tiles": [
+   {
+    "error": "413 Client Error: Payload Too Large for url: https://api.minirouter.sh/v1/evaluate"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.025652224994463468,
+     "credit": 0.8882296480232122,
+     "none": 0.08611812698232421
+    },
+    "choice": "credit"
+   },
+   {
+    "type": "choice",
+    "probabilities": {
+     "story": 0.00744135893042364,
+     "credit": 0.9782816453150748,
+     "none": 0.014276995754501705
+    },
+    "choice": "credit"
+   }
+  ]
+ }
+]
