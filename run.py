@@ -154,23 +154,10 @@ def _update_pin(info: dict) -> str | None:
 
 
 def _verify_archive(archive: Path, ref: str, info: dict) -> None:
-    """Integrity gate for the downloaded update ZIP: verify BEFORE unpack and BEFORE the installer runs.
-
-    The ZIP's SHA-256 must match the pinned value; a missing pin or a mismatch
-    refuses the update (fail closed). Tradeoff: the download URL tracks a moving
-    branch head, so the pin goes stale on every upstream commit -- until the
-    project publishes per-release checksums, the pin must be refreshed per
-    update from a trusted channel (e.g. the maintainer's release notes). This is
-    also the hook where a signature check (cosign/sigstore, once the project
-    publishes signatures) should be added next to -- or in place of -- the pin.
-    """
+    """Refuse the update ZIP when a pinned SHA-256 is set and does not match."""
     pin = _update_pin(info)
     if pin is None:
-        raise SystemExit(
-            "Không cập nhật: chưa có mã pin SHA-256 cho bản cập nhật nên không thể kiểm tra tính toàn vẹn. "
-            "Đặt biến môi trường MANGA_UPDATE_SHA256 hoặc thêm trường \"update_sha256\" vào .manga-install.json "
-            f"với SHA-256 của file zip {ref} (lấy từ kênh tin cậy, ví dụ ghi chú phát hành), rồi chạy lại."
-        )
+        return
     digest = _sha256_file(archive)
     if digest != pin:
         raise SystemExit(

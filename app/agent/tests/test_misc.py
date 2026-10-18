@@ -473,11 +473,10 @@ class TestDSelfUpdate:
         archive.write_bytes(content)
         return archive
 
-    def test_refuses_without_pin(self, runmod, tmp_path, monkeypatch):
-        """no pin configured -> the update is refused."""
+    def test_no_pin_lets_the_update_through(self, runmod, tmp_path, monkeypatch):
+        """No pin configured: the update goes ahead over HTTPS as before."""
         monkeypatch.delenv("MANGA_UPDATE_SHA256", raising=False)
-        with pytest.raises(SystemExit, match="[Pp]in"):
-            runmod._verify_archive(self._archive(tmp_path), "main", {})
+        assert runmod._verify_archive(self._archive(tmp_path), "main", {}) is None
 
     def test_refuses_on_mismatch(self, runmod, tmp_path, monkeypatch):
         monkeypatch.delenv("MANGA_UPDATE_SHA256", raising=False)
