@@ -1,0 +1,79 @@
+name: Decision model vision probe
+
+on:
+  push:
+    branches: [claude/friendly-hypatia-xi865r]
+    paths: [".github/workflows/decision-vision-probe.yml"]
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Model ids separated by spaces; empty picks every MiniRouter model with 'decision' in its id"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Send a manga page to each decision model
+        env:
+          MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
+          MODELS: ${{ github.event.inputs.models }}
+        run: |
+          mkdir -p audit-results/decision-probe
+          python3 - <<'PY'
+          import base64, json, os, time, urllib.request
+          base, key = "https://api.minirouter.sh/v1", os.environ["MINIROUTER_API_KEY"]
+          out = "audit-results/decision-probe"
+
+          def call(path, body=None):
+              req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body else None,
+                                           headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+              with urllib.request.urlopen(req, timeout=300) as r:
+                  return json.loads(r.read())
+
+          rows = call("/models").get("data", [])
+          json.dump(rows, open(f"{out}/models.json", "w"), indent=1)
+          picked = os.environ.get("MODELS", "").split() or [r["id"] for r in rows if "decision" in json.dumps(r).lower()]
+          for r in rows:
+              if r["id"] in picked:
+                  print("MODEL", json.dumps(r)[:600])
+          print("picked:", picked)
+
+          image = base64.b64encode(open("docs/images/demo-raw.jpg", "rb").read()).decode()
+          truth = ["?", "What do you think you're doing?", "We've been looking for you for months."]
+          prompt = ("This is a webtoon page (305x680 px). List every piece of text in reading order as JSON: "
+                    '{"lines":[{"text":"exact English text","box":[x1,y1,x2,y2],"vi":"natural Vietnamese translation"}]}. '
+                    "Reply with JSON only.")
+          results = []
+          for model in picked:
+              row = {"model": model}
+              for attempt in range(2):
+                  t = time.time()
+                  try:
+                      resp = call("/chat/completions", {"model": model, "max_tokens": 1500, "messages": [{"role": "user", "content": [
+                          {"type": "text", "text": prompt},
+                          {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image}"}}]}]})
+                      text = resp["choices"][0]["message"].get("content") or ""
+                      row.update(seconds=round(time.time() - t, 1), usage=resp.get("usage"), reply=text)
+                      low = text.lower().replace("’", "'")
+                      row["found"] = [s for s in truth if s.lower() in low]
+                      break
+                  except Exception as e:
+                      body = e.read().decode()[:800] if hasattr(e, "read") else ""
+                      row.update(error=f"{e} {body}", seconds=round(time.time() - t, 1))
+              results.append(row)
+              print("=" * 70, "\n", json.dumps(row, ensure_ascii=False, indent=1))
+          json.dump(results, open(f"{out}/results.json", "w"), ensure_ascii=False, indent=1)
+          PY
+      - if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/decision-probe
+          message: "audit: decision model vision probe (run ${{ github.run_id }})"
