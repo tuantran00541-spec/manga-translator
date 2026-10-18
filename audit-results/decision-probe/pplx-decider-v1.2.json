@@ -1,0 +1,6068 @@
+[
+ {
+  "set": "leftover-raw",
+  "name": "final/shadow-slave-1/leftovers/01-slice003-ghost.jpg",
+  "label": "text",
+  "any": 0.9979654434558591,
+  "read": 0.9977894730147779,
+  "usage": {
+   "inputTokens": 256,
+   "outputTokens": 2
+  },
+  "seconds": 6.09
+ },
+ {
+  "set": "leftover-clean",
+  "name": "final/shadow-slave-1/leftovers/01-slice003-ghost.jpg",
+  "label": "ghost",
+  "any": 0.1179445196911502,
+  "read": 0.10338362394904334,
+  "usage": {
+   "inputTokens": 297,
+   "outputTokens": 2
+  },
+  "seconds": 7.09
+ },
+ {
+  "set": "leftover-raw",
+  "name": "final/shadow-slave-1/leftovers/02-slice087-text.jpg",
+  "label": "text",
+  "any": 0.9765622833311246,
+  "read": 0.8410670801542734,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 6.3
+ },
+ {
+  "set": "leftover-clean",
+  "name": "final/shadow-slave-1/leftovers/02-slice087-text.jpg",
+  "label": "text",
+  "any": 0.39097167192894794,
+  "read": 0.24587839103079115,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 6.37
+ },
+ {
+  "set": "leftover-raw",
+  "name": "noluna/shadow-slave-1/leftovers/03-slice133-text.jpg",
+  "label": "text",
+  "any": 0.9972136785644963,
+  "read": 0.9960717433143979,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 6.14
+ },
+ {
+  "set": "leftover-clean",
+  "name": "noluna/shadow-slave-1/leftovers/03-slice133-text.jpg",
+  "label": "clean",
+  "any": 0.043425281645947084,
+  "read": 0.02806661859626777,
+  "usage": {
+   "inputTokens": 305,
+   "outputTokens": 2
+  },
+  "seconds": 6.55
+ },
+ {
+  "set": "leftover-raw",
+  "name": "final/solo-swordmaster-1/leftovers/01-slice055-text.jpg",
+  "label": "text",
+  "any": 0.985244270932985,
+  "read": 0.8760833973225398,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 6.6
+ },
+ {
+  "set": "leftover-clean",
+  "name": "final/solo-swordmaster-1/leftovers/01-slice055-text.jpg",
+  "label": "text",
+  "any": 0.5042339743412371,
+  "read": 0.2371810115639409,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 6.54
+ },
+ {
+  "set": "leftover-raw",
+  "name": "final/the-world-after-the-end-254/leftovers/01-slice048-text.jpg",
+  "label": "clean",
+  "any": 0.6856138691621962,
+  "read": 0.3812994314694674,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 2.93
+ },
+ {
+  "set": "leftover-clean",
+  "name": "final/the-world-after-the-end-254/leftovers/01-slice048-text.jpg",
+  "label": "clean",
+  "any": 0.587871018092575,
+  "read": 0.2841968630922815,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 0.98
+ },
+ {
+  "set": "leftover-raw",
+  "name": "luna/the-hero-cannot-rest-1/leftovers/01-slice061-text.jpg",
+  "label": "text",
+  "any": 0.9939649332299823,
+  "read": 0.9940328647294354,
+  "usage": {
+   "inputTokens": 215,
+   "outputTokens": 2
+  },
+  "seconds": 2.27
+ },
+ {
+  "set": "leftover-clean",
+  "name": "luna/the-hero-cannot-rest-1/leftovers/01-slice061-text.jpg",
+  "label": "ghost",
+  "any": 0.10697774493401291,
+  "read": 0.0756496519508709,
+  "usage": {
+   "inputTokens": 215,
+   "outputTokens": 2
+  },
+  "seconds": 2.63
+ },
+ {
+  "set": "leftover-raw",
+  "name": "luna/the-hero-cannot-rest-1/leftovers/02-slice132-ghost.jpg",
+  "label": "text",
+  "any": 0.9954960456187311,
+  "read": 0.9953312735436296,
+  "usage": {
+   "inputTokens": 215,
+   "outputTokens": 2
+  },
+  "seconds": 2.53
+ },
+ {
+  "set": "leftover-clean",
+  "name": "luna/the-hero-cannot-rest-1/leftovers/02-slice132-ghost.jpg",
+  "label": "ghost",
+  "any": 0.11535400506667953,
+  "read": 0.08423521015072875,
+  "usage": {
+   "inputTokens": 215,
+   "outputTokens": 2
+  },
+  "seconds": 2.53
+ },
+ {
+  "set": "leftover-raw",
+  "name": "sov-luna/solo-swordmaster-1/leftovers/01-slice127-ghost.jpg",
+  "label": "text",
+  "any": 0.9923734974865146,
+  "read": 0.9943228289807413,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.42
+ },
+ {
+  "set": "leftover-clean",
+  "name": "sov-luna/solo-swordmaster-1/leftovers/01-slice127-ghost.jpg",
+  "label": "ghost",
+  "any": 0.36048662566196266,
+  "read": 0.2258066671402529,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.93
+ },
+ {
+  "set": "leftover-raw",
+  "name": "transcript/solo-swordmaster-1/leftovers/02-slice102-text.jpg",
+  "label": "text",
+  "any": 0.9972447160216552,
+  "read": 0.9960719895897452,
+  "usage": {
+   "inputTokens": 256,
+   "outputTokens": 2
+  },
+  "seconds": 1.95
+ },
+ {
+  "set": "leftover-clean",
+  "name": "transcript/solo-swordmaster-1/leftovers/02-slice102-text.jpg",
+  "label": "text",
+  "any": 0.9886404227822869,
+  "read": 0.9299211514156619,
+  "usage": {
+   "inputTokens": 256,
+   "outputTokens": 2
+  },
+  "seconds": 2.32
+ },
+ {
+  "set": "leftover-raw",
+  "name": "readme-peppercarrot/en-ep38_The-Healer.html/leftovers/01-slice003-ghost.jpg",
+  "label": "text",
+  "any": 0.996715770141997,
+  "read": 0.9971653119147925,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.89
+ },
+ {
+  "set": "leftover-clean",
+  "name": "readme-peppercarrot/en-ep38_The-Healer.html/leftovers/01-slice003-ghost.jpg",
+  "label": "clean",
+  "any": 0.30307512391214136,
+  "read": 0.13739626706345018,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.87
+ },
+ {
+  "set": "bench-raw",
+  "name": "y000159.jpg",
+  "label": "text",
+  "any": 0.811793416192636,
+  "read": 0.8025936977558615,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.85
+ },
+ {
+  "set": "bench-clean",
+  "name": "y000159.jpg",
+  "label": "text",
+  "any": 0.7267304488448197,
+  "read": 0.7065235448566233,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.85
+ },
+ {
+  "set": "bench-raw",
+  "name": "y000377.jpg",
+  "label": "text",
+  "any": 0.9942266961713592,
+  "read": 0.9905241382766987,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 1.84
+ },
+ {
+  "set": "bench-clean",
+  "name": "y000377.jpg",
+  "label": "clean",
+  "any": 0.041887635847344284,
+  "read": 0.04354581175030227,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 1.85
+ },
+ {
+  "set": "bench-raw",
+  "name": "y000390.jpg",
+  "label": "text",
+  "any": 0.99463068471637,
+  "read": 0.9913676232900474,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.87
+ },
+ {
+  "set": "bench-clean",
+  "name": "y000390.jpg",
+  "label": "clean",
+  "any": 0.10361466772302717,
+  "read": 0.09807215295019381,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.7
+ },
+ {
+  "set": "bench-raw",
+  "name": "y000474.jpg",
+  "label": "text",
+  "any": 0.9834133879285807,
+  "read": 0.9303038576083076,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 2.01
+ },
+ {
+  "set": "bench-clean",
+  "name": "y000474.jpg",
+  "label": "clean",
+  "any": 0.3118714254862557,
+  "read": 0.16934550479629318,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.71
+ },
+ {
+  "set": "bench-raw",
+  "name": "y000485.jpg",
+  "label": "text",
+  "any": 0.9948901071842905,
+  "read": 0.9954044702017387,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 1.99
+ },
+ {
+  "set": "bench-clean",
+  "name": "y000485.jpg",
+  "label": "clean",
+  "any": 0.03963693317997232,
+  "read": 0.04035086701858561,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 1.98
+ },
+ {
+  "set": "bench-raw",
+  "name": "y000484.jpg",
+  "label": "text",
+  "any": 0.9924300665419652,
+  "read": 0.9912560417668718,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.97
+ },
+ {
+  "set": "bench-clean",
+  "name": "y000484.jpg",
+  "label": "clean",
+  "any": 0.047370153840760834,
+  "read": 0.040038982054413676,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.96
+ },
+ {
+  "set": "bench-raw",
+  "name": "y001397.jpg",
+  "label": "text",
+  "any": 0.9979701095683371,
+  "read": 0.9973215859967001,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 1.95
+ },
+ {
+  "set": "bench-clean",
+  "name": "y001397.jpg",
+  "label": "clean",
+  "any": 0.09043317917527552,
+  "read": 0.04564718392124982,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 1.02
+ },
+ {
+  "set": "bench-raw",
+  "name": "y001813.jpg",
+  "label": "text",
+  "any": 0.02372967005902073,
+  "read": 0.01417048093063128,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.99
+ },
+ {
+  "set": "bench-clean",
+  "name": "y001813.jpg",
+  "label": "clean",
+  "any": 0.02750231440890779,
+  "read": 0.016101272835550167,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.17
+ },
+ {
+  "set": "bench-raw",
+  "name": "y008174.jpg",
+  "label": "text",
+  "any": 0.9982783222865566,
+  "read": 0.9984819212809218,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 3.18
+ },
+ {
+  "set": "bench-clean",
+  "name": "y008174.jpg",
+  "label": "clean",
+  "any": 0.025474877067282953,
+  "read": 0.009991660968399534,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 3.22
+ },
+ {
+  "set": "bench-raw",
+  "name": "y009913.jpg",
+  "label": "text",
+  "any": 0.9977359299622853,
+  "read": 0.9980560212914806,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 2.51
+ },
+ {
+  "set": "bench-clean",
+  "name": "y009913.jpg",
+  "label": "clean",
+  "any": 0.04530045980766088,
+  "read": 0.024760468754241666,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 2.61
+ },
+ {
+  "set": "bench-raw",
+  "name": "y010818.jpg",
+  "label": "text",
+  "any": 0.7482573686599419,
+  "read": 0.6970403869919616,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.22
+ },
+ {
+  "set": "bench-clean",
+  "name": "y010818.jpg",
+  "label": "clean",
+  "any": 0.7507892604675259,
+  "read": 0.6764234055517321,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.54
+ },
+ {
+  "set": "bench-raw",
+  "name": "y012483.jpg",
+  "label": "text",
+  "any": 0.9936276735848176,
+  "read": 0.9951239438043636,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 2.43
+ },
+ {
+  "set": "bench-clean",
+  "name": "y012483.jpg",
+  "label": "clean",
+  "any": 0.03465050183923275,
+  "read": 0.025924548508187897,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 2.9
+ },
+ {
+  "set": "bench-raw",
+  "name": "y012714.jpg",
+  "label": "text",
+  "any": 0.9981475499457723,
+  "read": 0.9976935540705718,
+  "usage": {
+   "inputTokens": 273,
+   "outputTokens": 2
+  },
+  "seconds": 3.03
+ },
+ {
+  "set": "bench-clean",
+  "name": "y012714.jpg",
+  "label": "clean",
+  "any": 0.038042996685663626,
+  "read": 0.014896305187801483,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 2.94
+ },
+ {
+  "set": "bench-raw",
+  "name": "y016576-seam.jpg",
+  "label": "text",
+  "any": 0.9978937436123123,
+  "read": 0.9980641060855755,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 2.43
+ },
+ {
+  "set": "bench-clean",
+  "name": "y016576-seam.jpg",
+  "label": "clean",
+  "any": 0.0419235706062253,
+  "read": 0.02031768397050367,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 2.47
+ },
+ {
+  "set": "bench-raw",
+  "name": "y018548.jpg",
+  "label": "text",
+  "any": 0.9978967001106581,
+  "read": 0.9976711332130904,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 2.46
+ },
+ {
+  "set": "bench-clean",
+  "name": "y018548.jpg",
+  "label": "clean",
+  "any": 0.010341471856517875,
+  "read": 0.008462634864396117,
+  "usage": {
+   "inputTokens": 371,
+   "outputTokens": 2
+  },
+  "seconds": 2.76
+ },
+ {
+  "set": "bench-raw",
+  "name": "y018645.jpg",
+  "label": "text",
+  "any": 0.060232884642756314,
+  "read": 0.040296985433994806,
+  "usage": {
+   "inputTokens": 201,
+   "outputTokens": 2
+  },
+  "seconds": 1.88
+ },
+ {
+  "set": "bench-clean",
+  "name": "y018645.jpg",
+  "label": "clean",
+  "any": 0.0707544464444219,
+  "read": 0.051883077507350515,
+  "usage": {
+   "inputTokens": 201,
+   "outputTokens": 2
+  },
+  "seconds": 0.96
+ },
+ {
+  "set": "bench-raw",
+  "name": "y019922.jpg",
+  "label": "text",
+  "any": 0.6521341164688824,
+  "read": 0.16008963479902694,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.18
+ },
+ {
+  "set": "bench-clean",
+  "name": "y019922.jpg",
+  "label": "clean",
+  "any": 0.12388352796096642,
+  "read": 0.07061790838444469,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.55
+ },
+ {
+  "set": "bench-raw",
+  "name": "y019957.jpg",
+  "label": "text",
+  "any": 0.2172863444109711,
+  "read": 0.1017902074491483,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.86
+ },
+ {
+  "set": "bench-clean",
+  "name": "y019957.jpg",
+  "label": "clean",
+  "any": 0.1728118425105793,
+  "read": 0.09540945076013306,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.26
+ },
+ {
+  "set": "bench-raw",
+  "name": "y019974.jpg",
+  "label": "text",
+  "any": 0.9975192777933332,
+  "read": 0.9973962005642139,
+  "usage": {
+   "inputTokens": 269,
+   "outputTokens": 2
+  },
+  "seconds": 2.33
+ },
+ {
+  "set": "bench-clean",
+  "name": "y019974.jpg",
+  "label": "clean",
+  "any": 0.02405179553946957,
+  "read": 0.018123303654097436,
+  "usage": {
+   "inputTokens": 361,
+   "outputTokens": 2
+  },
+  "seconds": 1.97
+ },
+ {
+  "set": "bench-raw",
+  "name": "y021807.jpg",
+  "label": "text",
+  "any": 0.9976779402024744,
+  "read": 0.997996894551552,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 1.99
+ },
+ {
+  "set": "bench-clean",
+  "name": "y021807.jpg",
+  "label": "clean",
+  "any": 0.035754324914889,
+  "read": 0.026390737971731998,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 1.93
+ },
+ {
+  "set": "bench-raw",
+  "name": "y025035.jpg",
+  "label": "text",
+  "any": 0.9982623206242118,
+  "read": 0.9975442868302054,
+  "usage": {
+   "inputTokens": 233,
+   "outputTokens": 2
+  },
+  "seconds": 1.9
+ },
+ {
+  "set": "bench-clean",
+  "name": "y025035.jpg",
+  "label": "clean",
+  "any": 0.015865718761773825,
+  "read": 0.005976290617971701,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 1.47
+ },
+ {
+  "set": "bench-raw",
+  "name": "y026938.jpg",
+  "label": "text",
+  "any": 0.9963616769708152,
+  "read": 0.997171916796822,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 1.13
+ },
+ {
+  "set": "bench-clean",
+  "name": "y026938.jpg",
+  "label": "clean",
+  "any": 0.03614331519107371,
+  "read": 0.02610357564704623,
+  "usage": {
+   "inputTokens": 307,
+   "outputTokens": 2
+  },
+  "seconds": 1.57
+ },
+ {
+  "set": "bench-raw",
+  "name": "y027590.jpg",
+  "label": "text",
+  "any": 0.9972618108386255,
+  "read": 0.9966278039644131,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 1.49
+ },
+ {
+  "set": "bench-clean",
+  "name": "y027590.jpg",
+  "label": "clean",
+  "any": 0.012129947918594279,
+  "read": 0.004729242202345023,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 1.56
+ },
+ {
+  "set": "bench-raw",
+  "name": "y029460.jpg",
+  "label": "text",
+  "any": 0.9985825393898125,
+  "read": 0.9980828102282336,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 1.6
+ },
+ {
+  "set": "bench-clean",
+  "name": "y029460.jpg",
+  "label": "clean",
+  "any": 0.042889968371667496,
+  "read": 0.015034895022566802,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 2.06
+ },
+ {
+  "set": "bench-raw",
+  "name": "y030044.jpg",
+  "label": "text",
+  "any": 0.07937588914193935,
+  "read": 0.053298330431288024,
+  "usage": {
+   "inputTokens": 277,
+   "outputTokens": 2
+  },
+  "seconds": 2.18
+ },
+ {
+  "set": "bench-clean",
+  "name": "y030044.jpg",
+  "label": "text",
+  "any": 0.04929428748353497,
+  "read": 0.0500443916775429,
+  "usage": {
+   "inputTokens": 277,
+   "outputTokens": 2
+  },
+  "seconds": 2.08
+ },
+ {
+  "set": "bench-raw",
+  "name": "y030053.jpg",
+  "label": "text",
+  "any": 0.9773015976897121,
+  "read": 0.9532811578698652,
+  "usage": {
+   "inputTokens": 267,
+   "outputTokens": 2
+  },
+  "seconds": 2.35
+ },
+ {
+  "set": "bench-clean",
+  "name": "y030053.jpg",
+  "label": "text",
+  "any": 0.9688871751166981,
+  "read": 0.9371309124707903,
+  "usage": {
+   "inputTokens": 267,
+   "outputTokens": 2
+  },
+  "seconds": 2.23
+ },
+ {
+  "set": "bench-raw",
+  "name": "y030770.jpg",
+  "label": "text",
+  "any": 0.9958488351377599,
+  "read": 0.9959250755714015,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.22
+ },
+ {
+  "set": "bench-clean",
+  "name": "y030770.jpg",
+  "label": "clean",
+  "any": 0.014896277198620534,
+  "read": 0.01148883267867807,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.23
+ },
+ {
+  "set": "bench-raw",
+  "name": "y031972.jpg",
+  "label": "text",
+  "any": 0.998451719591938,
+  "read": 0.9983387674984741,
+  "usage": {
+   "inputTokens": 287,
+   "outputTokens": 2
+  },
+  "seconds": 2.54
+ },
+ {
+  "set": "bench-clean",
+  "name": "y031972.jpg",
+  "label": "clean",
+  "any": 0.005764929080470005,
+  "read": 0.005380002225214192,
+  "usage": {
+   "inputTokens": 297,
+   "outputTokens": 2
+  },
+  "seconds": 2.06
+ },
+ {
+  "set": "bench-raw",
+  "name": "y033359.jpg",
+  "label": "text",
+  "any": 0.9981423831714503,
+  "read": 0.9975324759664285,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 1.95
+ },
+ {
+  "set": "bench-clean",
+  "name": "y033359.jpg",
+  "label": "clean",
+  "any": 0.013812982292816132,
+  "read": 0.009850949256725052,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 1.86
+ },
+ {
+  "set": "bench-raw",
+  "name": "y034553.jpg",
+  "label": "text",
+  "any": 0.9983288997454773,
+  "read": 0.998080415420551,
+  "usage": {
+   "inputTokens": 297,
+   "outputTokens": 2
+  },
+  "seconds": 2.69
+ },
+ {
+  "set": "bench-clean",
+  "name": "y034553.jpg",
+  "label": "clean",
+  "any": 0.05216888213533215,
+  "read": 0.025337257640896844,
+  "usage": {
+   "inputTokens": 297,
+   "outputTokens": 2
+  },
+  "seconds": 3.08
+ },
+ {
+  "set": "bench-raw",
+  "name": "y036903.jpg",
+  "label": "text",
+  "any": 0.9981073381986357,
+  "read": 0.9973259602972798,
+  "usage": {
+   "inputTokens": 249,
+   "outputTokens": 2
+  },
+  "seconds": 3.41
+ },
+ {
+  "set": "bench-clean",
+  "name": "y036903.jpg",
+  "label": "clean",
+  "any": 0.027543742418796823,
+  "read": 0.012449096676490901,
+  "usage": {
+   "inputTokens": 249,
+   "outputTokens": 2
+  },
+  "seconds": 2.91
+ },
+ {
+  "set": "bench-raw",
+  "name": "y038493.jpg",
+  "label": "text",
+  "any": 0.9975885475578886,
+  "read": 0.9971945010870615,
+  "usage": {
+   "inputTokens": 233,
+   "outputTokens": 2
+  },
+  "seconds": 3.0
+ },
+ {
+  "set": "bench-clean",
+  "name": "y038493.jpg",
+  "label": "clean",
+  "any": 0.04329780070523377,
+  "read": 0.028367885419100625,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 3.01
+ },
+ {
+  "set": "bench-raw",
+  "name": "y041937.jpg",
+  "label": "text",
+  "any": 0.01957426605597002,
+  "read": 0.011576205946379937,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.53
+ },
+ {
+  "set": "bench-clean",
+  "name": "y041937.jpg",
+  "label": "text",
+  "any": 0.023126906132356424,
+  "read": 0.012596852983684702,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.94
+ },
+ {
+  "set": "bench-raw",
+  "name": "y041975.jpg",
+  "label": "text",
+  "any": 0.9661207560460913,
+  "read": 0.24562269264577713,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 2.31
+ },
+ {
+  "set": "bench-clean",
+  "name": "y041975.jpg",
+  "label": "text",
+  "any": 0.007433708159372426,
+  "read": 0.005509510433943737,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 1.72
+ },
+ {
+  "set": "bench-raw",
+  "name": "y042044.jpg",
+  "label": "text",
+  "any": 0.014985326899373288,
+  "read": 0.008955090371940026,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.95
+ },
+ {
+  "set": "bench-clean",
+  "name": "y042044.jpg",
+  "label": "text",
+  "any": 0.010763563010201104,
+  "read": 0.00745499779743367,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.95
+ },
+ {
+  "set": "bench-raw",
+  "name": "y042113.jpg",
+  "label": "text",
+  "any": 0.010005915733426695,
+  "read": 0.00661863987622607,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.6
+ },
+ {
+  "set": "bench-clean",
+  "name": "y042113.jpg",
+  "label": "text",
+  "any": 0.014674392686831522,
+  "read": 0.00806819998656052,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.94
+ },
+ {
+  "set": "bench-raw",
+  "name": "y042283.jpg",
+  "label": "text",
+  "any": 0.01780159622813864,
+  "read": 0.008379841148048696,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.94
+ },
+ {
+  "set": "bench-clean",
+  "name": "y042283.jpg",
+  "label": "text",
+  "any": 0.027589362797778797,
+  "read": 0.015218584997430172,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.95
+ },
+ {
+  "set": "bench-raw",
+  "name": "y042290.jpg",
+  "label": "text",
+  "any": 0.014833941216848574,
+  "read": 0.009232859946690368,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.98
+ },
+ {
+  "set": "bench-clean",
+  "name": "y042290.jpg",
+  "label": "text",
+  "any": 0.012937122215069074,
+  "read": 0.009623632854922837,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.01
+ },
+ {
+  "set": "bench-raw",
+  "name": "y042688.jpg",
+  "label": "text",
+  "any": 0.9980722518205016,
+  "read": 0.997498744680346,
+  "usage": {
+   "inputTokens": 297,
+   "outputTokens": 2
+  },
+  "seconds": 1.76
+ },
+ {
+  "set": "bench-clean",
+  "name": "y042688.jpg",
+  "label": "clean",
+  "any": 0.016602556574564196,
+  "read": 0.006944865507171668,
+  "usage": {
+   "inputTokens": 297,
+   "outputTokens": 2
+  },
+  "seconds": 1.95
+ },
+ {
+  "set": "bench-raw",
+  "name": "y044575.jpg",
+  "label": "text",
+  "any": 0.9968394789328227,
+  "read": 0.9964302407109755,
+  "usage": {
+   "inputTokens": 287,
+   "outputTokens": 2
+  },
+  "seconds": 1.99
+ },
+ {
+  "set": "bench-clean",
+  "name": "y044575.jpg",
+  "label": "clean",
+  "any": 0.28046084510769426,
+  "read": 0.1666241488496397,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 1.98
+ },
+ {
+  "set": "bench-raw",
+  "name": "y048344.jpg",
+  "label": "text",
+  "any": 0.9925194012976968,
+  "read": 0.9944612540520695,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 1.92
+ },
+ {
+  "set": "bench-clean",
+  "name": "y048344.jpg",
+  "label": "clean",
+  "any": 0.06803004982277194,
+  "read": 0.06210701008902833,
+  "usage": {
+   "inputTokens": 287,
+   "outputTokens": 2
+  },
+  "seconds": 1.62
+ },
+ {
+  "set": "bench-raw",
+  "name": "y048368.jpg",
+  "label": "text",
+  "any": 0.36832514820627005,
+  "read": 0.18149168041165104,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.68
+ },
+ {
+  "set": "bench-clean",
+  "name": "y048368.jpg",
+  "label": "clean",
+  "any": 0.13840361058226963,
+  "read": 0.08813745141981075,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.03
+ },
+ {
+  "set": "bench-raw",
+  "name": "y051650.jpg",
+  "label": "text",
+  "any": 0.9976229654566009,
+  "read": 0.9978501405018868,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 2.12
+ },
+ {
+  "set": "bench-clean",
+  "name": "y051650.jpg",
+  "label": "clean",
+  "any": 0.0247037892523288,
+  "read": 0.014416490375037483,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 2.31
+ },
+ {
+  "set": "bench-raw",
+  "name": "y051999.jpg",
+  "label": "text",
+  "any": 0.09486219318524772,
+  "read": 0.07593687368028118,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.3
+ },
+ {
+  "set": "bench-clean",
+  "name": "y051999.jpg",
+  "label": "clean",
+  "any": 0.05904472154352364,
+  "read": 0.05445016351650348,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.93
+ },
+ {
+  "set": "bench-raw",
+  "name": "y077736.jpg",
+  "label": "text",
+  "any": 0.07806937873650299,
+  "read": 0.05294613541890574,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.92
+ },
+ {
+  "set": "bench-clean",
+  "name": "y077736.jpg",
+  "label": "clean",
+  "any": 0.07806937873650299,
+  "read": 0.05294613541890574,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.21
+ },
+ {
+  "set": "bench-raw",
+  "name": "y078599.jpg",
+  "label": "text",
+  "any": 0.9966696567904174,
+  "read": 0.9970828287731606,
+  "usage": {
+   "inputTokens": 233,
+   "outputTokens": 2
+  },
+  "seconds": 1.77
+ },
+ {
+  "set": "bench-clean",
+  "name": "y078599.jpg",
+  "label": "clean",
+  "any": 0.07374950885570339,
+  "read": 0.043210225673264,
+  "usage": {
+   "inputTokens": 353,
+   "outputTokens": 2
+  },
+  "seconds": 1.64
+ },
+ {
+  "set": "bench-raw",
+  "name": "y078877.jpg",
+  "label": "text",
+  "any": 0.10831351301703421,
+  "read": 0.06310830670101952,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.92
+ },
+ {
+  "set": "bench-clean",
+  "name": "y078877.jpg",
+  "label": "clean",
+  "any": 0.07265504904035056,
+  "read": 0.07819975752704779,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.69
+ },
+ {
+  "set": "bench-raw",
+  "name": "y080542.jpg",
+  "label": "text",
+  "any": 0.9977056689111382,
+  "read": 0.9977834267894826,
+  "usage": {
+   "inputTokens": 236,
+   "outputTokens": 2
+  },
+  "seconds": 2.01
+ },
+ {
+  "set": "bench-clean",
+  "name": "y080542.jpg",
+  "label": "clean",
+  "any": 0.04305049033667277,
+  "read": 0.029383462306954978,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 2.02
+ },
+ {
+  "set": "bench-raw",
+  "name": "y080878.jpg",
+  "label": "text",
+  "any": 0.09682957495587312,
+  "read": 0.06969932695624756,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 2.05
+ },
+ {
+  "set": "bench-clean",
+  "name": "y080878.jpg",
+  "label": "clean",
+  "any": 0.10900551595436045,
+  "read": 0.07336217822504423,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 2.1
+ },
+ {
+  "set": "bench-raw",
+  "name": "y080878.jpg",
+  "label": "text",
+  "any": 0.09682957495587312,
+  "read": 0.06969932695624756,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 2.15
+ },
+ {
+  "set": "bench-clean",
+  "name": "y080878.jpg",
+  "label": "clean",
+  "any": 0.10900551595436045,
+  "read": 0.07336217822504423,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.6
+ },
+ {
+  "set": "bench-raw",
+  "name": "y080878.jpg",
+  "label": "text",
+  "any": 0.09682957495587312,
+  "read": 0.06969932695624756,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.63
+ },
+ {
+  "set": "bench-clean",
+  "name": "y080878.jpg",
+  "label": "clean",
+  "any": 0.10900551595436045,
+  "read": 0.07336217822504423,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 2.31
+ },
+ {
+  "set": "bench-raw",
+  "name": "y080935.jpg",
+  "label": "text",
+  "any": 0.06368646895846868,
+  "read": 0.06777882630044947,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.42
+ },
+ {
+  "set": "bench-clean",
+  "name": "y080935.jpg",
+  "label": "clean",
+  "any": 0.08524799804861034,
+  "read": 0.0716427183363964,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.03
+ },
+ {
+  "set": "bench-raw",
+  "name": "y080954.jpg",
+  "label": "text",
+  "any": 0.12583745114484848,
+  "read": 0.10505917381151232,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.25
+ },
+ {
+  "set": "bench-clean",
+  "name": "y080954.jpg",
+  "label": "clean",
+  "any": 0.13678474597324294,
+  "read": 0.11237378856616896,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.21
+ },
+ {
+  "set": "bench-raw",
+  "name": "y083958.jpg",
+  "label": "text",
+  "any": 0.9981880856263745,
+  "read": 0.9977296134059603,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.11
+ },
+ {
+  "set": "bench-clean",
+  "name": "y083958.jpg",
+  "label": "clean",
+  "any": 0.02383994424658502,
+  "read": 0.013283927662312131,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.11
+ },
+ {
+  "set": "bench-raw",
+  "name": "y100040.jpg",
+  "label": "text",
+  "any": 0.9979304125026341,
+  "read": 0.9979876373089891,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.87
+ },
+ {
+  "set": "bench-clean",
+  "name": "y100040.jpg",
+  "label": "clean",
+  "any": 0.03978520335733102,
+  "read": 0.01680733410601137,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 1.02
+ },
+ {
+  "set": "bench-raw",
+  "name": "y102889.jpg",
+  "label": "text",
+  "any": 0.997914065501994,
+  "read": 0.9977007748272577,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 0.99
+ },
+ {
+  "set": "bench-clean",
+  "name": "y102889.jpg",
+  "label": "clean",
+  "any": 0.019860176160623678,
+  "read": 0.01106012144193697,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 1.54
+ },
+ {
+  "set": "bench-raw",
+  "name": "y106628.jpg",
+  "label": "text",
+  "any": 0.9955344529630861,
+  "read": 0.9951769407209193,
+  "usage": {
+   "inputTokens": 256,
+   "outputTokens": 2
+  },
+  "seconds": 1.61
+ },
+ {
+  "set": "bench-clean",
+  "name": "y106628.jpg",
+  "label": "clean",
+  "any": 0.1540993275813358,
+  "read": 0.11878002366071268,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 1.77
+ },
+ {
+  "set": "bench-raw",
+  "name": "y135011.jpg",
+  "label": "text",
+  "any": 0.8717075437629928,
+  "read": 0.4511619079416365,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 1.91
+ },
+ {
+  "set": "bench-clean",
+  "name": "y135011.jpg",
+  "label": "text",
+  "any": 0.8403191302039382,
+  "read": 0.4349951570468247,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 1.87
+ },
+ {
+  "set": "bench-raw",
+  "name": "y135146.jpg",
+  "label": "text",
+  "any": 0.014302012663664007,
+  "read": 0.008150298687038666,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.75
+ },
+ {
+  "set": "bench-clean",
+  "name": "y135146.jpg",
+  "label": "text",
+  "any": 0.0169236772956385,
+  "read": 0.01135044498379361,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.74
+ },
+ {
+  "set": "bench-raw",
+  "name": "y135230.jpg",
+  "label": "text",
+  "any": 0.031227692358411805,
+  "read": 0.022849061094334707,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.68
+ },
+ {
+  "set": "bench-clean",
+  "name": "y135230.jpg",
+  "label": "text",
+  "any": 0.029064707744261332,
+  "read": 0.015740374893002063,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.97
+ },
+ {
+  "set": "bench-raw",
+  "name": "y147986.jpg",
+  "label": "text",
+  "any": 0.9958232811792336,
+  "read": 0.9929851096624973,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 2.13
+ },
+ {
+  "set": "bench-clean",
+  "name": "y147986.jpg",
+  "label": "clean",
+  "any": 0.010775750087791719,
+  "read": 0.007728720697513221,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 2.67
+ },
+ {
+  "set": "bench-raw",
+  "name": "y151116.jpg",
+  "label": "text",
+  "any": 0.9979021635111034,
+  "read": 0.9976251728158515,
+  "usage": {
+   "inputTokens": 247,
+   "outputTokens": 2
+  },
+  "seconds": 2.87
+ },
+ {
+  "set": "bench-clean",
+  "name": "y151116.jpg",
+  "label": "clean",
+  "any": 0.10705885797556582,
+  "read": 0.06906287911302707,
+  "usage": {
+   "inputTokens": 247,
+   "outputTokens": 2
+  },
+  "seconds": 2.46
+ },
+ {
+  "set": "bench-raw",
+  "name": "y153074.jpg",
+  "label": "text",
+  "any": 0.9984273655848492,
+  "read": 0.9982172751067069,
+  "usage": {
+   "inputTokens": 241,
+   "outputTokens": 2
+  },
+  "seconds": 2.37
+ },
+ {
+  "set": "bench-clean",
+  "name": "y153074.jpg",
+  "label": "clean",
+  "any": 0.05791493934859034,
+  "read": 0.03421392534333225,
+  "usage": {
+   "inputTokens": 241,
+   "outputTokens": 2
+  },
+  "seconds": 2.33
+ },
+ {
+  "set": "bench-raw",
+  "name": "y153141.jpg",
+  "label": "text",
+  "any": 0.9956116590962063,
+  "read": 0.9950720535936795,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.38
+ },
+ {
+  "set": "bench-clean",
+  "name": "y153141.jpg",
+  "label": "clean",
+  "any": 0.018793230196164832,
+  "read": 0.014028535439883855,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.99
+ },
+ {
+  "set": "bench-raw",
+  "name": "y153562.jpg",
+  "label": "text",
+  "any": 0.9978200619296189,
+  "read": 0.9968248641180925,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 1.96
+ },
+ {
+  "set": "bench-clean",
+  "name": "y153562.jpg",
+  "label": "clean",
+  "any": 0.0069289226246858964,
+  "read": 0.005771872537159047,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 2.11
+ },
+ {
+  "set": "bench-raw",
+  "name": "y154876.jpg",
+  "label": "text",
+  "any": 0.12142984393147153,
+  "read": 0.06249301252116317,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.13
+ },
+ {
+  "set": "bench-clean",
+  "name": "y154876.jpg",
+  "label": "clean",
+  "any": 0.053130400745954334,
+  "read": 0.025327827073009644,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.17
+ },
+ {
+  "set": "bench-raw",
+  "name": "y154904.jpg",
+  "label": "text",
+  "any": 0.9982119101429426,
+  "read": 0.9981449868950864,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 2.99
+ },
+ {
+  "set": "bench-clean",
+  "name": "y154904.jpg",
+  "label": "clean",
+  "any": 0.011661987766759205,
+  "read": 0.0062882452547047205,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 2.94
+ },
+ {
+  "set": "bench-raw",
+  "name": "y156129.jpg",
+  "label": "text",
+  "any": 0.9979746570580903,
+  "read": 0.9973010104504277,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 3.03
+ },
+ {
+  "set": "bench-clean",
+  "name": "y156129.jpg",
+  "label": "clean",
+  "any": 0.0485509088017437,
+  "read": 0.024150692698690017,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 3.28
+ },
+ {
+  "set": "bench-raw",
+  "name": "y157752.jpg",
+  "label": "text",
+  "any": 0.9982284401247435,
+  "read": 0.9977389375202204,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 4.72
+ },
+ {
+  "set": "bench-clean",
+  "name": "y157752.jpg",
+  "label": "clean",
+  "any": 0.04832449045170336,
+  "read": 0.031442289989217845,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 4.32
+ },
+ {
+  "set": "bench-raw",
+  "name": "y158532.jpg",
+  "label": "text",
+  "any": 0.998184349221031,
+  "read": 0.9979569698253145,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 5.02
+ },
+ {
+  "set": "bench-clean",
+  "name": "y158532.jpg",
+  "label": "clean",
+  "any": 0.02407087569516271,
+  "read": 0.011431296520660083,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 12.21
+ },
+ {
+  "set": "bench-raw",
+  "name": "y159536.jpg",
+  "label": "text",
+  "any": 0.9977753761724536,
+  "read": 0.9973350842437091,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 18.18
+ },
+ {
+  "set": "bench-clean",
+  "name": "y159536.jpg",
+  "label": "clean",
+  "any": 0.023874890727338897,
+  "read": 0.019926921224680132,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 12.1
+ },
+ {
+  "set": "bench-raw",
+  "name": "y161836.jpg",
+  "label": "text",
+  "any": 0.26762550062532325,
+  "read": 0.12859731153016832,
+  "usage": {
+   "inputTokens": 215,
+   "outputTokens": 2
+  },
+  "seconds": 18.18
+ },
+ {
+  "set": "bench-clean",
+  "name": "y161836.jpg",
+  "label": "clean",
+  "any": 0.13246095499522328,
+  "read": 0.07185600503884755,
+  "usage": {
+   "inputTokens": 215,
+   "outputTokens": 2
+  },
+  "seconds": 11.44
+ },
+ {
+  "set": "bench-raw",
+  "name": "y161836.jpg",
+  "label": "text",
+  "any": 0.26762550062532325,
+  "read": 0.12859731153016832,
+  "usage": {
+   "inputTokens": 215,
+   "outputTokens": 2
+  },
+  "seconds": 18.22
+ },
+ {
+  "set": "bench-clean",
+  "name": "y161836.jpg",
+  "label": "clean",
+  "any": 0.13246095499522328,
+  "read": 0.07185600503884755,
+  "usage": {
+   "inputTokens": 215,
+   "outputTokens": 2
+  },
+  "seconds": 17.73
+ },
+ {
+  "set": "bench-raw",
+  "name": "y162694.jpg",
+  "label": "text",
+  "any": 0.9973942581005275,
+  "read": 0.9972550498627876,
+  "usage": {
+   "inputTokens": 233,
+   "outputTokens": 2
+  },
+  "seconds": 17.03
+ },
+ {
+  "set": "bench-clean",
+  "name": "y162694.jpg",
+  "label": "clean",
+  "any": 0.1654146409109592,
+  "read": 0.10316900622025083,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 10.73
+ },
+ {
+  "set": "bench-raw",
+  "name": "y163877.jpg",
+  "label": "text",
+  "any": 0.9982308131261808,
+  "read": 0.9973969967053636,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 10.03
+ },
+ {
+  "set": "bench-clean",
+  "name": "y163877.jpg",
+  "label": "clean",
+  "any": 0.04116177113291067,
+  "read": 0.019453873325301928,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 9.55
+ },
+ {
+  "set": "bench-raw",
+  "name": "y164628.jpg",
+  "label": "text",
+  "any": 0.9980198139804489,
+  "read": 0.996430605357669,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 4.38
+ },
+ {
+  "set": "bench-clean",
+  "name": "y164628.jpg",
+  "label": "clean",
+  "any": 0.030943499166893863,
+  "read": 0.012808371578114482,
+  "usage": {
+   "inputTokens": 389,
+   "outputTokens": 2
+  },
+  "seconds": 4.18
+ },
+ {
+  "set": "bench-raw",
+  "name": "y165800.jpg",
+  "label": "text",
+  "any": 0.997627107233956,
+  "read": 0.9972013429112347,
+  "usage": {
+   "inputTokens": 249,
+   "outputTokens": 2
+  },
+  "seconds": 1.97
+ },
+ {
+  "set": "bench-clean",
+  "name": "y165800.jpg",
+  "label": "clean",
+  "any": 0.03419669215108446,
+  "read": 0.021840227403237843,
+  "usage": {
+   "inputTokens": 249,
+   "outputTokens": 2
+  },
+  "seconds": 2.0
+ },
+ {
+  "set": "bench-raw",
+  "name": "y167394.jpg",
+  "label": "text",
+  "any": 0.9980428955107489,
+  "read": 0.9973614145392287,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 2.28
+ },
+ {
+  "set": "bench-clean",
+  "name": "y167394.jpg",
+  "label": "clean",
+  "any": 0.015722285864565907,
+  "read": 0.011554048027158275,
+  "usage": {
+   "inputTokens": 307,
+   "outputTokens": 2
+  },
+  "seconds": 2.11
+ },
+ {
+  "set": "bench-raw",
+  "name": "y168551.jpg",
+  "label": "text",
+  "any": 0.9981576160289091,
+  "read": 0.9979850826283304,
+  "usage": {
+   "inputTokens": 241,
+   "outputTokens": 2
+  },
+  "seconds": 2.62
+ },
+ {
+  "set": "bench-clean",
+  "name": "y168551.jpg",
+  "label": "clean",
+  "any": 0.11802773620193131,
+  "read": 0.04953531687944002,
+  "usage": {
+   "inputTokens": 241,
+   "outputTokens": 2
+  },
+  "seconds": 2.11
+ },
+ {
+  "set": "bench-raw",
+  "name": "y170778.jpg",
+  "label": "text",
+  "any": 0.9983649638382498,
+  "read": 0.998009540288839,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 3.05
+ },
+ {
+  "set": "bench-clean",
+  "name": "y170778.jpg",
+  "label": "clean",
+  "any": 0.004458118949902312,
+  "read": 0.004552785562254398,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 2.94
+ },
+ {
+  "set": "bench-raw",
+  "name": "y172349.jpg",
+  "label": "text",
+  "any": 0.9968150360678351,
+  "read": 0.9965073339932574,
+  "usage": {
+   "inputTokens": 247,
+   "outputTokens": 2
+  },
+  "seconds": 2.65
+ },
+ {
+  "set": "bench-clean",
+  "name": "y172349.jpg",
+  "label": "clean",
+  "any": 0.037072676614443405,
+  "read": 0.017269235983548507,
+  "usage": {
+   "inputTokens": 247,
+   "outputTokens": 2
+  },
+  "seconds": 2.87
+ },
+ {
+  "set": "bench-raw",
+  "name": "y173169.jpg",
+  "label": "text",
+  "any": 0.9986708590892803,
+  "read": 0.9980945201608615,
+  "usage": {
+   "inputTokens": 254,
+   "outputTokens": 2
+  },
+  "seconds": 2.64
+ },
+ {
+  "set": "bench-clean",
+  "name": "y173169.jpg",
+  "label": "clean",
+  "any": 0.0921027735905034,
+  "read": 0.06286282294591261,
+  "usage": {
+   "inputTokens": 254,
+   "outputTokens": 2
+  },
+  "seconds": 1.9
+ },
+ {
+  "set": "bench-raw",
+  "name": "y174599.jpg",
+  "label": "text",
+  "any": 0.998005195327726,
+  "read": 0.997445010181327,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.26
+ },
+ {
+  "set": "bench-clean",
+  "name": "y174599.jpg",
+  "label": "clean",
+  "any": 0.021810918899052144,
+  "read": 0.013280365561550713,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 2.4
+ },
+ {
+  "set": "bench-raw",
+  "name": "y174959.jpg",
+  "label": "text",
+  "any": 0.9980442213669976,
+  "read": 0.9975374029566514,
+  "usage": {
+   "inputTokens": 233,
+   "outputTokens": 2
+  },
+  "seconds": 6.47
+ },
+ {
+  "set": "bench-clean",
+  "name": "y174959.jpg",
+  "label": "clean",
+  "any": 0.0082481107321435,
+  "read": 0.006962598552401457,
+  "usage": {
+   "inputTokens": 324,
+   "outputTokens": 2
+  },
+  "seconds": 2.43
+ },
+ {
+  "set": "bench-raw",
+  "name": "y176433.jpg",
+  "label": "text",
+  "any": 0.9979774376501084,
+  "read": 0.9977487450973598,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 2.39
+ },
+ {
+  "set": "bench-clean",
+  "name": "y176433.jpg",
+  "label": "clean",
+  "any": 0.2644354257153922,
+  "read": 0.1235465883084462,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 2.42
+ },
+ {
+  "set": "bench-raw",
+  "name": "y178027.jpg",
+  "label": "text",
+  "any": 0.9903296328805838,
+  "read": 0.9899665800403412,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.13
+ },
+ {
+  "set": "bench-clean",
+  "name": "y178027.jpg",
+  "label": "clean",
+  "any": 0.23296551360690973,
+  "read": 0.11503493648849797,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.95
+ },
+ {
+  "set": "bench-raw",
+  "name": "y178056.jpg",
+  "label": "text",
+  "any": 0.9980261628229661,
+  "read": 0.997900140128333,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 3.15
+ },
+ {
+  "set": "bench-clean",
+  "name": "y178056.jpg",
+  "label": "clean",
+  "any": 0.030350425585908856,
+  "read": 0.025285355420436455,
+  "usage": {
+   "inputTokens": 307,
+   "outputTokens": 2
+  },
+  "seconds": 2.94
+ },
+ {
+  "set": "bench-raw",
+  "name": "y179219.jpg",
+  "label": "text",
+  "any": 0.998222399794715,
+  "read": 0.9975608784230433,
+  "usage": {
+   "inputTokens": 235,
+   "outputTokens": 2
+  },
+  "seconds": 4.46
+ },
+ {
+  "set": "bench-clean",
+  "name": "y179219.jpg",
+  "label": "clean",
+  "any": 0.1286193281062185,
+  "read": 0.07416998516041162,
+  "usage": {
+   "inputTokens": 235,
+   "outputTokens": 2
+  },
+  "seconds": 4.51
+ },
+ {
+  "set": "bench-raw",
+  "name": "y181698.jpg",
+  "label": "text",
+  "any": 0.9983758333666315,
+  "read": 0.9981667848312897,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 4.26
+ },
+ {
+  "set": "bench-clean",
+  "name": "y181698.jpg",
+  "label": "clean",
+  "any": 0.05394734445544415,
+  "read": 0.028670152635849218,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 3.85
+ },
+ {
+  "set": "bench-raw",
+  "name": "y182005.jpg",
+  "label": "text",
+  "any": 0.9976958286732441,
+  "read": 0.9967101132744222,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 3.46
+ },
+ {
+  "set": "bench-clean",
+  "name": "y182005.jpg",
+  "label": "clean",
+  "any": 0.41131683272746644,
+  "read": 0.16703945830793043,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 3.06
+ },
+ {
+  "set": "bench-raw",
+  "name": "y183814.jpg",
+  "label": "text",
+  "any": 0.9972319211907492,
+  "read": 0.9963904921172184,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 3.13
+ },
+ {
+  "set": "bench-clean",
+  "name": "y183814.jpg",
+  "label": "clean",
+  "any": 0.07077661495833755,
+  "read": 0.038069093331350175,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 2.41
+ },
+ {
+  "set": "bench-raw",
+  "name": "y184732.jpg",
+  "label": "text",
+  "any": 0.9982374852960769,
+  "read": 0.9977388116573891,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 3.09
+ },
+ {
+  "set": "bench-clean",
+  "name": "y184732.jpg",
+  "label": "clean",
+  "any": 0.12875769989383543,
+  "read": 0.05893712222419084,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 3.17
+ },
+ {
+  "set": "bench-raw",
+  "name": "y185092.jpg",
+  "label": "text",
+  "any": 0.02403473220492379,
+  "read": 0.01597029851911534,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.52
+ },
+ {
+  "set": "bench-clean",
+  "name": "y185092.jpg",
+  "label": "clean",
+  "any": 0.027021233386278643,
+  "read": 0.015205184259342072,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.12
+ },
+ {
+  "set": "bench-raw",
+  "name": "y185125.jpg",
+  "label": "text",
+  "any": 0.10053099208197841,
+  "read": 0.07735159193802521,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.38
+ },
+ {
+  "set": "bench-clean",
+  "name": "y185125.jpg",
+  "label": "clean",
+  "any": 0.08494373048187208,
+  "read": 0.054052720433362594,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 4.03
+ },
+ {
+  "set": "bench-raw",
+  "name": "y186444.jpg",
+  "label": "text",
+  "any": 0.9980564569927675,
+  "read": 0.9969603792860229,
+  "usage": {
+   "inputTokens": 225,
+   "outputTokens": 2
+  },
+  "seconds": 3.99
+ },
+ {
+  "set": "bench-clean",
+  "name": "y186444.jpg",
+  "label": "clean",
+  "any": 0.09116813350437905,
+  "read": 0.03818506864106464,
+  "usage": {
+   "inputTokens": 225,
+   "outputTokens": 2
+  },
+  "seconds": 2.69
+ },
+ {
+  "set": "bench-raw",
+  "name": "y186738.jpg",
+  "label": "text",
+  "any": 0.9984103746888382,
+  "read": 0.9982497424169272,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 3.96
+ },
+ {
+  "set": "bench-clean",
+  "name": "y186738.jpg",
+  "label": "clean",
+  "any": 0.16043757719215893,
+  "read": 0.08113865698214842,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 3.89
+ },
+ {
+  "set": "bench-raw",
+  "name": "y188734.jpg",
+  "label": "text",
+  "any": 0.9976793239466294,
+  "read": 0.9975336763740974,
+  "usage": {
+   "inputTokens": 227,
+   "outputTokens": 2
+  },
+  "seconds": 3.64
+ },
+ {
+  "set": "bench-clean",
+  "name": "y188734.jpg",
+  "label": "clean",
+  "any": 0.033715466778625774,
+  "read": 0.022428995216722734,
+  "usage": {
+   "inputTokens": 227,
+   "outputTokens": 2
+  },
+  "seconds": 4.11
+ },
+ {
+  "set": "bench-raw",
+  "name": "y189524.jpg",
+  "label": "text",
+  "any": 0.997677315978363,
+  "read": 0.9974732754195907,
+  "usage": {
+   "inputTokens": 256,
+   "outputTokens": 2
+  },
+  "seconds": 3.86
+ },
+ {
+  "set": "bench-clean",
+  "name": "y189524.jpg",
+  "label": "clean",
+  "any": 0.02829866379988686,
+  "read": 0.01680935929890351,
+  "usage": {
+   "inputTokens": 256,
+   "outputTokens": 2
+  },
+  "seconds": 3.26
+ },
+ {
+  "set": "bench-raw",
+  "name": "y190602.jpg",
+  "label": "text",
+  "any": 0.997910250531925,
+  "read": 0.9976725176824132,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 3.0
+ },
+ {
+  "set": "bench-clean",
+  "name": "y190602.jpg",
+  "label": "clean",
+  "any": 0.04289280674431785,
+  "read": 0.02472543167487804,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 3.47
+ },
+ {
+  "set": "bench-raw",
+  "name": "y191600.jpg",
+  "label": "text",
+  "any": 0.998108385520358,
+  "read": 0.9971927930321068,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 4.92
+ },
+ {
+  "set": "bench-clean",
+  "name": "y191600.jpg",
+  "label": "clean",
+  "any": 0.03003232453634388,
+  "read": 0.016869000944656255,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 4.48
+ },
+ {
+  "set": "bench-raw",
+  "name": "y193043.jpg",
+  "label": "text",
+  "any": 0.9976395534241973,
+  "read": 0.9968945202211742,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 4.38
+ },
+ {
+  "set": "bench-clean",
+  "name": "y193043.jpg",
+  "label": "clean",
+  "any": 0.06986461412515481,
+  "read": 0.029007693803912948,
+  "usage": {
+   "inputTokens": 313,
+   "outputTokens": 2
+  },
+  "seconds": 4.45
+ },
+ {
+  "set": "bench-raw",
+  "name": "y193752.jpg",
+  "label": "text",
+  "any": 0.9980638867992309,
+  "read": 0.9969237923441601,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 4.38
+ },
+ {
+  "set": "bench-clean",
+  "name": "y193752.jpg",
+  "label": "clean",
+  "any": 0.011863395728920168,
+  "read": 0.007292338905730114,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 4.43
+ },
+ {
+  "set": "bench-raw",
+  "name": "y194728.jpg",
+  "label": "text",
+  "any": 0.9980572448927235,
+  "read": 0.9977285265188351,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 4.69
+ },
+ {
+  "set": "bench-clean",
+  "name": "y194728.jpg",
+  "label": "clean",
+  "any": 0.11555015247921786,
+  "read": 0.06010173272998024,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 4.44
+ },
+ {
+  "set": "bench-raw",
+  "name": "y196427.jpg",
+  "label": "text",
+  "any": 0.9935480410158195,
+  "read": 0.995460389736507,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 3.01
+ },
+ {
+  "set": "bench-clean",
+  "name": "y196427.jpg",
+  "label": "clean",
+  "any": 0.03141976052357617,
+  "read": 0.027620325153702774,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 4.28
+ },
+ {
+  "set": "bench-raw",
+  "name": "y196598.jpg",
+  "label": "text",
+  "any": 0.9980763200902322,
+  "read": 0.9978683398714971,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 4.72
+ },
+ {
+  "set": "bench-clean",
+  "name": "y196598.jpg",
+  "label": "clean",
+  "any": 0.09783717666412868,
+  "read": 0.04142446299532996,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 4.65
+ },
+ {
+  "set": "bench-raw",
+  "name": "y197828.jpg",
+  "label": "text",
+  "any": 0.06643293369407965,
+  "read": 0.07823994853881164,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 4.55
+ },
+ {
+  "set": "bench-clean",
+  "name": "y197828.jpg",
+  "label": "clean",
+  "any": 0.015187829165677949,
+  "read": 0.005848930402854999,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 4.47
+ },
+ {
+  "set": "bench-raw",
+  "name": "y200905.jpg",
+  "label": "text",
+  "any": 0.9980218945544034,
+  "read": 0.9978249634609828,
+  "usage": {
+   "inputTokens": 241,
+   "outputTokens": 2
+  },
+  "seconds": 4.16
+ },
+ {
+  "set": "bench-clean",
+  "name": "y200905.jpg",
+  "label": "clean",
+  "any": 0.0748011889259663,
+  "read": 0.060426568211798225,
+  "usage": {
+   "inputTokens": 241,
+   "outputTokens": 2
+  },
+  "seconds": 4.5
+ },
+ {
+  "set": "bench-raw",
+  "name": "y201728.jpg",
+  "label": "text",
+  "any": 0.9983794163138856,
+  "read": 0.9978672837366797,
+  "usage": {
+   "inputTokens": 233,
+   "outputTokens": 2
+  },
+  "seconds": 5.26
+ },
+ {
+  "set": "bench-clean",
+  "name": "y201728.jpg",
+  "label": "clean",
+  "any": 0.050134758765623934,
+  "read": 0.021461521635410263,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 5.34
+ },
+ {
+  "set": "bench-raw",
+  "name": "y203609.jpg",
+  "label": "text",
+  "any": 0.9981053617514218,
+  "read": 0.9977462384843161,
+  "usage": {
+   "inputTokens": 307,
+   "outputTokens": 2
+  },
+  "seconds": 4.92
+ },
+ {
+  "set": "bench-clean",
+  "name": "y203609.jpg",
+  "label": "clean",
+  "any": 0.03927355540556924,
+  "read": 0.013243880274887888,
+  "usage": {
+   "inputTokens": 307,
+   "outputTokens": 2
+  },
+  "seconds": 4.86
+ },
+ {
+  "set": "bench-raw",
+  "name": "y204832.jpg",
+  "label": "text",
+  "any": 0.01584043935149452,
+  "read": 0.010126276396867077,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 4.85
+ },
+ {
+  "set": "bench-clean",
+  "name": "y204832.jpg",
+  "label": "text",
+  "any": 0.16965118617539804,
+  "read": 0.13021017410751184,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 4.89
+ },
+ {
+  "set": "bench-raw",
+  "name": "y206210.jpg",
+  "label": "text",
+  "any": 0.9975919864013296,
+  "read": 0.9970926167683763,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 5.13
+ },
+ {
+  "set": "bench-clean",
+  "name": "y206210.jpg",
+  "label": "clean",
+  "any": 0.08017526400334359,
+  "read": 0.052633146100242854,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 4.62
+ },
+ {
+  "set": "bench-raw",
+  "name": "y206728.jpg",
+  "label": "text",
+  "any": 0.9500962394620217,
+  "read": 0.9106993547869411,
+  "usage": {
+   "inputTokens": 269,
+   "outputTokens": 2
+  },
+  "seconds": 3.35
+ },
+ {
+  "set": "bench-clean",
+  "name": "y206728.jpg",
+  "label": "clean",
+  "any": 0.010330541043910218,
+  "read": 0.008831644682618921,
+  "usage": {
+   "inputTokens": 269,
+   "outputTokens": 2
+  },
+  "seconds": 2.9
+ },
+ {
+  "set": "bench-raw",
+  "name": "y206737.jpg",
+  "label": "text",
+  "any": 0.15645881910047282,
+  "read": 0.058616873286590675,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.94
+ },
+ {
+  "set": "bench-clean",
+  "name": "y206737.jpg",
+  "label": "clean",
+  "any": 0.003761300160669787,
+  "read": 0.004785877027225609,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.21
+ },
+ {
+  "set": "bench-raw",
+  "name": "y207963.jpg",
+  "label": "text",
+  "any": 0.9981924666125958,
+  "read": 0.9978310978750042,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 3.19
+ },
+ {
+  "set": "bench-clean",
+  "name": "y207963.jpg",
+  "label": "clean",
+  "any": 0.026656267390832766,
+  "read": 0.01579424606939415,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 3.01
+ },
+ {
+  "set": "bench-raw",
+  "name": "y210550.jpg",
+  "label": "text",
+  "any": 0.6027358811761888,
+  "read": 0.5429612614153125,
+  "usage": {
+   "inputTokens": 277,
+   "outputTokens": 2
+  },
+  "seconds": 3.27
+ },
+ {
+  "set": "bench-clean",
+  "name": "y210550.jpg",
+  "label": "clean",
+  "any": 0.006197338052906089,
+  "read": 0.0071105922553154795,
+  "usage": {
+   "inputTokens": 277,
+   "outputTokens": 2
+  },
+  "seconds": 3.08
+ },
+ {
+  "set": "bench-raw",
+  "name": "y210723.jpg",
+  "label": "text",
+  "any": 0.021535238219880824,
+  "read": 0.016499739284778592,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.86
+ },
+ {
+  "set": "bench-clean",
+  "name": "y210723.jpg",
+  "label": "clean",
+  "any": 0.023764602639145708,
+  "read": 0.014354135829996086,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.54
+ },
+ {
+  "set": "bench-raw",
+  "name": "y212200.jpg",
+  "label": "text",
+  "any": 0.9982707947632486,
+  "read": 0.9980817296017567,
+  "usage": {
+   "inputTokens": 228,
+   "outputTokens": 2
+  },
+  "seconds": 2.13
+ },
+ {
+  "set": "bench-clean",
+  "name": "y212200.jpg",
+  "label": "clean",
+  "any": 0.007453489592586723,
+  "read": 0.006728133593054077,
+  "usage": {
+   "inputTokens": 228,
+   "outputTokens": 2
+  },
+  "seconds": 2.94
+ },
+ {
+  "set": "bench-raw",
+  "name": "y213436-seam.jpg",
+  "label": "text",
+  "any": 0.9979729793481733,
+  "read": 0.9979688302319599,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 2.77
+ },
+ {
+  "set": "bench-clean",
+  "name": "y213436-seam.jpg",
+  "label": "clean",
+  "any": 0.08240943536987322,
+  "read": 0.049369650322539066,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 2.84
+ },
+ {
+  "set": "bench-raw",
+  "name": "y214208.jpg",
+  "label": "text",
+  "any": 0.9981466565882586,
+  "read": 0.9968873360955025,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 3.2
+ },
+ {
+  "set": "bench-clean",
+  "name": "y214208.jpg",
+  "label": "clean",
+  "any": 0.01031744500243431,
+  "read": 0.00730745996422114,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 3.32
+ },
+ {
+  "set": "bench-raw",
+  "name": "y217677.jpg",
+  "label": "text",
+  "any": 0.9979598464936285,
+  "read": 0.9974564572428707,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 3.05
+ },
+ {
+  "set": "bench-clean",
+  "name": "y217677.jpg",
+  "label": "clean",
+  "any": 0.03047139820957059,
+  "read": 0.013459231127232655,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 2.96
+ },
+ {
+  "set": "bench-raw",
+  "name": "y219720.jpg",
+  "label": "text",
+  "any": 0.9971354317733188,
+  "read": 0.9956380838361121,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 2.52
+ },
+ {
+  "set": "bench-clean",
+  "name": "y219720.jpg",
+  "label": "text",
+  "any": 0.9966955885949945,
+  "read": 0.99512072663963,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 2.66
+ },
+ {
+  "set": "bench-raw",
+  "name": "y220686.jpg",
+  "label": "text",
+  "any": 0.9975187160660488,
+  "read": 0.9967345083293386,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 3.07
+ },
+ {
+  "set": "bench-clean",
+  "name": "y220686.jpg",
+  "label": "clean",
+  "any": 0.02616369649701507,
+  "read": 0.015099714725324372,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 3.01
+ },
+ {
+  "set": "bench-raw",
+  "name": "y222299.jpg",
+  "label": "text",
+  "any": 0.9979735917765288,
+  "read": 0.9971095120807638,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 5.12
+ },
+ {
+  "set": "bench-clean",
+  "name": "y222299.jpg",
+  "label": "clean",
+  "any": 0.012619137329395746,
+  "read": 0.006102044487742038,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 3.72
+ },
+ {
+  "set": "bench-raw",
+  "name": "y225204.jpg",
+  "label": "text",
+  "any": 0.9957672449931966,
+  "read": 0.9964016870286525,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 3.92
+ },
+ {
+  "set": "bench-clean",
+  "name": "y225204.jpg",
+  "label": "clean",
+  "any": 0.13526336712408038,
+  "read": 0.08854475309907148,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 4.95
+ },
+ {
+  "set": "bench-raw",
+  "name": "y225228.jpg",
+  "label": "text",
+  "any": 0.9213359874504616,
+  "read": 0.46010410534120627,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 5.79
+ },
+ {
+  "set": "bench-clean",
+  "name": "y225228.jpg",
+  "label": "clean",
+  "any": 0.08591108643762173,
+  "read": 0.06409963654300328,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 5.48
+ },
+ {
+  "set": "bench-raw",
+  "name": "y225897.jpg",
+  "label": "text",
+  "any": 0.9980800453882166,
+  "read": 0.9977890743727258,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 5.42
+ },
+ {
+  "set": "bench-clean",
+  "name": "y225897.jpg",
+  "label": "clean",
+  "any": 0.0027915066765794644,
+  "read": 0.004167584793284368,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 6.41
+ },
+ {
+  "set": "bench-raw",
+  "name": "y226454.jpg",
+  "label": "text",
+  "any": 0.0161258646616463,
+  "read": 0.009098169570877532,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 6.2
+ },
+ {
+  "set": "bench-clean",
+  "name": "y226454.jpg",
+  "label": "text",
+  "any": 0.028180332884401655,
+  "read": 0.017953115239565106,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 6.42
+ },
+ {
+  "set": "bench-raw",
+  "name": "y227569.jpg",
+  "label": "text",
+  "any": 0.9981149695512912,
+  "read": 0.9975375575721283,
+  "usage": {
+   "inputTokens": 233,
+   "outputTokens": 2
+  },
+  "seconds": 5.9
+ },
+ {
+  "set": "bench-clean",
+  "name": "y227569.jpg",
+  "label": "clean",
+  "any": 0.020429002232188322,
+  "read": 0.012794017776923898,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 12.94
+ },
+ {
+  "set": "bench-raw",
+  "name": "y229544.jpg",
+  "label": "text",
+  "any": 0.997581330741395,
+  "read": 0.9966886855308458,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 14.76
+ },
+ {
+  "set": "bench-clean",
+  "name": "y229544.jpg",
+  "label": "clean",
+  "any": 0.024355172897684747,
+  "read": 0.012640573817267449,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 14.01
+ },
+ {
+  "set": "bench-raw",
+  "name": "y230550.jpg",
+  "label": "text",
+  "any": 0.9979464606574256,
+  "read": 0.997220716932271,
+  "usage": {
+   "inputTokens": 249,
+   "outputTokens": 2
+  },
+  "seconds": 13.65
+ },
+ {
+  "set": "bench-clean",
+  "name": "y230550.jpg",
+  "label": "clean",
+  "any": 0.019271669641355873,
+  "read": 0.007859318270956202,
+  "usage": {
+   "inputTokens": 249,
+   "outputTokens": 2
+  },
+  "seconds": 12.62
+ },
+ {
+  "set": "bench-raw",
+  "name": "y231789.jpg",
+  "label": "text",
+  "any": 0.9985134993514108,
+  "read": 0.9979766116720618,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 12.19
+ },
+ {
+  "set": "bench-clean",
+  "name": "y231789.jpg",
+  "label": "clean",
+  "any": 0.00643823371377767,
+  "read": 0.005847674515247797,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 11.7
+ },
+ {
+  "set": "bench-raw",
+  "name": "y233076-seam.jpg",
+  "label": "text",
+  "any": 0.9982845681866075,
+  "read": 0.9977790786354196,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 11.55
+ },
+ {
+  "set": "bench-clean",
+  "name": "y233076-seam.jpg",
+  "label": "clean",
+  "any": 0.02333988663720375,
+  "read": 0.01117594931036976,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 4.66
+ },
+ {
+  "set": "bench-raw",
+  "name": "y234171.jpg",
+  "label": "text",
+  "any": 0.0360356938868229,
+  "read": 0.03169401602589706,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 4.42
+ },
+ {
+  "set": "bench-clean",
+  "name": "y234171.jpg",
+  "label": "clean",
+  "any": 0.02261685364878403,
+  "read": 0.01350380141320007,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 4.02
+ },
+ {
+  "set": "bench-raw",
+  "name": "y234179.jpg",
+  "label": "text",
+  "any": 0.998032638349219,
+  "read": 0.9976774993960873,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 4.62
+ },
+ {
+  "set": "bench-clean",
+  "name": "y234179.jpg",
+  "label": "clean",
+  "any": 0.010909729212351808,
+  "read": 0.007940547966115482,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 5.06
+ },
+ {
+  "set": "bench-raw",
+  "name": "y235146.jpg",
+  "label": "text",
+  "any": 0.9983814232923693,
+  "read": 0.9974641602929035,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 4.48
+ },
+ {
+  "set": "bench-clean",
+  "name": "y235146.jpg",
+  "label": "clean",
+  "any": 0.01624220788789126,
+  "read": 0.009635586059125109,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 4.46
+ },
+ {
+  "set": "bench-raw",
+  "name": "y236476.jpg",
+  "label": "text",
+  "any": 0.9978931101104876,
+  "read": 0.9971662592975585,
+  "usage": {
+   "inputTokens": 233,
+   "outputTokens": 2
+  },
+  "seconds": 4.04
+ },
+ {
+  "set": "bench-clean",
+  "name": "y236476.jpg",
+  "label": "clean",
+  "any": 0.01125514750454549,
+  "read": 0.008493547571193059,
+  "usage": {
+   "inputTokens": 324,
+   "outputTokens": 2
+  },
+  "seconds": 3.51
+ },
+ {
+  "set": "bench-raw",
+  "name": "y237065.jpg",
+  "label": "text",
+  "any": 0.9980051250783258,
+  "read": 0.9971305120362504,
+  "usage": {
+   "inputTokens": 227,
+   "outputTokens": 2
+  },
+  "seconds": 1.93
+ },
+ {
+  "set": "bench-clean",
+  "name": "y237065.jpg",
+  "label": "clean",
+  "any": 0.04110978531200982,
+  "read": 0.02008737272357755,
+  "usage": {
+   "inputTokens": 227,
+   "outputTokens": 2
+  },
+  "seconds": 3.1
+ },
+ {
+  "set": "bench-raw",
+  "name": "y237704.jpg",
+  "label": "text",
+  "any": 0.9977526468240929,
+  "read": 0.9971937192468119,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 3.54
+ },
+ {
+  "set": "bench-clean",
+  "name": "y237704.jpg",
+  "label": "clean",
+  "any": 0.004688477718490852,
+  "read": 0.00481609055883202,
+  "usage": {
+   "inputTokens": 297,
+   "outputTokens": 2
+  },
+  "seconds": 4.88
+ },
+ {
+  "set": "bench-raw",
+  "name": "y239656.jpg",
+  "label": "text",
+  "any": 0.9981788688811427,
+  "read": 0.9976663243947809,
+  "usage": {
+   "inputTokens": 233,
+   "outputTokens": 2
+  },
+  "seconds": 3.34
+ },
+ {
+  "set": "bench-clean",
+  "name": "y239656.jpg",
+  "label": "clean",
+  "any": 0.042553577277269716,
+  "read": 0.03784581330519239,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 4.36
+ },
+ {
+  "set": "bench-raw",
+  "name": "y240594.jpg",
+  "label": "text",
+  "any": 0.9980812968157046,
+  "read": 0.9975670036975369,
+  "usage": {
+   "inputTokens": 236,
+   "outputTokens": 2
+  },
+  "seconds": 3.5
+ },
+ {
+  "set": "bench-clean",
+  "name": "y240594.jpg",
+  "label": "clean",
+  "any": 0.01668648732107813,
+  "read": 0.009776782750476649,
+  "usage": {
+   "inputTokens": 361,
+   "outputTokens": 2
+  },
+  "seconds": 3.82
+ },
+ {
+  "set": "bench-raw",
+  "name": "y242011.jpg",
+  "label": "text",
+  "any": 0.99782768040248,
+  "read": 0.9970281551968904,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 3.6
+ },
+ {
+  "set": "bench-clean",
+  "name": "y242011.jpg",
+  "label": "clean",
+  "any": 0.04341169566853649,
+  "read": 0.03018527336684594,
+  "usage": {
+   "inputTokens": 375,
+   "outputTokens": 2
+  },
+  "seconds": 4.08
+ },
+ {
+  "set": "bench-raw",
+  "name": "y242827.jpg",
+  "label": "text",
+  "any": 0.9982874010093664,
+  "read": 0.9979712210872457,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 3.68
+ },
+ {
+  "set": "bench-clean",
+  "name": "y242827.jpg",
+  "label": "clean",
+  "any": 0.025769547982995713,
+  "read": 0.013251509843260843,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 3.49
+ },
+ {
+  "set": "bench-raw",
+  "name": "y243099.jpg",
+  "label": "text",
+  "any": 0.9979354771148592,
+  "read": 0.9977065223153397,
+  "usage": {
+   "inputTokens": 239,
+   "outputTokens": 2
+  },
+  "seconds": 3.37
+ },
+ {
+  "set": "bench-clean",
+  "name": "y243099.jpg",
+  "label": "clean",
+  "any": 0.013708593255862364,
+  "read": 0.008897631385185241,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 3.45
+ },
+ {
+  "set": "bench-raw",
+  "name": "y243422.jpg",
+  "label": "text",
+  "any": 0.9893774741204215,
+  "read": 0.5725206613833015,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 3.13
+ },
+ {
+  "set": "bench-clean",
+  "name": "y243422.jpg",
+  "label": "clean",
+  "any": 0.06799124167155929,
+  "read": 0.044498978456904856,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 3.99
+ },
+ {
+  "set": "bench-raw",
+  "name": "y243423.jpg",
+  "label": "text",
+  "any": 0.9834514101954551,
+  "read": 0.6697453703977898,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.92
+ },
+ {
+  "set": "bench-clean",
+  "name": "y243423.jpg",
+  "label": "clean",
+  "any": 0.04834986906281306,
+  "read": 0.018015230674861802,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.67
+ },
+ {
+  "set": "bench-raw",
+  "name": "y243422.jpg",
+  "label": "text",
+  "any": 0.9893774741204215,
+  "read": 0.5725206613833015,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 3.66
+ },
+ {
+  "set": "bench-clean",
+  "name": "y243422.jpg",
+  "label": "clean",
+  "any": 0.06799124167155929,
+  "read": 0.044498978456904856,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 4.08
+ },
+ {
+  "set": "bench-raw",
+  "name": "y243431.jpg",
+  "label": "text",
+  "any": 0.9905153485861129,
+  "read": 0.6383574438136549,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 4.03
+ },
+ {
+  "set": "bench-clean",
+  "name": "y243431.jpg",
+  "label": "clean",
+  "any": 0.08664361384603021,
+  "read": 0.04537744363537634,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.95
+ },
+ {
+  "set": "bench-raw",
+  "name": "y243547.jpg",
+  "label": "text",
+  "any": 0.9516188344488423,
+  "read": 0.3880650706117454,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.83
+ },
+ {
+  "set": "bench-clean",
+  "name": "y243547.jpg",
+  "label": "clean",
+  "any": 0.04175582800005109,
+  "read": 0.023820255426140288,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.04
+ },
+ {
+  "set": "bench-raw",
+  "name": "y245348.jpg",
+  "label": "text",
+  "any": 0.9981673091545433,
+  "read": 0.9977824616193431,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 2.79
+ },
+ {
+  "set": "bench-clean",
+  "name": "y245348.jpg",
+  "label": "clean",
+  "any": 0.006424707906132306,
+  "read": 0.007351708572490682,
+  "usage": {
+   "inputTokens": 371,
+   "outputTokens": 2
+  },
+  "seconds": 3.67
+ },
+ {
+  "set": "bench-raw",
+  "name": "y246690.jpg",
+  "label": "text",
+  "any": 0.9978138880493583,
+  "read": 0.9978113298915338,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 3.43
+ },
+ {
+  "set": "bench-clean",
+  "name": "y246690.jpg",
+  "label": "clean",
+  "any": 0.0969665661994177,
+  "read": 0.09313276696872973,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 3.4
+ },
+ {
+  "set": "bench-raw",
+  "name": "y248878.jpg",
+  "label": "text",
+  "any": 0.0662648007157096,
+  "read": 0.0836580121795416,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 3.41
+ },
+ {
+  "set": "bench-clean",
+  "name": "y248878.jpg",
+  "label": "clean",
+  "any": 0.07236595097200847,
+  "read": 0.03162472472853637,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 3.11
+ },
+ {
+  "set": "bench-raw",
+  "name": "y249685.jpg",
+  "label": "text",
+  "any": 0.9985123317891799,
+  "read": 0.9978643073181382,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 3.19
+ },
+ {
+  "set": "bench-clean",
+  "name": "y249685.jpg",
+  "label": "clean",
+  "any": 0.09803871075489917,
+  "read": 0.06576051529125168,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 3.34
+ },
+ {
+  "set": "bench-raw",
+  "name": "y251232.jpg",
+  "label": "text",
+  "any": 0.998379142407495,
+  "read": 0.9979261122926044,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 3.32
+ },
+ {
+  "set": "bench-clean",
+  "name": "y251232.jpg",
+  "label": "clean",
+  "any": 0.003686694998850416,
+  "read": 0.00469633127981364,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 3.35
+ },
+ {
+  "set": "bench-raw",
+  "name": "y253682.jpg",
+  "label": "text",
+  "any": 0.15083714639611343,
+  "read": 0.22227211815777062,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 2.98
+ },
+ {
+  "set": "bench-clean",
+  "name": "y253682.jpg",
+  "label": "clean",
+  "any": 0.019278123544717817,
+  "read": 0.006981186396454393,
+  "usage": {
+   "inputTokens": 207,
+   "outputTokens": 2
+  },
+  "seconds": 3.1
+ },
+ {
+  "set": "bench-raw",
+  "name": "y254442.jpg",
+  "label": "text",
+  "any": 0.9963331204545529,
+  "read": 0.9928414454539216,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 3.17
+ },
+ {
+  "set": "bench-clean",
+  "name": "y254442.jpg",
+  "label": "clean",
+  "any": 0.005332086476881129,
+  "read": 0.005423634542718239,
+  "usage": {
+   "inputTokens": 333,
+   "outputTokens": 2
+  },
+  "seconds": 3.58
+ },
+ {
+  "set": "bench-raw",
+  "name": "y254755.jpg",
+  "label": "text",
+  "any": 0.009479116057362106,
+  "read": 0.008350517367395933,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.07
+ },
+ {
+  "set": "bench-clean",
+  "name": "y254755.jpg",
+  "label": "clean",
+  "any": 0.0052525716140084016,
+  "read": 0.005797755807510478,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.0
+ },
+ {
+  "set": "bench-raw",
+  "name": "y256912.jpg",
+  "label": "text",
+  "any": 0.9983115960611038,
+  "read": 0.9980278613612911,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 3.52
+ },
+ {
+  "set": "bench-clean",
+  "name": "y256912.jpg",
+  "label": "clean",
+  "any": 0.04270599497315691,
+  "read": 0.02637686002830253,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 3.71
+ },
+ {
+  "set": "bench-raw",
+  "name": "y257180.jpg",
+  "label": "text",
+  "any": 0.9980983985362287,
+  "read": 0.9977169405313048,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 3.58
+ },
+ {
+  "set": "bench-clean",
+  "name": "y257180.jpg",
+  "label": "clean",
+  "any": 0.04849492509652072,
+  "read": 0.02521673157775031,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 3.44
+ },
+ {
+  "set": "bench-raw",
+  "name": "y259116.jpg",
+  "label": "text",
+  "any": 0.9982319437346219,
+  "read": 0.9974997688099572,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 4.05
+ },
+ {
+  "set": "bench-clean",
+  "name": "y259116.jpg",
+  "label": "clean",
+  "any": 0.010273541580671543,
+  "read": 0.008354344417104153,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 3.91
+ },
+ {
+  "set": "bench-raw",
+  "name": "y260174.jpg",
+  "label": "text",
+  "any": 0.9975194052264045,
+  "read": 0.9973680819562148,
+  "usage": {
+   "inputTokens": 241,
+   "outputTokens": 2
+  },
+  "seconds": 4.06
+ },
+ {
+  "set": "bench-clean",
+  "name": "y260174.jpg",
+  "label": "clean",
+  "any": 0.016522294856252645,
+  "read": 0.01070304640570847,
+  "usage": {
+   "inputTokens": 241,
+   "outputTokens": 2
+  },
+  "seconds": 3.65
+ },
+ {
+  "set": "bench-raw",
+  "name": "y260348.jpg",
+  "label": "text",
+  "any": 0.9963929950572351,
+  "read": 0.9962101612532377,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 3.58
+ },
+ {
+  "set": "bench-clean",
+  "name": "y260348.jpg",
+  "label": "clean",
+  "any": 0.0250275917179602,
+  "read": 0.017233584667774336,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 2.29
+ },
+ {
+  "set": "bench-raw",
+  "name": "y260492.jpg",
+  "label": "text",
+  "any": 0.7566235401793333,
+  "read": 0.348763717613307,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.76
+ },
+ {
+  "set": "bench-clean",
+  "name": "y260492.jpg",
+  "label": "clean",
+  "any": 0.0428627291210688,
+  "read": 0.024117731625037525,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.74
+ },
+ {
+  "set": "bench-raw",
+  "name": "y260514.jpg",
+  "label": "text",
+  "any": 0.6938219290241843,
+  "read": 0.2808508257789232,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.74
+ },
+ {
+  "set": "bench-clean",
+  "name": "y260514.jpg",
+  "label": "clean",
+  "any": 0.03706860850589113,
+  "read": 0.02734801167332471,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.74
+ },
+ {
+  "set": "bench-raw",
+  "name": "y261822.jpg",
+  "label": "text",
+  "any": 0.9978123886939958,
+  "read": 0.9976106388832887,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 2.8
+ },
+ {
+  "set": "bench-clean",
+  "name": "y261822.jpg",
+  "label": "clean",
+  "any": 0.06976948333547697,
+  "read": 0.0522205899792631,
+  "usage": {
+   "inputTokens": 203,
+   "outputTokens": 2
+  },
+  "seconds": 2.59
+ },
+ {
+  "set": "bench-raw",
+  "name": "y262728.jpg",
+  "label": "text",
+  "any": 0.9977001786099468,
+  "read": 0.9977067645283765,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 2.44
+ },
+ {
+  "set": "bench-clean",
+  "name": "y262728.jpg",
+  "label": "clean",
+  "any": 0.014725465713544638,
+  "read": 0.011250282513515052,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 2.08
+ },
+ {
+  "set": "bench-raw",
+  "name": "y265299.jpg",
+  "label": "text",
+  "any": 0.997292688269763,
+  "read": 0.9966994653615823,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 1.92
+ },
+ {
+  "set": "bench-clean",
+  "name": "y265299.jpg",
+  "label": "clean",
+  "any": 0.008767158209254158,
+  "read": 0.007109340032206886,
+  "usage": {
+   "inputTokens": 273,
+   "outputTokens": 2
+  },
+  "seconds": 1.79
+ },
+ {
+  "set": "bench-raw",
+  "name": "y267451.jpg",
+  "label": "text",
+  "any": 0.9975692675223055,
+  "read": 0.9965360268368876,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 1.94
+ },
+ {
+  "set": "bench-clean",
+  "name": "y267451.jpg",
+  "label": "clean",
+  "any": 0.05108807652419345,
+  "read": 0.02881390160688881,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 1.97
+ },
+ {
+  "set": "bench-raw",
+  "name": "y267866.jpg",
+  "label": "text",
+  "any": 0.9979605948713983,
+  "read": 0.9971637668555259,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 1.89
+ },
+ {
+  "set": "bench-clean",
+  "name": "y267866.jpg",
+  "label": "clean",
+  "any": 0.018213168236936104,
+  "read": 0.009480096603265074,
+  "usage": {
+   "inputTokens": 353,
+   "outputTokens": 2
+  },
+  "seconds": 1.84
+ },
+ {
+  "set": "bench-raw",
+  "name": "y269484.jpg",
+  "label": "text",
+  "any": 0.9979242927211963,
+  "read": 0.9970739067670281,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 1.86
+ },
+ {
+  "set": "bench-clean",
+  "name": "y269484.jpg",
+  "label": "clean",
+  "any": 0.04078336626555153,
+  "read": 0.019111723844644834,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 1.58
+ },
+ {
+  "set": "bench-raw",
+  "name": "y269851.jpg",
+  "label": "text",
+  "any": 0.9958402930176948,
+  "read": 0.9949210642732084,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.21
+ },
+ {
+  "set": "bench-clean",
+  "name": "y269851.jpg",
+  "label": "clean",
+  "any": 0.030077042341836804,
+  "read": 0.012043721523664739,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.48
+ },
+ {
+  "set": "bench-raw",
+  "name": "y270663.jpg",
+  "label": "text",
+  "any": 0.9981250383363888,
+  "read": 0.9980463033100699,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 2.35
+ },
+ {
+  "set": "bench-clean",
+  "name": "y270663.jpg",
+  "label": "clean",
+  "any": 0.04224595870338098,
+  "read": 0.02047646228510043,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 2.27
+ },
+ {
+  "set": "bench-raw",
+  "name": "y272188.jpg",
+  "label": "text",
+  "any": 0.9910614580377646,
+  "read": 0.920664277905905,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.29
+ },
+ {
+  "set": "bench-clean",
+  "name": "y272188.jpg",
+  "label": "clean",
+  "any": 0.2805050154040771,
+  "read": 0.1903524064743309,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.92
+ },
+ {
+  "set": "bench-raw",
+  "name": "y272202.jpg",
+  "label": "text",
+  "any": 0.9925702418700483,
+  "read": 0.8740702021857141,
+  "usage": {
+   "inputTokens": 217,
+   "outputTokens": 2
+  },
+  "seconds": 2.83
+ },
+ {
+  "set": "bench-clean",
+  "name": "y272202.jpg",
+  "label": "clean",
+  "any": 0.33892105099884356,
+  "read": 0.20653154611968877,
+  "usage": {
+   "inputTokens": 217,
+   "outputTokens": 2
+  },
+  "seconds": 2.66
+ },
+ {
+  "set": "bench-raw",
+  "name": "y272203.jpg",
+  "label": "text",
+  "any": 0.9934866186939076,
+  "read": 0.9661356113065177,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.61
+ },
+ {
+  "set": "bench-clean",
+  "name": "y272203.jpg",
+  "label": "clean",
+  "any": 0.17150743950787853,
+  "read": 0.12336247874139342,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.21
+ },
+ {
+  "set": "bench-raw",
+  "name": "y272216.jpg",
+  "label": "text",
+  "any": 0.9935022440003863,
+  "read": 0.9645467845671077,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.0
+ },
+ {
+  "set": "bench-clean",
+  "name": "y272216.jpg",
+  "label": "text",
+  "any": 0.2701154025678055,
+  "read": 0.17187077580068913,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.86
+ },
+ {
+  "set": "bench-raw",
+  "name": "y272269.jpg",
+  "label": "text",
+  "any": 0.9982097342540395,
+  "read": 0.9982398897694784,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.81
+ },
+ {
+  "set": "bench-clean",
+  "name": "y272269.jpg",
+  "label": "clean",
+  "any": 0.009324229171357867,
+  "read": 0.005568023515791173,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.38
+ },
+ {
+  "set": "bench-raw",
+  "name": "y272966.jpg",
+  "label": "text",
+  "any": 0.9976555954477834,
+  "read": 0.9961448158788152,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.84
+ },
+ {
+  "set": "bench-clean",
+  "name": "y272966.jpg",
+  "label": "clean",
+  "any": 0.008006462658975257,
+  "read": 0.006690467475501893,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.85
+ },
+ {
+  "set": "bench-raw",
+  "name": "y274463.jpg",
+  "label": "text",
+  "any": 0.997319744802103,
+  "read": 0.9954586698594002,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 2.81
+ },
+ {
+  "set": "bench-clean",
+  "name": "y274463.jpg",
+  "label": "clean",
+  "any": 0.0031015260484080058,
+  "read": 0.003967268734261751,
+  "usage": {
+   "inputTokens": 353,
+   "outputTokens": 2
+  },
+  "seconds": 2.82
+ },
+ {
+  "set": "bench-raw",
+  "name": "y277901.jpg",
+  "label": "text",
+  "any": 0.11065891086302562,
+  "read": 0.05938851974020134,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.52
+ },
+ {
+  "set": "bench-clean",
+  "name": "y277901.jpg",
+  "label": "clean",
+  "any": 0.015550340314641756,
+  "read": 0.009999364067591913,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.53
+ },
+ {
+  "set": "bench-raw",
+  "name": "y277938.jpg",
+  "label": "text",
+  "any": 0.08467115364711462,
+  "read": 0.058920013294381506,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.44
+ },
+ {
+  "set": "bench-clean",
+  "name": "y277938.jpg",
+  "label": "clean",
+  "any": 0.1461751854665015,
+  "read": 0.10012146946194471,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.62
+ },
+ {
+  "set": "bench-raw",
+  "name": "y277938.jpg",
+  "label": "text",
+  "any": 0.08467115364711462,
+  "read": 0.058920013294381506,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.3
+ },
+ {
+  "set": "bench-clean",
+  "name": "y277938.jpg",
+  "label": "clean",
+  "any": 0.1461751854665015,
+  "read": 0.10012146946194471,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.38
+ },
+ {
+  "set": "bench-raw",
+  "name": "y278086.jpg",
+  "label": "text",
+  "any": 0.05703584199411001,
+  "read": 0.03557016852768506,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.42
+ },
+ {
+  "set": "bench-clean",
+  "name": "y278086.jpg",
+  "label": "clean",
+  "any": 0.04278890239763712,
+  "read": 0.02321532092219481,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.49
+ },
+ {
+  "set": "bench-raw",
+  "name": "y278095.jpg",
+  "label": "text",
+  "any": 0.09448435206872194,
+  "read": 0.04876950660644915,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.5
+ },
+ {
+  "set": "bench-clean",
+  "name": "y278095.jpg",
+  "label": "clean",
+  "any": 0.11451282338513422,
+  "read": 0.06904687767412825,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.56
+ },
+ {
+  "set": "bench-raw",
+  "name": "y278096.jpg",
+  "label": "text",
+  "any": 0.0604446281101133,
+  "read": 0.03881626332481456,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.63
+ },
+ {
+  "set": "bench-clean",
+  "name": "y278096.jpg",
+  "label": "clean",
+  "any": 0.05541596422376617,
+  "read": 0.03494613426213412,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.8
+ },
+ {
+  "set": "bench-raw",
+  "name": "y278833.jpg",
+  "label": "text",
+  "any": 0.9962334967227089,
+  "read": 0.9960003678130133,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 2.65
+ },
+ {
+  "set": "bench-clean",
+  "name": "y278833.jpg",
+  "label": "clean",
+  "any": 0.012951890488445332,
+  "read": 0.008294986710338877,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 2.56
+ },
+ {
+  "set": "bench-raw",
+  "name": "y279059.jpg",
+  "label": "text",
+  "any": 0.998169121757449,
+  "read": 0.9976389514776134,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.84
+ },
+ {
+  "set": "bench-clean",
+  "name": "y279059.jpg",
+  "label": "clean",
+  "any": 0.007745214109251567,
+  "read": 0.005299575529683454,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 3.01
+ },
+ {
+  "set": "bench-raw",
+  "name": "y281780.jpg",
+  "label": "text",
+  "any": 0.9958776938641932,
+  "read": 0.9922587682960834,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 4.91
+ },
+ {
+  "set": "bench-clean",
+  "name": "y281780.jpg",
+  "label": "clean",
+  "any": 0.012890544444807682,
+  "read": 0.007268626454942443,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 4.82
+ },
+ {
+  "set": "bench-raw",
+  "name": "y283312.jpg",
+  "label": "text",
+  "any": 0.9975390200832848,
+  "read": 0.9972617118776096,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 4.81
+ },
+ {
+  "set": "bench-clean",
+  "name": "y283312.jpg",
+  "label": "clean",
+  "any": 0.2207094888113972,
+  "read": 0.08268193464621597,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 4.6
+ },
+ {
+  "set": "bench-raw",
+  "name": "y283694.jpg",
+  "label": "text",
+  "any": 0.9983234448075167,
+  "read": 0.9979416021903704,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 4.95
+ },
+ {
+  "set": "bench-clean",
+  "name": "y283694.jpg",
+  "label": "clean",
+  "any": 0.026071858391649813,
+  "read": 0.013993852541904021,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 4.6
+ },
+ {
+  "set": "bench-raw",
+  "name": "y284711.jpg",
+  "label": "text",
+  "any": 0.9980708825000386,
+  "read": 0.9979149983155178,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 4.63
+ },
+ {
+  "set": "bench-clean",
+  "name": "y284711.jpg",
+  "label": "clean",
+  "any": 0.005472190678811839,
+  "read": 0.005417498242398008,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 4.35
+ },
+ {
+  "set": "bench-raw",
+  "name": "y286083.jpg",
+  "label": "text",
+  "any": 0.9979472578924637,
+  "read": 0.9975187597342718,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 2.94
+ },
+ {
+  "set": "bench-clean",
+  "name": "y286083.jpg",
+  "label": "clean",
+  "any": 0.016452388524639015,
+  "read": 0.008114006208211488,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 3.1
+ },
+ {
+  "set": "bench-raw",
+  "name": "y286396.jpg",
+  "label": "text",
+  "any": 0.9979448134282253,
+  "read": 0.9971225304424057,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 3.74
+ },
+ {
+  "set": "bench-clean",
+  "name": "y286396.jpg",
+  "label": "clean",
+  "any": 0.005583132934495044,
+  "read": 0.006096575400018648,
+  "usage": {
+   "inputTokens": 324,
+   "outputTokens": 2
+  },
+  "seconds": 3.52
+ },
+ {
+  "set": "bench-raw",
+  "name": "y287618.jpg",
+  "label": "text",
+  "any": 0.9979852024812186,
+  "read": 0.9976218989073963,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 8.69
+ },
+ {
+  "set": "bench-clean",
+  "name": "y287618.jpg",
+  "label": "clean",
+  "any": 0.01108762026022668,
+  "read": 0.00849794180780875,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 9.65
+ },
+ {
+  "set": "bench-raw",
+  "name": "y288803.jpg",
+  "label": "text",
+  "any": 0.9953561244734193,
+  "read": 0.9965706046780877,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 9.46
+ },
+ {
+  "set": "bench-clean",
+  "name": "y288803.jpg",
+  "label": "clean",
+  "any": 0.057608369293579355,
+  "read": 0.03312318939226,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 9.72
+ },
+ {
+  "set": "bench-raw",
+  "name": "y289322.jpg",
+  "label": "text",
+  "any": 0.997626180309778,
+  "read": 0.9960574592138881,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 14.89
+ },
+ {
+  "set": "bench-clean",
+  "name": "y289322.jpg",
+  "label": "clean",
+  "any": 0.020524672541391016,
+  "read": 0.011872622438343038,
+  "usage": {
+   "inputTokens": 353,
+   "outputTokens": 2
+  },
+  "seconds": 14.76
+ },
+ {
+  "set": "bench-raw",
+  "name": "y290997.jpg",
+  "label": "text",
+  "any": 0.9980019974300365,
+  "read": 0.9974977784511346,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 14.39
+ },
+ {
+  "set": "bench-clean",
+  "name": "y290997.jpg",
+  "label": "clean",
+  "any": 0.009973597690932335,
+  "read": 0.008830440546509362,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 15.0
+ },
+ {
+  "set": "bench-raw",
+  "name": "y293266.jpg",
+  "label": "text",
+  "any": 0.9979162242325574,
+  "read": 0.9975232546358093,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 10.22
+ },
+ {
+  "set": "bench-clean",
+  "name": "y293266.jpg",
+  "label": "clean",
+  "any": 0.018674491074071646,
+  "read": 0.012462176366627267,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 9.17
+ },
+ {
+  "set": "bench-raw",
+  "name": "y294836.jpg",
+  "label": "text",
+  "any": 0.9983490785729832,
+  "read": 0.9978213632398061,
+  "usage": {
+   "inputTokens": 249,
+   "outputTokens": 2
+  },
+  "seconds": 9.05
+ },
+ {
+  "set": "bench-clean",
+  "name": "y294836.jpg",
+  "label": "clean",
+  "any": 0.0449665648248702,
+  "read": 0.02645623023010149,
+  "usage": {
+   "inputTokens": 249,
+   "outputTokens": 2
+  },
+  "seconds": 9.44
+ },
+ {
+  "set": "bench-raw",
+  "name": "y296088.jpg",
+  "label": "text",
+  "any": 0.9975506459143424,
+  "read": 0.9964344886608741,
+  "usage": {
+   "inputTokens": 236,
+   "outputTokens": 2
+  },
+  "seconds": 3.54
+ },
+ {
+  "set": "bench-clean",
+  "name": "y296088.jpg",
+  "label": "clean",
+  "any": 0.008721594107053624,
+  "read": 0.007357551713573973,
+  "usage": {
+   "inputTokens": 236,
+   "outputTokens": 2
+  },
+  "seconds": 3.95
+ },
+ {
+  "set": "bench-raw",
+  "name": "y296954.jpg",
+  "label": "text",
+  "any": 0.995803851577542,
+  "read": 0.9956375184572418,
+  "usage": {
+   "inputTokens": 307,
+   "outputTokens": 2
+  },
+  "seconds": 3.6
+ },
+ {
+  "set": "bench-clean",
+  "name": "y296954.jpg",
+  "label": "clean",
+  "any": 0.017475031517361808,
+  "read": 0.010845926126448122,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 3.51
+ },
+ {
+  "set": "bench-raw",
+  "name": "y298973.jpg",
+  "label": "text",
+  "any": 0.997954754923162,
+  "read": 0.9975788086370364,
+  "usage": {
+   "inputTokens": 287,
+   "outputTokens": 2
+  },
+  "seconds": 3.28
+ },
+ {
+  "set": "bench-clean",
+  "name": "y298973.jpg",
+  "label": "clean",
+  "any": 0.014553437831797987,
+  "read": 0.00969904170662872,
+  "usage": {
+   "inputTokens": 341,
+   "outputTokens": 2
+  },
+  "seconds": 3.59
+ },
+ {
+  "set": "bench-raw",
+  "name": "y300153.jpg",
+  "label": "text",
+  "any": 0.9978717552889077,
+  "read": 0.9973561564946999,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 4.0
+ },
+ {
+  "set": "bench-clean",
+  "name": "y300153.jpg",
+  "label": "clean",
+  "any": 0.012265999926234228,
+  "read": 0.0084892880365608,
+  "usage": {
+   "inputTokens": 265,
+   "outputTokens": 2
+  },
+  "seconds": 3.57
+ },
+ {
+  "set": "bench-raw",
+  "name": "y300435.jpg",
+  "label": "text",
+  "any": 0.9979534386609413,
+  "read": 0.9973025912666701,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 3.39
+ },
+ {
+  "set": "bench-clean",
+  "name": "y300435.jpg",
+  "label": "clean",
+  "any": 0.01932527596894634,
+  "read": 0.014325135249072612,
+  "usage": {
+   "inputTokens": 291,
+   "outputTokens": 2
+  },
+  "seconds": 2.95
+ },
+ {
+  "set": "bench-raw",
+  "name": "y302005.jpg",
+  "label": "text",
+  "any": 0.9946887698075374,
+  "read": 0.9945859255175891,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.61
+ },
+ {
+  "set": "bench-clean",
+  "name": "y302005.jpg",
+  "label": "clean",
+  "any": 0.03104476348208328,
+  "read": 0.025467988307813754,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.97
+ },
+ {
+  "set": "bench-raw",
+  "name": "y302457.jpg",
+  "label": "text",
+  "any": 0.9980358536687332,
+  "read": 0.9971579809409167,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 3.98
+ },
+ {
+  "set": "bench-clean",
+  "name": "y302457.jpg",
+  "label": "clean",
+  "any": 0.0027610824566862663,
+  "read": 0.0038252821591289263,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 3.65
+ },
+ {
+  "set": "bench-raw",
+  "name": "y303929.jpg",
+  "label": "text",
+  "any": 0.9975466242554407,
+  "read": 0.9967221605038504,
+  "usage": {
+   "inputTokens": 214,
+   "outputTokens": 2
+  },
+  "seconds": 3.38
+ },
+ {
+  "set": "bench-clean",
+  "name": "y303929.jpg",
+  "label": "clean",
+  "any": 0.010441833766586953,
+  "read": 0.007155372949670483,
+  "usage": {
+   "inputTokens": 287,
+   "outputTokens": 2
+  },
+  "seconds": 3.36
+ },
+ {
+  "set": "bench-raw",
+  "name": "y304148.jpg",
+  "label": "text",
+  "any": 0.9906393575473439,
+  "read": 0.9622114786546858,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.11
+ },
+ {
+  "set": "bench-clean",
+  "name": "y304148.jpg",
+  "label": "clean",
+  "any": 0.11242369136748691,
+  "read": 0.07482696599068488,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.0
+ },
+ {
+  "set": "bench-raw",
+  "name": "y304153.jpg",
+  "label": "text",
+  "any": 0.9826148319262881,
+  "read": 0.659573488437795,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.44
+ },
+ {
+  "set": "bench-clean",
+  "name": "y304153.jpg",
+  "label": "clean",
+  "any": 0.05873916084016598,
+  "read": 0.03664831555132141,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 1.93
+ },
+ {
+  "set": "bench-raw",
+  "name": "y304179.jpg",
+  "label": "text",
+  "any": 0.9792316153033606,
+  "read": 0.7562630877217997,
+  "usage": {
+   "inputTokens": 201,
+   "outputTokens": 2
+  },
+  "seconds": 1.86
+ },
+ {
+  "set": "bench-clean",
+  "name": "y304179.jpg",
+  "label": "clean",
+  "any": 0.08738848292738223,
+  "read": 0.06299329130006495,
+  "usage": {
+   "inputTokens": 201,
+   "outputTokens": 2
+  },
+  "seconds": 2.83
+ },
+ {
+  "set": "bench-raw",
+  "name": "y304195.jpg",
+  "label": "text",
+  "any": 0.9036928035308623,
+  "read": 0.578825328472258,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.72
+ },
+ {
+  "set": "bench-clean",
+  "name": "y304195.jpg",
+  "label": "clean",
+  "any": 0.046068591803713976,
+  "read": 0.021605482690025248,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.18
+ },
+ {
+  "set": "bench-raw",
+  "name": "y304197.jpg",
+  "label": "text",
+  "any": 0.05508200127780304,
+  "read": 0.02967498573012275,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.52
+ },
+ {
+  "set": "bench-clean",
+  "name": "y304197.jpg",
+  "label": "clean",
+  "any": 0.10108364011497172,
+  "read": 0.06759818620146928,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.62
+ },
+ {
+  "set": "bench-raw",
+  "name": "y304302.jpg",
+  "label": "text",
+  "any": 0.5845616297374969,
+  "read": 0.2235294719750045,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.57
+ },
+ {
+  "set": "bench-clean",
+  "name": "y304302.jpg",
+  "label": "clean",
+  "any": 0.5169636443950245,
+  "read": 0.22848718281560285,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.93
+ },
+ {
+  "set": "bench-raw",
+  "name": "y304379.jpg",
+  "label": "text",
+  "any": 0.9972289883109395,
+  "read": 0.9970313141224546,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 3.0
+ },
+ {
+  "set": "bench-clean",
+  "name": "y304379.jpg",
+  "label": "clean",
+  "any": 0.02801229800426617,
+  "read": 0.016228902692970434,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.82
+ },
+ {
+  "set": "bench-raw",
+  "name": "y304379.jpg",
+  "label": "text",
+  "any": 0.9972289883109395,
+  "read": 0.9970313141224546,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 2.81
+ },
+ {
+  "set": "bench-clean",
+  "name": "y304379.jpg",
+  "label": "clean",
+  "any": 0.02801229800426617,
+  "read": 0.016228902692970434,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.92
+ },
+ {
+  "set": "bench-raw",
+  "name": "y304389.jpg",
+  "label": "text",
+  "any": 0.17567945088745876,
+  "read": 0.11158733104292722,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.94
+ },
+ {
+  "set": "bench-clean",
+  "name": "y304389.jpg",
+  "label": "clean",
+  "any": 0.07106863245067935,
+  "read": 0.04847948148145963,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.0
+ },
+ {
+  "set": "bench-raw",
+  "name": "y306322.jpg",
+  "label": "text",
+  "any": 0.9972699680425777,
+  "read": 0.9954802784011476,
+  "usage": {
+   "inputTokens": 221,
+   "outputTokens": 2
+  },
+  "seconds": 3.96
+ },
+ {
+  "set": "bench-clean",
+  "name": "y306322.jpg",
+  "label": "clean",
+  "any": 0.06234703469981206,
+  "read": 0.05151711990105288,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 3.26
+ },
+ {
+  "set": "bench-raw",
+  "name": "y308201.jpg",
+  "label": "text",
+  "any": 0.319938581790706,
+  "read": 0.09276387723942302,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.68
+ },
+ {
+  "set": "bench-clean",
+  "name": "y308201.jpg",
+  "label": "clean",
+  "any": 0.11451572448400531,
+  "read": 0.10295429844458567,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.75
+ },
+ {
+  "set": "bench-raw",
+  "name": "y308205.jpg",
+  "label": "text",
+  "any": 0.9976457403153682,
+  "read": 0.9969760934685473,
+  "usage": {
+   "inputTokens": 217,
+   "outputTokens": 2
+  },
+  "seconds": 4.15
+ },
+ {
+  "set": "bench-clean",
+  "name": "y308205.jpg",
+  "label": "clean",
+  "any": 0.029629106255577888,
+  "read": 0.01687636494287029,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 3.97
+ },
+ {
+  "set": "bench-raw",
+  "name": "y313364.jpg",
+  "label": "text",
+  "any": 0.9980288090537165,
+  "read": 0.997653030023429,
+  "usage": {
+   "inputTokens": 228,
+   "outputTokens": 2
+  },
+  "seconds": 3.92
+ },
+ {
+  "set": "bench-clean",
+  "name": "y313364.jpg",
+  "label": "clean",
+  "any": 0.057717451749992925,
+  "read": 0.022862916076141125,
+  "usage": {
+   "inputTokens": 228,
+   "outputTokens": 2
+  },
+  "seconds": 3.87
+ },
+ {
+  "set": "bench-raw",
+  "name": "y314742.jpg",
+  "label": "text",
+  "any": 0.9977925387919829,
+  "read": 0.9970969871431384,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 3.42
+ },
+ {
+  "set": "bench-clean",
+  "name": "y314742.jpg",
+  "label": "clean",
+  "any": 0.07895074354358625,
+  "read": 0.04859368084682726,
+  "usage": {
+   "inputTokens": 317,
+   "outputTokens": 2
+  },
+  "seconds": 3.43
+ },
+ {
+  "set": "bench-raw",
+  "name": "y315180.jpg",
+  "label": "text",
+  "any": 0.02341809034473112,
+  "read": 0.015436461716826473,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 3.01
+ },
+ {
+  "set": "bench-clean",
+  "name": "y315180.jpg",
+  "label": "text",
+  "any": 0.02430868142895316,
+  "read": 0.01513665562627418,
+  "usage": {
+   "inputTokens": 263,
+   "outputTokens": 2
+  },
+  "seconds": 2.05
+ },
+ {
+  "set": "bench-raw",
+  "name": "y322898.jpg",
+  "label": "text",
+  "any": 0.9707034491626866,
+  "read": 0.9583989357362772,
+  "usage": {
+   "inputTokens": 293,
+   "outputTokens": 2
+  },
+  "seconds": 2.13
+ },
+ {
+  "set": "bench-clean",
+  "name": "y322898.jpg",
+  "label": "clean",
+  "any": 0.020760298551700848,
+  "read": 0.01829654842733028,
+  "usage": {
+   "inputTokens": 293,
+   "outputTokens": 2
+  },
+  "seconds": 1.76
+ },
+ {
+  "set": "bench-raw",
+  "name": "y323311.jpg",
+  "label": "text",
+  "any": 0.9711713900502611,
+  "read": 0.960728405633083,
+  "usage": {
+   "inputTokens": 258,
+   "outputTokens": 2
+  },
+  "seconds": 2.3
+ },
+ {
+  "set": "bench-clean",
+  "name": "y323311.jpg",
+  "label": "clean",
+  "any": 0.007836223179118872,
+  "read": 0.006184597998979182,
+  "usage": {
+   "inputTokens": 258,
+   "outputTokens": 2
+  },
+  "seconds": 2.22
+ },
+ {
+  "set": "bench-raw",
+  "name": "y324325.jpg",
+  "label": "text",
+  "any": 0.9979241159118237,
+  "read": 0.9977512810249288,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 2.4
+ },
+ {
+  "set": "bench-clean",
+  "name": "y324325.jpg",
+  "label": "clean",
+  "any": 0.012562848604368048,
+  "read": 0.00982712271949586,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 2.4
+ },
+ {
+  "set": "bench-raw",
+  "name": "y324723.jpg",
+  "label": "text",
+  "any": 0.998332294721382,
+  "read": 0.997662187517129,
+  "usage": {
+   "inputTokens": 235,
+   "outputTokens": 2
+  },
+  "seconds": 2.39
+ },
+ {
+  "set": "bench-clean",
+  "name": "y324723.jpg",
+  "label": "clean",
+  "any": 0.029350026168072155,
+  "read": 0.011707795065046742,
+  "usage": {
+   "inputTokens": 235,
+   "outputTokens": 2
+  },
+  "seconds": 2.95
+ },
+ {
+  "set": "bench-raw",
+  "name": "y325389.jpg",
+  "label": "text",
+  "any": 0.998291188467654,
+  "read": 0.9979090519517231,
+  "usage": {
+   "inputTokens": 267,
+   "outputTokens": 2
+  },
+  "seconds": 3.32
+ },
+ {
+  "set": "bench-clean",
+  "name": "y325389.jpg",
+  "label": "clean",
+  "any": 0.03896489137567828,
+  "read": 0.018400764444048562,
+  "usage": {
+   "inputTokens": 267,
+   "outputTokens": 2
+  },
+  "seconds": 3.73
+ },
+ {
+  "set": "bench-raw",
+  "name": "y327020.jpg",
+  "label": "text",
+  "any": 0.99822496845016,
+  "read": 0.9981631986746721,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 4.43
+ },
+ {
+  "set": "bench-clean",
+  "name": "y327020.jpg",
+  "label": "clean",
+  "any": 0.035394381327628927,
+  "read": 0.032387162181390296,
+  "usage": {
+   "inputTokens": 273,
+   "outputTokens": 2
+  },
+  "seconds": 4.8
+ },
+ {
+  "set": "bench-raw",
+  "name": "y327869.jpg",
+  "label": "text",
+  "any": 0.9981051561476176,
+  "read": 0.9979156073966033,
+  "usage": {
+   "inputTokens": 242,
+   "outputTokens": 2
+  },
+  "seconds": 4.18
+ },
+ {
+  "set": "bench-clean",
+  "name": "y327869.jpg",
+  "label": "clean",
+  "any": 0.09276833176705486,
+  "read": 0.05064870276181547,
+  "usage": {
+   "inputTokens": 273,
+   "outputTokens": 2
+  },
+  "seconds": 4.58
+ },
+ {
+  "set": "bench-raw",
+  "name": "y329279.jpg",
+  "label": "text",
+  "any": 0.99662092839076,
+  "read": 0.9966216140075598,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 4.19
+ },
+ {
+  "set": "bench-clean",
+  "name": "y329279.jpg",
+  "label": "clean",
+  "any": 0.018839712991245327,
+  "read": 0.012605147192110554,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 3.62
+ },
+ {
+  "set": "bench-raw",
+  "name": "y329386.jpg",
+  "label": "text",
+  "any": 0.9984436046952195,
+  "read": 0.9981225353429679,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 3.03
+ },
+ {
+  "set": "bench-clean",
+  "name": "y329386.jpg",
+  "label": "clean",
+  "any": 0.24272009043765158,
+  "read": 0.13431118467320433,
+  "usage": {
+   "inputTokens": 257,
+   "outputTokens": 2
+  },
+  "seconds": 2.56
+ },
+ {
+  "set": "bench-raw",
+  "name": "y329694.jpg",
+  "label": "text",
+  "error": "HTTP Error 503: Service Unavailable {\"error\":{\"message\":\"The provider is temporarily rate limiting requests for '{model}'. Try again shortly or choose another model. Status: https://minirouter.sh/status\",\"type\":\"server_error\",\"code\":\"upstream_rate_limited\",\"request_id\":\"req_678dd0bb8409407295e0df5aa96c6f03\"}}"
+ },
+ {
+  "set": "bench-clean",
+  "name": "y329694.jpg",
+  "label": "clean",
+  "any": 0.19874442381704993,
+  "read": 0.1257935019132691,
+  "usage": {
+   "inputTokens": 297,
+   "outputTokens": 2
+  },
+  "seconds": 2.02
+ },
+ {
+  "set": "bench-raw",
+  "name": "y330029.jpg",
+  "label": "text",
+  "any": 0.9981230937376445,
+  "read": 0.997562129987493,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 1.95
+ },
+ {
+  "set": "bench-clean",
+  "name": "y330029.jpg",
+  "label": "clean",
+  "any": 0.2941474474713146,
+  "read": 0.11260624625121689,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 1.86
+ },
+ {
+  "set": "bench-raw",
+  "name": "y331971.jpg",
+  "label": "text",
+  "any": 0.9984208074853516,
+  "read": 0.9978221726678311,
+  "usage": {
+   "inputTokens": 290,
+   "outputTokens": 2
+  },
+  "seconds": 2.35
+ },
+ {
+  "set": "bench-clean",
+  "name": "y331971.jpg",
+  "label": "clean",
+  "any": 0.06948006167740926,
+  "read": 0.02282751219715215,
+  "usage": {
+   "inputTokens": 299,
+   "outputTokens": 2
+  },
+  "seconds": 2.08
+ },
+ {
+  "set": "bench-raw",
+  "name": "y333973.jpg",
+  "label": "text",
+  "any": 0.9980940530645129,
+  "read": 0.9980294984253375,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 2.06
+ },
+ {
+  "set": "bench-clean",
+  "name": "y333973.jpg",
+  "label": "clean",
+  "any": 0.010893723174167244,
+  "read": 0.008637570955647763,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 2.05
+ },
+ {
+  "set": "bench-raw",
+  "name": "y335049.jpg",
+  "label": "text",
+  "any": 0.9979459192212684,
+  "read": 0.9972902770897557,
+  "usage": {
+   "inputTokens": 228,
+   "outputTokens": 2
+  },
+  "seconds": 2.06
+ },
+ {
+  "set": "bench-clean",
+  "name": "y335049.jpg",
+  "label": "clean",
+  "any": 0.01835047344863068,
+  "read": 0.01488851919571468,
+  "usage": {
+   "inputTokens": 228,
+   "outputTokens": 2
+  },
+  "seconds": 2.01
+ },
+ {
+  "set": "bench-raw",
+  "name": "y336329.jpg",
+  "label": "text",
+  "any": 0.9980894012715888,
+  "read": 0.9977105929013087,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.06
+ },
+ {
+  "set": "bench-clean",
+  "name": "y336329.jpg",
+  "label": "clean",
+  "any": 0.08194821280202923,
+  "read": 0.03630120685816767,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 2.45
+ },
+ {
+  "set": "bench-raw",
+  "name": "y337250.jpg",
+  "label": "text",
+  "any": 0.9982529994144368,
+  "read": 0.9981572459406148,
+  "usage": {
+   "inputTokens": 273,
+   "outputTokens": 2
+  },
+  "seconds": 1.93
+ },
+ {
+  "set": "bench-clean",
+  "name": "y337250.jpg",
+  "label": "clean",
+  "any": 0.08149769433950105,
+  "read": 0.04311790109439993,
+  "usage": {
+   "inputTokens": 273,
+   "outputTokens": 2
+  },
+  "seconds": 1.93
+ },
+ {
+  "set": "bench-raw",
+  "name": "y338687.jpg",
+  "label": "text",
+  "any": 0.9980058094301713,
+  "read": 0.9975993907647389,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 2.09
+ },
+ {
+  "set": "bench-clean",
+  "name": "y338687.jpg",
+  "label": "clean",
+  "any": 0.025569395591267894,
+  "read": 0.013318466329236854,
+  "usage": {
+   "inputTokens": 281,
+   "outputTokens": 2
+  },
+  "seconds": 2.3
+ },
+ {
+  "set": "bench-raw",
+  "name": "y339009.jpg",
+  "label": "text",
+  "any": 0.9979142163681474,
+  "read": 0.9971126506745029,
+  "usage": {
+   "inputTokens": 249,
+   "outputTokens": 2
+  },
+  "seconds": 2.13
+ },
+ {
+  "set": "bench-clean",
+  "name": "y339009.jpg",
+  "label": "clean",
+  "any": 0.10650499740618753,
+  "read": 0.053148922925891386,
+  "usage": {
+   "inputTokens": 249,
+   "outputTokens": 2
+  },
+  "seconds": 1.52
+ },
+ {
+  "set": "bench-raw",
+  "name": "y342304.jpg",
+  "label": "text",
+  "any": 0.997896741143964,
+  "read": 0.997384476812617,
+  "usage": {
+   "inputTokens": 272,
+   "outputTokens": 2
+  },
+  "seconds": 1.42
+ },
+ {
+  "set": "bench-clean",
+  "name": "y342304.jpg",
+  "label": "clean",
+  "any": 0.01133324409401099,
+  "read": 0.007861919551761312,
+  "usage": {
+   "inputTokens": 335,
+   "outputTokens": 2
+  },
+  "seconds": 2.67
+ },
+ {
+  "set": "bench-raw",
+  "name": "y344280.jpg",
+  "label": "text",
+  "any": 0.9947270088179225,
+  "read": 0.9923846948482099,
+  "usage": {
+   "inputTokens": 215,
+   "outputTokens": 2
+  },
+  "seconds": 2.94
+ },
+ {
+  "set": "bench-clean",
+  "name": "y344280.jpg",
+  "label": "clean",
+  "any": 0.035053974593341426,
+  "read": 0.020777599288975292,
+  "usage": {
+   "inputTokens": 215,
+   "outputTokens": 2
+  },
+  "seconds": 3.38
+ },
+ {
+  "set": "bench-raw",
+  "name": "y344723.jpg",
+  "label": "text",
+  "any": 0.9961284525011058,
+  "read": 0.9928377402932352,
+  "usage": {
+   "inputTokens": 239,
+   "outputTokens": 2
+  },
+  "seconds": 3.81
+ },
+ {
+  "set": "bench-clean",
+  "name": "y344723.jpg",
+  "label": "clean",
+  "any": 0.9493960338966503,
+  "read": 0.4657263258466168,
+  "usage": {
+   "inputTokens": 245,
+   "outputTokens": 2
+  },
+  "seconds": 3.45
+ },
+ {
+  "set": "bench-raw",
+  "name": "y344764.jpg",
+  "label": "text",
+  "any": 0.9371208261109242,
+  "read": 0.3159507066845225,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 4.76
+ },
+ {
+  "set": "bench-clean",
+  "name": "y344764.jpg",
+  "label": "clean",
+  "any": 0.12552620904170828,
+  "read": 0.0869484704502659,
+  "usage": {
+   "inputTokens": 209,
+   "outputTokens": 2
+  },
+  "seconds": 4.15
+ }
+]
