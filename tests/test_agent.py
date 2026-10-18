@@ -4159,7 +4159,8 @@ def test_by_default_there_is_no_shell_tool_and_a_lone_call_is_refused_while_chai
     session.decide("allow")  # C2: create is always-ask, even in bypass mode
     wait_for(session, "idle")
     outputs = [h["content"] for h in session.history if h["role"] == "tool"]
-    assert outputs[0].startswith("Refused") and outputs[1].startswith("Refused") and "lone" not in outputs[0], outputs
+    assert outputs[0].startswith("Refused") and outputs[1].startswith("Refused") and "[exit code" not in outputs[0], outputs
+    assert "print(tools.read_file(path='pkg/a.py'))" in outputs[1] and "the step you planned next" in outputs[1], "the refusal hands back the calls as one chain"
     assert "chained" in outputs[2] and "return 2" in outputs[2], outputs[2]
     with pytest.raises(ValueError, match="Unknown command /tools"):
         session.command("/tools hybrid")

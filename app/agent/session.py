@@ -366,7 +366,8 @@ CONTROL_CALLS = frozenset({"job_output", "job_input", "job_stop", "exit_plan_mod
 MIN_CALLS_RULE = ("Every reply that uses tools must make at least {n} tool calls, counting each tools.<name>(...) inside create code; "
                   "a reply with fewer is refused whole and none of its calls run.")
 FEW_CALLS = ("Refused: every reply must make at least {n} tool calls, counting each tools.<name>(...) inside create code, and this one made "
-             "{got}, so none of them ran. Batch your steps: one create whose code reads, runs, edits and checks in one go, or several calls in one reply.")
+             "{got}, so none of them ran. Batch your steps: one create whose code reads, runs, edits and checks in one go, or several calls in one reply.\n"
+             "Your calls as one chain, ready to send once you add the step you planned next where marked:\n{template}")
 LEAN_PROMPT = IDENTITY + """
 Your tools are read_file, edit_file, run_command (the shell: list, search, build, test) and create; how they fit together is below.
 
@@ -3957,7 +3958,7 @@ class AgentSession:
         few = self._call_count(calls)
         if few is not None:
             for call in calls:
-                record(call, FEW_CALLS.format(n=self.profile["min_calls"], got=few), False)
+                record(call, FEW_CALLS.format(n=self.profile["min_calls"], got=few, template=self._chain_template(calls)), False)
             self.emit("notice", text=f"Refused a reply with {few} tool call(s); at least {self.profile['min_calls']} are required.")
             return
         # Calls whose files do not overlap run together, up to ten at once; anything else runs alone, in order, and results are always recorded in the order given (Kimi Code).
@@ -3979,6 +3980,21 @@ class AgentSession:
             else:
                 record(batch[0], *one(batch[0]))
             index += len(batch)
+
+    @staticmethod
+    def _chain_template(calls: list[dict]) -> str:
+        """The refused calls rewritten as one create, with a marked line for the next step, so the retry costs one reply."""
+        lines, tail = [], []
+        for call in calls:
+            args = call["args"] if isinstance(call["args"], dict) else {}
+            if call["name"] == "create":
+                code = str(args.get("code") or "").strip()
+                (tail if code.startswith("def ") or "return" in code else lines).append(code)
+            else:
+                spelled = ", ".join(f"{k}={v!r}" for k, v in args.items())
+                lines.append(f"print(tools.{call['name']}({spelled}))")
+        lines.append("print(tools.run_command(command='...'))  # <- the step you planned next (a check, a read, an edit)")
+        return 'create name="step", keep=false, code=\n' + "\n".join(lines + tail)
 
     def _call_count(self, calls: list[dict]) -> int | None:
         """The reply's tool calls, counting each tools.<name>( in create code, when that is under min_calls; else None."""
