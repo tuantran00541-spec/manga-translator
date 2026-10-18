@@ -1,0 +1,7 @@
+[
+ {
+  "model": "openai/gpt-oss-safeguard-20b",
+  "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Field 'image_input' is not supported on this billing snapshot. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_3ddba513d34b4229b54389fcbeb61e64\"}}",
+  "seconds": 0.5
+ }
+]
