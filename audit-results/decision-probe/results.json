@@ -1,12 +1,166 @@
 [
  {
   "model": "perplexity/pplx-decider-v1.2",
-  "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision models require POST /v1/evaluate or /v1/decisions. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_0ca69677b31c4bdaacaf81d424d9f716\"}}",
-  "seconds": 0.2
+  "state_image_part": {
+   "reply": {
+    "model": "perplexity/pplx-decider-v1.2",
+    "answers": {
+     "text": {
+      "type": "boolean",
+      "probability": 0.9933764236093844
+     }
+    },
+    "usage": {
+     "inputTokens": 173,
+     "outputTokens": 1
+    }
+   },
+   "seconds": 1.1
+  },
+  "state_image_object": {
+   "reply": {
+    "model": "perplexity/pplx-decider-v1.2",
+    "answers": {
+     "text": {
+      "type": "boolean",
+      "probability": 0.2215887875098619
+     }
+    },
+    "usage": {
+     "inputTokens": 7095,
+     "outputTokens": 1
+    }
+   },
+   "seconds": 6.1
+  },
+  "grading": {
+   "right": 0,
+   "of": 8,
+   "seconds": 2.0,
+   "lines": [
+    {
+     "en": "We've been looking for you for months.",
+     "vi": "Bọn ta đã tìm ngươi suốt mấy tháng trời.",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_2977b703cadc401c8ef55ec2ca512c32\"}}"
+    },
+    {
+     "en": "We've been looking for you for months.",
+     "vi": "Chúng tôi đã quên bạn từ lâu rồi.",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_acf2ec7754c04ee781fdcc494a7dee94\"}}"
+    },
+    {
+     "en": "What do you think you're doing?",
+     "vi": "What do you think you're doing?",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_e076c2a9647b435b929a0741700e8da7\"}}"
+    },
+    {
+     "en": "What do you think you're doing?",
+     "vi": "Ngươi nghĩ ngươi đang làm gì vậy hả?",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_3db124a47521460eb21b2210f3477188\"}}"
+    },
+    {
+     "en": "Don't move! The gate is opening!",
+     "vi": "Đừng có động đậy! Cánh cổng đang mở ra!",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_f80cc83d1c1346e2bf9ced9b44376412\"}}"
+    },
+    {
+     "en": "Don't move! The gate is opening!",
+     "vi": "Không di chuyển! Cổng là mở!",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_a3b11ad4f0134a959d500ffe189476ae\"}}"
+    },
+    {
+     "en": "I'll kill you myself.",
+     "vi": "Ta sẽ tự tay giết ngươi.",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_8b3832816cb14db49baf8d7d3d0d25ae\"}}"
+    },
+    {
+     "en": "I'll kill you myself.",
+     "vi": "Tôi sẽ giết bản thân mình.",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_e565edb093b3457780dd3bde7b4bcaed\"}}"
+    }
+   ]
+  }
  },
  {
   "model": "perplexity/pplx-decider-flash-v1.2",
-  "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision models require POST /v1/evaluate or /v1/decisions. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_02674bfa4bc94f73ac780b0be2607be2\"}}",
-  "seconds": 0.6
+  "state_image_part": {
+   "reply": {
+    "model": "perplexity/pplx-decider-flash-v1.2",
+    "answers": {
+     "text": {
+      "type": "boolean",
+      "probability": 0.9885392120919866
+     }
+    },
+    "usage": {
+     "inputTokens": 173,
+     "outputTokens": 1
+    }
+   },
+   "seconds": 1.3
+  },
+  "state_image_object": {
+   "reply": {
+    "model": "perplexity/pplx-decider-flash-v1.2",
+    "answers": {
+     "text": {
+      "type": "boolean",
+      "probability": 0.09629794233317802
+     }
+    },
+    "usage": {
+     "inputTokens": 7095,
+     "outputTokens": 1
+    }
+   },
+   "seconds": 0.8
+  },
+  "grading": {
+   "right": 0,
+   "of": 8,
+   "seconds": 2.0,
+   "lines": [
+    {
+     "en": "We've been looking for you for months.",
+     "vi": "Bọn ta đã tìm ngươi suốt mấy tháng trời.",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_13ddc30909cc42b0ae4ec193df70d11f\"}}"
+    },
+    {
+     "en": "We've been looking for you for months.",
+     "vi": "Chúng tôi đã quên bạn từ lâu rồi.",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_0fe76a6688dd473498db18c735b263bd\"}}"
+    },
+    {
+     "en": "What do you think you're doing?",
+     "vi": "What do you think you're doing?",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_0d75c03900e840aa9008444bcdf12cb7\"}}"
+    },
+    {
+     "en": "What do you think you're doing?",
+     "vi": "Ngươi nghĩ ngươi đang làm gì vậy hả?",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_3b8cc91e59b446398e6cf5b0ab9bd1f1\"}}"
+    },
+    {
+     "en": "Don't move! The gate is opening!",
+     "vi": "Đừng có động đậy! Cánh cổng đang mở ra!",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_f65c48b092564f34875d83e27ca35452\"}}"
+    },
+    {
+     "en": "Don't move! The gate is opening!",
+     "vi": "Không di chuyển! Cổng là mở!",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_eb534e05ab614a45a63b71a4db5e736f\"}}"
+    },
+    {
+     "en": "I'll kill you myself.",
+     "vi": "Ta sẽ tự tay giết ngươi.",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_778d046ac6df4cbfbb48eec20f5bbe03\"}}"
+    },
+    {
+     "en": "I'll kill you myself.",
+     "vi": "Tôi sẽ giết bản thân mình.",
+     "error": "HTTP Error 400: Bad Request {\"error\":{\"message\":\"Decision input or questions do not match the model contract. See https://minirouter.sh/docs/errors#invalid_request\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request\",\"request_id\":\"req_233c1acfa37c434cbd13f56385f79db7\"}}"
+    }
+   ]
+  }
  }
 ]

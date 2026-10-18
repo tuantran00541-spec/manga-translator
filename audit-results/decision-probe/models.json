@@ -152,6 +152,26 @@
   }
  },
  {
+  "id": "minirouter/auto:free",
+  "object": "model",
+  "created": 1788566400,
+  "released": 1788566400,
+  "owned_by": "minirouter",
+  "name": "Auto Free",
+  "description": "Auto Free: Verified free models. Zero customer charge, subject to quotas and availability; never falls back to paid inference. minirouter picks one of these models per request, best first: poolside/laguna-s-2.1-free. Prices shown are the most expensive candidate (a bound, not a quote); an account cost tier set at https://minirouter.sh/dashboard/routing lowers that bound and, on Low, starts bare auto from the cheap list. The response header X-Minirouter-Model names the model that served you. Details: https://minirouter.sh/models/auto",
+  "context_window": 18048,
+  "max_tokens": 2048,
+  "type": "language",
+  "tags": [
+   "auto",
+   "free"
+  ],
+  "pricing": {
+   "input": "0",
+   "output": "0"
+  }
+ },
+ {
   "id": "alibaba/qwen-3-14b",
   "object": "model",
   "aliases": [
@@ -262,7 +282,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "recraft",
@@ -652,7 +672,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "openai",
@@ -750,7 +770,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "recraft",
@@ -924,7 +944,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "bytedance",
@@ -1122,7 +1142,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "recraft",
@@ -1305,7 +1325,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "recraft",
@@ -1544,7 +1564,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "openai",
@@ -1642,7 +1662,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "recraft",
@@ -2335,7 +2355,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "recraft",
@@ -2527,7 +2547,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "meta",
@@ -2681,7 +2701,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "recraft",
@@ -3327,7 +3347,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "openai",
@@ -4466,7 +4486,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "bfl",
@@ -4907,7 +4927,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "bytedance",
@@ -5156,7 +5176,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "openai",
@@ -5411,7 +5431,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "recraft",
@@ -5603,7 +5623,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "recraft",
@@ -5809,7 +5829,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "xai",
@@ -6043,7 +6063,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "xai",
@@ -6291,7 +6311,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "bfl",
@@ -6517,7 +6537,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "bfl",
@@ -6805,7 +6825,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "bfl",
@@ -7086,7 +7106,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "bytedance",
@@ -7575,7 +7595,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "openai",
@@ -8560,7 +8580,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "bytedance",
@@ -9205,7 +9225,7 @@
     }
    }
   },
-  "catalog_expires_at": "2026-10-18T15:49:12.292Z",
+  "catalog_expires_at": "2026-10-18T15:51:12.294Z",
   "routes": [
    {
     "provider": "openai",
