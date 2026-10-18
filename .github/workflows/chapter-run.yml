@@ -61,6 +61,12 @@ jobs:
       - name: Use the committed Kiuyha, not the cached one
         run: git checkout -- models/kiuyha_text_1280.onnx && md5sum models/kiuyha_text_1280.onnx
 
+      - name: Download LaMa when the cache has expired
+        run: |
+          test -f models/lama-manga-dynamic.onnx || curl -fsSL -o models/lama-manga-dynamic.onnx \
+            https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/lama-manga-dynamic.onnx
+          echo "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9  models/lama-manga-dynamic.onnx" | sha256sum -c
+
       - name: Build the CTD mask model
         uses: ./.github/actions/build-ctd
 
