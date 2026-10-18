@@ -53,8 +53,14 @@ jobs:
           Image.open("docs/images/demo-raw.jpg").crop((100, 380, 305, 540)).save(buf, "JPEG", quality=70)
           image = base64.b64encode(buf.getvalue()).decode()
           url = f"data:image/jpeg;base64,{image}"
-          q = {"text": {"type": "boolean", "instructions": "Does the image show the words 'looking for you for months'?"}}
-          tries = {"state_image_part": [{"type": "image_url", "image_url": {"url": url}}],
+          # The real line, a line not on the page, and a pick between them; a blind model answers all alike.
+          q = {"real": {"type": "boolean", "instructions": "Does the image show the words 'looking for you for months'?"},
+               "fake": {"type": "boolean", "instructions": "Does the image show the words 'the dragon has returned'?"},
+               "pick": {"type": "choice", "instructions": "Which sentence is written in the image?",
+                        "criteria": {"months": "We've been looking for you for months.", "dragon": "The dragon has returned to the city.",
+                                     "sword": "Give me back my sword, old man."}}}
+          tries = {"no_image": "A webtoon page.",
+                   "state_image_part": [{"type": "image_url", "image_url": {"url": url}}],
                    "state_image_object": {"image": url}}
           # Lines with a known verdict: good, wrong meaning, untranslated, unnatural.
           lines = [("We've been looking for you for months.", "Bọn ta đã tìm ngươi suốt mấy tháng trời.", 1),
@@ -66,7 +72,7 @@ jobs:
                    ("I'll kill you myself.", "Ta sẽ tự tay giết ngươi.", 1),
                    ("I'll kill you myself.", "Tôi sẽ giết bản thân mình.", 0)]
           grade = {"ok": {"type": "boolean", "instructions": "Is the Vietnamese line a faithful, natural manhwa translation of the English line?"},
-                   "quality": {"type": "score", "criteria": ["wrong or untranslated", "meaning ok but stiff", "faithful and natural"]}}
+                   "quality": {"type": "score", "instructions": "How good is the Vietnamese translation of the English line?", "criteria": ["wrong or untranslated", "meaning ok but stiff", "faithful and natural"]}}
           results = []
           for model in picked:
               row = {"model": model}
