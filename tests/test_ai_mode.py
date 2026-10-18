@@ -161,7 +161,7 @@ def test_manager_allows_one_active_job():
 
 # -- scan stage ---------------------------------------------------------------
 
-def _scan_stage(monkeypatch, scans, pages=8):
+def _scan_stage(monkeypatch, scans, pages=8, provider=None):
     from app.dependencies import pipeline
     import app.routers.chapters as chapters
 
@@ -179,7 +179,7 @@ def _scan_stage(monkeypatch, scans, pages=8):
     # Four slices a request: the batching logic, whatever the user's limit.
     job = ai_job.AIModeJob(job_id="j", settings=replace(SETTINGS, images_per_request=4), chapter_id=CHAPTER,
                            stage="scan", stages={"scan": {"done": 0, "total": 0, "detail": ""}})
-    runner = AIModeRunner(job, PROVIDERS["deepseek"], "key")
+    runner = AIModeRunner(job, provider or PROVIDERS["deepseek"], "key")
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
     asyncio.run(runner.scan())
     return runner, skipped, preserved
@@ -248,6 +248,21 @@ def test_scan_stage_skips_textless_slices_but_not_most_of_a_chapter(monkeypatch)
 
     runner, skipped, _ = _scan_stage(monkeypatch, [SliceScan(i, False, 0.0, (), no_text=True) for i in range(5)])
     assert skipped == [] and runner.report["textless_rejected"] == [0, 1, 2, 3, 4]
+
+
+def test_with_a_decider_it_alone_picks_the_slices_to_skip(monkeypatch):
+    from app.ai_mode import decider
+    from app.ai_providers import resolve_provider
+
+    monkeypatch.setattr(decider, "storyless_slices", lambda provider, key, indices, load: (
+        [3, 4, 7], {**{i: 0.9 for i in indices}, 3: 0.05, 4: 0.01, 6: None, 7: 0.0}))
+    minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
+    runner, skipped, _ = _scan_stage(monkeypatch, [
+        SliceScan(2, False, 0.0, (), no_text=True), SliceScan(4, False, 0.0, (), no_text=True), SliceScan(7, True, 0.9, ()),
+    ], provider=minirouter)
+    assert sorted(skipped) == [3, 4, 7]
+    assert runner.report["credit_pages"] == [7] and runner.report["textless_pages"] == [3, 4]
+    assert runner.report["skip_kept"] == [2] and runner.report["skip_unjudged"] == [6]
 
 
 def test_scan_parse_requires_a_confident_textless_answer():

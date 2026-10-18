@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 import requests
 from fastapi import HTTPException
 
+from app.ai_mode import decider
 from app.ai_mode.checkpoints import _covered
 from app.ai_mode.page_scan import scan_slices
 from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
@@ -143,7 +144,7 @@ class AIModeRunner:
             "editorial_blockers": 0, "blocker_samples": [], "source_lang": None,
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
             "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [], "unboxed_pages": [],
-            "repaint_retried": 0, "residue_left": [], "art_kept": 0,
+            "repaint_retried": 0, "residue_left": [], "art_kept": 0, "skip_kept": [], "skip_unjudged": [],
             "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "errors": [], "samples": []},
         })
         self._memory = None
@@ -254,6 +255,14 @@ class AIModeRunner:
             self._progress(finished, len(active))
             return True
 
+        def load(index: int):
+            return read_image(validate_managed_path(pages[index]["original"], RAW_DIR / chapter_id))
+
+        # The decision model judges which slices to skip while the chat model reads them.
+        judge = None
+        if decider.available(self.provider, self.api_key):
+            judge = asyncio.ensure_future(asyncio.to_thread(decider.storyless_slices, self.provider, self.api_key, active, load))
+
         # Probe with one batch; if it fails, scan slice by slice.
         self._progress(0, len(active))
         if batches and not await scan_batch(batches[0]):
@@ -262,9 +271,17 @@ class AIModeRunner:
             results = await asyncio.gather(*(scan_batch(batch) for batch in batches[1:]))
             rejected = [index for batch, ok in zip(batches[1:], results) if not ok for index in batch]
             await asyncio.gather(*(scan_one(index) for index in rejected))
+        storyless = await judge if judge is not None else None
         self._check_cancel()
 
         credits = sorted(scan.page_index for scan in scans if scan.is_credit)
+        if storyless is not None:
+            storyless, chances = storyless
+            # The decider decides; a slice the scan would skip but the decider sees story text in is kept.
+            textless = sorted(scan.page_index for scan in scans if scan.no_text)
+            self.report["skip_kept"] = sorted(set(credits + textless) - set(storyless))
+            self.report["skip_unjudged"] = sorted(index for index, chance in chances.items() if chance is None)
+            credits = [index for index in credits if index in storyless]
         limit = max(CREDIT_MAX_ABSOLUTE, int(CREDIT_MAX_SHARE * len(active)))
         if len(credits) > limit:
             self.report["credit_rejected"] = credits
@@ -274,7 +291,10 @@ class AIModeRunner:
         self.report["credit_pages"] = credits
 
         # Textless slices are exported as they are; skipping them saves cleanup and translation.
-        textless = sorted(scan.page_index for scan in scans if scan.no_text and scan.page_index not in credits)
+        if storyless is not None:
+            textless = [index for index in storyless if index not in credits]
+        else:
+            textless = sorted(scan.page_index for scan in scans if scan.no_text and scan.page_index not in credits)
         if len(textless) > TEXTLESS_MAX_SHARE * len(active):
             self.report["textless_rejected"] = textless
             textless = []
@@ -338,7 +358,7 @@ class AIModeRunner:
 
     def _art_screen(self):
         """The art screen for this provider, counting the boxes it keeps as drawn."""
-        from app.ai_mode.art_screen import screen_for
+        from app.ai_mode.decider import screen_for
 
         screen = screen_for(self.provider, self.api_key)
         if screen is None:

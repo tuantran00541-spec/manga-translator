@@ -282,6 +282,7 @@
     if (r.credit_rejected?.length) lines.push(`AI coi ${r.credit_rejected.length} lát là credit — quá nhiều nên không bỏ lát nào`);
     if (r.textless_pages?.length) lines.push(`Bỏ qua ${r.textless_pages.length} lát không có chữ (giữ ảnh gốc)`);
     if (r.logo_regions) lines.push(`Giữ nguyên ${r.logo_regions} vùng logo`);
+    if (r.skip_kept?.length) lines.push(`Không bỏ qua ${r.skip_kept.length} lát vì vẫn thấy chữ truyện: lát ${r.skip_kept.map((i) => i + 1).join(", ")}`);
     if (r.art_kept) lines.push(`Giữ nguyên ${r.art_kept} ô hình vẽ bị nhận nhầm là chữ`);
     if (r.kept_regions) lines.push(`Trả lại ${r.kept_regions} vùng hình vẽ bị xoá nhầm`);
     if (r.missed_added) lines.push(`Thêm ${r.missed_added} vùng chữ bị sót rồi xoá và dịch`);
