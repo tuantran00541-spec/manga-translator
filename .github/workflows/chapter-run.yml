@@ -58,6 +58,9 @@ jobs:
             models/.e2e-provenance.json
           key: processing-profile-models-b224548-v1
 
+      - name: Use the committed Kiuyha, not the cached one
+        run: git checkout -- models/kiuyha_text_1280.onnx && md5sum models/kiuyha_text_1280.onnx
+
       - name: Build the CTD mask model
         uses: ./.github/actions/build-ctd
 
