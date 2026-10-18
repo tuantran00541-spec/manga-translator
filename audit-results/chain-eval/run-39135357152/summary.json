@@ -1,0 +1,272 @@
+{
+ "summary": {
+  "chain": {
+   "passed": 1,
+   "of": 4,
+   "refused": 86,
+   "chained_calls": 183
+  },
+  "shell": {
+   "passed": 3,
+   "of": 4,
+   "refused": 0,
+   "chained_calls": 4
+  }
+ },
+ "rows": [
+  {
+   "arm": "chain",
+   "task": "bug-hunt",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 584,
+   "replies_with_calls": 45,
+   "calls_per_reply": 1.24,
+   "tools": {
+    "create": 38,
+    "read_file": 15,
+    "edit_file": 3
+   },
+   "refused": 22,
+   "chained_calls": 53,
+   "tools_in_create_code": {
+    "run_command": 31,
+    "read_file": 20,
+    "edit_file": 2
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 527019,
+    "completion_tokens": 9887,
+    "cached_tokens": 450560
+   },
+   "stats": {
+    "model_seconds": 544.9,
+    "tool_seconds": 2.5,
+    "cache_pct": 85,
+    "cost": 0.0278
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "bug-hunt",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 346,
+   "replies_with_calls": 20,
+   "calls_per_reply": 1.05,
+   "tools": {
+    "run_command": 17,
+    "edit_file": 2,
+    "job_output": 1,
+    "read_file": 1
+   },
+   "refused": 0,
+   "chained_calls": 0,
+   "tools_in_create_code": {},
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 122829,
+    "completion_tokens": 2288,
+    "cached_tokens": 82688
+   },
+   "stats": {
+    "model_seconds": 180.2,
+    "tool_seconds": 160.2,
+    "cache_pct": 67,
+    "cost": 0.0065
+   }
+  },
+  {
+   "arm": "chain",
+   "task": "sales-report",
+   "passed": false,
+   "check": "Traceback (most recent call last):\n  File \"/home/runner/work/manga-translator/manga-translator/.github/chain-eval/tasks/sales-report/check.py\", line 16, in <module>\n    got = json.load(open(\"out/summary.json\"))\n                    ^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: 'out/summary.json'\n",
+   "seconds": 879,
+   "replies_with_calls": 38,
+   "calls_per_reply": 1.18,
+   "tools": {
+    "create": 40,
+    "read_file": 5
+   },
+   "refused": 26,
+   "chained_calls": 55,
+   "tools_in_create_code": {
+    "run_command": 49,
+    "write_file": 3,
+    "read_file": 1,
+    "create_tool": 1,
+    "check_summary": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 1026619,
+    "completion_tokens": 26155,
+    "cached_tokens": 863488
+   },
+   "stats": {
+    "model_seconds": 825.4,
+    "tool_seconds": 2.1,
+    "cache_pct": 84,
+    "cost": 0.0553
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "sales-report",
+   "passed": true,
+   "check": "wrote out/summary.json\nPASS\n",
+   "seconds": 60,
+   "replies_with_calls": 6,
+   "calls_per_reply": 1.0,
+   "tools": {
+    "run_command": 4,
+    "create": 2
+   },
+   "refused": 0,
+   "chained_calls": 2,
+   "tools_in_create_code": {
+    "run_command": 2
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 36895,
+    "completion_tokens": 1909,
+    "cached_tokens": 28672
+   },
+   "stats": {
+    "model_seconds": 59.5,
+    "tool_seconds": 0.4,
+    "cache_pct": 78,
+    "cost": 0.0021
+   }
+  },
+  {
+   "arm": "chain",
+   "task": "stuck-requests",
+   "passed": false,
+   "check": "k (most recent call last):\n  File \"/home/runner/work/manga-translator/manga-translator/.github/chain-eval/tasks/stuck-requests/check.py\", line 5, in <module>\n    got = open(os.path.join(sys.argv[1], \"out/stuck.txt\")).read().split()\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: '/opt/ce-work/chain/stuck-requests/ws/out/stuck.txt'\n",
+   "seconds": 761,
+   "replies_with_calls": 43,
+   "calls_per_reply": 1.51,
+   "tools": {
+    "read_file": 44,
+    "create": 15,
+    "edit_file": 6
+   },
+   "refused": 17,
+   "chained_calls": 16,
+   "tools_in_create_code": {
+    "run_command": 8,
+    "read_file": 7,
+    "check": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 2148573,
+    "completion_tokens": 15246,
+    "cached_tokens": 1450496
+   },
+   "stats": {
+    "model_seconds": 746.1,
+    "tool_seconds": 0.8,
+    "cache_pct": 68,
+    "cost": 0.1097
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "stuck-requests",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 33,
+   "replies_with_calls": 4,
+   "calls_per_reply": 1.0,
+   "tools": {
+    "run_command": 4
+   },
+   "refused": 0,
+   "chained_calls": 0,
+   "tools_in_create_code": {},
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 21443,
+    "completion_tokens": 631,
+    "cached_tokens": 12544
+   },
+   "stats": {
+    "model_seconds": 32.1,
+    "tool_seconds": 0.4,
+    "cache_pct": 58,
+    "cost": 0.0012
+   }
+  },
+  {
+   "arm": "chain",
+   "task": "wordcount-json",
+   "passed": false,
+   "check": "Traceback (most recent call last):\n  File \"/home/runner/work/manga-translator/manga-translator/.github/chain-eval/tasks/wordcount-json/check.py\", line 7, in <module>\n    assert run(\"sample.txt\", \"--top\", \"2\").stdout.splitlines()[3:] == [\"the 3\", \"cat 2\"]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+   "seconds": 687,
+   "replies_with_calls": 36,
+   "calls_per_reply": 1.19,
+   "tools": {
+    "create": 16,
+    "edit_file": 16,
+    "read_file": 10,
+    "run_command": 1
+   },
+   "refused": 21,
+   "chained_calls": 59,
+   "tools_in_create_code": {
+    "run_command": 39,
+    "edit_file": 15,
+    "read_file": 4,
+    "check_wc": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 726984,
+    "completion_tokens": 23722,
+    "cached_tokens": 621312
+   },
+   "stats": {
+    "model_seconds": 681.4,
+    "tool_seconds": 1.5,
+    "cache_pct": 85,
+    "cost": 0.0399
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "wordcount-json",
+   "passed": false,
+   "check": "py\", line 14, in <module>\n    assert r.returncode == 0 and len([f for f in os.listdir(os.path.join(root, \"tests\")) if f.startswith(\"test_\")]) >= 2, r.stdout[-500:]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: .........                                                                [100%]\n9 passed in 0.31s\n\n",
+   "seconds": 228,
+   "replies_with_calls": 22,
+   "calls_per_reply": 1.05,
+   "tools": {
+    "run_command": 14,
+    "read_file": 4,
+    "edit_file": 4,
+    "create": 1
+   },
+   "refused": 0,
+   "chained_calls": 2,
+   "tools_in_create_code": {
+    "run_command": 2
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 166879,
+    "completion_tokens": 4402,
+    "cached_tokens": 141056
+   },
+   "stats": {
+    "model_seconds": 216.3,
+    "tool_seconds": 9.9,
+    "cache_pct": 85,
+    "cost": 0.009
+   }
+  }
+ ]
+}
