@@ -1,0 +1,272 @@
+{
+ "summary": {
+  "chain": {
+   "passed": 3,
+   "of": 4,
+   "refused": 36,
+   "chained_calls": 77
+  },
+  "shell": {
+   "passed": 3,
+   "of": 4,
+   "refused": 0,
+   "chained_calls": 26
+  }
+ },
+ "rows": [
+  {
+   "arm": "chain",
+   "task": "bug-hunt",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 233,
+   "replies_with_calls": 17,
+   "calls_per_reply": 1.24,
+   "tools": {
+    "create": 15,
+    "read_file": 5,
+    "list_dir": 1
+   },
+   "refused": 8,
+   "chained_calls": 21,
+   "tools_in_create_code": {
+    "run_command": 15,
+    "edit_file": 5,
+    "read_file": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 128755,
+    "completion_tokens": 4425,
+    "cached_tokens": 97024
+   },
+   "stats": {
+    "model_seconds": 188.9,
+    "tool_seconds": 37.7,
+    "cache_pct": 75,
+    "cost": 0.0071
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "bug-hunt",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 430,
+   "replies_with_calls": 23,
+   "calls_per_reply": 1.04,
+   "tools": {
+    "run_command": 16,
+    "edit_file": 4,
+    "read_file": 2,
+    "create": 1,
+    "check": 1
+   },
+   "refused": 0,
+   "chained_calls": 1,
+   "tools_in_create_code": {
+    "run_command": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 145193,
+    "completion_tokens": 4130,
+    "cached_tokens": 118016
+   },
+   "stats": {
+    "model_seconds": 367.4,
+    "tool_seconds": 46.6,
+    "cache_pct": 81,
+    "cost": 0.0079
+   }
+  },
+  {
+   "arm": "chain",
+   "task": "sales-report",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 299,
+   "replies_with_calls": 14,
+   "calls_per_reply": 1.07,
+   "tools": {
+    "create": 13,
+    "read_file": 2
+   },
+   "refused": 10,
+   "chained_calls": 15,
+   "tools_in_create_code": {
+    "run_command": 12,
+    "think": 3
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 265234,
+    "completion_tokens": 6716,
+    "cached_tokens": 230656
+   },
+   "stats": {
+    "model_seconds": 280.6,
+    "tool_seconds": 7.2,
+    "cache_pct": 87,
+    "cost": 0.0143
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "sales-report",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 96,
+   "replies_with_calls": 5,
+   "calls_per_reply": 1.0,
+   "tools": {
+    "run_command": 4,
+    "create": 1
+   },
+   "refused": 0,
+   "chained_calls": 2,
+   "tools_in_create_code": {
+    "edit_file": 1,
+    "run_command": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 30078,
+    "completion_tokens": 1784,
+    "cached_tokens": 20224
+   },
+   "stats": {
+    "model_seconds": 88.6,
+    "tool_seconds": 6.8,
+    "cache_pct": 67,
+    "cost": 0.0018
+   }
+  },
+  {
+   "arm": "chain",
+   "task": "stuck-requests",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 368,
+   "replies_with_calls": 18,
+   "calls_per_reply": 1.11,
+   "tools": {
+    "create": 19,
+    "read_file": 1
+   },
+   "refused": 14,
+   "chained_calls": 18,
+   "tools_in_create_code": {
+    "run_command": 16,
+    "check_stuck": 2
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 229623,
+    "completion_tokens": 8031,
+    "cached_tokens": 189440
+   },
+   "stats": {
+    "model_seconds": 333.5,
+    "tool_seconds": 11.7,
+    "cache_pct": 83,
+    "cost": 0.0127
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "stuck-requests",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 65,
+   "replies_with_calls": 4,
+   "calls_per_reply": 1.0,
+   "tools": {
+    "run_command": 4
+   },
+   "refused": 0,
+   "chained_calls": 0,
+   "tools_in_create_code": {},
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 22051,
+    "completion_tokens": 707,
+    "cached_tokens": 8704
+   },
+   "stats": {
+    "model_seconds": 64.1,
+    "tool_seconds": 0.2,
+    "cache_pct": 39,
+    "cost": 0.0012
+   }
+  },
+  {
+   "arm": "chain",
+   "task": "wordcount-json",
+   "passed": false,
+   "check": "py\", line 14, in <module>\n    assert r.returncode == 0 and len([f for f in os.listdir(os.path.join(root, \"tests\")) if f.startswith(\"test_\")]) >= 2, r.stdout[-500:]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ........                                                                 [100%]\n8 passed in 0.23s\n\n",
+   "seconds": 195,
+   "replies_with_calls": 11,
+   "calls_per_reply": 1.18,
+   "tools": {
+    "create": 9,
+    "read_file": 4
+   },
+   "refused": 4,
+   "chained_calls": 23,
+   "tools_in_create_code": {
+    "run_command": 15,
+    "edit_file": 3,
+    "check": 3,
+    "read_file": 2
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 95513,
+    "completion_tokens": 3289,
+    "cached_tokens": 71424
+   },
+   "stats": {
+    "model_seconds": 150.4,
+    "tool_seconds": 22.8,
+    "cache_pct": 75,
+    "cost": 0.0053
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "wordcount-json",
+   "passed": false,
+   "check": "py\", line 14, in <module>\n    assert r.returncode == 0 and len([f for f in os.listdir(os.path.join(root, \"tests\")) if f.startswith(\"test_\")]) >= 2, r.stdout[-500:]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: .......                                                                  [100%]\n7 passed in 0.18s\n\n",
+   "seconds": 360,
+   "replies_with_calls": 29,
+   "calls_per_reply": 1.07,
+   "tools": {
+    "run_command": 14,
+    "check": 6,
+    "create": 5,
+    "read_file": 4,
+    "edit_file": 2
+   },
+   "refused": 0,
+   "chained_calls": 23,
+   "tools_in_create_code": {
+    "run_command": 21,
+    "edit_file": 1,
+    "check": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 240704,
+    "completion_tokens": 6895,
+    "cached_tokens": 177152
+   },
+   "stats": {
+    "model_seconds": 340.8,
+    "tool_seconds": 16.3,
+    "cache_pct": 74,
+    "cost": 0.0131
+   }
+  }
+ ]
+}
