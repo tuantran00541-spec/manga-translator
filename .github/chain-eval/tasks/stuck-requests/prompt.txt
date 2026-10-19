@@ -1,1 +1,0 @@
-logs/ holds app-*.log files from one service. Each request id (req-NNNN) has a "start" line and should end with a "done" line, possibly in a different file, in any order. A request is stuck when it has an ERROR line and no "done" line anywhere. Write the stuck request ids, one per line, sorted, to out/stuck.txt.

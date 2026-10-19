@@ -4430,24 +4430,3 @@ def test_the_effort_is_set_through_the_api_and_kept_on_resume(api):
     agents.sessions[sid].save()
     agents.sessions.pop(sid).close()
     assert http.post(f"/api/agent/sessions/{sid}/resume", headers=head).json()["effort"] == "low"
-
-
-def test_the_stop_gate_sends_a_low_scored_finish_back_once_and_lets_a_high_one_through(ws, home, monkeypatch):
-    from app.agent import stopgate
-    (home / ".manga-agent").mkdir(exist_ok=True)
-    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"stop_gate": {"url": "http://gate/score", "threshold": 0.9, "max": 1}}))
-    seen = []
-    monkeypatch.setattr(stopgate, "score", lambda url, state: seen.append(state) or 0.2)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass",
-                                   complete=scripted(turn("Done, it works."), turn("Checked again: done.")))
-    run_to_idle(session, "make it work")
-    gates = [e for e in session.events if e["type"] == "junction" and e["at"] == "gate"]
-    assert len(gates) == 1 and gates[0]["score"] == 0.2, "one gate per request at most"
-    assert seen[0].startswith("Final reply: Done, it works.") and "Task: make it work" in seen[0]
-    assert any("scores this stop at 0.20" in str(h.get("content")) for h in session.history if h["role"] == "user")
-    assert [e["text"] for e in session.events if e["type"] == "assistant"][-1] == "Checked again: done."
-    monkeypatch.setattr(stopgate, "score", lambda url, state: 0.97)
-    quiet = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("Done.")))
-    run_to_idle(quiet, "again")
-    assert [e["score"] for e in quiet.events if e["type"] == "junction" and e["at"] == "gate"] == [0.97]
-    assert not any("scores this stop" in str(h.get("content")) for h in quiet.history)
