@@ -1,14 +1,13 @@
-name: Terminal-Bench 2.1
+name: Terminal-Bench 2.1 (PolarGrid)
 
-# Two providers in parallel: PolarGrid and CommandCode each run the full 89-task
-# Terminal-Bench 2.1 suite through Harbor on the Chaos harness. Settings come from
-# .github/terminal-bench/run.json (polargrid) and run-commandcode.json; a relay on
-# the runner holds each API key so the task containers never see it.
+# PolarGrid run: the full 89-task Terminal-Bench 2.1 suite through Harbor on the
+# Chaos harness, 3 shards in parallel. Settings come from .github/terminal-bench/run.json;
+# a relay on the runner holds the API key so the task containers never see it.
 on:
   push:
     branches-ignore: [main]
     paths:
-      - ".github/workflows/terminal-bench.yml"
+      - ".github/workflows/terminal-bench-polargrid.yml"
       - ".github/terminal-bench/**"
 
 permissions:
@@ -18,63 +17,61 @@ jobs:
   config:
     runs-on: ubuntu-22.04
     outputs:
-      providers: ${{ steps.cfg.outputs.providers }}
+      secret: ${{ steps.cfg.outputs.secret }}
+      base: ${{ steps.cfg.outputs.base }}
+      model: ${{ steps.cfg.outputs.model }}
+      check_only: ${{ steps.cfg.outputs.check_only }}
+      tasks: ${{ steps.cfg.outputs.tasks }}
+      concurrent: ${{ steps.cfg.outputs.concurrent }}
+      minutes: ${{ steps.cfg.outputs.minutes }}
+      request: ${{ steps.cfg.outputs.request }}
+      max_output: ${{ steps.cfg.outputs.max_output }}
+      shards: ${{ steps.cfg.outputs.shards }}
+      shard_total: ${{ steps.cfg.outputs.shard_total }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Read the run settings for both providers
+      - name: Read the run settings
         id: cfg
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, re, sys
           from urllib.parse import urlparse
-          def load(name, path):
-              cfg = json.load(open(path))
-              url = urlparse(cfg["base_url"])
-              if url.scheme != "https" or not url.hostname or url.username or url.query:
-                  sys.exit(f"{path}: base_url must be https without credentials or query")
-              if not re.fullmatch(r"[A-Za-z0-9_]+", cfg["secret"]):
-                  sys.exit(f"{path}: secret must be a plain secret name")
-              return {
-                  "name": name,
-                  "secret": cfg["secret"],
-                  "base": cfg["base_url"].rstrip("/"),
-                  "model": cfg["model"],
-                  "check_only": bool(cfg.get("check_only")),
-                  "tasks": " ".join("-i " + re.sub(r"[^A-Za-z0-9_.-]", "", t) for t in cfg.get("tasks") or []),
-                  "concurrent": int(cfg.get("concurrent") or 2),
-                  "minutes": int(cfg.get("minutes") or 60),
-                  "request": json.dumps(cfg.get("request") or {}),
-                  "max_output": int(cfg.get("max_output_tokens") or 16000),
-                  "shards": (lambda n: {"list": list(range(n)), "total": n})(max(1, int(cfg.get("shards") or 1))),
-              }
-          providers = [
-              load("polargrid", ".github/terminal-bench/run.json"),
-              load("commandcode", ".github/terminal-bench/run-commandcode.json"),
-          ]
-          print(f"providers={json.dumps(providers)}")
+          cfg = json.load(open(".github/terminal-bench/run.json"))
+          url = urlparse(cfg["base_url"])
+          if url.scheme != "https" or not url.hostname or url.username or url.query:
+              sys.exit("base_url must be https without credentials or query")
+          if not re.fullmatch(r"[A-Za-z0-9_]+", cfg["secret"]):
+              sys.exit("secret must be a plain secret name")
+          print(f"secret={cfg['secret']}")
+          print(f"base={cfg['base_url'].rstrip('/')}")
+          print(f"model={cfg['model']}")
+          print(f"check_only={'true' if cfg.get('check_only') else 'false'}")
+          print(f"tasks={' '.join('-i ' + re.sub(r'[^A-Za-z0-9_.-]', '', t) for t in cfg.get('tasks') or [])}")
+          print(f"concurrent={int(cfg.get('concurrent') or 2)}")
+          print(f"minutes={int(cfg.get('minutes') or 60)}")
+          print(f"request={json.dumps(cfg.get('request') or {})}")
+          print(f"max_output={int(cfg.get('max_output_tokens') or 16000)}")
+          total = max(1, int(cfg.get("shards") or 1))
+          print(f"shards={json.dumps(list(range(total)))}")
+          print(f"shard_total={total}")
           PY
 
   check:
-    # Each key is tried first: the model list and one short chat, before any task runs.
+    # The key is tried first: the model list and one short chat, before any task runs.
     needs: config
     runs-on: ubuntu-22.04
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        provider: ${{ fromJSON(needs.config.outputs.providers) }}
-    env:
-      API_KEY: ${{ secrets[matrix.provider.secret] }}
-      BASE: ${{ matrix.provider.base }}
-      MODEL: ${{ matrix.provider.model }}
-      REQUEST: ${{ matrix.provider.request }}
-      PNAME: ${{ matrix.provider.name }}
     steps:
-      - name: Try the ${{ matrix.provider.name }} key
+      - name: Try the PolarGrid key
+        env:
+          API_KEY: ${{ secrets[needs.config.outputs.secret] }}
+          BASE: ${{ needs.config.outputs.base }}
+          MODEL: ${{ needs.config.outputs.model }}
+          REQUEST: ${{ needs.config.outputs.request }}
         run: |
-          [ -n "$API_KEY" ] || { echo "::error::secret ${{ matrix.provider.secret }} is not set"; exit 1; }
+          [ -n "$API_KEY" ] || { echo "::error::secret ${{ needs.config.outputs.secret }} is not set"; exit 1; }
           python3 -m pip install -q requests
           python3 - <<'PY'
           import json, os, sys, time, requests
@@ -93,23 +90,22 @@ jobs:
           print(f"chat: HTTP {r.status_code} in {time.time() - started:.1f}s")
           if r.status_code != 200:
               print("  ", r.text[:500])
-              sys.exit(f"::error::the {os.environ['PNAME']} key or model does not answer")
+              sys.exit("::error::the PolarGrid key or model does not answer")
           data = r.json()
           print("  answer:", repr(((data.get("choices") or [{}])[0].get("message") or {}).get("content"))[:200], "usage:", data.get("usage"))
           PY
 
   bench:
     needs: [config, check]
-    if: ${{ !matrix.provider.check_only }}
+    if: needs.config.outputs.check_only != 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 355
     strategy:
       fail-fast: false
       matrix:
-        provider: ${{ fromJSON(needs.config.outputs.providers) }}
-        shard: ${{ fromJSON(needs.config.outputs.providers)[0].shards.list }}
+        shard: ${{ fromJSON(needs.config.outputs.shards) }}
     env:
-      OUT: audit-results/terminal-bench-2-1/${{ matrix.provider.name }}/run-${{ github.run_id }}/shard-${{ matrix.shard }}
+      OUT: audit-results/terminal-bench-2-1/polargrid/run-${{ github.run_id }}/shard-${{ matrix.shard }}
       PORT: "18080"
     steps:
       - uses: actions/checkout@v4
@@ -134,7 +130,7 @@ jobs:
 
       - name: Start the key relay as another user
         env:
-          API_KEY: ${{ secrets[matrix.provider.secret] }}
+          API_KEY: ${{ secrets[needs.config.outputs.secret] }}
         run: |
           python -m pip install -q requests
           sudo install -d -o nobody -m 711 /opt/relay
@@ -142,7 +138,7 @@ jobs:
           printf '%s' "$API_KEY" | sudo -u nobody tee /opt/relay/key > /dev/null
           sudo chmod 600 /opt/relay/key
           # No limits: no token, request or dollar ceiling on this run.
-          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" "${{ matrix.provider.base }}" '{}' "${{ matrix.provider.model }}" > /dev/null 2>&1 &
+          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" "${{ needs.config.outputs.base }}" '{}' "${{ needs.config.outputs.model }}" > /dev/null 2>&1 &
           sleep 3
           mkdir -p "$OUT"
           curl -sS -m 60 -o /dev/null -w "models endpoint: HTTP %{http_code}\n" "http://127.0.0.1:$PORT/v1/models" || true
@@ -183,30 +179,29 @@ jobs:
           PY
           ip -4 -o addr show docker0 | awk '{print $4}' | cut -d/ -f1 | tee /tmp/docker-gateway
 
-      - name: Run Harbor (${{ matrix.provider.name }})
+      - name: Run Harbor (PolarGrid)
         env:
           PYTHONPATH: ${{ github.workspace }}/.github/terminal-bench
           MANGA_AGENT_TGZ: /tmp/manga-agent.tgz
-          MANGA_AGENT_MODEL: ${{ matrix.provider.model }}
-          MANGA_AGENT_MINUTES: ${{ matrix.provider.minutes }}
+          MANGA_AGENT_MODEL: ${{ needs.config.outputs.model }}
+          MANGA_AGENT_MINUTES: ${{ needs.config.outputs.minutes }}
           MANGA_AGENT_TASKS_DIR: /tmp/tb21/tasks
-          MANGA_AGENT_MAX_OUTPUT: ${{ matrix.provider.max_output }}
-          MANGA_AGENT_REQUEST: ${{ matrix.provider.request }}
+          MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
+          MANGA_AGENT_REQUEST: ${{ needs.config.outputs.request }}
           MANGA_AGENT_SHA: ${{ github.sha }}
         run: |
           export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"
           [ -n "${SEARCH_RELAY:-}" ] && export MANGA_AGENT_SEARCH="http://$(cat /tmp/docker-gateway):$SEARCH_RELAY"
           export MANGA_AGENT_UV="$(readlink -f "$(command -v uv)")"
-          TASKS="${{ matrix.provider.tasks }}"
-          SHARD_TOTAL="${{ matrix.provider.shards.total }}"
+          TASKS="${{ needs.config.outputs.tasks }}"
           # With no task list, each shard takes every Nth task of the sorted set so hard and easy ones spread evenly.
-          [ -z "$TASKS" ] && TASKS=$(find /tmp/tb21/tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | awk -v n="$SHARD_TOTAL" -v k="${{ matrix.shard }}" '(NR-1)%n==k {printf "-i %s ", $0}')
+          [ -z "$TASKS" ] && TASKS=$(find /tmp/tb21/tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | awk -v n="${{ needs.config.outputs.shard_total }}" -v k="${{ matrix.shard }}" '(NR-1)%n==k {printf "-i %s ", $0}')
           echo "tasks in this shard: $(echo "$TASKS" | grep -o -- '-i ' | wc -l)"
           # Large task images fill the disk, so images no container uses go once space runs low.
           (while sleep 120; do [ "$(df --output=avail -BG / | tail -1 | tr -dc 0-9)" -lt 25 ] && docker image prune -af >/dev/null; done) &
           # Stop Harbor before the job limit so the summary and evidence steps still run.
           timeout 330m harbor run -p /tmp/tb21/tasks $TASKS --agent-import-path manga_agent:MangaAgent --model "$MANGA_AGENT_MODEL" \
-            --env docker --n-concurrent "${{ matrix.provider.concurrent }}" --max-retries 1 \
+            --env docker --n-concurrent "${{ needs.config.outputs.concurrent }}" --max-retries 1 \
             --jobs-dir "$PWD/jobs" --yes 2>&1 | tail -80 || true
 
       - name: Summarize
@@ -255,5 +250,5 @@ jobs:
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/terminal-bench-2-1/${{ matrix.provider.name }}/run-${{ github.run_id }}/shard-${{ matrix.shard }}
-          message: "audit: Terminal-Bench 2.1, Chaos open harness, ${{ matrix.provider.name }} (run ${{ github.run_id }}, shard ${{ matrix.shard }})"
+          paths: audit-results/terminal-bench-2-1/polargrid/run-${{ github.run_id }}/shard-${{ matrix.shard }}
+          message: "audit: Terminal-Bench 2.1, Chaos open harness, PolarGrid (run ${{ github.run_id }}, shard ${{ matrix.shard }})"
