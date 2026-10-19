@@ -1,0 +1,67 @@
+name: Decider judge calibration
+
+on:
+  push:
+    branches: [claude/friendly-hypatia-xi865r]
+    paths: [".github/workflows/decider-judge-calibrate.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Grade the Jev calibration lines with each decider
+        env:
+          MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
+        run: |
+          python3 -m pip install -q requests
+          git fetch -q origin audit-evidence
+          mkdir -p audit-results/decider-calibrate
+          python3 - <<'PY'
+          import json, os, subprocess
+          from concurrent.futures import ThreadPoolExecutor
+          import requests
+          import ast
+          # The judge's questions and limits, read without importing the app.
+          tree = ast.parse(open("app/ai_mode/polish.py").read())
+          consts = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body
+                    if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id in ("QUESTIONS", "LIMITS")}
+          QUESTIONS, LIMITS = consts["QUESTIONS"], consts["LIMITS"]
+
+          rows = json.loads(subprocess.check_output(["git", "show", "FETCH_HEAD:audit-results/jev-calibrate/results.json"]))["rows"]
+          key = os.environ["MINIROUTER_API_KEY"]
+          out = {}
+          for model in ("perplexity/pplx-decider-v1.2", "perplexity/pplx-decider-flash-v1.2"):
+              def grade(row):
+                  state = (f"SOURCE: {row['source']}\nTRANSLATION (Vietnamese): {row['text']}\n"
+                           "LINE BEFORE: (none)\nLINE AFTER: (none)")
+                  r = requests.post("https://api.minirouter.sh/v1/evaluate", timeout=60, headers={"Authorization": f"Bearer {key}"},
+                                    json={"model": model, "state": state, "questions": QUESTIONS})
+                  if not r.ok:
+                      return {**row, "error": r.text[:200]}
+                  answers = r.json().get("answers") or {}
+                  return {"source": row["source"], "kind": row["kind"], "text": row["text"], "jev": row.get("scores"),
+                          "scores": {k: round(float(a.get("score")), 2) for k, a in answers.items() if isinstance(a.get("score"), (int, float))}}
+              with ThreadPoolExecutor(8) as pool:
+                  graded = list(pool.map(grade, rows))
+              summary = {}
+              for kind in ("good", "stiff", "wrong", "garbled"):
+                  part = [g for g in graded if g["kind"] == kind and "scores" in g]
+                  summary[kind] = {q: sorted(g["scores"].get(q, 0) for g in part) for q in QUESTIONS}
+                  summary[kind]["flagged_at_jev_limits"] = sum(any(g["scores"].get(q, 9) < LIMITS[q] for q in QUESTIONS) for g in part)
+              summary["errors"] = sum("error" in g for g in graded)
+              out[model] = {"summary": summary, "rows": graded}
+              print(model, json.dumps(summary, indent=1))
+          json.dump(out, open("audit-results/decider-calibrate/results.json", "w"), ensure_ascii=False, indent=1)
+          PY
+      - if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/decider-calibrate
+          message: "audit: decider judge calibration (run ${{ github.run_id }})"
