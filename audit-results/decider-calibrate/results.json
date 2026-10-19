@@ -1,0 +1,1528 @@
+{
+ "perplexity/pplx-decider-v1.2": {
+  "summary": {
+   "good": {
+    "natural": [
+     2.41,
+     2.55,
+     2.65,
+     2.67,
+     2.68,
+     2.72,
+     2.73,
+     2.75,
+     2.78,
+     2.83
+    ],
+    "clear": [
+     1.85,
+     1.89,
+     1.95,
+     1.95,
+     1.96,
+     1.97,
+     1.97,
+     1.97,
+     1.97,
+     1.98
+    ],
+    "faithful": [
+     1.86,
+     1.88,
+     1.89,
+     1.92,
+     1.93,
+     1.96,
+     1.96,
+     1.97,
+     1.97,
+     1.99
+    ],
+    "flagged_at_jev_limits": 0
+   },
+   "stiff": {
+    "natural": [
+     1.12,
+     1.34,
+     1.39,
+     1.48,
+     1.85,
+     2.02,
+     2.09,
+     2.18,
+     2.21,
+     2.25
+    ],
+    "clear": [
+     1.06,
+     1.14,
+     1.22,
+     1.35,
+     1.67,
+     1.84,
+     1.89,
+     1.91,
+     1.92,
+     1.93
+    ],
+    "faithful": [
+     1.02,
+     1.19,
+     1.48,
+     1.59,
+     1.76,
+     1.89,
+     1.9,
+     1.91,
+     1.93,
+     1.94
+    ],
+    "flagged_at_jev_limits": 5
+   },
+   "wrong": {
+    "natural": [
+     1.57,
+     1.81,
+     1.93,
+     2.1,
+     2.11,
+     2.25,
+     2.25,
+     2.27,
+     2.32,
+     2.54
+    ],
+    "clear": [
+     1.52,
+     1.6,
+     1.6,
+     1.74,
+     1.78,
+     1.79,
+     1.8,
+     1.84,
+     1.86,
+     1.92
+    ],
+    "faithful": [
+     0.04,
+     0.04,
+     0.04,
+     0.06,
+     0.07,
+     0.08,
+     0.11,
+     0.15,
+     0.19,
+     0.24
+    ],
+    "flagged_at_jev_limits": 10
+   },
+   "garbled": {
+    "natural": [
+     0.49,
+     0.57,
+     0.68,
+     0.87,
+     1.0,
+     1.06,
+     1.08,
+     1.13,
+     1.43,
+     1.76
+    ],
+    "clear": [
+     0.44,
+     0.49,
+     0.57,
+     0.71,
+     0.73,
+     0.79,
+     0.87,
+     0.88,
+     1.0,
+     1.32
+    ],
+    "faithful": [
+     0.4,
+     0.61,
+     0.66,
+     0.76,
+     0.84,
+     0.84,
+     0.93,
+     1.24,
+     1.25,
+     1.36
+    ],
+    "flagged_at_jev_limits": 10
+   },
+   "errors": 0
+  },
+  "rows": [
+   {
+    "source": "Get out of here, now!",
+    "kind": "good",
+    "text": "Cút khỏi đây ngay!",
+    "jev": {
+     "natural": 2.89,
+     "clear": 1.99,
+     "faithful": 1.98
+    },
+    "scores": {
+     "natural": 2.75,
+     "clear": 1.97,
+     "faithful": 1.96
+    }
+   },
+   {
+    "source": "Get out of here, now!",
+    "kind": "stiff",
+    "text": "Hãy đi ra khỏi nơi này ở ngay bây giờ!",
+    "jev": {
+     "natural": 2.43,
+     "clear": 2,
+     "faithful": 1.99
+    },
+    "scores": {
+     "natural": 2.02,
+     "clear": 1.89,
+     "faithful": 1.89
+    }
+   },
+   {
+    "source": "Get out of here, now!",
+    "kind": "wrong",
+    "text": "Vào đây ngay!",
+    "jev": {
+     "natural": 2.42,
+     "clear": 1.5,
+     "faithful": 0.01
+    },
+    "scores": {
+     "natural": 2.27,
+     "clear": 1.84,
+     "faithful": 0.04
+    }
+   },
+   {
+    "source": "Get out of here, now!",
+    "kind": "garbled",
+    "text": "Ngay ra đây khỏi, cút đi nó!",
+    "jev": {
+     "natural": 1.58,
+     "clear": 1.64,
+     "faithful": 1.47
+    },
+    "scores": {
+     "natural": 1.43,
+     "clear": 1.0,
+     "faithful": 1.25
+    }
+   },
+   {
+    "source": "I won't let you die.",
+    "kind": "good",
+    "text": "Tôi sẽ không để cậu chết đâu.",
+    "jev": {
+     "natural": 2.74,
+     "clear": 1.99,
+     "faithful": 1.91
+    },
+    "scores": {
+     "natural": 2.78,
+     "clear": 1.97,
+     "faithful": 1.97
+    }
+   },
+   {
+    "source": "I won't let you die.",
+    "kind": "stiff",
+    "text": "Tôi sẽ không cho phép bạn để chết.",
+    "jev": {
+     "natural": 1.48,
+     "clear": 1.62,
+     "faithful": 1.72
+    },
+    "scores": {
+     "natural": 1.85,
+     "clear": 1.67,
+     "faithful": 1.76
+    }
+   },
+   {
+    "source": "I won't let you die.",
+    "kind": "wrong",
+    "text": "Tôi sẽ để cậu chết.",
+    "jev": {
+     "natural": 2.07,
+     "clear": 1.8,
+     "faithful": 0.03
+    },
+    "scores": {
+     "natural": 2.32,
+     "clear": 1.86,
+     "faithful": 0.07
+    }
+   },
+   {
+    "source": "I won't let you die.",
+    "kind": "garbled",
+    "text": "Chết không để tôi cậu sẽ.",
+    "jev": {
+     "natural": 0.46,
+     "clear": 0.45,
+     "faithful": 0.7
+    },
+    "scores": {
+     "natural": 0.49,
+     "clear": 0.49,
+     "faithful": 0.4
+    }
+   },
+   {
+    "source": "What the hell is going on here?!",
+    "kind": "good",
+    "text": "Chuyện quái gì đang xảy ra vậy?!",
+    "jev": {
+     "natural": 2.84,
+     "clear": 1.99,
+     "faithful": 1.94
+    },
+    "scores": {
+     "natural": 2.73,
+     "clear": 1.96,
+     "faithful": 1.92
+    }
+   },
+   {
+    "source": "What the hell is going on here?!",
+    "kind": "stiff",
+    "text": "Cái địa ngục gì đang đi tiếp ở đây?!",
+    "jev": {
+     "natural": 1.45,
+     "clear": 1.17,
+     "faithful": 1.17
+    },
+    "scores": {
+     "natural": 1.34,
+     "clear": 1.14,
+     "faithful": 1.19
+    }
+   },
+   {
+    "source": "What the hell is going on here?!",
+    "kind": "wrong",
+    "text": "Ở đây yên bình quá nhỉ?!",
+    "jev": {
+     "natural": 2.25,
+     "clear": 1.41,
+     "faithful": 0.12
+    },
+    "scores": {
+     "natural": 2.1,
+     "clear": 1.74,
+     "faithful": 0.04
+    }
+   },
+   {
+    "source": "What the hell is going on here?!",
+    "kind": "garbled",
+    "text": "Đang quái ra sao gì đây vậy chuyện?!",
+    "jev": {
+     "natural": 1.42,
+     "clear": 1.31,
+     "faithful": 1.72
+    },
+    "scores": {
+     "natural": 1.0,
+     "clear": 0.79,
+     "faithful": 1.24
+    }
+   },
+   {
+    "source": "You're stronger than you look.",
+    "kind": "good",
+    "text": "Cậu mạnh hơn vẻ ngoài đấy.",
+    "jev": {
+     "natural": 2.65,
+     "clear": 1.98,
+     "faithful": 1.96
+    },
+    "scores": {
+     "natural": 2.41,
+     "clear": 1.85,
+     "faithful": 1.88
+    }
+   },
+   {
+    "source": "You're stronger than you look.",
+    "kind": "stiff",
+    "text": "Bạn là mạnh hơn so với bạn nhìn.",
+    "jev": {
+     "natural": 1.2,
+     "clear": 1.54,
+     "faithful": 1.84
+    },
+    "scores": {
+     "natural": 1.39,
+     "clear": 1.22,
+     "faithful": 1.48
+    }
+   },
+   {
+    "source": "You're stronger than you look.",
+    "kind": "wrong",
+    "text": "Cậu yếu hơn tôi nghĩ.",
+    "jev": {
+     "natural": 2.48,
+     "clear": 1.84,
+     "faithful": 0.02
+    },
+    "scores": {
+     "natural": 2.25,
+     "clear": 1.79,
+     "faithful": 0.15
+    }
+   },
+   {
+    "source": "You're stronger than you look.",
+    "kind": "garbled",
+    "text": "Mạnh vẻ cậu ngoài hơn đấy trông.",
+    "jev": {
+     "natural": 0.96,
+     "clear": 0.91,
+     "faithful": 1.26
+    },
+    "scores": {
+     "natural": 0.87,
+     "clear": 0.71,
+     "faithful": 0.93
+    }
+   },
+   {
+    "source": "Don't worry. I'll handle it.",
+    "kind": "good",
+    "text": "Đừng lo. Để tôi lo.",
+    "jev": {
+     "natural": 2.68,
+     "clear": 1.99,
+     "faithful": 1.99
+    },
+    "scores": {
+     "natural": 2.55,
+     "clear": 1.89,
+     "faithful": 1.86
+    }
+   },
+   {
+    "source": "Don't worry. I'll handle it.",
+    "kind": "stiff",
+    "text": "Không lo lắng. Tôi sẽ xử lý nó.",
+    "jev": {
+     "natural": 1.99,
+     "clear": 1.99,
+     "faithful": 1.98
+    },
+    "scores": {
+     "natural": 2.09,
+     "clear": 1.92,
+     "faithful": 1.93
+    }
+   },
+   {
+    "source": "Don't worry. I'll handle it.",
+    "kind": "wrong",
+    "text": "Lo đi. Tôi mặc kệ đấy.",
+    "jev": {
+     "natural": 1.52,
+     "clear": 0.96,
+     "faithful": 0.27
+    },
+    "scores": {
+     "natural": 1.81,
+     "clear": 1.6,
+     "faithful": 0.19
+    }
+   },
+   {
+    "source": "Don't worry. I'll handle it.",
+    "kind": "garbled",
+    "text": "Lo đừng. Tôi để nó xử.",
+    "jev": {
+     "natural": 1.16,
+     "clear": 1.16,
+     "faithful": 1.2
+    },
+    "scores": {
+     "natural": 1.06,
+     "clear": 0.88,
+     "faithful": 0.84
+    }
+   },
+   {
+    "source": "Thanks to you, we survived.",
+    "kind": "good",
+    "text": "Nhờ có cậu mà bọn tôi mới sống sót.",
+    "jev": {
+     "natural": 2.67,
+     "clear": 1.98,
+     "faithful": 1.96
+    },
+    "scores": {
+     "natural": 2.68,
+     "clear": 1.97,
+     "faithful": 1.96
+    }
+   },
+   {
+    "source": "Thanks to you, we survived.",
+    "kind": "stiff",
+    "text": "Cảm ơn đến bạn, chúng tôi đã sống sót.",
+    "jev": {
+     "natural": 1.8,
+     "clear": 1.94,
+     "faithful": 1.96
+    },
+    "scores": {
+     "natural": 2.25,
+     "clear": 1.91,
+     "faithful": 1.91
+    }
+   },
+   {
+    "source": "Thanks to you, we survived.",
+    "kind": "wrong",
+    "text": "Vì cậu mà bọn tôi suýt chết.",
+    "jev": {
+     "natural": 2.19,
+     "clear": 1.67,
+     "faithful": 0.11
+    },
+    "scores": {
+     "natural": 2.25,
+     "clear": 1.8,
+     "faithful": 0.06
+    }
+   },
+   {
+    "source": "Thanks to you, we survived.",
+    "kind": "garbled",
+    "text": "Sống nhờ sót cậu tôi bọn mà.",
+    "jev": {
+     "natural": 0.81,
+     "clear": 0.82,
+     "faithful": 1
+    },
+    "scores": {
+     "natural": 1.08,
+     "clear": 0.73,
+     "faithful": 0.84
+    }
+   },
+   {
+    "source": "It's been a long time, old friend.",
+    "kind": "good",
+    "text": "Lâu rồi không gặp, bạn cũ.",
+    "jev": {
+     "natural": 2.69,
+     "clear": 1.99,
+     "faithful": 1.93
+    },
+    "scores": {
+     "natural": 2.65,
+     "clear": 1.95,
+     "faithful": 1.93
+    }
+   },
+   {
+    "source": "It's been a long time, old friend.",
+    "kind": "stiff",
+    "text": "Nó đã là một thời gian dài, người bạn già.",
+    "jev": {
+     "natural": 1.7,
+     "clear": 1.84,
+     "faithful": 1.87
+    },
+    "scores": {
+     "natural": 1.48,
+     "clear": 1.35,
+     "faithful": 1.59
+    }
+   },
+   {
+    "source": "It's been a long time, old friend.",
+    "kind": "wrong",
+    "text": "Mới gặp hôm qua mà, người lạ.",
+    "jev": {
+     "natural": 2.35,
+     "clear": 1.73,
+     "faithful": 0.03
+    },
+    "scores": {
+     "natural": 1.93,
+     "clear": 1.6,
+     "faithful": 0.08
+    }
+   },
+   {
+    "source": "It's been a long time, old friend.",
+    "kind": "garbled",
+    "text": "Gặp lâu bạn rồi không cũ.",
+    "jev": {
+     "natural": 1.19,
+     "clear": 1.11,
+     "faithful": 1.15
+    },
+    "scores": {
+     "natural": 1.13,
+     "clear": 0.87,
+     "faithful": 0.76
+    }
+   },
+   {
+    "source": "The gate will open at midnight.",
+    "kind": "good",
+    "text": "Cổng sẽ mở lúc nửa đêm.",
+    "jev": {
+     "natural": 2.86,
+     "clear": 2,
+     "faithful": 2
+    },
+    "scores": {
+     "natural": 2.83,
+     "clear": 1.98,
+     "faithful": 1.99
+    }
+   },
+   {
+    "source": "The gate will open at midnight.",
+    "kind": "stiff",
+    "text": "Cái cổng sẽ được mở ra tại thời điểm nửa đêm.",
+    "jev": {
+     "natural": 1.97,
+     "clear": 1.99,
+     "faithful": 1.98
+    },
+    "scores": {
+     "natural": 2.18,
+     "clear": 1.93,
+     "faithful": 1.94
+    }
+   },
+   {
+    "source": "The gate will open at midnight.",
+    "kind": "wrong",
+    "text": "Cổng sẽ đóng lúc bình minh.",
+    "jev": {
+     "natural": 2.71,
+     "clear": 1.64,
+     "faithful": 0.03
+    },
+    "scores": {
+     "natural": 2.54,
+     "clear": 1.92,
+     "faithful": 0.04
+    }
+   },
+   {
+    "source": "The gate will open at midnight.",
+    "kind": "garbled",
+    "text": "Nửa mở cổng sẽ đêm lúc.",
+    "jev": {
+     "natural": 0.57,
+     "clear": 0.44,
+     "faithful": 0.85
+    },
+    "scores": {
+     "natural": 0.68,
+     "clear": 0.57,
+     "faithful": 0.66
+    }
+   },
+   {
+    "source": "Are you out of your mind?!",
+    "kind": "good",
+    "text": "Cậu điên rồi à?!",
+    "jev": {
+     "natural": 2.85,
+     "clear": 1.98,
+     "faithful": 1.97
+    },
+    "scores": {
+     "natural": 2.72,
+     "clear": 1.95,
+     "faithful": 1.89
+    }
+   },
+   {
+    "source": "Are you out of your mind?!",
+    "kind": "stiff",
+    "text": "Bạn có ở bên ngoài tâm trí của bạn không?!",
+    "jev": {
+     "natural": 1.06,
+     "clear": 0.96,
+     "faithful": 1.16
+    },
+    "scores": {
+     "natural": 1.12,
+     "clear": 1.06,
+     "faithful": 1.02
+    }
+   },
+   {
+    "source": "Are you out of your mind?!",
+    "kind": "wrong",
+    "text": "Cậu thông minh thật đấy?!",
+    "jev": {
+     "natural": 1.61,
+     "clear": 1.14,
+     "faithful": 0.38
+    },
+    "scores": {
+     "natural": 1.57,
+     "clear": 1.52,
+     "faithful": 0.24
+    }
+   },
+   {
+    "source": "Are you out of your mind?!",
+    "kind": "garbled",
+    "text": "Rồi điên à cậu à?!",
+    "jev": {
+     "natural": 2.2,
+     "clear": 1.82,
+     "faithful": 1.86
+    },
+    "scores": {
+     "natural": 1.76,
+     "clear": 1.32,
+     "faithful": 1.36
+    }
+   },
+   {
+    "source": "I'll never forgive you for this.",
+    "kind": "good",
+    "text": "Tôi sẽ không bao giờ tha thứ cho ngươi chuyện này.",
+    "jev": {
+     "natural": 2.13,
+     "clear": 1.94,
+     "faithful": 1.93
+    },
+    "scores": {
+     "natural": 2.67,
+     "clear": 1.97,
+     "faithful": 1.97
+    }
+   },
+   {
+    "source": "I'll never forgive you for this.",
+    "kind": "stiff",
+    "text": "Tôi sẽ không bao giờ tha thứ bạn cho cái này.",
+    "jev": {
+     "natural": 1.44,
+     "clear": 1.52,
+     "faithful": 1.63
+    },
+    "scores": {
+     "natural": 2.21,
+     "clear": 1.84,
+     "faithful": 1.9
+    }
+   },
+   {
+    "source": "I'll never forgive you for this.",
+    "kind": "wrong",
+    "text": "Tôi tha thứ cho ngươi rồi.",
+    "jev": {
+     "natural": 2.1,
+     "clear": 1.64,
+     "faithful": 0.02
+    },
+    "scores": {
+     "natural": 2.11,
+     "clear": 1.78,
+     "faithful": 0.11
+    }
+   },
+   {
+    "source": "I'll never forgive you for this.",
+    "kind": "garbled",
+    "text": "Tha bao giờ không ngươi tôi này chuyện.",
+    "jev": {
+     "natural": 0.58,
+     "clear": 0.62,
+     "faithful": 1.21
+    },
+    "scores": {
+     "natural": 0.57,
+     "clear": 0.44,
+     "faithful": 0.61
+    }
+   }
+  ]
+ },
+ "perplexity/pplx-decider-flash-v1.2": {
+  "summary": {
+   "good": {
+    "natural": [
+     2.12,
+     2.18,
+     2.26,
+     2.3,
+     2.36,
+     2.4,
+     2.41,
+     2.41,
+     2.46,
+     2.48
+    ],
+    "clear": [
+     1.14,
+     1.25,
+     1.33,
+     1.46,
+     1.47,
+     1.53,
+     1.53,
+     1.55,
+     1.65,
+     1.7
+    ],
+    "faithful": [
+     1.38,
+     1.49,
+     1.56,
+     1.56,
+     1.69,
+     1.7,
+     1.72,
+     1.73,
+     1.75,
+     1.8
+    ],
+    "flagged_at_jev_limits": 10
+   },
+   "stiff": {
+    "natural": [
+     1.54,
+     1.54,
+     1.64,
+     1.71,
+     1.99,
+     2.07,
+     2.12,
+     2.2,
+     2.22,
+     2.25
+    ],
+    "clear": [
+     0.98,
+     1.21,
+     1.24,
+     1.28,
+     1.31,
+     1.35,
+     1.38,
+     1.38,
+     1.48,
+     1.53
+    ],
+    "faithful": [
+     1.02,
+     1.27,
+     1.38,
+     1.45,
+     1.57,
+     1.67,
+     1.68,
+     1.69,
+     1.72,
+     1.73
+    ],
+    "flagged_at_jev_limits": 10
+   },
+   "wrong": {
+    "natural": [
+     1.5,
+     1.52,
+     1.55,
+     1.64,
+     1.64,
+     1.69,
+     1.7,
+     1.71,
+     1.77,
+     1.97
+    ],
+    "clear": [
+     0.95,
+     0.99,
+     1.03,
+     1.03,
+     1.1,
+     1.18,
+     1.21,
+     1.22,
+     1.26,
+     1.43
+    ],
+    "faithful": [
+     0.32,
+     0.36,
+     0.36,
+     0.38,
+     0.42,
+     0.48,
+     0.49,
+     0.57,
+     0.72,
+     1.08
+    ],
+    "flagged_at_jev_limits": 10
+   },
+   "garbled": {
+    "natural": [
+     0.91,
+     1.06,
+     1.2,
+     1.36,
+     1.4,
+     1.44,
+     1.48,
+     1.51,
+     1.68,
+     1.71
+    ],
+    "clear": [
+     0.71,
+     0.72,
+     0.94,
+     1.01,
+     1.03,
+     1.05,
+     1.06,
+     1.11,
+     1.18,
+     1.21
+    ],
+    "faithful": [
+     0.71,
+     0.76,
+     1.09,
+     1.12,
+     1.2,
+     1.2,
+     1.21,
+     1.23,
+     1.24,
+     1.42
+    ],
+    "flagged_at_jev_limits": 10
+   },
+   "errors": 0
+  },
+  "rows": [
+   {
+    "source": "Get out of here, now!",
+    "kind": "good",
+    "text": "Cút khỏi đây ngay!",
+    "jev": {
+     "natural": 2.89,
+     "clear": 1.99,
+     "faithful": 1.98
+    },
+    "scores": {
+     "natural": 2.4,
+     "clear": 1.25,
+     "faithful": 1.73
+    }
+   },
+   {
+    "source": "Get out of here, now!",
+    "kind": "stiff",
+    "text": "Hãy đi ra khỏi nơi này ở ngay bây giờ!",
+    "jev": {
+     "natural": 2.43,
+     "clear": 2,
+     "faithful": 1.99
+    },
+    "scores": {
+     "natural": 2.07,
+     "clear": 1.31,
+     "faithful": 1.67
+    }
+   },
+   {
+    "source": "Get out of here, now!",
+    "kind": "wrong",
+    "text": "Vào đây ngay!",
+    "jev": {
+     "natural": 2.42,
+     "clear": 1.5,
+     "faithful": 0.01
+    },
+    "scores": {
+     "natural": 1.55,
+     "clear": 1.22,
+     "faithful": 0.36
+    }
+   },
+   {
+    "source": "Get out of here, now!",
+    "kind": "garbled",
+    "text": "Ngay ra đây khỏi, cút đi nó!",
+    "jev": {
+     "natural": 1.58,
+     "clear": 1.64,
+     "faithful": 1.47
+    },
+    "scores": {
+     "natural": 1.68,
+     "clear": 1.21,
+     "faithful": 1.42
+    }
+   },
+   {
+    "source": "I won't let you die.",
+    "kind": "good",
+    "text": "Tôi sẽ không để cậu chết đâu.",
+    "jev": {
+     "natural": 2.74,
+     "clear": 1.99,
+     "faithful": 1.91
+    },
+    "scores": {
+     "natural": 2.41,
+     "clear": 1.55,
+     "faithful": 1.75
+    }
+   },
+   {
+    "source": "I won't let you die.",
+    "kind": "stiff",
+    "text": "Tôi sẽ không cho phép bạn để chết.",
+    "jev": {
+     "natural": 1.48,
+     "clear": 1.62,
+     "faithful": 1.72
+    },
+    "scores": {
+     "natural": 1.99,
+     "clear": 1.38,
+     "faithful": 1.57
+    }
+   },
+   {
+    "source": "I won't let you die.",
+    "kind": "wrong",
+    "text": "Tôi sẽ để cậu chết.",
+    "jev": {
+     "natural": 2.07,
+     "clear": 1.8,
+     "faithful": 0.03
+    },
+    "scores": {
+     "natural": 1.69,
+     "clear": 1.1,
+     "faithful": 0.42
+    }
+   },
+   {
+    "source": "I won't let you die.",
+    "kind": "garbled",
+    "text": "Chết không để tôi cậu sẽ.",
+    "jev": {
+     "natural": 0.46,
+     "clear": 0.45,
+     "faithful": 0.7
+    },
+    "scores": {
+     "natural": 1.06,
+     "clear": 0.72,
+     "faithful": 0.71
+    }
+   },
+   {
+    "source": "What the hell is going on here?!",
+    "kind": "good",
+    "text": "Chuyện quái gì đang xảy ra vậy?!",
+    "jev": {
+     "natural": 2.84,
+     "clear": 1.99,
+     "faithful": 1.94
+    },
+    "scores": {
+     "natural": 2.36,
+     "clear": 1.47,
+     "faithful": 1.49
+    }
+   },
+   {
+    "source": "What the hell is going on here?!",
+    "kind": "stiff",
+    "text": "Cái địa ngục gì đang đi tiếp ở đây?!",
+    "jev": {
+     "natural": 1.45,
+     "clear": 1.17,
+     "faithful": 1.17
+    },
+    "scores": {
+     "natural": 1.54,
+     "clear": 0.98,
+     "faithful": 1.02
+    }
+   },
+   {
+    "source": "What the hell is going on here?!",
+    "kind": "wrong",
+    "text": "Ở đây yên bình quá nhỉ?!",
+    "jev": {
+     "natural": 2.25,
+     "clear": 1.41,
+     "faithful": 0.12
+    },
+    "scores": {
+     "natural": 1.5,
+     "clear": 0.95,
+     "faithful": 0.38
+    }
+   },
+   {
+    "source": "What the hell is going on here?!",
+    "kind": "garbled",
+    "text": "Đang quái ra sao gì đây vậy chuyện?!",
+    "jev": {
+     "natural": 1.42,
+     "clear": 1.31,
+     "faithful": 1.72
+    },
+    "scores": {
+     "natural": 1.44,
+     "clear": 1.11,
+     "faithful": 1.2
+    }
+   },
+   {
+    "source": "You're stronger than you look.",
+    "kind": "good",
+    "text": "Cậu mạnh hơn vẻ ngoài đấy.",
+    "jev": {
+     "natural": 2.65,
+     "clear": 1.98,
+     "faithful": 1.96
+    },
+    "scores": {
+     "natural": 2.18,
+     "clear": 1.53,
+     "faithful": 1.56
+    }
+   },
+   {
+    "source": "You're stronger than you look.",
+    "kind": "stiff",
+    "text": "Bạn là mạnh hơn so với bạn nhìn.",
+    "jev": {
+     "natural": 1.2,
+     "clear": 1.54,
+     "faithful": 1.84
+    },
+    "scores": {
+     "natural": 1.54,
+     "clear": 1.21,
+     "faithful": 1.38
+    }
+   },
+   {
+    "source": "You're stronger than you look.",
+    "kind": "wrong",
+    "text": "Cậu yếu hơn tôi nghĩ.",
+    "jev": {
+     "natural": 2.48,
+     "clear": 1.84,
+     "faithful": 0.02
+    },
+    "scores": {
+     "natural": 1.77,
+     "clear": 1.21,
+     "faithful": 0.57
+    }
+   },
+   {
+    "source": "You're stronger than you look.",
+    "kind": "garbled",
+    "text": "Mạnh vẻ cậu ngoài hơn đấy trông.",
+    "jev": {
+     "natural": 0.96,
+     "clear": 0.91,
+     "faithful": 1.26
+    },
+    "scores": {
+     "natural": 1.36,
+     "clear": 1.01,
+     "faithful": 1.09
+    }
+   },
+   {
+    "source": "Don't worry. I'll handle it.",
+    "kind": "good",
+    "text": "Đừng lo. Để tôi lo.",
+    "jev": {
+     "natural": 2.68,
+     "clear": 1.99,
+     "faithful": 1.99
+    },
+    "scores": {
+     "natural": 2.46,
+     "clear": 1.33,
+     "faithful": 1.69
+    }
+   },
+   {
+    "source": "Don't worry. I'll handle it.",
+    "kind": "stiff",
+    "text": "Không lo lắng. Tôi sẽ xử lý nó.",
+    "jev": {
+     "natural": 1.99,
+     "clear": 1.99,
+     "faithful": 1.98
+    },
+    "scores": {
+     "natural": 2.25,
+     "clear": 1.24,
+     "faithful": 1.73
+    }
+   },
+   {
+    "source": "Don't worry. I'll handle it.",
+    "kind": "wrong",
+    "text": "Lo đi. Tôi mặc kệ đấy.",
+    "jev": {
+     "natural": 1.52,
+     "clear": 0.96,
+     "faithful": 0.27
+    },
+    "scores": {
+     "natural": 1.71,
+     "clear": 1.03,
+     "faithful": 1.08
+    }
+   },
+   {
+    "source": "Don't worry. I'll handle it.",
+    "kind": "garbled",
+    "text": "Lo đừng. Tôi để nó xử.",
+    "jev": {
+     "natural": 1.16,
+     "clear": 1.16,
+     "faithful": 1.2
+    },
+    "scores": {
+     "natural": 1.71,
+     "clear": 1.06,
+     "faithful": 1.24
+    }
+   },
+   {
+    "source": "Thanks to you, we survived.",
+    "kind": "good",
+    "text": "Nhờ có cậu mà bọn tôi mới sống sót.",
+    "jev": {
+     "natural": 2.67,
+     "clear": 1.98,
+     "faithful": 1.96
+    },
+    "scores": {
+     "natural": 2.41,
+     "clear": 1.7,
+     "faithful": 1.7
+    }
+   },
+   {
+    "source": "Thanks to you, we survived.",
+    "kind": "stiff",
+    "text": "Cảm ơn đến bạn, chúng tôi đã sống sót.",
+    "jev": {
+     "natural": 1.8,
+     "clear": 1.94,
+     "faithful": 1.96
+    },
+    "scores": {
+     "natural": 2.2,
+     "clear": 1.53,
+     "faithful": 1.68
+    }
+   },
+   {
+    "source": "Thanks to you, we survived.",
+    "kind": "wrong",
+    "text": "Vì cậu mà bọn tôi suýt chết.",
+    "jev": {
+     "natural": 2.19,
+     "clear": 1.67,
+     "faithful": 0.11
+    },
+    "scores": {
+     "natural": 1.7,
+     "clear": 1.18,
+     "faithful": 0.72
+    }
+   },
+   {
+    "source": "Thanks to you, we survived.",
+    "kind": "garbled",
+    "text": "Sống nhờ sót cậu tôi bọn mà.",
+    "jev": {
+     "natural": 0.81,
+     "clear": 0.82,
+     "faithful": 1
+    },
+    "scores": {
+     "natural": 1.4,
+     "clear": 1.05,
+     "faithful": 1.2
+    }
+   },
+   {
+    "source": "It's been a long time, old friend.",
+    "kind": "good",
+    "text": "Lâu rồi không gặp, bạn cũ.",
+    "jev": {
+     "natural": 2.69,
+     "clear": 1.99,
+     "faithful": 1.93
+    },
+    "scores": {
+     "natural": 2.12,
+     "clear": 1.46,
+     "faithful": 1.38
+    }
+   },
+   {
+    "source": "It's been a long time, old friend.",
+    "kind": "stiff",
+    "text": "Nó đã là một thời gian dài, người bạn già.",
+    "jev": {
+     "natural": 1.7,
+     "clear": 1.84,
+     "faithful": 1.87
+    },
+    "scores": {
+     "natural": 1.64,
+     "clear": 1.35,
+     "faithful": 1.45
+    }
+   },
+   {
+    "source": "It's been a long time, old friend.",
+    "kind": "wrong",
+    "text": "Mới gặp hôm qua mà, người lạ.",
+    "jev": {
+     "natural": 2.35,
+     "clear": 1.73,
+     "faithful": 0.03
+    },
+    "scores": {
+     "natural": 1.52,
+     "clear": 0.99,
+     "faithful": 0.36
+    }
+   },
+   {
+    "source": "It's been a long time, old friend.",
+    "kind": "garbled",
+    "text": "Gặp lâu bạn rồi không cũ.",
+    "jev": {
+     "natural": 1.19,
+     "clear": 1.11,
+     "faithful": 1.15
+    },
+    "scores": {
+     "natural": 1.51,
+     "clear": 1.18,
+     "faithful": 1.12
+    }
+   },
+   {
+    "source": "The gate will open at midnight.",
+    "kind": "good",
+    "text": "Cổng sẽ mở lúc nửa đêm.",
+    "jev": {
+     "natural": 2.86,
+     "clear": 2,
+     "faithful": 2
+    },
+    "scores": {
+     "natural": 2.48,
+     "clear": 1.14,
+     "faithful": 1.8
+    }
+   },
+   {
+    "source": "The gate will open at midnight.",
+    "kind": "stiff",
+    "text": "Cái cổng sẽ được mở ra tại thời điểm nửa đêm.",
+    "jev": {
+     "natural": 1.97,
+     "clear": 1.99,
+     "faithful": 1.98
+    },
+    "scores": {
+     "natural": 2.22,
+     "clear": 1.38,
+     "faithful": 1.72
+    }
+   },
+   {
+    "source": "The gate will open at midnight.",
+    "kind": "wrong",
+    "text": "Cổng sẽ đóng lúc bình minh.",
+    "jev": {
+     "natural": 2.71,
+     "clear": 1.64,
+     "faithful": 0.03
+    },
+    "scores": {
+     "natural": 1.97,
+     "clear": 1.43,
+     "faithful": 0.32
+    }
+   },
+   {
+    "source": "The gate will open at midnight.",
+    "kind": "garbled",
+    "text": "Nửa mở cổng sẽ đêm lúc.",
+    "jev": {
+     "natural": 0.57,
+     "clear": 0.44,
+     "faithful": 0.85
+    },
+    "scores": {
+     "natural": 0.91,
+     "clear": 0.71,
+     "faithful": 0.76
+    }
+   },
+   {
+    "source": "Are you out of your mind?!",
+    "kind": "good",
+    "text": "Cậu điên rồi à?!",
+    "jev": {
+     "natural": 2.85,
+     "clear": 1.98,
+     "faithful": 1.97
+    },
+    "scores": {
+     "natural": 2.3,
+     "clear": 1.53,
+     "faithful": 1.56
+    }
+   },
+   {
+    "source": "Are you out of your mind?!",
+    "kind": "stiff",
+    "text": "Bạn có ở bên ngoài tâm trí của bạn không?!",
+    "jev": {
+     "natural": 1.06,
+     "clear": 0.96,
+     "faithful": 1.16
+    },
+    "scores": {
+     "natural": 1.71,
+     "clear": 1.28,
+     "faithful": 1.27
+    }
+   },
+   {
+    "source": "Are you out of your mind?!",
+    "kind": "wrong",
+    "text": "Cậu thông minh thật đấy?!",
+    "jev": {
+     "natural": 1.61,
+     "clear": 1.14,
+     "faithful": 0.38
+    },
+    "scores": {
+     "natural": 1.64,
+     "clear": 1.03,
+     "faithful": 0.49
+    }
+   },
+   {
+    "source": "Are you out of your mind?!",
+    "kind": "garbled",
+    "text": "Rồi điên à cậu à?!",
+    "jev": {
+     "natural": 2.2,
+     "clear": 1.82,
+     "faithful": 1.86
+    },
+    "scores": {
+     "natural": 1.48,
+     "clear": 1.03,
+     "faithful": 1.21
+    }
+   },
+   {
+    "source": "I'll never forgive you for this.",
+    "kind": "good",
+    "text": "Tôi sẽ không bao giờ tha thứ cho ngươi chuyện này.",
+    "jev": {
+     "natural": 2.13,
+     "clear": 1.94,
+     "faithful": 1.93
+    },
+    "scores": {
+     "natural": 2.26,
+     "clear": 1.65,
+     "faithful": 1.72
+    }
+   },
+   {
+    "source": "I'll never forgive you for this.",
+    "kind": "stiff",
+    "text": "Tôi sẽ không bao giờ tha thứ bạn cho cái này.",
+    "jev": {
+     "natural": 1.44,
+     "clear": 1.52,
+     "faithful": 1.63
+    },
+    "scores": {
+     "natural": 2.12,
+     "clear": 1.48,
+     "faithful": 1.69
+    }
+   },
+   {
+    "source": "I'll never forgive you for this.",
+    "kind": "wrong",
+    "text": "Tôi tha thứ cho ngươi rồi.",
+    "jev": {
+     "natural": 2.1,
+     "clear": 1.64,
+     "faithful": 0.02
+    },
+    "scores": {
+     "natural": 1.64,
+     "clear": 1.26,
+     "faithful": 0.48
+    }
+   },
+   {
+    "source": "I'll never forgive you for this.",
+    "kind": "garbled",
+    "text": "Tha bao giờ không ngươi tôi này chuyện.",
+    "jev": {
+     "natural": 0.58,
+     "clear": 0.62,
+     "faithful": 1.21
+    },
+    "scores": {
+     "natural": 1.2,
+     "clear": 0.94,
+     "faithful": 1.23
+    }
+   }
+  ]
+ }
+}
