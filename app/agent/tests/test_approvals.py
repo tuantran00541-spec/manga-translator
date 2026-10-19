@@ -28,7 +28,6 @@ def mk_session(tmp_path, sid, mode="ask"):
     ws = Workspace(wsroot, sandbox.Policy("workspace-write", False))
     s = mgr.create(Prov(), "k", "m", ws, mode,
                    complete=lambda *a, **k: {"text": ""}, session_id=sid)
-    s.profile["shell_tool"] = True  # default profile hides run_command; approvals don't depend on it
     return s, wsroot
 
 

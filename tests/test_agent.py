@@ -367,7 +367,7 @@ def test_a_named_wait_is_kept_even_with_spare_keys(monkeypatch):
 
 
 def test_ask_mode_waits_for_approval_then_writes(ws, home):
-    fake = scripted(turn(calls=[call("write_file", path="new.txt", content="hi")]), turn("Xong."), turn("Không có test để chạy."))
+    fake = scripted(turn(calls=[call("write_file", path="new.txt", content="hi")]), turn("Xong."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
     session.send("tạo file")
     wait_for(session, "waiting")
@@ -375,8 +375,8 @@ def test_ask_mode_waits_for_approval_then_writes(ws, home):
     session.decide("allow")
     wait_for(session, "idle")
     assert (ws.root / "new.txt").read_text() == "hi"
-    assert [e["type"] for e in session.events] == ["user", "assistant", "approval", "tool", "assistant", "notice", "assistant", "done"]
-    assert session.usage == {"prompt_tokens": 3, "completion_tokens": 3, "cached_tokens": 0}
+    assert [e["type"] for e in session.events] == ["user", "assistant", "approval", "tool", "assistant", "done"]
+    assert session.usage == {"prompt_tokens": 2, "completion_tokens": 2, "cached_tokens": 0}
 
 
 def test_edits_mode_runs_sandboxed_commands_alone_and_asks_to_leave_the_sandbox(ws, home, monkeypatch):
@@ -445,8 +445,8 @@ def test_hooks_block_and_report_only_once_trusted(ws, home, tmp_path):
         "PreToolUse": [{"matcher": "Bash", "command": "echo 'no shell today' >&2; exit 2"}],
         "PostToolUse": [{"matcher": "Write", "command": "echo checked >&2"}]}}), encoding="utf-8")
     ws.policy = sandbox.Policy("full-access", True)
-    fake = scripted(turn(calls=[call("run_command", command="echo hi"), call("write_file", path="x.txt", content="x")]), turn("ok"), turn("no check applies"),
-                    turn(calls=[call("run_command", command="echo hi"), call("write_file", path="y.txt", content="y")]), turn("ok"), turn("no check applies"))
+    fake = scripted(turn(calls=[call("run_command", command="echo hi"), call("write_file", path="x.txt", content="x")]), turn("ok"),
+                    turn(calls=[call("run_command", command="echo hi"), call("write_file", path="y.txt", content="y")]), turn("ok"))
     session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.send("one")
     wait_for(session, "idle")
@@ -1390,22 +1390,6 @@ def test_at_most_three_skills_are_loaded_per_task(ws, home):
     assert [ok for ok, _ in results] == [True, True, True, False] and "at most 3 skills" in results[3][1]
 
 
-def test_the_agent_is_nudged_once_when_it_stops_after_editing_without_checking(ws, home):
-    fake = scripted(turn(calls=[call("write_file", path="a.txt", content="1")]), turn("Done."),
-                    turn(calls=[call("run_command", command="true")]), turn("Checked."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    assert any(m["role"] == "user" and "have not run anything since" in m["content"] for m in session.history)
-    assert [n for n, _, _ in tool_outputs(session)] == ["write_file", "run_command"]
-    still = scripted(turn(calls=[call("write_file", path="b.txt", content="1")]), turn("Done."), turn("Still nothing to run."))
-    again = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=still, session_id="again")
-    run_to_idle(again)
-    assert len(still.seen) == 3, "nudged once, not forever"
-    quiet = scripted(turn(calls=[call("list_dir")]), turn("Nothing changed."))
-    run_to_idle(manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=quiet, session_id="q"))
-    assert len(quiet.seen) == 2
-
-
 def test_helpers_that_edit_files_run_one_after_the_other_when_copies_are_off(ws, home):
     import threading
     order = []
@@ -2290,32 +2274,6 @@ def test_prewalk_plans_on_the_strong_model_and_hands_over_at_the_first_edit(ws, 
     assert texts.index(session_module.PREWALK_PLAN) < texts.index(session_module.PREWALK_CHECKLIST)
 
 
-def test_a_garbled_final_reply_after_long_work_is_sent_back_once(ws, home):
-    reads = [turn(calls=[call("list_dir", path=f"d{n}")]) for n in range(5)]
-    fake = scripted(*reads, turn("Lbtag"), turn("## Report\nThe audit found two issues."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    assert session.history[-1]["content"].startswith("## Report") and "'Lbtag'" in session.history[-2]["content"]
-    fake = scripted(*reads, turn("Done."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    assert session.history[-1]["content"] == "Done.", "a short reply that ends like a sentence stands"
-
-
-def test_a_reply_that_announces_a_step_continues_and_a_step_limit_still_reports(ws, home):
-    fake = scripted(turn("Now let me read the job file in full:"), turn(calls=[call("read_file", path="pkg/a.py")]), turn("Report: f returns 1."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    assert session.history[-1]["content"] == "Report: f returns 1." and len(fake.seen) == 3
-    (home / ".manga-agent").mkdir()
-    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"max_steps": 3}))
-    fake = scripted(*[turn(calls=[call("list_dir", path=f"d{n}")]) for n in range(3)], turn("Read three folders; nothing else done."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    assert "step limit" in session.history[-2]["content"] and session.history[-1]["content"] == "Read three folders; nothing else done."
-    assert fake.seen[-1][1] is None, "the wrap-up offers no tools"
-
-
 def test_helpers_get_the_full_step_budget_and_compact_keeping_their_job(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     nick = session._spawn("audit the routers in depth", "explore")
@@ -2538,21 +2496,6 @@ def test_a_session_schedules_prompts_for_itself_asks_before_it_outside_auto_and_
         s.close()
     with pytest.raises(Exception):
         session._schedule("schedule_create", {"prompt": "x", "in_minutes": 0})
-
-
-def test_a_text_only_reply_with_todo_items_left_is_sent_back_and_a_finished_list_stands(ws, home):
-    plan = [{"content": "write code", "status": "in_progress"}, {"content": "run tests", "status": "pending"}]
-    fake = scripted(turn(calls=[call("todo_write", items=plan)]), turn("I'll start now."), turn(calls=[call("todo_write", items=[{"content": "write code", "status": "completed"}, {"content": "run tests", "status": "completed"}])]),
-                    turn("Done: everything finished."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    nudges = [h["content"] for h in session.history if h["role"] == "user" and h["content"].startswith("[Your todo list still has")]
-    assert len(nudges) == 1 and "write code; run tests" in nudges[0]
-    assert session.history[-1]["content"] == "Done: everything finished."
-    fake = scripted(turn(calls=[call("todo_write", items=plan)]), *[turn("Still just talking.")] * 6)
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    assert sum(h["content"].startswith("[Your todo list still has") for h in session.history if h["role"] == "user") == 3, "at most three nudges, then the turn ends"
 
 
 def test_auto_compaction_starts_near_the_configured_token_count_once_and_not_again_until_the_context_grows(ws, home):
@@ -2851,19 +2794,6 @@ def test_a_turn_that_dies_after_changing_files_says_what_it_changed_and_what_is_
     run_to_idle(session, "make a.txt and test it")
     note = next(e["text"] for e in session.events if e["type"] == "notice" and "stopped on an error" in e.get("text", ""))
     assert "a.txt" in note and "test it" in note
-
-
-def test_a_claim_that_tests_pass_after_an_untested_edit_is_sent_back_once(ws, home):
-    fake = scripted(turn(calls=[call("run_command", command="echo 3 passed")]), turn(calls=[call("write_file", path="a.txt", content="x")]),
-                    turn("All 3 tests pass."), turn(calls=[call("run_command", command="echo 3 passed")]), turn("All 3 tests pass."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session, "go")
-    nudges = [h for h in session.history if h["role"] == "user" and h["content"].startswith("[Your reply says the tests pass")]
-    assert len(nudges) == 1 and session.history[-1]["content"] == "All 3 tests pass." and len(fake.seen) == 5
-    quiet = scripted(turn(calls=[call("write_file", path="b.txt", content="x")]), turn(calls=[call("run_command", command="echo ok")]), turn("Tests pass."))
-    clean = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=quiet)
-    run_to_idle(clean, "go")
-    assert not any(h["role"] == "user" and h["content"].startswith("[Check]") for h in clean.history)
 
 
 def test_shell_commands_a_tool_does_better_get_a_tip_a_few_times(ws):
@@ -3664,8 +3594,7 @@ def test_created_tools_keep_state_track_changed_files_for_undo_and_move_to_the_b
     assert "[exit 0]" in run("cd pkg")
     out = run("pwd && echo changed > a.py && echo new > n.txt")
     assert out.splitlines()[0].endswith("/pkg"), "the folder from the last call is kept"
-    assert "[changed: pkg/a.py, pkg/n.txt]" in out and session._dirty and session._edited_after_run()
-    assert "[exit 0]" in run("true") and not session._dirty and not session._edited_after_run(), "a run that changes nothing counts as a check"
+    assert "[changed: pkg/a.py, pkg/n.txt]" in out
     assert session.command("/undo")["message"]
     assert (ws.root / "pkg" / "a.py").read_text().startswith("def f()") and not (ws.root / "pkg" / "n.txt").exists(), "/undo restores what a created tool changed"
     monkeypatch.setattr(session_module, "CREATED_TIMEOUT", 1)
@@ -4049,31 +3978,6 @@ def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, hom
     assert "The rest of the harness lives only inside create" in prompt
 
 
-def test_by_default_there_is_no_shell_tool_and_a_lone_call_is_refused_while_chains_run(ws, home, monkeypatch):
-    monkeypatch.setattr(registry, "CHAIN_DEFAULTS", {"shell_tool": False, "min_calls": 2})
-    one = call("create", name="go", keep=False, code="return tools.run_command(command='echo lone')")
-    two = call("create", name="go", keep=False, code="tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 2')\n"
-                                                     "return tools.run_command(command='echo chained && cat pkg/a.py')")
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass",
-                                   complete=scripted(turn(calls=[one]), turn(calls=[call("read_file", path="pkg/a.py")]), turn(calls=[two]), turn("done")))
-    session._new_request("go")
-    assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "create"]
-    prompt = session.system_prompt()
-    assert "There is no shell tool" in prompt and "run_command (the shell" not in prompt and "at least 2 tool calls" in prompt
-    session.send("go")
-    wait_for(session, "idle")
-    outputs = [h["content"] for h in session.history if h["role"] == "tool"]
-    assert outputs[0].startswith("Refused") and outputs[1].startswith("Refused") and "[exit code" not in outputs[0], outputs
-    assert "print(tools.read_file(path='pkg/a.py'))" in outputs[1] and "the step you planned next" in outputs[1], "the refusal hands back the calls as one chain"
-    assert "chained" in outputs[2] and "return 2" in outputs[2], outputs[2]
-    with pytest.raises(ValueError, match="Unknown command /tools"):
-        session.command("/tools hybrid")
-    library = {s["name"] for s in session.library_specs()}
-    assert {"search", "web_fetch", "ask_user", "todo_write", "task", "memory"} <= library and "create" not in library
-    out = session._session_tool({"id": "d", "name": "create", "args": {"name": "find", "code": "def find():\n    return tools.glob(pattern='**/*.py')\n", "args": {}, "keep": False}})
-    assert "pkg/a.py" in out, out
-
-
 def test_the_worked_example_in_the_prompt_runs_as_written(ws, home):
     from app.agent import session as session_module
     (ws.root / "app").mkdir()
@@ -4146,16 +4050,6 @@ def test_chains_have_a_per_request_budget_long_ones_a_smaller_one_and_helpers_a_
     assert "at most 1 helper agents started from chains" in out, out
     session._new_request("third")
     assert run("pair").splitlines()[0] == "2", "every request starts with a fresh budget"
-
-
-def test_a_library_edit_and_a_created_check_count_alike(ws, home):
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    session._new_request("go")
-    session._run_call({"id": "chain-e", "name": "write_file", "args": {"path": "n.txt", "content": "x"}})
-    assert session._edited_after_run()
-    session._create({"name": "check", "code": "import subprocess\ndef check():\n    return subprocess.run(['true']).returncode\n"})
-    session._run_call({"id": "chain-c", "name": "check", "args": {}})
-    assert not session._edited_after_run(), "a created tool that runs a program counts as a check after a built-in edit"
 
 
 def test_the_skill_list_with_paths_names_each_folder_once(tmp_path):

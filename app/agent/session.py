@@ -35,7 +35,6 @@ MODES = ("ask", "edits", "review", "auto", "bypass")
 HANDS_OFF = ("auto", "bypass")
 MAX_STEPS = 300
 MAX_JOBS = 8
-MAX_TODO_NUDGES = 3
 MAX_SCHEDULES = 10
 # Per request, across the session and its helpers: chains (runs making 2+ tools.* calls), long chains (11+ calls), helpers started from chains.
 MAX_CHAINS, MAX_LONG_CHAINS, MAX_CHAIN_AGENTS = 99, 20, 40
@@ -71,12 +70,6 @@ PREWALK_CHECKLIST = ("[Before you call it done] Every place that uses what you c
                      "search for them. Behaviour outside the asked change stays as it was; the smallest correct diff wins. Run the whole affected "
                      "test file or module, not just the test you expect to flip. Say done only when all three hold.")
 ADVISED = "[Advisor] Another model read your recent steps and says this. Weigh it; the decision is yours, and say briefly if you disagree.\n"
-GARBLED_NUDGE = ("[Your last reply ({text!r}) does not read as an answer after this much work. Write the final answer to the request now, "
-                 "from what the tool results showed, and claim nothing they did not show.]")
-UNTESTED_NUDGE = ("[Your reply says the tests pass, but files changed after the last command you ran, so that result describes older code. "
-                  "Run the check again and report what it prints now.]")
-PASS_CLAIM = re.compile(r"\b(?:pass(?:ed|es|ing)?|green|succeed(?:ed|s)?)\b|xanh|\bđạt\b", re.I)
-ANNOUNCED_NUDGE = "[You said what you would do next but made no tool call. Make that call now; if you are done, write your final report instead.]"
 RULINGS = ("Nobody is watching this run. When something is ambiguous, conflicting or missing, choose, write one line "
            "'Ruling: <choice> - <why> - <what it costs if wrong>', and go on; a wrong ruling is cheap to undo, a stalled run is not. "
            "Stop to ask only before something that cannot be undone, touches security or reaches outside this workspace (a push, a merge, "
@@ -90,8 +83,6 @@ AUTO_BLOCKED = ("Auto mode blocked this {name} call: {reason}. Do not retry it o
 ORACLE_PROMPT = ("A coding agent asks you, a more experienced engineer, for advice. You see its recent conversation and its question. Answer "
                  "directly: name the risk, the cause or the better way, and what to check. Rely only on what the conversation shows and say when "
                  "something you need is not there. No preamble.")
-TODO_NUDGE = ("[Your todo list still has open items: {items}. Do the next one now with a tool call. If the work is done or an item no longer "
-              "applies, update the list with tools.todo_write and then report.]")
 EMPTY_NUDGE = "[Your last reply was empty. Go on: make a tool call or write your answer.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -342,29 +333,6 @@ MADE_TOOLS = ("The code is a function def name(...) or just its body (a top-leve
               "it runs once; otherwise it stays as a tool you call by name from your next reply on, and in later sessions. You see only what "
               "the code prints or returns. A failing tools.<name>(...) raises an exception that carries the tool's error.")
 LEAN_TOOLS = frozenset({"read_file", "edit_file", "run_command"})
-# With the profile's shell_tool off, the shell is reached only as tools.run_command inside create, so steps get chained.
-NO_SHELL = (("Your tools are read_file, edit_file, run_command (the shell: list, search, build, test) and create",
-             "Your tools are read_file, edit_file and create. There is no shell tool: commands run as tools.run_command(command=...) "
-             "inside create, and every reply is a chain of calls"),
-            ("2. Look. Read the files and run the commands that show how things are now,",
-             "2. Look. In one chain, read the files and run the commands that show how things are now,"),
-            ("- read_file, edit_file and run_command each do one thing; use them to look around and for single steps.",
-             "- Work in chains, always. Before each reply, plan the next several steps and send them together: one create whose code "
-             "looks (reads, lists, runs commands), acts and runs the check, printing only what you need, or several calls side by side. "
-             "A reply with a single call, or a create whose code makes a single tools.<name>(...) call, is refused and nothing in it runs."),
-            ("1. Pin down done as a kept tool, and run it once to see it fail (args runs it right away):\ncreate name=",
-             "1. Look and pin down done in the same reply, two calls side by side: read_file path=\"app/text.py\", and a kept check run once "
-             "to see it fail (args runs it right away):\ncreate name="),
-            ("Single reads and edits still go straight through read_file and edit_file; reach for create when steps follow each other without "
-             "needing your judgment in between, when the same work repeats, or when you want the check to choose.",
-             "Every reply is a chain like these: several steps in one create, or several calls in one reply, never one lone call."))
-# Calls that steer the session rather than do work; a reply made only of these is never held to min_calls.
-CONTROL_CALLS = frozenset({"job_output", "job_input", "job_stop", "exit_plan_mode", "goal_done"})
-MIN_CALLS_RULE = ("Every reply that uses tools must make at least {n} tool calls, counting each tools.<name>(...) inside create code; "
-                  "a reply with fewer is refused whole and none of its calls run.")
-FEW_CALLS = ("Refused: every reply must make at least {n} tool calls, counting each tools.<name>(...) inside create code, and this one made "
-             "{got}, so none of them ran. Batch your steps: one create whose code reads, runs, edits and checks in one go, or several calls in one reply.\n"
-             "Your calls as one chain, ready to send once you add the step you planned next where marked:\n{template}")
 LEAN_PROMPT = IDENTITY + """
 Your tools are read_file, edit_file, run_command (the shell: list, search, build, test) and create; how they fit together is below.
 
@@ -543,8 +511,6 @@ INIT_PROMPT = ("Read this repository and write AGENTS.md at its root with only w
                "not obvious (install, test, lint, run), conventions the code does not show, and traps that waste time. No overview, no "
                "folder tour, nothing a linter already enforces; under 40 lines. If AGENTS.md exists, cut it down the same way rather than "
                "adding to it.")
-GATE_NUDGE = ("You changed files but have not run anything since. Run your check (the tests or the command that proves the change) and read "
-              "what it prints, or say plainly why no check applies.")
 
 
 def _harden_process() -> None:
@@ -605,7 +571,7 @@ class AgentSession:
         self._lock = threading.Condition()
         self._plugin_session_api = None  # set in _build_registry; for _sync_plugin_mode
         self.queue: list[str] = []
-        self._dirty = self._gated = self.tainted = False
+        self.tainted = False
         self._skills_loaded: list[str] = []
         self.web_ok: set[str] = set()
         # Schedule prompts are model-written; their hosts are noted but never auto-trusted.
@@ -641,7 +607,7 @@ class AgentSession:
         self.asked_s = 0.0
         self._one_offs: dict[str, dict] = {}
         self.chain_budget: dict[str, int] = {}
-        self._watch_request = self._request_no = self._edit_seq = self._run_seq = 0
+        self._watch_request = self._request_no = 0
         self._since_learn = self._learned_to = 0
         self._learning: threading.Thread | None = None
         self._scheduler: threading.Thread | None = None
@@ -1002,7 +968,6 @@ class AgentSession:
         """Per-request state starts fresh: the undo point, nudges, budgets and which hosts the user named."""
         if not self.depth:
             self.checkpoints.begin()
-        self._dirty = self._gated = False
         if not any(item.get("tainted") for item in self.history) and not self._inherit_taint and not self._taint_latch:
             # Taint lapses only when no tainted content remains in the history window.
             self.tainted = False
@@ -1013,7 +978,6 @@ class AgentSession:
         self._fallback_at = 0
         self._request_no += 1
         self.chain_budget = {}
-        self._edit_seq = self._run_seq = 0
         self._prewalk = bool(self.profile["prewalk_model"]) and self.profile["prewalk_model"] != self.model and not self.depth
         self._skills_loaded = []
         self._turn_usage = self._spent()
@@ -1450,8 +1414,7 @@ class AgentSession:
     def _lean_specs(self) -> list[dict]:
         """The model's own tools: read, edit, run and create, plus the tools the model made, and whatever a running job or a mode needs."""
         # A plan only looks: read_file, and create, whose code runs read-only then.
-        lean = LEAN_TOOLS if self.profile.get("shell_tool", True) else LEAN_TOOLS - {"run_command"}
-        rows = [s for s in SPECS if s["name"] in (("read_file",) if self.plan_mode else lean)]
+        rows = [s for s in SPECS if s["name"] in (("read_file",) if self.plan_mode else LEAN_TOOLS)]
         if self.workspace.policy.mode != "read-only":
             rows.append(SESSION_SPECS["create"])
             rows += [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
@@ -1848,10 +1811,6 @@ class AgentSession:
         if job.code is not None:
             server.join(2)
         changed = self._record_changes()
-        if not changed and any(word in self._with_callees(tool["code"]) for word in ("subprocess", "os.system", "os.popen")):
-            # A tool that runs programs and changed nothing counts as a check, like a command did.
-            self._dirty = False
-            self._run_seq = self._edit_seq + 1
         if top and re.search(r"^PASS\b", output, re.M):
             self._auto_mark(f"pass-{tool['name']}")
         check = f"\n{INTENT_CHECK}" if not self.depth and self.profile["intent"] and self._intent(write=False) else ""
@@ -2431,8 +2390,7 @@ class AgentSession:
                 self.checkpoints.remember(path, old)
             changed.append(self.workspace.rel(path))
         if changed:
-            self._dirty = self._edited = True
-            self._edit_seq = self._run_seq + 1
+            self._edited = True
         return changed
 
     def _session_tool(self, call: dict) -> str:
@@ -3209,11 +3167,7 @@ class AgentSession:
         if name in ("web_fetch", "web_search", "web_download", "delegate") or (name in self.mcp_tools and role in (None, "net")):
             self.tainted = True
         if ok and (KIND.get(name) == "edit" or role == "edit") and name != "web_download":
-            self._dirty = self._edited = True
-            self._edit_seq = self._run_seq + 1
-        elif name in ("run_command", "run_script") or role == "exec":
-            self._dirty = False
-            self._run_seq = self._edit_seq + 1
+            self._edited = True
         if name == "run_command" or name in self.mcp_tools or name in self.replaced or name in self.registry.tools or name in self._root().created:
             output = self._offload(call, output)
         if call["name"] not in SESSION_SPECS:
@@ -3262,11 +3216,6 @@ class AgentSession:
             parts.append("Keep working until the job is done, then end with one complete report: your final reply is all the parent sees.")
         if not self.depth and self.workspace.policy.mode != "read-only":
             parts.append(LEAN_CREATE)
-        if not self.depth and not self.profile.get("shell_tool", True):
-            for old, new in NO_SHELL:
-                parts = [part.replace(old, new) for part in parts]
-        if not self.depth and self.profile.get("min_calls", 1) > 1:
-            parts.append(MIN_CALLS_RULE.format(n=self.profile["min_calls"]))
         if not self.depth and (self.profile["model_roles"] or self._sources()):
             table = self.profile["model_roles"]
             rows = "; ".join(f"{n} ({c['model']}{': ' + c['note'] if c['note'] else ''})" for n, c in table.items())
@@ -3876,12 +3825,6 @@ class AgentSession:
             self._continued = True
             self.history.append({"role": "user", "content": PREWALK_CONTINUE})
             return True
-        if self._dirty and not self._gated and self.workspace.policy.mode != "read-only" and (
-                any(r["name"] in ("run_command", "create") for r in self.specs())):
-            self._gated = True
-            self.history.append({"role": "user", "content": GATE_NUDGE})
-            self.emit("notice", text="Files changed but nothing was checked; reminding the agent to run a check.")
-            return True
         if self.goal and self.goal["turns"] < self.profile["goal_turns"] and not self.depth:
             self.goal["turns"] += 1
             budget = self.profile["token_budget"]
@@ -3934,12 +3877,6 @@ class AgentSession:
             # The page and the saved session keep a clipped copy; the model's history keeps all of it.
             self.emit("tool", id=call["id"], name=call["name"], ok=ok, output=clip(output, EVENT_OUTPUT))
 
-        few = self._call_count(calls)
-        if few is not None:
-            for call in calls:
-                record(call, FEW_CALLS.format(n=self.profile["min_calls"], got=few, template=self._chain_template(calls)), False)
-            self.emit("notice", text=f"Refused a reply with {few} tool call(s); at least {self.profile['min_calls']} are required.")
-            return
         # Calls whose files do not overlap run together, up to ten at once; anything else runs alone, in order, and results are always recorded in the order given (Kimi Code).
         index = 0
         while index < len(calls):
@@ -3959,32 +3896,6 @@ class AgentSession:
             else:
                 record(batch[0], *one(batch[0]))
             index += len(batch)
-
-    @staticmethod
-    def _chain_template(calls: list[dict]) -> str:
-        """The refused calls rewritten as one create, with a marked line for the next step, so the retry costs one reply."""
-        lines, tail = [], []
-        for call in calls:
-            args = call["args"] if isinstance(call["args"], dict) else {}
-            if call["name"] == "create":
-                code = str(args.get("code") or "").strip()
-                (tail if code.startswith("def ") or "return" in code else lines).append(code)
-            else:
-                spelled = ", ".join(f"{k}={v!r}" for k, v in args.items())
-                lines.append(f"print(tools.{call['name']}({spelled}))")
-        lines.append("print(tools.run_command(command='...'))  # <- the step you planned next (a check, a read, an edit)")
-        return 'create name="step", keep=false, code=\n' + "\n".join(lines + tail)
-
-    def _call_count(self, calls: list[dict]) -> int | None:
-        """The reply's tool calls, counting each tools.<name>( in create code, when that is under min_calls; else None."""
-        need = self.profile.get("min_calls", 1)
-        if need <= 1 or self.depth or self.plan_mode or all(c["name"] in CONTROL_CALLS for c in calls):
-            return None
-        count = 0
-        for call in calls:
-            code = str(call["args"].get("code") or "") if call["name"] == "create" and isinstance(call["args"], dict) else ""
-            count += len(re.findall(r"\btools\.\w+\s*\(", code)) if call["name"] == "create" else 1
-        return count if count < need else None
 
     @staticmethod
     def _footprint(call: dict) -> tuple[frozenset, frozenset] | None:
@@ -4032,8 +3943,7 @@ class AgentSession:
 
     def _steps(self, max_steps: int) -> None:
         """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
-        broken = empties = worked = todo_nudges = 0
-        garbled = announced = untested = False
+        broken = empties = 0
         for _ in range(max_steps):
             if self._stop:
                 self.emit("notice", text="Stopped.")
@@ -4094,36 +4004,9 @@ class AgentSession:
                                  **({"reasoning": turn["reasoning"][-20000:]} if self.echo_reasoning and turn["reasoning"] else {})})
             self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)
             if not calls:
-                # A one-word reply without punctuation after many steps is a model that lost the thread, not a report.
-                words = turn["text"].split()
-                if worked >= 5 and not garbled and len(words) < 3 and not re.search(r"[.!?。…:)\]`*]\s*$", turn["text"].strip()):
-                    garbled = True
-                    self.history.append({"role": "user", "content": GARBLED_NUDGE.format(text=turn["text"].strip()[:80])})
-                    self.emit("notice", text="The final reply looks garbled; asking the agent to write it again.")
-                    continue
-                # "Now let me read X:" with no call is a step the model meant to take, not its report.
-                if not announced and turn["text"].rstrip().endswith(":") and len(turn["text"]) < 600:
-                    announced = True
-                    self.history.append({"role": "user", "content": ANNOUNCED_NUDGE})
-                    self.emit("notice", text="The agent announced a step but called no tool; asking it to go on.")
-                    continue
-                # "All tests pass" after an edit that no command has run since is a claim about code that no longer exists (seen on Qwen and sovinfra).
-                if not untested and "test" in turn["text"].lower() and PASS_CLAIM.search(turn["text"]) and self._edited_after_run():
-                    untested = True
-                    self.history.append({"role": "user", "content": UNTESTED_NUDGE})
-                    self.emit("notice", text="The reply says tests pass, but files changed after the last command; asking the agent to run them again.")
-                    continue
-                open_items = [i["content"][:60] for i in self.todos if i["status"] != "completed"]
-                if open_items and todo_nudges < MAX_TODO_NUDGES and not self.depth:
-                    # A plan with items left and a reply that calls nothing is a model that stopped early (seen on Qwen: "I'll start now." and nothing more).
-                    todo_nudges += 1
-                    self.history.append({"role": "user", "content": TODO_NUDGE.format(items="; ".join(open_items[:5]))})
-                    self.emit("notice", text=f"{len(open_items)} todo item(s) still open; asking the agent to go on ({todo_nudges}/{MAX_TODO_NUDGES}).")
-                    continue
                 if self._final_advice() or self._more_work():
                     continue
                 break
-            worked += 1
             self._run_calls(calls)
             self._since_learn += 1
             self._show_images()
@@ -4140,10 +4023,6 @@ class AgentSession:
             self.emit("notice", text=f"Stopped after {max_steps} steps; send a message to continue.")
             if not self._stop:
                 self._wrap_up("step limit")
-
-    def _edited_after_run(self) -> bool:
-        """The latest file change in this request came after the latest command run, counting built-in and created tools alike."""
-        return self._edit_seq > self._run_seq
 
     def _handoff(self, start: int) -> None:
         """When a turn dies after doing work (the provider gave out), what it changed and what is left, so nothing has to be guessed before going on."""

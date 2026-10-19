@@ -30,7 +30,6 @@ def make_session(tmp_path: Path, mode: str = "bypass", tag: str = "t1"):
     s = mgr.create(Prov(), "k", "m", ws, mode,
                    complete=lambda *a, **k: {"text": ""},
                    session_id=f"{tag}01cb02dc03ed04")
-    s.profile["min_calls"] = 1  # single-call turns are fine in tests
     return s, home, wsroot
 
 
