@@ -1,0 +1,4 @@
+2026-10-19 14:13:59 | WARNING  | app.agent.client:509 - bench stream broke: ConnectionError (bench); asking again in 2s
+2026-10-19 14:23:10 | WARNING  | app.agent.client:509 - bench HTTP 502: {"error": "ConnectionError"} (bench); asking again in 2s
+2026-10-19 14:28:43 | WARNING  | app.agent.client:509 - bench HTTP 502: {"error": "ConnectionError"} (bench); asking again in 2s
+2026-10-19 14:33:09 | WARNING  | app.agent.client:509 - bench HTTP 502: {"error": "ConnectionError"} (bench); asking again in 4s
