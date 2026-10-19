@@ -1,0 +1,26 @@
+{
+ "train": {
+  "rows": 992,
+  "passed": 521,
+  "tasks": 96,
+  "kinds": {
+   "stop": 647,
+   "cut": 168,
+   "fake": 177
+  }
+ },
+ "eval": {
+  "rows": 286,
+  "passed": 230,
+  "tasks": 38,
+  "kinds": {
+   "stop": 286,
+   "cut": 0,
+   "fake": 0
+  }
+ },
+ "skipped": {
+  "no_result": 749,
+  "no_stop": 331
+ }
+}
