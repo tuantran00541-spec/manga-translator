@@ -56,6 +56,8 @@ class AIProvider:
             "model_listing": True,
             "cost_tracking": self.tracks_cost,
             "image_transport": self.image_transport,
+            # MiniRouter serves the decision model that grades translated lines.
+            "judge": urlparse(self.api_base).hostname == "api.minirouter.sh",
         }
 
 

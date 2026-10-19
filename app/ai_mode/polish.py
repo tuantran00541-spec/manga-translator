@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import requests
 
+from app.ai_mode import decider
 from app.ai_mode.vision_json import request_vision_json
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 
@@ -42,7 +43,7 @@ SETTLED = {
     "instructions": "Does TRANSLATION use the forms of address in ADDRESS and the terms in GLOSSARY wherever they apply?",
     "criteria": ["uses other forms or terms", "uses some of them", "uses them all"],
 }
-# A line under one is sent back; on 40 labelled lines these flag no good line and 28 of 30 bad ones.
+# A line under one is sent back; on 40 labelled lines Jev and the decider both flag no good line and 25 of 30 bad ones.
 LIMITS = {"natural": 2.0, "clear": 1.8, "faithful": 1.5, "settled": 1.0}  # settled is not calibrated yet
 PROBLEMS = {
     "natural": "it sounds unnatural or word-for-word in Vietnamese",
@@ -164,7 +165,9 @@ def judge(provider, api_key: str, state: str, asked: dict = QUESTIONS) -> dict[s
     """One judge call; returns each question's score, missing ones left out."""
     response = requests.post(
         evaluate_url(provider), headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"state": state, "questions": asked},
+        # A gateway picks its own judge; MiniRouter itself is told which decision model grades.
+        json={**({"model": decider.DECIDER_MODEL} if decider.available(provider, api_key) else {}),
+              "state": state, "questions": asked},
         timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS), allow_redirects=False,
     )
     if not response.ok:

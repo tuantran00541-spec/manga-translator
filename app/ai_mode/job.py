@@ -36,7 +36,7 @@ STAGES: tuple[tuple[str, str], ...] = (
     ("clean", "Checkpoint 2: Clean ảnh"),
     ("review", "Checkpoint 3: AI so ảnh gốc và ảnh clean"),
     ("translate", "Checkpoint 4: Dịch và chọn font"),
-    ("polish", "Nâng cao: Jev soát câu dịch"),
+    ("polish", "Nâng cao: soát câu dịch"),
     ("render", "Render"),
     ("finish", "Hoàn tất"),
 )

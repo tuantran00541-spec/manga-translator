@@ -50,9 +50,9 @@
     if (modelField) modelField.hidden = cloud;
     // Only DeepSeek reports token cost, so only there a budget can be enforced.
     if (budgetField) budgetField.hidden = cloud || provider.value !== "deepseek";
-    // The Jev judge runs behind the Manga Cloud gateway.
+    // The judge runs behind the Manga Cloud gateway, or on MiniRouter for a user's own key.
     const polishField = $("ai-mode-polish-field");
-    if (polishField) polishField.hidden = !cloud;
+    if (polishField) polishField.hidden = !(cloud || window.aiProviderSettings?.[provider.value]?.capabilities?.judge);
     // Manga Cloud picks its own reading model; the limit is for the user's own key.
     const imagesField = $("ai-mode-images-field");
     if (imagesField) imagesField.hidden = cloud;
@@ -299,14 +299,14 @@
     if (r.source_lang) lines.push(`Ngôn ngữ gốc: ${window.SOURCE_LANG_LABELS?.[r.source_lang] || r.source_lang}`);
     if (r.translated || r.unreadable) lines.push(`Dịch ${r.translated || 0} vùng chữ${r.unreadable ? `, ${r.unreadable} vùng AI không đọc được` : ""}`);
     const polish = r.polish || {};
-    if (polish.judged) lines.push(`Jev chấm ${polish.judged} câu, gắn cờ ${polish.flagged || 0}, AI viết lại ${polish.rewritten || 0}${polish.still_flagged ? `, còn ${polish.still_flagged} câu nên xem lại` : ""}`);
+    if (polish.judged) lines.push(`Bộ chấm chấm ${polish.judged} câu, gắn cờ ${polish.flagged || 0}, AI viết lại ${polish.rewritten || 0}${polish.still_flagged ? `, còn ${polish.still_flagged} câu nên xem lại` : ""}`);
     if (r.editorial_blockers) {
       const pages = [...new Set((r.blocker_samples || []).map((b) => b.page))].slice(0, 8);
       lines.push(`${r.editorial_blockers} chỗ nên xem lại bằng mắt${pages.length ? ` (ví dụ lát ${pages.join(", ")})` : ""}`);
     }
     const errors = [
       ["quét credit/logo", r.scan_errors], ["so ảnh gốc và clean", r.qc_errors],
-      ["dịch", r.translate_errors], ["render", r.render_errors], ["soát câu bằng Jev", polish.errors],
+      ["dịch", r.translate_errors], ["render", r.render_errors], ["soát câu", polish.errors],
     ].filter(([, list]) => list?.length);
     errors.forEach(([label, list]) => {
       const first = typeof list[0] === "string" ? list[0] : list[0]?.error || "";

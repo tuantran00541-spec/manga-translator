@@ -20,7 +20,7 @@ on:
         description: "USD per million tokens for that model: input output [cached]"
         required: false
       polish:
-        description: "Advanced: the Jev judge grades every translated line and weak ones are rewritten"
+        description: "Advanced: the decider judge grades every translated line and weak ones are rewritten"
         type: boolean
         default: false
       stage_models:
@@ -154,10 +154,10 @@ jobs:
             echo "GATEWAY_UPSTREAM_REASONING_EFFORT=$(conf effort)"
             echo "GATEWAY_PRICE_CACHED_PER_M=$price_cached"
             echo "GATEWAY_STAGE_MODELS=$(printf '%s' "$INPUT_STAGES" | tr -d '\n')"
-            # minirouter serves the Jev judge; its answers are free and input costs this much per million tokens.
+            # minirouter serves the decider judge; its answers are free and input costs this much per million tokens.
             if [ "${provider:-sovinfra}" = minirouter ]; then
-              echo "GATEWAY_JUDGE_MODEL=typesafe-ai/jev"
-              echo "GATEWAY_JUDGE_PRICE_PER_M=0.0462"
+              echo "GATEWAY_JUDGE_MODEL=perplexity/pplx-decider-v1.2"
+              echo "GATEWAY_JUDGE_PRICE_PER_M=0.022"
             fi
           } >> "$GITHUB_ENV"
 

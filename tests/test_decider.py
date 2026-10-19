@@ -132,3 +132,24 @@ def test_story_chance_reads_list_and_choice_answers():
     assert decider.story_chance({"kind": {"probabilities": [{"choice": "story", "probability": 0.3}]}}) == 0.3
     assert decider.story_chance({"kind": {"choice": "credit"}}) == 0.0
     assert decider.story_chance({"kind": {}}) is None and decider.story_chance(None) is None
+
+
+def test_the_judge_names_the_decider_only_on_minirouter(monkeypatch):
+    from app.ai_mode import polish
+
+    sent = []
+
+    class Reply:
+        ok = True
+
+        @staticmethod
+        def json():
+            return {"answers": {"natural": {"score": 2.5}}}
+
+    monkeypatch.setattr(polish.requests, "post", lambda url, **kw: sent.append((url, kw["json"])) or Reply())
+    minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
+    assert polish.judge(minirouter, "k", "s") == {"natural": 2.5}
+    assert sent[-1] == ("https://api.minirouter.sh/v1/evaluate", {"model": decider.DECIDER_MODEL, "state": "s", "questions": polish.QUESTIONS})
+    polish.judge(PROVIDERS["openai"], "k", "s")
+    assert "model" not in sent[-1][1]
+    assert minirouter.public_capabilities()["judge"] and not PROVIDERS["openai"].public_capabilities()["judge"]
