@@ -1,0 +1,82 @@
+{
+ "clean": {
+  "slices": 106,
+  "text_left": 0,
+  "ghosts": 0,
+  "items": []
+ },
+ "text": {
+  "objects": 221,
+  "translated": 218,
+  "untranslated": 3,
+  "needs_review": 2,
+  "kept_original": 0
+ },
+ "spend": {
+  "cost_usd": 0.06583,
+  "requests": 383,
+  "prompt_tokens": 715808,
+  "images": 234,
+  "wall_s": 1377.3,
+  "by_stage": {
+   "scan": {
+    "requests": 55,
+    "images": 110,
+    "prompt_tokens": 83461,
+    "completion_tokens": 17495
+   },
+   "glossary": {
+    "requests": 3,
+    "images": 0,
+    "prompt_tokens": 5223,
+    "completion_tokens": 3162
+   },
+   "review": {
+    "requests": 21,
+    "images": 21,
+    "prompt_tokens": 54379,
+    "completion_tokens": 569
+   },
+   "translate": {
+    "requests": 103,
+    "images": 103,
+    "prompt_tokens": 503996,
+    "completion_tokens": 103198
+   },
+   "judge": {
+    "requests": 197,
+    "images": 0,
+    "prompt_tokens": 57221,
+    "completion_tokens": 0
+   },
+   "polish": {
+    "requests": 4,
+    "images": 0,
+    "prompt_tokens": 11528,
+    "completion_tokens": 2470
+   }
+  },
+  "stage_s": {
+   "download": 7.0,
+   "scan": 119.1,
+   "clean": 523.5,
+   "review": 283.9,
+   "translate": 319.5,
+   "polish": 95.7,
+   "render": 25.7,
+   "finish": 0.2
+  }
+ },
+ "polish": {
+  "judged": 169,
+  "flagged": 18,
+  "rewritten": 18,
+  "still_flagged": 5
+ },
+ "fit": {
+  "does_not_fit": 0,
+  "under_20px": 1,
+  "split_word": 0,
+  "missing_glyphs": 0
+ }
+}
