@@ -501,7 +501,8 @@ def editorial_preflight(
             source_text = str(obj.get("ocr_text") or "").strip()
             translation = str(obj.get("translation") or "").strip()
             disposition = _reviewed_disposition({}, [obj])
-            if disposition == "preserve":
+            # A reviewed credit, duplicate, noise or kept-as-drawn object is not lettered, so it needs no translation.
+            if disposition in EDITORIAL_DROP_DISPOSITIONS:
                 continue
             if not source_text and not translation:
                 _append_blocker(
