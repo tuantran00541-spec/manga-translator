@@ -1760,57 +1760,6 @@ def test_look_only_commands_never_ask_and_saved_rules_allow_a_command_prefix(ws,
     assert rules.check(session.rules, "run_command", {"command": "pytest tests"}, lambda p: p) == "allow"
 
 
-def test_review_mode_lets_a_second_model_clear_a_call_and_asks_the_user_when_it_is_unsure(ws, home):
-    cleared = scripted(turn(calls=[call("write_file", path="a.txt", content="1")]), turn('{"verdict": "allow", "reason": "what was asked"}'),
-                       turn("Done."), turn(calls=[call("run_command", command="true")]), turn("Checked."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "review", complete=cleared)
-    run_to_idle(session, "create a.txt")
-    assert (ws.root / "a.txt").read_text() == "1" and any("Reviewer allowed" in e.get("text", "") for e in session.events)
-    seen_by_reviewer = cleared.seen[1][0]
-    assert "create a.txt" in seen_by_reviewer[1]["content"] and "tools" not in str(cleared.seen[1][1] or "")
-    unsure = scripted(turn(calls=[call("write_file", path="b.txt", content="1")]), turn('{"verdict": "ask", "reason": "not requested"}'), turn("ok"), turn("ok"))
-    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "review", session_id="unsure", complete=unsure)
-    other.send("look around")
-    wait_for(other, "waiting")
-    assert other.pending["reviewer"] == "not requested" and not (ws.root / "b.txt").exists()
-    other.decide("deny")
-    wait_for(other, "idle")
-
-
-def test_auto_mode_runs_safe_work_alone_reviews_the_rest_and_blocks_without_asking(ws, home):
-    from app.agent import guardian
-    fake = scripted(turn(calls=[call("write_file", path="a.txt", content="1"), call("run_command", command="ls")]),
-                    turn(calls=[call("run_command", command="python a.txt")]), turn('{"verdict": "allow", "reason": "asked"}'),
-                    turn(calls=[call("run_command", command="python a.txt")]),
-                    turn(calls=[call("run_command", command="git push origin main")]), turn('{"verdict": "ask", "reason": "not requested"}'),
-                    turn("Done."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=fake)
-    run_to_idle(session, "create a.txt")
-    reviews = [seen for seen in fake.seen if seen[0][0]["content"].startswith(guardian.PROMPT)]
-    assert (ws.root / "a.txt").read_text() == "1" and len(reviews) == 2
-    assert guardian.RULE in reviews[1][0][0]["content"] and session.status == "idle"
-    blocked = [m for m in session.history if m["role"] == "tool" and "Auto mode blocked" in str(m.get("content"))]
-    assert len(blocked) == 1 and "An automatic reviewer checks commands and outside actions" in session.system_prompt()
-
-
-def test_auto_mode_tells_the_reviewer_about_untrusted_content_and_asks_when_it_is_down(ws, home):
-    from app.agent import guardian
-    def down(provider, key, model, messages, tools=None, **kw):
-        if tools is None:
-            raise RuntimeError("offline")
-        return fake(provider, key, model, messages, tools=tools, **kw)
-    fake = scripted(turn(calls=[call("run_command", command="python x.py")]), turn("ok"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=down)
-    session.send("run it")
-    wait_for(session, "waiting")
-    assert session.pending["name"] == "run_command"
-    session.decide("deny")
-    wait_for(session, "idle")
-    watched = scripted(turn('{"verdict": "deny", "reason": "sends data"}'))
-    assert guardian.review(watched, PROVIDERS["openai"], "k", "m", ["hi"], {"name": "web_fetch", "args": {}}, untrusted=True)[0] == "deny"
-    assert guardian.UNTRUSTED in watched.seen[0][0][0]["content"]
-
-
 def test_connected_tools_stay_out_of_the_list_and_chains_find_them_by_search(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted())
     session.mcp_tools = {f"mcp__s__tool{i}": ("s", {"name": f"tool{i}", "description": "makes tickets" if i == 3 else "does thing"}) for i in range(20)}
@@ -2048,21 +1997,6 @@ def test_a_context_length_error_is_recovered_by_summarising_and_asking_again(ws,
     assert any("Context window exceeded" in e.get("text", "") for e in session.events if e["type"] == "notice")
 
 
-def test_the_reviewer_can_deny_with_a_reason_and_repeated_denials_stop_the_turn(ws, home):
-    from app.agent import guardian
-    assert guardian.tripped([True, True, True]) and not guardian.tripped([True, True, False, True])
-    assert guardian.tripped([True] * 10 + [False] * 40) and not guardian.tripped(([True] + [False] * 5) * 8)
-    deny = lambda: turn('{"verdict": "deny", "reason": "sends a secret out"}')
-    fake = scripted(turn(calls=[call("write_file", path="a.txt", content="1")]), deny(),
-                    turn(calls=[call("write_file", path="b.txt", content="1")]), deny(),
-                    turn(calls=[call("write_file", path="c.txt", content="1")]), deny(), turn("never reached"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "review", complete=fake)
-    run_to_idle(session, "tidy up")
-    refusals = [o for n, ok, o in tool_outputs(session) if not ok]
-    assert len(refusals) == 3 and "Do not reach the same outcome by another route" in refusals[0] and "sends a secret out" in refusals[0]
-    assert not (ws.root / "a.txt").exists() and any(e["type"] == "error" and "denied too many calls" in e["text"] for e in session.events)
-
-
 def test_fan_out_runs_many_jobs_and_returns_every_report_in_one_call(ws, home):
     import threading
     running, peak, lock = [0], [0], threading.Lock()
@@ -2218,17 +2152,11 @@ def test_a_background_job_takes_typed_input_on_a_pipe_or_a_terminal(ws, home):
 
 
 def advised(agent_turns, advice):
-    """A fake model whose advisor calls (no tools, the advisor prompt) get their own scripted replies."""
-    from app.agent import advisor
-    state, models, lock = {"agent": 0, "advisor": 0}, [], __import__("threading").Lock()
+    """A fake model that records which model each agent step asked."""
+    state, models, lock = {"agent": 0}, [], __import__("threading").Lock()
 
     def complete(provider, key, model, messages, *, tools):
         with lock:
-            if messages[0]["content"] == advisor.PROMPT:
-                reply = advice[min(state["advisor"], len(advice) - 1)]
-                state["advisor"] += 1
-                complete.asked.append(messages[1]["content"])
-                return {**turn(json.dumps({"advice": reply})), "usage": {"prompt_tokens": 100, "completion_tokens": 10}}
             models.append(model)
             step = agent_turns[min(state["agent"], len(agent_turns) - 1)]
             state["agent"] += 1
@@ -2236,25 +2164,6 @@ def advised(agent_turns, advice):
 
     complete.models, complete.asked = models, []
     return complete
-
-
-def test_the_advisor_speaks_up_in_the_background_and_checks_a_claim_of_done(ws, home):
-    (home / ".manga-agent").mkdir()
-    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"advisor": True, "advisor_every": 1, "advisor_model": "big"}))
-    def slow(messages, tools):
-        time.sleep(0.3)
-        return turn(calls=[call("read_file", path="pkg/a.py")])
-    fake = advised([turn(calls=[call("list_dir", path=".")]), slow, turn("All done."), turn("Fixed for real.")],
-                   [[{"severity": "concern", "text": "You never read pkg/a.py before planning the change."}], [],
-                    [{"severity": "blocker", "text": "Nothing was edited, yet the reply claims done."}, {"severity": "nit", "text": "style"}], []])
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    advice = [h["content"] for h in session.history if h["role"] == "user" and h["content"].startswith("[Advisor]")]
-    assert any("concern: You never read pkg/a.py" in a for a in advice), session.history
-    assert any("blocker: Nothing was edited" in a and "style" not in a for a in advice), "a claim of done is checked; nits do not reopen it"
-    assert session.history[-1]["content"] == "Fixed for real." and len(fake.asked) == 3, "two background looks, then one final check per request"
-    assert "You never read pkg/a.py" in fake.asked[-1], "earlier advice is shown so it is not repeated"
-    assert session.usage["prompt_tokens"] >= 300, "advisor tokens count toward the budget"
 
 
 def test_prewalk_plans_on_the_strong_model_and_hands_over_at_the_first_edit(ws, home):
@@ -2420,28 +2329,6 @@ def test_a_model_that_keeps_failing_hands_the_turn_to_the_next_configured_model(
     session.profile["fallback_models"] = []
     run_to_idle(session)
     assert any(e["type"] == "error" for e in session.events), "with no fallback the failure surfaces as before"
-
-
-def test_the_oracle_tool_asks_the_advisor_model_and_is_offered_only_when_switched_on(ws, home):
-    from app.agent import session as session_module
-    plain = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    assert "oracle" not in {t["name"] for t in plain.specs()}
-    (home / ".manga-agent").mkdir()
-    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"oracle": True, "advisor_model": "big"}))
-    seen = []
-
-    def complete(provider, key, model, messages, *, tools):
-        if messages[0]["content"] == session_module.ORACLE_PROMPT:
-            seen.append((model, messages[1]["content"]))
-            return {**turn("Check the lock ordering first."), "usage": {"prompt_tokens": 50, "completion_tokens": 5}}
-        return [turn(calls=[call("oracle", question="Why would the deadlock appear only under load?")]), turn("Thanks.")][min(len([m for m in messages if m["role"] == "tool"]), 1)]
-
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
-    assert "oracle" in tool_names(session)
-    run_to_idle(session, "debug the hang")
-    assert tool_outputs(session)[0][2] == "Check the lock ordering first."
-    assert seen[0][0] == "big" and "debug the hang" in seen[0][1] and "deadlock appear only under load" in seen[0][1]
-    assert session.usage["prompt_tokens"] >= 50
 
 
 def test_a_script_can_run_rounds_of_helpers_and_use_their_reports_as_data(ws, home):
@@ -3561,17 +3448,12 @@ SHELL_TOOL = {"name": "shell", "description": "Run a shell command.", "parameter
               "code": "import subprocess\ndef shell(cmd):\n    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)\n    return r.stdout + r.stderr + f'[exit {r.returncode}]'\n"}
 
 
-def test_created_tools_guard_names_have_code_reviewed_and_run_read_only_in_plan_mode(ws, home, monkeypatch):
-    from app.agent import guardian
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "auto", complete=scripted(turn("x")))
+def test_created_tools_guard_names_and_run_read_only_in_plan_mode(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     for name in ("read_file", "run_command", "write_file"):
         with pytest.raises(ToolError, match="reserved"):
             session._create({**SHELL_TOOL, "name": name})
     session._create(SHELL_TOOL)
-    seen = []
-    monkeypatch.setattr(guardian, "review", lambda *a, **k: (seen.append(a[5]), ("deny", "no"))[1])
-    output, ok = session._run_call({"id": "chain-x", "name": "shell", "args": {"cmd": "ls"}})
-    assert not ok and "subprocess.run" in seen[0]["args"]["_tool_code"], "the reviewer judges the tool by its code"
     if LANDLOCK:
         session.mode, session.plan_mode = "bypass", True
         assert "exit_plan_mode" in [s["name"] for s in session.specs()]
@@ -3820,8 +3702,7 @@ def test_model_catalogs_read_prices_however_providers_give_them(monkeypatch):
     assert [r["id"] for r in roles.catalog("https://x/v1", {}, "pro")] == ["b/pro"]
 
 
-def test_created_tools_call_each_other_in_one_process_and_create_can_run_a_one_off_chain(ws, home, monkeypatch):
-    from app.agent import guardian
+def test_created_tools_call_each_other_in_one_process_and_create_can_run_a_one_off_chain(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
     session._create({"name": "read", "code": "def read(path):\n    return open(path).read()\n"})
@@ -3834,12 +3715,6 @@ def test_created_tools_call_each_other_in_one_process_and_create_can_run_a_one_o
     assert "fix" not in session.created and not (home / ".manga-agent" / "tools" / "fix.json").exists(), "a one-off script is not kept"
     with pytest.raises(ToolError, match="one-off"):
         session._session_tool({"id": "d", "name": "create", "args": {"name": "read", "code": "def read():\n    pass\n", "args": {}, "keep": False}})
-    session.mode, seen = "auto", []
-    monkeypatch.setattr(guardian, "review", lambda *a, **k: (seen.append(a[5]), ("deny", "no"))[1])
-    session._create({"name": "fix2", "code": chain})
-    session._run_call({"id": "chain-e", "name": "fix2", "args": {}})
-    code = seen[0]["args"]["_tool_code"]
-    assert "# tools.edit:" in code and "# tools.read:" in code, "the reviewer sees every tool a chain calls"
 
 
 def test_a_chain_mixes_created_tools_mcp_tools_and_skills_through_the_agent(ws, home):
@@ -3927,8 +3802,7 @@ def test_chains_have_no_ceiling_objects_agents_new_tools_parallel_calls_big_args
     assert "done" in out and "background" not in out, out
 
 
-def test_a_chain_thinks_repairs_a_failing_tool_while_running_and_keeps_chains_that_work(ws, home, monkeypatch):
-    from app.agent import guardian
+def test_a_chain_thinks_repairs_a_failing_tool_while_running_and_keeps_chains_that_work(ws, home):
     asked = []
 
     def model(provider, key, m, messages, *, tools):
@@ -3953,14 +3827,7 @@ def test_a_chain_thinks_repairs_a_failing_tool_while_running_and_keeps_chains_th
     session.mode = "ask"
     session._create({"name": "bad", "code": "def bad():\n    raise ValueError('boom')\n"})
     output, ok = session._repair({"name": "bad", "args": {}, "error": "ValueError: boom"})
-    assert not ok and "only in auto or bypass" in output, "outside hands-off modes a failing tool is not rewritten unseen"
-    session.mode = "auto"
-    # The reviewer lets the chain run but turns down the rewritten tool.
-    monkeypatch.setattr(guardian, "review", lambda *a, **k: ("deny", "unsafe") if "x // 2" in a[5]["args"]["_tool_code"] else ("allow", "ok"))
-    session._create({"name": "half", "code": "def half(x):\n    return x / undefined_name\n"})
-    session._recent = []
-    out, _ = session._run_call({"id": "chain-f", "name": "go", "args": {}})
-    assert "did not allow the repaired code" in out and "undefined_name" in session.created["half"]["code"], "Auto mode reviews a repair first"
+    assert not ok and "only in bypass" in output, "outside bypass a failing tool is not rewritten unseen"
 
 
 def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, home):

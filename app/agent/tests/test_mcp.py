@@ -32,7 +32,7 @@ def session_auto(tmp_path):
     wsroot.mkdir(parents=True)
     mgr = AgentSessionManager(home / ".manga-agent", home=home)
     ws = Workspace(wsroot, sandbox.Policy("workspace-write", False))
-    return mgr.create(_Prov(), "k", "m", ws, "auto",
+    return mgr.create(_Prov(), "k", "m", ws, "edits",
                       complete=lambda *a, **k: {"text": ""},
                       session_id="aa01bb02cc03dd04")
 

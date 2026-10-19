@@ -8,7 +8,7 @@
     apply_patch: "Patch", edit_lines: "Edit lines", run_command: "Run", web_fetch: "Fetch", skill: "Skill", todo_write: "Plan",
     task: "Helper", spawn_agent: "Spawn agent", wait_agent: "Wait for agents", send_input: "Message agent", close_agent: "Close agent", delegate: "External agent", memory: "Memory", ask_user: "Ask you", exit_plan_mode: "Plan", goal_done: "Goal done",
     symbols: "Symbols", web_search: "Web search", web_download: "Download", view_image: "View image", tool_search: "Find tools", run_script: "Script", fan_out: "Fan out",
-    job_output: "Job output", job_input: "Type into job", job_stop: "Stop job", oracle: "Ask oracle", context_notes: "Notes", new_context: "New context",
+    job_output: "Job output", job_input: "Type into job", job_stop: "Stop job", context_notes: "Notes", new_context: "New context",
     schedule_create: "Schedule", schedule_list: "Schedules", schedule_delete: "Cancel schedule",
     use_model: "Use the paid model",
   };
@@ -20,7 +20,7 @@
     list_dir: ["listed", "folder", "folders"], search: ["searched", "time", "times"], glob: ["searched", "time", "times"], symbols: ["searched", "time", "times"],
     web_fetch: ["fetched", "page", "pages"], skill: ["opened", "skill", "skills"], task: ["ran", "helper", "helpers"], mcp: ["called", "MCP tool", "MCP tools"],
     run_script: ["ran", "script", "scripts"], fan_out: ["fanned out", "batch", "batches"], job_input: ["typed into", "job", "jobs"], job_output: ["read", "job", "jobs"], job_stop: ["stopped", "job", "jobs"],
-    oracle: ["asked", "oracle", "oracles"], schedule_create: ["scheduled", "run", "runs"], web_search: ["searched the web", "time", "times"],
+    schedule_create: ["scheduled", "run", "runs"], web_search: ["searched the web", "time", "times"],
   };
   const SANDBOX_TEXT = {
     landlock: "Lệnh chạy trong sandbox Landlock của Linux.", seatbelt: "Lệnh chạy trong sandbox Seatbelt của macOS.",
@@ -161,7 +161,6 @@
     if (c.name === "fan_out") return `${(a.jobs || []).length} jobs${a.schema ? " with a schema" : ""}`;
     if (c.name === "job_input") return `${a.id || ""}: ${JSON.stringify(String(a.chars || "")).slice(0, 60)}`;
     if (c.name === "job_output" || c.name === "job_stop" || c.name === "schedule_delete") return a.id || "";
-    if (c.name === "oracle") return String(a.question || "").slice(0, 80);
     if (c.name === "schedule_create") return `in ${a.in_minutes || "?"} min${a.every_minutes ? `, every ${a.every_minutes} min` : ""}: ${String(a.prompt || "").slice(0, 50)}`;
     if (c.name === "apply_patch") return (String(a.patch || "").match(/^\*\*\* (?:Add|Update|Delete) File: .+$/gm) || []).map((l) => l.split(": ")[1]).join(", ");
     if (isMcp(c.name)) return c.name.replace(/^mcp__/, "").replace("__", ": ");
@@ -245,7 +244,6 @@
     else if (c.name === "task") body.append(el("pre", "agent-pre", a.prompt || ""));
     else if (c.name === "run_script") body.append(el("pre", "agent-pre", a.code || ""));
     else if (c.name === "fan_out") body.append(el("pre", "agent-pre", (Array.isArray(a.jobs) ? a.jobs : []).map((j, n) => `${n + 1}. ${j.description || ""}\n${j.prompt || ""}`).join("\n\n") + (a.schema ? `\n\nschema: ${JSON.stringify(a.schema)}` : "")));
-    else if (c.name === "oracle") body.append(el("pre", "agent-pre", a.question || ""));
     else if (c.name === "spawn_agent" || c.name === "send_input") body.append(el("pre", "agent-pre", a.message || ""));
     else if (isMcp(c.name)) body.append(el("pre", "agent-pre", JSON.stringify(a, null, 2)));
     row.append(body);
@@ -325,7 +323,7 @@
       if (doneText) card.replaceWith(el("p", "agent-note", doneText));
       else card.remove();
       if (decision === "allow_all") {
-        $("agent-mode").value = "auto";
+        $("agent-mode").value = "edits";
         showPicks();
       }
       poll();
@@ -376,12 +374,11 @@
     const actions = el("div", "agent-approval-actions");
     const choices = [["allow", "Cho phép", "agent-btn agent-btn-primary", "Đã cho phép."]];
     if (c.remember) choices.push(["allow_always", `Luôn cho phép ${c.remember}`, "agent-btn", `Đã lưu luật: ${c.remember}`]);
-    choices.push(["allow_all", "Tự làm hết", "agent-btn", "Đã cho phép, từ giờ tự làm hết."], ["deny", "Từ chối", "agent-btn", "Đã từ chối."]);
+    choices.push(["allow_all", "Tự làm hết", "agent-btn", "Đã cho phép, từ giờ tự sửa và chạy."], ["deny", "Từ chối", "agent-btn", "Đã từ chối."]);
     choices.forEach(([decision, label, cls, done]) => {
       actions.append(button(label, cls, () => decide(card, decision, note.value, done)));
     });
     actions.append(note);
-    if (c.reviewer) card.append(el("p", "agent-muted", `Model duyệt không chắc: ${c.reviewer}`));
     if (c.why === "untrusted") card.append(el("p", "agent-muted", "Agent vừa đọc nội dung từ web hoặc MCP, có thể chứa lệnh giả, nên hỏi lại trước khi hành động."));
     card.append(title, actions);
     return card;
@@ -476,7 +473,7 @@
   }
 
   // The composer's two menus name what is picked inside them.
-  const MODE_SHORT = { ask: "Hỏi mọi thứ", edits: "Tự sửa và chạy", review: "Model duyệt", auto: "Tự động", bypass: "Không duyệt" };
+  const MODE_SHORT = { ask: "Hỏi mọi thứ", edits: "Tự sửa và chạy", bypass: "Không duyệt" };
   const SANDBOX_SHORT = { "read-only": "chỉ đọc", "workspace-write": "ghi trong thư mục", "full-access": "không sandbox" };
   const EFFORT_SHORT = { low: "nghĩ ít", medium: "nghĩ vừa", high: "nghĩ kỹ", xhigh: "nghĩ rất kỹ" };
   function showPicks() {

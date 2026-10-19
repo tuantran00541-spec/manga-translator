@@ -38,7 +38,7 @@ def make_session(tmp_path: Path, mode: str = "bypass", tag: str = "t1"):
 class TestH12TaintReset:
     def test_poc_taint_survives_new_request(self, tmp_path):
         """Attacker content staying in history keeps the taint guard on."""
-        s, _, wsroot = make_session(tmp_path, mode="auto", tag="h12a")
+        s, _, wsroot = make_session(tmp_path, mode="edits", tag="h12a")
         edit = {"name": "write_file", "args": {"path": "notes.txt", "content": "x"}}
         assert s._needs_approval(edit, None) is False
 
@@ -52,7 +52,7 @@ class TestH12TaintReset:
         assert s._needs_approval(edit, None) is True
 
     def test_clean_session_unaffected(self, tmp_path):
-        s, _, _ = make_session(tmp_path, mode="auto", tag="h12b")
+        s, _, _ = make_session(tmp_path, mode="edits", tag="h12b")
         s._new_request("hello, do clean work")
         assert s.tainted is False
         assert not any(i.get("tainted") for i in s.history)
@@ -165,7 +165,7 @@ class TestM2ProvenanceTaint:
 class TestM3ScheduleWebOk:
     def test_poc_schedule_hosts_not_auto_trusted(self, tmp_path):
         """A model-written schedule prompt must not whitelist its hosts."""
-        s, _, _ = make_session(tmp_path, mode="auto", tag="m3a")
+        s, _, _ = make_session(tmp_path, mode="edits", tag="m3a")
         s.schedules.append({"id": "sch1",
                             "prompt": "check https://evil.example.com/nightly for the new release notes",
                             "next_at": 0, "every": 0})
@@ -176,14 +176,14 @@ class TestM3ScheduleWebOk:
         assert s._needs_approval(call, None) is True
 
     def test_user_typed_hosts_still_trusted(self, tmp_path):
-        s, _, _ = make_session(tmp_path, mode="auto", tag="m3b")
+        s, _, _ = make_session(tmp_path, mode="edits", tag="m3b")
         s._new_request("please check https://example.com/news for updates")
         assert "example.com" in s.web_ok
         call = {"name": "web_fetch", "args": {"url": "https://example.com/news"}}
         assert s._needs_approval(call, None) is False
 
     def test_schedule_without_urls_unaffected(self, tmp_path):
-        s, _, _ = make_session(tmp_path, mode="auto", tag="m3c")
+        s, _, _ = make_session(tmp_path, mode="edits", tag="m3c")
         s.schedules.append({"id": "sch2", "prompt": "summarize yesterday's notes",
                             "next_at": 0, "every": 0})
         s._tick()

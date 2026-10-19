@@ -25,14 +25,14 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.agent import advisor, agents, aliases, chaincheck, client, codemode, context, external, gitguard, guardian, isolate, kernel, learn, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
+from app.agent import agents, aliases, chaincheck, client, codemode, context, external, gitguard, isolate, kernel, learn, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
 from app.agent.checkpoint import Checkpoints
 from app.ai_providers import auth_headers, resolve_provider
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
 from app.logging_config import logger
 
-MODES = ("ask", "edits", "review", "auto", "bypass")
-HANDS_OFF = ("auto", "bypass")
+MODES = ("ask", "edits", "bypass")
+HANDS_OFF = ("bypass",)
 MAX_STEPS = 300
 MAX_JOBS = 8
 MAX_SCHEDULES = 10
@@ -69,20 +69,10 @@ PREWALK_CONTINUE = "[Continue] The plan is written; carry on with the work, do n
 PREWALK_CHECKLIST = ("[Before you call it done] Every place that uses what you changed (callers, copies, the same pattern elsewhere) is changed too: "
                      "search for them. Behaviour outside the asked change stays as it was; the smallest correct diff wins. Run the whole affected "
                      "test file or module, not just the test you expect to flip. Say done only when all three hold.")
-ADVISED = "[Advisor] Another model read your recent steps and says this. Weigh it; the decision is yours, and say briefly if you disagree.\n"
 RULINGS = ("Nobody is watching this run. When something is ambiguous, conflicting or missing, choose, write one line "
            "'Ruling: <choice> - <why> - <what it costs if wrong>', and go on; a wrong ruling is cheap to undo, a stalled run is not. "
            "Stop to ask only before something that cannot be undone, touches security or reaches outside this workspace (a push, a merge, "
            "a publish), or when every way forward is a guess.")
-AUTO_RULINGS = ("Nobody is watching this run. When something is ambiguous, conflicting or missing, choose, write one line "
-                "'Ruling: <choice> - <why> - <what it costs if wrong>', and go on. An automatic reviewer checks commands and outside actions and "
-                "blocks destructive, outbound or unasked-for side effects; when it blocks one, take a safer way or leave that step out and name it "
-                "in your report as work for the user.")
-AUTO_BLOCKED = ("Auto mode blocked this {name} call: {reason}. Do not retry it or reach the same result another way. Take a safer way; if there "
-                "is none, leave the step out and name it in your report as something for the user.")
-ORACLE_PROMPT = ("A coding agent asks you, a more experienced engineer, for advice. You see its recent conversation and its question. Answer "
-                 "directly: name the risk, the cause or the better way, and what to check. Rely only on what the conversation shows and say when "
-                 "something you need is not there. No preamble.")
 EMPTY_NUDGE = "[Your last reply was empty. Go on: make a tool call or write your answer.]"
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -452,8 +442,6 @@ SESSION_SPECS = {
                             "prompt": {"type": "string"}, "in_minutes": {"type": "integer"}, "every_minutes": {"type": "integer"}}}},
     "schedule_list": {"name": "schedule_list", "description": "List the messages scheduled for later.", "parameters": OBJ},
     "schedule_delete": {"name": "schedule_delete", "description": "Cancel a scheduled message.", "parameters": ID},
-    "oracle": {"name": "oracle", "description": "Ask a stronger model for advice on a plan, a review or a fix that is stuck; it reads the conversation and runs no tools.",
-               "parameters": {"type": "object", "required": ["question"], "properties": {"question": {"type": "string"}}}},
     "job_stop": {"name": "job_stop", "description": "Stop a background job.", "parameters": ID},
     "context_notes": {"name": "context_notes", "description": "Read your notebook for this task (no text) or write it anew (16 KB at most); it outlasts new_context and summaries.",
                       "parameters": {"type": "object", "properties": {"text": {"type": "string"}}}},
@@ -583,8 +571,6 @@ class AgentSession:
         # Taint survives compaction: once on, the guard stays on for the session.
         self._taint_latch = False
         self._turn_usage = 0
-        self._denials: list[bool] = []
-        self._cleared: set[str] = set()
         self._fallback_at = 0
         self._last_prompt = (0, 0)
         self._after_compact = 0
@@ -612,11 +598,7 @@ class AgentSession:
         self._learning: threading.Thread | None = None
         self._scheduler: threading.Thread | None = None
         self._closing = False
-        self._advice: list[tuple[str, str]] = []
-        self._advice_given: list[str] = []
-        self._advised_upto = self._advise_steps = 0
-        self._advisor_thread: threading.Thread | None = None
-        self._final_advised = self._edited = self._plan_nudged = self._continued = False
+        self._edited = self._plan_nudged = self._continued = False
         self._prewalk = False
         self._interrupt: dict | None = None
         self._pinned: dict[str, str] | None = None
@@ -974,7 +956,7 @@ class AgentSession:
         else:
             self.tainted = True
         self._inherit_taint = False
-        self._final_advised = self._edited = self._plan_nudged = self._continued = False
+        self._edited = self._plan_nudged = self._continued = False
         self._fallback_at = 0
         self._request_no += 1
         self.chain_budget = {}
@@ -1437,8 +1419,6 @@ class AgentSession:
         if self.skills:
             rows.append(SESSION_SPECS["skill"])
         rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"], SESSION_SPECS["checkpoint"]]
-        if self.profile["oracle"]:
-            rows.append(SESSION_SPECS["oracle"])
         rows += [SESSION_SPECS["schedule_create"], SESSION_SPECS["schedule_list"], SESSION_SPECS["schedule_delete"],
                  SESSION_SPECS["plugin_write"], SESSION_SPECS["plugin_remove"], SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"],
                  SESSION_SPECS["memory"], task, spawn, fan, SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
@@ -1448,7 +1428,7 @@ class AgentSession:
         rows += [{"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
                   "parameters": tool.get("inputSchema") or OBJ} for name, (server, tool) in self.mcp_tools.items()]
         if self.plan_mode:
-            reads = agents.READ_TOOLS | {"checkpoint", "oracle", "todo_write", "task", "fan_out", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
+            reads = agents.READ_TOOLS | {"checkpoint", "todo_write", "task", "fan_out", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
             reads |= {n for n, t in self.registry.tools.items() if t.kind == "read"}
             # A connected tool that only reads (its own readOnlyHint, or the read role in profile.json) helps a plan too.
             reads |= {n for n, (_, tool) in self.mcp_tools.items()
@@ -1473,16 +1453,16 @@ class AgentSession:
         if name == "memory":
             return self.mode not in HANDS_OFF and call["args"].get("action") != "list"
         if name == "create":
-            # Writing a tool asks where edits ask and gets the reviewer in Auto mode; running it is a command and asks like one.
-            return self.mode in ("ask", "review", "auto") and verdict != "allow"
+            # Writing a tool asks where edits ask; running it is a command and asks like one.
+            return self.mode == "ask" and verdict != "allow"
         if name == "checkpoint":
             # Putting files back is an edit, so it asks wherever edits ask.
-            return call["args"].get("action") == "restore" and self.mode in ("ask", "review") and verdict != "allow"
+            return call["args"].get("action") == "restore" and self.mode == "ask" and verdict != "allow"
         if self.mode == "bypass" or name in SESSION_SPECS or verdict == "allow":
             return False
         if verdict == "ask":
             return True
-        if name in URL_TOOLS and self.mode in ("edits", "auto") and (urlparse(str(call["args"].get("url") or "")).hostname or "") not in self.web_ok:
+        if name in URL_TOOLS and self.mode == "edits" and (urlparse(str(call["args"].get("url") or "")).hostname or "") not in self.web_ok:
             return True
         if name in self.mcp_tools and self._role(name) != "read" and self.tainted and self.profile["untrusted_guard"]:
             # A name that looks read-only can still send data out, so after untrusted content it asks like any outside call.
@@ -1491,7 +1471,7 @@ class AgentSession:
             # A server writes its own annotations, so its readOnlyHint never skips approval.
             # Only names the harness itself recognizes as read-only keep the fast path.
             tool = self.mcp_tools[name][1] or {}
-            return not (self.mode in ("edits", "auto") and mcp.harness_read_only(tool.get("name")))
+            return not (self.mode == "edits" and mcp.harness_read_only(tool.get("name")))
         kind = plugin.kind if plugin else self._role(name) or KIND.get(name, "exec")
         if kind == "read":
             return False
@@ -1500,11 +1480,8 @@ class AgentSession:
             return True
         # A tool an MCP server runs is outside our sandbox and our path checks.
         via_mcp = name in self.replaced or name in self.mcp_tools
-        if self.mode in ("ask", "review"):
+        if self.mode == "ask":
             return via_mcp or not (name == "run_command" and not call["args"].get("outside_sandbox") and rules.safe_readonly(str(call["args"].get("command") or "")))
-        if kind == "exec" and self.mode == "auto":
-            # Auto mode lets only look-only commands skip its reviewer.
-            return not (name == "run_command" and not via_mcp and rules.safe_readonly(str(call["args"].get("command") or "")))
         if kind == "exec":
             # In edits mode commands run on their own only inside a working OS sandbox.
             confined = (sandbox.full() and self.workspace.policy.mode != "full-access" and not via_mcp
@@ -1516,49 +1493,6 @@ class AgentSession:
             except (KeyError, ToolError):
                 return True
         return False
-
-    def _code_digest(self, code: str) -> str:
-        """A compact, whole-file summary for the reviewer: imports, definitions and
-        risky primitives found ANYWHERE in the code. Never truncated."""
-        import ast as _ast
-        lines = [f"[whole-file digest: {len(code)} chars, {code.count(chr(10)) + 1} lines]"]
-        try:
-            tree = _ast.parse(code)
-        except (SyntaxError, ValueError):
-            tree = None
-        if tree is not None:
-            imports = sorted({a.names[0].name.split(".")[0] for a in _ast.walk(tree)
-                              if isinstance(a, _ast.Import) and a.names} |
-                             {a.module.split(".")[0] for a in _ast.walk(tree)
-                              if isinstance(a, _ast.ImportFrom) and a.module})
-            defs = ["class " + n.name if isinstance(n, _ast.ClassDef) else "def " + n.name
-                    for n in tree.body if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef))]
-            if imports:
-                lines.append("imports: " + ", ".join(imports))
-            if defs:
-                lines.append("defines: " + ", ".join(defs))
-        risky = [tok for tok in ("run_command", "run_script", "subprocess", "os.system", "os.popen",
-                                 "socket", "urllib", "requests", "http.client", "eval(", "exec(",
-                                 "__import__", "compile(", "ctypes", "pty", "shutil.rmtree",
-                                 "os.remove", "os.unlink", "write_text", "write_bytes",
-                                 "schedule_create", "plugin_write", "memory(")
-                 if tok in code]
-        if risky:
-            lines.append("risky tokens anywhere in file: " + ", ".join(risky))
-        return "\n".join(lines)
-
-    def _for_review(self, call: dict) -> dict:
-        """A created tool is judged by its code, since its name and arguments say nothing about what it does."""
-        tool = self._root().created.get(call["name"])
-        if not tool or not isinstance(call["args"], dict):
-            return call
-        code = self._with_callees(tool["code"])
-        shown = code[:REVIEW_CODE_CAP]
-        if len(code) > REVIEW_CODE_CAP:
-            shown += (f"\n\n[... {len(code) - REVIEW_CODE_CAP} more chars not shown verbatim; "
-                      "see the whole-file digest above ...]")
-        # The digest leads so it survives truncation: it always describes the entire file.
-        return {**call, "args": {**call["args"], "_tool_code": self._code_digest(code) + "\n\n" + shown}}
 
     def _typing_outside(self, call: dict) -> bool:
         """Input to a job running outside the sandbox is a new command there, so it asks like one."""
@@ -1955,7 +1889,7 @@ class AgentSession:
                 pass
 
     def _run_branch_tool(self, ws: Workspace, name: str, args: dict) -> tuple[str, bool]:
-        """A branch's workspace tool through the same rules, approvals, guardian, hooks and taint as the model's own calls; it just executes against the branch's workspace copy instead of the real one."""
+        """A branch's workspace tool through the same rules, approvals, hooks and taint as the model's own calls; it just executes against the branch's workspace copy instead of the real one."""
         # Branch code runs as a created-tool script, so it reaches the tool library -- now with _run_call's full gating.
         call = {"id": f"chain-{uuid.uuid4().hex[:8]}", "name": name, "args": args}
         # The swap reuses _run_call's gating untouched; it is serialized because
@@ -2339,13 +2273,13 @@ class AgentSession:
         return code, ok
 
     def _repair_once(self, args: dict) -> tuple[str, bool]:
-        """The model rewrites a created tool that just failed inside a running chain; the fix is kept and, in Auto mode, reviewed first."""
+        """The model rewrites a created tool that just failed inside a running chain; the fix is kept."""
         name = str(args.get("name") or "")
         tool = self._root().created.get(name)
         if tool is None:
             return "not a created tool", False
         if self.mode not in HANDS_OFF:
-            return "live repair runs only in auto or bypass mode, where nobody is asked before code runs", False
+            return "live repair runs only in bypass mode, where nobody is asked before code runs", False
         messages = [{"role": "system", "content": "A tool in a program you wrote failed while the program is still running. Reply with the whole corrected "
                                                   "Python code of that tool, same function name and parameters, in one ```python block."},
                     {"role": "user", "content": f"Tool {name}:\n```python\n{tool['code']}\n```\n\nCalled with: {json.dumps(args.get('args'), ensure_ascii=False)[:4000]}\n\n"
@@ -2360,11 +2294,6 @@ class AgentSession:
             compile(code, f"{name}.py", "exec")
         except SyntaxError as exc:
             return f"the repair did not compile: {exc}", False
-        if self.mode == "auto":
-            verdict, reason = guardian.review(self.complete, self.provider, self.api_key, self.profile["review_model"] or self.model, self._user_messages(),
-                                              {"name": name, "args": {**(args.get("args") or {}), "_tool_code": code[:6000]}}, untrusted=self.tainted)
-            if verdict != "allow":
-                return f"the reviewer did not allow the repaired code: {reason}", False
         self._create({"name": name, "code": code, "description": tool["description"], "parameters": tool["parameters"]})
         self.emit("notice", text=f"Repaired the tool {name} while a chain was running.")
         return code, True
@@ -2450,7 +2379,7 @@ class AgentSession:
                 return "The user did not approve the plan; revise it." + (f" Their note: {note}" if note else "")
             self.plan_mode = False
             if decision["decision"] == "allow_all":
-                self.mode = "auto"
+                self.mode = "edits"
                 self._sync_plugin_mode()
             self.emit("notice", text="Plan approved; starting work.")
             return "The user approved the plan. Implement it now."
@@ -2477,8 +2406,6 @@ class AgentSession:
             return self._job_output(str(args.get("id") or ""), args.get("wait_s"))
         if call["name"] in ("schedule_create", "schedule_list", "schedule_delete"):
             return self._schedule(call["name"], args)
-        if call["name"] == "oracle":
-            return self._oracle(str(args.get("question") or ""))
         if call["name"] == "job_input":
             job = self._job(str(args.get("id") or ""))
             try:
@@ -3056,55 +2983,25 @@ class AgentSession:
             # What must always ask still asks, with or without any plugin voting.
             ask = ask or self._always_ask(call)
             if ask:
-                auto = self.mode == "auto"
-                why = "untrusted" if self.tainted and not auto and self.profile["untrusted_guard"] else ""
-                reviewed, cleared = "", False
-                if signature in self._cleared and not self._always_ask(call):
-                    cleared = True
-                elif self.mode in ("review", "auto") and not why and not self._always_ask(call):
-                    started = time.time()
-                    answer, reason = guardian.review(self.complete, self.provider, self.api_key, self.profile["review_model"] or self.model,
-                                                     self._user_messages(), self._for_review(call), untrusted=self.tainted, rule=verdict == "ask")
-                    with self._usage_lock:
-                        self.stats["model_s"] += time.time() - started
-                    # In Auto mode an unsure reviewer blocks; only a reviewer that could not answer hands the call to the user.
-                    blocked = answer == "deny" or (auto and answer == "ask" and reason != guardian.UNAVAILABLE)
-                    self._denials.append(blocked)
-                    if answer == "allow":
-                        self.emit("notice", text=f"Reviewer allowed {call['name']}: {reason}")
-                        self._cleared.add(signature)
-                        cleared = True
-                    elif blocked and auto and guardian.tripped(self._denials):
-                        self.emit("notice", text=f"Auto mode blocked {call['name']} ({reason}) after many blocks in a row; asking you instead.")
-                        self._denials = []
-                        reviewed = reason
-                    elif blocked:
-                        self.emit("notice", text=f"Reviewer {'blocked' if auto else 'denied'} {call['name']}: {reason}")
-                        if not auto and guardian.tripped(self._denials):
-                            self.emit("error", text="The reviewer denied too many calls in a row; stopping this turn for you to look.")
-                            self._stop = True
-                        return (AUTO_BLOCKED if auto else guardian.DENIED).format(name=call["name"], reason=reason), False
-                    else:
-                        reviewed = reason
-                if not cleared:
-                    saved = None if why else rules.remembered(call["name"], call["args"], verdict)
-                    extra = {**({"why": why} if why else {}), **({"remember": saved[1]} if saved else {}), **({"reviewer": reviewed} if reviewed else {})}
-                    # The approval card is a deep copy; listeners cannot rewrite the call that runs.
-                    decision = self._wait_for_decision(copy.deepcopy({**call, **extra} if extra else call))
-                    if decision["decision"] == "allow_always" and saved:
-                        self._remember(*saved)
-                    if decision["decision"] == "allow_all":
-                        self.mode = "auto"
-                        self._sync_plugin_mode()
-                        # Allow all is the user's answer for the whole tree, so every session up to the root moves too.
-                        above = self.parent
-                        while above is not None:
-                            above.mode = "auto"
-                            above._sync_plugin_mode()
-                            above = above.parent
-                    elif decision["decision"] not in ("allow", "allow_always"):
-                        note = f" Note from the user: {decision['note']}" if decision.get("note") else ""
-                        return f"The user refused this {call['name']} call.{note}", False
+                why = "untrusted" if self.tainted and self.profile["untrusted_guard"] else ""
+                saved = None if why else rules.remembered(call["name"], call["args"], verdict)
+                extra = {**({"why": why} if why else {}), **({"remember": saved[1]} if saved else {})}
+                # The approval card is a deep copy; listeners cannot rewrite the call that runs.
+                decision = self._wait_for_decision(copy.deepcopy({**call, **extra} if extra else call))
+                if decision["decision"] == "allow_always" and saved:
+                    self._remember(*saved)
+                if decision["decision"] == "allow_all":
+                    self.mode = "edits"
+                    self._sync_plugin_mode()
+                    # Allow all is the user's answer for the whole tree, so every session up to the root moves too.
+                    above = self.parent
+                    while above is not None:
+                        above.mode = "edits"
+                        above._sync_plugin_mode()
+                        above = above.parent
+                elif decision["decision"] not in ("allow", "allow_always"):
+                    note = f" Note from the user: {decision['note']}" if decision.get("note") else ""
+                    return f"The user refused this {call['name']} call.{note}", False
                 if call["name"] in URL_TOOLS:
                     self.web_ok.add((urlparse(str(call["args"].get("url") or "")).hostname or "").lower())
         if call["name"] not in SESSION_SPECS:
@@ -3207,8 +3104,6 @@ class AgentSession:
             parts += [self._hook_call(fn) for fn in self.registry.prompts]
             if self.plan_mode:
                 parts.append(PLAN_PROMPT)
-            elif self.mode == "auto":
-                parts.append(AUTO_RULINGS)
             elif self.mode == "bypass":
                 parts.append(RULINGS)
         else:
@@ -3581,15 +3476,6 @@ class AgentSession:
             self._plan_nudged = True
             self.history.append({"role": "user", "content": PREWALK_PLAN})
 
-    def _advisor_on(self) -> bool:
-        return bool(self.profile["advisor"]) and not self.depth
-
-    def _advisor_steps(self) -> str:
-        if self._advised_upto > len(self.history):
-            self._advised_upto = max(0, len(self.history) - 6)
-        items, self._advised_upto = self.history[self._advised_upto:], len(self.history)
-        return self._transcript(items)
-
     def _schedule(self, name: str, args: dict) -> str:
         """Prompts the session sends itself later (Kimi Code's cron tools, with minutes instead of cron fields)."""
         if name == "schedule_list":
@@ -3753,60 +3639,6 @@ class AgentSession:
             return f"Đã hoàn tác lần tự học {done}."
         return self._maybe_learn(force=True)
 
-    def _oracle(self, question: str) -> str:
-        """The agent asks the advisor model for a second opinion on the recent conversation (Amp's oracle)."""
-        if not question.strip():
-            raise ToolError("question is empty")
-        messages = [{"role": "system", "content": ORACLE_PROMPT},
-                    {"role": "user", "content": f"The user asked:\n{self._last_request[:4000]}\n\nRecent conversation:\n{self._transcript(self.history[-30:])[-50000:]}\n\nThe agent asks you:\n{question[:6000]}"}]
-        reply = self.complete(self.provider, self.api_key, self.profile["advisor_model"] or self.profile["review_model"] or self.model, messages, tools=None)
-        with self._usage_lock:
-            for key in self.usage:
-                self.usage[key] += int(reply.get("usage", {}).get(key) or 0)
-        return reply["text"].strip() or "The oracle gave no answer."
-
-    def _ask_advisor(self, steps: str, finishing: bool) -> None:
-        notes, usage = advisor.advise(self.complete, self.provider, self.api_key, self.profile["advisor_model"] or self.profile["review_model"] or self.model,
-                                      self._user_messages(), steps, list(self._advice_given), finishing)
-        with self._usage_lock:
-            for key in self.usage:
-                self.usage[key] += int(usage.get(key) or 0)
-            self._advice += notes
-            self._advice_given += [f"{sev}: {text}" for sev, text in notes]
-
-    def _start_advisor(self) -> None:
-        """Every few steps the advisor reads what happened since its last look, in the background so the agent never waits."""
-        if not self._advisor_on():
-            return
-        self._advise_steps += 1
-        if self._advise_steps % self.profile["advisor_every"] or (self._advisor_thread and self._advisor_thread.is_alive()):
-            return
-        steps = self._advisor_steps()
-        self._advisor_thread = threading.Thread(target=self._ask_advisor, args=(steps, False), name=f"advisor-{self.id}", daemon=True)
-        self._advisor_thread.start()
-
-    def _take_advice(self) -> bool:
-        with self._usage_lock:
-            notes, self._advice = self._advice, []
-        if not notes:
-            return False
-        notes.sort(key=lambda n: advisor.SEVERITIES.index(n[0]))
-        self.history.append({"role": "user", "content": ADVISED + "\n".join(f"- {sev}: {text}" for sev, text in notes)})
-        self.emit("notice", text="Advisor: " + " | ".join(f"{sev}: {text}" for sev, text in notes)[:800])
-        return True
-
-    def _final_advice(self) -> bool:
-        """Once per request, the advisor checks a claim of done before the turn ends; a concern or blocker sends the agent back."""
-        if not self._advisor_on() or self._final_advised or self._stop:
-            return False
-        self._final_advised = True
-        if self._advisor_thread and self._advisor_thread.is_alive():
-            self._advisor_thread.join(120)
-        self._ask_advisor(self._advisor_steps(), True)
-        with self._usage_lock:
-            self._advice = [n for n in self._advice if n[0] != "nit"]
-        return self._take_advice()
-
     def _more_work(self) -> bool:
         """True when a queued message or an unfinished goal means the turn should go on."""
         with self._lock:
@@ -3949,7 +3781,6 @@ class AgentSession:
                 self.emit("notice", text="Stopped.")
                 break
             self._drain()
-            self._take_advice()
             if self._deadline and not self.depth:
                 if time.time() >= self._deadline:
                     self.emit("notice", text="Out of time; the agent is writing its final report.")
@@ -4004,14 +3835,13 @@ class AgentSession:
                                  **({"reasoning": turn["reasoning"][-20000:]} if self.echo_reasoning and turn["reasoning"] else {})})
             self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)
             if not calls:
-                if self._final_advice() or self._more_work():
+                if self._more_work():
                     continue
                 break
             self._run_calls(calls)
             self._since_learn += 1
             self._show_images()
             self._advance_prewalk()
-            self._start_advisor()
             if self._rollover:
                 self._roll_over()
             broken = broken + 1 if all(c.get("error") or not c["name"] for c in calls) else 0

@@ -16,7 +16,7 @@ GROUPS = {
     "write_file": "edit", "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "replace_in_files": "edit", "move_file": "edit",
     "delete_file": "edit", "checkpoint": "files",
     "run_command": "shell", "run_script": "shell", "job_output": "shell", "job_input": "shell", "job_stop": "shell", "web_fetch": "web", "web_search": "web", "web_download": "web", "skill": "skills", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
-    "task": "subagents", "fan_out": "subagents", "oracle": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
+    "task": "subagents", "fan_out": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
     "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
     "plugin_write": "extensions", "plugin_remove": "extensions",
 }
@@ -39,7 +39,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
-                     "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "oracle": False, "fallback_models": [], "advisor": False, "advisor_model": "", "advisor_every": 3, "learn_every": 10, "prewalk_model": "",
+                     "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "fallback_models": [], "learn_every": 10, "prewalk_model": "",
                      "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "services": {}}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
@@ -57,7 +57,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["external_agents"].update(data["external_agents"])
                 if isinstance(data.get("echo_reasoning"), bool):
                     profile["echo_reasoning"] = data["echo_reasoning"]
-                for key in ("subagent_model", "compact_model", "advisor_model", "prewalk_model"):
+                for key in ("subagent_model", "compact_model", "prewalk_model"):
                     if isinstance(data.get(key), str):
                         profile[key] = data[key].strip()[:100]
                 for key in ("models", "prices"):
@@ -80,18 +80,12 @@ def load_profile(workspace: Path, home: Path) -> dict:
                             continue
                 if isinstance(data.get("fallback_models"), list):
                     profile["fallback_models"] = [m.strip()[:100] for m in data["fallback_models"][:4] if isinstance(m, str) and m.strip()]
-                if isinstance(data.get("oracle"), bool):
-                    profile["oracle"] = data["oracle"]
                 if isinstance(data.get("compact_at_tokens"), int) and (data["compact_at_tokens"] == 0 or 20_000 <= data["compact_at_tokens"] <= 10_000_000):
                     profile["compact_at_tokens"] = data["compact_at_tokens"]
                 if isinstance(data.get("context_window"), int) and (data["context_window"] == 0 or 4_000 <= data["context_window"] <= 10_000_000):
                     profile["context_window"] = data["context_window"]
                 if isinstance(data.get("timeout_to_background"), bool):
                     profile["timeout_to_background"] = data["timeout_to_background"]
-                if isinstance(data.get("advisor"), bool):
-                    profile["advisor"] = data["advisor"]
-                if isinstance(data.get("advisor_every"), int) and data["advisor_every"] > 0:
-                    profile["advisor_every"] = data["advisor_every"]
                 if isinstance(data.get("learn_every"), int) and data["learn_every"] >= 0:
                     profile["learn_every"] = data["learn_every"]
                 if isinstance(data.get("notes_context"), bool):
