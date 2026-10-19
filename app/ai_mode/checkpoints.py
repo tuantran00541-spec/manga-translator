@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 
 from app.ai_mode.vision_json import request_vision_json
+from app.region_policy import overlap_share
 
 OVERLAP = 0.3  # of the smaller box; two lettered objects overlapping this much garble each other
 MIN_SIDE_PX = 10
@@ -93,14 +94,7 @@ def pack(crops: list[Crop]) -> list[tuple[np.ndarray, list[Crop]]]:
 
 def _covered(box, others) -> bool:
     """True when ``box`` and one of ``others`` share at least OVERLAP of the smaller one's area."""
-    area = (box[2] - box[0]) * (box[3] - box[1])
-    for other in others:
-        ix = min(box[2], other[2]) - max(box[0], other[0])
-        iy = min(box[3], other[3]) - max(box[1], other[1])
-        smaller = max(1, min(area, (other[2] - other[0]) * (other[3] - other[1])))
-        if ix > 0 and iy > 0 and ix * iy >= OVERLAP * smaller:
-            return True
-    return False
+    return any(overlap_share(box, other) >= OVERLAP for other in others)
 
 
 def review_sheet(provider, model: str, api_key: str, sheet: np.ndarray, crops: list[Crop]) -> tuple[list[Crop], float | None]:

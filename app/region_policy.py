@@ -13,6 +13,19 @@ def page_preserve_regions(page: dict | None) -> list[dict]:
     return legacy if isinstance(legacy, list) else []
 
 
+def overlap_share(a, b) -> float:
+    """Shared area of two boxes (dicts with x1..y2 or 4-sequences) over the smaller box's area; 0 for a malformed box."""
+    try:
+        ax1, ay1, ax2, ay2 = (float(a[k]) for k in ("x1", "y1", "x2", "y2")) if isinstance(a, dict) else map(float, a[:4])
+        bx1, by1, bx2, by2 = (float(b[k]) for k in ("x1", "y1", "x2", "y2")) if isinstance(b, dict) else map(float, b[:4])
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+    ix, iy = min(ax2, bx2) - max(ax1, bx1), min(ay2, by2) - max(ay1, by1)
+    if ix <= 0 or iy <= 0:
+        return 0.0
+    return ix * iy / max(1.0, min((ax2 - ax1) * (ay2 - ay1), (bx2 - bx1) * (by2 - by1)))
+
+
 def geometry_center_in_regions(geometry: dict | None, regions) -> bool:
     if not isinstance(geometry, dict) or not regions:
         return False

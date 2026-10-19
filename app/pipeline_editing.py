@@ -25,7 +25,7 @@ from app.manifest_utils import (
 )
 from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD
-from app.region_policy import subtract_regions_from_mask
+from app.region_policy import overlap_share, subtract_regions_from_mask
 
 STROKE_BOX_MAX_SHARE = 0.4  # a found box grown past this share of the slice has run into the art
 
@@ -68,7 +68,6 @@ def _normalize_region(region: dict, w: int, h: int) -> tuple[int, int, int, int]
     return x1, y1, x2, y2
 
 
-
 def _paint_residue(mask: np.ndarray, clean: np.ndarray | None, rect: tuple[int, int, int, int]) -> None:
     """Mark the leftover strokes in ``rect`` of the cleaned slice; the whole rectangle only when none stand out."""
     from app.detector.kiuyha_detector import letter_mask
@@ -83,15 +82,6 @@ def _paint_residue(mask: np.ndarray, clean: np.ndarray | None, rect: tuple[int, 
 
 
 COVERED_SHARE = 0.3  # of the smaller box; a new box sharing this much with an old one holds the same text
-
-
-def _box_overlap(a: dict, b: dict) -> float:
-    """Shared area over the smaller box's area."""
-    ix = min(a["x2"], b["x2"]) - max(a["x1"], b["x1"])
-    iy = min(a["y2"], b["y2"]) - max(a["y1"], b["y1"])
-    if ix <= 0 or iy <= 0:
-        return 0.0
-    return ix * iy / max(1, min((a["x2"] - a["x1"]) * (a["y2"] - a["y1"]), (b["x2"] - b["x1"]) * (b["y2"] - b["y1"])))
 
 
 def _stroke_box(image: np.ndarray, rect: tuple[int, int, int, int]) -> dict:
@@ -390,7 +380,7 @@ class PipelineEditingMixin:
             if skip_covered:
                 # A box that grew over the letters of a box already there would letter that text twice.
                 active = [b for b in boxes_snapshot if not b.get("removed")]
-                new_boxes = [b for b in new_boxes if not any(_box_overlap(b, other) >= COVERED_SHARE for other in active)]
+                new_boxes = [b for b in new_boxes if not any(overlap_share(b, other) >= COVERED_SHARE for other in active)]
             preserve_regions = old_preserve + added_preserve
             boxes_snapshot.extend(copy.deepcopy(new_boxes))
 

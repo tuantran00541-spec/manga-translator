@@ -378,6 +378,35 @@ def test_sound_effect_left_as_art_returns_its_region_for_restoring(saved_chapter
     assert info["blank_ids"] == ["obj_1"] and info["art_regions"] == [region]
 
 
+def test_a_sound_effect_the_artist_drew_stays_as_art_even_when_the_model_translates_it(saved_chapter, monkeypatch):
+    _style, region, _output = saved_chapter
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": "Cộp cộp"}, self.model, {}, None,
+                                                       roles={"obj_1": "sfx"}, sources={"obj_1": "저벅"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="ko", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["translated"] == 0 and info["blank_ids"] == ["obj_1"] and info["art_regions"] == [region]
+
+
+def test_a_sound_effect_lettered_in_latin_script_is_translated(saved_chapter, monkeypatch):
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": "Rầm!"}, self.model, {}, None,
+                                                       roles={"obj_1": "sfx"}, sources={"obj_1": "DUANG!"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="ko", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["translated"] == 1 and info["art_regions"] == []
+
+
 def test_a_translated_page_letters_each_kind_of_text_in_its_one_font(tmp_path, monkeypatch):
     original, clean = tmp_path / "original.png", tmp_path / "clean.png"
     Image.new("RGB", (400, 600), "white").save(original)
@@ -477,60 +506,3 @@ def test_lines_outside_every_box_come_back_as_pixel_boxes(tmp_path, monkeypatch)
         source_lang="en", target_lang="vi")
     assert result.unboxed == ((40, 300, 361, 361),)
     assert result.speakers == {"top": "Sunny"}, "speakers come back under the real ids"
-
-
-def test_a_korean_sound_effect_is_read_again_close_up_and_lettered_in_its_drawn_style(tmp_path, monkeypatch):
-    original, clean = tmp_path / "original.png", tmp_path / "clean.png"
-    Image.new("RGB", (400, 600), "white").save(original)
-    Image.new("RGB", (400, 600), "gray").save(clean)
-    replies = [
-        {"translations": [{"id": "1", "source": "지잉", "translated_text": "Két...", "role": "sfx", "container": "free"},
-                          {"id": "2", "source": "BANG", "translated_text": "Đoàng!", "role": "sfx", "container": "free"},
-                          {"id": "3", "source": "WHO ARE YOU?!", "translated_text": "Anh là ai?!", "role": "shout",
-                           "container": "spiky"}]},
-        {"translations": [{"id": "1", "source": "저벅", "translated_text": "Cộp cộp...", "style": "thin"}]},
-    ]
-    sent = []
-
-    class Response:
-        status_code, ok = 200, True
-
-        def json(self):
-            return {"choices": [{"message": {"content": json.dumps(replies[len(sent) - 1])}}], "usage": {}}
-
-    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: sent.append(kwargs["json"]) or Response())
-    items = [{"id": key, "text": text, "region": [20, 30 + 100 * n, 200, 110 + 100 * n]}
-             for n, (key, text) in enumerate((("a", "지잉"), ("b", "BANG"), ("c", "WHO ARE YOU?!")))]
-    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
-        original, clean, items, api_key="k", source_lang="ko", target_lang="vi")
-    assert len(sent) == 2, "only the Korean sound effect is read again"
-    assert sent[1]["messages"][1]["content"][0]["text"] == "NUMBERED SOUND EFFECT CLOSE-UPS"
-    assert result.translations == {"a": "Cộp cộp...", "b": "Đoàng!", "c": "Anh là ai?!"}
-    assert result.sources["a"] == "저벅"
-    fonts = {key: value["font_id"] for key, value in result.font_choices.items()}
-    assert fonts["a"] == "thought.patrick-hand" and fonts["b"] == "sfx.black-ops-one"
-
-
-def test_a_failed_close_up_read_keeps_the_first_reading(tmp_path, monkeypatch):
-    original, clean = tmp_path / "original.png", tmp_path / "clean.png"
-    Image.new("RGB", (400, 600), "white").save(original)
-    Image.new("RGB", (400, 600), "gray").save(clean)
-    calls = []
-
-    class Response:
-        def __init__(self):
-            self.ok = len(calls) == 1
-            self.status_code = 200 if self.ok else 500
-            self.text = "boom"
-
-        def json(self):
-            return {"choices": [{"message": {"content": json.dumps({"translations": [
-                {"id": "1", "source": "쾅", "translated_text": "Rầm!", "role": "sfx", "container": "free"}]})}}],
-                "usage": {}}
-
-    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: calls.append(1) or Response())
-    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
-        original, clean, [{"id": "a", "text": "쾅", "region": [20, 30, 200, 110]}],
-        api_key="k", source_lang="ko", target_lang="vi")
-    assert len(calls) == 2 and result.translations == {"a": "Rầm!"}
-    assert result.font_choices["a"]["font_id"] == "sfx.black-ops-one"

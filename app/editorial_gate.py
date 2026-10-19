@@ -5,6 +5,7 @@ import hashlib
 from app.parameters import EDITORIAL_STORY_CANDIDATE_CONFIDENCE
 from app.region_policy import (
     geometry_center_in_regions,
+    overlap_share,
     page_preserve_regions,
     text_object_in_preserve_region,
 )
@@ -157,23 +158,6 @@ def _object_is_story_like(obj: dict, candidate_ids: set[str]) -> bool:
     if semantic in STORY_SEMANTIC_TYPES:
         return True
     return bool(source_box_ids(obj) & candidate_ids)
-
-
-def _overlap_fraction(a: dict, b: dict) -> float:
-    try:
-        ax1, ay1, ax2, ay2 = (float(a[k]) for k in ("x1", "y1", "x2", "y2"))
-        bx1, by1, bx2, by2 = (float(b[k]) for k in ("x1", "y1", "x2", "y2"))
-    except (KeyError, TypeError, ValueError):
-        return 0.0
-    if ax2 <= ax1 or ay2 <= ay1 or bx2 <= bx1 or by2 <= by1:
-        return 0.0
-    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
-    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
-    intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
-    if intersection <= 0:
-        return 0.0
-    smaller = min((ax2 - ax1) * (ay2 - ay1), (bx2 - bx1) * (by2 - by1))
-    return intersection / smaller if smaller > 0 else 0.0
 
 
 def _blocker(
@@ -576,10 +560,10 @@ def editorial_preflight(
                 continue
             match = max(
                 candidates,
-                key=lambda box: _overlap_fraction(region, box),
+                key=lambda box: overlap_share(region, box),
                 default=None,
             )
-            match_fraction = _overlap_fraction(region, match) if match else 0.0
+            match_fraction = overlap_share(region, match) if match else 0.0
             match_id = (
                 str(match.get("id") or "")
                 if match and match_fraction >= 0.25

@@ -5,8 +5,6 @@ DEFAULT_LETTERING_FONT = "dialogue.mac-dinh-3"
 # The font follows what the text is and what it sits in, never the model's taste, so one kind of text always
 # looks the same: speech and narration boxes in the comic font, bold captions on the art, shouts in spiky balloons.
 FONT_BY_ROLE = {"system_ui": "skill.exo-2", "skill_name": "skill.kanit", "sfx": "sfx.black-ops-one"}
-# A Korean sound effect read close up keeps how it is drawn: thin pen strokes, a dynamic brush or heavy blocks.
-SFX_FONT_BY_STYLE = {"thin": "thought.patrick-hand", "brush": "emphasis.bangers", "heavy": "sfx.black-ops-one"}
 FONT_BY_CONTAINER = {
     "bubble": {},
     "spiky": {"*": "emphasis.bangers"},
