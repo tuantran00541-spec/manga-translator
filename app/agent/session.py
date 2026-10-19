@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.agent import agents, chaincheck, client, codemode, context, gitguard, isolate, kernel, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
+from app.agent import agents, chaincheck, client, codemode, context, gitguard, isolate, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, skill_install, skills, watch
 from app.agent.checkpoint import Checkpoints
 from app.ai_providers import auth_headers, resolve_provider
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
@@ -101,11 +101,7 @@ MAX_SESSIONS = 50
 HOOK_TIMEOUT = 60
 MAX_REFS = 6
 MAX_PARALLEL = 3
-# Tools with which the agent changes its own plugin tree; they ask the user in every mode.
-SELF_EXTEND = ("plugin_write", "plugin_remove")
 
-# The reviewer still sees past the verbatim cut: the whole-file digest is never cut.
-REVIEW_CODE_CAP = 65536
 CREATED_NAME = re.compile(r"[a-z][a-z0-9_]{0,40}")
 # Calls a created tool's function with the model's arguments, the way function calling hands them over.
 def _as_function(name: str, code: str) -> str:
@@ -410,14 +406,6 @@ SESSION_SPECS = {
                      "question": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}}}},
     "exit_plan_mode": {"name": "exit_plan_mode", "description": "Hand the finished plan to the user for approval.",
                        "parameters": {"type": "object", "required": ["plan"], "properties": {"plan": {"type": "string"}}}},
-    "plugin_write": {"name": "plugin_write", "description": (
-        "Write a Python plugin to ~/.manga-agent/plugins/ID.py and load it (the user approves first). It defines apply(ctx, config): "
-        "ctx.get(\"tools\").register({name, description, parameters}, handler(session, args) -> str, kind=\"read\"|\"edit\"|\"exec\"|\"net\"), "
-        "ctx.get(\"commands\").register(name, description, handler), ctx.on(\"tool/execute\"|\"model/request\"|\"tool/approve\", fn(payload, next)), "
-        "ctx.provide(\"web.search/NAME\", fn). Removing the plugin undoes all it registered."),
-        "parameters": {"type": "object", "required": ["id"], "properties": {
-            "id": {"type": "string"}, "code": {"type": "string"}, "path": {"type": "string", "description": "A workspace file with the code."},
-            "config": {"type": "object"}}}},
     "create": {"name": "create", "description": (
         "Write a Python tool you can then call by name; inside its code tools.<name>(...) calls any other tool (built-in, created, plugin, MCP), "
         "so one call can chain many steps. code defines def <name>(param, ...) that returns the result; its signature becomes the tool's "
@@ -430,7 +418,6 @@ SESSION_SPECS = {
                    "code": {"type": "string", "description": "Python that defines the function; return values, do not return at top level."},
                    "args": {"type": "object", "description": "Run it with these arguments right after writing it."},
                    "keep": {"type": "boolean", "description": "false runs it once right away (args optional) without keeping it."}}}},
-    "plugin_remove": {"name": "plugin_remove", "description": "Unload a plugin and delete its file.", "parameters": ID},
     "goal_done": {"name": "goal_done", "description": "Mark the goal met, after its check has passed.",
                   "parameters": {"type": "object", "required": ["summary"], "properties": {"summary": {"type": "string"}}}},
     "job_output": {"name": "job_output", "description": "Read what a background job printed since you last looked, waiting up to wait_s for more.",
@@ -469,7 +456,7 @@ BUILTIN_NAMES = frozenset({s["name"] for s in SPECS} | set(SESSION_SPECS) | set(
 BUILTIN_COMMANDS = {
     "help": "Xem các lệnh", "compact": "Tóm gọn hội thoại để giải phóng chỗ (có thể ghi điều cần giữ); /compact auto 900k đặt mức tự tóm gọn",
     "init": "Viết AGENTS.md mô tả dự án này", "skills": "Xem skill; /skills add CHỦ/REPO[/THƯ-MỤC] cài skill từ GitHub",
-    "mcp": "Xem MCP server và công cụ của chúng", "services": "Xem provider đang chạy sau tìm web, tải trang và lệnh", "model": "Đổi model: /model TÊN",
+    "mcp": "Xem MCP server và công cụ của chúng", "model": "Đổi model: /model TÊN",
     "mode": "Đổi cách duyệt: /mode ask|edits|auto",
     "effort": "Đổi mức suy nghĩ: /effort mặc định|thấp|vừa|cao|rất cao",
     "sandbox": "Đổi sandbox: /sandbox read-only|workspace-write|full-access [net]",
@@ -558,7 +545,6 @@ class AgentSession:
         self._decisions: dict[str, dict | None] = {}
         self._stop = False
         self._lock = threading.Condition()
-        self._plugin_session_api = None  # set in _build_registry; for _sync_plugin_mode
         self.queue: list[str] = []
         self.tainted = False
         self._skills_loaded: list[str] = []
@@ -635,9 +621,8 @@ class AgentSession:
         self.quirks = models.quirks(model, self.profile["models"])
         self.disabled = set(self.profile["disable"])
         self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
-        self.kernel_problems: list[str] = []
         if depth:
-            self.registry, self.kernel = parent.registry, parent.kernel
+            self.registry = parent.registry
         else:
             self.registry = self._build_registry(home_path)
         self.checkpoints = parent.checkpoints if depth else Checkpoints()
@@ -649,7 +634,6 @@ class AgentSession:
         self.mcp_status: dict[str, dict] = {}
         self.mcp_tools: dict[str, tuple[str, dict]] = {}
         self.created = parent.created if depth else self._load_created()
-        self._mcp_starting: dict = {}
         self._mcp_stale = False
         self.rate_limited = {"count": 0, "waited_s": 0.0}
         self._plain = False
@@ -666,37 +650,7 @@ class AgentSession:
     def _build_registry(self, home_path: Path) -> registry.Registry:
         reg = registry.Registry({s["name"] for s in SPECS} | set(SESSION_SPECS))
         registry.load_plugins(reg, self.workspace.root, home_path, self.trust)
-        # The plugin tree: built-in providers are rows like any other, plugin files join it, plugins.json changes it.
-        old_kernel = getattr(self, "kernel", None)
-        if old_kernel is not None:
-            old_kernel.close()
-        ctx = kernel.Context()
-        # Plugins get a capability-scoped facade, never the live AgentSession:
-        # it holds only plain values, so nothing reaches the live session.
-        _sink = registry._EventSink(self.events, self._lock)
-        session_api = registry.PluginSession(self.id, self.mode, self.workspace.root, _sink)
-        self._plugin_session_api = session_api  # for _sync_plugin_mode on mode changes
-        kernel_tools = registry.KernelTools(ctx, reg, session_api)
-        session_api.bind_tools(kernel_tools)
-        ctx.provide("session", session_api)
-        ctx.provide("tools", kernel_tools)
-        ctx.provide("commands", registry.KernelCommands(ctx, reg))
-        for row in services.builtin_rows():
-            ctx.rows[row.id] = row
-        for scope, stem, module in reg.kernel_modules:
-            ctx.rows[stem] = kernel.Row(stem, module, {}, False, scope)
-        # plugins.json is editable, so a row mounts only with a pinned digest.
-        self.kernel_problems = kernel.patch_rows(ctx, home_path, self.trust, self.workspace.root)
-        ctx.settle()
-        self.kernel = ctx
-        self.workspace.services = services.Services(self.profile["services"], reg.providers, ctx, mcp=_McpBridge(self))
         return reg
-
-    def _sync_plugin_mode(self) -> None:
-        """Refresh the capability facade's mode snapshot after a mode change."""
-        api = getattr(self, "_plugin_session_api", None)
-        if api is not None:
-            api._sync_mode(self.mode)
 
     def _enabled(self, name: str) -> bool:
         plugin = self.registry.tools.get(name)
@@ -709,37 +663,23 @@ class AgentSession:
         for scope, path, data in sources:
             if scope == "user" and data is not None:
                 registry.trust_user_plugin(self.trust, home_path, path, data)
-        # Trust the bytes you execute, not the path.
-        plugins_digest = kernel.plugins_digest(home_path)
-        if plugins_digest is not None:
-            self.trust.allow(self.workspace.root, "plugins.json", plugins_digest)
         self.registry = self._build_registry(home_path)
 
     def _plugins_command(self, args: str) -> str:
-        """/plugins shows the tree; reload rebuilds it from the files; disable ID and enable ID switch one row live."""
+        """/plugins lists the plugin files; /plugins reload loads them again."""
         parts = args.split()
         if parts[:1] == ["reload"]:
             home_path = self.home if self.home is not None else Path.home()
             self.registry = self._build_registry(home_path)
-            self._mcp_ready = False
-            self.mcp_status.clear()
-            self._ensure_mcp()
+            self._refresh_mcp()
             for child in self.children.values():
-                child.registry, child.kernel = self.registry, self.kernel
-                child.workspace.services = self.workspace.services
-        elif len(parts) == 2 and parts[0] in ("disable", "enable"):
-            if parts[1].startswith("mcp:"):
-                self._ensure_mcp()
-            if parts[1] not in self.kernel.rows:
-                return f"Không có plugin {parts[1]}; gõ /plugins để xem cây."
-            self.kernel.set_disabled(parts[1], parts[0] == "disable")
+                child.registry = self.registry
         elif parts:
-            return "Dùng: /plugins, /plugins reload, /plugins disable ID, /plugins enable ID"
+            return "Dùng: /plugins hoặc /plugins reload"
         return self._plugins_report()
 
     def _plugins_report(self) -> str:
-        rows = ["Cây plugin:"] + [f"  {line}" for line in self.kernel.tree()] + [f"  {p}" for p in self.kernel_problems]
-        rows += [f"{p['name']} ({p['scope']}): {p['state']}" + (f" — {p['error']}" if p["error"] else "") for p in self.registry.plugins if p["state"] != "kernel"]
+        rows = ["Plugin:"] + [f"  {p['name']} ({p['scope']}): {p['state']}" + (f" — {p['error']}" if p["error"] else "") for p in self.registry.plugins]
         rows += [f"Tính năng đã tắt: {', '.join(sorted(self.disabled)) or 'không'}", f"Vòng lặp: {self.profile['loop']}",
                  f"Nhóm có thể tắt trong profile.json: {', '.join(registry.ALL_GROUPS)}"]
         return "\n".join(rows)
@@ -759,9 +699,6 @@ class AgentSession:
             self.events.append(event)
             self.updated_at = time.time()
             self._lock.notify_all()
-        kern = getattr(self, "kernel", None)
-        if kern is not None and kern.subscribers("session/event"):
-            kern.emit("session/event", {**event, "session": self.id})
 
     def _info(self) -> dict:
         """What the page shows beside the conversation; it changes rarely, so a poll that already has it gets only its revision."""
@@ -981,9 +918,6 @@ class AgentSession:
             return {"message": self._models_command(args)}
         if name == "intent":
             return {"message": self._intent(write=False) or "Chưa có bản hình dung nào: nó được viết khi chuỗi đầu tiên của một yêu cầu chạy."}
-        if name == "services":
-            return {"message": "\n".join(self.workspace.services.describe())
-                    + "\nChọn trong ~/.manga-agent/profile.json, ví dụ \"services\": {\"web.search\": [\"tavily\", \"duckduckgo\"]}; plugin thêm provider bằng api.provide()."}
         if name == "mcp":
             self._ensure_mcp()
             rows = [f"{m['name']} ({m['scope']}): {m['state']}" + (f", {m['tools']} công cụ" if m.get("tools") else "")
@@ -1002,7 +936,6 @@ class AgentSession:
             return {"message": f"Mức suy nghĩ: {self.effort or 'mặc định'}"}
         if name == "mode" and args in MODES:
             self.mode = args
-            self._sync_plugin_mode()
             return {"message": f"Quyền: {args}"}
         if name == "sandbox" and args:
             parts = args.split()
@@ -1191,8 +1124,6 @@ class AgentSession:
             child.close()
             if child.copy is not None:
                 shutil.rmtree(child.copy, ignore_errors=True)
-        if not self.depth and getattr(self, "kernel", None) is not None:
-            self.kernel.close()
         if self._repl is not None:
             self._repl.close()
         for server in self.mcp_servers.values():
@@ -1224,68 +1155,47 @@ class AgentSession:
         return self.profile["roles"].get(name)
 
     def _ensure_mcp(self) -> None:
-        """Mount every configured MCP server as a row of the plugin tree; starting one is its plugin's apply, closing it the undo."""
+        """Start every configured MCP server that is switched on and trusted, side by side, and offer their tools."""
         with self._mcp_lock:
             if self._mcp_ready:
                 return
             # Exactly one caller wins the check and starts the servers; the rest return here.
             self._mcp_ready = True
-        rows = mcp.configured(self.workspace.root, self.home)
         starts = []
-        for row in rows:
+        for row in mcp.configured(self.workspace.root, self.home):
             name, digest = row["name"], mcp.config_hash(row["config"])
             status = {"name": name, "scope": row["scope"], "source": row["source"], "digest": digest, "tools": 0, "error": "", "state": "waiting"}
             self.mcp_status[name] = status
-            off = bool(row["config"].get("disabled") or row["config"].get("enabled") is False)
-            self.kernel.rows[f"mcp:{name}"] = kernel.Row(f"mcp:{name}", self._mcp_plugin(row), {}, off, "mcp")
-            if off:
+            if row["config"].get("disabled") or row["config"].get("enabled") is False:
                 status["state"] = "disabled"
-            elif row["scope"] != "workspace" or self.trust.trusted(self.workspace.root, f"mcp:{name}", digest):
-                starts.append(row)
-        # Servers start side by side (each may take seconds); the plugin tree then mounts them in order.
-        if len(starts) > 1:
-            pool = ThreadPoolExecutor(max_workers=min(8, len(starts)))
-            self._mcp_starting = {row["name"]: pool.submit(mcp.Server, row["name"], row["config"], self.workspace.root) for row in starts}
-            pool.shutdown(wait=False)
-        self.kernel.settle()
-        for future in self._mcp_starting.values():
-            # A server started for a row the tree did not mount is closed again.
-            try:
-                future.result().close()
-            except Exception:
-                pass
-        self._mcp_starting = {}
-        for name, status in self.mcp_status.items():
-            mounted = self.kernel.rows.get(f"mcp:{name}")
-            if mounted is not None and mounted.state == "failed" and status["state"] != "untrusted":
-                status.update(state="failed", error=mounted.error)
-
-    def _mcp_plugin(self, row: dict) -> kernel.Plugin:
-        """An MCP server as a kernel plugin: apply starts it and adds its tools, the undo removes them and stops it."""
-        name, config = row["name"], row["config"]
-
-        def apply(ctx, _config):
-            status = self.mcp_status[name]
-            if row["scope"] == "workspace" and not self.trust.trusted(self.workspace.root, f"mcp:{name}", status["digest"]):
+            elif row["scope"] == "workspace" and not self.trust.trusted(self.workspace.root, f"mcp:{name}", digest):
                 status["state"] = "untrusted"
-                raise PermissionError("the project declares this server; allow it first")
-            started = self._mcp_starting.pop(name, None)
-            server = started.result() if started is not None else mcp.Server(name, config, self.workspace.root)
-            self.mcp_servers[name] = server
-            added = [mcp.tool_name(name, tool["name"]) for tool in server.tools]
-            for tool_name, tool in zip(added, server.tools):
-                self.mcp_tools[tool_name] = (name, tool)
-            status.update(state="running", tools=len(server.tools), error="")
-            ctx.provide(f"mcp/{name}", server)
+            else:
+                starts.append(row)
+        if starts:
+            with ThreadPoolExecutor(max_workers=min(8, len(starts))) as pool:
+                list(pool.map(self._start_mcp, starts))
 
-            def stop():
-                for tool_name in added:
-                    self.mcp_tools.pop(tool_name, None)
-                if self.mcp_servers.pop(name, None) is not None:
-                    server.close()
-                status.update(state="stopped", tools=0)
-            return stop
-        return kernel.Plugin(apply)
+    def _start_mcp(self, row: dict) -> None:
+        name, status = row["name"], self.mcp_status[row["name"]]
+        try:
+            server = mcp.Server(name, row["config"], self.workspace.root)
+        except Exception as exc:
+            status.update(state="failed", error=f"{type(exc).__name__}: {exc}"[:300])
+            return
+        with self._mcp_lock:
+            self.mcp_servers[name] = server
+            for tool in server.tools:
+                self.mcp_tools[mcp.tool_name(name, tool["name"])] = (name, tool)
+        status.update(state="running", tools=len(server.tools), error="")
+
+    def _stop_mcp(self, name: str) -> None:
+        with self._mcp_lock:
+            for tool_name in [n for n, (server, _) in self.mcp_tools.items() if server == name]:
+                self.mcp_tools.pop(tool_name, None)
+            server = self.mcp_servers.pop(name, None)
+        if server is not None:
+            server.close()
 
     def reload_mcp(self) -> None:
         """Pick up servers the user added or removed: now when idle, otherwise when the next request starts."""
@@ -1297,8 +1207,8 @@ class AgentSession:
 
     def _refresh_mcp(self) -> None:
         self._mcp_stale = False
-        for name in list(self.mcp_status):
-            self.kernel.unmount(f"mcp:{name}")
+        for name in list(self.mcp_servers):
+            self._stop_mcp(name)
         self.mcp_status.clear()
         self._mcp_ready = False
         self._ensure_mcp()
@@ -1309,12 +1219,10 @@ class AgentSession:
         if status is None:
             raise KeyError(name)
         self.trust.allow(self.workspace.root, f"mcp:{name}", status["digest"])
-        mounted = self.kernel.rows[f"mcp:{name}"]
-        if mounted.state != "active":
-            mounted.state, mounted.disabled = "waiting", False
-            self.kernel.settle()
-            if mounted.state == "failed":
-                status.update(state="failed", error=mounted.error)
+        if status["state"] == "untrusted":
+            row = next((r for r in mcp.configured(self.workspace.root, self.home) if r["name"] == name), None)
+            if row is not None:
+                self._start_mcp(row)
 
     # Hooks.
 
@@ -1404,7 +1312,7 @@ class AgentSession:
             rows.append(SESSION_SPECS["skill"])
         rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"], SESSION_SPECS["checkpoint"]]
         rows += [SESSION_SPECS["schedule_create"], SESSION_SPECS["schedule_list"], SESSION_SPECS["schedule_delete"],
-                 SESSION_SPECS["plugin_write"], SESSION_SPECS["plugin_remove"], SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"],
+                 SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"],
                  SESSION_SPECS["memory"], task, spawn, fan, SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         rows += [t.spec for t in self.registry.tools.values()]
         if self.goal or self.profile["notes_context"]:
@@ -1422,8 +1330,6 @@ class AgentSession:
 
     def _needs_approval(self, call: dict, verdict: str | None = None) -> bool:
         name = call["name"]
-        if name in SELF_EXTEND:
-            return True
         plugin = self.registry.tools.get(name)
         if plugin and plugin.always_ask:
             return True
@@ -1469,7 +1375,7 @@ class AgentSession:
         if kind == "exec":
             # In edits mode commands run on their own only inside a working OS sandbox.
             confined = (sandbox.full() and self.workspace.policy.mode != "full-access" and not via_mcp
-                        and self.workspace.services.is_local_shell())
+)
             return bool(call["args"].get("outside_sandbox")) or not confined
         if kind == "edit" and via_mcp:
             try:
@@ -1485,30 +1391,8 @@ class AgentSession:
 
     def _always_ask(self, call: dict) -> bool:
         plugin = self.registry.tools.get(call["name"])
-        return bool(plugin and plugin.always_ask) or call["name"] in ("memory", *SELF_EXTEND) or self._typing_outside(call) or bool(
+        return bool(plugin and plugin.always_ask) or call["name"] == "memory" or self._typing_outside(call) or bool(
             call["name"] == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access")
-
-    def _plugin_approval_vote(self, call: dict, ask: bool) -> bool:
-        """Run the tool/approve waterfall and return whether to ask.
-
-        Only a dict containing a bool 'ask' is honored; anything else fails closed
-        to the pre-waterfall value -- a plugin can never silently switch approvals off.
-        """
-        try:
-            result = self.kernel.waterfall(
-                "tool/approve",
-                {"call": copy.deepcopy(call), "ask": ask, "mode": self.mode},
-                lambda payload: payload,
-            )
-        except Exception as exc:
-            logger.warning("Agent session {} tool/approve listener raised {}; failing closed to ask={}",
-                           self.id, repr(exc), ask)
-            return ask
-        if isinstance(result, dict) and isinstance(result.get("ask"), bool):
-            return result["ask"]
-        logger.warning("Agent session {} tool/approve listener returned {}; failing closed to ask={}",
-                       self.id, repr(result), ask)
-        return ask
 
     def _user_messages(self) -> list[str]:
         root = self._root()
@@ -1564,64 +1448,6 @@ class AgentSession:
                 decision = self._decisions.pop(key, None) or {"decision": "deny", "note": "stopped"}
                 self.pending, self.status = previous_pending, previous_status
             return decision
-
-    def _self_extend(self, call: dict) -> str:
-        """plugin_write and plugin_remove: the agent changes its own plugin tree, always with the user's approval."""
-        args = call["args"]
-        pid = str(args.get("id") or "").strip()
-        if not re.fullmatch(r"[a-z][a-z0-9_]{0,40}", pid):
-            raise ToolError("id must be lower_case letters, digits and _, starting with a letter")
-        row = self.kernel.rows.get(pid)
-        if row is not None and row.source == "builtin":
-            raise ToolError(f"{pid} is a built-in row; pick another id (switch built-ins off with /plugins disable)")
-        folder = (self.home if self.home is not None else Path.home()) / ".manga-agent" / "plugins"
-        path = folder / f"{pid}.py"
-        if call["name"] == "plugin_remove":
-            if row is None and not path.exists():
-                raise ToolError(f"No plugin {pid}; mounted: {', '.join(r.id for r in self.kernel.rows.values() if r.source != 'builtin') or 'none'}")
-            self.kernel.unmount(pid)
-            path.unlink(missing_ok=True)
-            return f"Plugin {pid} unmounted and its file deleted."
-        if args.get("path"):
-            # A long plugin is written to a workspace file first; one huge code argument is easily cut or garbled on the way.
-            source = self.workspace.resolve(str(args["path"]))
-            if not source.is_file():
-                raise ToolError(f"No file {args['path']}")
-            code = source.read_text(encoding="utf-8")
-        else:
-            code = str(args.get("code") or "")
-        if not code.strip():
-            raise ToolError("plugin_write needs the plugin's code in code, or the path of a workspace file holding it")
-        try:
-            compile(code, str(path), "exec")
-        except SyntaxError as exc:
-            raise ToolError(f"Syntax error in the plugin: {exc}") from exc
-        before = path.read_text(encoding="utf-8") if path.is_file() else None
-        folder.mkdir(parents=True, exist_ok=True)
-        path.write_text(code, encoding="utf-8")
-        try:
-            module = kernel.load_module(path, f"manga_agent_agent_{pid}")
-            if not callable(getattr(module, "apply", None)):
-                raise ToolError("The plugin needs a function apply(ctx, config); nothing was saved")
-        except Exception as exc:
-            # A file that cannot load is not kept, so the next session does not trip on it.
-            if before is None:
-                path.unlink(missing_ok=True)
-            else:
-                path.write_text(before, encoding="utf-8")
-            if isinstance(exc, ToolError):
-                raise
-            raise ToolError(f"The plugin failed to load, nothing was saved: {type(exc).__name__}: {exc}") from exc
-        # The user approved these exact bytes, so later sessions load them too.
-        registry.trust_user_plugin(self.trust, folder.parent.parent, path, path.read_bytes())
-        config = args.get("config") if isinstance(args.get("config"), dict) else {}
-        self.kernel.mount(kernel.Row(pid, module, config, False, "agent"))
-        mounted = self.kernel.rows[pid]
-        detail = f" — {mounted.error}" if mounted.error else ""
-        self.emit("notice", text=f"Plugin {pid} mounted: {mounted.state}{detail}")
-        if mounted.state == "failed":
-            raise ToolError(f"Saved {path} but it failed to start{detail}. Fix it and call plugin_write again.")
-        return f"Saved {path} and mounted it: {mounted.state}{detail}. It loads again in every new session; /plugins shows the tree."
 
     def _tools_folder(self) -> Path:
         return (self.home if self.home is not None else Path.home()) / ".manga-agent" / "tools"
@@ -2302,8 +2128,6 @@ class AgentSession:
 
     def _session_tool(self, call: dict) -> str:
         args = call["args"]
-        if call["name"] in SELF_EXTEND:
-            return self._self_extend(call)
         if call["name"] == "create":
             if args.get("keep") is False and str(args.get("name") or "").strip() in self._root().created:
                 raise ToolError("a one-off script needs a name no kept tool has, or it would replace and then delete that tool")
@@ -2358,7 +2182,6 @@ class AgentSession:
             self.plan_mode = False
             if decision["decision"] == "allow_all":
                 self.mode = "edits"
-                self._sync_plugin_mode()
             self.emit("notice", text="Plan approved; starting work.")
             return "The user approved the plan. Implement it now."
         if call["name"] == "goal_done":
@@ -2461,7 +2284,7 @@ class AgentSession:
         policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
         root = self.workspace.root
         guard = gitguard.snapshot(root)
-        job = self.workspace.services.shell(command, policy, root)
+        job = sandbox.Job(command, policy, root)
         # Nobody types into a plain command, so one that asks a question fails at once instead of hanging until the clock runs out.
         if hasattr(job, "close_input"):
             job.close_input()
@@ -2524,7 +2347,7 @@ class AgentSession:
                 raise ToolError("command is empty")
             policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
             name = f"job{next(i for i in range(1, 100) if f'job{i}' not in self.jobs)}"
-            self.jobs[name] = self.workspace.services.shell(command, policy, self.workspace.root, tty=bool(args.get("tty")))
+            self.jobs[name] = sandbox.Job(command, policy, self.workspace.root, tty=bool(args.get("tty")))
         time.sleep(1.0)
         with self._usage_lock:
             job = self.jobs.get(name)
@@ -2768,7 +2591,6 @@ class AgentSession:
                 busy = ""
         helper = Workspace(copy or self.workspace.root, self.workspace.policy if mutating else sandbox.Policy("read-only", False),
                            read_roots=self.workspace.read_roots)
-        helper.services = self.workspace.services
         used, provider, keys, model = "", self.provider, self.api_keys, agent.model or self.profile.get("subagent_model") or self.model
         if role:
             # A helper on a model role runs on that role's provider, key and model.
@@ -2946,10 +2768,7 @@ class AgentSession:
         # One question at a time: a parallel call on the same host sees the answer instead of asking again.
         with self._approval_lock:
             ask = self._needs_approval(call, verdict)
-            if self.kernel.subscribers("tool/approve"):
-                # A plugin vote on approval policy fails closed to the pre-waterfall value.
-                ask = self._plugin_approval_vote(call, ask)
-            # What must always ask still asks, with or without any plugin voting.
+            # What must always ask still asks.
             ask = ask or self._always_ask(call)
             if ask:
                 why = "untrusted" if self.tainted and self.profile["untrusted_guard"] else ""
@@ -2961,12 +2780,10 @@ class AgentSession:
                     self._remember(*saved)
                 if decision["decision"] == "allow_all":
                     self.mode = "edits"
-                    self._sync_plugin_mode()
                     # Allow all is the user's answer for the whole tree, so every session up to the root moves too.
                     above = self.parent
                     while above is not None:
                         above.mode = "edits"
-                        above._sync_plugin_mode()
                         above = above.parent
                 elif decision["decision"] not in ("allow", "allow_always"):
                     note = f" Note from the user: {decision['note']}" if decision.get("note") else ""
@@ -3026,8 +2843,7 @@ class AgentSession:
                 self._log_outside(call)
             return output, ok
 
-        # Plugins may wrap every tool call, but execute() always runs the frozen, approved call.
-        output, ok = self.kernel.waterfall("tool/execute", copy.deepcopy(call), execute) if self.kernel.subscribers("tool/execute") else execute(call)
+        output, ok = execute(call)
         name = call["name"]
         role = self._role(name)
         if name in ("web_fetch", "web_search", "web_download") or (name in self.mcp_tools and role in (None, "net")):
@@ -3144,13 +2960,6 @@ class AgentSession:
         self.live = live
         return False
 
-    def _core(self, name: str):
-        """A plugin or MCP provider chosen for a core seam (model, compact), or None for the harness's own."""
-        try:
-            return self.workspace.services.chosen_fn(name)
-        except services.NoProvider:
-            return None
-
     def _call_model(self, messages: list[dict], tools: list[dict] | None) -> dict:
         streams = (self._base_complete is client.complete or getattr(self._base_complete, "streams", False)) and not self._plain
         started = time.time()
@@ -3175,12 +2984,7 @@ class AgentSession:
             while True:
                 try:
                     request = {"model": chain[self._fallback_at], "messages": messages, "tools": tools}
-                    model = self._core("model") or self.complete
-                    if not self.kernel.subscribers("model/request"):
-                        return model(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
-                    # Plugins may rewrite a model request or answer it themselves: (request, next) -> the model's turn.
-                    return self.kernel.waterfall("model/request", request, lambda r: model(
-                        self.provider, self.api_key, r["model"], r["messages"], tools=r["tools"], **extra))
+                    return self.complete(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
                 except client.TransientError as exc:
                     # Retries are used up: the next configured model takes over for the rest of this turn (free-claude-code).
                     if self._fallback_at + 1 >= len(chain):
@@ -3312,9 +3116,7 @@ class AgentSession:
         ask = SUMMARY_PROMPT + (f"\nFocus on: {focus}" if focus else "")
         messages = [{"role": "system", "content": "You write exact handover notes."},
                     {"role": "user", "content": f"{ask}\n\n<conversation>\n{self._transcript(head)}\n</conversation>"}]
-        summarize = self._core("compact")
-        summary = str(summarize(self, messages) or "") if summarize else self.complete(
-            self.provider, self.api_key, self.profile.get("compact_model") or self.model, messages, tools=None)["text"]
+        summary = self.complete(self.provider, self.api_key, self.profile.get("compact_model") or self.model, messages, tools=None)["text"]
         if not summary:
             return False
         summary = FILE_BLOCK.sub("", summary).rstrip()
@@ -3778,25 +3580,8 @@ class AgentSession:
                 self.save()
 
 
-class _McpBridge:
-    """The session's connected MCP tools, offered to the service seams as providers."""
-
-    def __init__(self, session: "AgentSession"):
-        self.session = session
-
-    def tools(self) -> dict:
-        root = self.session._root()
-        root._ensure_mcp()
-        return root.mcp_tools
-
-    def call(self, name: str, arguments: dict) -> tuple[str, bool]:
-        root = self.session._root()
-        server, tool = root.mcp_tools[name]
-        return root.mcp_servers[server].call_tool(tool["name"], arguments)
-
-
 def _alive(job) -> bool:
-    """Whether a job or anything it started still runs; jobs from other shell services report only their own process."""
+    """Whether a job or anything it started still runs."""
     return job.alive if hasattr(job, "alive") else job.code is None
 
 

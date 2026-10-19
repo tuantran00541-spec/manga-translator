@@ -12,7 +12,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from app.agent import client, context, kernel, mcp, sandbox, skills
+from app.agent import client, context, mcp, sandbox, skills
 from app.agent.session import AgentSession, AgentSessionManager
 from app.agent.tools import ToolError, Workspace
 from app.ai_providers import PROVIDERS
@@ -565,43 +565,6 @@ SEAM_PLUGIN = textwrap.dedent('''
         api.provide("web.fetch", "fake-fetch", lambda url: (b"<html><body><main><h1>Plugin page</h1><p>" + b"word " * 300 + b"</p></main></body></html>", "text/html", "utf-8"))
         api.provide("shell", "tagged", lambda command, policy, cwd, tty=False: sandbox.Job("echo tagged: && " + command, policy, cwd, tty=tty))
 ''')
-
-
-def test_plugins_provide_the_services_behind_search_fetch_and_commands(ws, home, tmp_path, monkeypatch):
-    folder = home / ".manga-agent"
-    (folder / "plugins").mkdir(parents=True, exist_ok=True)
-    (folder / "plugins" / "seams.py").write_text(SEAM_PLUGIN, encoding="utf-8")
-    (folder / "profile.json").write_text(json.dumps({"services": {"web.search": ["fake-search", "duckduckgo"], "web.fetch": "fake-fetch",
-                                                                  "shell": "tagged"}}))
-    monkeypatch.setattr(sandbox, "backend", lambda: "landlock")
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    session.trust_plugins()  # C4: user-scope plugins only load after an explicit trust pin
-    output, ok = session._run_call({"id": "chain-1", "name": "web_search", "args": {"query": "seam test"}})
-    assert ok and "https://fake.example/seam-test" in output, output
-    output, ok = session._run_call({"id": "chain-2", "name": "web_fetch", "args": {"url": "https://anything.example/"}})
-    assert ok and "Plugin page" in output, output
-    session.mode = "edits"
-    assert session._needs_approval(call("run_command", command="ls")), "a command a plugin runs is outside our sandbox, so it asks"
-    monkeypatch.undo()
-    session.mode = "bypass"
-    output, ok = session._run_call({"id": "3", "name": "run_command", "args": {"command": "echo hi"}})
-    assert ok and "tagged:" in output and "hi" in output, output
-    described = session.command("/services")["message"]
-    assert "web.search: fake-search, duckduckgo" in described and "shell: tagged (còn có: local)" in described
-    with pytest.raises(ValueError, match="cannot be registered"):
-        session.registry.provide("teleport", "x", print)
-
-
-def test_an_unknown_provider_choice_falls_back_to_the_built_in_ones(ws, home, tmp_path):
-    folder = home / ".manga-agent"
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "profile.json").write_text(json.dumps({"services": {"shell": "nowhere", "web.search": ["nope"]}}))
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    assert session.workspace.services.is_local_shell()
-    assert session.workspace.services.active("web.search") == ["tinyfish", "tavily", "duckduckgo"]
-    assert "không có provider nowhere, dùng mặc định" in session.command("/services")["message"]
-    output, ok = session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo still-local"}})
-    assert ok and "still-local" in output
 
 
 def test_mcp_config_from_codex_and_claude_files(ws, home):
@@ -2565,151 +2528,6 @@ def test_web_reading_keeps_github_index_pages_reuses_a_fetched_page_and_points_t
     assert "[Tip:" not in ws._tool_web_search("again"), "a fetch resets the streak"
 
 
-# The plugin kernel: services, reversible effects, waterfalls, and the plugin tree inside a session.
-
-def kplugin(apply, inject=()):
-    return kernel.Plugin(apply, tuple(inject))
-
-
-def test_plugins_start_when_their_services_exist_and_stop_when_they_go():
-    ctx, log = kernel.Context(), []
-    ctx.rows["user"] = kernel.Row("user", kplugin(lambda c, cfg: log.append("user up") or c.provide("greeting", c.get("name") + "!"), ["name"]))
-    ctx.rows["name"] = kernel.Row("name", kernel.provider("name", "Kai"))
-    ctx.settle()
-    assert ctx.get("greeting") == "Kai!" and log == ["user up"], "order of rows does not matter"
-    ctx.set_disabled("name", True)
-    assert "greeting" not in ctx and ctx.rows["user"].state == "waiting", "a plugin stops when a service it needs leaves, and its effects go"
-    ctx.set_disabled("name", False)
-    assert ctx.get("greeting") == "Kai!" and log == ["user up", "user up"]
-
-
-def test_effects_unwind_on_unmount_and_after_a_failed_start():
-    ctx = kernel.Context()
-    ctx.mount(kernel.Row("a", kplugin(lambda c, cfg: (c.provide("x", 1), c.on("ping", lambda p: None)))))
-    assert ctx.subscribers("ping") == 1 and "x" in ctx
-    ctx.unmount("a")
-    assert ctx.subscribers("ping") == 0 and "x" not in ctx
-
-    def broken(c, cfg):
-        c.provide("half", 1)
-        raise RuntimeError("boom")
-    ctx.mount(kernel.Row("b", kplugin(broken)))
-    assert ctx.rows["b"].state == "failed" and "half" not in ctx and "boom" in ctx.rows["b"].error
-    ctx.mount(kernel.Row("c", kernel.provider("y", 1)))
-    with pytest.raises(ValueError, match="already provided by c"):
-        ctx._owner = "d"
-        ctx.provide("y", 2)
-    ctx._owner = ""
-
-
-def test_waterfalls_run_in_order_and_can_answer_themselves():
-    ctx = kernel.Context()
-    ctx.rows["double"] = kernel.Row("double", kplugin(lambda c, cfg: c.on("calc", lambda v, nxt: nxt(v * 2))))
-    ctx.rows["plus"] = kernel.Row("plus", kplugin(lambda c, cfg: c.on("calc", lambda v, nxt: nxt(v + 1))))
-    ctx.rows["guard"] = kernel.Row("guard", kplugin(lambda c, cfg: c.on("calc", lambda v, nxt: "no negatives" if v < 0 else nxt(v))))
-    ctx.settle()
-    assert ctx.waterfall("calc", 3, lambda v: v * 10) == 70
-    assert ctx.waterfall("calc", -5, lambda v: v) == "no negatives"
-
-
-GREETER = textwrap.dedent('''
-    inject = ["tools", "session"]
-    defaults = {"greeting": "hi"}
-
-    def apply(ctx, config):
-        ctx.get("tools").register({"name": "greet", "description": "Greet someone.",
-                                   "parameters": {"type": "object", "properties": {"name": {"type": "string"}}}},
-                                  lambda session, args: config["greeting"] + " " + args.get("name", ""), kind="read")
-
-        def guard(call, next):
-            if call["name"] == "read_file" and call["args"].get("path") == "secret.txt":
-                return "[blocked by greeter]", False
-            output, ok = next(call)
-            return output.replace("TOKEN", "*****"), ok
-        ctx.on("tool/execute", guard)
-        ctx.on("model/request", lambda request, next: next({**request, "messages": request["messages"] + [{"role": "user", "content": "[greeter was here]"}]}))
-        seen = []
-        ctx.on("session/event", seen.append)
-        ctx.provide("greeter.seen", seen)
-''')
-
-
-def test_a_kernel_plugin_adds_tools_wraps_calls_and_model_requests_and_switches_off_live(ws, home, tmp_path):
-    folder = home / ".manga-agent"
-    (folder / "plugins").mkdir(parents=True, exist_ok=True)
-    (folder / "plugins" / "greeter.py").write_text(GREETER, encoding="utf-8")
-    (folder / "plugins.json").write_text(json.dumps({"rows": [{"id": "greeter", "config": {"greeting": "chào"}},
-                                                              {"id": "web-search-tinyfish", "disabled": True},
-                                                              {"id": "ghost", "plugin": "../../evil.py"}]}))
-    (ws.root / "secret.txt").write_text("nope")
-    (ws.root / "notes.txt").write_text("key TOKEN here")
-    fake = scripted(turn("ok"))
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    session.trust_plugins()  # C4: plugins.json rows and user-scope plugins only mount after an explicit trust pin
-    tree = session.command("/plugins")["message"]
-    assert "greeter [user] active (cần tools, session)" in tree and "web-search-tinyfish [builtin] disabled" in tree
-    assert "ghost needs a .py file inside ~/.manga-agent/plugins" in tree, "a row cannot load a file outside the plugins folder"
-    assert session._run_call({"id": "chain-1", "name": "greet", "args": {"name": "Kai"}}) == ("chào Kai", True)
-    assert session._run_call({"id": "2", "name": "read_file", "args": {"path": "secret.txt"}}) == ("[blocked by greeter]", False)
-    assert "key ***** here" in session._run_call({"id": "3", "name": "read_file", "args": {"path": "notes.txt"}})[0]
-    assert session.workspace.services.active("web.search") == ["tavily", "duckduckgo"]
-    session.send("hello")
-    wait_for(session, "idle")
-    assert fake.seen[0][0][-1]["content"] == "[greeter was here]", "a model/request listener rewrote the request"
-    assert any(e["type"] == "assistant" for e in session.kernel.get("greeter.seen")), "session events reach plugins"
-
-    assert "greeter [user] disabled" in session.command("/plugins disable greeter")["message"]
-    assert "greet" not in {s["name"] for s in session.specs()}, "a plugin's tool leaves with it"
-    assert "nope" in session._run_call({"id": "4", "name": "read_file", "args": {"path": "secret.txt"}})[0], "and so does its wrapper"
-    session.command("/plugins enable greeter")
-    assert session._run_call({"id": "chain-5", "name": "greet", "args": {"name": "Mai"}}) == ("chào Mai", True)
-
-    (folder / "plugins" / "greeter.py").write_text(GREETER.replace('"hi"', '"yo"'), encoding="utf-8")
-    (folder / "plugins.json").write_text(json.dumps({"rows": []}))
-    session.trust_plugins()  # C4: changed files invalidate the pin, so trust them again before reloading
-    session.command("/plugins reload")
-    assert session._run_call({"id": "chain-6", "name": "greet", "args": {"name": "Lan"}}) == ("yo Lan", True), "reload reads the files again"
-
-
-def test_switching_off_every_shell_provider_stops_commands_cleanly(ws, home, tmp_path):
-    folder = home / ".manga-agent"
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "plugins.json").write_text(json.dumps({"rows": [{"id": "shell-local", "disabled": True}]}))
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    session.trust_plugins()  # C4: plugins.json rows only apply after an explicit trust pin
-    output, ok = session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo hi"}})
-    assert not ok and "no provider for shell" in output
-    assert "shell: no provider for shell" in session.command("/services")["message"]
-
-
-def test_the_agent_writes_a_plugin_that_mounts_after_approval_even_in_auto_mode(ws, home, tmp_path):
-    code = textwrap.dedent('''
-        inject = ["tools"]
-
-        def apply(ctx, config):
-            ctx.get("tools").register({"name": "shout", "description": "Shout.", "parameters": {"type": "object", "properties": {"text": {"type": "string"}}}},
-                                      lambda session, args: args.get("text", "").upper() + config.get("tail", ""), kind="read")
-    ''')
-    fake = scripted(turn(calls=[call("plugin_write", id="shouter", code=code, config={"tail": "!"})]),
-                    turn(calls=[call("shout", text="hi")]), turn("done"))
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    session.send("make yourself a shout tool")
-    wait_for(session, "waiting")
-    assert session.pending["name"] == "plugin_write", "writing code into the harness asks even in auto mode"
-    session.decide("allow")
-    wait_for(session, "idle")
-    outputs = [e["output"] for e in session.events if e["type"] == "tool"]
-    assert "mounted it: active" in outputs[0] and outputs[1] == "HI!", outputs
-    assert (home / ".manga-agent" / "plugins" / "shouter.py").is_file()
-    assert "shouter [agent] active" in session.command("/plugins")["message"]
-    with pytest.raises(ToolError, match="No plugin nope"):
-        session._self_extend({"name": "plugin_remove", "args": {"id": "nope"}})
-    with pytest.raises(ToolError, match="lower_case"):
-        session._self_extend({"name": "plugin_write", "args": {"id": "../evil", "code": "x = 1"}})
-    assert session._self_extend({"name": "plugin_remove", "args": {"id": "shouter"}}).startswith("Plugin shouter unmounted")
-    assert "shout" not in {s["name"] for s in session.specs()} and not (home / ".manga-agent" / "plugins" / "shouter.py").exists()
-
-
 def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_keeps_it(ws, home):
     (ws.root / "notes.txt").write_text("a\nb\nc\n")
     code = "def count_lines(path):\n    return {'lines': len(tools.read_file(path=path).splitlines())}\n"
@@ -2740,107 +2558,7 @@ def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_kee
     assert not (home / ".manga-agent" / "tools" / "count_lines.json").exists() and "count_lines" not in {s["name"] for s in later.specs()}
 
 
-def test_plugin_write_failures_from_the_evolve_run_say_what_is_wrong(ws, home, tmp_path):
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    plugins = home / ".manga-agent" / "plugins"
-    output, ok = session._run_call({"id": "chain-1", "name": "plugin_write", "args": {}})
-    assert not ok and "needs id" in output and "no arguments at all" in output and session.pending is None, "an empty call never reaches approval"
-    with pytest.raises(ToolError, match="apply"):
-        session._self_extend({"name": "plugin_write", "args": {"id": "x", "code": "print('ok')"}})
-    assert not (plugins / "x.py").exists(), "a plugin that cannot load is not kept for the next session"
-    # The tool spec had no parameters and kind went in as the third argument: the session crashed on 'parameters'.
-    (ws.root / "big.py").write_text(textwrap.dedent('''
-        inject = ["tools"]
-
-        def apply(ctx, config):
-            ctx.get("tools").register(dict(name="make_pptx", description="Make a deck.", kind="edit"), lambda s, a: "made")
-            ctx.get("tools").register(dict(name="check_pptx", description="Check a deck."), lambda s, a: "clean", "check_pptx")
-    '''))
-    with pytest.raises(ToolError, match="kind must be read, edit, exec or net, got 'check_pptx'"):
-        session._self_extend({"name": "plugin_write", "args": {"id": "deck", "path": "big.py"}})
-    (ws.root / "big.py").write_text((ws.root / "big.py").read_text().replace(', "check_pptx")', ', "read")'))
-    assert "active" in session._self_extend({"name": "plugin_write", "args": {"id": "deck", "path": "big.py"}})
-    specs = {s["name"]: s for s in session.specs(session.library_specs())}
-    assert specs["make_pptx"]["parameters"] == {"type": "object", "properties": {}} and "kind" not in specs["make_pptx"]
-    assert session.registry.tools["make_pptx"].kind == "edit", "a kind given inside the spec is honoured"
-    with pytest.raises(ValueError, match="plugin deck already registered it"):
-        session.registry.tool({"name": "make_pptx"}, lambda s, a: "", "read")
-    with pytest.raises(ValueError, match="a built-in tool has that name"):
-        session.registry.tool({"name": "read_file"}, lambda s, a: "", "read")
-
-
-def test_core_seams_take_plugin_providers_for_the_model_compaction_and_approvals(ws, home, tmp_path):
-    folder = home / ".manga-agent"
-    (folder / "plugins").mkdir(parents=True, exist_ok=True)
-    (folder / "plugins" / "core.py").write_text(textwrap.dedent('''
-        def echo_model(provider, key, model, messages, tools=None, **extra):
-            return {"text": "echo: " + messages[-1]["content"], "calls": [], "reasoning": "", "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
-
-        def apply(ctx, config):
-            ctx.provide("model/echo", echo_model)
-            ctx.provide("compact/short", lambda session, messages: "SHORT SUMMARY")
-
-            def approve(payload, next):
-                if payload["call"]["name"] == "run_command" and payload["call"]["args"].get("command", "").startswith("echo "):
-                    payload["ask"] = False  # C2: policy changes go through the strict payload, never a bare falsy return
-                return next(payload)
-            ctx.on("tool/approve", approve)
-    '''), encoding="utf-8")
-    (folder / "profile.json").write_text(json.dumps({"services": {"model": "echo", "compact": "short"}}))
-    unused = scripted()
-    session = manager(home, tmp_path / "store").create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=unused)
-    session.trust_plugins()  # C4: the user-scope plugin provides the model/compact services
-    session.send("ping")
-    wait_for(session, "idle")
-    assert [e["text"] for e in session.events if e["type"] == "assistant"][-1] == "echo: ping" and not unused.seen
-    session.send("again")
-    wait_for(session, "idle")
-    assert session.compact() and "SHORT SUMMARY" in json.dumps(session.history)
-    assert session._run_call({"id": "1", "name": "run_command", "args": {"command": "echo approved-by-plugin"}})[1], \
-        "the plugin's approval policy let a harmless echo run in ask mode"
-    assert "model: echo (còn có: default)" in session.command("/services")["message"]
-
-
-def test_an_mcp_tool_can_be_the_provider_behind_a_seam(ws, home, tmp_path):
-    (tmp_path / "swap.py").write_text(SWAP_SERVER, encoding="utf-8")
-    folder = home / ".manga-agent"
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "mcp.json").write_text(json.dumps({"mcpServers": {"fs": {"command": sys.executable, "args": [str(tmp_path / "swap.py")]}}}))
-    (folder / "profile.json").write_text(json.dumps({"services": {"web.search": ["mcp__fs__find", "duckduckgo"], "shell": "mcp__fs__sh"}}))
-    agents = manager(home, tmp_path / "store")
-    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    output, ok = session._run_call({"id": "chain-1", "name": "web_search", "args": {"query": "manga fonts", "count": 3}})
-    assert ok and output == 'mcp find {"max_results": 3, "q": "manga fonts"}', output
-    output, ok = session._run_call({"id": "2", "name": "run_command", "args": {"command": "ls -la"}})
-    assert ok and 'mcp sh {"command": "ls -la"}' in output and "[exit code 0]" in output, output
-    assert not session.workspace.services.is_local_shell()
-    assert "shell: mcp__fs__sh (còn có: local)" in session.command("/services")["message"]
-    agents.close_all()
-
-
 # Everything is MCP: servers are rows of the plugin tree, and the harness is a server itself.
-
-def test_mcp_servers_are_rows_of_the_plugin_tree_that_stop_and_start_live(ws, home, tmp_path):
-    (tmp_path / "swap.py").write_text(SWAP_SERVER, encoding="utf-8")
-    (tmp_path / "fake.py").write_text(FAKE_SERVER, encoding="utf-8")
-    folder = home / ".manga-agent"
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "mcp.json").write_text(json.dumps({"mcpServers": {"fs": {"command": sys.executable, "args": [str(tmp_path / "swap.py")]}}}))
-    (folder / "plugins.json").write_text(json.dumps({"rows": [{"id": "calc", "mcp": {"command": sys.executable, "args": [str(tmp_path / "fake.py")]}}]}))
-    agents = manager(home, tmp_path / "store")
-    session = agents.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    session._ensure_mcp()
-    tree = session.command("/plugins")["message"]
-    assert "mcp:fs [mcp] active" in tree and "mcp:calc [mcp] active" in tree, tree
-    assert session._run_call({"id": "chain-1", "name": "mcp__calc__get_sum", "args": {"a": 2, "b": 2}}) == ("4", True)
-    process = session.mcp_servers["calc"].transport.proc
-    session.command("/plugins disable mcp:calc")
-    assert "mcp__calc__get_sum" not in session.mcp_tools and "calc" not in session.mcp_servers
-    assert process.wait(timeout=10) is not None, "switching the row off stops the server process"
-    assert session.mcp_status["calc"]["state"] == "stopped"
-    session.command("/plugins enable mcp:calc")
-    assert session._run_call({"id": "chain-2", "name": "mcp__calc__get_sum", "args": {"a": 1, "b": 5}}) == ("6", True)
-    agents.close_all()
 
 
 def test_a_project_server_switched_on_by_hand_still_needs_trust(ws, home, tmp_path):
@@ -2848,50 +2566,11 @@ def test_a_project_server_switched_on_by_hand_still_needs_trust(ws, home, tmp_pa
     (ws.root / ".mcp.json").write_text(json.dumps({"mcpServers": {"calc": {"command": sys.executable, "args": [str(tmp_path / "fake.py")]}}}))
     agents = manager(home, tmp_path / "store")
     session = agents.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    session.command("/plugins enable mcp:calc")
+    session._ensure_mcp()
     assert "calc" not in session.mcp_servers and session.mcp_status["calc"]["state"] == "untrusted"
     session.trust_mcp("calc")
     assert session.mcp_status["calc"]["state"] == "running"
     agents.close_all()
-
-
-def _serve(ws, home, *flags):
-    import site
-
-    paths = [str(Path(__file__).resolve().parents[1]), site.getusersitepackages(), os.environ.get("PYTHONPATH", "")]
-    config = {"command": sys.executable, "args": ["-m", "app.agent.mcp_server", "--folder", str(ws.root), *flags],
-              "env": {"HOME": str(home), "PYTHONPATH": os.pathsep.join(p for p in paths if p)}}
-    return mcp.Server("self", config, Path(__file__).resolve().parents[1])
-
-
-def test_the_harness_serves_its_own_tools_and_its_plugins_tools_over_mcp(ws, home):
-    folder = home / ".manga-agent"
-    (folder / "plugins").mkdir(parents=True, exist_ok=True)
-    (folder / "plugins" / "greeter.py").write_text(GREETER, encoding="utf-8")
-    server = _serve(ws, home, "--trust-plugins")  # C4: the plugin's tools are served only after explicit trust
-    try:
-        names = {t["name"]: t for t in server.tools}
-        assert {"read_file", "search", "glob", "list_dir", "greet"} <= set(names), sorted(names)
-        assert not {"write_file", "run_command", "ask_user", "plugin_write", "web_fetch"} & set(names), "read-only by default"
-        assert names["read_file"]["annotations"]["readOnlyHint"] is True
-        text, ok = server.call_tool("read_file", {"path": "pkg/a.py"})
-        assert ok and "def" in text
-        assert server.call_tool("greet", {"name": "Kai"}) == ("hi Kai", True), "a kernel plugin's tool is served too"
-        text, ok = server.call_tool("write_file", {"path": "x.txt", "content": "x"})
-        assert not ok and "Unknown tool" in text and not (ws.root / "x.txt").exists()
-    finally:
-        server.close()
-    writer = _serve(ws, home, "--write", "--trust-plugins")
-    try:
-        names = {t["name"]: t for t in writer.tools}
-        assert "write_file" in names and "outside_sandbox" not in names["run_command"]["inputSchema"]["properties"]
-        assert names["run_command"]["annotations"]["destructiveHint"] is True
-        text, ok = writer.call_tool("write_file", {"path": "made.txt", "content": "over mcp\n"})
-        assert ok and (ws.root / "made.txt").read_text() == "over mcp\n"
-        text, ok = writer.call_tool("write_file", {"path": "../escape.txt", "content": "x"})
-        assert not ok and "outside the workspace" in text
-    finally:
-        writer.close()
 
 
 def test_a_session_reports_each_rate_limit_its_provider_answered(ws, home, tmp_path, monkeypatch):
@@ -2973,7 +2652,7 @@ def test_search_skips_files_fast_and_takes_path_globs_and_web_search_answers_rep
     os.utime(ws.root / "pkg" / "a.py", (1_000_000, 1_000_000))
     assert ws.run("glob", {"pattern": "pkg/**/*.py"}).splitlines()[0] == "pkg/deep/b.py"
     asked = []
-    monkeypatch.setattr(ws.services, "search", lambda q, c, r: asked.append(q) or "1. result")
+    monkeypatch.setattr("app.agent.websearch.search", lambda q, c, r: asked.append(q) or "1. result")
     first, again = ws.run("web_search", {"query": "python  docs"}), ws.run("web_search", {"query": "Python docs"})
     assert asked == ["python  docs"] and first == "1. result" and "same search" in again
 

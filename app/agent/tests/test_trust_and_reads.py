@@ -36,17 +36,6 @@ def test_a_user_plugin_waits_for_trust_then_loads_in_every_workspace_until_its_b
     assert "hello" not in session_in(tmp_path, "three").registry.tools
 
 
-def test_a_plugin_the_user_approved_through_plugin_write_loads_in_the_next_session(tmp_path):
-    session = session_in(tmp_path, "one", mode="bypass")
-    session._wait_for_decision = lambda call: {"decision": "allow"}
-    code = "def apply(ctx, config):\n    ctx.get('tools').register({'name': 'greet', 'description': 'hi'}, lambda s, a: 'hi', kind='read')\n"
-    out, ok = session._run_call({"id": "chain-p1", "name": "plugin_write", "args": {"id": "greet", "code": code}})
-    assert ok, out
-    later = session_in(tmp_path, "two")
-    assert [p["state"] for p in later.registry.plugins] == ["kernel"]
-    assert "greet" in later.registry.tools
-
-
 def test_look_only_programs_that_write_a_file_or_run_another_program_are_not_look_only():
     for command in ("rg --pre ./x.sh foo .", "rg --pre=sh foo", "sort -o out.txt in.txt", "sort -ro out.txt in.txt", "sort --output=o in",
                     "uniq in.txt out.txt", "tree -o out.txt", "date -s 2020-01-01"):

@@ -431,7 +431,6 @@ def update_session(session_id: str, req: SessionUpdate) -> dict:
             if req.mode not in MODES:
                 raise ValueError(f"mode must be one of {', '.join(MODES)}")
             session.mode = req.mode
-            session._sync_plugin_mode()
         if req.effort is not None:
             session.set_effort(req.effort)
         if req.model is not None:

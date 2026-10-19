@@ -18,7 +18,7 @@ from unittest import mock
 
 import pytest
 
-from app.agent import gitguard, kernel, mcp, sandbox
+from app.agent import gitguard, mcp, sandbox
 from app.agent.session import AgentSession, AgentSessionManager, TOOLS_LIBRARY
 from app.agent.tools import Workspace
 
@@ -476,13 +476,10 @@ class _FakeServer:
 
 
 def _prep_mcp_session(s):
-    """A session whose _ensure_mcp runs against fake servers and a bare kernel."""
+    """A session whose _ensure_mcp runs against fake servers."""
     s._mcp_ready = False
     s.mcp_servers = {}
     s.mcp_status = {}
-    s._mcp_starting = {}
-    s.kernel = kernel.Context()
-    s.kernel.provide("session", s)
 
 
 def test_m10_ensure_mcp_no_duplicate_start(mgr, ws, tmp_path):

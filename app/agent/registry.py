@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -18,7 +19,7 @@ GROUPS = {
     "run_command": "shell", "run_script": "shell", "job_output": "shell", "job_input": "shell", "job_stop": "shell", "web_fetch": "web", "web_search": "web", "web_download": "web", "skill": "skills", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
     "task": "subagents", "fan_out": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
     "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal",
-    "plugin_write": "extensions", "plugin_remove": "extensions",
+   
 }
 COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "models": "subagents", "intent": "subagents", "mcp": "mcp"}
 ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
@@ -40,7 +41,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "fallback_models": [], "prewalk_model": "",
-                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "services": {}}
+                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -98,9 +99,6 @@ def load_profile(workspace: Path, home: Path) -> dict:
                 if isinstance(data.get("replace"), dict):
                     profile["replace"].update({k: v for k, v in data["replace"].items()
                                                if k in REPLACEABLE and isinstance(v, str) and v.startswith("mcp__")})
-                if isinstance(data.get("services"), dict):
-                    profile["services"].update({k: v for k, v in data["services"].items()
-                                                if isinstance(v, str) or (isinstance(v, list) and all(isinstance(x, str) for x in v))})
                 if isinstance(data.get("model_roles"), dict):
                     profile["model_roles"].update(roles.parse(data["model_roles"]))
                 if isinstance(data.get("model_sources"), dict):
@@ -130,10 +128,7 @@ class Registry:
         self.hooks: dict[str, list[Callable]] = {e: [] for e in EVENTS}
         self.prompts: list[Callable] = []
         self.loops: dict[str, Callable] = {}
-        self.providers: dict[str, dict[str, Callable]] = {}
         self.plugins: list[dict] = []
-        # Plugin files written for the kernel (apply(ctx, config)) rather than register(api).
-        self.kernel_modules: list[tuple[str, str, object]] = []
         self._current = ""
 
     def tool(self, spec: dict, handler: Callable, kind: str = "exec", group: str | None = None, always_ask: bool = False) -> None:
@@ -170,112 +165,17 @@ class Registry:
     def prompt(self, fn: Callable) -> None:
         self.prompts.append(fn)
 
-    def provide(self, service: str, name: str, fn: Callable) -> None:
-        """Add a provider for a capability seam (web.search, web.fetch, shell); profile.json "services" picks which one runs."""
-        from app.agent.services import CONTRACTS
-
-        if service not in CONTRACTS or not NAME_RE.match(name.replace("-", "_")) or not callable(fn):
-            raise ValueError(f"provider {name!r} for {service!r} cannot be registered; services: {', '.join(CONTRACTS)}")
-        self.providers.setdefault(service, {})[name] = fn
-
     def loop(self, name: str, fn: Callable) -> None:
         """fn(session, max_steps) replaces the step loop; the session API (_turn, _run_calls, history, emit) does the work."""
         self.loops[name] = fn
 
 
-class _EventSink:
-    """Append-only event sink with no back-reference to the session.
-
-    Holds the session's event list and lock directly. A plugin introspecting
-    this gets a plain list and a lock — neither leads back to the live
-    AgentSession, unlike a bound method (whose __self__ is the session).
-    """
-
-    __slots__ = ("_events", "_lock")
-
-    def __init__(self, events: list, lock):
-        # No guard on this class, but keep the bypass explicit.
-        object.__setattr__(self, "_events", events)
-        object.__setattr__(self, "_lock", lock)
-
-    def append(self, kind: str, **data) -> None:
-        import time as _time
-        with self._lock:
-            event = {"seq": len(self._events) + 1, "type": kind,
-                     "time": round(_time.time(), 3), **data}
-            self._events.append(event)
-            self._lock.notify_all()
-
-
-class PluginSession:
-    """The capability-scoped session API handed to kernel plugins via the ctx "session" service.
-
-    Replaces the old live AgentSession: a plugin can no longer flip
-    session.mode to bypass, read the provider api_key, rewrite session.rules,
-    call trust_plugins(), or reach session.kernel. It sees a read-only view of
-    safe fields (id, mode, workspace_root) plus two narrow actions: emit an
-    event and register a tool. Every attribute write or delete raises.
-
-    Security: this object holds NO reference to the live AgentSession — only
-    plain values (id/mode/workspace_root strings) and an _EventSink (a list +
-    lock, neither of which references the session). Name-mangled attributes are
-    not a security boundary, so the session object itself is never stored.
-    """
-
-    __slots__ = ("_PluginSession__sid", "_PluginSession__mode",
-                 "_PluginSession__wsroot", "_PluginSession__sink",
-                 "_PluginSession__tools")
-
-    def __init__(self, session_id: str, mode: str, workspace_root: Path,
-                 sink: _EventSink, tools=None):
-        object.__setattr__(self, "_PluginSession__sid", session_id)
-        object.__setattr__(self, "_PluginSession__mode", mode)
-        object.__setattr__(self, "_PluginSession__wsroot", workspace_root)
-        object.__setattr__(self, "_PluginSession__sink", sink)
-        object.__setattr__(self, "_PluginSession__tools", tools)
-
-    def __setattr__(self, name, value):
-        raise AttributeError(f"{type(self).__name__} is read-only: plugins cannot set {name!r}")
-
-    def __delattr__(self, name):
-        raise AttributeError(f"{type(self).__name__} is read-only: plugins cannot delete {name!r}")
-
-    def bind_tools(self, tools) -> None:
-        """Attach the kernel's tool service once, while the session builds the registry; not a plugin API."""
-        object.__setattr__(self, "_PluginSession__tools", tools)
-
-    def _sync_mode(self, mode: str) -> None:
-        """Session-internal: refresh the mode snapshot. Not a plugin API (setting
-        it only changes what this facade reports, never the real session)."""
-        object.__setattr__(self, "_PluginSession__mode", mode)
-
-    @property
-    def id(self) -> str:
-        return self.__sid
-
-    @property
-    def mode(self) -> str:
-        return self.__mode
-
-    @property
-    def workspace_root(self) -> Path:
-        return self.__wsroot
-
-    def emit(self, kind: str, **data) -> None:
-        """Append an event to the session's event log (it cannot touch history, rules or mode)."""
-        if not isinstance(kind, str) or not kind:
-            raise ValueError("event kind must be a non-empty string")
-        self.__sink.append(kind, **data)
-
-    def register_tool(self, spec: dict, handler: Callable, kind: str = "exec", always_ask: bool = False) -> None:
-        """Register a tool through the kernel's tool service, like ctx.get("tools").register does."""
-        tools = self.__tools
-        if tools is None:
-            raise RuntimeError("PluginSession is not bound to a registry yet")
-        tools.register(spec, handler, kind=kind, always_ask=always_ask)
-
-    def __repr__(self) -> str:
-        return f"PluginSession(id={self.id!r}, mode={self.mode!r})"
+def load_module_bytes(source: bytes, label: str, filename: str = "<plugin>"):
+    """Run plugin source from bytes already read, so the trusted digest covers exactly what runs."""
+    spec = importlib.util.spec_from_file_location(label, filename)
+    module = importlib.util.module_from_spec(spec)
+    exec(compile(source, filename, "exec"), module.__dict__)
+    return module
 
 
 def plugin_files(workspace: Path, home: Path) -> list[tuple[str, Path]]:
@@ -356,47 +256,9 @@ def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.Trus
             continue
         reg._current = path.stem
         try:
-            from app.agent.kernel import load_module_bytes
-
             module = load_module_bytes(data, f"manga_agent_plugin_{scope}_{path.stem}", str(path))
-            if callable(getattr(module, "apply", None)) and not callable(getattr(module, "register", None)):
-                reg.kernel_modules.append((scope, path.stem, module))
-                row["state"] = "kernel"
-            else:
-                module.register(reg)
+            module.register(reg)
         except Exception as exc:
             row.update(state="failed", error=f"{type(exc).__name__}: {exc}"[:300])
         finally:
             reg._current = ""
-
-
-class KernelTools:
-    """The "tools" service of the kernel: a plugin's tools go into the registry and leave with the plugin."""
-
-    def __init__(self, ctx, reg: Registry, session_api: "PluginSession | None" = None):
-        self.ctx, self.reg = ctx, reg
-        # Plugin handlers get the capability facade, never the live session.
-        self._session_api = session_api
-
-    def register(self, spec: dict, handler: Callable, kind: str = "exec", always_ask: bool = False) -> None:
-        """handler(session, args) returns the text the model reads; kind is read, edit, exec or net."""
-        api = self._session_api
-        if api is not None and callable(handler):
-            def wrapped(_live_session, args, _handler=handler, _api=api):
-                return _handler(_api, args)
-        else:
-            wrapped = handler
-        self.reg.tool(spec, wrapped, kind=kind, group=self.ctx._owner or None, always_ask=always_ask)
-        name = spec["name"]
-        self.ctx.effect(lambda: self.reg.tools.pop(name, None))
-
-
-class KernelCommands:
-    """The "commands" service: a plugin's slash commands leave with the plugin."""
-
-    def __init__(self, ctx, reg: Registry):
-        self.ctx, self.reg = ctx, reg
-
-    def register(self, name: str, description: str, handler: Callable) -> None:
-        self.reg.command(name, description, handler)
-        self.ctx.effect(lambda: self.reg.commands.pop(name, None))
