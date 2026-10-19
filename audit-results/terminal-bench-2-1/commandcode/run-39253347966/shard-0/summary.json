@@ -1,0 +1,237 @@
+{
+ "passed": 17,
+ "trials": 23,
+ "rate": 0.739,
+ "rows": [
+  {
+   "trial": "adaptive-rejection-sampler__miuMHrR",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "build-cython-ext__tqPQDJD",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    648795,
+    549760,
+    18116
+   ]
+  },
+  {
+   "trial": "caffe-cifar-10__H7WNRkk",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1602899,
+    1431040,
+    39266
+   ]
+  },
+  {
+   "trial": "circuit-fibsqrt__aizCfFE",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    731574,
+    667904,
+    68242
+   ]
+  },
+  {
+   "trial": "compile-compcert__ntXQnoy",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    973032,
+    876416,
+    28804
+   ]
+  },
+  {
+   "trial": "count-dataset-tokens__YAhiQM7",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    81506,
+    59136,
+    5263
+   ]
+  },
+  {
+   "trial": "db-wal-recovery__8Y8HS7y",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    248816,
+    195200,
+    21676
+   ]
+  },
+  {
+   "trial": "dna-insert__CMjhvHz",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    635900,
+    549632,
+    57621
+   ]
+  },
+  {
+   "trial": "feal-differential-cryptanalysis__WDCfLiT",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    356361,
+    308736,
+    42299
+   ]
+  },
+  {
+   "trial": "financial-document-processor__WcMsown",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    259084,
+    214144,
+    15734
+   ]
+  },
+  {
+   "trial": "fix-ocaml-gc__mPkpZid",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1245679,
+    947584,
+    34011
+   ]
+  },
+  {
+   "trial": "git-multibranch__KAQE2U6",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    499148,
+    443776,
+    25375
+   ]
+  },
+  {
+   "trial": "hf-model-inference__y73B3hK",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    97724,
+    85376,
+    6943
+   ]
+  },
+  {
+   "trial": "large-scale-text-editing__vPSmJBT",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    116122,
+    97024,
+    13602
+   ]
+  },
+  {
+   "trial": "log-summary-date-ranges__ATZ8VQN",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    72845,
+    61440,
+    5203
+   ]
+  },
+  {
+   "trial": "make-mips-interpreter__ZhCdENi",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1415493,
+    1101312,
+    68083
+   ]
+  },
+  {
+   "trial": "model-extraction-relu-logits__mVNmkat",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "mteb-retrieve__H5wxFVB",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    70485,
+    59264,
+    5866
+   ]
+  },
+  {
+   "trial": "openssl-selfsigned-cert__Fe38bhe",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    42661,
+    24064,
+    6124
+   ]
+  },
+  {
+   "trial": "path-tracing__GEYkNvC",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1266210,
+    1160960,
+    42942
+   ]
+  },
+  {
+   "trial": "polyglot-rust-c__jki4esN",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "prove-plus-comm__tBorkEz",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    22567,
+    13952,
+    2844
+   ]
+  },
+  {
+   "trial": "pytorch-model-recovery__pJeNTF3",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    114570,
+    94976,
+    10756
+   ]
+  }
+ ]
+}
