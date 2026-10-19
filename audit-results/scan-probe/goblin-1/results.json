@@ -1,0 +1,849 @@
+[
+ {
+  "slice": 1,
+  "model": "inclusionai/ling-3.0-flash-vl",
+  "status": 200,
+  "seconds": 4.7,
+  "usage": {
+   "prompt_tokens": 1229,
+   "completion_tokens": 110,
+   "total_tokens": 1339,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000200944
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "narrator",
+    "GETTING OFF!"
+   ],
+   [
+    "young man in brown suit",
+    "URGH..."
+   ],
+   [
+    "narrator",
+    "DON'T PUSH!"
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":1,\"is_credit\":false,\"credit_confidence\":0.0,\"no_text\":false,\"no_text_confidence\":0.0,\"logos\":[],\"lines\":[{\"who\":\"narrator\",\"text\":\"GETTING OFF!\"},{\"who\":\"young man in brown suit\",\"text\":\"URGH...\"},{\"who\":\"narrator\",\"text\":\"DON'T PUSH!\"}],\"reason\":\"Story slice with dialogue bubbles and a sound effect; no credits or logos present.\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 1,
+  "model": "meta/muse-spark-1.3-contributor",
+  "status": 200,
+  "seconds": 6.1,
+  "usage": {
+   "prompt_tokens": 1430,
+   "completion_tokens": 308,
+   "total_tokens": 1738,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 199,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.00029358
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "unseen passenger",
+    "GETTING OFF!"
+   ],
+   [
+    "man in brown suit holding strap",
+    "URGH..."
+   ],
+   [
+    "shouting man in crowd",
+    "DON'T PUSH!"
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":1,\"is_credit\":false,\"credit_confidence\":1.0,\"no_text\":false,\"no_text_confidence\":1.0,\"logos\":[],\"lines\":[{\"who\":\"unseen passenger\",\"text\":\"GETTING OFF!\"},{\"who\":\"man in brown suit holding strap\",\"text\":\"URGH...\"},{\"who\":\"shouting man in crowd\",\"text\":\"DON'T PUSH!\"}],\"reason\":\"story panel of crowded train with three speech bubbles, red SFX excluded\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 1,
+  "model": "alibaba/qwen3.7-flash",
+  "status": 402,
+  "seconds": 1.0,
+  "usage": {},
+  "valid_json": false,
+  "no_text": null,
+  "lines": null,
+  "raw": "",
+  "error": "{\"error\":{\"message\":\"Insufficient credits: your available balance is $0.425381336, below this request's worst-case estimate of $0.5636295, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing\",\"type\":\"invalid_request_error\",\"code\":\"insufficient_credits\",\"requ"
+ },
+ {
+  "slice": 2,
+  "model": "inclusionai/ling-3.0-flash-vl",
+  "status": 200,
+  "seconds": 2.7,
+  "usage": {
+   "prompt_tokens": 1189,
+   "completion_tokens": 104,
+   "total_tokens": 1293,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000196408
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "young man, thought",
+    "STILL, THREE STRAIGHT MONTHS OF OVERTIME WAS TOO MUCH..."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":2,\"is_credit\":false,\"credit_confidence\":0.0,\"no_text\":false,\"no_text_confidence\":0.0,\"logos\":[],\"lines\":[{\"who\":\"young man, thought\",\"text\":\"STILL, THREE STRAIGHT MONTHS OF OVERTIME WAS TOO MUCH...\"}],\"reason\":\"Interior thought slice with a single thought bubble containing narration from a young man; no credits, logos, or multiple text elements.\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 2,
+  "model": "meta/muse-spark-1.3-contributor",
+  "status": 200,
+  "seconds": 14.2,
+  "usage": {
+   "prompt_tokens": 1407,
+   "completion_tokens": 221,
+   "total_tokens": 1628,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 124,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000272895
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "man shown in close-up of tired eyes",
+    "STILL, THREE STRAIGHT MONTHS OF OVERTIME WAS TOO MUCH..."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":2,\"is_credit\":false,\"credit_confidence\":1.0,\"no_text\":false,\"no_text_confidence\":1.0,\"logos\":[],\"lines\":[{\"who\":\"man shown in close-up of tired eyes\",\"text\":\"STILL, THREE STRAIGHT MONTHS OF OVERTIME WAS TOO MUCH...\"}],\"reason\":\"story panel with thought bubble over eyes, not uploader credit\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 2,
+  "model": "alibaba/qwen3.7-flash",
+  "status": 402,
+  "seconds": 0.8,
+  "usage": {},
+  "valid_json": false,
+  "no_text": null,
+  "lines": null,
+  "raw": "",
+  "error": "{\"error\":{\"message\":\"Insufficient credits: your available balance is $0.094883488, below this request's worst-case estimate of $0.5636295, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing\",\"type\":\"invalid_request_error\",\"code\":\"insufficient_credits\",\"requ"
+ },
+ {
+  "slice": 3,
+  "model": "inclusionai/ling-3.0-flash-vl",
+  "status": 200,
+  "seconds": 3.3,
+  "usage": {
+   "prompt_tokens": 949,
+   "completion_tokens": 119,
+   "total_tokens": 1068,
+   "prompt_tokens_details": {
+    "cached_tokens": 384,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000156781
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "speech bubble",
+    "AAAAAAAH..."
+   ],
+   [
+    "caption",
+    "THIRD MONTH OF OVERTIME."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":3,\"is_credit\":false,\"credit_confidence\":0.0,\"no_text\":false,\"no_text_confidence\":0.0,\"logos\":[],\"lines\":[{\"who\":\"speech bubble\",\"text\":\"AAAAAAAH...\"},{\"who\":\"caption\",\"text\":\"THIRD MONTH OF OVERTIME.\"}],\"reason\":\"A stressed man in a suit holds his head, with a speech bubble screaming 'AAAAAAAH...' and a caption box reading 'THIRD MONTH OF OVERTIME.' No logos or credits.\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 3,
+  "model": "meta/muse-spark-1.3-contributor",
+  "status": 200,
+  "seconds": 4.3,
+  "usage": {
+   "prompt_tokens": 1085,
+   "completion_tokens": 260,
+   "total_tokens": 1345,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 159,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000247275
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "distressed man in suit clutching his head",
+    "AAAAAAH..."
+   ],
+   [
+    "narration",
+    "THIRD MONTH OF OVERTIME."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":3,\"is_credit\":false,\"credit_confidence\":1.0,\"no_text\":false,\"no_text_confidence\":1.0,\"logos\":[],\"lines\":[{\"who\":\"distressed man in suit clutching his head\",\"text\":\"AAAAAAH...\"},{\"who\":\"narration\",\"text\":\"THIRD MONTH OF OVERTIME.\"}],\"reason\":\"story panel with scream bubble and narration caption, no credits or logos\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 3,
+  "model": "alibaba/qwen3.7-flash",
+  "status": 402,
+  "seconds": 0.9,
+  "usage": {},
+  "valid_json": false,
+  "no_text": null,
+  "lines": null,
+  "raw": "",
+  "error": "{\"error\":{\"message\":\"Insufficient credits: your available balance is $0.424507977, below this request's worst-case estimate of $0.5636295, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing\",\"type\":\"invalid_request_error\",\"code\":\"insufficient_credits\",\"requ"
+ },
+ {
+  "slice": 4,
+  "model": "inclusionai/ling-3.0-flash-vl",
+  "status": 200,
+  "seconds": 3.8,
+  "usage": {
+   "prompt_tokens": 1349,
+   "completion_tokens": 80,
+   "total_tokens": 1429,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000203464
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "",
+    "토토토토.."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":4,\"is_credit\":false,\"credit_confidence\":0.0,\"no_text\":false,\"no_text_confidence\":0.0,\"logos\":[],\"lines\":[{\"who\":\"\",\"text\":\"토토토토..\"}],\"reason\":\"Sound effect text in stylized Korean characters; no speech bubbles, captions, or logos.\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 4,
+  "model": "meta/muse-spark-1.3-contributor",
+  "status": 200,
+  "seconds": 7.2,
+  "usage": {
+   "prompt_tokens": 1591,
+   "completion_tokens": 237,
+   "total_tokens": 1828,
+   "prompt_tokens_details": {
+    "cached_tokens": 355,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 172,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000259046
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [],
+  "raw": "{\"slices\":[{\"slice\":4,\"is_credit\":false,\"credit_confidence\":1.0,\"no_text\":false,\"no_text_confidence\":1.0,\"logos\":[],\"lines\":[],\"reason\":\"only Korean SFX with green creature torso, no bubbles or captions\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 4,
+  "model": "alibaba/qwen3.7-flash",
+  "status": 402,
+  "seconds": 1.1,
+  "usage": {},
+  "valid_json": false,
+  "no_text": null,
+  "lines": null,
+  "raw": "",
+  "error": "{\"error\":{\"message\":\"Insufficient credits: your available balance is $0.424045467, below this request's worst-case estimate of $0.5636295, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing\",\"type\":\"invalid_request_error\",\"code\":\"insufficient_credits\",\"requ"
+ },
+ {
+  "slice": 5,
+  "model": "inclusionai/ling-3.0-flash-vl",
+  "status": 200,
+  "seconds": 2.7,
+  "usage": {
+   "prompt_tokens": 1029,
+   "completion_tokens": 104,
+   "total_tokens": 1133,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000183808
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "young man",
+    "SCREW IT. WHATEVER."
+   ],
+   [
+    "",
+    "아삭"
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":5,\"is_credit\":false,\"credit_confidence\":0.0,\"no_text\":false,\"no_text_confidence\":0.0,\"logos\":[],\"lines\":[{\"who\":\"young man\",\"text\":\"SCREW IT. WHATEVER.\"},{\"who\":\"\",\"text\":\"아삭\"}],\"reason\":\"A speech bubble with English dialogue and a Korean sound effect (아삭) on the fruit. No logos or credit elements present.\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 5,
+  "model": "meta/muse-spark-1.3-contributor",
+  "status": 200,
+  "seconds": 4.2,
+  "usage": {
+   "prompt_tokens": 1160,
+   "completion_tokens": 239,
+   "total_tokens": 1399,
+   "prompt_tokens_details": {
+    "cached_tokens": 355,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 155,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000214211
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "pale person biting fruit",
+    "SCREW IT. WHATEVER."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":5,\"is_credit\":false,\"credit_confidence\":1.0,\"no_text\":false,\"no_text_confidence\":1.0,\"logos\":[],\"lines\":[{\"who\":\"pale person biting fruit\",\"text\":\"SCREW IT. WHATEVER.\"}],\"reason\":\"story panel biting fruit with speech bubble, SFX excluded\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 5,
+  "model": "alibaba/qwen3.7-flash",
+  "status": 402,
+  "seconds": 1.1,
+  "usage": {},
+  "valid_json": false,
+  "no_text": null,
+  "lines": null,
+  "raw": "",
+  "error": "{\"error\":{\"message\":\"Insufficient credits: your available balance is $0.423647448, below this request's worst-case estimate of $0.5636295, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing\",\"type\":\"invalid_request_error\",\"code\":\"insufficient_credits\",\"requ"
+ },
+ {
+  "slice": 6,
+  "model": "inclusionai/ling-3.0-flash-vl",
+  "status": 200,
+  "seconds": 3.7,
+  "usage": {
+   "prompt_tokens": 1029,
+   "completion_tokens": 234,
+   "total_tokens": 1263,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000213838
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "old man in dark suit",
+    "NAME: OH HYUNMIN"
+   ],
+   [
+    "old man in dark suit",
+    "POSITION: LORD"
+   ],
+   [
+    "old man in dark suit",
+    "TERRITORY: RED ROCK VALLEY"
+   ],
+   [
+    "old man in dark suit",
+    "POPULATION: 47"
+   ],
+   [
+    "old man in dark suit",
+    "TRAITS: [OVERTIME], [SPEECH]"
+   ],
+   [
+    "old man in dark suit",
+    "AVAILABLE TOOL: WIKI"
+   ],
+   [
+    "old man in dark suit",
+    "TERRITORY WAR COUNTDOWN 4 DAYS 3 HOURS 5 MINUTES 58 SECONDS"
+   ],
+   [
+    "narrator",
+    "...?!"
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":6,\"is_credit\":false,\"credit_confidence\":0.0,\"no_text\":false,\"no_text_confidence\":0.0,\"logos\":[],\"lines\":[{\"who\":\"old man in dark suit\",\"text\":\"NAME: OH HYUNMIN\"},{\"who\":\"old man in dark suit\",\"text\":\"POSITION: LORD\"},{\"who\":\"old man in dark suit\",\"text\":\"TERRITORY: RED ROCK VALLEY\"},{\"who\":\"old man in dark suit\",\"text\":\"POPULATION: 47\"},{\"who\":\"old man in dark suit\",\"text\":\"TRAITS: [OVERTIME], [SPEECH]\"},{\"who\":\"old man in dark suit\",\"text\":\"AVAILABLE TOOL: WIKI\"},{\"who\":\"old man in dark suit\",\"text\":\"TERRITORY WAR COUNTDOWN 4 DAYS 3 HOURS 5 MINUTES 58 SECONDS\"},{\"who\":\"narrator\",\"text\":\"...?!\"}],\"reason\":\"Information panel with character stats and countdown text, plus sound effects and a reaction bubble.\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 6,
+  "model": "meta/muse-spark-1.3-contributor",
+  "status": 200,
+  "seconds": 6.7,
+  "usage": {
+   "prompt_tokens": 1160,
+   "completion_tokens": 578,
+   "total_tokens": 1738,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 386,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.00032193
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "sign",
+    "NAME: OH HYUNMIN POSITION: LORD TERRITORY: RED ROCK VALLEY POPULATION: 47 TRAITS: [OVERTIME], [SPEECH] AVAILABLE TOOL: WIKI TERRITORY WAR COUNTDOWN 4 DAYS 3 HOURS 5 MINUTES 50 SECONDS"
+   ],
+   [
+    "sweating dark-haired man in suit in profile",
+    "...?!"
+   ]
+  ],
+  "raw": "{\"slices\": [{\"slice\": 6, \"is_credit\": false, \"credit_confidence\": 1.0, \"no_text\": false, \"no_text_confidence\": 1.0, \"logos\": [], \"lines\": [{\"who\": \"sign\", \"text\": \"NAME: OH HYUNMIN POSITION: LORD TERRITORY: RED ROCK VALLEY POPULATION: 47 TRAITS: [OVERTIME], [SPEECH] AVAILABLE TOOL: WIKI TERRITORY WAR COUNTDOWN 4 DAYS 3 HOURS 5 MINUTES 50 SECONDS\"}, {\"who\": \"sweating dark-haired man in suit in profile\", \"text\": \"...?!\"}], \"reason\": \"story panel with system window and speech bubble, tick sounds excluded\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 6,
+  "model": "alibaba/qwen3.7-flash",
+  "status": 402,
+  "seconds": 0.9,
+  "usage": {},
+  "valid_json": false,
+  "no_text": null,
+  "lines": null,
+  "raw": "",
+  "error": "{\"error\":{\"message\":\"Insufficient credits: your available balance is $0.09313217, below this request's worst-case estimate of $0.5636295, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing\",\"type\":\"invalid_request_error\",\"code\":\"insufficient_credits\",\"reque"
+ },
+ {
+  "slice": 7,
+  "model": "inclusionai/ling-3.0-flash-vl",
+  "status": 200,
+  "seconds": 4.4,
+  "usage": {
+   "prompt_tokens": 1029,
+   "completion_tokens": 128,
+   "total_tokens": 1157,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000189352
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "young man in suit",
+    "THE... DEMON REALM...?"
+   ],
+   [
+    "young man in suit",
+    "NO WAY..."
+   ],
+   [
+    "young man in suit",
+    "WAS I SUMMONED TO A PLACE CALLED THE DEMON REALM?"
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":7,\"is_credit\":false,\"credit_confidence\":0.0,\"no_text\":false,\"no_text_confidence\":0.0,\"logos\":[],\"lines\":[{\"who\":\"young man in suit\",\"text\":\"THE... DEMON REALM...?\"},{\"who\":\"young man in suit\",\"text\":\"NO WAY...\"},{\"who\":\"young man in suit\",\"text\":\"WAS I SUMMONED TO A PLACE CALLED THE DEMON REALM?\"}],\"reason\":\"story slice with three speech bubbles containing dialogue from a shocked man in a suit\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 7,
+  "model": "meta/muse-spark-1.3-contributor",
+  "status": 200,
+  "seconds": 4.1,
+  "usage": {
+   "prompt_tokens": 1160,
+   "completion_tokens": 314,
+   "total_tokens": 1474,
+   "prompt_tokens_details": {
+    "cached_tokens": 355,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 194,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000229961
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "man in suit",
+    "THE... DEMON REALM...?"
+   ],
+   [
+    "man in suit",
+    "NO WAY..."
+   ],
+   [
+    "man in suit",
+    "WAS I SUMMONED TO A PLACE CALLED THE DEMON REALM?"
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":7,\"is_credit\":false,\"credit_confidence\":1.0,\"no_text\":false,\"no_text_confidence\":1.0,\"logos\":[],\"lines\":[{\"who\":\"man in suit\",\"text\":\"THE... DEMON REALM...?\"},{\"who\":\"man in suit\",\"text\":\"NO WAY...\"},{\"who\":\"man in suit\",\"text\":\"WAS I SUMMONED TO A PLACE CALLED THE DEMON REALM?\"}],\"reason\":\"story panel with shocked man, three speech bubbles, no logos\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 7,
+  "model": "alibaba/qwen3.7-flash",
+  "status": 402,
+  "seconds": 0.8,
+  "usage": {},
+  "valid_json": false,
+  "no_text": null,
+  "lines": null,
+  "raw": "",
+  "error": "{\"error\":{\"message\":\"Insufficient credits: your available balance is $0.422692367, below this request's worst-case estimate of $0.5636295, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing\",\"type\":\"invalid_request_error\",\"code\":\"insufficient_credits\",\"requ"
+ },
+ {
+  "slice": 8,
+  "model": "inclusionai/ling-3.0-flash-vl",
+  "status": 200,
+  "seconds": 7.5,
+  "usage": {
+   "prompt_tokens": 949,
+   "completion_tokens": 95,
+   "total_tokens": 1044,
+   "prompt_tokens_details": {
+    "cached_tokens": 384,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000151237
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "young man in suit",
+    "OKAY..."
+   ],
+   [
+    "young man in suit",
+    "I PRETTY MUCH GET THE SITUATION."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":8,\"is_credit\":false,\"credit_confidence\":0.0,\"no_text\":false,\"no_text_confidence\":0.0,\"logos\":[],\"lines\":[{\"who\":\"young man in suit\",\"text\":\"OKAY...\"},{\"who\":\"young man in suit\",\"text\":\"I PRETTY MUCH GET THE SITUATION.\"}],\"reason\":\"Story slice with dialogue bubbles and no credit content.\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 8,
+  "model": "meta/muse-spark-1.3-contributor",
+  "status": 200,
+  "seconds": 5.3,
+  "usage": {
+   "prompt_tokens": 1085,
+   "completion_tokens": 233,
+   "total_tokens": 1318,
+   "prompt_tokens_details": {
+    "cached_tokens": 355,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 130,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000205076
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "man in suit with hands over face",
+    "OKAY..."
+   ],
+   [
+    "man in suit with hands over face",
+    "I PRETTY MUCH GET THE SITUATION."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":8,\"is_credit\":false,\"credit_confidence\":1.0,\"no_text\":false,\"no_text_confidence\":1.0,\"logos\":[],\"lines\":[{\"who\":\"man in suit with hands over face\",\"text\":\"OKAY...\"},{\"who\":\"man in suit with hands over face\",\"text\":\"I PRETTY MUCH GET THE SITUATION.\"}],\"reason\":\"story panel with man covering face, two speech bubbles\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 8,
+  "model": "alibaba/qwen3.7-flash",
+  "status": 402,
+  "seconds": 0.9,
+  "usage": {},
+  "valid_json": false,
+  "no_text": null,
+  "lines": null,
+  "raw": "",
+  "error": "{\"error\":{\"message\":\"Insufficient credits: your available balance is $0.422336054, below this request's worst-case estimate of $0.5636295, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing\",\"type\":\"invalid_request_error\",\"code\":\"insufficient_credits\",\"requ"
+ },
+ {
+  "slice": 9,
+  "model": "inclusionai/ling-3.0-flash-vl",
+  "status": 200,
+  "seconds": 3.1,
+  "usage": {
+   "prompt_tokens": 1069,
+   "completion_tokens": 102,
+   "total_tokens": 1171,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000186496
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "",
+    "WHETHER IT'S REALITY OR HERE,"
+   ],
+   [
+    "",
+    "IT'S ALL THE SAME FUCKED UP MESS."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":9,\"is_credit\":false,\"credit_confidence\":0.0,\"no_text\":false,\"no_text_confidence\":0.0,\"logos\":[],\"lines\":[{\"who\":\"\",\"text\":\"WHETHER IT'S REALITY OR HERE,\"},{\"who\":\"\",\"text\":\"IT'S ALL THE SAME FUCKED UP MESS.\"}],\"reason\":\"Dialogue bubble with two text blocks; no logos, watermarks, or credits.\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 9,
+  "model": "meta/muse-spark-1.3-contributor",
+  "status": 200,
+  "seconds": 4.7,
+  "usage": {
+   "prompt_tokens": 1205,
+   "completion_tokens": 292,
+   "total_tokens": 1497,
+   "prompt_tokens_details": {
+    "cached_tokens": 355,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 182,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000230066
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "unseen person sitting above",
+    "WHETHER IT'S REALITY OR HERE,"
+   ],
+   [
+    "unseen person sitting above",
+    "IT'S ALL THE SAME FUCKED UP MESS."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":9,\"is_credit\":false,\"credit_confidence\":1.0,\"no_text\":false,\"no_text_confidence\":1.0,\"logos\":[],\"lines\":[{\"who\":\"unseen person sitting above\",\"text\":\"WHETHER IT'S REALITY OR HERE,\"},{\"who\":\"unseen person sitting above\",\"text\":\"IT'S ALL THE SAME FUCKED UP MESS.\"}],\"reason\":\"story slice with double speech bubble from legs visible at top, no logos\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 9,
+  "model": "alibaba/qwen3.7-flash",
+  "status": 402,
+  "seconds": 0.7,
+  "usage": {},
+  "valid_json": false,
+  "no_text": null,
+  "lines": null,
+  "raw": "",
+  "error": "{\"error\":{\"message\":\"Insufficient credits: your available balance is $0.421919492, below this request's worst-case estimate of $0.5636295, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing\",\"type\":\"invalid_request_error\",\"code\":\"insufficient_credits\",\"requ"
+ },
+ {
+  "slice": 10,
+  "model": "inclusionai/ling-3.0-flash-vl",
+  "status": 200,
+  "seconds": 2.7,
+  "usage": {
+   "prompt_tokens": 1430,
+   "completion_tokens": 100,
+   "total_tokens": 1530,
+   "prompt_tokens_details": {
+    "cached_tokens": 384,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000190271
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "narrator",
+    "IT SAYS I'M GOING TO DIE IN FOUR DAYS."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":10,\"is_credit\":false,\"credit_confidence\":0.0,\"no_text\":false,\"no_text_confidence\":0.0,\"logos\":[],\"lines\":[{\"who\":\"narrator\",\"text\":\"IT SAYS I'M GOING TO DIE IN FOUR DAYS.\"}],\"reason\":\"A single caption/narration box containing a text statement, not a credit slice, no logos, no sound effects.\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 10,
+  "model": "meta/muse-spark-1.3-contributor",
+  "status": 200,
+  "seconds": 3.6,
+  "usage": {
+   "prompt_tokens": 1683,
+   "completion_tokens": 241,
+   "total_tokens": 1924,
+   "prompt_tokens_details": {
+    "cached_tokens": 355,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 158,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0,
+   "cost": 0.000269546
+  },
+  "valid_json": true,
+  "no_text": false,
+  "lines": [
+   [
+    "narration",
+    "IT SAYS I'M GOING TO DIE IN FOUR DAYS."
+   ]
+  ],
+  "raw": "{\"slices\":[{\"slice\":10,\"is_credit\":false,\"credit_confidence\":1.0,\"no_text\":false,\"no_text_confidence\":1.0,\"logos\":[],\"lines\":[{\"who\":\"narration\",\"text\":\"IT SAYS I'M GOING TO DIE IN FOUR DAYS.\"}],\"reason\":\"story caption box, not uploader credit\"}]}",
+  "error": ""
+ },
+ {
+  "slice": 10,
+  "model": "alibaba/qwen3.7-flash",
+  "status": 402,
+  "seconds": 0.7,
+  "usage": {},
+  "valid_json": false,
+  "no_text": null,
+  "lines": null,
+  "raw": "",
+  "error": "{\"error\":{\"message\":\"Insufficient credits: your available balance is $0.421459675, below this request's worst-case estimate of $0.5636295, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing\",\"type\":\"invalid_request_error\",\"code\":\"insufficient_credits\",\"requ"
+ }
+]
