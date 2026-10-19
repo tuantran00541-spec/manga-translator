@@ -9,7 +9,6 @@ import sys
 import tempfile
 import threading
 import time
-import urllib.parse
 import urllib.request
 import webbrowser
 from pathlib import Path
@@ -82,29 +81,10 @@ def _running_port() -> int | None:
     return None
 
 
-def _launch_dir() -> Path | None:
-    """The folder `manga` was typed in, for the Agent tab; None from an icon, home, a drive root or the app's own folder."""
-    if not (sys.stdin and sys.stdin.isatty()):
-        return None
-    try:
-        here = Path.cwd().resolve()
-    except OSError:
-        return None
-    if here in (Path.home().resolve(), Path(here.anchor)) or here == BASE_DIR or BASE_DIR in here.parents:
-        return None
-    return here
-
-
-def _page(url: str) -> str:
-    """The app URL, carrying the launch folder for the Agent tab when there is one."""
-    folder = _launch_dir()
-    return f"{url}/?workspace={urllib.parse.quote(str(folder))}" if folder else url
-
-
 def _open_when_up(url: str) -> None:
     for _ in range(240):
         if _is_ours(url):
-            webbrowser.open(_page(url))
+            webbrowser.open(url)
             return
         time.sleep(0.5)
 
@@ -195,15 +175,8 @@ def _safe_console() -> None:
 
 def main(argv: list[str] | None = None) -> None:
     _safe_console()
-    words = [w for w in (sys.argv[1:] if argv is None else argv) if w != "--open"]
-    if words[:1] == ["mcp"]:
-        # `manga mcp`: serve the agent's tools to another MCP client over stdio instead of opening the app.
-        from app.agent.mcp_server import main as serve_mcp
-
-        serve_mcp(words[1:])
-        return
     parser = argparse.ArgumentParser(prog="manga", description="Manga Translator")
-    parser.add_argument("command", nargs="?", choices=["update", "mcp"], help="update: get the latest version; mcp: serve the agent's tools over MCP (stdio)")
+    parser.add_argument("command", nargs="?", choices=["update"], help="update: get the latest version")
     parser.add_argument("--open", action="store_true", help="open the app in the browser once it is up")
     parser.add_argument("--window", action="store_true", help="show the app in its own window instead of the browser")
     parser.add_argument("--version", action="version", version=f"Manga Translator {VERSION} ({BASE_DIR})")
@@ -216,8 +189,8 @@ def main(argv: list[str] | None = None) -> None:
     if port is None:
         url = _url(_running_port() or PORT)
         logger.info(f"Manga Translator is already running at {url}")
-        if not (args.window and _show_window(_page(url))):
-            webbrowser.open(_page(url))
+        if not (args.window and _show_window(url)):
+            webbrowser.open(url)
         return
     if port != PORT:
         logger.warning(f"Port {PORT} is used by another program; using {port}")
@@ -286,7 +259,7 @@ def _serve_in_window(port: int) -> None:
         while thread.is_alive() and not _is_ours(url):
             time.sleep(0.3)
 
-    if _show_window(_page(url), on_ready=wait_until_up):
+    if _show_window(url, on_ready=wait_until_up):
         server.should_exit = True
         thread.join(timeout=10)
         return

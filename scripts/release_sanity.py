@@ -6,8 +6,7 @@ import importlib.util
 from pathlib import Path
 import re
 
-# Test folders under app are left out, as tests/ at the root is.
-PYTHON_PATHS = sorted([*(p for p in Path("app").rglob("*.py") if "tests" not in p.parts), Path("run.py")])
+PYTHON_PATHS = sorted([*Path("app").rglob("*.py"), Path("run.py")])
 JS_PATHS = sorted(Path("app/static/js").rglob("*.js"))
 HTML_PATHS = sorted(Path("app/templates").rglob("*.html"))
 
@@ -170,8 +169,7 @@ def _module_name(path: Path) -> str:
 
 
 def check_python_module_reachability() -> None:
-    # Skills bundled for the Agent carry their own scripts, and tests are run by pytest; neither are app modules.
-    app_paths = sorted(p for p in Path("app").rglob("*.py") if "builtin_skills" not in p.parts and "tests" not in p.parts)
+    app_paths = sorted(Path("app").rglob("*.py"))
     existing = {
         _module_name(path)
         for path in app_paths
@@ -214,7 +212,7 @@ def check_python_module_reachability() -> None:
                 if candidate in existing:
                     incoming[candidate].append(f"{path}:{node.lineno}")
 
-    entrypoints = {"app.main", "app.agent.cli"}
+    entrypoints = {"app.main"}
     failures = [
         f"{module} has no incoming runtime import"
         for module in sorted(existing)

@@ -154,7 +154,7 @@ def _set_api_key(account: str, value: str, provider: str) -> None:
     value = (value or "").strip()
     if not value:
         raise ValueError(f"{provider} API key is required")
-    if len(value) > 65536:
+    if len(value) > 4096:
         raise ValueError(f"{provider} API key is unexpectedly long")
 
     keyring, KeyringError = _keyring_module()
@@ -184,13 +184,12 @@ def _key_status(
     provider: str,
 ) -> dict:
     if any(os.getenv(name) for name in env_names):
-        return {"configured": True, "source": "environment", "count": 1}
+        return {"configured": True, "source": "environment"}
     try:
-        keys = split_keys(_get_api_key(account, env_names, provider))
+        configured = bool(_get_api_key(account, env_names, provider))
         return {
-            "configured": bool(keys),
-            "source": _store_source() if keys else "none",
-            "count": len(keys),
+            "configured": configured,
+            "source": _store_source() if configured else "none",
         }
     except SecretStoreUnavailable as exc:
         return {
@@ -232,23 +231,9 @@ def deepseek_key_status() -> dict:
     )
 
 
-MAX_KEYS = 10
-
-
-def split_keys(raw: str | None) -> list[str]:
-    """Stored keys in order: a JSON list, or one plain key."""
-    raw = (raw or "").strip()
-    if raw.startswith("["):
-        try:
-            values = json.loads(raw)
-        except ValueError:
-            values = None
-        if isinstance(values, list):
-            return [str(v).strip() for v in values if str(v).strip()]
-    return [raw] if raw else []
-
-
-def _raw_provider_key(provider_id: str, provider_label: str | None) -> str | None:
+def get_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> str | None:
+    if provider_id == CLOUD_PROVIDER_ID:
+        return cloud_job_key()
     provider_id, env_names, label = _provider_meta(provider_id, provider_label)
     if provider_id == "gemini":
         return get_gemini_api_key()
@@ -257,41 +242,13 @@ def _raw_provider_key(provider_id: str, provider_label: str | None) -> str | Non
     return _get_api_key(_provider_account(provider_id), env_names, label)
 
 
-def get_provider_api_keys(provider_id: str, *, provider_label: str | None = None) -> list[str]:
-    if provider_id == CLOUD_PROVIDER_ID:
-        key = cloud_job_key()
-        return [key] if key else []
-    return split_keys(_raw_provider_key(provider_id, provider_label))
-
-
-def get_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> str | None:
-    """The first stored key; agent mode is the one place that moves on to the others."""
-    keys = get_provider_api_keys(provider_id, provider_label=provider_label)
-    return keys[0] if keys else None
-
-
-def set_provider_api_key(provider_id: str, value: str, *, provider_label: str | None = None, append: bool = False) -> int:
-    """Store one key, or add it after the stored ones; returns how many keys are stored."""
+def set_provider_api_key(provider_id: str, value: str, *, provider_label: str | None = None) -> None:
     provider_id, _env_names, label = _provider_meta(provider_id, provider_label)
     account = {
         "gemini": _GEMINI_ACCOUNT,
         "deepseek": _DEEPSEEK_ACCOUNT,
     }.get(provider_id, _provider_account(provider_id))
-    value = (value or "").strip()
-    if value.startswith("["):
-        raise ValueError(f"{label} API key is invalid")
-    keys = [value]
-    if append:
-        keyring, KeyringError = _keyring_module()
-        try:
-            stored = split_keys(keyring.get_password(_SERVICE_NAME, account))
-        except KeyringError as exc:
-            raise SecretStoreUnavailable(f"Cannot read {label} API key from OS secure storage: {exc}") from exc
-        keys = stored + [k for k in keys if k not in stored]
-        if len(keys) > MAX_KEYS:
-            raise ValueError(f"At most {MAX_KEYS} keys per provider")
-    _set_api_key(account, keys[0] if len(keys) == 1 else json.dumps(keys), label)
-    return len(keys)
+    _set_api_key(account, value, label)
 
 
 def delete_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> None:

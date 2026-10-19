@@ -556,7 +556,6 @@ class OcrTextObjectRequest(BaseModel):
 
 class VisualQCKeyRequest(BaseModel):
     api_key: str
-    append: bool = False
     provider_label: str | None = None
     provider_protocol: str | None = None
     provider_api_base: str | None = None

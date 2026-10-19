@@ -68,23 +68,20 @@
   }
 
   function setLandingMode(mode = "home") {
-    const resolved = ["import", "agent"].includes(mode) ? mode : "home";
+    const resolved = mode === "import" ? "import" : "home";
     document.body.dataset.landingMode = resolved;
     const home = document.getElementById("home-view");
     const importView = document.getElementById("import-view");
-    const agentView = document.getElementById("agent-view");
     if (home) home.hidden = resolved !== "home";
     if (importView) importView.hidden = resolved !== "import";
-    if (agentView) agentView.hidden = resolved !== "agent";
-    setPageTitle({ home: "Trang chủ", import: "Nhập nội dung", agent: "Chaos" }[resolved]);
-    if (resolved === "agent") window.openAgentView?.();
+    setPageTitle(resolved === "home" ? "Trang chủ" : "Nhập nội dung");
     // Coming back home lists the chapters worked on since the page loaded.
     if (resolved === "home") window.loadRecentChapters?.();
     const start = document.getElementById("start-action");
     if (start) start.textContent = "Dự án mới";
     if ((document.body.dataset.appStage || "landing") !== "landing") return;
     // The import page has its own load button; a second one in the header confused new users.
-    if (start) start.hidden = resolved !== "home";
+    if (start) start.hidden = resolved === "import";
     syncSidebar("landing");
     closeSidebar();
     if (resolved === "import") queueMicrotask(() => document.getElementById("chapter-url")?.focus());

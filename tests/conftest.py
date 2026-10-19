@@ -11,13 +11,6 @@ def fake_letter_model(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def legacy_tools(monkeypatch):
-    """Most agent tests drive the shell one call at a time, so they run without the chain-only defaults."""
-    from app.agent import registry
-    monkeypatch.setattr(registry, "CHAIN_DEFAULTS", {"shell_tool": True, "min_calls": 1})
-
-
-@pytest.fixture(autouse=True)
 def series_memory_in_tmp(monkeypatch, tmp_path_factory):
     """Series memory written by a test never lands in the real data folder."""
     from app import series_memory

@@ -1,4 +1,0 @@
-wc.py prints word statistics for a text file. Add two options without changing the current output when neither is given:
-- --top N shows the N most common words instead of 5 (ties keep first-seen order, as now);
-- --json prints one JSON object instead: {"lines": int, "words": int, "unique": int, "top": [[word, count], ...]} honouring --top.
-Options may come before or after the file name. Missing file: print "error: no such file: <path>" to stderr and exit with code 2. Keep tests/ passing and add tests for the new options.
