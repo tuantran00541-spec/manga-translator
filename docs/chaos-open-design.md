@@ -49,32 +49,28 @@ Mục tiêu: lõi giữ nhỏ như hiện tại, mọi thứ thêm vào đi qua 
 
 ## 3. Plugin — hai tầng
 
-Quyết định chính: model tự viết tool thì tool đó **mặc định là MCP server chạy trong sandbox**, không chạy trong tiến trình.
+Quyết định chính: tầng 1 **chính là `create`**, giữ nguyên cách dùng, chỉ mở rộng thêm.
 
-### Tầng 1: tool server (model viết thoải mái)
+### Tầng 1: `create` (model viết thoải mái)
 
-**Model viết:**
-- Model dùng tool `extend` (một tool có sẵn mới) để tạo `.agents/extensions/<tên>/`.
-- Trong đó có `server.py` dùng SDK nhỏ `chaos_ext`, ví dụ:
-  ```python
-  @tool(kind="read")
-  def f(x: str) -> str: ...
-  ```
-- Kèm `manifest.json` gồm tên, mô tả, và kiểu các tool.
+**Đang có:**
+- Model viết một hàm Python, rồi gọi nó như một tool.
+- Bên trong, `tools.<tên>(...)` gọi được mọi tool khác: có sẵn, đã create, plugin, MCP. Nhờ vậy một lần gọi chạy được cả chuỗi bước.
+- Chạy trong sandbox, duyệt như một lệnh.
+- Tool được lưu ở `~/.manga-agent/tools/` để dùng ở các phiên sau.
+- Có kiểu một lần (`keep: false`).
 
-**Harness kiểm tra rồi mới bật:**
-- Chạy server **trong sandbox của workspace** qua stdio, đúng như một MCP server.
-- Gọi `tools/list` để kiểm tra.
-- Nếu lỗi, trả lỗi về cho model sửa.
-- Nếu ổn, tool hiện ngay trong lượt sau với tên `ext__<tên>__<tool>`.
+**Thêm:**
 
-**Duyệt:**
-- **Tạo hoặc sửa extension:** hỏi bạn một lần ở chế độ Hỏi mọi thứ và Tự sửa. Card duyệt hiện diff.
-- **Gọi tool:** duyệt theo `kind` như mọi tool khác.
-- **Lý do an toàn:** code chạy trong sandbox giống `run_command`, nên rủi ro không lớn hơn để model tự chạy script.
-- **Lưu và chia sẻ:**
-  - Commit chung với dự án được.
-  - Người khác mở dự án thì phải tin cậy theo digest, giống `.mcp.json`.
+| Mục | Cách làm |
+|---|---|
+| `kind` | `create(..., kind="read")` khai báo tool chỉ đọc. Harness kiểm lại: tool `read` mà gọi tool sửa hoặc lệnh thì bị chặn, nên khai `read` không lách được duyệt. Mặc định là `exec`, như hiện nay. |
+| `scope` | `user` (mặc định, như hiện nay) hoặc `workspace`. Workspace lưu ở `.agents/tools/`, commit chung với dự án. Người khác mở dự án thì phải tin cậy theo digest, giống `.mcp.json`. |
+| Thư viện | Tool đã create gọi lẫn nhau như module (đang có). Thêm `requires: ["requests"]` để cài gói vào venv riêng của tools. |
+| Danh sách | `/tools` liệt kê, xem code, xóa. Giao diện có bảng tương ứng. |
+| Xuất ra MCP | `/tools export <tên>` gói tool thành MCP server, để Claude Code hoặc Cursor dùng lại. |
+
+**Duyệt:** như hiện nay, chạy tool thì duyệt theo `kind`. Tạo hoặc sửa tool không hỏi, vì code chạy trong sandbox; riêng tool workspace của người khác thì phải tin cậy trước.
 
 ### Tầng 2: plugin trong tiến trình (`register(api)`)
 
@@ -116,7 +112,7 @@ def register(api):
 `ctx` không có key, không có `mode` và không có `registry`.
 
 **Model viết plugin tầng 2:**
-- **Được viết:** qua `extend` với `"inprocess": true`.
+- **Được viết:** qua tool `plugin_write`, tách riêng khỏi `create` để không lẫn hai mức quyền.
 - **Luôn hỏi bạn,** ở mọi chế độ, kể cả Không duyệt.
 - **Card duyệt cảnh báo rõ** rằng code này chạy với quyền của harness.
 - **Duyệt xong:** digest được ghi lại và plugin nạp nóng (`/plugins reload`).
@@ -138,7 +134,7 @@ def register(api):
 | Giao thức Anthropic Messages | Adapter thứ ba trong `client.py`, gồm tool use, ảnh, thinking và prompt cache. |
 | Adapter từ plugin | `api.provider(name, adapter)`, với `adapter(request) -> {"text", "calls", "usage"}` theo đúng định dạng nội bộ mà `client.complete` trả. Provider tùy chỉnh có thể chọn `protocol` là tên này. |
 | Bảng năng lực model | `profile.json` → `models.<id>` khai báo: `tools` (native/text), `vision`, `reasoning`, `context_window`, `max_output`. Mục nào thiếu thì đoán từ `models.py`, và đoán sai thì tự sửa theo lỗi lần đầu (đã làm cho context window). |
-| Model yếu | Đặt `"tools": "lean"` thì chỉ gửi tool cốt lõi (read, edit, run, search). Tool MCP và extension chỉ được gửi khi model gọi `tool_search` (tìm theo tên hoặc mô tả). |
+| Model yếu | Đặt `"tools": "lean"` thì chỉ gửi tool cốt lõi (read, edit, run, search). Tool MCP và tool đã create chỉ được gửi khi model gọi `tool_search` (tìm theo tên hoặc mô tả). |
 | Prompt trung lập | System prompt không giả định hãng. Hướng dẫn riêng cho từng model đặt ở `models.<id>.prompt` hoặc trong plugin. |
 
 ## 5. Thứ tự làm
@@ -150,23 +146,20 @@ Mỗi bước có test, 4 script sanity và ảnh chụp UI, rồi mới sang b�
    - Thêm 4 sự kiện mới.
    - `api.config` và `api.state`.
    - Test bảo mật: plugin không với tới key, mode, registry.
-2. **Extension tầng 1:**
-   - Tool `extend` và SDK `chaos_ext`.
-   - Chạy server trong sandbox, kiểm `tools/list`, trả lỗi về cho model.
-   - Duyệt bằng diff.
+2. **Mở rộng `create`:** `kind` có kiểm tra, `scope` workspace kèm tin cậy, `requires`, lệnh `/tools`, xuất ra MCP.
 3. **MCP thêm:** lọc tool, kinds, prompts, resources, ảnh, `list_changed`, tự khởi động lại, công tắc cho từng tool trên UI.
 4. **Provider:**
    - Adapter Anthropic.
    - `api.provider`.
    - Bảng năng lực, chế độ `lean` và `tool_search`.
-5. **Tầng 2 do model viết:** `extend` với `inprocess`, luôn hỏi bạn, nạp nóng.
-6. **UI "Mở rộng":** một bảng chung cho MCP, extension và plugin, gồm trạng thái, tin cậy, công tắc và lỗi.
+5. **Tầng 2 do model viết:** `plugin_write`, luôn hỏi bạn, nạp nóng.
+6. **UI "Mở rộng":** một bảng chung cho MCP, tool đã create và plugin, gồm trạng thái, tin cậy, công tắc và lỗi.
 
 ## 6. Cần bạn chốt
 
-1. **Model tự viết tool:** chạy trong sandbox (tầng 1) làm mặc định?
-2. **Duyệt khi tạo extension:**
-   - Tầng 1: hỏi một lần khi tạo hoặc sửa, rồi tự chạy theo kiểu tool.
-   - Tầng 2: luôn hỏi.
+1. **Tầng 1 là `create`** và mở rộng như bảng trên. Được chưa?
+2. **Duyệt:**
+   - `create`: không hỏi khi tạo, chỉ hỏi khi chạy.
+   - `plugin_write`: luôn hỏi.
 3. **Đổi `session` thô sang `api`:** plugin `register(api)` hiện tại sẽ phải sửa. Có giữ một lớp tương thích tạm cho chúng không? Đề xuất: không giữ, vì hiện chưa có plugin ngoài nào.
 4. **Adapter Anthropic native** có cần ngay không, hay giao thức kiểu OpenAI là đủ?
