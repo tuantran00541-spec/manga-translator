@@ -18,6 +18,7 @@
     <nav id="workflow-steps" class="sidebar-nav" aria-label="Các màn hình">
       <button aria-label="Trang chủ" class="sidebar-link active" type="button" data-route="home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5v-8Z"/><path d="M9 21v-7h6v7"/></svg><span>Trang chủ</span></button>
       <button aria-label="Nhập nội dung" class="sidebar-link" type="button" data-route="import"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v6m-3-3h6"/></svg><span>Nhập nội dung</span></button>
+      <button aria-label="Chaos" class="sidebar-link" type="button" data-route="agent"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg><span>Chaos</span></button>
       <button aria-label="Xem cắt lát" class="sidebar-link" type="button" data-stage="preview" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 15 3-3 2 2 3-4 3 5"/></svg><span>Xem cắt lát</span></button>
       <button aria-label="Xử lý &amp; Biên tập" class="sidebar-link" type="button" data-stage="review" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg><span>Xử lý &amp; Biên tập</span></button>
     </nav>
@@ -77,6 +78,33 @@
           </section>
         </section>
       </div>
+      <div id="agent-view" class="agent-view" hidden>
+        <aside class="agent-side" aria-label="Phiên">
+          <button id="agent-new" class="agent-btn" type="button">Phiên mới</button>
+          <ul id="agent-sessions" class="agent-sessions"></ul>
+        </aside>
+        <div class="agent-main">
+          <form id="agent-setup" class="agent-setup">
+            <label>Dịch vụ<select id="agent-provider" required></select></label>
+            <label>Model<input id="agent-model" autocomplete="off" spellcheck="false" required></label>
+            <label class="agent-wide">Thư mục làm việc<input id="agent-workspace" autocomplete="off" spellcheck="false" required></label>
+            <label>Mức suy nghĩ<select id="agent-effort"><option value="">Mặc định</option><option value="low">Thấp</option><option value="medium">Vừa</option><option value="high">Cao</option></select></label>
+          </form>
+          <div class="agent-top"><p id="agent-status" class="agent-status" aria-live="polite"></p>
+            <label class="agent-mode">Duyệt<select id="agent-mode"><option value="ask">Hỏi trước mọi thay đổi và lệnh</option><option value="edits">Tự sửa file, hỏi trước khi chạy lệnh</option></select></label></div>
+          <div id="agent-log" class="agent-log"></div>
+          <div id="agent-approval" class="agent-approval" hidden>
+            <p>Agent muốn <strong id="agent-approval-name"></strong>:</p><pre id="agent-approval-args"></pre>
+            <div class="agent-row"><button id="agent-allow" class="agent-btn agent-primary" type="button">Cho phép</button><button id="agent-deny" class="agent-btn" type="button">Từ chối</button></div>
+          </div>
+          <form id="agent-composer" class="agent-composer">
+            <label class="sr-only" for="agent-input">Tin nhắn cho agent</label>
+            <textarea id="agent-input" rows="2" placeholder="Giao việc cho agent… (Enter để gửi, Shift+Enter xuống dòng)" required></textarea>
+            <button id="agent-stop" class="agent-btn" type="button" hidden>Dừng</button>
+            <button id="agent-send" class="agent-btn agent-primary" type="submit">Gửi</button>
+          </form>
+        </div>
+      </div>
     </section>
     <main id="page-view" class="app-workspace" hidden></main>
   </div>
@@ -88,6 +116,6 @@
   <div class="settings-body"><section class="settings-section" aria-labelledby="ai-settings-title"><div class="settings-section-heading"><h3 id="ai-settings-title">Dịch vụ AI</h3><p>API key được giữ trong kho bí mật của hệ điều hành.</p></div><div id="ai-settings-host" class="ai-settings-host"><p class="settings-placeholder">Đang tải cấu hình AI…</p></div></section></div>
 </aside>
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
-<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/source-language.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script type="module" src="/static/js/review-stitch/index.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-history.js"></script><script src="/static/js/editor-presets.js"></script><script src="/static/js/editor-inspector.js"></script><script src="/static/js/editor-persistence.js"></script><script src="/static/js/editor-geometry.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script><script src="/static/js/ai-mode.js"></script>
+<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/source-language.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script type="module" src="/static/js/review-stitch/index.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-history.js"></script><script src="/static/js/editor-presets.js"></script><script src="/static/js/editor-inspector.js"></script><script src="/static/js/editor-persistence.js"></script><script src="/static/js/editor-geometry.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script><script src="/static/js/ai-mode.js"></script><script src="/static/js/agent.js"></script>
 </body>
 </html>
