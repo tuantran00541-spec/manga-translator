@@ -1,0 +1,30 @@
+2026-10-19 12:58:30 | WARNING  | app.agent.client:476 - bench stream broke: ConnectionError (bench); asking again in 2s
+2026-10-19 12:58:33 | WARNING  | app.agent.session:4212 - Agent session 5b7233b7b3fc49df failed
+Traceback (most recent call last):
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1032, in _bootstrap
+    self._bootstrap_inner()
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+> File "/opt/mg/src/app/agent/session.py", line 4210, in _loop
+    (custom or AgentSession._steps)(self, max_steps)
+  File "/opt/mg/src/app/agent/session.py", line 4088, in _steps
+    turn = self._turn()
+  File "/opt/mg/src/app/agent/session.py", line 3414, in _turn
+    return self._turn_once()
+  File "/opt/mg/src/app/agent/session.py", line 3428, in _turn_once
+    return self._call_model(client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
+  File "/opt/mg/src/app/agent/session.py", line 3378, in _call_model
+    return self._call_model_once(messages, tools, streams, started)
+  File "/opt/mg/src/app/agent/session.py", line 3399, in _call_model_once
+    return model(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
+  File "/opt/mg/src/app/agent/session.py", line 569, in __call__
+    return self.session._complete_keyed(*args, **kwargs)
+  File "/opt/mg/src/app/agent/session.py", line 1219, in _complete_keyed
+    return self._raw_complete(provider, key, *args, **kwargs)
+  File "/opt/mg/src/app/agent/client.py", line 471, in complete
+    return _complete_once(provider, api_key, model, messages, tools=tools, on_delta=on_delta, max_tokens=max_tokens)
+  File "/opt/mg/src/app/agent/client.py", line 527, in _complete_once
+    raise error(f"{provider.label} HTTP {response.status_code}: {detail}")
+RuntimeError: bench HTTP 402: Insufficient credits: your available balance is $0.151111636, below this request's worst-case estimate of $0.311664843, so it was not sent and nothing was charged. Top up at https://minirouter.sh/dashboard/billing

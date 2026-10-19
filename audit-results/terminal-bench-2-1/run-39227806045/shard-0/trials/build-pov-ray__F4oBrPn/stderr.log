@@ -1,0 +1,1 @@
+2026-10-19 09:43:21 | WARNING  | app.agent.client:476 - bench HTTP 502: The upstream provider returned an error after we had begun streaming, so we could not retry on another provider without corrupting the response. Details and live status: https://minirouter.sh/status (bench); asking again in 2s
