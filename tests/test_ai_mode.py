@@ -636,6 +636,13 @@ def test_translate_render_and_leave_the_chapter_open_in_the_editor(cleaned_chapt
     manifests.save_manifest_raw(CHAPTER, {**manifest, "script_review_required": False})
     with zipfile.ZipFile(export_router.write_chapter_archive(CHAPTER)) as archive:
         assert archive.namelist() == ["page_001.png", "page_002.png"]
+    from app.export_pages import ExportOptions
+
+    jpg = export_router.write_chapter_archive(CHAPTER, options=ExportOptions.parse("jpg", 90, 0, 0, "ch01_", "cbz"))
+    assert jpg.suffix == ".cbz"
+    with zipfile.ZipFile(jpg) as archive:
+        assert archive.namelist() == ["ch01_001.jpg", "ch01_002.jpg"]
+        assert archive.read("ch01_001.jpg")[:3] == b"\xff\xd8\xff"
 
 
 def test_retry_keeps_going_on_a_long_slice_while_batches_make_progress(monkeypatch):

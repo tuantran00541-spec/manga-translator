@@ -162,6 +162,12 @@
   .ai-mode-form .ai-mode-url, .ai-mode-form .ai-mode-notes { grid-column: 1 / -1; }
   .ai-mode-notes textarea { width: 100%; resize: vertical; font: inherit; }
   .ai-mode-form .ai-mode-series { grid-column: 1 / -1; }
+  .chapter-export { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+  .chapter-export-options > summary { cursor: pointer; font-size: 12px; color: var(--text-secondary, inherit); list-style: none; padding: 4px 6px; border: 1px solid var(--border-subtle); border-radius: 3px; }
+  .chapter-export-options > summary::-webkit-details-marker { display: none; }
+  .chapter-export-panel { position: absolute; z-index: calc(var(--z-toolbar) + 30); right: 0; top: calc(100% + 4px); display: grid; gap: 6px; width: 240px; padding: 10px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); box-shadow: var(--shadow-float); }
+  .chapter-export-panel label { display: grid; gap: 2px; font-size: 12px; }
+  .chapter-export-panel select, .chapter-export-panel input { font: inherit; }
   .ai-mode-series textarea { width: 100%; resize: vertical; font: 13px/1.5 ui-monospace, monospace; margin: 6px 0; }
   .ai-mode-series-help { margin: 6px 0 0; font-size: 13px; opacity: .8; }
   .ai-mode-form .ai-mode-polish { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
