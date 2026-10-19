@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from app.agent.session import MODES, SessionManager
-from app.ai_providers import CLOUD_PROVIDER_ID, PROVIDERS
+from app.agent import mcp, sandbox, skill_install, skills
+from app.agent.session import MODES, AgentSessionManager
+from app.agent.tools import Workspace
+from app.ai_providers import CLOUD_PROVIDER_ID, PROVIDERS, validate_model_name
 from app.config import BASE_DIR
 from app.routers.visual_qc import _resolve_configured_provider
-from app.secret_store import SecretStoreUnavailable, get_provider_api_key, list_provider_configs
+from app.secret_store import SecretStoreUnavailable, get_provider_api_keys, list_provider_configs, provider_key_status
 
 AGENT_HEADER = "1"
 
@@ -24,9 +27,13 @@ def is_loopback(host: str) -> bool:
         return False
 
 
+def agent_enabled() -> bool:
+    return os.getenv("MANGA_AGENT_MODE", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
 def guard(request: Request, x_manga_agent: str | None = Header(default=None)) -> None:
     """Agent calls change files and run commands, so they need the switch on, this machine, and a header a foreign page cannot send without a preflight."""
-    if os.getenv("MANGA_AGENT_MODE", "1").strip().lower() in {"0", "false", "no", "off"}:
+    if not agent_enabled():
         raise HTTPException(404, "Agent mode is turned off (MANGA_AGENT_MODE=0)")
     # MANGA_ALLOWED_HOSTS may open the app to the LAN; the agent stays on this machine.
     if not is_loopback(request.client.host if request.client else ""):
@@ -35,31 +42,64 @@ def guard(request: Request, x_manga_agent: str | None = Header(default=None)) ->
         raise HTTPException(403, "Agent requests need the X-Manga-Agent header")
 
 
-def resolve(provider_id: str):
-    """A configured provider and its key, read at every turn so the key never lands in the session file."""
-    if provider_id == CLOUD_PROVIDER_ID:
-        raise ValueError("Manga Cloud only serves A.I mode")
-    provider = _resolve_configured_provider(provider_id)
-    api_key = get_provider_api_key(provider.id, provider_label=provider.label)
-    if not api_key:
-        raise ValueError(f"{provider.label} API key is not configured")
-    return provider, api_key
-
-
 router = APIRouter(prefix="/api/agent", tags=["agent"], dependencies=[Depends(guard)])
-sessions = SessionManager(BASE_DIR / "data" / "agent", resolve)
+agent_sessions = AgentSessionManager(BASE_DIR / "data" / "agent")
+
+
+def _find_provider(provider_id: str):
+    """A configured provider and its keys by id, for model roles that name one."""
+    provider = _resolve_configured_provider(provider_id)
+    return provider, get_provider_api_keys(provider.id, provider_label=provider.label)
+
+
+def _list_providers() -> list[tuple[str, str]]:
+    """(id, label) of every built-in and custom provider that has a key, which the agent may pick models from."""
+    found = [(p.id, p.label) for p in PROVIDERS.values()]
+    try:
+        found += [(str(c.get("id") or ""), str(c.get("label") or c.get("id") or "")) for c in list_provider_configs()]
+    except SecretStoreUnavailable:
+        pass
+    return [(i, label) for i, label in found if i and provider_key_status(i, provider_label=label).get("configured")]
+
+
+agent_sessions.find_provider = _find_provider
+agent_sessions.list_providers = _list_providers
 
 
 class SessionRequest(BaseModel):
     provider: str
-    model: str = Field(min_length=1, max_length=200)
-    workspace: str = Field(min_length=1, max_length=1000)
-    mode: str = "ask"
-    effort: str = Field(default="", max_length=20)
+    model: str
+    mode: str = "edits"
+    effort: str = ""
+    workspace: str = ""
+    sandbox: str = "workspace-write"
+    network: bool = False
 
 
-class SessionUpdate(BaseModel):
-    mode: str
+class McpServer(BaseModel):
+    name: str = Field(default="", max_length=40)
+    config: dict | None = None
+    pasted: str = Field(default="", max_length=50_000)
+
+
+class McpSwitch(BaseModel):
+    enabled: bool
+
+
+class EngineChoice(BaseModel):
+    engine: str
+    image: str = Field(default="", max_length=200)
+
+
+class SkillSource(BaseModel):
+    source: str = Field(min_length=3, max_length=300)
+
+
+class SkillDraft(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    description: str = Field(min_length=1, max_length=2000)
+    body: str = Field(min_length=1, max_length=200_000)
+    replace: bool = False
 
 
 class MessageRequest(BaseModel):
@@ -67,82 +107,314 @@ class MessageRequest(BaseModel):
 
 
 class ApprovalRequest(BaseModel):
-    allow: bool
+    decision: str
     note: str = Field(default="", max_length=2000)
+
+
+class KeyChoice(BaseModel):
+    decision: str
+
+
+class SessionUpdate(BaseModel):
+    mode: str | None = None
+    effort: str | None = None
+    model: str | None = None
+    sandbox: str | None = None
+    network: bool | None = None
 
 
 def _session(session_id: str):
     try:
-        return sessions.get(session_id)
+        return agent_sessions.get(session_id)
     except KeyError as exc:
         raise HTTPException(404, "Agent session not found") from exc
 
 
-def _providers() -> list[dict]:
-    """Every built-in and custom provider that has a key."""
-    found = [(p.id, p.label, p.default_translation_model or p.default_qc_model) for p in PROVIDERS.values()]
+async def _provider_and_key(provider_id: str):
+    if provider_id == CLOUD_PROVIDER_ID:
+        raise HTTPException(400, "Manga Cloud only serves A.I mode")
     try:
-        found += [(str(c.get("id") or ""), str(c.get("label") or c.get("id") or ""), "") for c in list_provider_configs()]
-    except SecretStoreUnavailable:
-        pass
-    return [{"id": i, "label": label, "model": model} for i, label, model in found
-            if i and i != CLOUD_PROVIDER_ID and get_provider_api_key(i, provider_label=label)]
+        provider = await run_in_threadpool(_resolve_configured_provider, provider_id)
+        api_keys = await run_in_threadpool(get_provider_api_keys, provider.id, provider_label=provider.label)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    if not api_keys:
+        raise HTTPException(409, f"{provider.label} API key is not configured")
+    return provider, api_keys
+
+
+def _engine() -> dict:
+    return {**sandbox.settings(), "backend": sandbox.backend(), "docker": sandbox.docker_ready()}
 
 
 @router.get("/config")
-async def config() -> dict:
-    return {"providers": await run_in_threadpool(_providers), "modes": list(MODES), "workspace": str(Path.home())}
+def agent_config() -> dict:
+    return {"workspace": str(BASE_DIR), "modes": list(MODES), "sandboxes": list(sandbox.MODES), "sandbox_backend": sandbox.backend(),
+            "engine": _engine()}
 
 
-@router.get("/sessions")
-def list_sessions() -> list[dict]:
-    return sessions.list()
+@router.post("/sandbox/engine")
+def set_engine(req: EngineChoice) -> dict:
+    """Choose where commands run: the OS sandbox (auto) or a Docker container."""
+    try:
+        sandbox.save_settings(req.engine, req.image.strip())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return _engine()
+
+
+def _skill_home() -> Path:
+    return agent_sessions.home if agent_sessions.home is not None else Path.home()
+
+
+def _skills_changed(names: list[str]) -> dict:
+    for session in list(agent_sessions.sessions.values()):
+        session.reload_skills()
+    return {"skills": names}
+
+
+@router.get("/skills")
+def list_skills(workspace: str = "") -> dict:
+    """Every skill the agent can load here: the project's, the user's, then the bundled ones."""
+    home, root = _skill_home(), Path(workspace.strip() or BASE_DIR)
+    found = skills.discover(root, agent_sessions.home)
+    mine = skill_install.user_dir(home).resolve()
+    rows = [{"name": s.name, "description": s.description, "manual": s.manual, "path": str(s.folder),
+             "scope": "builtin" if s.builtin else "user" if s.folder.parent == mine else "project"} for s in found.values()]
+    return {"skills": rows, "folder": str(mine)}
+
+
+@router.post("/skills/install")
+async def install_skills(req: SkillSource) -> dict:
+    try:
+        names = await run_in_threadpool(skill_install.install, req.source, _skill_home())
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return _skills_changed(names)
+
+
+@router.post("/skills/upload")
+async def upload_skills(file: UploadFile = File(...)) -> dict:
+    data = await file.read(skill_install.MAX_ZIP_BYTES + 1)
+    try:
+        if (file.filename or "").lower().endswith(".zip") or data[:4] == b"PK\x03\x04":
+            names = await run_in_threadpool(skill_install.install_zip, data, _skill_home())
+        else:
+            names = [skill_install.install_file(data.decode("utf-8", errors="replace"), _skill_home())]
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return _skills_changed(names)
+
+
+@router.post("/skills")
+def create_skill(req: SkillDraft) -> dict:
+    try:
+        name = skill_install.create(_skill_home(), req.name, req.description, req.body, req.replace)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return _skills_changed([name])
+
+
+@router.get("/skills/{name}")
+def read_skill(name: str) -> dict:
+    try:
+        return {"name": name, "text": skill_install.read(_skill_home(), name)}
+    except (ValueError, OSError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.delete("/skills/{name}")
+def delete_skill(name: str) -> dict:
+    try:
+        skill_install.remove(_skill_home(), name)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return _skills_changed([])
 
 
 @router.post("/sessions")
-def create_session(req: SessionRequest) -> dict:
+async def create_session(req: SessionRequest) -> dict:
+    provider, api_key = await _provider_and_key(req.provider)
     try:
-        resolve(req.provider)
-        return sessions.create(req.provider, req.model, req.workspace, req.mode, req.effort).summary()
-    except SecretStoreUnavailable as exc:
-        raise HTTPException(503, str(exc)) from exc
+        model = validate_model_name(req.model, default="")
+        if req.sandbox not in sandbox.MODES:
+            raise ValueError(f"sandbox must be one of {', '.join(sandbox.MODES)}")
+        workspace = Workspace(req.workspace.strip() or BASE_DIR, sandbox.Policy(req.sandbox, req.network))
+        session = await run_in_threadpool(agent_sessions.create, provider, api_key, model, workspace, req.mode)
+        session.set_effort(req.effort)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    return session.snapshot()
+
+
+@router.post("/sessions/{session_id}/resume")
+async def resume_session(session_id: str) -> dict:
+    if session_id in agent_sessions.sessions:
+        return agent_sessions.sessions[session_id].snapshot()
+    try:
+        data = agent_sessions.saved(session_id)
+    except (KeyError, OSError, ValueError) as exc:
+        raise HTTPException(404, "Saved agent session not found") from exc
+    provider, api_key = await _provider_and_key(str(data.get("provider") or ""))
+    try:
+        mode, network = (data.get("sandbox") or ["workspace-write", False])[:2]
+        workspace = Workspace(data["workspace"], sandbox.Policy(mode, bool(network)))
+        session = await run_in_threadpool(agent_sessions.create, provider, api_key, str(data.get("model") or ""), workspace,
+                                          data.get("mode") if data.get("mode") in MODES else "edits", session_id=session_id)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    session.restore(data)
+    return session.snapshot()
+
+
+@router.get("/sessions")
+def list_sessions() -> dict:
+    return {"sessions": agent_sessions.listing()}
+
+
+def _mcp_rows(workspace: str) -> dict:
+    home, root = _skill_home(), Path(workspace.strip() or BASE_DIR)
+    rows = [mcp.public(row) for row in mcp.configured(root, agent_sessions.home)]
+    live = {}
+    for session in agent_sessions.sessions.values():
+        if session.workspace.root == root.resolve():
+            live.update({n: {"state": st["state"], "tools": st["tools"], "error": st["error"]} for n, st in session.mcp_status.items()})
+    for row in rows:
+        row.update(live.get(row["name"], {}))
+    return {"servers": rows, "file": str(mcp.user_file(home))}
+
+
+def _mcp_changed() -> None:
+    for session in list(agent_sessions.sessions.values()):
+        session.reload_mcp()
+
+
+@router.get("/mcp")
+def list_mcp(workspace: str = "") -> dict:
+    """Every MCP server the agent would start here, from all the files it reads; values of secrets are hidden."""
+    return _mcp_rows(workspace)
+
+
+@router.post("/mcp")
+async def add_mcp(req: McpServer, workspace: str = "") -> dict:
+    """Add servers to ~/.manga-agent/mcp.json from the form or from pasted JSON, then load them into open sessions."""
+    try:
+        servers = mcp.parse_pasted(req.pasted, req.name) if req.pasted.strip() else {req.name.strip(): mcp.clean_config(req.config or {})}
+        if not all(mcp.NAME_RE.fullmatch(n) for n in servers):
+            raise ValueError("give the server a name: letters, digits, '.', '_' or '-' (at most 40)")
+        await run_in_threadpool(mcp.save_user, _skill_home(), servers)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    missing = [c["command"] for c in servers.values() if c.get("command") and not shutil.which(c["command"])]
+    await run_in_threadpool(_mcp_changed)
+    return {**_mcp_rows(workspace), "added": list(servers),
+            "warning": f"{', '.join(missing)} is not installed on this machine" if missing else ""}
+
+
+@router.post("/mcp/{name}/test")
+async def test_mcp(name: str, workspace: str = "") -> dict:
+    """Start one of your own servers, list its tools and stop it, so a typo shows up before the agent needs it."""
+    root = Path(workspace.strip() or BASE_DIR)
+    row = next((r for r in mcp.configured(root, agent_sessions.home) if r["name"] == name), None)
+    if row is None:
+        raise HTTPException(404, "MCP server not found")
+    if row["scope"] == "workspace":
+        raise HTTPException(400, "A project's server runs only after you allow it in a session")
+    try:
+        tools = await run_in_threadpool(mcp.probe, name, row["config"], root)
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:600]}
+    return {"ok": True, "tools": tools}
+
+
+@router.post("/mcp/{name}/enabled")
+async def switch_mcp(name: str, req: McpSwitch, workspace: str = "") -> dict:
+    try:
+        await run_in_threadpool(mcp.set_user_enabled, _skill_home(), name, req.enabled)
+    except KeyError as exc:
+        raise HTTPException(404, "Only servers in ~/.manga-agent/mcp.json can be switched here") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    await run_in_threadpool(_mcp_changed)
+    return _mcp_rows(workspace)
+
+
+@router.delete("/mcp/{name}")
+async def delete_mcp(name: str, workspace: str = "") -> dict:
+    try:
+        await run_in_threadpool(mcp.remove_user, _skill_home(), name)
+    except KeyError as exc:
+        raise HTTPException(404, "Only servers in ~/.manga-agent/mcp.json can be removed here") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    await run_in_threadpool(_mcp_changed)
+    return _mcp_rows(workspace)
 
 
 @router.get("/sessions/{session_id}")
-def get_session(session_id: str) -> dict:
-    return _session(session_id).view()
-
-
-@router.patch("/sessions/{session_id}")
-def update_session(session_id: str, req: SessionUpdate) -> dict:
-    if req.mode not in MODES:
-        raise HTTPException(400, f"Unknown mode: {req.mode}")
-    session = _session(session_id)
-    with session.lock:
-        session.data["mode"] = req.mode
-        session.save()
-    return session.summary()
+def session_events(session_id: str, after: int = 0, rev: str = "") -> dict:
+    return _session(session_id).snapshot(after, rev)
 
 
 @router.post("/sessions/{session_id}/messages")
 def send_message(session_id: str, req: MessageRequest) -> dict:
     session = _session(session_id)
     try:
-        session.send(req.text)
+        if req.text.startswith("/") and not req.text.startswith("//"):
+            return session.command(req.text)
+        return {"sent": True, "queued": session.send(req.text)}
     except RuntimeError as exc:
         raise HTTPException(409, str(exc)) from exc
-    return session.summary()
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post("/sessions/{session_id}/approval")
 def approve(session_id: str, req: ApprovalRequest) -> dict:
-    session = _session(session_id)
-    if not session.data.get("pending"):
-        raise HTTPException(409, "Nothing is waiting for approval")
-    session.approve(req.allow, req.note)
+    if req.decision not in {"allow", "allow_always", "allow_all", "deny"}:
+        raise HTTPException(400, "decision must be allow, allow_always, allow_all or deny")
+    try:
+        _session(session_id).decide(req.decision, req.note)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
     return {"ok": True}
+
+
+@router.post("/sessions/{session_id}/key")
+def choose_key(session_id: str, req: KeyChoice) -> dict:
+    if req.decision not in {"next", "stop"}:
+        raise HTTPException(400, "decision must be next or stop")
+    try:
+        _session(session_id).choose_key(req.decision)
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"ok": True}
+
+
+@router.post("/sessions/{session_id}/trust/mcp/{name}")
+async def trust_mcp(session_id: str, name: str) -> dict:
+    session = _session(session_id)
+    try:
+        await run_in_threadpool(session.trust_mcp, name)
+    except (KeyError, StopIteration) as exc:
+        raise HTTPException(404, "MCP server not found") from exc
+    return session.snapshot(len(session.events))
+
+
+@router.post("/sessions/{session_id}/trust/hooks")
+def trust_hooks(session_id: str) -> dict:
+    session = _session(session_id)
+    session.trust_hooks()
+    return session.snapshot(len(session.events))
+
+
+@router.post("/sessions/{session_id}/trust/plugins")
+def trust_plugins(session_id: str) -> dict:
+    session = _session(session_id)
+    session.trust_plugins()
+    return session.snapshot(len(session.events))
 
 
 @router.post("/sessions/{session_id}/stop")
@@ -151,8 +423,31 @@ def stop(session_id: str) -> dict:
     return {"ok": True}
 
 
+@router.patch("/sessions/{session_id}")
+def update_session(session_id: str, req: SessionUpdate) -> dict:
+    session = _session(session_id)
+    try:
+        if req.mode is not None:
+            if req.mode not in MODES:
+                raise ValueError(f"mode must be one of {', '.join(MODES)}")
+            session.mode = req.mode
+            session._sync_plugin_mode()
+        if req.effort is not None:
+            session.set_effort(req.effort)
+        if req.model is not None:
+            session.set_model(validate_model_name(req.model, default=""))
+        if req.sandbox is not None or req.network is not None:
+            policy = session.workspace.policy
+            session.set_policy(req.sandbox or policy.mode, policy.network if req.network is None else req.network)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return session.snapshot(len(session.events))
+
+
 @router.delete("/sessions/{session_id}")
 def delete_session(session_id: str) -> dict:
-    _session(session_id)
-    sessions.delete(session_id)
+    try:
+        agent_sessions.delete(session_id)
+    except KeyError as exc:
+        raise HTTPException(404, "Agent session not found") from exc
     return {"ok": True}

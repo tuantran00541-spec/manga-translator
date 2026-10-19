@@ -1,0 +1,75 @@
+name: Chain eval
+
+# One-off: our agent on four small tasks with Agnes 3.0 Flash (free), chain-only harness against the old shell tool.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/chain-eval.yml"
+      - ".github/chain-eval/**"
+      - "app/agent/session.py"
+
+permissions:
+  contents: write
+
+jobs:
+  eval:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      OUT: audit-results/chain-eval/run-${{ github.run_id }}
+      PORT: "18080"
+      MODEL: agnes-3.0-flash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Start the key relay as another user
+        env:
+          API_KEY: ${{ secrets.AGNES_KEY }}
+        run: |
+          [ -n "$API_KEY" ] || { echo "::error::AGNES_KEY is not set"; exit 1; }
+          python -m pip install -q requests pytest
+          sudo install -d -o nobody -m 711 /opt/relay
+          sudo install -m 755 .github/terminal-bench/proxy.py /opt/relay/proxy.py
+          printf '%s' "$API_KEY" | sudo -u nobody tee /opt/relay/key > /dev/null
+          sudo chmod 600 /opt/relay/key
+          # The relay sends every request as agnes-3.0-flash, the free model.
+          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" https://apihub.agnes-ai.com/v1 '{"concurrent": 4, "max_usd": 1.0}' "$MODEL" > /dev/null 2>&1 &
+          sleep 3
+          curl -sS -m 30 -o /dev/null -w "models endpoint: HTTP %{http_code}\n" "http://127.0.0.1:$PORT/v1/models" || true
+      - name: Set up the agent user without the internet or the checks
+        run: |
+          sudo useradd -m agent
+          sudo iptables -A OUTPUT -m owner --uid-owner agent -d 127.0.0.0/8 -j ACCEPT
+          sudo iptables -A OUTPUT -m owner --uid-owner agent -j REJECT
+          sudo install -d -m 755 /opt/chaos
+          sudo cp -r app /opt/chaos/app
+          sudo chown -R agent /opt/chaos
+          sudo "$(which python)" -m venv /opt/chaos-venv
+          sudo /opt/chaos-venv/bin/pip install -q requests loguru pydantic fastapi pillow numpy beautifulsoup4 lxml pytest
+          sudo install -d -o "$USER" -m 755 /opt/ce-work
+          # The checks and expected answers live in the checkout, which the agent user must not read.
+          chmod 700 "$HOME"
+          (sudo -u agent cat .github/chain-eval/tasks/stuck-requests/expected.txt > /dev/null 2>&1 && echo "::error::the agent can read the checks" && exit 1) || echo "checks are hidden from the agent"
+      - name: Run the four tasks, chain-only and with the shell tool
+        run: python .github/chain-eval/run.py "http://127.0.0.1:$PORT/v1" "$MODEL" "$OUT" 15 2
+      - name: Keep the relay stats
+        if: always()
+        run: cp /opt/relay/stats.json "$OUT/relay-stats.json" 2>/dev/null || true
+      - name: Give git access only now
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - uses: ./.github/actions/save-evidence
+        if: always()
+        with:
+          paths: ${{ env.OUT }}
+          message: "audit: chain eval (run ${{ github.run_id }})"
+
+# Manual re-run trigger

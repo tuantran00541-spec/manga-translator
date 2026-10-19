@@ -1,138 +1,758 @@
-"""The agent's four tools: read, write and edit files in its folder, and run a command there."""
+"""Tools the agent works with: files inside one workspace, sandboxed commands and web pages."""
 from __future__ import annotations
 
+import ast
+import base64
+import difflib
+import fnmatch
+import json
 import os
-import re
-import shutil
-import signal
-import subprocess
-import sys
 from pathlib import Path
+import re
+import time
+import unicodedata
 
-MAX_OUTPUT = 30_000  # characters of a result the model sees; the middle of a longer one is cut
-MAX_READ_BYTES = 5_000_000
-READ_LINES = 2000
-COMMAND_TIMEOUT_S = 120
-MAX_COMMAND_TIMEOUT_S = 1800
-# Commands never see the app's keys or the user's tokens.
-SECRET_ENV = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", re.I)
-CHANGES = {"write_file", "edit_file", "run_command"}
+import requests
+
+from app.agent import gitguard, hashline, patch as patches, sandbox, services, webread, websearch
+from app.downloader.http import read_response_limited, safe_get
+
+BROAD_FOLDERS = {"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/var", "/boot", "/dev", "/proc", "/sys", "/opt", "/root", "/home", "/Users",
+                 "/System", "/Library", "/Applications", "/private", "/mnt", "/media"}
+SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache"}
+# Chapter images, model weights and logs at the app's root would drown every listing and search.
+ROOT_SKIP_DIRS = {"data", "models", "logs"}
+MAX_READ_LINES = 2000
+MAX_OUTPUT_CHARS = 20_000
+MAX_SEARCH_HITS = 200
+MAX_LIST_ENTRIES = 500
+MAX_SEARCH_FILE_BYTES = 1_000_000
+MAX_FETCH_BYTES = 5_000_000
+MAX_DOWNLOAD_BYTES = 50_000_000
+MAX_IMAGE_BYTES = 4_000_000
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+SYMBOL_LINE = re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:(?:public|private|protected|static|final|abstract|pub|override)\s+)*"
+                         r"(def|class|function|func|fn|struct|enum|interface|trait|type|impl|module|object)\s+\*?([A-Za-z_$][\w$]*)")
+COMMAND_TIMEOUT = 120
+MAX_COMMAND_TIMEOUT = 1800
+
+# What each tool can do decides whether it waits for the user: read, edit, exec or net.
+KIND = {"list_dir": "read", "read_file": "read", "symbols": "read", "view_image": "read", "search": "read", "glob": "read", "write_file": "edit",
+        "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "replace_in_files": "edit", "move_file": "edit", "delete_file": "edit", "run_command": "exec", "run_script": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
 
 SPECS = [
-    {"name": "read_file", "description": "Read a text file in the folder, with line numbers.",
-     "parameters": {"type": "object", "properties": {
-         "path": {"type": "string", "description": "Path relative to the folder."},
-         "offset": {"type": "integer", "description": "First line to read, from 1."},
-         "limit": {"type": "integer", "description": f"Lines to read, {READ_LINES} by default."}},
-         "required": ["path"]}},
-    {"name": "write_file", "description": "Create a file, or replace all of it, with the given content.",
-     "parameters": {"type": "object", "properties": {
-         "path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}},
-    {"name": "edit_file", "description": "Replace one exact piece of a file; old_text must appear exactly once.",
-     "parameters": {"type": "object", "properties": {
-         "path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}},
-         "required": ["path", "old_text", "new_text"]}},
-    {"name": "run_command", "description": "Run a shell command in the folder and return its output and exit code. "
-     "Use it to list and search files, run tests and use any installed tool.",
-     "parameters": {"type": "object", "properties": {
-         "command": {"type": "string"},
-         "timeout": {"type": "integer", "description": f"Seconds, {COMMAND_TIMEOUT_S} by default."}},
-         "required": ["command"]}},
+    {"name": "list_dir", "description": "List what a folder holds, depth 1 to 4.",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "depth": {"type": "integer", "description": "1 to 4"}}}},
+    {"name": "read_file", "description": "Read a text file with line numbers; offset and limit read part of it.",
+     "parameters": {"type": "object", "required": ["path"], "properties": {
+         "path": {"type": "string"}, "offset": {"type": "integer"}, "limit": {"type": "integer"},
+         "anchors": {"type": "boolean", "description": "Show lines as N#hh|text for edit_lines."}}}},
+    {"name": "symbols", "description": "List a file's classes and functions, or find where a name is defined.",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "name": {"type": "string"}}}},
+    {"name": "view_image", "description": "Look at an image file.",
+     "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
+    {"name": "search", "description": "Search files for a regular expression and list the matching file:line rows.",
+     "parameters": {"type": "object", "required": ["pattern"], "properties": {
+         "pattern": {"type": "string"}, "path": {"type": "string"}, "glob": {"type": "string"}, "ignore_case": {"type": "boolean"},
+         "context": {"type": "integer"}, "files_only": {"type": "boolean"}}}},
+    {"name": "glob", "description": "Find files whose path matches a pattern, newest first.",
+     "parameters": {"type": "object", "required": ["pattern"], "properties": {"pattern": {"type": "string"}, "path": {"type": "string"}}}},
+    {"name": "write_file", "description": "Create a file or replace all of its content.",
+     "parameters": {"type": "object", "required": ["path", "content"], "properties": {"path": {"type": "string"}, "content": {"type": "string"}}}},
+    {"name": "edit_file", "description": "Change a file by replacing old_text with new_text; old_text must match one place unless replace_all is set. edits applies several replacements in order.",
+     "parameters": {"type": "object", "required": ["path"], "properties": {
+         "path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"},
+         "replace_all": {"type": "boolean"},
+         "edits": {"type": "array", "items": {"type": "object", "required": ["old_text", "new_text"], "properties": {
+             "old_text": {"type": "string"}, "new_text": {"type": "string"}}}}}}},
+    {"name": "edit_lines", "description": hashline.GUIDE,
+     "parameters": {"type": "object", "required": ["path", "edits"], "properties": {
+         "path": {"type": "string"}, "edits": {"type": "array", "items": {"type": "object", "required": ["op", "anchor"], "properties": {
+             "op": {"type": "string", "enum": list(hashline.OPS)}, "anchor": {"type": "string"},
+             "end": {"type": "string"}, "text": {"type": "string"}}}}}}},
+    {"name": "replace_in_files", "description": "Replace text in many files at once (literal unless regex); look with dry_run first.",
+     "parameters": {"type": "object", "required": ["pattern", "replacement"], "properties": {
+         "pattern": {"type": "string"}, "replacement": {"type": "string"}, "path": {"type": "string"}, "glob": {"type": "string"},
+         "regex": {"type": "boolean"}, "ignore_case": {"type": "boolean"}, "dry_run": {"type": "boolean"}}}},
+    {"name": "move_file", "description": "Move or rename a file.",
+     "parameters": {"type": "object", "required": ["path", "to"], "properties": {
+         "path": {"type": "string"}, "to": {"type": "string"}, "overwrite": {"type": "boolean"}}}},
+    {"name": "delete_file", "description": "Delete a file.",
+     "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
+    {"name": "apply_patch", "description": "Add, change, move or delete several files in one patch.\n" + patches.GUIDE,
+     "parameters": {"type": "object", "required": ["patch"], "properties": {"patch": {"type": "string"}}}},
+    {"name": "run_command", "description": "Run a shell command in the workspace sandbox; returns its output and exit code.",
+     "parameters": {"type": "object", "required": ["command"], "properties": {
+         "command": {"type": "string"}, "timeout": {"type": "integer", "description": "Seconds, at most 1800."},
+         "background": {"type": "boolean", "description": "Start it and return a job id at once; read it with job_output, stop it with job_stop."},
+         "tty": {"type": "boolean", "description": "With background: run it on a terminal so job_input can type into it."},
+         "outside_sandbox": {"type": "boolean", "description": "Only when the sandbox stops what the task needs; say why."}}}},
+    {"name": "run_script", "description": "Run Python in the sandbox in which tools are functions that return text: tools.read_file(path=...), "
+                                          "tools.search(pattern=...), tools.glob(...), tools.list_dir(...), tools.symbols(...), tools.web_fetch(url=...), "
+                                          "tools.web_search(query=...), tools.fan_out(jobs=[{\"prompt\": ...}], schema={...}) -> JSON list of {job, report}. "
+                                          "Only what it prints comes back; good for many lookups in one step.",
+     "parameters": {"type": "object", "required": ["code"], "properties": {"code": {"type": "string"}, "timeout": {"type": "integer"}}}},
+    {"name": "web_fetch", "description": "Fetch a web page as Markdown; offset reads further, find returns the matching lines.",
+     "parameters": {"type": "object", "required": ["url"], "properties": {
+         "url": {"type": "string"}, "max_chars": {"type": "integer"}, "offset": {"type": "integer"}, "find": {"type": "string"}}}},
+    {"name": "web_search", "description": "Search the web.",
+     "parameters": {"type": "object", "required": ["query"], "properties": {
+         "query": {"type": "string"}, "count": {"type": "integer"}, "recency": {"type": "string", "enum": ["day", "week", "month", "year"]}}}},
+    {"name": "web_download", "description": "Download a file from the web into the workspace.",
+     "parameters": {"type": "object", "required": ["url", "path"], "properties": {"url": {"type": "string"}, "path": {"type": "string"}}}},
 ]
 
 
 class ToolError(Exception):
-    """A tool call that cannot run as asked; its message goes back to the model."""
+    """A tool call the agent made wrongly; its message goes back to the model."""
 
 
-def clip(text: str) -> str:
-    if len(text) <= MAX_OUTPUT:
+LOOSE = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-", "\u00a0": " "})
+
+
+def _loose(line: str, level: int) -> str:
+    line = unicodedata.normalize("NFKC", line).translate(LOOSE).rstrip()
+    return line.strip() if level == 2 else line
+
+
+def _replace(text: str, old: str, new: str, replace_all: bool, where: str = "") -> tuple[str, int]:
+    """One replacement: exact first, then whole lines compared loosely (trailing spaces, quotes, then indentation), as Codex and pi do."""
+    count = text.count(old) if old else 0
+    if count == 1 or (count > 1 and replace_all):
+        return text.replace(old, new), count
+    if count > 1:
+        raise ToolError(f"{where}old_text matches {count} places; add more surrounding lines or set replace_all")
+    lines = text.splitlines(keepends=True)
+    want = old.strip("\r\n").splitlines()
+    for level in (1, 2):
+        wanted = [_loose(line, level) for line in want]
+        have = [_loose(line, level) for line in lines]
+        hits = [i for i in range(len(lines) - len(wanted) + 1) if wanted and have[i:i + len(wanted)] == wanted]
+        if len(hits) == 1:
+            start, end = hits[0], hits[0] + len(wanted)
+            ending = "\r\n" if lines[end - 1].endswith("\r\n") else "\n" if lines[end - 1].endswith("\n") else ""
+            body = new.strip("\r\n")
+            replacement = (body.replace("\n", "\r\n") if ending == "\r\n" else body) + (ending if body or not ending else "")
+            return "".join(lines[:start]) + replacement + "".join(lines[end:]), 1
+        if len(hits) > 1:
+            raise ToolError(f"{where}old_text matches {len(hits)} places once spacing is ignored; add more surrounding lines")
+    raise ToolError(f"{where}old_text was not found; read the file again and copy it exactly" + _closest(lines, want))
+
+
+def _closest(lines: list[str], want: list[str]) -> str:
+    """Where the file has text most like what the model was looking for, so it can copy the real lines."""
+    if not want or len(lines) > 20_000:
+        return ""
+    size, target, best = len(want), "\n".join(line.strip() for line in want), (0.0, 0)
+    for i in range(0, max(1, len(lines) - size + 1)):
+        ratio = difflib.SequenceMatcher(None, target, "\n".join(line.strip() for line in lines[i:i + size])).quick_ratio()
+        if ratio > best[0]:
+            best = (ratio, i)
+    if best[0] < 0.6:
+        return ""
+    start = best[1]
+    snippet = "".join(lines[start:start + size]).rstrip("\n")
+    return f". The closest text is at lines {start + 1}-{start + size}:\n{snippet[:1500]}"
+
+
+def _checkers() -> dict:
+    found = {".py": ast.parse, ".json": json.loads}
+    try:
+        import tomllib
+        found[".toml"] = tomllib.loads
+    except ImportError:
+        pass
+    try:
+        import yaml
+        found[".yaml"] = found[".yml"] = lambda text: list(yaml.safe_load_all(text))
+    except ImportError:
+        pass
+    return found
+
+
+CHECKERS = _checkers()
+
+
+# Shell commands a built-in tool does better, each with the tool and the tip that follows the command's output when that tool is offered.
+SHELL_HINTS = ((re.compile(r"^(cat|head|tail|less|more)\s+[^|<>;&]*$"), "read_file", "read_file shows the file with line numbers and notes that you read it, which edit_file relies on"),
+               (re.compile(r"^(grep\s+(-\w*r|--recursive)|rg\s|ag\s|ack\s)"), "search", "search looks through the project for a pattern, skips ignored and data folders and lists file:line"),
+               (re.compile(r"^find\s.*-i?name\b"), "glob", "glob finds files by name pattern and skips ignored folders"),
+               (re.compile(r"^(curl|wget)\s.*https?://"), "web_fetch", "web_fetch reads a URL (HTML as Markdown, JSON indented), keeps the page for offset and find, and marks it as web content"),
+               (re.compile(r"^(sed|perl)\s+(-\w*i|--in-place)"), "edit_file", "edit_file changes text and shows what changed; after sed -i, read the file again before edit_file changes it"))
+SHELL_HINT_LIMIT = 3
+SEARCH_STREAK = 3  # Searches in a row before the result suggests reading instead.
+PAGE_CACHE_S, PAGE_CACHE_SIZE = 600, 20  # A fetched page is kept this long for offset and find.
+
+
+MAX_SUGGEST_FILES = 20_000
+
+
+def clip(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
+    if len(text) <= limit:
         return text
-    half = MAX_OUTPUT // 2
-    return f"{text[:half]}\n… [{len(text) - MAX_OUTPUT} characters cut] …\n{text[-half:]}"
+    half = limit // 2
+    return f"{text[:half]}\n… [{len(text) - limit} characters cut] …\n{text[-half:]}"
+
+
+def _path_glob(rel: str, pattern: str) -> bool:
+    pattern = pattern.lstrip("./")
+    return fnmatch.fnmatch(rel, pattern) or (pattern.startswith("**/") and fnmatch.fnmatch(rel, pattern[3:])) or (
+        "/**/" in pattern and fnmatch.fnmatch(rel, pattern.replace("/**/", "/")))
 
 
 class Workspace:
-    """The folder the agent works in; no tool reaches outside it."""
+    """A folder the agent may read and, as its sandbox policy allows, change and run commands in."""
 
-    def __init__(self, root: str | Path):
-        self.root = Path(root).expanduser().resolve()
-        if not self.root.is_dir():
-            raise ValueError(f"Not a folder: {root}")
+    def __init__(self, root: str | Path, policy: sandbox.Policy | None = None, read_roots: list[Path] | None = None):
+        root = Path(root).expanduser().resolve()
+        if not root.is_dir():
+            raise ValueError(f"Workspace folder does not exist: {root}")
+        if root == Path(root.anchor) or root == Path.home().resolve() or str(root) in BROAD_FOLDERS:
+            raise ValueError(f"Pick a project folder, not {root}: the agent could read and change everything in it")
+        self.root = root
+        self.policy = policy or sandbox.Policy()
+        self.read_roots = [Path(p).resolve() for p in read_roots or []]
+        # Files the agent has read or written, with their modification time then; an edit over a newer one is refused.
+        self.seen: dict[Path, int] = {}
+        self.hints = 0
+        self.searches_in_row = 0
+        # The tools the model is offered, so a tip never points at one it does not have; None offers every tip.
+        self.offered: set[str] | None = None
+        self.pages: dict[str, tuple[str, list[str], float]] = {}
+        self.searched: dict[str, tuple[str, float]] = {}
+        self.new_images: list[tuple[str, str]] = []
+        # The providers behind web search, page downloads and commands; a session swaps in the user's choice.
+        self.services = services.Services()
 
-    def path(self, value: str) -> Path:
-        target = (self.root / str(value or "")).resolve()
-        if target != self.root and self.root not in target.parents:
-            raise ToolError(f"{value} is outside the folder {self.root}")
+    def resolve(self, path: str | None, *, write: bool = False) -> Path:
+        target = (self.root / (path or ".")).resolve()
+        roots = [self.root] + ([] if write else self.read_roots)
+        # Without a sandbox commands reach every file, so the file tools may too; permission rules still apply.
+        if self.policy.mode != "full-access" and not any(target == r or r in target.parents for r in roots):
+            raise ToolError(f"{path!r} is outside the workspace")
         return target
 
-    def read_file(self, path: str, offset: int = 1, limit: int = READ_LINES) -> str:
-        target = self.path(path)
-        if not target.is_file():
-            raise ToolError(f"No such file: {path}")
-        if target.stat().st_size > MAX_READ_BYTES:
-            raise ToolError(f"{path} is over {MAX_READ_BYTES // 1_000_000} MB; read parts of it with run_command")
-        lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
-        start = max(1, int(offset or 1))
-        shown = lines[start - 1:start - 1 + max(1, int(limit or READ_LINES))]
-        body = "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(shown))
-        rest = len(lines) - (start - 1 + len(shown))
-        return clip(body + (f"\n… {rest} more lines; read on with offset={start + len(shown)}" if rest > 0 else ""))
+    def missing(self, path: str, what: str = "file") -> ToolError:
+        """A not-found error that names the closest real paths, so a wrong guess costs one call, not a search."""
+        want = str(path or "").replace("\\", "/").strip("/").lower()
+        name = want.rsplit("/", 1)[-1]
+        found = []
+        for count, file in enumerate(self._files(self.root)):
+            if count >= MAX_SUGGEST_FILES:
+                break
+            rel = self.rel(file)
+            if what == "folder":
+                rel = rel.rsplit("/", 1)[0] if "/" in rel else ""
+            if rel and rel not in found:
+                found.append(rel)
+        names = {r.lower(): r for r in found}
+        close = [names[n] for n in difflib.get_close_matches(want, list(names), n=3, cutoff=0.6)]
+        close += [r for r in found if r.lower().rsplit("/", 1)[-1] == name and r not in close][:3]
+        hint = f"; did you mean {', '.join(close[:4])}?" if close else "; use glob or list_dir to find it"
+        return ToolError(f"{path!r} is not a {what}{hint}")
 
-    def write_file(self, path: str, content: str) -> str:
-        target = self.path(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(str(content), encoding="utf-8", newline="")
-        return f"Wrote {path} ({len(str(content))} characters)"
+    def skipped(self, folder: Path) -> bool:
+        return folder.name in SKIP_DIRS or (folder.parent == self.root and folder.name in ROOT_SKIP_DIRS)
 
-    def edit_file(self, path: str, old_text: str, new_text: str) -> str:
-        target = self.path(path)
-        if not target.is_file():
-            raise ToolError(f"No such file: {path}")
-        with target.open(encoding="utf-8", newline="") as handle:
-            text = handle.read()
-        count = text.count(old_text) if old_text else 0
-        if count != 1:
-            raise ToolError(f"old_text appears {count} times in {path}; it must appear exactly once")
-        target.write_text(text.replace(old_text, str(new_text), 1), encoding="utf-8", newline="")
-        return f"Edited {path}"
-
-    def run_command(self, command: str, timeout: int = COMMAND_TIMEOUT_S) -> str:
-        seconds = min(MAX_COMMAND_TIMEOUT_S, max(1, int(timeout or COMMAND_TIMEOUT_S)))
-        env = {k: v for k, v in os.environ.items() if not SECRET_ENV.search(k)}
-        if sys.platform == "win32":
-            argv, extra = ["powershell", "-NoProfile", "-Command", command], {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-        else:
-            argv, extra = [shutil.which("bash") or "/bin/sh", "-c", command], {"start_new_session": True}
-        process = subprocess.Popen(argv, cwd=self.root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", **extra)
+    def rel(self, path: Path) -> str:
         try:
-            output, _ = process.communicate(timeout=seconds)
-        except subprocess.TimeoutExpired:
-            _kill(process)
-            output, _ = process.communicate()
-            return clip(f"{output}\n[stopped after {seconds} s]")
-        return clip(f"{output}\n[exit code {process.returncode}]")
+            return path.relative_to(self.root).as_posix() or "."
+        except ValueError:
+            return str(path)
 
     def run(self, name: str, args: dict) -> str:
-        """One tool call's result, or the error that stopped it, as text for the model."""
-        tool = getattr(self, name, None) if name in {s["name"] for s in SPECS} else None
-        if tool is None:
-            return f"Error: there is no tool named {name!r}"
+        handler = getattr(self, f"_tool_{name}", None)
+        if handler is None:
+            raise ToolError(f"Unknown tool {name!r}")
+        if not isinstance(args, dict):
+            raise ToolError("Tool arguments must be a JSON object")
+        args = self._coerce(name, args)
+        if KIND.get(name) == "edit" and self.policy.mode == "read-only":
+            raise ToolError("The session is read-only; ask the user to allow edits")
         try:
-            return tool(**args)
+            output = handler(**args)
         except TypeError as exc:
-            return f"Error: wrong arguments for {name}: {exc}"
-        except (ToolError, OSError, UnicodeError, ValueError) as exc:
-            return f"Error: {exc}"
+            raise ToolError(f"Bad arguments for {name}: {exc}") from exc
+        if KIND.get(name) == "edit":
+            changed = self.targets(name, args)
+            for path in changed:
+                self._stamp(path)
+            problems = self.diagnose(changed)
+            if problems:
+                output += f"\nSyntax check failed:\n{problems}"
+        return output
 
+    @staticmethod
+    def _coerce(name: str, args: dict) -> dict:
+        """Models often send an array, number or flag as a JSON string; read it as the type the tool declares."""
+        spec = next((s for s in SPECS if s["name"] == name), None)
+        props = (spec or {}).get("parameters", {}).get("properties", {})
+        fixed = dict(args)
+        for key, value in args.items():
+            kind = (props.get(key) or {}).get("type")
+            if isinstance(value, str) and kind in ("array", "object", "integer", "boolean"):
+                try:
+                    parsed = json.loads(value)
+                except ValueError:
+                    continue
+                if (kind == "array" and isinstance(parsed, list)) or (kind == "object" and isinstance(parsed, dict)) or (
+                        kind == "integer" and isinstance(parsed, int) and not isinstance(parsed, bool)) or (kind == "boolean" and isinstance(parsed, bool)):
+                    fixed[key] = parsed
+        return fixed
 
-def _kill(process: subprocess.Popen) -> None:
-    """Stop a command and everything it started."""
-    try:
-        if sys.platform == "win32":
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)], capture_output=True)
+    def targets(self, name: str, args: dict) -> list[Path]:
+        """The files an edit tool call is about to change."""
+        try:
+            if name == "apply_patch":
+                return [self.resolve(p, write=True) for h in patches.parse(str(args.get("patch") or "")) for p in (h.path, h.move_to) if p]
+            if name in ("write_file", "edit_file", "edit_lines", "web_download", "delete_file"):
+                return [self.resolve(args.get("path"), write=True)]
+            if name == "move_file":
+                source, target = self.resolve(args.get("path"), write=True), self.resolve(args.get("to"), write=True)
+                return [source, target / source.name if target.is_dir() else target]
+            if name == "replace_in_files" and not args.get("dry_run"):
+                return [file for file, _, _ in self._replace_plan(str(args.get("pattern") or ""), str(args.get("replacement") or ""), str(args.get("path") or "."),
+                                                                  args.get("glob"), bool(args.get("regex")), bool(args.get("ignore_case")))]
+        except (ToolError, patches.PatchError):
+            pass
+        return []
+
+    def _stamp(self, path: Path) -> None:
+        try:
+            self.seen[path] = path.stat().st_mtime_ns
+        except OSError:
+            self.seen.pop(path, None)
+
+    def _fresh(self, target: Path, shown: str, overwrite: bool = False) -> None:
+        """Refuse to change a file that was never read (when overwriting) or that changed after the agent last saw it."""
+        if not target.is_file():
+            return
+        if target not in self.seen:
+            if overwrite:
+                raise ToolError(f"{shown} already exists; read_file it first, or use edit_file to change part of it")
+            return
+        if target.stat().st_mtime_ns != self.seen[target]:
+            raise ToolError(f"{shown} changed since you last read it; read it again before changing it")
+
+    def diagnose(self, paths: list[Path]) -> str:
+        """Syntax errors in changed Python, JSON, TOML and YAML files, so the model sees them at once."""
+        rows = []
+        for path in paths:
+            check = CHECKERS.get(path.suffix)
+            if check is None or not path.is_file():
+                continue
+            try:
+                check(path.read_text(encoding="utf-8"))
+            except SyntaxError as exc:
+                rows.append(f"{self.rel(path)}:{exc.lineno}: {exc.msg}")
+            except Exception as exc:
+                rows.append(f"{self.rel(path)}: {' '.join(str(exc).split())[:240] or type(exc).__name__}")
+        return "\n".join(rows)
+
+    def _files(self, top: Path, name_glob: str | None = None):
+        if top.is_file():
+            yield top
+            return
+        # A glob with a slash (app/**/*.py) is matched against the path below top, a plain one (*.py) against the name.
+        by_path = bool(name_glob) and "/" in name_glob
+        for folder, dirs, names in os.walk(top):
+            dirs[:] = sorted(d for d in dirs if not self.skipped(Path(folder) / d))
+            for n in sorted(names):
+                path = Path(folder) / n
+                if not name_glob or (_path_glob(path.relative_to(top).as_posix(), name_glob) if by_path else fnmatch.fnmatch(n, name_glob)):
+                    yield path
+
+    def _tool_list_dir(self, path: str = ".", depth: int = 1) -> str:
+        top = self.resolve(path)
+        if not top.is_dir():
+            raise self.missing(path, "folder") if not top.exists() else ToolError(f"{path!r} is a file; read it with read_file")
+        depth = max(1, min(4, int(depth)))
+        rows: list[str] = []
+
+        def walk(folder: Path, level: int) -> None:
+            for entry in sorted(folder.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+                if len(rows) >= MAX_LIST_ENTRIES:
+                    return
+                if entry.is_dir() and self.skipped(entry):
+                    continue
+                rows.append(f"{'  ' * (level - 1)}{entry.name}{'/' if entry.is_dir() else ''}")
+                if entry.is_dir() and not entry.is_symlink() and level < depth:
+                    walk(entry, level + 1)
+
+        walk(top, 1)
+        if len(rows) >= MAX_LIST_ENTRIES:
+            rows.append(f"… stopped at {MAX_LIST_ENTRIES} entries")
+        return "\n".join(rows) or "(empty folder)"
+
+    def _tool_read_file(self, path: str, offset: int = 1, limit: int = MAX_READ_LINES, anchors: bool = False) -> str:
+        target = self.resolve(path)
+        if not target.is_file():
+            raise self.missing(path) if not target.exists() else ToolError(f"{path!r} is a folder; list it with list_dir")
+        data = target.read_bytes()
+        if b"\0" in data[:8192]:
+            raise ToolError(f"{path!r} is a binary file")
+        self._stamp(target)
+        lines = data.decode("utf-8", errors="replace").splitlines()
+        start = max(1, int(offset))
+        count = max(1, min(MAX_READ_LINES, int(limit)))
+        chunk = lines[start - 1:start - 1 + count]
+        body = hashline.render(chunk, start) if anchors else "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(chunk))
+        more = len(lines) - (start - 1 + len(chunk))
+        tail = f"\n… {more} more lines" if more > 0 else ""
+        return clip(body + tail) if chunk else f"(file has {len(lines)} lines)"
+
+    def _tool_symbols(self, path: str = ".", name: str | None = None) -> str:
+        top = self.resolve(path)
+        if top.is_file() and not name:
+            rows = self._outline(top)
+            return "\n".join(rows) or "No definitions found"
+        needle = (name or "").lower()
+        hits: list[str] = []
+        for file in self._files(top):
+            if file.suffix in IMAGE_TYPES or file.stat().st_size > MAX_SEARCH_FILE_BYTES:
+                continue
+            for row in self._outline(file, flat=True):
+                if not needle or needle in row.split(" ", 2)[-1].lower():
+                    hits.append(f"{self.rel(file)}:{row}")
+                    if len(hits) >= MAX_SEARCH_HITS:
+                        return "\n".join(hits) + f"\n… stopped at {MAX_SEARCH_HITS} matches"
+        return "\n".join(hits) or "No definitions found"
+
+    def _outline(self, file: Path, flat: bool = False) -> list[str]:
+        """Definitions in a file as 'line kind name'; indented by nesting unless flat."""
+        try:
+            data = file.read_bytes()
+        except OSError:
+            return []
+        if b"\0" in data[:8192]:
+            return []
+        source = data.decode("utf-8", errors="replace")
+        rows: list[str] = []
+        if file.suffix == ".py":
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:
+                tree = None
+            if tree is not None:
+                def walk(node: ast.AST, prefix: str, level: int) -> None:
+                    for child in ast.iter_child_nodes(node):
+                        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                            kind = "class" if isinstance(child, ast.ClassDef) else "def"
+                            rows.append(f"{child.lineno}: {kind} {prefix}{child.name}" if flat else f"{child.lineno}: {'  ' * level}{kind} {child.name}")
+                            walk(child, f"{prefix}{child.name}.", level + 1)
+                        else:
+                            walk(child, prefix, level)
+                walk(tree, "", 0)
+                return rows
+        for number, line in enumerate(source.splitlines(), 1):
+            found = SYMBOL_LINE.match(line)
+            if found:
+                indent = 0 if flat else (len(line) - len(line.lstrip())) // 2
+                rows.append(f"{number}: {'  ' * indent}{found.group(1)} {found.group(2)}")
+        return rows
+
+    def _tool_view_image(self, path: str) -> str:
+        target = self.resolve(path)
+        kind = IMAGE_TYPES.get(target.suffix.lower())
+        if not target.is_file() or kind is None:
+            raise ToolError(f"{path!r} is not a png, jpg, gif or webp image")
+        if target.stat().st_size > MAX_IMAGE_BYTES:
+            raise ToolError(f"{path!r} is larger than {MAX_IMAGE_BYTES // 1_000_000} MB; make a smaller copy with a command first")
+        self.new_images.append((self.rel(target), f"data:{kind};base64,{base64.b64encode(target.read_bytes()).decode()}"))
+        return f"Image {self.rel(target)} loaded; it is shown to you in the next message."
+
+    def _tool_search(self, pattern: str, path: str = ".", glob: str | None = None, ignore_case: bool = False, context: int = 0,
+                     files_only: bool = False) -> str:
+        flags = re.IGNORECASE if ignore_case else 0
+        try:
+            regex = re.compile(pattern, flags)
+            # One pass over the whole file skips the ones with no match before they are split into lines; \A and \Z mean something else there.
+            whole = None if re.search(r"\\[AZ]", pattern) else re.compile(pattern, flags | re.MULTILINE)
+        except re.error as exc:
+            raise ToolError(f"Bad regular expression: {exc}") from exc
+        hits: list[str] = []
+        around = max(0, min(5, int(context or 0)))
+        for file in self._files(self.resolve(path), glob):
+            try:
+                if file.stat().st_size > MAX_SEARCH_FILE_BYTES:
+                    continue
+                data = file.read_bytes()
+            except OSError:
+                continue
+            if b"\0" in data[:8192]:
+                continue
+            text = data.decode("utf-8", errors="replace")
+            if whole is not None and not whole.search(text):
+                continue
+            lines = text.splitlines()
+            matched = [i for i, line in enumerate(lines) if regex.search(line)]
+            if not matched:
+                continue
+            if files_only:
+                hits.append(f"{self.rel(file)} ({len(matched)})")
+            elif around:
+                shown, last = [], -2
+                for i in matched:
+                    for j in range(max(0, i - around, last + 1), min(len(lines), i + around + 1)):
+                        if shown and j > last + 1:
+                            shown.append("--")
+                        shown.append(f"{self.rel(file)}:{j + 1}{':' if j in matched else '-'} {lines[j].rstrip()[:300]}")
+                        last = j
+                hits += shown + ["--"]
+            else:
+                hits += [f"{self.rel(file)}:{i + 1}: {lines[i].strip()[:300]}" for i in matched]
+            if len(hits) >= MAX_SEARCH_HITS * (1 + 2 * around):
+                return "\n".join(hits) + f"\n… stopped after {len(hits)} lines; narrow the path or glob"
+        return "\n".join(hits).rstrip("-\n") or "No matches"
+
+    def _tool_glob(self, pattern: str, path: str = ".") -> str:
+        top = self.resolve(path)
+        pattern = pattern.lstrip("./")
+        matched = [f for f in self._files(top) if _path_glob(f.relative_to(top).as_posix(), pattern)
+                   or ("/" not in pattern and fnmatch.fnmatch(f.name, pattern))]
+        matched.sort(key=lambda f: f.stat().st_mtime if f.exists() else 0, reverse=True)
+        rows = [self.rel(f) for f in matched[:MAX_LIST_ENTRIES]]
+        return "\n".join(rows) + (f"\n… {len(matched) - len(rows)} more" if len(matched) > len(rows) else "") if rows else "No files"
+
+    def _tool_write_file(self, path: str, content: str) -> str:
+        target = self.resolve(path, write=True)
+        if target.is_dir():
+            raise ToolError(f"{path!r} is a folder")
+        self._fresh(target, path, overwrite=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(str(content), encoding="utf-8")
+        return f"Wrote {self.rel(target)} ({len(str(content).splitlines())} lines)"
+
+    def _tool_edit_file(self, path: str, old_text: str | None = None, new_text: str | None = None, replace_all: bool = False,
+                        edits: list | None = None) -> str:
+        target = self.resolve(path, write=True)
+        if not target.is_file():
+            raise self.missing(path)
+        self._fresh(target, path)
+        if not edits and old_text is not None:
+            edits = None
+        if edits is None:
+            if old_text is None or new_text is None:
+                raise ToolError("give old_text and new_text, or edits")
+            edits = [{"old_text": old_text, "new_text": new_text}]
+        if not isinstance(edits, list) or not edits:
+            raise ToolError("edits must be a non-empty list of {old_text, new_text}")
+        text, changes = target.read_text(encoding="utf-8"), 0
+        for number, edit in enumerate(edits, 1):
+            where = f"edit {number}: " if len(edits) > 1 else ""
+            if not isinstance(edit, dict) or "old_text" not in edit or "new_text" not in edit:
+                raise ToolError(f"{where}each edit needs old_text and new_text")
+            text, count = _replace(text, str(edit["old_text"]), str(edit["new_text"]), bool(replace_all), where)
+            changes += count
+        target.write_text(text, encoding="utf-8")
+        return f"Edited {self.rel(target)} ({changes} change{'s' if changes != 1 else ''})"
+
+    def _tool_edit_lines(self, path: str, edits: list) -> str:
+        target = self.resolve(path, write=True)
+        if not target.is_file():
+            raise ToolError(f"{path!r} is not a file")
+        self._fresh(target, path)
+        try:
+            target.write_text(hashline.apply(target.read_bytes().decode("utf-8"), edits), encoding="utf-8", newline="")
+        except hashline.HashlineError as exc:
+            raise ToolError(str(exc)) from exc
+        return f"Edited {self.rel(target)} ({len(edits)} edits)"
+
+    def _replacer(self, pattern: str, replacement: str, regex: bool, ignore_case: bool):
+        if not pattern:
+            raise ToolError("pattern is empty")
+        try:
+            rx = re.compile(pattern if regex else re.escape(pattern), re.IGNORECASE if ignore_case else 0)
+        except re.error as exc:
+            raise ToolError(f"Bad regular expression: {exc}") from exc
+        if not regex:
+            replacement = replacement.replace("\\", "\\\\")
+        return rx, replacement
+
+    def _replace_plan(self, pattern: str, replacement: str, path: str, glob: str | None, regex: bool, ignore_case: bool):
+        """Each text file that would change, with its new text and how many places changed."""
+        rx, repl = self._replacer(pattern, replacement, regex, ignore_case)
+        plan = []
+        for file in self._files(self.resolve(path, write=True), glob):
+            try:
+                if file.stat().st_size > MAX_SEARCH_FILE_BYTES:
+                    continue
+                data = file.read_bytes()
+            except OSError:
+                continue
+            if b"\0" in data[:8192]:
+                continue
+            try:
+                text = data.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            try:
+                new, count = rx.subn(repl, text)
+            except (re.error, IndexError) as exc:
+                raise ToolError(f"Bad replacement: {exc}") from exc
+            if count:
+                plan.append((file, new, count))
+        return plan
+
+    def _tool_replace_in_files(self, pattern: str, replacement: str, path: str = ".", glob: str | None = None, regex: bool = False,
+                               ignore_case: bool = False, dry_run: bool = False) -> str:
+        plan = self._replace_plan(pattern, replacement, path, glob, regex, ignore_case)
+        if not plan:
+            return "No file contains the pattern; nothing changed."
+        if len(plan) > MAX_LIST_ENTRIES:
+            raise ToolError(f"{len(plan)} files would change; narrow it with path or glob")
+        rows = [f"{self.rel(file)}: {count} place{'s' if count != 1 else ''}" for file, _, count in plan]
+        total = sum(count for _, _, count in plan)
+        if dry_run:
+            return f"Would change {total} places in {len(plan)} files (nothing written):\n" + "\n".join(rows)
+        for file, new, _ in plan:
+            file.write_text(new, encoding="utf-8")
+        return f"Changed {total} places in {len(plan)} files:\n" + "\n".join(rows)
+
+    def _tool_move_file(self, path: str, to: str, overwrite: bool = False) -> str:
+        source, target = self.resolve(path, write=True), self.resolve(to, write=True)
+        if not source.is_file():
+            raise self.missing(path) if not source.exists() else ToolError(f"{path!r} is a folder; move folders with run_command")
+        if target.is_dir():
+            target = target / source.name
+        if target.exists() and not overwrite:
+            raise ToolError(f"{self.rel(target)} already exists; set overwrite to replace it")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(source, target)
+        return f"Moved {self.rel(source)} to {self.rel(target)}"
+
+    def _tool_delete_file(self, path: str) -> str:
+        target = self.resolve(path, write=True)
+        if not target.is_file():
+            raise self.missing(path) if not target.exists() else ToolError(f"{path!r} is a folder; delete folders with run_command")
+        target.unlink()
+        return f"Deleted {self.rel(target)}"
+
+    def _tool_apply_patch(self, patch: str) -> str:
+        for path in self.targets("apply_patch", {"patch": patch}):
+            self._fresh(path, self.rel(path))
+        try:
+            return patches.apply(patch, lambda p: self.resolve(p, write=True), self.rel)
+        except patches.PatchError as exc:
+            raise ToolError(str(exc)) from exc
+
+    def _tool_run_command(self, command: str, timeout: int = COMMAND_TIMEOUT, outside_sandbox: bool = False, background: bool = False, tty: bool = False) -> str:
+        if not str(command).strip():
+            raise ToolError("command is empty")
+        limit = max(1, min(MAX_COMMAND_TIMEOUT, int(timeout)))
+        policy = sandbox.Policy("full-access", True) if outside_sandbox else self.policy
+        guard = gitguard.snapshot(self.root)
+        if self.services.is_local_shell():
+            code, output = sandbox.run(str(command), policy, self.root, limit)
         else:
-            os.killpg(process.pid, signal.SIGKILL)
-    except OSError:
-        process.kill()
+            job, end = self.services.shell(str(command), policy, self.root), time.time() + limit
+            while job.code is None and time.time() < end:
+                time.sleep(0.05)
+            code, output = job.code, job.read()
+            job.stop()
+        status = f"[stopped after {limit} s]" if code is None else f"[exit code {code}]"
+        undone = gitguard.restore(self.root, guard)
+        warning = f"\n[blocked: the command changed {', '.join(undone)}; git hooks and config run outside the sandbox, so they were put back]" if undone else ""
+        return clip(f"{output.strip()}\n{status}{warning}{self._shell_hint(str(command))}", 400_000)
+
+    def _shell_hint(self, command: str) -> str:
+        bare = re.sub(r"^\s*cd\s+\S+\s*&&\s*", "", command).strip()
+        tip = next((tip for pattern, tool, tip in SHELL_HINTS if pattern.search(bare) and (self.offered is None or tool in self.offered)), "")
+        if not tip or self.hints >= SHELL_HINT_LIMIT:
+            return ""
+        self.hints += 1
+        return f"\n[Tip: {tip}.]"
+
+    def _tool_web_download(self, url: str, path: str) -> str:
+        target = self.resolve(path, write=True)
+        if target.is_dir():
+            raise ToolError(f"{path!r} is a folder")
+        try:
+            response = safe_get(str(url), timeout=(10, 60), headers={"User-Agent": "Mozilla/5.0 manga-translator-agent"})
+            body = read_response_limited(response, limit_bytes=MAX_DOWNLOAD_BYTES)
+            response.close()
+        except Exception as exc:
+            raise ToolError(f"Could not download {url}: {getattr(exc, 'detail', exc)}") from exc
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(body)
+        return f"Saved {self.rel(target)} ({len(body)} bytes)"
+
+    def _tool_web_fetch(self, url: str, max_chars: int = MAX_OUTPUT_CHARS, offset: int = 0, find: str = "") -> str:
+        self.searches_in_row = 0
+        url = str(url)
+        page = self.pages.get(url)
+        if page is None or time.time() - page[2] > PAGE_CACHE_S:
+            text, notes = self._read_page(url)
+            self.pages[url] = (text, notes, time.time())
+            while len(self.pages) > PAGE_CACHE_SIZE:
+                self.pages.pop(next(iter(self.pages)))
+        else:
+            # Reading on in a page (offset, find) does not download it again.
+            text, notes = page[0], page[1]
+        head = "".join(f"[{note}]\n" for note in notes)
+        if find:
+            return head + webread.find(text, str(find))
+        limit, start = max(1000, min(100_000, int(max_chars))), max(0, int(offset))
+        more = len(text) - start - limit
+        footer = f"\n[{more} more characters; call again with offset={start + limit}, or find=... to search the page]" if more > 0 else ""
+        return head + text[start:start + limit] + footer
+
+    def _read_page(self, url: str) -> tuple[str, list[str]]:
+        raw = webread.rewrite(url)
+        try:
+            body, kind, encoding = self._download(raw)
+        except ToolError:
+            if raw == url:
+                raise
+            # A GitHub page that has no raw file (a missing README) is read as the page itself.
+            raw = url
+            body, kind, encoding = self._download(url)
+        text, notes = webread.readable(body, kind, encoding, raw)
+        text = text.strip()
+        key = os.environ.get("TINYFISH_API_KEY")
+        if notes and key:
+            # Only a page that needs JavaScript or is all menus goes to the browser service; a page that refused us is not sent there.
+            try:
+                seen = webread.browsed(url, key)
+            except requests.RequestException:
+                seen = ""
+            if seen and not webread.low_quality(seen) and len(seen) > len(text):
+                text, notes = seen, ["This page needs JavaScript; it was read through TinyFish's browser."]
+        return text, notes
+
+    def _download(self, url: str) -> tuple[bytes, str, str | None]:
+        fetch = self.services.fetcher()
+        if fetch is not None:
+            try:
+                return fetch(url)
+            except Exception as exc:
+                raise ToolError(f"Could not fetch {url}: {exc}") from exc
+        try:
+            response = safe_get(url, timeout=(10, 30), headers={"User-Agent": "Mozilla/5.0 manga-translator-agent", "Accept": "text/html,application/xhtml+xml;q=0.9,text/markdown;q=0.5,*/*;q=0.3"})
+            body = read_response_limited(response, limit_bytes=MAX_FETCH_BYTES)
+            kind = response.headers.get("Content-Type", "")
+            response.close()
+        except Exception as exc:
+            raise ToolError(f"Could not fetch {url}: {getattr(exc, 'detail', exc)}") from exc
+        return body, kind, response.encoding
+
+    def _tool_web_search(self, query: str, count: int = 8, recency: str = "") -> str:
+        self.searches_in_row += 1
+        key = f"{' '.join(str(query).split()).lower()}|{count}|{recency}"
+        cached = self.searched.get(key)
+        if cached and time.time() - cached[1] < PAGE_CACHE_S:
+            found = cached[0] + "\n[The same search a moment ago; these are its results again.]"
+        else:
+            try:
+                found = self.services.search(query, count, recency)
+            except websearch.SearchError as exc:
+                raise ToolError(str(exc)) from exc
+            self.searched[key] = (found, time.time())
+            while len(self.searched) > PAGE_CACHE_SIZE:
+                self.searched.pop(next(iter(self.searched)))
+        if self.searches_in_row >= SEARCH_STREAK:
+            # Searching again with longer queries rarely helps; reading the best lead does (seen on Qwen: eight searches before one fetch).
+            found += (f"\n\n[Tip: this is search {self.searches_in_row} in a row. Open the most promising result with web_fetch, or fetch a page that "
+                      "lists what you need (a project's docs, an index page such as https://github.com/trending/python, or an API URL), instead of "
+                      "searching again. Short plain queries of 3 to 6 words work best; quotes and stacked terms often return nothing.]")
+        return found

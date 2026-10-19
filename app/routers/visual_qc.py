@@ -188,10 +188,11 @@ def save_provider_key(provider_id: str, req: VisualQCKeyRequest) -> dict:
                 protocol=provider.protocol,
                 api_base=provider.api_base,
             )
-        set_provider_api_key(
+        count = set_provider_api_key(
             normalized,
             req.api_key,
             provider_label=label,
+            append=req.append,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -201,6 +202,7 @@ def save_provider_key(provider_id: str, req: VisualQCKeyRequest) -> dict:
         "configured": True,
         "source": "os_secure_storage",
         "provider": normalized,
+        "count": count,
     }
     if builtin is None:
         result["api_base"] = provider.api_base

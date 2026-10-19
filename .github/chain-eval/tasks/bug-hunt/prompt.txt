@@ -1,0 +1,1 @@
+The ranges package has bugs: tests in tests/ fail. Fix ranges/merge.py so that merge_ranges merges [start, end] pairs that overlap or touch (end == next start) and returns them sorted, without changing its input, and total_length counts covered length once even when ranges overlap or come unsorted. Do not edit the tests. python3 -m pytest -q must pass.
