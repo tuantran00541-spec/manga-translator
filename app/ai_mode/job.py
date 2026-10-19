@@ -29,6 +29,7 @@ from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.image_io import read_image
 from app.logging_config import logger
 from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw
+from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.security import validate_managed_path
 
 STAGES: tuple[tuple[str, str], ...] = (
@@ -82,7 +83,7 @@ class AIModeSettings:
     model: str
     target_lang: str = "vi"
     budget_usd: float = 0.30
-    workers: int = 2
+    workers: int = PIPELINE_DEFAULT_WORKERS
     story_notes: str = ""
     polish: bool = False  # advanced: a judge model grades each line and weak ones are rewritten
     images_per_request: int = 2  # slices sent together to the scan and glossary; the user raises it for their model

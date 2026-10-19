@@ -1,7 +1,6 @@
 """Erase masks from comic-text-detector letters, grown into outline and glow that differ from the background."""
 from __future__ import annotations
 
-import os
 import threading
 
 import cv2
@@ -9,6 +8,7 @@ import numpy as np
 
 from app.config import CTD_MODEL
 from app.knobs import knob
+from app.ort_utils import _configured_intra_op_threads
 
 THRESHOLD = knob("mask.ink_threshold")
 EDGE_FRAGMENT = 40.0  # Lab distance from the paper of a letter part cut by the image edge
@@ -43,7 +43,8 @@ def _get_session():
         if _session is None:
             import onnxruntime as ort
             opts = ort.SessionOptions()
-            opts.intra_op_num_threads = max(1, os.cpu_count() or 1)
+            # As many threads as each slice worker gets, so workers do not fight over cores.
+            opts.intra_op_num_threads = _configured_intra_op_threads()
             _session = ort.InferenceSession(str(CTD_MODEL), opts, providers=["CPUExecutionProvider"])
     return _session
 

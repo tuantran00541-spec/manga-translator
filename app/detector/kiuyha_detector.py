@@ -23,7 +23,6 @@ HALVES_MIN_OVERLAP = 256  # rows the two halves of the coarse pass share at leas
 PAGE_WIDTH = 400  # slice width at page scale, where the model scores big lettering highest
 PAGE_OVERLAP = 0.15  # share of a page-scale window repeated in the next one
 PAGE_CONFIDENCE = 0.45  # page-scale score a box needs; drawn sound effects score below it, lettering above
-BAND_OVERLAP = 0.25  # share of a detection band repeated in the next one
 EDGE_TOUCH = knob("detect.edge_touch")
 UNION_SHARE = knob("detect.union_share")
 SAME_LINE = knob("detect.same_line")
@@ -243,30 +242,10 @@ class KiuyhaTextDetector:
         half = (height + min(overlap, height) + 1) // 2
         return scale, [(0, half), (height - half, height)]
 
-    def band_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Boxes from overlapping full-width bands shrunk no more than the model input needs, for small text."""
-        if self.fixed is None:
-            return []
-        h, w = image.shape[:2]
-        scale = min(1.0, self.fixed[1] / w)
-        band = int(self.fixed[0] / scale)
-        if band >= h:
-            return []
-        step = int(band * (1 - BAND_OVERLAP))
-        starts = list(range(0, h - band, step)) + [h - band]
-        found = []
-        for y0 in starts:
-            for x1, y1, x2, y2, score in self.raw_boxes(image[y0:y0 + band]):
-                # A box cut by an inner band edge is seen whole in the next band or the coarse pass.
-                if (y1 <= EDGE_TOUCH and y0 > 0) or (y2 >= band - EDGE_TOUCH and y0 + band < h):
-                    continue
-                found.append((x1, y1 + y0, x2, y2 + y0, score))
-        return found
-
     def detect_slice(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Padded text boxes for a slice: coarse, page-scale and near-native passes, pieces of one text merged."""
+        """Padded text boxes for a slice: coarse and page-scale passes, pieces of one text merged."""
         h, w = image.shape[:2]
-        found = _union_overlapping(self._coarse_boxes(image) + self.page_boxes(image) + self.band_boxes(image))
+        found = _union_overlapping(self._coarse_boxes(image) + self.page_boxes(image))
         return [(max(0, x1 - BOX_PAD), max(0, y1 - BOX_PAD), min(w, x2 + BOX_PAD), min(h, y2 + BOX_PAD), score)
                 for x1, y1, x2, y2, score in found]
 

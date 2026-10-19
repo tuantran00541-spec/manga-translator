@@ -360,10 +360,10 @@ async function toggleSkip(pageIndex, card, btn) {
   }
 }
 
-// Half the CPU cores, 1 to 4: enough to keep the machine busy without starving the browser.
+// A single-threaded worker per core, 1 to 8: faster than fewer workers with several threads each.
 function getWorkersSetting() {
   const cores = Number(navigator.hardwareConcurrency) || 4;
-  return Math.max(1, Math.min(4, Math.floor(cores / 2)));
+  return Math.max(1, Math.min(8, cores));
 }
 window.getWorkersSetting = getWorkersSetting;
 
