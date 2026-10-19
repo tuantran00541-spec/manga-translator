@@ -824,10 +824,6 @@ class AgentSession:
         if kern is not None and kern.subscribers("session/event"):
             kern.emit("session/event", {**event, "session": self.id})
 
-    def _junction(self, at: str, **data) -> None:
-        """Record a point where the harness decided something, so a bench log can label it later by how the run ended."""
-        self.emit("junction", at=at, **{k: clip(v, 600) if isinstance(v, str) else v for k, v in data.items()})
-
     def _info(self) -> dict:
         """What the page shows beside the conversation; it changes rarely, so a poll that already has it gets only its revision."""
         return {"disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins, "externals": list(self.externals),
@@ -2072,7 +2068,6 @@ class AgentSession:
         with ThreadPoolExecutor(max_workers=len(branches)) as pool:
             rows = list(pool.map(lambda item: one(str(item[0]), item[1]), branches.items()))
         self._branches = {name: (copy, base) for name, copy, base, *_ in rows if base is not None}
-        self._junction("branch", check=check, branches={name: {"changed": bool(diff), "check": clip(verdict, 400)} for name, _, _, out, verdict, diff in rows})
         table = "\n\n".join(f"== branch {name} ==\n[changes]\n{diff or '(none)'}\n[output]\n{clip(out, 3000)}\n[check]\n{clip(verdict, 3000)}"
                             for name, _, _, out, verdict, diff in rows)
         return (table + "\n\nNothing was applied. Compare the branches against every requirement, then tools.adopt('<name>') the one to keep "
@@ -2137,7 +2132,6 @@ class AgentSession:
         self._auto_mark(f"before-adopt-{name}")
         applied, conflicts = isolate.merge(self.workspace.root, copy, base, f"branch-{name}", before=self.checkpoints.save)
         self._drop_branches()
-        self._junction("adopt", name=name, applied=len(applied), conflicts=len(conflicts))
         kept = f"; changed on both sides, kept under {isolate.CONFLICTS}/branch-{name}/: {', '.join(conflicts)}" if conflicts else ""
         return f"Adopted branch {name}: {', '.join(applied) or 'no file changes'}{kept}. Run the check on the real workspace before you finish.", True
 
@@ -2381,9 +2375,8 @@ class AgentSession:
         return reply["text"].strip()
 
     def _repair(self, args: dict) -> tuple[str, bool]:
-        """Repair a failed created tool and record the junction, whether or not the repair worked."""
+        """Repair a failed created tool once."""
         code, ok = self._repair_once(args)
-        self._junction("repair", name=str(args.get("name") or ""), error=str(args.get("error") or "")[-600:], ok=ok, why="" if ok else code)
         return code, ok
 
     def _repair_once(self, args: dict) -> tuple[str, bool]:
@@ -2763,7 +2756,6 @@ class AgentSession:
             ran = cp.ran_since(name) if name else []
             if name:
                 cp.drop(name, why)
-            self._junction("restore", name=name, files=len(done), why=why, not_undone=len(ran))
             where = f"as they were at mark {name}" if name else "as it was before this request"
             text = f"Put back {where}: {', '.join(self.workspace.rel(Path(n)) for n in done)}." if done else f"Nothing to put back; the files are already {where}."
             if ran:
@@ -3889,7 +3881,6 @@ class AgentSession:
             self._gated = True
             self.history.append({"role": "user", "content": GATE_NUDGE})
             self.emit("notice", text="Files changed but nothing was checked; reminding the agent to run a check.")
-            self._junction("nudge", nudge="unchecked_edit")
             return True
         if self.goal and self.goal["turns"] < self.profile["goal_turns"] and not self.depth:
             self.goal["turns"] += 1
@@ -4109,21 +4100,18 @@ class AgentSession:
                     garbled = True
                     self.history.append({"role": "user", "content": GARBLED_NUDGE.format(text=turn["text"].strip()[:80])})
                     self.emit("notice", text="The final reply looks garbled; asking the agent to write it again.")
-                    self._junction("nudge", nudge="garbled", reply=turn["text"])
                     continue
                 # "Now let me read X:" with no call is a step the model meant to take, not its report.
                 if not announced and turn["text"].rstrip().endswith(":") and len(turn["text"]) < 600:
                     announced = True
                     self.history.append({"role": "user", "content": ANNOUNCED_NUDGE})
                     self.emit("notice", text="The agent announced a step but called no tool; asking it to go on.")
-                    self._junction("nudge", nudge="announced", reply=turn["text"])
                     continue
                 # "All tests pass" after an edit that no command has run since is a claim about code that no longer exists (seen on Qwen and sovinfra).
                 if not untested and "test" in turn["text"].lower() and PASS_CLAIM.search(turn["text"]) and self._edited_after_run():
                     untested = True
                     self.history.append({"role": "user", "content": UNTESTED_NUDGE})
                     self.emit("notice", text="The reply says tests pass, but files changed after the last command; asking the agent to run them again.")
-                    self._junction("nudge", nudge="untested", reply=turn["text"])
                     continue
                 open_items = [i["content"][:60] for i in self.todos if i["status"] != "completed"]
                 if open_items and todo_nudges < MAX_TODO_NUDGES and not self.depth:
@@ -4131,11 +4119,9 @@ class AgentSession:
                     todo_nudges += 1
                     self.history.append({"role": "user", "content": TODO_NUDGE.format(items="; ".join(open_items[:5]))})
                     self.emit("notice", text=f"{len(open_items)} todo item(s) still open; asking the agent to go on ({todo_nudges}/{MAX_TODO_NUDGES}).")
-                    self._junction("nudge", nudge="todo", reply=turn["text"], open=len(open_items))
                     continue
                 if self._final_advice() or self._more_work():
                     continue
-                self._junction("stop", reply=turn["text"], checked_since_edit=not self._edited_after_run(), steps=worked)
                 break
             worked += 1
             self._run_calls(calls)

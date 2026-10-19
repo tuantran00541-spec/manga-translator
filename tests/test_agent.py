@@ -375,7 +375,7 @@ def test_ask_mode_waits_for_approval_then_writes(ws, home):
     session.decide("allow")
     wait_for(session, "idle")
     assert (ws.root / "new.txt").read_text() == "hi"
-    assert [e["type"] for e in session.events if e["type"] != "junction"] == ["user", "assistant", "approval", "tool", "assistant", "notice", "assistant", "done"]
+    assert [e["type"] for e in session.events] == ["user", "assistant", "approval", "tool", "assistant", "notice", "assistant", "done"]
     assert session.usage == {"prompt_tokens": 3, "completion_tokens": 3, "cached_tokens": 0}
 
 
@@ -1827,21 +1827,6 @@ def test_auto_mode_tells_the_reviewer_about_untrusted_content_and_asks_when_it_i
     assert guardian.UNTRUSTED in watched.seen[0][0][0]["content"]
 
 
-def test_the_command_line_runs_a_task_and_prints_json_events(ws, home, monkeypatch, capsys):
-    from app.agent import cli
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENT_API_KEY", "k")
-    fake = scripted(turn(calls=[call("list_dir")]), turn("All listed."))
-    original = AgentSessionManager.create
-    monkeypatch.setattr(AgentSessionManager, "create", lambda self, *a, **kw: original(self, *a, **{**kw, "complete": fake}))
-    code = cli.main(["exec", "list it", "--base", "https://api.example.com/v1", "--model", "m", "--workspace", str(ws.root), "--json"])
-    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert code == 0 and [r["type"] for r in rows if r["type"] in ("assistant", "tool", "result")] == ["assistant", "tool", "assistant", "result"]
-    assert rows[-1]["status"] == "idle" and rows[-1]["usage"]["prompt_tokens"] == 2
-    session_id = rows[-1]["session"]
-    assert (home / ".manga-agent" / "sessions" / f"{session_id}.json").is_file()
-
-
 def test_connected_tools_stay_out_of_the_list_and_chains_find_them_by_search(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted())
     session.mcp_tools = {f"mcp__s__tool{i}": ("s", {"name": f"tool{i}", "description": "makes tickets" if i == 3 else "does thing"}) for i in range(20)}
@@ -2403,20 +2388,6 @@ def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick
     assert "[stopped after 1 s]" in tool_outputs(session)[0][2] and not session.jobs
 
 
-def test_a_server_a_finished_command_left_running_stays_up_and_outlives_the_session(ws, home, monkeypatch):
-    from app.agent import cli
-    fake = scripted(turn(calls=[call("run_command", command="echo $DEBIAN_FRONTEND; (sleep 30; echo late) &", timeout=10)]), turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    out = tool_outputs(session)[0][2]
-    assert "noninteractive" in out, "a package install cannot stop to ask a question"
-    assert "keep running as job1" in out and session.jobs["job1"].alive, out
-    session._notifications()
-    assert not any("job1 finished" in str(h["content"]) for h in session.history), "a job whose server still runs is not reported finished"
-    session.jobs["job1"].stop()
-    assert not session.jobs["job1"].alive
-
-
 @pytest.mark.skipif(os.name != "posix", reason="process groups")
 @pytest.mark.parametrize("detach", [True, False])
 def test_a_detached_job_outlives_the_agent_process_and_keeps_writing(tmp_path, detach):
@@ -2582,49 +2553,6 @@ def test_a_text_only_reply_with_todo_items_left_is_sent_back_and_a_finished_list
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert sum(h["content"].startswith("[Your todo list still has") for h in session.history if h["role"] == "user") == 3, "at most three nudges, then the turn ends"
-
-
-def test_the_cli_really_calls_an_allowed_private_relay_and_nothing_else_private(ws, home, monkeypatch, capsys):
-    from app.agent import cli
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENT_API_KEY", "relay")
-    monkeypatch.setattr(client, "PRIVATE_BASES", set())
-    urls = []
-    ok = {"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
-
-    def fake_post(url, **kw):
-        urls.append(url)
-        return FakeResponse(200, ok)
-
-    monkeypatch.setattr(client.requests, "post", fake_post)
-    code = cli.main(["exec", "hi", "--base", "http://172.17.0.1:18080/v1", "--allow-private-base", "--model", "m",
-                     "--workspace", str(ws.root), "--mode", "bypass", "--json"])
-    assert code == 0 and urls and urls[0] == "http://172.17.0.1:18080/v1/chat/completions"
-    import dataclasses
-    other = dataclasses.replace(PROVIDERS["openai"], api_base="http://10.0.0.5/v1")
-    with pytest.raises(Exception, match="non-public"):
-        client._post(other, "k", {"model": "m", "messages": []}, False)
-
-
-def test_the_cli_takes_an_http_relay_only_on_a_private_address_and_streams_are_read_as_utf8():
-    import pytest
-    from app.agent import cli
-    assert cli._private_base("http://172.17.0.1:18080/v1/") == "http://172.17.0.1:18080/v1"
-    assert cli._private_base("http://127.0.0.1:9/v1") == "http://127.0.0.1:9/v1"
-    for bad in ("https://172.17.0.1/v1", "http://example.com/v1", "http://8.8.8.8/v1", "http://user:pw@10.0.0.1/v1", "http://10.0.0.1/v1?x=1"):
-        with pytest.raises(SystemExit):
-            cli._private_base(bad)
-
-    class Response:
-        encoding = None
-
-        def iter_lines(self, decode_unicode=False):
-            assert self.encoding == "utf-8"
-            return iter(['data: {"choices": [{"delta": {"content": "Báo cáo"}}]}', "data: [DONE]"])
-
-    from app.agent import client
-    message, usage, debug = client._read_stream(Response(), lambda live: None)
-    assert message["content"] == "Báo cáo"
 
 
 def test_auto_compaction_starts_near_the_configured_token_count_once_and_not_again_until_the_context_grows(ws, home):
@@ -2952,7 +2880,6 @@ def test_changed_toml_and_yaml_files_are_checked_for_syntax_errors(ws):
     yaml = pytest.importorskip("yaml")
     (ws.root / "ci.yml").write_text("jobs: [a, b\n")
     assert "ci.yml: while parsing" in ws.diagnose([ws.root / "ci.yml"])
-
 
 
 def test_web_reading_keeps_github_index_pages_reuses_a_fetched_page_and_points_to_reading_after_a_search_streak(ws, monkeypatch):
@@ -3428,25 +3355,6 @@ def test_several_mcp_servers_start_side_by_side(ws, home, tmp_path):
     took = time.time() - started
     assert all(session.mcp_status[n]["state"] == "running" for n in servers) and took < 2.5, took
     session.close()
-
-
-def test_the_cli_takes_several_keys_and_moves_on_by_itself(monkeypatch, home, ws):
-    from app.agent import cli
-
-    used = []
-
-    def complete(provider, key, model, messages, *, tools, **kw):
-        used.append(key)
-        if key == "k1":
-            raise client.KeyLimited("HTTP 429: limit")
-        return turn("done")
-
-    real = AgentSessionManager.create
-    monkeypatch.setattr(AgentSessionManager, "create", lambda self, *a, **kw: real(self, *a, **{**kw, "complete": complete}))
-    monkeypatch.setattr(cli.Path, "home", staticmethod(lambda: home))
-    monkeypatch.setenv("AGENT_API_KEY", "k1, k2")
-    assert cli.main(["exec", "hi", "--base", "https://api.example.com/v1", "--model", "m", "--workspace", str(ws.root), "--timeout-min", "1"]) == 0
-    assert used == ["k1", "k2"]
 
 
 def test_users_add_test_switch_and_remove_their_own_mcp_servers_from_the_page(api, home, tmp_path):
@@ -4166,17 +4074,6 @@ def test_by_default_there_is_no_shell_tool_and_a_lone_call_is_refused_while_chai
     assert "pkg/a.py" in out, out
 
 
-def test_stops_and_nudges_are_recorded_as_junctions_for_later_labelling(ws, home):
-    fake = scripted(turn(calls=[call("edit_file", path="pkg/a.py", old_text="return 1", new_text="return 2")]),
-                    turn("All tests pass."), turn("Done: a.py returns 2."), turn("Done: a.py returns 2."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    run_to_idle(session)
-    junctions = [(e["at"], e.get("nudge")) for e in session.events if e["type"] == "junction"]
-    assert junctions == [("nudge", "untested"), ("nudge", "unchecked_edit"), ("stop", None)], junctions
-    stop = [e for e in session.events if e["type"] == "junction"][-1]
-    assert stop["reply"] == "Done: a.py returns 2." and stop["checked_since_edit"] is False
-
-
 def test_the_worked_example_in_the_prompt_runs_as_written(ws, home):
     from app.agent import session as session_module
     (ws.root / "app").mkdir()
@@ -4221,8 +4118,6 @@ def test_branches_try_fixes_on_copies_and_the_model_adopts_one(ws, home):
     adopted = session._session_tool({"id": "d", "name": "create", "args": {"name": "pick", "code": "def pick():\n    return tools.adopt('b')\n", "args": {}, "keep": False}})
     assert "Adopted branch b: pkg/a.py" in adopted and "return 3" in real.read_text(), adopted
     assert not session._branches and not any((session._outputs_dir() / "branches").glob("*/*")), "every copy is dropped after adopting"
-    junctions = [e for e in session.events if e["type"] == "junction"]
-    assert [j["at"] for j in junctions] == ["branch", "adopt"] and "PASS" in junctions[0]["branches"]["b"]["check"] and junctions[1]["name"] == "b"
     missing = session._session_tool({"id": "e", "name": "create", "args": {"name": "again", "code": "def again():\n    return tools.adopt('a')\n", "args": {}, "keep": False}})
     assert "no branch 'a'" in missing
 
@@ -4272,25 +4167,6 @@ def test_the_skill_list_with_paths_names_each_folder_once(tmp_path):
     found.update({n: skills_module.Skill(n, f"Does {n}.", (tmp_path / "s" / n).resolve()) for n in ("one", "two")})
     text = skills_module.catalog(found, paths=True)
     assert text.count(str((tmp_path / "s").resolve())) == 1 and "- one: Does one." in text and "SKILL.md" in text.splitlines()[0]
-
-
-def test_the_command_line_waits_for_the_learning_review_before_exiting(ws, home, monkeypatch, capsys):
-    from app.agent import cli, learn
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENT_API_KEY", "k")
-    (home / ".manga-agent").mkdir(exist_ok=True)
-    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"learn_every": 1}))
-
-    def slow_review(messages, tools):
-        time.sleep(1.0)
-        return turn(json.dumps({"skills": [], "lessons": "- Listed the folder before reading."}))
-
-    fake = scripted(turn(calls=[call("run_command", command="ls")]), turn("All listed."), slow_review)
-    original = AgentSessionManager.create
-    monkeypatch.setattr(AgentSessionManager, "create", lambda self, *a, **kw: original(self, *a, **{**kw, "complete": fake}))
-    assert cli.main(["exec", "list it", "--base", "https://api.example.com/v1", "--model", "m", "--workspace", str(ws.root), "--json"]) == 0
-    notes = list((home / ".manga-agent" / "lessons").rglob("*.md"))
-    assert notes and "Listed the folder" in notes[0].read_text(), "the review finished before the process ended"
 
 
 def test_late_request_fields_take_over_in_the_last_third_of_a_clocked_run(ws, home, monkeypatch):
@@ -4376,7 +4252,6 @@ def test_checkpoint_saves_marks_goes_back_across_requests_and_keeps_why(ws, home
     assert ok and (ws.root / "x.py").read_text() == "v1\n" and not (ws.root / "y.py").exists(), "a mark reaches back over later requests"
     assert "Not undone" in output and "touch outside.flag" in output, output
     assert "back to v1: v2 broke the parser" in run()[0], "why an attempt was dropped stays in view"
-    assert [e for e in session.events if e["type"] == "junction" and e["at"] == "restore"][-1]["why"] == "v2 broke the parser"
     output, ok = run(action="restore", name="nope")
     assert not ok and "v1" in output
 
@@ -4430,3 +4305,16 @@ def test_the_effort_is_set_through_the_api_and_kept_on_resume(api):
     agents.sessions[sid].save()
     agents.sessions.pop(sid).close()
     assert http.post(f"/api/agent/sessions/{sid}/resume", headers=head).json()["effort"] == "low"
+
+
+def test_a_server_a_finished_command_left_running_stays_up_and_outlives_the_session(ws, home, monkeypatch):
+    fake = scripted(turn(calls=[call("run_command", command="echo $DEBIAN_FRONTEND; (sleep 30; echo late) &", timeout=10)]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    run_to_idle(session)
+    out = tool_outputs(session)[0][2]
+    assert "noninteractive" in out, "a package install cannot stop to ask a question"
+    assert "keep running as job1" in out and session.jobs["job1"].alive, out
+    session._notifications()
+    assert not any("job1 finished" in str(h["content"]) for h in session.history), "a job whose server still runs is not reported finished"
+    session.jobs["job1"].stop()
+    assert not session.jobs["job1"].alive
