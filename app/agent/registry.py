@@ -13,17 +13,17 @@ from app.agent import context, roles
 # The tool each group switches, so a profile can turn whole features off (shell, web, edits, subagents...).
 GROUPS = {
     "list_dir": "files", "read_file": "files", "search": "files", "glob": "files", "symbols": "files", "view_image": "files",
-    "write_file": "edit", "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "replace_in_files": "edit", "move_file": "edit",
+    "write_file": "edit", "edit_file": "edit", "replace_in_files": "edit", "move_file": "edit",
     "delete_file": "edit", "checkpoint": "files",
     "run_command": "shell", "run_script": "shell", "job_output": "shell", "job_input": "shell", "job_stop": "shell", "web_fetch": "web", "web_search": "web", "web_download": "web", "skill": "skills", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
     "task": "subagents", "fan_out": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
-    "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
+    "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal",
     "plugin_write": "extensions", "plugin_remove": "extensions",
 }
 COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "models": "subagents", "intent": "subagents", "mcp": "mcp"}
 ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
-REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file", "edit_lines",
-                         "apply_patch", "run_command", "web_fetch", "web_search", "web_download"})
+REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file",
+                         "run_command", "web_fetch", "web_search", "web_download"})
 ROLES = ("read", "edit", "exec", "net")
 PROFILE_FILES = {"user": (".manga-agent/profile.json",), "workspace": (".agents/profile.json",)}
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
@@ -36,7 +36,7 @@ def group_of(tool: str) -> str | None:
 
 def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
-    profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
+    profile: dict = {"disable": [], "loop": "default", "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "fallback_models": [], "prewalk_model": "",
@@ -53,8 +53,6 @@ def load_profile(workspace: Path, home: Path) -> dict:
             if scope == "user":
                 if isinstance(data.get("loop"), str):
                     profile["loop"] = data["loop"]
-                if isinstance(data.get("external_agents"), dict):
-                    profile["external_agents"].update(data["external_agents"])
                 if isinstance(data.get("echo_reasoning"), bool):
                     profile["echo_reasoning"] = data["echo_reasoning"]
                 for key in ("subagent_model", "compact_model", "prewalk_model"):

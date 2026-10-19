@@ -19,7 +19,7 @@ HOME_SETTINGS = (".manga-agent/settings.json", ".claude/settings.json")
 WORKSPACE_COMMANDS = (".agents/commands", ".claude/commands")
 HOME_COMMANDS = (".manga-agent/commands", ".claude/commands", ".codex/prompts")
 # Claude Code's tool names, so hooks written for it match the same actions here.
-CLAUDE_NAMES = {"run_command": "Bash", "write_file": "Write", "edit_file": "Edit", "apply_patch": "Edit",
+CLAUDE_NAMES = {"run_command": "Bash", "write_file": "Write", "edit_file": "Edit",
                 "read_file": "Read", "search": "Grep", "glob": "Glob", "list_dir": "LS", "web_fetch": "WebFetch",
                 "todo_write": "TodoWrite", "task": "Task"}
 _trust_lock = threading.Lock()

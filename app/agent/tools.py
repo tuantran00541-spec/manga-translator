@@ -14,7 +14,7 @@ import unicodedata
 
 import requests
 
-from app.agent import gitguard, hashline, patch as patches, sandbox, services, webread, websearch
+from app.agent import gitguard, sandbox, services, webread, websearch
 from app.downloader.http import read_response_limited, safe_get
 
 BROAD_FOLDERS = {"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/var", "/boot", "/dev", "/proc", "/sys", "/opt", "/root", "/home", "/Users",
@@ -38,15 +38,14 @@ MAX_COMMAND_TIMEOUT = 1800
 
 # What each tool can do decides whether it waits for the user: read, edit, exec or net.
 KIND = {"list_dir": "read", "read_file": "read", "symbols": "read", "view_image": "read", "search": "read", "glob": "read", "write_file": "edit",
-        "edit_file": "edit", "edit_lines": "edit", "apply_patch": "edit", "replace_in_files": "edit", "move_file": "edit", "delete_file": "edit", "run_command": "exec", "run_script": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
+        "edit_file": "edit", "replace_in_files": "edit", "move_file": "edit", "delete_file": "edit", "run_command": "exec", "run_script": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
 
 SPECS = [
     {"name": "list_dir", "description": "List what a folder holds, depth 1 to 4.",
      "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "depth": {"type": "integer", "description": "1 to 4"}}}},
     {"name": "read_file", "description": "Read a text file with line numbers; offset and limit read part of it.",
      "parameters": {"type": "object", "required": ["path"], "properties": {
-         "path": {"type": "string"}, "offset": {"type": "integer"}, "limit": {"type": "integer"},
-         "anchors": {"type": "boolean", "description": "Show lines as N#hh|text for edit_lines."}}}},
+         "path": {"type": "string"}, "offset": {"type": "integer"}, "limit": {"type": "integer"}}}},
     {"name": "symbols", "description": "List a file's classes and functions, or find where a name is defined.",
      "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "name": {"type": "string"}}}},
     {"name": "view_image", "description": "Look at an image file.",
@@ -65,11 +64,6 @@ SPECS = [
          "replace_all": {"type": "boolean"},
          "edits": {"type": "array", "items": {"type": "object", "required": ["old_text", "new_text"], "properties": {
              "old_text": {"type": "string"}, "new_text": {"type": "string"}}}}}}},
-    {"name": "edit_lines", "description": hashline.GUIDE,
-     "parameters": {"type": "object", "required": ["path", "edits"], "properties": {
-         "path": {"type": "string"}, "edits": {"type": "array", "items": {"type": "object", "required": ["op", "anchor"], "properties": {
-             "op": {"type": "string", "enum": list(hashline.OPS)}, "anchor": {"type": "string"},
-             "end": {"type": "string"}, "text": {"type": "string"}}}}}}},
     {"name": "replace_in_files", "description": "Replace text in many files at once (literal unless regex); look with dry_run first.",
      "parameters": {"type": "object", "required": ["pattern", "replacement"], "properties": {
          "pattern": {"type": "string"}, "replacement": {"type": "string"}, "path": {"type": "string"}, "glob": {"type": "string"},
@@ -79,8 +73,6 @@ SPECS = [
          "path": {"type": "string"}, "to": {"type": "string"}, "overwrite": {"type": "boolean"}}}},
     {"name": "delete_file", "description": "Delete a file.",
      "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "apply_patch", "description": "Add, change, move or delete several files in one patch.\n" + patches.GUIDE,
-     "parameters": {"type": "object", "required": ["patch"], "properties": {"patch": {"type": "string"}}}},
     {"name": "run_command", "description": "Run a shell command in the workspace sandbox; returns its output and exit code.",
      "parameters": {"type": "object", "required": ["command"], "properties": {
          "command": {"type": "string"}, "timeout": {"type": "integer", "description": "Seconds, at most 1800."},
@@ -303,9 +295,7 @@ class Workspace:
     def targets(self, name: str, args: dict) -> list[Path]:
         """The files an edit tool call is about to change."""
         try:
-            if name == "apply_patch":
-                return [self.resolve(p, write=True) for h in patches.parse(str(args.get("patch") or "")) for p in (h.path, h.move_to) if p]
-            if name in ("write_file", "edit_file", "edit_lines", "web_download", "delete_file"):
+            if name in ("write_file", "edit_file", "web_download", "delete_file"):
                 return [self.resolve(args.get("path"), write=True)]
             if name == "move_file":
                 source, target = self.resolve(args.get("path"), write=True), self.resolve(args.get("to"), write=True)
@@ -313,7 +303,7 @@ class Workspace:
             if name == "replace_in_files" and not args.get("dry_run"):
                 return [file for file, _, _ in self._replace_plan(str(args.get("pattern") or ""), str(args.get("replacement") or ""), str(args.get("path") or "."),
                                                                   args.get("glob"), bool(args.get("regex")), bool(args.get("ignore_case")))]
-        except (ToolError, patches.PatchError):
+        except ToolError:
             pass
         return []
 
@@ -384,7 +374,7 @@ class Workspace:
             rows.append(f"… stopped at {MAX_LIST_ENTRIES} entries")
         return "\n".join(rows) or "(empty folder)"
 
-    def _tool_read_file(self, path: str, offset: int = 1, limit: int = MAX_READ_LINES, anchors: bool = False) -> str:
+    def _tool_read_file(self, path: str, offset: int = 1, limit: int = MAX_READ_LINES) -> str:
         target = self.resolve(path)
         if not target.is_file():
             raise self.missing(path) if not target.exists() else ToolError(f"{path!r} is a folder; list it with list_dir")
@@ -396,7 +386,7 @@ class Workspace:
         start = max(1, int(offset))
         count = max(1, min(MAX_READ_LINES, int(limit)))
         chunk = lines[start - 1:start - 1 + count]
-        body = hashline.render(chunk, start) if anchors else "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(chunk))
+        body = "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(chunk))
         more = len(lines) - (start - 1 + len(chunk))
         tail = f"\n… {more} more lines" if more > 0 else ""
         return clip(body + tail) if chunk else f"(file has {len(lines)} lines)"
@@ -547,17 +537,6 @@ class Workspace:
         target.write_text(text, encoding="utf-8")
         return f"Edited {self.rel(target)} ({changes} change{'s' if changes != 1 else ''})"
 
-    def _tool_edit_lines(self, path: str, edits: list) -> str:
-        target = self.resolve(path, write=True)
-        if not target.is_file():
-            raise ToolError(f"{path!r} is not a file")
-        self._fresh(target, path)
-        try:
-            target.write_text(hashline.apply(target.read_bytes().decode("utf-8"), edits), encoding="utf-8", newline="")
-        except hashline.HashlineError as exc:
-            raise ToolError(str(exc)) from exc
-        return f"Edited {self.rel(target)} ({len(edits)} edits)"
-
     def _replacer(self, pattern: str, replacement: str, regex: bool, ignore_case: bool):
         if not pattern:
             raise ToolError("pattern is empty")
@@ -627,14 +606,6 @@ class Workspace:
             raise self.missing(path) if not target.exists() else ToolError(f"{path!r} is a folder; delete folders with run_command")
         target.unlink()
         return f"Deleted {self.rel(target)}"
-
-    def _tool_apply_patch(self, patch: str) -> str:
-        for path in self.targets("apply_patch", {"patch": patch}):
-            self._fresh(path, self.rel(path))
-        try:
-            return patches.apply(patch, lambda p: self.resolve(p, write=True), self.rel)
-        except patches.PatchError as exc:
-            raise ToolError(str(exc)) from exc
 
     def _tool_run_command(self, command: str, timeout: int = COMMAND_TIMEOUT, outside_sandbox: bool = False, background: bool = False, tty: bool = False) -> str:
         if not str(command).strip():

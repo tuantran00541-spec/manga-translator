@@ -12,7 +12,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from app.agent import client, context, kernel, mcp, patch, sandbox, skills
+from app.agent import client, context, kernel, mcp, sandbox, skills
 from app.agent.session import AgentSession, AgentSessionManager
 from app.agent.tools import ToolError, Workspace
 from app.ai_providers import PROVIDERS
@@ -84,33 +84,6 @@ def test_read_only_sessions_refuse_edits(ws):
     ws.policy = sandbox.Policy("read-only")
     with pytest.raises(ToolError, match="read-only"):
         ws.run("write_file", {"path": "x.txt", "content": "x"})
-
-
-def test_apply_patch_adds_updates_moves_and_deletes(ws):
-    ws.run("write_file", {"path": "gone.txt", "content": "bye\n"})
-    summary = ws.run("apply_patch", {"patch": textwrap.dedent("""\
-        *** Begin Patch
-        *** Add File: pkg/new.py
-        +print("hi")
-        *** Update File: pkg/a.py
-        *** Move to: pkg/b.py
-        @@ def f():
-        -    return 1
-        +    return 2
-        *** Delete File: gone.txt
-        *** End Patch""")})
-    assert summary.splitlines() == ["A pkg/new.py", "M pkg/a.py -> pkg/b.py", "D gone.txt"]
-    assert (ws.root / "pkg" / "b.py").read_text() == "def f():\n    return 2\n\nx = f()\n"
-    assert not (ws.root / "pkg" / "a.py").exists() and not (ws.root / "gone.txt").exists()
-
-
-def test_a_patch_that_does_not_match_changes_nothing(ws):
-    bad = "*** Begin Patch\n*** Add File: c.py\n+x\n*** Update File: pkg/a.py\n-    return 9\n+    return 2\n*** End Patch"
-    with pytest.raises(ToolError, match="not found"):
-        ws.run("apply_patch", {"patch": bad})
-    assert not (ws.root / "c.py").exists(), "a patch is checked whole before anything is written"
-    with pytest.raises(patch.PatchError):
-        patch.parse("*** Update File: x\n")
 
 
 def test_commands_report_exit_codes_and_time_out(ws):
@@ -743,68 +716,6 @@ def test_skills_are_written_uploaded_listed_and_removed_through_the_api(api, hom
     assert "slides" not in agents.get(session["id"]).skills
 
 
-HARNESS_CALLS = [
-    # (harness, tool, args, text the result must contain)
-    ("Claude Code", "Read", {"file_path": "pkg/a.py", "offset": 1, "limit": 1}, "def"),
-    ("Claude Code", "Grep", {"pattern": "return", "path": "pkg", "-i": True, "output_mode": "content"}, "pkg/a.py:2"),
-    ("Claude Code", "Glob", {"pattern": "**/*.py"}, "pkg/a.py"),
-    ("Claude Code", "LS", {"path": "pkg"}, "a.py"),
-    ("Claude Code", "Bash", {"command": "echo hi-bash", "description": "say hi"}, "hi-bash"),
-    ("Claude Code", "Write", {"file_path": "w.txt", "content": "one two\n"}, "w.txt"),
-    ("Claude Code", "Edit", {"file_path": "w.txt", "old_string": "one", "new_string": "uno"}, "Edited"),
-    ("Claude Code", "MultiEdit", {"file_path": "w.txt", "edits": [{"old_string": "two", "new_string": "dos"}]}, "Edited"),
-    ("Claude Code", "TodoWrite", {"todos": [{"content": "Read", "status": "in_progress", "activeForm": "Reading"}]}, "Plan saved"),
-    ("Codex", "shell", {"command": ["bash", "-lc", "echo hi-codex"], "workdir": "."}, "hi-codex"),
-    ("Codex", "exec_command", {"cmd": "echo hi-exec", "yield_time_ms": 1000}, "hi-exec"),
-    ("Codex", "grep_files", {"pattern": "return", "include": "*.py", "path": "pkg", "limit": 5}, "pkg/a.py:2"),
-    ("Codex", "list_dir", {"dir_path": "pkg", "depth": 1}, "a.py"),
-    ("Codex", "update_plan", {"plan": [{"step": "Look", "status": "completed"}], "explanation": "x"}, "Plan saved"),
-    ("Gemini CLI", "read_file", {"absolute_path": "pkg/a.py"}, "def"),
-    ("Gemini CLI", "run_shell_command", {"command": "echo hi-gemini", "description": "x"}, "hi-gemini"),
-    ("Gemini CLI", "search_file_content", {"pattern": "return", "include": "*.py"}, "pkg/a.py:2"),
-    ("Gemini CLI", "replace", {"file_path": "w.txt", "old_string": "uno", "new_string": "eins", "instruction": "x"}, "Edited"),
-    ("Cursor", "read_file", {"target_file": "pkg/a.py", "start_line_one_indexed": 1, "end_line_one_indexed_inclusive": 2,
-                             "should_read_entire_file": False, "explanation": "x"}, "def"),
-    ("Cursor", "run_terminal_cmd", {"command": "echo hi-cursor", "is_background": False, "explanation": "x"}, "hi-cursor"),
-    ("Cursor", "grep_search", {"query": "RETURN", "case_sensitive": False, "include_pattern": "*.py"}, "pkg/a.py:2"),
-    ("Cursor", "list_dir", {"relative_workspace_path": "pkg", "explanation": "x"}, "a.py"),
-    ("Cursor", "search_replace", {"file_path": "w.txt", "old_string": "eins", "new_string": "un"}, "Edited"),
-    ("Windsurf", "run_command", {"CommandLine": "echo hi-windsurf", "Cwd": "."}, "hi-windsurf"),
-    ("Windsurf", "view_file", {"AbsolutePath": "pkg/a.py", "StartLine": 1, "EndLine": 2}, "def"),
-    ("Windsurf", "replace_file_content", {"TargetFile": "w.txt", "ReplacementChunks": [{"TargetContent": "un", "ReplacementContent": "one"}]}, "Edited"),
-    ("Cline", "execute_command", {"command": "echo hi-cline", "requires_approval": False}, "hi-cline"),
-    ("Cline", "replace_in_file", {"path": "w.txt", "diff": "<<<<<<< SEARCH\none\n=======\nuno\n>>>>>>> REPLACE"}, "Edited"),
-    ("Cline", "write_to_file", {"path": "c.txt", "content": "x\n"}, "c.txt"),
-    ("Kimi CLI", "ReadFile", {"path": "pkg/a.py", "line_offset": 1, "n_lines": 2}, "def"),
-    ("Kimi CLI", "StrReplaceFile", {"path": "w.txt", "edit": {"old": "uno", "new": "one"}}, "Edited"),
-    ("Kimi CLI", "SetTodoList", {"todos": [{"title": "Look", "status": "Done"}]}, "Plan saved"),
-    ("oh-my-pi", "read", {"path": "pkg/a.py"}, "def"),
-    ("oh-my-pi", "find", {"pattern": "*.txt"}, "w.txt"),
-    ("v0", "LSRepo", {"path": "pkg", "taskNameActive": "x"}, "a.py"),
-    ("Manus", "file_find_in_content", {"file": "pkg/a.py", "regex": "return"}, "return"),
-    ("Augment", "str-replace-editor", {"command": "str_replace", "path": "w.txt", "old_str_1": "one", "new_str_1": "ein"}, "Edited"),
-    ("SWE-agent", "str_replace_editor", {"command": "view", "path": "pkg/a.py", "view_range": [1, 2]}, "def"),
-    ("SWE-agent", "str_replace_editor", {"command": "create", "path": "s.txt", "file_text": "made\n"}, "s.txt"),
-]
-
-
-@pytest.mark.parametrize("harness,name,args,expect", HARNESS_CALLS, ids=[f"{h}:{n}" for h, n, _, _ in HARNESS_CALLS])
-def test_tool_calls_written_for_other_harnesses_run_here(ws, home, harness, name, args, expect):
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    for setup in HARNESS_CALLS[:HARNESS_CALLS.index((harness, name, args, expect))]:
-        session._run_call({"id": "chain-s", "name": setup[1], "args": json.loads(json.dumps(setup[2]))})
-    output, ok = session._run_call({"id": "chain-1", "name": name, "args": json.loads(json.dumps(args))})
-    assert ok and expect in output, output
-
-
-def test_a_command_under_another_harness_name_still_waits_for_approval(ws, home):
-    fake = scripted(turn(calls=[call("Bash", command="touch made.txt")]), turn("Xong."), turn("Xong."))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
-    session.send("make it")
-    wait_for(session, "waiting")
-    assert session.pending["name"] == "run_command" and not (ws.root / "made.txt").exists()
-
-
 def test_unknown_tools_and_editor_commands_we_lack_are_still_refused(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert session._run_call({"id": "chain-1", "name": "teleport", "args": {}})[0].startswith("Unknown tool 'teleport'")
@@ -822,23 +733,6 @@ def run_to_idle(session, text="go"):
 
 def tool_outputs(session):
     return [(e["name"], e["ok"], e["output"]) for e in session.events if e["type"] == "tool"]
-
-
-def test_hashline_edits_check_anchors_and_keep_line_endings(ws):
-    (ws.root / "crlf.txt").write_bytes(b"one\r\ntwo\r\nthree\r\n")
-    shown = ws.run("read_file", {"path": "crlf.txt", "anchors": True}).splitlines()
-    anchor = lambda i: shown[i].split("|")[0]
-    ws.run("edit_lines", {"path": "crlf.txt", "edits": [{"op": "replace", "anchor": anchor(1), "text": "TWO\nTWO-B"},
-                                                          {"op": "insert_after", "anchor": anchor(2), "text": "four"}]})
-    assert (ws.root / "crlf.txt").read_bytes() == b"one\r\nTWO\r\nTWO-B\r\nthree\r\nfour\r\n"
-    with pytest.raises(ToolError, match="stale"):
-        ws.run("edit_lines", {"path": "crlf.txt", "edits": [{"op": "delete", "anchor": anchor(1)}]})
-    fresh = ws.run("read_file", {"path": "crlf.txt", "anchors": True}).splitlines()
-    first, second = (line.split("|")[0] for line in fresh[:2])
-    with pytest.raises(ToolError, match="same lines"):
-        ws.run("edit_lines", {"path": "crlf.txt", "edits": [{"op": "replace", "anchor": first, "end": second, "text": "x"},
-                                                              {"op": "delete", "anchor": second}]})
-    assert (ws.root / "crlf.txt").read_bytes().startswith(b"one\r\nTWO")
 
 
 def test_edits_report_syntax_errors_at_once(ws):
@@ -1238,22 +1132,6 @@ def tool_names(session):
     return {s["name"] for s in session.specs() + session.specs(session.library_specs())}
 
 
-def test_a_profile_switches_whole_features_off(ws, home):
-    write_profile(home, {"disable": ["shell", "web", "plan"]})
-    (ws.root / ".agents").mkdir()
-    (ws.root / ".agents" / "profile.json").write_text(json.dumps({"disable": ["subagents"]}), encoding="utf-8")
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    names = tool_names(session)
-    assert "read_file" in names and not ({"run_command", "web_fetch", "task", "spawn_agent", "wait_agent"} & names)
-    assert "/plan" not in session.command("/help")["message"] and "/goal" in session.command("/help")["message"]
-    with pytest.raises(ValueError, match="tắt"):
-        session.command("/plan")
-    assert all(c["name"] != "plan" for c in session.snapshot()["commands"]) and session.snapshot()["disabled"] == ["plan", "shell", "subagents", "web"]
-    (ws.root / ".agents" / "profile.json").write_text(json.dumps({"loop": "mine", "external_agents": {"x": {"command": ["echo"]}}}), encoding="utf-8")
-    again = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    assert again.profile["loop"] == "default" and not again.profile["external_agents"]
-
-
 PLUGIN = '''
     def register(api):
         api.tool({"name": "shout", "description": "Upper-case text.",
@@ -1314,23 +1192,6 @@ def test_workspace_plugins_run_only_once_trusted_and_the_trust_is_pinned(ws, hom
     (ws.root / ".agents" / "plugins" / "proj.py").write_text(textwrap.dedent(PLUGIN) + "\n# changed\n", encoding="utf-8")
     later = mgr.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="later")
     assert later.registry.plugins[0]["state"] == "untrusted"
-
-
-def test_other_coding_agents_can_be_delegated_to_and_always_ask(ws, home, monkeypatch):
-    write_profile(home, {"external_agents": {"echoer": {"command": [sys.executable, "-c", "import sys; print('ECHO:' + sys.argv[1])", "{prompt}"]}}})
-    fake = scripted(turn(calls=[call("delegate", agent="echoer", prompt="build it")]), turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "edits", complete=fake)
-    assert "delegate" in tool_names(session) and "echoer" in session.snapshot()["plugins"]["externals"]
-    session.send("go")
-    wait_for(session, "waiting")
-    assert session.pending["name"] == "delegate"
-    session.decide("allow")
-    wait_for(session, "idle")
-    assert "ECHO:build it" in tool_outputs(session)[0][2] and "[exit code 0]" in tool_outputs(session)[0][2]
-    from app.agent import external
-    monkeypatch.setattr(external.shutil, "which", lambda name: None)
-    bare = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="bare")
-    assert "delegate" not in tool_names(bare)
 
 
 def test_deepseek_gets_the_current_turns_reasoning_sent_back(ws, home):
@@ -1491,24 +1352,6 @@ def test_the_sandbox_hides_credentials_and_has_no_sockets_signals_or_big_files(w
     finally:
         sandbox.EXTRA_DENY.remove(str(home_probe))
         shutil.rmtree(home_probe, ignore_errors=True)
-
-
-def test_leaving_the_sandbox_and_other_agents_ask_even_in_auto_mode(ws, home):
-    fake = scripted(turn(calls=[call("run_command", command="echo hi", outside_sandbox=True)]), turn("done"))
-    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
-    session.send("go")
-    wait_for(session, "waiting")
-    assert session.pending["name"] == "run_command"
-    session.decide("deny")
-    wait_for(session, "idle")
-    write_profile(home, {"external_agents": {"echoer": {"command": [sys.executable, "-c", "print(1)"]}}})
-    fake = scripted(turn(calls=[call("delegate", agent="echoer", prompt="x")]), turn("done"))
-    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake, session_id="other")
-    other.send("go")
-    wait_for(other, "waiting")
-    assert other.pending["name"] == "delegate"
-    other.decide("deny")
-    wait_for(other, "idle")
 
 
 def test_a_web_page_is_fetched_without_asking_only_for_hosts_the_user_named_or_allowed(ws, home, monkeypatch):
@@ -1859,15 +1702,6 @@ def test_tool_calls_with_broken_json_are_recovered_using_the_tools_parameter_nam
     assert not any(c.get("error") for c in got)
     _, still = client.parse_text_calls('<tool_call>{"name": "write_file", "arguments": {"content": "has "quotes" but no path"}}</tool_call>', tools)
     assert still[0].get("error"), "a call missing a required parameter stays unreadable"
-
-
-def test_arguments_sent_as_json_strings_are_read_as_the_type_the_tool_declares(ws):
-    shown = ws.run("read_file", {"path": "pkg/a.py", "anchors": "true", "limit": "2"}).splitlines()
-    assert shown[0].count("|") >= 1 and len(shown) == 3, "a flag and a number sent as strings still work"
-    anchor = shown[0].split("|")[0]
-    edits = json.dumps([{"op": "replace", "anchor": anchor, "text": "def g():"}])
-    ws.run("edit_lines", {"path": "pkg/a.py", "edits": edits})
-    assert (ws.root / "pkg" / "a.py").read_text().startswith("def g():")
 
 
 def test_the_output_limit_is_sent_dropped_when_refused_and_a_cut_off_call_gets_a_clear_message(monkeypatch):
@@ -3267,8 +3101,6 @@ def test_new_tools_follow_the_rules_and_the_approval_modes(ws, home):
     assert not edits._needs_approval(call("move_file", path="a", to="b")) and not edits._needs_approval(call("checkpoint", action="restore", path="a"))
     output, ok = edits._run_call(call("delete_file", path=".env"))
     assert not ok and "Denied" in output, "the .env rule covers the new edit tools"
-    output, ok = edits._run_call({"id": "chain-x", "name": "rename_file", "args": {"path": "pkg/a.py", "destination": "pkg/b.py"}})
-    assert ok and "move_file" in output and (ws.root / "pkg" / "b.py").is_file()
     reader = manager(home).create(PROVIDERS["openai"], "k", "m", Workspace(ws.root, sandbox.Policy("read-only")), "bypass", complete=scripted())
     output, ok = reader._run_call(call("checkpoint", action="restore", path="pkg/a.py"))
     assert not ok and "only reads" in output
@@ -3801,15 +3633,6 @@ def test_late_request_fields_take_over_in_the_last_third_of_a_clocked_run(ws, ho
     assert session._request_fields() == {"reasoning_effort": "medium", "top_p": 0.9}, "past two thirds of the clock the late fields win"
 
 
-def test_bench_slips_a_garbled_todo_key_a_bare_job_number_and_reading_git_are_handled():
-    from app.agent import aliases, rules
-    assert aliases._fix_items({"titems": '[{"content": "a", "status": "done"}]'}) == {"items": [{"content": "a", "status": "completed"}]}
-    found = [(None,) + r for r in rules.DEFAULT]
-    assert rules.check(found, "run_command", {"command": "cd repo && ls -la .git/logs && git reflog"}, lambda p: p) is None
-    assert rules.check(found, "run_command", {"command": "git rev-parse HEAD > .git/ORIG_HEAD"}, lambda p: p) == "deny"
-    assert rules.check(found, "run_command", {"command": "cat .env"}, lambda p: p) == "deny"
-
-
 def test_file_tools_reach_any_path_only_without_a_sandbox_and_tinyfish_urls_can_be_relayed(tmp_path, monkeypatch):
     from app.agent import sandbox, websearch
     (tmp_path / "ws").mkdir()
@@ -3934,3 +3757,45 @@ def test_a_server_a_finished_command_left_running_stays_up_and_outlives_the_sess
     assert not any("job1 finished" in str(h["content"]) for h in session.history), "a job whose server still runs is not reported finished"
     session.jobs["job1"].stop()
     assert not session.jobs["job1"].alive
+
+
+def test_a_profile_switches_whole_features_off(ws, home):
+    write_profile(home, {"disable": ["shell", "web", "plan"]})
+    (ws.root / ".agents").mkdir()
+    (ws.root / ".agents" / "profile.json").write_text(json.dumps({"disable": ["subagents"]}), encoding="utf-8")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    names = tool_names(session)
+    assert "read_file" in names and not ({"run_command", "web_fetch", "task", "spawn_agent", "wait_agent"} & names)
+    assert "/plan" not in session.command("/help")["message"] and "/goal" in session.command("/help")["message"]
+    with pytest.raises(ValueError, match="tắt"):
+        session.command("/plan")
+    assert all(c["name"] != "plan" for c in session.snapshot()["commands"]) and session.snapshot()["disabled"] == ["plan", "shell", "subagents", "web"]
+    (ws.root / ".agents" / "profile.json").write_text(json.dumps({"loop": "mine"}), encoding="utf-8")
+    again = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    assert again.profile["loop"] == "default"
+
+
+def test_leaving_the_sandbox_asks_even_in_bypass_mode(ws, home):
+    fake = scripted(turn(calls=[call("run_command", command="echo hi", outside_sandbox=True)]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    session.send("go")
+    wait_for(session, "waiting")
+    assert session.pending["name"] == "run_command"
+    session.decide("deny")
+    wait_for(session, "idle")
+
+
+def test_arguments_sent_as_json_strings_are_read_as_the_type_the_tool_declares(ws):
+    shown = ws.run("read_file", {"path": "pkg/a.py", "offset": "1", "limit": "2"}).splitlines()
+    assert len(shown) == 3, "a number sent as a string still works"
+    edits = json.dumps([{"old_text": "return 1", "new_text": "return 2"}])
+    ws.run("edit_file", {"path": "pkg/a.py", "edits": edits})
+    assert "return 2" in (ws.root / "pkg" / "a.py").read_text()
+
+
+def test_reading_git_is_allowed_and_writing_into_it_or_reading_env_is_denied():
+    from app.agent import rules
+    found = [(None,) + r for r in rules.DEFAULT]
+    assert rules.check(found, "run_command", {"command": "cd repo && ls -la .git/logs && git reflog"}, lambda p: p) is None
+    assert rules.check(found, "run_command", {"command": "git rev-parse HEAD > .git/ORIG_HEAD"}, lambda p: p) == "deny"
+    assert rules.check(found, "run_command", {"command": "cat .env"}, lambda p: p) == "deny"

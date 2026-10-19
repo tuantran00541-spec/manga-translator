@@ -14,7 +14,7 @@ NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 MAX_SKILLS = 200
 # Skills are written for other harnesses too; this maps their tool names onto ours when one is loaded.
 NAMES = ("(Tool names here: TodoWrite is todo_write, Task or subagents are task or spawn_agent with wait_agent, Bash is run_command, "
-         "Read, Edit and Write are read_file, edit_file and apply_patch, asking the user is ask_user.)")
+         "Read, Edit and Write are read_file, edit_file and write_file, asking the user is ask_user.)")
 
 
 @dataclass(frozen=True)

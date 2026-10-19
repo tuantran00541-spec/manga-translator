@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.agent import agents, aliases, chaincheck, client, codemode, context, external, gitguard, isolate, kernel, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
+from app.agent import agents, chaincheck, client, codemode, context, gitguard, isolate, kernel, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
 from app.agent.checkpoint import Checkpoints
 from app.ai_providers import auth_headers, resolve_provider
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
@@ -52,7 +52,7 @@ MAX_FAN_OUT = 12
 MAX_BRANCHES = 3
 BRANCH_TIMEOUT = 600
 # Workspace tools a branch runs on its own copy instead of the real workspace.
-BRANCH_LOCAL = frozenset({"read_file", "edit_file", "write_file", "edit_lines", "replace_in_files", "move_file", "delete_file", "apply_patch",
+BRANCH_LOCAL = frozenset({"read_file", "edit_file", "write_file", "replace_in_files", "move_file", "delete_file",
                           "run_command", "list_dir", "search", "glob", "symbols"})
 SCRIPT_TOOLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "fan_out"})
 SCRIPT_AGENTS = 40
@@ -635,7 +635,6 @@ class AgentSession:
         self.quirks = models.quirks(model, self.profile["models"])
         self.disabled = set(self.profile["disable"])
         self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
-        self.externals = external.available(self.profile["external_agents"]) if not depth and "external" not in self.disabled else {}
         self.kernel_problems: list[str] = []
         if depth:
             self.registry, self.kernel = parent.registry, parent.kernel
@@ -666,9 +665,6 @@ class AgentSession:
 
     def _build_registry(self, home_path: Path) -> registry.Registry:
         reg = registry.Registry({s["name"] for s in SPECS} | set(SESSION_SPECS))
-        if self.externals:
-            reg.tool(external.spec(list(self.externals)), lambda session, args: external.run(session, args, self.externals),
-                     kind="exec", group="external", always_ask=True)
         registry.load_plugins(reg, self.workspace.root, home_path, self.trust)
         # The plugin tree: built-in providers are rows like any other, plugin files join it, plugins.json changes it.
         old_kernel = getattr(self, "kernel", None)
@@ -744,8 +740,7 @@ class AgentSession:
     def _plugins_report(self) -> str:
         rows = ["Cây plugin:"] + [f"  {line}" for line in self.kernel.tree()] + [f"  {p}" for p in self.kernel_problems]
         rows += [f"{p['name']} ({p['scope']}): {p['state']}" + (f" — {p['error']}" if p["error"] else "") for p in self.registry.plugins if p["state"] != "kernel"]
-        rows += [f"Agent ngoài: {', '.join(self.externals) or 'không tìm thấy codex hay claude'}",
-                 f"Tính năng đã tắt: {', '.join(sorted(self.disabled)) or 'không'}", f"Vòng lặp: {self.profile['loop']}",
+        rows += [f"Tính năng đã tắt: {', '.join(sorted(self.disabled)) or 'không'}", f"Vòng lặp: {self.profile['loop']}",
                  f"Nhóm có thể tắt trong profile.json: {', '.join(registry.ALL_GROUPS)}"]
         return "\n".join(rows)
 
@@ -770,7 +765,7 @@ class AgentSession:
 
     def _info(self) -> dict:
         """What the page shows beside the conversation; it changes rarely, so a poll that already has it gets only its revision."""
-        return {"disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins, "externals": list(self.externals),
+        return {"disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins,
                                                                 "needs_trust": any(p["state"] == "untrusted" for p in self.registry.plugins)},
                 "agents": [{"name": a.name, "description": a.description} for a in self.agents.values()],
                 "skills": [{"name": s.name, "description": s.description} for s in self.skills.values()],
@@ -1684,7 +1679,7 @@ class AgentSession:
         """A created tool runs as a sandboxed Python process; past CREATED_TIMEOUT it goes on in the background, and the files it changes are tracked."""
         tool = self._root().created[call["name"]]
         args = call["args"] if isinstance(call["args"], dict) else {}
-        problems = chaincheck.check(self._with_callees(tool["code"]), self._chain_arguments(), self._alias_fixes)
+        problems = chaincheck.check(self._with_callees(tool["code"]), self._chain_arguments())
         if problems:
             raise ToolError("The chain was not run, because its code calls tools that cannot work:\n" + "\n".join(problems[:10]))
         # In plan mode a created tool may look but not change anything.
@@ -1753,12 +1748,6 @@ class AgentSession:
             props = schema.get("properties") if isinstance(schema, dict) else None
             known[name] = set(props) if isinstance(props, dict) and props and not schema.get("additionalProperties") else None
         return known
-
-    def _alias_fixes(self, name: str, given: list[str]) -> bool:
-        """Whether a chain's call by another harness's tool or argument name is renamed into a working call, as _run_call does."""
-        props = {s["name"]: s.get("parameters", {}).get("properties", {}) for s in self.specs()}
-        fixed = aliases.resolve(name, {k: "" for k in given}, props)
-        return bool(fixed) and fixed[0] in props and isinstance(fixed[1], dict) and all(k in props[fixed[0]] for k in fixed[1])
 
     def _intent(self, write: bool = True) -> str:
         """The request as the model pictures it, in intent.md; written once per request by the root session and built on the last one."""
@@ -2929,15 +2918,6 @@ class AgentSession:
                 offered[call["name"]] = spec
         known = set(offered)
         self.workspace.offered = known
-        props = {name: spec.get("parameters", {}).get("properties", {}) for name, spec in offered.items()}
-        # Calls a script makes go through as written: they carry internal flags such as as_data.
-        # A created tool takes whatever its own code accepts, so its arguments are never renamed or dropped.
-        if isinstance(call["args"], dict) and not str(call.get("id", "")).startswith("script-") and call["name"] not in self._root().created and (
-                call["name"] not in known or any(k not in props[call["name"]] for k in call["args"])):
-            fixed = aliases.resolve(call["name"], call["args"], props)
-            if fixed and fixed[2]:
-                output, ok = self._run_call({**call, "name": fixed[0], "args": fixed[1]})
-                return f"[{fixed[2]}.]\n{output}", ok
         if call["name"] not in known:
             return f"Unknown tool {call['name']!r}; available: {', '.join(sorted(known))}", False
         required = offered[call["name"]].get("parameters", {}).get("required") or []
@@ -3050,7 +3030,7 @@ class AgentSession:
         output, ok = self.kernel.waterfall("tool/execute", copy.deepcopy(call), execute) if self.kernel.subscribers("tool/execute") else execute(call)
         name = call["name"]
         role = self._role(name)
-        if name in ("web_fetch", "web_search", "web_download", "delegate") or (name in self.mcp_tools and role in (None, "net")):
+        if name in ("web_fetch", "web_search", "web_download") or (name in self.mcp_tools and role in (None, "net")):
             self.tainted = True
         if ok and (KIND.get(name) == "edit" or role == "edit") and name != "web_download":
             self._edited = True
@@ -3633,7 +3613,7 @@ class AgentSession:
         path = os.path.normpath(str(args.get("path") or ".")).lstrip("/")
         if name in PARALLEL_CALLS:
             return (frozenset({path}) if name in ("list_dir", "read_file", "search", "glob", "symbols") else frozenset()), frozenset()
-        if name in ("write_file", "edit_file", "edit_lines") and args.get("path"):
+        if name in ("write_file", "edit_file") and args.get("path"):
             return frozenset(), frozenset({path})
         if name == "run_command" and not args.get("background") and not args.get("outside_sandbox") and rules.safe_readonly(str(args.get("command") or "")):
             # A look-only command may read anything in the workspace, so it waits for any write in the batch.

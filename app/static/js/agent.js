@@ -5,8 +5,8 @@
   const VERBS = {
     "": "Unreadable call",
     list_dir: "List", read_file: "Read", search: "Search", glob: "Find files", write_file: "Write", edit_file: "Edit",
-    apply_patch: "Patch", edit_lines: "Edit lines", run_command: "Run", web_fetch: "Fetch", skill: "Skill", todo_write: "Plan",
-    task: "Helper", spawn_agent: "Spawn agent", wait_agent: "Wait for agents", send_input: "Message agent", close_agent: "Close agent", delegate: "External agent", memory: "Memory", ask_user: "Ask you", exit_plan_mode: "Plan", goal_done: "Goal done",
+    run_command: "Run", web_fetch: "Fetch", skill: "Skill", todo_write: "Plan",
+    task: "Helper", spawn_agent: "Spawn agent", wait_agent: "Wait for agents", send_input: "Message agent", close_agent: "Close agent", memory: "Memory", ask_user: "Ask you", exit_plan_mode: "Plan", goal_done: "Goal done",
     symbols: "Symbols", web_search: "Web search", web_download: "Download", view_image: "View image", tool_search: "Find tools", run_script: "Script", fan_out: "Fan out",
     job_output: "Job output", job_input: "Type into job", job_stop: "Stop job", context_notes: "Notes", new_context: "New context",
     schedule_create: "Schedule", schedule_list: "Schedules", schedule_delete: "Cancel schedule",
@@ -15,8 +15,8 @@
   // How each kind of call is counted in a group's one-line summary: verb, one, many.
   const TALLY = {
     run_command: ["ran", "command", "commands"], read_file: ["read", "file", "files"], edit_file: ["edited", "file", "files"], write_file: ["edited", "file", "files"],
-    apply_patch: ["edited", "file", "files"], edit_lines: ["edited", "file", "files"], spawn_agent: ["started", "helper", "helpers"], wait_agent: ["waited on", "helper", "helpers"],
-    send_input: ["messaged", "helper", "helpers"], delegate: ["delegated", "job", "jobs"], close_agent: ["closed", "helper", "helpers"], memory: ["saved", "memory", "memories"],
+    spawn_agent: ["started", "helper", "helpers"], wait_agent: ["waited on", "helper", "helpers"],
+    send_input: ["messaged", "helper", "helpers"], close_agent: ["closed", "helper", "helpers"], memory: ["saved", "memory", "memories"],
     list_dir: ["listed", "folder", "folders"], search: ["searched", "time", "times"], glob: ["searched", "time", "times"], symbols: ["searched", "time", "times"],
     web_fetch: ["fetched", "page", "pages"], skill: ["opened", "skill", "skills"], task: ["ran", "helper", "helpers"], mcp: ["called", "MCP tool", "MCP tools"],
     run_script: ["ran", "script", "scripts"], fan_out: ["fanned out", "batch", "batches"], job_input: ["typed into", "job", "jobs"], job_output: ["read", "job", "jobs"], job_stop: ["stopped", "job", "jobs"],
@@ -154,7 +154,6 @@
     if (c.name === "skill") return a.name || "";
     if (c.name === "todo_write") return `${(a.items || []).length} items`;
     if (c.name === "ask_user") return a.question || "";
-    if (c.name === "delegate") return `${a.agent || ""}: ${String(a.prompt || "").slice(0, 80)}`;
     if (c.name === "memory") return `${a.action || ""} ${a.text || ""}`.trim();
     if (c.name === "goal_done") return a.summary || "";
     if (c.name === "run_script") return String(a.code || "").split("\n").find((l) => l.trim()) || "";
@@ -162,7 +161,6 @@
     if (c.name === "job_input") return `${a.id || ""}: ${JSON.stringify(String(a.chars || "")).slice(0, 60)}`;
     if (c.name === "job_output" || c.name === "job_stop" || c.name === "schedule_delete") return a.id || "";
     if (c.name === "schedule_create") return `in ${a.in_minutes || "?"} min${a.every_minutes ? `, every ${a.every_minutes} min` : ""}: ${String(a.prompt || "").slice(0, 50)}`;
-    if (c.name === "apply_patch") return (String(a.patch || "").match(/^\*\*\* (?:Add|Update|Delete) File: .+$/gm) || []).map((l) => l.split(": ")[1]).join(", ");
     if (isMcp(c.name)) return c.name.replace(/^mcp__/, "").replace("__", ": ");
     return a.path || ".";
   }
@@ -177,10 +175,6 @@
     const count = (s) => (String(s || "").match(/\n/g) || []).length + (s ? 1 : 0);
     if (c.name === "edit_file") return editPairs(a).reduce((t, e) => [t[0] + count((e || {}).new_text), t[1] + count((e || {}).old_text)], [0, 0]);
     if (c.name === "write_file") return [count(a.content), 0];
-    if (c.name === "apply_patch") {
-      const lines = String(a.patch || "").split("\n").filter((l) => !l.startsWith("***"));
-      return [lines.filter((l) => l.startsWith("+")).length, lines.filter((l) => l.startsWith("-")).length];
-    }
     return null;
   }
 
@@ -239,8 +233,6 @@
     const body = el("div", "agent-row-body");
     if (c.name === "edit_file") editPairs(a).forEach((e) => body.append(el("pre", "agent-pre agent-old", (e && e.old_text) || ""), el("pre", "agent-pre agent-new", (e && e.new_text) || "")));
     else if (c.name === "write_file") body.append(el("pre", "agent-pre agent-new", a.content || ""));
-    else if (c.name === "apply_patch") body.append(patchView(a.patch));
-    else if (c.name === "edit_lines") body.append(editLinesView(a.edits));
     else if (c.name === "task") body.append(el("pre", "agent-pre", a.prompt || ""));
     else if (c.name === "run_script") body.append(el("pre", "agent-pre", a.code || ""));
     else if (c.name === "fan_out") body.append(el("pre", "agent-pre", (Array.isArray(a.jobs) ? a.jobs : []).map((j, n) => `${n + 1}. ${j.description || ""}\n${j.prompt || ""}`).join("\n\n") + (a.schema ? `\n\nschema: ${JSON.stringify(a.schema)}` : "")));
@@ -249,26 +241,6 @@
     row.append(body);
     g.list.append(row);
     refreshGroup();
-  }
-
-  function editLinesView(edits) {
-    const pre = el("pre", "agent-pre");
-    (Array.isArray(edits) ? edits : []).forEach((edit, i) => {
-      if (i) pre.append("\n");
-      pre.append(el("span", "agent-patch-file", `${edit.op} ${edit.anchor || ""}${edit.end ? `..${edit.end}` : ""}`));
-      if (edit.text) pre.append(`\n${edit.text}`);
-    });
-    return pre;
-  }
-
-  function patchView(text) {
-    const pre = el("pre", "agent-pre");
-    String(text || "").split("\n").forEach((line, i) => {
-      if (i) pre.append("\n");
-      const cls = line.startsWith("***") ? "agent-patch-file" : line.startsWith("+") ? "agent-patch-add" : line.startsWith("-") ? "agent-patch-del" : "";
-      pre.append(cls ? el("span", cls, line) : document.createTextNode(line));
-    });
-    return pre;
   }
 
   function render(event) {

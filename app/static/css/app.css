@@ -400,8 +400,6 @@
   .agent-row-body { display: grid; gap: 6px; padding: 0 12px 10px; }
   .agent-group .agent-pre { background: var(--surface-canvas); }
   .agent-old { opacity: .6; text-decoration: line-through; }
-  .agent-patch-file { font-weight: 650; }
-  .agent-patch-del { opacity: .55; }
   .agent-stats { display: inline-flex; flex: 0 0 auto; gap: 5px; font: 12px ui-monospace, Menlo, Consolas, monospace; }
   .agent-add { color: var(--text-primary); font-weight: 650; }
   .agent-del, .agent-fail { color: var(--text-quiet); }
