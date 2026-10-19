@@ -134,3 +134,49 @@ def register(api):
     s, _, _ = _session(tmp_path, source)
     assert s.command("/ping")["message"] == "ok"
     assert [(e["plugin"], e["name"], e["data"]) for e in s.events if e["type"] == "plugin"] == [("probe", "pong", {"n": 1})]
+
+
+def _plain_session(tmp_path, mode="bypass"):
+    home, root = tmp_path / "home", tmp_path / "ws"
+    home.mkdir(parents=True, exist_ok=True)
+    root.mkdir(parents=True, exist_ok=True)
+    mgr = AgentSessionManager(home / ".manga-agent", home=home, trust=context.TrustStore(None))
+    s = mgr.create(_Prov(), "k", "m", Workspace(root, sandbox.Policy("workspace-write", False)), mode,
+                   complete=lambda *a, **k: _turn("done"))
+    return s, home, root
+
+
+GREETER = 'def register(api):\n    api.command("greet", "Greet", lambda ctx, args: "hello " + args)\n'
+
+
+def test_plugin_write_asks_even_in_bypass_mode_and_a_refusal_writes_nothing(tmp_path):
+    s, home, _ = _plain_session(tmp_path)
+    asked = []
+    s._wait_for_decision = lambda call: asked.append(call["args"]["code"]) or {"decision": "deny"}
+    out, ok = s._run_call({"id": "chain-w1", "name": "plugin_write", "args": {"name": "greeter", "code": GREETER}})
+    assert asked == [GREETER] and not ok and "refused" in out
+    assert not (home / ".manga-agent" / "plugins" / "greeter.py").exists()
+
+
+def test_an_approved_plugin_is_trusted_loaded_and_reports_its_errors(tmp_path):
+    s, home, _ = _plain_session(tmp_path)
+    s._wait_for_decision = lambda call: {"decision": "allow"}
+    out, ok = s._run_call({"id": "chain-w2", "name": "plugin_write", "args": {"name": "greeter", "code": GREETER}})
+    assert ok and "State: loaded" in out and s.command("/greet you")["message"] == "hello you"
+    out, _ = s._run_call({"id": "chain-w3", "name": "plugin_write", "args": {"name": "broken", "code": "def register(api):\n    1 / 0\n"}})
+    assert "State: failed" in out and "ZeroDivisionError" in out
+    out, _ = s._run_call({"id": "chain-w4", "name": "plugin_write", "args": {"name": "greeter", "remove": True}})
+    assert "Removed" in out and "greet" not in s.registry.commands
+
+
+def test_writing_into_a_project_with_untrusted_plugins_does_not_trust_them(tmp_path):
+    s, _, root = _plain_session(tmp_path)
+    (root / ".agents" / "plugins").mkdir(parents=True)
+    (root / ".agents" / "plugins" / "other.py").write_text("def register(api):\n    api.command('evil', 'x', lambda c, a: 'evil')\n", encoding="utf-8")
+    s._wait_for_decision = lambda call: {"decision": "allow"}
+    out, _ = s._run_call({"id": "chain-w5", "name": "plugin_write", "args": {"name": "mine", "code": GREETER, "scope": "workspace"}})
+    assert "not loaded" in out and "evil" not in s.registry.commands and "greet" not in s.registry.commands
+    fresh, _, root2 = _plain_session(tmp_path / "fresh")
+    fresh._wait_for_decision = lambda call: {"decision": "allow"}
+    out, _ = fresh._run_call({"id": "chain-w6", "name": "plugin_write", "args": {"name": "mine", "code": GREETER, "scope": "workspace"}})
+    assert "State: loaded" in out and (root2 / ".agents" / "plugins" / "mine.py").is_file()

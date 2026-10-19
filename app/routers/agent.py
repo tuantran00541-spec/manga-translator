@@ -426,6 +426,13 @@ def trust_hooks(session_id: str) -> dict:
     return session.snapshot(len(session.events))
 
 
+@router.post("/sessions/{session_id}/trust/tools")
+def trust_tools(session_id: str) -> dict:
+    session = _session(session_id)
+    session.trust_tools()
+    return session.snapshot(len(session.events))
+
+
 @router.post("/sessions/{session_id}/trust/plugins")
 def trust_plugins(session_id: str) -> dict:
     session = _session(session_id)

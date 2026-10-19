@@ -411,7 +411,7 @@ SESSION_SPECS = {
         "so one call can chain many steps. code defines def <name>(param, ...) that returns the result; its signature becomes the tool's "
         "parameters and its docstring the description unless you give them. Pass args to run it now; keep: false runs it once now and drops it. "
         "Same name replaces it, empty code deletes it. kind: read makes it a looking tool that runs read-only without asking; "
-        "scope: workspace keeps it with the project instead of for you."),
+        "scope: workspace keeps it with the project instead of for you. A hook, command or model adapter for the harness itself is a plugin: tools.plugin_write."),
                "parameters": {"type": "object", "required": ["name", "code"], "properties": {
                    "name": {"type": "string", "description": "lower_case name, also the function's name."},
                    "description": {"type": "string", "description": "What it does, its arguments and what it returns."},
@@ -450,6 +450,15 @@ SESSION_SPECS = {
             "action": {"type": "string", "enum": ["show", "save", "pin", "restore"]}, "name": {"type": "string"}, "note": {"type": "string"},
             "path": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "diff": {"type": "boolean"},
             "why": {"type": "string"}}}},
+    "plugin_write": {"name": "plugin_write", "description": (
+        "Write or remove a harness plugin: a Python file with def register(api) that adds hooks (api.on), slash commands, prompt text, "
+        "a model adapter (api.provider) or a loop. It runs inside the harness, so the user is asked every time. For a tool, use create instead. "
+        "The result says whether it loaded, with the error if not."),
+                     "parameters": {"type": "object", "required": ["name"], "properties": {
+                         "name": {"type": "string", "description": "lower_case file name without .py."},
+                         "code": {"type": "string", "description": "The whole file; leave out with remove."},
+                         "scope": {"type": "string", "enum": ["user", "workspace"], "description": "user (default): ~/.manga-agent/plugins; workspace: .agents/plugins."},
+                         "remove": {"type": "boolean"}}}},
     "mcp_resource": {"name": "mcp_resource", "description": "List an MCP server's resources, or read one by its uri.",
                      "parameters": {"type": "object", "required": ["server"], "properties": {
                          "server": {"type": "string"}, "uri": {"type": "string", "description": "Leave out to list them."}}}},
@@ -760,6 +769,48 @@ class AgentSession:
             return "Dùng: /plugins hoặc /plugins reload"
         return self._plugins_report()
 
+    def _plugin_write(self, args: dict) -> str:
+        """Write a plugin the user just approved, trust exactly those bytes and load it, so the model sees whether it works."""
+        name = str(args.get("name") or "").strip()
+        if not registry.NAME_RE.match(name):
+            raise ToolError("name must be lower_case letters, digits and _, starting with a letter")
+        home_path = self.home if self.home is not None else Path.home()
+        scope = "workspace" if args.get("scope") == "workspace" else "user"
+        folder = self.workspace.root / ".agents" / "plugins" if scope == "workspace" else home_path / ".manga-agent" / "plugins"
+        path = folder / f"{name}.py"
+        # Only a project whose plugins were all trusted already stays trusted; one approval never vouches for files nobody looked at.
+        before = registry.plugin_sources(self.workspace.root, home_path)
+        was_trusted = (not any(s == "workspace" for s, _, _ in before)
+                       or self.trust.trusted(self.workspace.root, "plugins", registry.sources_digest(before)))
+        if args.get("remove"):
+            if not path.exists():
+                raise ToolError(f"no {scope} plugin {name}")
+            path.unlink()
+            done = f"Removed plugin {name}."
+        else:
+            code = str(args.get("code") or "")
+            try:
+                compile(code, str(path), "exec")
+            except SyntaxError as exc:
+                raise ToolError(f"Syntax error: {exc}") from exc
+            folder.mkdir(parents=True, exist_ok=True)
+            path.write_text(code, encoding="utf-8")
+            if scope == "user":
+                registry.trust_user_plugin(self.trust, home_path, path, code.encode("utf-8"))
+            done = f"Wrote plugin {name} ({path})."
+        if scope == "workspace" and was_trusted:
+            self.trust.allow(self.workspace.root, "plugins", registry.sources_digest(registry.plugin_sources(self.workspace.root, home_path)))
+        root = self._root()
+        root.registry = root._build_registry(home_path)
+        for child in root.children.values():
+            child.registry = root.registry
+        row = next((p for p in root.registry.plugins if p["name"] == name and p["scope"] == scope), None)
+        if row is None:
+            return done
+        if row["state"] == "untrusted":
+            return f"{done} It is not loaded: this project has other plugins the user has not trusted; they can trust them with /plugins."
+        return f"{done} State: {row['state']}" + (f"; error: {row['error']}" if row["error"] else "; it is active from the next step.")
+
     def _plugins_report(self) -> str:
         rows = ["Plugin:"] + [f"  {p['name']} ({p['scope']}): {p['state']}" + (f" — {p['error']}" if p["error"] else "") for p in self.registry.plugins]
         rows += [f"Tính năng đã tắt: {', '.join(sorted(self.disabled)) or 'không'}", f"Vòng lặp: {self.profile['loop']}",
@@ -794,6 +845,8 @@ class AgentSession:
                 "agents": [{"name": a.name, "description": a.description} for a in self.agents.values()],
                 "skills": [{"name": s.name, "description": s.description} for s in self.skills.values()],
                 "mcp": list(self.mcp_status.values()), "replaced": self.replaced, "hooks": self._hook_summary(),
+                "created": [{"name": n, "kind": c.get("kind", "exec"), "scope": c.get("scope", "user")} for n, c in self._root().created.items()],
+                "untrusted_tools": list(getattr(self._root(), "untrusted_tools", [])),
                 "commands": [{"name": k, "description": v} for k, v in self._builtin_commands().items()]
                 + [{"name": k, "description": d} for k, (d, _) in self.registry.commands.items()]
                 + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
@@ -1505,7 +1558,7 @@ class AgentSession:
         rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"], SESSION_SPECS["checkpoint"]]
         rows += [SESSION_SPECS["schedule_create"], SESSION_SPECS["schedule_list"], SESSION_SPECS["schedule_delete"],
                  SESSION_SPECS["todo_write"], SESSION_SPECS["ask_user"],
-                 SESSION_SPECS["memory"], task, spawn, fan, SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
+                 SESSION_SPECS["memory"], SESSION_SPECS["plugin_write"], task, spawn, fan, SESSION_SPECS["wait_agent"], SESSION_SPECS["send_input"], SESSION_SPECS["close_agent"]]
         rows += [t.spec for t in self.registry.tools.values()]
         if self.goal or self.profile["notes_context"]:
             rows += [SESSION_SPECS["context_notes"], SESSION_SPECS["new_context"]]
@@ -1588,7 +1641,7 @@ class AgentSession:
 
     def _always_ask(self, call: dict) -> bool:
         plugin = self.registry.tools.get(call["name"])
-        return bool(plugin and plugin.always_ask) or call["name"] == "memory" or self._typing_outside(call) or bool(
+        return bool(plugin and plugin.always_ask) or call["name"] in ("memory", "plugin_write") or self._typing_outside(call) or bool(
             call["name"] == "run_command" and call["args"].get("outside_sandbox") and self.workspace.policy.mode != "full-access")
 
     def _user_messages(self) -> list[str]:
@@ -2396,6 +2449,8 @@ class AgentSession:
             return f"Ran a one-off tool (not kept).\n{output}{self._note_one_off(name, kept, output)}"
         if call["name"] == "mcp_resource":
             return self._mcp_resource(args)
+        if call["name"] == "plugin_write":
+            return self._plugin_write(args)
         if call["name"] == "skill":
             found = self.skills.get(str(args.get("name") or ""))
             if found is None:

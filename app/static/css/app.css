@@ -341,6 +341,7 @@
   .agent-mcp-list li { padding-bottom: 6px; border-bottom: 1px solid var(--line-quiet); }
   .agent-mcp-list li:last-child { border-bottom: 0; }
   .agent-mcp-tools { grid-column: 1 / -1; }
+  .agent-plugin-code { max-height: 320px; overflow: auto; }
   .agent-mcp-tools summary { cursor: pointer; }
   .agent-mcp-tool { display: flex; gap: 6px; align-items: center; font-size: 12px; padding: 2px 0; overflow-wrap: anywhere; }
   .agent-mcp-state.ok { color: var(--text-primary); font-weight: 600; }

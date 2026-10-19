@@ -16,7 +16,7 @@ GROUPS = {
     "list_dir": "files", "read_file": "files", "search": "files", "glob": "files", "symbols": "files", "view_image": "files",
     "write_file": "edit", "edit_file": "edit", "replace_in_files": "edit", "move_file": "edit",
     "delete_file": "edit", "checkpoint": "files",
-    "run_command": "shell", "run_script": "shell", "job_output": "shell", "job_input": "shell", "job_stop": "shell", "web_fetch": "web", "web_search": "web", "web_download": "web", "skill": "skills", "mcp_resource": "mcp", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
+    "run_command": "shell", "run_script": "shell", "job_output": "shell", "job_input": "shell", "job_stop": "shell", "web_fetch": "web", "web_search": "web", "web_download": "web", "skill": "skills", "mcp_resource": "mcp", "plugin_write": "extensions", "todo_write": "todo", "memory": "memory", "ask_user": "ask_user",
     "task": "subagents", "fan_out": "subagents", "spawn_agent": "subagents", "wait_agent": "subagents", "send_input": "subagents", "close_agent": "subagents",
     "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal",
    

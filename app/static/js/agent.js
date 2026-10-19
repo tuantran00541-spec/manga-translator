@@ -6,7 +6,7 @@
     "": "Unreadable call",
     list_dir: "List", read_file: "Read", search: "Search", glob: "Find files", write_file: "Write", edit_file: "Edit",
     run_command: "Run", web_fetch: "Fetch", skill: "Skill", todo_write: "Plan",
-    task: "Helper", spawn_agent: "Spawn agent", wait_agent: "Wait for agents", send_input: "Message agent", close_agent: "Close agent", memory: "Memory", ask_user: "Ask you", exit_plan_mode: "Plan", goal_done: "Goal done",
+    plugin_write: "Write plugin", task: "Helper", spawn_agent: "Spawn agent", wait_agent: "Wait for agents", send_input: "Message agent", close_agent: "Close agent", memory: "Memory", ask_user: "Ask you", exit_plan_mode: "Plan", goal_done: "Goal done",
     symbols: "Symbols", web_search: "Web search", web_download: "Download", view_image: "View image", tool_search: "Find tools", run_script: "Script", fan_out: "Fan out",
     job_output: "Job output", job_input: "Type into job", job_stop: "Stop job", context_notes: "Notes", new_context: "New context",
     schedule_create: "Schedule", schedule_list: "Schedules", schedule_delete: "Cancel schedule",
@@ -151,6 +151,7 @@
     if (c.name === "wait_agent") return (a.ids || []).join(", ") || "all";
     if (c.name === "send_input") return `${a.id || ""}: ${String(a.message || "").slice(0, 60)}`;
     if (c.name === "close_agent") return a.id || "";
+    if (c.name === "plugin_write") return `${a.scope === "workspace" ? ".agents/plugins" : "~/.manga-agent/plugins"}/${a.name || ""}.py${a.remove ? " (xóa)" : ""}`;
     if (c.name === "skill") return a.name || "";
     if (c.name === "todo_write") return `${(a.items || []).length} items`;
     if (c.name === "ask_user") return a.question || "";
@@ -346,13 +347,21 @@
     const actions = el("div", "agent-approval-actions");
     const choices = [["allow", "Cho phép", "agent-btn agent-btn-primary", "Đã cho phép."]];
     if (c.remember) choices.push(["allow_always", `Luôn cho phép ${c.remember}`, "agent-btn", `Đã lưu luật: ${c.remember}`]);
-    choices.push(["allow_all", "Tự làm hết", "agent-btn", "Đã cho phép, từ giờ tự sửa và chạy."], ["deny", "Từ chối", "agent-btn", "Đã từ chối."]);
+    // A plugin asks every time, so "do it all" would promise something it cannot keep.
+    if (c.name !== "plugin_write") choices.push(["allow_all", "Tự làm hết", "agent-btn", "Đã cho phép, từ giờ tự sửa và chạy."]);
+    choices.push(["deny", "Từ chối", "agent-btn", "Đã từ chối."]);
     choices.forEach(([decision, label, cls, done]) => {
       actions.append(button(label, cls, () => decide(card, decision, note.value, done)));
     });
     actions.append(note);
     if (c.why === "untrusted") card.append(el("p", "agent-muted", "Agent vừa đọc nội dung từ web hoặc MCP, có thể chứa lệnh giả, nên hỏi lại trước khi hành động."));
-    card.append(title, actions);
+    card.append(title);
+    if (c.name === "plugin_write" && !c.args?.remove) {
+      // A plugin runs inside the harness with its full rights, so its whole code is shown before it is allowed.
+      card.append(el("p", "agent-muted", "Plugin chạy ngay trong harness với toàn quyền của nó (không qua sandbox). Đọc kỹ code trước khi cho phép."),
+        el("pre", "agent-pre agent-plugin-code", String(c.args?.code || "")));
+    }
+    card.append(actions);
     return card;
   }
 
@@ -397,7 +406,13 @@
       if (row.state === "untrusted" && !box.querySelector(".agent-plugin-trust")) line.append(button("Cho phép", "agent-btn agent-plugin-trust", () => trust("plugins")));
       box.append(line);
     });
-    if (plug.externals?.length) box.append(el("p", "agent-muted", `Agent ngoài: ${plug.externals.join(", ")} (luôn hỏi bạn trước)`));
+    const made = snap.created || [];
+    if (made.length) box.append(el("p", "agent-muted", `Tool đã tạo: ${made.map((t) => `${t.name}${t.kind === "read" ? " (chỉ đọc)" : ""}${t.scope === "workspace" ? " · dự án" : ""}`).join(", ")}. Gõ /tools.`));
+    if ((snap.untrusted_tools || []).length) {
+      const line = el("p", "agent-muted agent-info-row", `Tool của dự án chưa cho phép: ${snap.untrusted_tools.join(", ")}`);
+      line.append(button("Cho phép", "agent-btn", () => trust("tools")));
+      box.append(line);
+    }
     if (snap.disabled?.length) box.append(el("p", "agent-muted", `Đã tắt: ${snap.disabled.join(", ")}`));
     const hooks = snap.hooks || {};
     if (hooks.user || hooks.workspace) {
