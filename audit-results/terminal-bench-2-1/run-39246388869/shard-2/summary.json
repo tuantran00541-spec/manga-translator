@@ -1,0 +1,297 @@
+{
+ "passed": 9,
+ "trials": 29,
+ "rate": 0.31,
+ "rows": [
+  {
+   "trial": "break-filter-js-from-html__ozU7a2y",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    203055,
+    0,
+    8263
+   ]
+  },
+  {
+   "trial": "build-pov-ray__HQvKK9D",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    376922,
+    0,
+    5985
+   ]
+  },
+  {
+   "trial": "chess-best-move__RKhayRL",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "code-from-image__QoLPam4",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    12826,
+    0,
+    334
+   ]
+  },
+  {
+   "trial": "constraints-scheduling__7PUWgKT",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    34884,
+    0,
+    3099
+   ]
+  },
+  {
+   "trial": "custom-memory-heap-crash__tpvAnTg",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    302372,
+    0,
+    20742
+   ]
+  },
+  {
+   "trial": "dna-assembly__dS8rmeA",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "extract-moves-from-video__sf2MELQ",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    311494,
+    0,
+    7415
+   ]
+  },
+  {
+   "trial": "filter-js-from-html__H72bFT3",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    79947,
+    0,
+    20039
+   ]
+  },
+  {
+   "trial": "fix-git__P6Z4rkY",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    78703,
+    0,
+    1699
+   ]
+  },
+  {
+   "trial": "git-leak-recovery__qbcaYHz",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    34736,
+    0,
+    1351
+   ]
+  },
+  {
+   "trial": "headless-terminal__HE2ZoAc",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    36592,
+    0,
+    3816
+   ]
+  },
+  {
+   "trial": "kv-store-grpc__CtqMeB4",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    37692,
+    0,
+    1589
+   ]
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__NSnsNUw",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    82269,
+    0,
+    2884
+   ]
+  },
+  {
+   "trial": "make-doom-for-mips__aFXzXGm",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__YPH2StV",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    140549,
+    0,
+    4143
+   ]
+  },
+  {
+   "trial": "mteb-leaderboard__NWVjocv",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    640734,
+    0,
+    10332
+   ]
+  },
+  {
+   "trial": "nginx-request-logging__xtcFH9f",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    36026,
+    0,
+    4874
+   ]
+  },
+  {
+   "trial": "password-recovery__GuLbBxf",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "polyglot-c-py__DUMVbZT",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    69082,
+    0,
+    4511
+   ]
+  },
+  {
+   "trial": "protein-assembly__qCKYYxy",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    61203,
+    0,
+    1318
+   ]
+  },
+  {
+   "trial": "pytorch-model-cli__FxcpqqT",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "qemu-startup__nu73aeM",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    14632,
+    0,
+    1717
+   ]
+  },
+  {
+   "trial": "regex-chess__yGQYrRc",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    18700,
+    0,
+    12459
+   ]
+  },
+  {
+   "trial": "rstan-to-pystan__siqshSK",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    98699,
+    0,
+    3230
+   ]
+  },
+  {
+   "trial": "schemelike-metacircular-eval__Vtd9GLy",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    182912,
+    0,
+    1469
+   ]
+  },
+  {
+   "trial": "sqlite-with-gcov__BGhxZmf",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    68882,
+    0,
+    1523
+   ]
+  },
+  {
+   "trial": "train-fasttext__MJAzWKN",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    275926,
+    0,
+    4824
+   ]
+  },
+  {
+   "trial": "vulnerable-secret__PNHy9F4",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    50933,
+    0,
+    1130
+   ]
+  }
+ ]
+}
