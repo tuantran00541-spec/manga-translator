@@ -125,7 +125,7 @@ jobs:
           uv tool install harbor 2>&1 | tail -2
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           git clone -q --depth 1 https://github.com/harbor-framework/terminal-bench-2-1 /tmp/tb21
-          echo "tasks: $(ls /tmp/tb21/tasks | wc -l)"
+          echo "tasks: $(find /tmp/tb21/tasks -mindepth 1 -maxdepth 1 -type d | wc -l)"
 
       - name: Start the key relay as another user
         env:
@@ -194,7 +194,7 @@ jobs:
           export MANGA_AGENT_UV="$(readlink -f "$(command -v uv)")"
           TASKS="${{ needs.config.outputs.tasks }}"
           # With no task list, each shard takes every Nth task of the sorted set so hard and easy ones spread evenly.
-          [ -z "$TASKS" ] && TASKS=$(ls /tmp/tb21/tasks | sort | awk -v n="${{ needs.config.outputs.shard_total }}" -v k="${{ matrix.shard }}" '(NR-1)%n==k {printf "-i %s ", $0}')
+          [ -z "$TASKS" ] && TASKS=$(find /tmp/tb21/tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | awk -v n="${{ needs.config.outputs.shard_total }}" -v k="${{ matrix.shard }}" '(NR-1)%n==k {printf "-i %s ", $0}')
           echo "tasks in this shard: $(echo "$TASKS" | grep -o -- '-i ' | wc -l)"
           # Large task images fill the disk, so images no container uses go once space runs low.
           (while sleep 120; do [ "$(df --output=avail -BG / | tail -1 | tr -dc 0-9)" -lt 25 ] && docker image prune -af >/dev/null; done) &
