@@ -491,16 +491,22 @@ class AIModeRunner:
         by_page: dict[int, list] = {}
         for crop in flagged:
             by_page.setdefault(crop.page_index, []).append(crop.rect)
-        for page_index, rects in sorted(by_page.items()):
-            try:
-                if self._scan_logos.get(page_index):
-                    await asyncio.to_thread(self._free_logos_with_text, page_index, rects)
-                await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
-                self.report["repainted_regions"] += len(rects)
-                _append(self.report["repaint_pages"], page_index)
-                await self._verify_repaint(page_index, rects)
-            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
-                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+        # Slices are repainted side by side, as each worker's inpainting uses one core.
+        workers = asyncio.Semaphore(max(1, int(self.settings.workers or 1)))
+
+        async def repaint(page_index: int, rects: list) -> None:
+            async with workers:
+                try:
+                    if self._scan_logos.get(page_index):
+                        await asyncio.to_thread(self._free_logos_with_text, page_index, rects)
+                    await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
+                    self.report["repainted_regions"] += len(rects)
+                    _append(self.report["repaint_pages"], page_index)
+                    await self._verify_repaint(page_index, rects)
+                except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
+                    _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+
+        await asyncio.gather(*(repaint(page_index, rects) for page_index, rects in sorted(by_page.items())))
 
     def _still_reading(self, page_index: int, rects: list) -> list:
         """The repainted rectangles where the letter model still reads text on the clean slice."""
