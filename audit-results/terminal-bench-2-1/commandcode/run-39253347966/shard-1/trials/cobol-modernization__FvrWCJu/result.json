@@ -1,0 +1,125 @@
+{
+    "id": "b1649d64-a40a-4d4c-aa7b-66b5312fa403",
+    "task_name": "terminal-bench/cobol-modernization",
+    "trial_name": "cobol-modernization__FvrWCJu",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-19__12-39-17/cobol-modernization__FvrWCJu",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/cobol-modernization"
+    },
+    "source": "tasks",
+    "task_checksum": "1d068f63a7d36ec098b620a8b2062419c1a9a2eff6458bc3ff56eb325ebf5903",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/cobol-modernization",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "cobol-modernization__FvrWCJu",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-19__12-39-17",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "manga_agent:MangaAgent",
+            "model_name": "xiaomi/mimo-v2.6-pro",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "40d687b1-84da-4c97-bbdc-760a70d4a514",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "chaos",
+        "version": "86b2ed4581b1d60afb7ddf2cbf41242bd3558006",
+        "model_info": {
+            "name": "mimo-v2.6-pro",
+            "provider": "xiaomi"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 331831,
+        "n_cache_tokens": 221184,
+        "n_output_tokens": 38176,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": "done",
+            "stats": {
+                "model_s": 786.7326290607452,
+                "tool_s": 27.971125602722168
+            }
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-19T12:39:20.987136Z",
+    "finished_at": "2026-10-19T12:53:33.638969Z",
+    "environment_setup": {
+        "started_at": "2026-10-19T12:39:21.228116Z",
+        "finished_at": "2026-10-19T12:39:36.490698Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-19T12:39:36.490723Z",
+        "finished_at": "2026-10-19T12:39:39.739922Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-19T12:39:39.739997Z",
+        "finished_at": "2026-10-19T12:53:16.525079Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-19T12:53:16.913617Z",
+        "finished_at": "2026-10-19T12:53:22.215979Z"
+    },
+    "step_results": null
+}
