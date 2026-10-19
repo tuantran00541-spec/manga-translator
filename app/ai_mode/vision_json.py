@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 import requests
 
-from app.ai_providers import CLOUD_PROVIDER_ID, AIProvider
+from app.ai_providers import CLOUD_PROVIDER_ID, AIProvider, auth_headers
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.translation.cost import usage_cost_usd
@@ -104,7 +104,7 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
     try:
         response = requests.post(
             url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
+            headers={**auth_headers(provider, api_key), "Content-Type": "application/json",
                      **stage_headers(provider, stage)},
             json=payload,
             timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),

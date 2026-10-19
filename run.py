@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -49,9 +50,9 @@ def _health(url: str) -> dict | None:
 
 
 def _is_ours(url: str) -> bool:
-    """True when this app answers at ``url``, not some other program on the port."""
+    """True when this app answers at ``url``, even degraded by missing models, not some other program on the port."""
     body = _health(url)
-    return bool(body) and body.get("status") == "ok" and "models_missing" in body
+    return bool(body) and body.get("status") in ("ok", "degraded") and "models_missing" in body
 
 
 def _port_free(port: int) -> bool:
@@ -112,6 +113,39 @@ def _run_installer(source: Path, info: dict) -> None:
     subprocess.run(command, check=True, env=env)
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _update_pin(info: dict) -> str | None:
+    """Pinned SHA-256 for the update ZIP: MANGA_UPDATE_SHA256 wins, then the install marker's update_sha256."""
+    for raw in (os.environ.get("MANGA_UPDATE_SHA256"), info.get("update_sha256")):
+        pin = str(raw or "").strip().lower()
+        if not pin:
+            continue
+        if len(pin) != 64 or any(c not in "0123456789abcdef" for c in pin):
+            raise SystemExit(f"Mã pin SHA-256 không hợp lệ ({str(raw)[:16]}…); phải là 64 ký tự hex.")
+        return pin
+    return None
+
+
+def _verify_archive(archive: Path, ref: str, info: dict) -> None:
+    """Refuse the update ZIP when a pinned SHA-256 is set and does not match."""
+    pin = _update_pin(info)
+    if pin is None:
+        return
+    digest = _sha256_file(archive)
+    if digest != pin:
+        raise SystemExit(
+            f"Không cập nhật: SHA-256 của bản tải về ({digest[:16]}…) không khớp mã pin ({pin[:16]}…). "
+            "File có thể đã bị thay đổi ở nguồn hoặc trên đường truyền; từ chối cài đặt."
+        )
+
+
 def _update() -> None:
     """Get the latest code and rerun the installer, which keeps models, chapters and the environment."""
     if _running_port() is not None:
@@ -126,6 +160,7 @@ def _update() -> None:
         archive = Path(work) / "source.zip"
         print(f"Đang tải bản mới ({ref})…", flush=True)
         urllib.request.urlretrieve(f"https://codeload.github.com/{REPO}/zip/refs/heads/{ref}", archive)
+        _verify_archive(archive, ref, info)
         shutil.unpack_archive(archive, work)
         source = next(p for p in Path(work).iterdir() if p.is_dir())
         _run_installer(source, info)

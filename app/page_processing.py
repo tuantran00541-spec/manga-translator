@@ -68,6 +68,7 @@ class PageProcessingMixin:
         stitch_core: dict | None = None,
         supplemental_detections: list[BubbleBox] | None = None,
         seam_context_unavailable: bool = False,
+        screen=None,
     ) -> dict:
         started_at = time.perf_counter()
         read_started_at = started_at
@@ -107,6 +108,9 @@ class PageProcessingMixin:
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,
             ))
         detect_ms = (time.perf_counter() - detect_started_at) * 1000.0
+        screen_started_at = time.perf_counter()
+        art = screen(image, detected) if screen is not None and detected else set()
+        screen_ms = (time.perf_counter() - screen_started_at) * 1000.0
 
         existing_boxes = copy.deepcopy(existing_boxes or [])
         detector_records = [
@@ -121,6 +125,10 @@ class PageProcessingMixin:
             }
             for b in detected
         ]
+        for index in art:
+            # Art the detector took for text stays as drawn and out of translation; the editor can restore it.
+            detector_records[index]["removed"] = True
+            detector_records[index]["screened_art"] = True
         assign_stable_detector_box_ids(detector_records, existing_boxes)
         old_by_id = {str(b.get("id")): b for b in existing_boxes if isinstance(b, dict) and b.get("id")}
 
@@ -315,6 +323,7 @@ class PageProcessingMixin:
             "timing_ms": {
                 "read": round(read_ms, 3),
                 "detect": round(detect_ms, 3),
+                "screen": round(screen_ms, 3),
                 "auto_inpaint": round(auto_inpaint_ms, 3),
                 "manual_inpaint": round(manual_inpaint_ms, 3),
                 "write": round(write_ms, 3),
@@ -327,6 +336,7 @@ class PageProcessingMixin:
                 "review_only": len(unverified_regions),
                 "deferred": len(deferred_regions),
                 "second_pass_boxes": second_pass_boxes,
+                "screened_art": len(art),
             },
             "auto_inpaint": auto_inpaint_metrics,
             "manual_inpaint": manual_inpaint_metrics,

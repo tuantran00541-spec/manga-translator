@@ -179,7 +179,7 @@
     const customSummary = el("summary", "ai-provider-summary");
     customSummary.append(el("span", "ai-provider-name", "+ Thêm provider tùy chỉnh"));
     const customBody = el("div", "ai-provider-body");
-    const customNote = el("p", "ai-provider-note", "OpenAI-compatible, API root HTTPS, model nhận ảnh.");
+    const customNote = el("p", "ai-provider-note", "OpenAI-compatible, model nhận ảnh. Dán host, link endpoint hay base URL đều được; app tự tìm đúng đường dẫn.");
     const input = (placeholder, label, type = "text", className = "ui-input") => {
       const node = el("input", className);
       node.type = type;
@@ -190,7 +190,7 @@
     const customLabel = input("Tên hiển thị", "Tên provider tùy chỉnh");
     const customId = input("Mã, ví dụ local-vision", "Mã provider tùy chỉnh");
     customId.pattern = "[a-z0-9][a-z0-9_-]{0,63}";
-    const customBase = input("https://api.example.com/v1", "API root HTTPS của provider", "url");
+    const customBase = input("Base URL, ví dụ api.groq.com", "Base URL của provider");
     const customModel = input("Model vision", "Model vision của provider tùy chỉnh");
     const customKey = input("API key", "API key của provider tùy chỉnh", "password", "api-key-input");
     customKey.autocomplete = "new-password";
@@ -228,7 +228,8 @@
         localStorage.setItem(`manga_ai_model_${id}`, customModel.value.trim());
         localStorage.setItem(`manga_translation_vision_model_${id}`, customModel.value.trim());
         customKey.value = "";
-        window.showToast?.(`Đã lưu provider ${customLabel.value.trim()}.`, "success");
+        if (data.api_base) customBase.value = data.api_base;
+        window.showToast?.(`Đã lưu provider ${customLabel.value.trim()} (${data.api_base || ""}).`, "success");
         await refresh();
       } catch (err) {
         window.showToast?.("Không thể lưu provider: " + err.message, "error");

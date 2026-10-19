@@ -303,62 +303,13 @@ def render_text_in_box(
         font = get_font_object(font_path_str, actual_size)
         lines = _wrap_text(draw, text, font, box_w, balance=True)
     else:
-        # Size limits are set for an 800 px wide page and grow with wider pages.
-        scale = max(1.0, image.size[0] / REFERENCE_PAGE_WIDTH)
-        readable, maximum_size = int(RENDER_MIN_READABLE_FONT_SIZE * scale), int(MAX_FONT_SIZE * scale)
-        enlarged_min = int(ENLARGED_MIN_FONT_SIZE * scale)
-        # Auto size never letters bigger than the source did.
-        if enlarge:
-            # Text flagged too small to read grows its area and may exceed the source size.
-            grow_x, grow_y = int(round(raw_w * ENLARGE_GROW_RATIO)), int(round(raw_h * ENLARGE_GROW_RATIO))
-            image_w, image_h = image.size
-            x1, y1 = max(0, x1 - grow_x), max(0, y1 - grow_y)
-            x2, y2 = min(image_w, x2 + grow_x), min(image_h, y2 + grow_y)
-            raw_w, raw_h = x2 - x1, y2 - y1
-            pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
-            box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
-        elif source_cap_px:
-            from app.render.source_size import SIZE_SLACK, matching_font_px
-            # A misread source size must not shrink the text far below what the box holds.
-            box_fit = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-                                minimum_size=readable, maximum_size=maximum_size)[0]
-            maximum_size = max(readable, int(SOURCE_FLOOR_RATIO * box_fit),
-                               int(matching_font_px(font_path_str, int(source_cap_px)) * SIZE_SLACK))
-        actual_size, lines, fits_readably = _fit_text(
-            draw,
-            text,
-            box_w,
-            box_h,
-            font_path_str,
-            stroke_w=stroke_w,
-            minimum_size=enlarged_min if enlarge else readable,
-            maximum_size=maximum_size,
-        )
-        if enlarge and not fits_readably:
-            actual_size, lines, fits_readably = _fit_text(
-                draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-                minimum_size=readable, maximum_size=maximum_size,
-            )
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
-        if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
-            grow_x = int(round(raw_w * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
-            grow_y = int(round(raw_h * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
-            image_w, image_h = image.size
-            x1, y1 = max(0, x1 - grow_x), max(0, y1 - grow_y)
-            x2, y2 = min(image_w, x2 + grow_x), min(image_h, y2 + grow_y)
-            raw_w, raw_h = x2 - x1, y2 - y1
-            pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
-            box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
-            actual_size, lines, fits_readably = _fit_text(
-                draw,
-                text,
-                box_w,
-                box_h,
-                font_path_str,
-                stroke_w=stroke_w,
-                minimum_size=readable,
-                maximum_size=maximum_size,
-            )
+        actual_size, lines, fits_readably, (x1, y1, x2, y2) = auto_fit(
+            draw, text, (x1, y1, x2, y2), image.size, font_path_str, padding=padding, stroke_w=stroke_w,
+            source_cap_px=source_cap_px, enlarge=enlarge, opaque_caption=opaque_caption)
+        raw_w, raw_h = x2 - x1, y2 - y1
+        pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+        box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
         if not fits_readably:
             raise ValueError(
                 "Translation does not fit at the minimum readable font size; "
@@ -416,6 +367,60 @@ def render_text_in_box(
             )
 
     return image
+
+
+def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: int = RENDER_DEFAULT_PADDING,
+             stroke_w: int = RENDER_AUTO_STROKE_WIDTH, source_cap_px: int | None = None, enlarge: bool = False,
+             opaque_caption: bool = False):
+    """The auto font size, wrapped lines, whether it fits readably and the box it was fitted in, as the renderer letters it."""
+    x1, y1, x2, y2 = (int(v) for v in box)
+    raw_w, raw_h = x2 - x1, y2 - y1
+    pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+    box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+    # Size limits are set for an 800 px wide page and grow with wider pages.
+    scale = max(1.0, image_size[0] / REFERENCE_PAGE_WIDTH)
+    readable, maximum_size = int(RENDER_MIN_READABLE_FONT_SIZE * scale), int(MAX_FONT_SIZE * scale)
+    enlarged_min = int(ENLARGED_MIN_FONT_SIZE * scale)
+    # Auto size never letters bigger than the source did.
+    if enlarge:
+        # Text flagged too small to read grows its area and may exceed the source size.
+        grow_x, grow_y = int(round(raw_w * ENLARGE_GROW_RATIO)), int(round(raw_h * ENLARGE_GROW_RATIO))
+        image_w, image_h = image_size
+        x1, y1 = max(0, x1 - grow_x), max(0, y1 - grow_y)
+        x2, y2 = min(image_w, x2 + grow_x), min(image_h, y2 + grow_y)
+        raw_w, raw_h = x2 - x1, y2 - y1
+        pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+        box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+    elif source_cap_px:
+        from app.render.source_size import SIZE_SLACK, matching_font_px
+        # A misread source size must not shrink the text far below what the box holds.
+        box_fit = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
+                            minimum_size=readable, maximum_size=maximum_size)[0]
+        maximum_size = max(readable, int(SOURCE_FLOOR_RATIO * box_fit),
+                           int(matching_font_px(font_path_str, int(source_cap_px)) * SIZE_SLACK))
+    actual_size, lines, fits_readably = _fit_text(
+        draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
+        minimum_size=enlarged_min if enlarge else readable, maximum_size=maximum_size,
+    )
+    if enlarge and not fits_readably:
+        actual_size, lines, fits_readably = _fit_text(
+            draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
+            minimum_size=readable, maximum_size=maximum_size,
+        )
+    if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
+        grow_x = int(round(raw_w * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
+        grow_y = int(round(raw_h * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
+        image_w, image_h = image_size
+        x1, y1 = max(0, x1 - grow_x), max(0, y1 - grow_y)
+        x2, y2 = min(image_w, x2 + grow_x), min(image_h, y2 + grow_y)
+        raw_w, raw_h = x2 - x1, y2 - y1
+        pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+        box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+        actual_size, lines, fits_readably = _fit_text(
+            draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
+            minimum_size=readable, maximum_size=maximum_size,
+        )
+    return actual_size, lines, fits_readably, (x1, y1, x2, y2)
 
 
 ENLARGE_GROW_RATIO = 0.25  # each side of a region flagged enlarge grows by this share

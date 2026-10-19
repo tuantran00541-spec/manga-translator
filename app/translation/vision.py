@@ -10,7 +10,7 @@ import requests
 
 from app.ai_mode.vision_json import stage_headers
 from app.box_format import scaled_box
-from app.ai_providers import AIProvider
+from app.ai_providers import AIProvider, auth_headers
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
@@ -156,6 +156,11 @@ _ENGLISH_WORDS = frozenset(
     "the and with you your to of is are was were its it's this that for in on my me we what i".split())
 
 
+def drawn_in_art(source: str) -> bool:
+    """True for lettering in Chinese, Japanese or Korean script, which in a translated chapter the artist drew."""
+    return bool(_FOREIGN_SCRIPT.search(source or ""))
+
+
 def _untranslated_english(text: str) -> bool:
     """True for a line left in English: plain ASCII with at least two words, one of them an English function word."""
     words = [word.strip(".,!?;:\"'()-—…").lower() for word in text.split()]
@@ -163,10 +168,24 @@ def _untranslated_english(text: str) -> bool:
     return text.isascii() and len(words) >= 2 and any(word in _ENGLISH_WORDS for word in words)
 
 
+# Common Vietnamese words written without their diacritics.
+_BARE_VIETNAMESE = frozenset(
+    "khong mot nguoi cua dang duoc nhung chung toi nay that roi cung minh phai trong nhu thanh dieu ngay".split())
+
+
+def _missing_diacritics(text: str) -> bool:
+    """True when any line is Vietnamese written in plain ASCII, which readers cannot accept."""
+    for line in text.splitlines():
+        words = [word.strip(".,!?;:\"'()-—…").lower() for word in line.split()]
+        if line.isascii() and sum(word in _BARE_VIETNAMESE for word in words) >= 2:
+            return True
+    return False
+
+
 def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[VisionTranslationResult, dict]:
-    """Treat CJK or untranslated English lines as unanswered so they are retried, and keep them out of memory."""
+    """Treat CJK, untranslated English or diacritic-less lines as unanswered so they are retried, and keep them out of memory."""
     foreign = {key for key, value in result.translations.items()
-               if _FOREIGN_SCRIPT.search(value) or _untranslated_english(value)}
+               if _FOREIGN_SCRIPT.search(value) or _untranslated_english(value) or _missing_diacritics(value)}
     data = dict(data)
     if isinstance(data.get("translations"), list):
         data["translations"] = [entry for entry in data["translations"]
@@ -320,7 +339,7 @@ class VisionPageTranslator:
         try:
             response = requests.post(
                 url,
-                headers={"Authorization": f"Bearer {api_key.strip()}", "Content-Type": "application/json",
+                headers={**auth_headers(self.provider, api_key), "Content-Type": "application/json",
                          **stage_headers(self.provider, "translate")},
                 json=payload,
                 timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),

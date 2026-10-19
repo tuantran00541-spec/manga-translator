@@ -8,13 +8,8 @@ import time
 
 import onnxruntime as ort
 
-from app.parameters import (
-    ORT_HIGH_CPU_THRESHOLD,
-    ORT_HIGH_CPU_THREADS,
-    ORT_INTER_OP_THREADS,
-    ORT_MEDIUM_CPU_THRESHOLD,
-    ORT_MEDIUM_CPU_THREADS,
-)
+from app.parameters import ORT_INTER_OP_THREADS
+from app.runtime_responsiveness import recommended_ort_intra_threads
 
 
 _THREAD_ENV = "MANGA_ORT_INTRA_OP_THREADS"
@@ -44,12 +39,7 @@ def _cpu_count() -> int:
 
 
 def _default_intra_op_threads() -> int:
-    cpu = _cpu_count()
-    if cpu >= ORT_HIGH_CPU_THRESHOLD:
-        return ORT_HIGH_CPU_THREADS
-    if cpu >= ORT_MEDIUM_CPU_THRESHOLD:
-        return ORT_MEDIUM_CPU_THREADS
-    return 1
+    return recommended_ort_intra_threads(_cpu_count())
 
 
 def _configured_intra_op_threads() -> int:

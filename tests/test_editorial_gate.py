@@ -273,3 +273,11 @@ def test_final_review_is_bound_to_render_revision_and_only_blocks_export_stage()
         manifest, require_final_approval=True
     )
     assert "final_review_stale" in _kinds(preflight)
+
+
+def test_a_blank_the_reviewer_marked_non_story_does_not_block_export():
+    box = _root_box(cleanup_disposition="manual_cleaned", cleanup_reviewed=True)
+    blank = _object(ocr_text="", translation="", editorial_disposition="non_story", editorial_reviewed=True)
+    assert "story_object_missing_ocr" not in _kinds(editorial_preflight(_manifest(box, [blank])))
+    unreviewed = _object(ocr_text="", translation="")
+    assert "story_object_missing_ocr" in _kinds(editorial_preflight(_manifest(box, [unreviewed])))

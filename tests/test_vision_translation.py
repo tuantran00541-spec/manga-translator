@@ -332,6 +332,24 @@ def test_english_left_as_the_translation_is_treated_as_untranslated():
     assert not _untranslated_english("Level của ngươi là bao nhiêu?")
 
 
+def test_vietnamese_written_without_diacritics_is_treated_as_untranslated():
+    from app.translation.vision import _missing_diacritics
+
+    assert _missing_diacritics("Hậu quả do năng lực\ndang tro thanh mot van de xoi hoi moi")
+    assert _missing_diacritics("Toi khong the lam nhu vay")
+    assert not _missing_diacritics("Bọn tôi không thể!") and not _missing_diacritics("Level Up! Dungeon Break")
+
+
+def test_recent_lines_keep_the_source_so_a_sentence_can_run_into_the_next_slice():
+    from app.translation.context import ChapterMemory
+
+    memory = ChapterMemory("")
+    memory.update(3, {"translations": [{"id": "a", "source": "THEY CONQUERED THE WORLD IN THE"}], "speakers": {"a": "narration"}},
+                  {"a": "Họ chinh phục thế giới"}, ["a"])
+    assert memory.snapshot()["recent_lines"] == [
+        {"slice": 3, "speaker": "narration", "source": "THEY CONQUERED THE WORLD IN THE", "text": "Họ chinh phục thế giới"}]
+
+
 def test_the_font_follows_role_and_container_not_the_model():
     from app.render.font_guide import font_for
 
@@ -351,13 +369,57 @@ def test_sound_effect_left_as_art_returns_its_region_for_restoring(saved_chapter
     monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
     monkeypatch.setattr(
         "app.translation.vision.VisionPageTranslator.translate_page",
-        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None, roles={"obj_1": "sfx"}),
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None, roles={"obj_1": "sfx"},
+                                                       sources={"obj_1": "쾅"}),
     )
     request = translation_router.TranslateVisionPageRequest(
         chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="en", target_lang="vi",
     )
     info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
     assert info["blank_ids"] == ["obj_1"] and info["art_regions"] == [region]
+
+
+def test_a_watermark_the_model_calls_a_sound_effect_stays_erased(saved_chapter, monkeypatch):
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None, roles={"obj_1": "sfx"},
+                                                       sources={"obj_1": "ASURASCANS.COM"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="ko", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["blank_ids"] == ["obj_1"] and info["art_regions"] == []
+
+
+def test_a_sound_effect_the_artist_drew_stays_as_art_even_when_the_model_translates_it(saved_chapter, monkeypatch):
+    _style, region, _output = saved_chapter
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": "Cộp cộp"}, self.model, {}, None,
+                                                       roles={"obj_1": "sfx"}, sources={"obj_1": "저벅"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="ko", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["translated"] == 0 and info["blank_ids"] == ["obj_1"] and info["art_regions"] == [region]
+
+
+def test_a_sound_effect_lettered_in_latin_script_is_translated(saved_chapter, monkeypatch):
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": "Rầm!"}, self.model, {}, None,
+                                                       roles={"obj_1": "sfx"}, sources={"obj_1": "DUANG!"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="ko", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["translated"] == 1 and info["art_regions"] == []
 
 
 def test_a_translated_page_letters_each_kind_of_text_in_its_one_font(tmp_path, monkeypatch):

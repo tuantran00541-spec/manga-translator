@@ -11,6 +11,7 @@ from PIL import Image
 
 from app.config import OUTPUT_DIR
 from app.editorial_gate import editorial_preflight
+from app.export_pages import FORMATS, ExportOptions, finish_page
 from app.manifest_utils import atomic_replace, get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.routers.image import _current_rendered_path, _fallback_page_path
 from app.routers.render_commit import render_page
@@ -448,21 +449,27 @@ def render_chapter(chapter_id: str, force: bool = False) -> dict:
     "/export/{chapter_id}.zip",
     responses={409: {"description": "At least one rendered page is stale or unavailable"}},
 )
-def export_chapter(chapter_id: str, force: bool = False):
+def export_chapter(chapter_id: str, force: bool = False, format: str = "png", quality: int = 90, width: int = 0,
+                   split: int = 0, prefix: str = "page_", archive: str = "zip"):
     validate_chapter_id(chapter_id)
-    final_archive = write_chapter_archive(chapter_id, force)
+    try:
+        options = ExportOptions.parse(format, quality, width, split, prefix, archive)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    final_archive = write_chapter_archive(chapter_id, force, options)
     return FileResponse(
         final_archive,
-        filename=f"manga-translator-{chapter_id}.zip",
-        media_type="application/zip",
+        filename=f"manga-translator-{chapter_id}.{options.archive}",
+        media_type="application/vnd.comicbook+zip" if options.archive == "cbz" else "application/zip",
     )
 
 
-def write_chapter_archive(chapter_id: str, force: bool = False) -> Path:
+def write_chapter_archive(chapter_id: str, force: bool = False, options: ExportOptions = ExportOptions()) -> Path:
     """Stitch every current page into a ZIP and return its path."""
     out_dir = OUTPUT_DIR / chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    final_archive = out_dir / f"chapter_{chapter_id}.zip"
+    final_archive = out_dir / (f"chapter_{chapter_id}.zip" if options.default
+                               else f"chapter_{chapter_id}.{options.key}.{options.archive}")
     tmp_archive = out_dir / f"chapter_{chapter_id}.export.{uuid.uuid4().hex[:12]}.tmp"
 
     snapshot = _snapshot_export_inputs(chapter_id, force)
@@ -474,6 +481,7 @@ def write_chapter_archive(chapter_id: str, force: bool = False) -> Path:
 
     try:
         with zipfile.ZipFile(tmp_archive, "w", compression=zipfile.ZIP_STORED) as archive:
+            written = 0
             for output_index, source_page in enumerate(sorted(groups), start=1):
                 items = sorted(
                     groups[source_page],
@@ -489,7 +497,14 @@ def write_chapter_archive(chapter_id: str, force: bool = False) -> Path:
                         page_tmp,
                         [item["core_range"] for item in items],
                     )
-                    archive.write(page_tmp, arcname=f"page_{output_index:03d}.png")
+                    if options.default:
+                        archive.write(page_tmp, arcname=f"page_{output_index:03d}.png")
+                    else:
+                        with Image.open(page_tmp) as stitched:
+                            files = finish_page(stitched, options)
+                        for data in files:
+                            written += 1
+                            archive.writestr(f"{options.prefix}{written:03d}.{FORMATS[options.fmt][1]}", data)
                 finally:
                     if page_tmp.exists():
                         try:

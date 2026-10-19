@@ -299,11 +299,79 @@ async function ensureAutoTextObjects(pageIndex) {
 }
 window.ensureAutoTextObjects = ensureAutoTextObjects;
 
+const EXPORT_OPTIONS_KEY = "manga_export_options";
+const EXPORT_FIELDS = [
+  ["format", "Định dạng", [["png", "PNG"], ["jpg", "JPG"], ["webp", "WebP"]]],
+  ["quality", "Chất lượng", [["90", "90"], ["95", "95"], ["85", "85"], ["80", "80"]]],
+  ["width", "Bề rộng", [["0", "Giữ nguyên"], ["1200", "1200 px"], ["1000", "1000 px"], ["900", "900 px"], ["800", "800 px"], ["720", "720 px"]]],
+  ["split", "Cắt trang cao tối đa", [["0", "Không cắt"], ["2000", "2000 px"], ["3000", "3000 px"], ["5000", "5000 px"], ["10000", "10000 px"]]],
+  ["archive", "Gói", [["zip", ".zip"], ["cbz", ".cbz"]]],
+];
+
+function exportOptions() {
+  try {
+    return { format: "png", quality: "90", width: "0", split: "0", prefix: "page_", archive: "zip",
+      ...JSON.parse(localStorage.getItem(EXPORT_OPTIONS_KEY) || "{}") };
+  } catch (_) {
+    return { format: "png", quality: "90", width: "0", split: "0", prefix: "page_", archive: "zip" };
+  }
+}
+
+function buildExportOptions() {
+  const details = document.createElement("details");
+  details.className = "chapter-export-options";
+  const summary = document.createElement("summary");
+  summary.textContent = "Tùy chọn xuất";
+  summary.title = "Định dạng, bề rộng, cắt trang và tên file khi xuất chương";
+  details.appendChild(summary);
+  const panel = document.createElement("div");
+  panel.className = "chapter-export-panel";
+  const saved = exportOptions();
+  const save = () => {
+    const values = {};
+    panel.querySelectorAll("[data-export]").forEach((input) => { values[input.dataset.export] = input.value; });
+    try { localStorage.setItem(EXPORT_OPTIONS_KEY, JSON.stringify(values)); } catch (_) {}
+  };
+  for (const [name, label, choices] of EXPORT_FIELDS) {
+    const field = document.createElement("label");
+    field.textContent = label;
+    const select = document.createElement("select");
+    select.dataset.export = name;
+    choices.forEach(([value, text]) => select.appendChild(new Option(text, value)));
+    select.value = saved[name];
+    select.addEventListener("change", save);
+    field.appendChild(select);
+    panel.appendChild(field);
+  }
+  const prefixField = document.createElement("label");
+  prefixField.textContent = "Tên file bắt đầu bằng";
+  const prefix = document.createElement("input");
+  prefix.dataset.export = "prefix";
+  prefix.maxLength = 40;
+  prefix.value = saved.prefix;
+  prefix.placeholder = "page_";
+  prefix.addEventListener("change", save);
+  prefixField.appendChild(prefix);
+  panel.appendChild(prefixField);
+  details.appendChild(panel);
+  return details;
+}
+
+function exportHref(chapterId, force) {
+  const options = exportOptions();
+  const query = new URLSearchParams({ ...(force ? { force: "true" } : {}), ...options });
+  return `/api/export/${encodeURIComponent(chapterId)}.zip?${query}`;
+}
+
 function buildChapterExportButton() {
+  const wrap = document.createElement("span");
+  wrap.className = "chapter-export";
   const button = document.createElement("button");
   button.type = "button";
   button.className = "ui-btn ui-btn-primary chapter-export-run";
-  button.textContent = "Xuất chương (.zip)";
+  button.textContent = "Xuất chương";
+  wrap.append(buildExportOptions(), button);
+  let forced = false;
 
   const renderChapter = async (chapterId, force) => {
     const response = await fetch(`/api/render/chapter?chapter_id=${encodeURIComponent(chapterId)}${force ? "&force=true" : ""}`, {
@@ -325,9 +393,11 @@ function buildChapterExportButton() {
       if (chapterId !== window.currentChapterId) return;
       let { response, data } = await renderChapter(chapterId, false);
       // Unfinished text asks before exporting; the untranslated regions stay clean in the file.
+      forced = false;
       if (response.status === 409 && data?.detail?.code === "editorial_preflight") {
         if (!window.confirm(`${data.detail.message}\nVẫn xuất chương? Những vùng đó sẽ để trống chữ.`)) return;
         ({ response, data } = await renderChapter(chapterId, true));
+        forced = true;
       }
       if (!response.ok) {
         const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d?.detail || `HTTP ${s}`;
@@ -336,10 +406,9 @@ function buildChapterExportButton() {
       if (chapterId !== window.currentChapterId) return;
       window.currentManifest = data;
 
-      const href = data.chapter_render?.download_url || `/api/export/${encodeURIComponent(chapterId)}.zip`;
       const anchor = document.createElement("a");
-      anchor.href = href;
-      anchor.download = `manga-translator-${chapterId}.zip`;
+      anchor.href = exportHref(chapterId, forced);
+      anchor.download = `manga-translator-${chapterId}.${exportOptions().archive}`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -352,11 +421,11 @@ function buildChapterExportButton() {
       }
     } finally {
       button.disabled = false;
-      button.textContent = "Xuất chương (.zip)";
+      button.textContent = "Xuất chương";
     }
   });
 
-  return button;
+  return wrap;
 }
 
 window.buildChapterExportButton = buildChapterExportButton;

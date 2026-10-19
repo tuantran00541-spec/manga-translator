@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from app.ai_providers import (
     CLOUD_PROVIDER_ID, PROVIDERS, cloud_job_key, normalize_provider_id, resolve_provider, validate_provider_label
@@ -55,6 +56,67 @@ class _GuardedKeyring:
         return call
 
 
+def _secrets_file() -> Path:
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "manga-translator" / "secrets.json"
+
+
+class _FileKeyring:
+    """Keys in a file only this user can read, for machines without an OS secret store (headless Linux, WSL, servers)."""
+
+    def __init__(self, error):
+        self._error = error
+
+    def _read(self) -> dict:
+        path = _secrets_file()
+        try:
+            return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        except (OSError, ValueError) as exc:
+            raise self._error(f"cannot read {path}: {exc}") from exc
+
+    def _write(self, data: dict) -> None:
+        path = _secrets_file()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            temp = path.with_suffix(".tmp")
+            with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as handle:
+                json.dump(data, handle)
+            os.replace(temp, path)
+        except OSError as exc:
+            raise self._error(f"cannot write {path}: {exc}") from exc
+
+    def get_password(self, service: str, account: str) -> str | None:
+        return self._read().get(f"{service}/{account}")
+
+    def set_password(self, service: str, account: str, value: str) -> None:
+        data = self._read()
+        data[f"{service}/{account}"] = value
+        self._write(data)
+
+    def delete_password(self, service: str, account: str) -> None:
+        data = self._read()
+        if data.pop(f"{service}/{account}", None) is None:
+            raise self._error("password not found")
+        self._write(data)
+
+
+_os_store_works: bool | None = None
+
+
+def _os_store_usable(keyring) -> bool:
+    """False when keyring found no backend, or its backend crashes while being picked."""
+    global _os_store_works
+    if _os_store_works is None:
+        try:
+            from keyring.backends import fail  # type: ignore
+
+            _os_store_works = not isinstance(keyring.get_keyring(), fail.Keyring)
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except BaseException:
+            _os_store_works = False
+    return _os_store_works
+
+
 def _keyring_module():
     try:
         import keyring  # type: ignore
@@ -63,7 +125,13 @@ def _keyring_module():
         raise SecretStoreUnavailable(
             "Secure secret storage is unavailable. Install the 'keyring' dependency."
         ) from exc
+    if not _os_store_usable(keyring):
+        return _FileKeyring(KeyringError), KeyringError
     return _GuardedKeyring(keyring, KeyringError), KeyringError
+
+
+def _store_source() -> str:
+    return "os_secure_storage" if _os_store_works is not False else "local_file"
 
 
 def _get_api_key(account: str, env_names: tuple[str, ...], provider: str) -> str | None:
@@ -121,7 +189,7 @@ def _key_status(
         configured = bool(_get_api_key(account, env_names, provider))
         return {
             "configured": configured,
-            "source": "os_secure_storage" if configured else "none",
+            "source": _store_source() if configured else "none",
         }
     except SecretStoreUnavailable as exc:
         return {

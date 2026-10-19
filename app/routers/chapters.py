@@ -119,6 +119,7 @@ def _process_job_plan(
     page_indices: list[int],
     workers: int,
     progress_callback,
+    screen=None,
 ):
     logger.info(
         "Chapter {} background job: processing {} pages in one queue (workers={})",
@@ -131,6 +132,7 @@ def _process_job_plan(
         page_indices,
         workers=workers,
         progress_callback=progress_callback,
+        screen=screen,
     )
 
 

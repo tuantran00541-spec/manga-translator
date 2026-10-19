@@ -34,7 +34,7 @@ from app.routers.render_commit import render_page
 from app.text_objects import ensure_page_text_objects
 from app.region_policy import text_object_in_preserve_region
 from app.translation.cost import preflight_cost_usd
-from app.translation.vision import VisionPageTranslator
+from app.translation.vision import VisionPageTranslator, drawn_in_art
 from app.translation.context import ChapterMemory
 
 
@@ -307,14 +307,20 @@ async def translate_page_in_context(
                 stale += 1
                 continue
             value = translated.translations[candidate["id"]]
+            role = getattr(translated, "roles", {}).get(candidate["id"])
+            source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
+            if role == "sfx" and drawn_in_art(source):
+                value = ""  # a sound effect the artist drew stays as drawn, whatever the model wrote
             if not value:
                 unreadable += 1
                 if candidate["id"] not in getattr(translated, "missing_ids", ()):
                     blank_ids.append(candidate["id"])
-                    # Only a detected sound effect is art; a review box around missed text stays erased.
+                    # Attempted and left blank on purpose; distinguishes blank-by-choice from blank-by-budget.
+                    obj["translation_attempted"] = True
+                    # Only a sound effect the artist drew is art; a watermark or a review box around missed text stays erased.
                     manual = {str(box.get("id")) for box in page.get("boxes") or []
                               if isinstance(box, dict) and box.get("manual")}
-                    if (getattr(translated, "roles", {}).get(candidate["id"]) == "sfx"
+                    if (role == "sfx" and drawn_in_art(source)
                             and not set(map(str, obj.get("source_boxes") or [])) & manual):
                         art_regions.append(dict(obj["region"]))
                 continue
@@ -332,7 +338,6 @@ async def translate_page_in_context(
                 obj["speaker"] = speaker
             obj["auto_translation"] = value
             _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(candidate["id"]))
-            role = getattr(translated, "roles", {}).get(candidate["id"])
             if role:
                 obj["typography_role"] = role
             container = getattr(translated, "containers", {}).get(candidate["id"])

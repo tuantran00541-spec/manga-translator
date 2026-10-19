@@ -12,6 +12,7 @@ import copy
 import functools
 import json
 import re
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -20,12 +21,15 @@ from dataclasses import dataclass, field
 import requests
 from fastapi import HTTPException
 
+from app.ai_mode import decider
 from app.ai_mode.checkpoints import _covered
+from app import series_memory
 from app.ai_mode.page_scan import scan_slices
 from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.image_io import read_image
 from app.logging_config import logger
 from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw
+from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.security import validate_managed_path
 
 STAGES: tuple[tuple[str, str], ...] = (
@@ -34,7 +38,7 @@ STAGES: tuple[tuple[str, str], ...] = (
     ("clean", "Checkpoint 2: Clean ảnh"),
     ("review", "Checkpoint 3: AI so ảnh gốc và ảnh clean"),
     ("translate", "Checkpoint 4: Dịch và chọn font"),
-    ("polish", "Nâng cao: Jev soát câu dịch"),
+    ("polish", "Nâng cao: soát câu dịch"),
     ("render", "Render"),
     ("finish", "Hoàn tất"),
 )
@@ -79,7 +83,7 @@ class AIModeSettings:
     model: str
     target_lang: str = "vi"
     budget_usd: float = 0.30
-    workers: int = 2
+    workers: int = PIPELINE_DEFAULT_WORKERS
     story_notes: str = ""
     polish: bool = False  # advanced: a judge model grades each line and weak ones are rewritten
     images_per_request: int = 2  # slices sent together to the scan and glossary; the user raises it for their model
@@ -142,10 +146,11 @@ class AIModeRunner:
             "editorial_blockers": 0, "blocker_samples": [], "source_lang": None,
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
             "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [], "unboxed_pages": [],
-            "repaint_retried": 0, "residue_left": [],
+            "repaint_retried": 0, "residue_left": [], "art_kept": 0, "skip_kept": [], "skip_unjudged": [],
             "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "errors": [], "samples": []},
         })
         self._memory = None
+        self._series: dict | None = None
         self._glossary_task: asyncio.Task | None = None
         self._review_queue: asyncio.Queue | None = None
         self._review_task: asyncio.Task | None = None
@@ -253,6 +258,14 @@ class AIModeRunner:
             self._progress(finished, len(active))
             return True
 
+        def load(index: int):
+            return read_image(validate_managed_path(pages[index]["original"], RAW_DIR / chapter_id))
+
+        # The decision model judges which slices to skip while the chat model reads them.
+        judge = None
+        if decider.available(self.provider, self.api_key):
+            judge = asyncio.ensure_future(asyncio.to_thread(decider.storyless_slices, self.provider, self.api_key, active, load))
+
         # Probe with one batch; if it fails, scan slice by slice.
         self._progress(0, len(active))
         if batches and not await scan_batch(batches[0]):
@@ -261,9 +274,17 @@ class AIModeRunner:
             results = await asyncio.gather(*(scan_batch(batch) for batch in batches[1:]))
             rejected = [index for batch, ok in zip(batches[1:], results) if not ok for index in batch]
             await asyncio.gather(*(scan_one(index) for index in rejected))
+        storyless = await judge if judge is not None else None
         self._check_cancel()
 
         credits = sorted(scan.page_index for scan in scans if scan.is_credit)
+        if storyless is not None:
+            storyless, chances = storyless
+            # The decider decides; a slice the scan would skip but the decider sees story text in is kept.
+            textless = sorted(scan.page_index for scan in scans if scan.no_text)
+            self.report["skip_kept"] = sorted(set(credits + textless) - set(storyless))
+            self.report["skip_unjudged"] = sorted(index for index, chance in chances.items() if chance is None)
+            credits = [index for index in credits if index in storyless]
         limit = max(CREDIT_MAX_ABSOLUTE, int(CREDIT_MAX_SHARE * len(active)))
         if len(credits) > limit:
             self.report["credit_rejected"] = credits
@@ -273,7 +294,10 @@ class AIModeRunner:
         self.report["credit_pages"] = credits
 
         # Textless slices are exported as they are; skipping them saves cleanup and translation.
-        textless = sorted(scan.page_index for scan in scans if scan.no_text and scan.page_index not in credits)
+        if storyless is not None:
+            textless = [index for index in storyless if index not in credits]
+        else:
+            textless = sorted(scan.page_index for scan in scans if scan.no_text and scan.page_index not in credits)
         if len(textless) > TEXTLESS_MAX_SHARE * len(active):
             self.report["textless_rejected"] = textless
             textless = []
@@ -305,8 +329,10 @@ class AIModeRunner:
         if not indices:
             self._progress(0, 0, "Không có lát nào cần clean")
             return
+        screen = self._art_screen()
         snapshot = chapter_processing_jobs.start(
             self.job.chapter_id, page_indices=indices, workers=self.settings.workers,
+            **({"screen": screen} if screen is not None else {}),
         )
         job_id = snapshot["job_id"]
         # Checkpoint 3 starts on each slice as soon as it is clean, so its A.I calls overlap the cleanup.
@@ -332,6 +358,22 @@ class AIModeRunner:
             self._review_task.cancel()
             raise
         self._review_queue.put_nowait(None)
+
+    def _art_screen(self):
+        """The art screen for this provider, counting the boxes it keeps as drawn."""
+        from app.ai_mode.decider import screen_for
+
+        screen = screen_for(self.provider, self.api_key)
+        if screen is None:
+            return None
+        lock = threading.Lock()
+
+        def counted(image, boxes) -> set[int]:
+            art = screen(image, boxes)
+            with lock:
+                self.report["art_kept"] += len(art)
+            return art
+        return counted
 
     async def _read_glossary(self, indices: list[int]) -> dict:
         """Names, terms and forms of address for the whole chapter; empty when the read fails."""
@@ -449,16 +491,22 @@ class AIModeRunner:
         by_page: dict[int, list] = {}
         for crop in flagged:
             by_page.setdefault(crop.page_index, []).append(crop.rect)
-        for page_index, rects in sorted(by_page.items()):
-            try:
-                if self._scan_logos.get(page_index):
-                    await asyncio.to_thread(self._free_logos_with_text, page_index, rects)
-                await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
-                self.report["repainted_regions"] += len(rects)
-                _append(self.report["repaint_pages"], page_index)
-                await self._verify_repaint(page_index, rects)
-            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
-                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+        # Slices are repainted side by side, as each worker's inpainting uses one core.
+        workers = asyncio.Semaphore(max(1, int(self.settings.workers or 1)))
+
+        async def repaint(page_index: int, rects: list) -> None:
+            async with workers:
+                try:
+                    if self._scan_logos.get(page_index):
+                        await asyncio.to_thread(self._free_logos_with_text, page_index, rects)
+                    await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
+                    self.report["repainted_regions"] += len(rects)
+                    _append(self.report["repaint_pages"], page_index)
+                    await self._verify_repaint(page_index, rects)
+                except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
+                    _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+
+        await asyncio.gather(*(repaint(page_index, rects) for page_index, rects in sorted(by_page.items())))
 
     def _still_reading(self, page_index: int, rects: list) -> list:
         """The repainted rectangles where the letter model still reads text on the clean slice."""
@@ -521,7 +569,14 @@ class AIModeRunner:
         except Exception as exc:  # the glossary only helps; translation goes on without it
             _append(self.report["translate_errors"], f"Bảng thuật ngữ: {_detail(exc)[:150]}")
             glossary = {}
-        memory = self._memory = ChapterMemory(self.settings.story_notes, glossary)
+        # What earlier chapters of this series settled wins over this chapter's own reading.
+        key = series_memory.series_key(self.settings.url)
+        series = self._series = series_memory.load(key)
+        glossary = series_memory.settled_glossary(series, glossary or {})
+        memory = self._memory = ChapterMemory(self.settings.story_notes or series["notes"], glossary)
+        for character in series["characters"]:
+            memory.characters[character["name"]] = character["note"]
+        self.report["series"] = {"key": key, **{k: len(series[k]) for k in ("names", "terms", "address", "characters", "chapters")}}
         slice_total = self._slice_total = len(self._manifest().get("pages", []))
         # Admit slices in reading order so each sees the memory of earlier ones.
         gate = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
@@ -841,7 +896,8 @@ class AIModeRunner:
             })
 
     def _settle_blanks(self) -> int:
-        """Objects the translator left blank on purpose (credits, watermarks, art) are reviewed non-story text."""
+        """Split blanks by evidence, not guesswork: attempted blanks are reviewed non-story text, never-attempted ones block export."""
+        from app.editorial_gate import UNTRANSLATED_DISPOSITION
         from app.region_policy import text_object_in_preserve_region
 
         chapter_id = self.job.chapter_id
@@ -856,8 +912,11 @@ class AIModeRunner:
                             or obj.get("overlap_dropped") or obj.get("editorial_reviewed")
                             or str(obj.get("translation") or "").strip() or text_object_in_preserve_region(page, obj)):
                         continue
-                    # Export refuses story text with no source and no translation; A.I mode chose to letter nothing here.
-                    obj["editorial_disposition"], obj["editorial_reviewed"] = "non_story", True
+                    if obj.get("translation_attempted"):
+                        obj["editorial_disposition"], obj["editorial_reviewed"] = "non_story", True
+                    else:
+                        # Left unreviewed on purpose: the gate blocks export on this disposition.
+                        obj["editorial_disposition"] = UNTRANSLATED_DISPOSITION
                     settled += 1
             if settled:
                 save_manifest_raw(chapter_id, manifest)
@@ -934,6 +993,13 @@ class AIModeRunner:
             {"kind": item.get("kind"), "page": int(item.get("page_index", 0)) + 1, "reason": item.get("reason")}
             for item in (preflight.get("blockers") or [])[:10]
         ]
+        key = series_memory.series_key(self.settings.url)
+        if key and self._memory is not None:
+            # The next chapter of this series starts from what this one settled.
+            snapshot = self._memory.snapshot(settled=False)
+            series_memory.save(key, series_memory.learn(
+                self._series or series_memory.load(key), self.report.get("glossary") or {}, snapshot["characters"],
+                snapshot["address"], self.settings.url, self.settings.story_notes))
         report_path = OUTPUT_DIR / chapter_id / "ai_mode_report.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(self.report, ensure_ascii=False, indent=1), encoding="utf-8")

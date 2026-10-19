@@ -23,12 +23,11 @@ def runtime_checks() -> None:
     expected_threads = {
         1: 1,
         2: 1,
-        4: 2,
-        6: 2,
-        8: 3,
-        9: 3,
-        10: 4,
-        16: 4,
+        4: 1,
+        8: 1,
+        12: 1,
+        16: 2,
+        32: 4,
     }
     for cpu, expected in expected_threads.items():
         check(
@@ -41,10 +40,10 @@ def runtime_checks() -> None:
     try:
         os.environ.pop(key, None)
         check(
-            configure_local_cpu_headroom(8) == 3,
+            configure_local_cpu_headroom(16) == 2,
             "responsive ORT default not applied",
         )
-        check(os.environ.get(key) == "3", "ORT environment default missing")
+        check(os.environ.get(key) == "2", "ORT environment default missing")
         os.environ[key] = "1"
         check(
             configure_local_cpu_headroom(16) == 1,
@@ -52,7 +51,7 @@ def runtime_checks() -> None:
         )
         os.environ[key] = "invalid"
         check(
-            configure_local_cpu_headroom(8) == 3,
+            configure_local_cpu_headroom(16) == 2,
             "invalid ORT override was not repaired",
         )
     finally:

@@ -5,6 +5,7 @@ import hashlib
 from app.parameters import EDITORIAL_STORY_CANDIDATE_CONFIDENCE
 from app.region_policy import (
     geometry_center_in_regions,
+    overlap_share,
     page_preserve_regions,
     text_object_in_preserve_region,
 )
@@ -17,6 +18,8 @@ EDITORIAL_DISPOSITIONS = frozenset(
 EDITORIAL_DROP_DISPOSITIONS = frozenset(
     {"duplicate", "non_story", "noise", "preserve"}
 )
+# System-set, never human-reviewed: untranslated text blocks export instead of vanishing silently.
+UNTRANSLATED_DISPOSITION = "untranslated"
 CLEANUP_DISPOSITIONS = frozenset(
     {"manual_cleaned", "preserve_source", "false_positive", "covered_by_duplicate"}
 )
@@ -155,23 +158,6 @@ def _object_is_story_like(obj: dict, candidate_ids: set[str]) -> bool:
     if semantic in STORY_SEMANTIC_TYPES:
         return True
     return bool(source_box_ids(obj) & candidate_ids)
-
-
-def _overlap_fraction(a: dict, b: dict) -> float:
-    try:
-        ax1, ay1, ax2, ay2 = (float(a[k]) for k in ("x1", "y1", "x2", "y2"))
-        bx1, by1, bx2, by2 = (float(b[k]) for k in ("x1", "y1", "x2", "y2"))
-    except (KeyError, TypeError, ValueError):
-        return 0.0
-    if ax2 <= ax1 or ay2 <= ay1 or bx2 <= bx1 or by2 <= by1:
-        return 0.0
-    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
-    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
-    intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
-    if intersection <= 0:
-        return 0.0
-    smaller = min((ax2 - ax1) * (ay2 - ay1), (bx2 - bx1) * (by2 - by1))
-    return intersection / smaller if smaller > 0 else 0.0
 
 
 def _blocker(
@@ -482,10 +468,25 @@ def editorial_preflight(
             if oid:
                 checked_objects.add(oid)
 
+            if _norm(obj.get("editorial_disposition")) == UNTRANSLATED_DISPOSITION:
+                # Fail closed: block export until the text is translated or a human reviews it.
+                _append_blocker(
+                    blockers,
+                    blocker_keys,
+                    _blocker(
+                        "untranslated_object",
+                        page_index,
+                        obj=obj,
+                        reason="text object was never translated (e.g. the slice ran out of budget); translate it or set a reviewed disposition before export",
+                    ),
+                )
+                continue
+
             source_text = str(obj.get("ocr_text") or "").strip()
             translation = str(obj.get("translation") or "").strip()
             disposition = _reviewed_disposition({}, [obj])
-            if disposition == "preserve":
+            # A reviewed credit, duplicate, noise or kept-as-drawn object is not lettered, so it needs no translation.
+            if disposition in EDITORIAL_DROP_DISPOSITIONS:
                 continue
             if not source_text and not translation:
                 _append_blocker(
@@ -559,10 +560,10 @@ def editorial_preflight(
                 continue
             match = max(
                 candidates,
-                key=lambda box: _overlap_fraction(region, box),
+                key=lambda box: overlap_share(region, box),
                 default=None,
             )
-            match_fraction = _overlap_fraction(region, match) if match else 0.0
+            match_fraction = overlap_share(region, match) if match else 0.0
             match_id = (
                 str(match.get("id") or "")
                 if match and match_fraction >= 0.25

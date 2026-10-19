@@ -29,6 +29,7 @@ ANSWER: the JSON in <output>, nothing else.
 - Trust the image over source_text, which is an OCR hint and often wrong.
 - Stay within max_chars: it is what fits at the raw size, and longer text is lettered smaller. If a line still cannot fit, set "review": true. Set "enlarge": true when the raw text is too small to read.
 - Read the scene (speaker, listener, relationship, emotion, the lines around it) and translate the meaning. Give each character one consistent voice and add nothing the source does not say.
+- A sentence often runs on across boxes ("THEY CONQUERED THE WORLD IN THE" then "AGE OF HEROES"), and across slices: recent_lines give each earlier box's source and translation. Translate the whole sentence once, then split it over its boxes in reading order so each box ends at a natural break; never leave a box ending on a dangling word such as "trong", "của" or "và".
 - Treat <chapter_glossary> and CHAPTER MEMORY as settled and use their names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
 - Copy the source punctuation exactly: every "...", "?!", "!?", "!!" and "—" stays where the source has it, with both marks of "?!". Keep the tone; make jokes only where the source does.
 - List in "unboxed" every line someone says, thinks or narrates (dialogue, narration, captions, titles, system messages) that the image shows outside every red box; it is erased and translated next. Sound effects drawn into the art, signs that are only scenery and scanlator credits stay out. Boxes are on a 0-1000 grid of the image: "x1","y1" top-left and "x2","y2" bottom-right.
@@ -42,7 +43,8 @@ _VIETNAMESE = """
 <vietnamese>
 - Forms of address come from the two people. Before their first line, look at speaker and listener in the images (apparent age and gender, clothes, rank) and at how they relate (family, master and disciple, officer and civilian, boss and worker, friends, strangers, enemies), then choose the self/other pair a Vietnamese reader expects from exactly those two. Examples: a grown police officer to a teenage boy "tôi"/"cậu", the boy back "tôi"/"anh" ("cháu"/"chú" when the man is much older); a master to a disciple "ta"/"con"; rivals "ta"/"ngươi" or "tao"/"mày"; close friends "tớ"/"cậu" or "tao"/"mày"; a subject to a king "thần"/"bệ hạ".
 - A pair in the glossary or CHAPTER MEMORY address is settled: use it for every line between those two, and report a new pair, or a change the story makes, in "address". Keep "bạn" for text that addresses the reader (system windows, notices). Narration and inner thoughts use the self form the narrator uses in dialogue.
-- Write natural speech: drop translationese ("Điều mà tôi muốn nói là…"), a subject the scene makes clear and filler (thì, là, mà, một cách, những, các, đã/đang/sẽ when the time is clear); prefer the short word (vì, nếu, giờ).
+- Write natural speech: drop translationese ("Điều mà tôi muốn nói là…") and filler (thì, là, mà, một cách, những, các, đã/đang/sẽ when the time is clear); prefer the short word (vì, nếu, giờ). A bare subject may go when the scene makes it clear, but a line spoken to someone keeps the word that shows who they are to the speaker ("Ông trả công bao nhiêu?", not "Trả công bao nhiêu?").
+- Write every Vietnamese word with its full diacritics, and start each sentence with a capital letter.
 - Genre terms: cultivation uses sư phụ, sư huynh, đạo hữu, bổn tọa and Hán Việt realms; game stories keep Level, Skill, Stat, Dungeon with Hệ thống, hồi quy, thức tỉnh; military ranks become Vietnamese ranks.
 </vietnamese>
 """.strip()
@@ -101,6 +103,9 @@ class ChapterMemory:
 
     def update(self, slice_number: int, data: dict, translations: dict[str, str], order: list[str]) -> None:
         speakers = data.get("speakers") if isinstance(data.get("speakers"), dict) else {}
+        # The source each box read, so a sentence running into the next slice can be finished.
+        sources = {str(entry.get("id")): entry.get("source") for entry in data.get("translations") or []
+                   if isinstance(entry, dict) and isinstance(entry.get("source"), str)}
         with self._lock:
             for entry in data.get("characters") or []:
                 if not isinstance(entry, dict):
@@ -125,5 +130,6 @@ class ChapterMemory:
                     self.recent.append({
                         "slice": slice_number,
                         "speaker": _clean(speakers.get(item_id)) or "?",
+                        **({"source": _clean(sources[item_id], MAX_LINE_CHARS)} if sources.get(item_id) else {}),
                         "text": _clean(text, MAX_LINE_CHARS),
                     })

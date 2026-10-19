@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from app.knobs import knob
+from app.runtime_responsiveness import recommended_workers
 
 
 _TRUE = {"1", "true", "yes", "on"}
@@ -71,7 +72,7 @@ FIXED_LAMA_CONCURRENT_INFERENCE = _env_bool(
 )
 
 PIPELINE_DEFAULT_WORKERS = _env_int(
-    "MANGA_PIPELINE_DEFAULT_WORKERS", 2, minimum=1, maximum=32
+    "MANGA_PIPELINE_DEFAULT_WORKERS", recommended_workers(), minimum=1, maximum=32
 )
 # Each slicing thread holds about 200 MB on a 12,000 px page.
 PIPELINE_SLICE_WORKER_LIMIT = _env_int(
@@ -193,10 +194,6 @@ FIXED_LAMA_SESSION_MAX_RUNS = 4
 MANIFEST_LOCK_TIMEOUT_SECONDS = 30.0
 PAGE_LOCK_TIMEOUT_SECONDS = 60.0
 STALE_TEMP_MAX_AGE_SECONDS = 3600.0
-ORT_HIGH_CPU_THRESHOLD = 8
-ORT_MEDIUM_CPU_THRESHOLD = 4
-ORT_HIGH_CPU_THREADS = 4
-ORT_MEDIUM_CPU_THREADS = 2
 ORT_INTER_OP_THREADS = 1
 
 OCR_MASK_CROP_PADDING = 12

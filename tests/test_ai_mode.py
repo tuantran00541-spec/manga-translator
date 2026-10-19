@@ -161,7 +161,7 @@ def test_manager_allows_one_active_job():
 
 # -- scan stage ---------------------------------------------------------------
 
-def _scan_stage(monkeypatch, scans, pages=8):
+def _scan_stage(monkeypatch, scans, pages=8, provider=None):
     from app.dependencies import pipeline
     import app.routers.chapters as chapters
 
@@ -179,7 +179,7 @@ def _scan_stage(monkeypatch, scans, pages=8):
     # Four slices a request: the batching logic, whatever the user's limit.
     job = ai_job.AIModeJob(job_id="j", settings=replace(SETTINGS, images_per_request=4), chapter_id=CHAPTER,
                            stage="scan", stages={"scan": {"done": 0, "total": 0, "detail": ""}})
-    runner = AIModeRunner(job, PROVIDERS["deepseek"], "key")
+    runner = AIModeRunner(job, provider or PROVIDERS["deepseek"], "key")
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
     asyncio.run(runner.scan())
     return runner, skipped, preserved
@@ -248,6 +248,21 @@ def test_scan_stage_skips_textless_slices_but_not_most_of_a_chapter(monkeypatch)
 
     runner, skipped, _ = _scan_stage(monkeypatch, [SliceScan(i, False, 0.0, (), no_text=True) for i in range(5)])
     assert skipped == [] and runner.report["textless_rejected"] == [0, 1, 2, 3, 4]
+
+
+def test_with_a_decider_it_alone_picks_the_slices_to_skip(monkeypatch):
+    from app.ai_mode import decider
+    from app.ai_providers import resolve_provider
+
+    monkeypatch.setattr(decider, "storyless_slices", lambda provider, key, indices, load: (
+        [3, 4, 7], {**{i: 0.9 for i in indices}, 3: 0.05, 4: 0.01, 6: None, 7: 0.0}))
+    minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
+    runner, skipped, _ = _scan_stage(monkeypatch, [
+        SliceScan(2, False, 0.0, (), no_text=True), SliceScan(4, False, 0.0, (), no_text=True), SliceScan(7, True, 0.9, ()),
+    ], provider=minirouter)
+    assert sorted(skipped) == [3, 4, 7]
+    assert runner.report["credit_pages"] == [7] and runner.report["textless_pages"] == [3, 4]
+    assert runner.report["skip_kept"] == [2] and runner.report["skip_unjudged"] == [6]
 
 
 def test_scan_parse_requires_a_confident_textless_answer():
@@ -621,6 +636,13 @@ def test_translate_render_and_leave_the_chapter_open_in_the_editor(cleaned_chapt
     manifests.save_manifest_raw(CHAPTER, {**manifest, "script_review_required": False})
     with zipfile.ZipFile(export_router.write_chapter_archive(CHAPTER)) as archive:
         assert archive.namelist() == ["page_001.png", "page_002.png"]
+    from app.export_pages import ExportOptions
+
+    jpg = export_router.write_chapter_archive(CHAPTER, options=ExportOptions.parse("jpg", 90, 0, 0, "ch01_", "cbz"))
+    assert jpg.suffix == ".cbz"
+    with zipfile.ZipFile(jpg) as archive:
+        assert archive.namelist() == ["ch01_001.jpg", "ch01_002.jpg"]
+        assert archive.read("ch01_001.jpg")[:3] == b"\xff\xd8\xff"
 
 
 def test_retry_keeps_going_on_a_long_slice_while_batches_make_progress(monkeypatch):
@@ -673,15 +695,18 @@ def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
     region = {"x1": 0, "y1": 0, "x2": 50, "y2": 20}
     manifest = {"pages": [
         {"text_objects": [{"id": "said", "translation": "Chào", "region": region},
-                          {"id": "credit", "translation": "", "region": region},
-                          {"id": "gone", "translation": "", "source_missing": True, "region": region}]},
+                          {"id": "credit", "translation": "", "translation_attempted": True, "region": region},
+                          {"id": "gone", "translation": "", "source_missing": True, "region": region},
+                          {"id": "unread", "translation": "", "region": region}]},
         {"skipped": True, "text_objects": [{"id": "skip", "translation": "", "region": region}]},
     ]}
     saved = []
     monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter: manifest)
     monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter, data: saved.append(chapter))
     runner = _runner(monkeypatch, "render", manifest)
-    assert runner._settle_blanks() == 1 and saved == [CHAPTER]
+    assert runner._settle_blanks() == 2 and saved == [CHAPTER]
     objects = manifest["pages"][0]["text_objects"]
     assert objects[1]["editorial_disposition"] == "non_story" and objects[1]["editorial_reviewed"] is True
+    # A blank the translator never tried stays unreviewed, so export blocks on it.
+    assert objects[3]["editorial_disposition"] == "untranslated" and not objects[3].get("editorial_reviewed")
     assert "editorial_disposition" not in objects[0] and "editorial_disposition" not in objects[2]

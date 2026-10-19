@@ -560,6 +560,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         page_indices: list[int],
         workers: int = PIPELINE_DEFAULT_WORKERS,
         progress_callback: Callable[[int], None] | None = None,
+        screen=None,
     ) -> dict:
         run_started_at = time.perf_counter()
         processed_dir = PROCESSED_DIR / chapter_id
@@ -633,6 +634,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     stitch_core=stitch_core,
                     supplemental_detections=shared_seam_detections.get(idx),
                     seam_context_unavailable=idx in seam_context_unavailable,
+                    screen=screen,
                 ),
                 snapshot,
             )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 
 import requests
 
@@ -8,6 +9,8 @@ from fastapi import APIRouter, HTTPException
 
 from app.ai_providers import (
     PROVIDERS,
+    api_base_candidates,
+    auth_headers,
     cloud_job_provider,
     normalize_provider_id,
     resolve_provider,
@@ -51,6 +54,36 @@ def _resolve_configured_provider(provider_id: str):
         api_base=stored.get("api_base"),
     )
     _validate_custom_remote(provider)
+    return provider
+
+
+def _answers_models(provider, api_key: str) -> bool:
+    """True when this root serves an OpenAI-style /models, or refuses the key there."""
+    headers = {"Accept": "application/json", **auth_headers(provider, api_key)}
+    try:
+        response = safe_get(provider.models_url, headers=headers, timeout=(5, 15), stream=False, max_redirects=0)
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else 0
+        return status in (401, 403) and "json" in (exc.response.headers.get("content-type") or "")
+    except (requests.RequestException, ValueError, HTTPException):
+        return False
+    try:
+        return isinstance(response.json().get("data"), list)
+    except (ValueError, AttributeError):
+        return False
+    finally:
+        response.close()
+
+
+def _discover_api_base(provider, api_key: str):
+    """The first candidate root that answers like an OpenAI-compatible API; the pasted one when none does."""
+    candidates = api_base_candidates(provider.api_base)
+    if len(candidates) == 1:
+        return provider
+    for base in candidates:
+        trial = replace(provider, api_base=base)
+        if _answers_models(trial, api_key):
+            return trial
     return provider
 
 
@@ -148,6 +181,7 @@ def save_provider_key(provider_id: str, req: VisualQCKeyRequest) -> dict:
                 api_base=req.provider_api_base,
             )
             _validate_custom_remote(provider)
+            provider = _discover_api_base(provider, req.api_key)
             set_provider_config(
                 normalized,
                 label=provider.label,
@@ -163,11 +197,14 @@ def save_provider_key(provider_id: str, req: VisualQCKeyRequest) -> dict:
         raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
-    return {
+    result = {
         "configured": True,
         "source": "os_secure_storage",
         "provider": normalized,
     }
+    if builtin is None:
+        result["api_base"] = provider.api_base
+    return result
 
 
 @router.delete("/providers/{provider_id}/key")
@@ -225,7 +262,7 @@ def list_provider_models(provider_id: str) -> dict:
     if provider.protocol == "gemini":
         headers["x-goog-api-key"] = api_key
     else:
-        headers["Authorization"] = f"Bearer {api_key}"
+        headers.update(auth_headers(provider, api_key))
     try:
         response = safe_get(
             provider.models_url,

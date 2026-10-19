@@ -120,9 +120,9 @@ def _fit_metrics(obj: dict, page_width: int) -> dict:
     """Reproduce how the renderer sizes one object: the font size it draws at, the lines, and whether it fits."""
     from PIL import Image, ImageDraw
 
-    from app.parameters import RENDER_AUTO_STROKE_WIDTH, RENDER_DEFAULT_PADDING, RENDER_MIN_READABLE_FONT_SIZE, RENDER_PADDING_RATIO_MAX
+    from app.parameters import RENDER_AUTO_STROKE_WIDTH, RENDER_DEFAULT_PADDING, RENDER_PADDING_RATIO_MAX
     from app.render.page_renderer import _render_region_for_text_object, _resolve_ocr_style
-    from app.render.text_renderer import _calc_line_height, _fit_text, _wrap_text, drawable, font_draws_text, get_font_object, get_font_path
+    from app.render.text_renderer import _calc_line_height, _wrap_text, auto_fit, drawable, font_draws_text, get_font_object, get_font_path
 
     text = str(obj.get("translation") or "").strip()
     region = _render_region_for_text_object(obj)
@@ -149,12 +149,10 @@ def _fit_metrics(obj: dict, page_width: int) -> dict:
         fits = bool(lines) and _calc_line_height(draw, font, stroke_w=RENDER_AUTO_STROKE_WIDTH) * len(lines) <= box_h
     else:
         source = "fit"
-        maximum = 48
-        if obj.get("source_cap_px"):
-            from app.render.source_size import SIZE_SLACK, matching_font_px
-            maximum = max(RENDER_MIN_READABLE_FONT_SIZE, int(matching_font_px(font_path, obj["source_cap_px"]) * SIZE_SLACK))
-        size, lines, fits = _fit_text(draw, text, box_w, box_h, str(font_path), stroke_w=RENDER_AUTO_STROKE_WIDTH,
-                                      minimum_size=RENDER_MIN_READABLE_FONT_SIZE, maximum_size=maximum)
+        bg = str(style.get("bgColor") or "transparent")
+        size, lines, fits, _ = auto_fit(draw, text, (x1, y1, x2, y2), (page_width, 10 ** 6), str(font_path),
+                                        source_cap_px=obj.get("source_cap_px"), enlarge=bool(obj.get("enlarge")),
+                                        opaque_caption=bg not in ("transparent", "none", ""))
     return {"font_px": size, "font_px_at_800": round(size * 800 / max(1, page_width), 1), "size_source": source,
             "lines": len(lines), "wrapped": lines, "box_w": raw_w, "box_h": raw_h, "fits": fits,
             "missing_glyphs": missing_glyphs, "source_cap_px": obj.get("source_cap_px"),

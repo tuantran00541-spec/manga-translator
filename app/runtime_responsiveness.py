@@ -39,15 +39,17 @@ def visible_cpu_count() -> int:
     return min(host, quota) if quota is not None else host
 
 
+MAX_WORKERS = 8
+
+
+def recommended_workers(cpu_count: int | None = None) -> int:
+    """A slice worker per core, as single-threaded workers clean a chapter faster than fewer multi-threaded ones."""
+    return min(MAX_WORKERS, max(1, int(cpu_count or visible_cpu_count())))
+
+
 def recommended_ort_intra_threads(cpu_count: int | None = None) -> int:
     cpu = max(1, int(cpu_count or visible_cpu_count()))
-    if cpu <= 2:
-        return 1
-    if cpu <= 6:
-        return 2
-    if cpu <= 9:
-        return 3
-    return 4
+    return max(1, cpu // recommended_workers(cpu))
 
 
 def configure_local_cpu_headroom(cpu_count: int | None = None) -> int:
