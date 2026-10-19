@@ -369,13 +369,28 @@ def test_sound_effect_left_as_art_returns_its_region_for_restoring(saved_chapter
     monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
     monkeypatch.setattr(
         "app.translation.vision.VisionPageTranslator.translate_page",
-        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None, roles={"obj_1": "sfx"}),
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None, roles={"obj_1": "sfx"},
+                                                       sources={"obj_1": "쾅"}),
     )
     request = translation_router.TranslateVisionPageRequest(
         chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="en", target_lang="vi",
     )
     info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
     assert info["blank_ids"] == ["obj_1"] and info["art_regions"] == [region]
+
+
+def test_a_watermark_the_model_calls_a_sound_effect_stays_erased(saved_chapter, monkeypatch):
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None, roles={"obj_1": "sfx"},
+                                                       sources={"obj_1": "ASURASCANS.COM"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="ko", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["blank_ids"] == ["obj_1"] and info["art_regions"] == []
 
 
 def test_a_sound_effect_the_artist_drew_stays_as_art_even_when_the_model_translates_it(saved_chapter, monkeypatch):

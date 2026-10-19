@@ -317,10 +317,10 @@ async def translate_page_in_context(
                     blank_ids.append(candidate["id"])
                     # Attempted and left blank on purpose; distinguishes blank-by-choice from blank-by-budget.
                     obj["translation_attempted"] = True
-                    # Only a detected sound effect is art; a review box around missed text stays erased.
+                    # Only a sound effect the artist drew is art; a watermark or a review box around missed text stays erased.
                     manual = {str(box.get("id")) for box in page.get("boxes") or []
                               if isinstance(box, dict) and box.get("manual")}
-                    if (role == "sfx"
+                    if (role == "sfx" and drawn_in_art(source)
                             and not set(map(str, obj.get("source_boxes") or [])) & manual):
                         art_regions.append(dict(obj["region"]))
                 continue
