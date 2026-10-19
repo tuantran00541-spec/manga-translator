@@ -137,5 +137,9 @@ class API:
         """fn(ctx, max_steps) replaces the step loop when profile.json sets "loop" to this name."""
         self._reg.loop(name, self._wrap(fn))
 
+    def provider(self, name: str, adapter: Callable) -> None:
+        """adapter(ctx, request) returns {"text", "calls", "usage"} for a model that does not speak OpenAI chat."""
+        self._reg.provider(name, self._wrap(adapter))
+
     def log(self, message: str) -> None:
         logger.info("Agent plugin {}: {}", self.name, str(message)[:2000])

@@ -1134,6 +1134,60 @@ def test_a_user_plugin_adds_tools_commands_hooks_prompt_and_a_loop(ws, home):
     assert looped.history[-1]["content"] == "custom"
 
 
+def test_a_custom_provider_whose_chat_path_gives_404_is_tried_at_the_usual_others(monkeypatch):
+    from app.ai_providers import resolve_provider
+    monkeypatch.setattr(client, "validate_url", lambda url: url)
+    client._FOUND_PATH.clear()
+    tried = []
+    ok = {"choices": [{"message": {"content": "hi"}}], "usage": {}}
+
+    def post(url, **kw):
+        tried.append(url)
+        return FakeResponse(200, ok) if url == "https://llm.example.com/api/v1/chat/completions" else FakeResponse(404, {"error": "no"})
+    monkeypatch.setattr(client.requests, "post", post)
+    provider = resolve_provider("mine", protocol="openai", api_base="https://llm.example.com")
+    assert client.complete(provider, "k", "m", [], tools=None)["text"] == "hi"
+    assert tried[0] == "https://llm.example.com/chat/completions" and tried[-1] == "https://llm.example.com/api/v1/chat/completions"
+    tried.clear()
+    client.complete(provider, "k", "m", [], tools=None)
+    assert tried == ["https://llm.example.com/api/v1/chat/completions"], "the path that answered is remembered"
+    tried.clear()
+    monkeypatch.setattr(client.requests, "post", lambda url, **kw: tried.append(url) or FakeResponse(404, {}))
+    with pytest.raises(RuntimeError):
+        client.complete(PROVIDERS["openai"], "k", "m", [], tools=None)
+    assert len(tried) == 1, "a built-in provider's path is never guessed"
+    client._FOUND_PATH.clear()
+
+
+def test_a_plugin_adapter_answers_for_a_provider_that_does_not_speak_openai_chat(ws, home):
+    write_plugin(home / ".manga-agent" / "plugins", "proto", '''
+        def register(api):
+            def answer(ctx, request):
+                api.state.set("seen", [request["model"], request["api_key"], len(request["messages"])])
+                return {"text": "from adapter", "usage": {"prompt_tokens": 3}}
+            api.provider("myproto", answer)
+    ''')
+    write_profile(home, {"adapters": {"openai": "myproto"}})
+    session = manager(home).create(PROVIDERS["openai"], "the-key", "m", ws, "bypass", complete=client.complete)
+    session.trust_plugins()
+    run_to_idle(session)
+    assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["from adapter"]
+    seen = json.loads((home / ".manga-agent" / "plugin-state" / "proto.json").read_text())["seen"]
+    assert seen[:2] == ["m", "the-key"] and seen[2] >= 2
+
+
+def test_profile_models_say_what_a_model_can_do(ws, home):
+    write_plugin(home / ".manga-agent" / "plugins", "extras", PLUGIN)
+    write_profile(home, {"models": {"^weak": {"tools": "text", "context_window": 50_000, "max_output": 1234, "vision": False, "direct_tools": True}}})
+    session = manager(home).create(PROVIDERS["openai"], "k", "weak-1", ws, "bypass", complete=scripted(turn("x")))
+    session.trust_plugins()
+    assert session.text_tools and session.compact_at == 40_000 and session._max_out == 1234
+    assert "shout" in {s["name"] for s in session.specs()}, "direct_tools offers plugin tools by name"
+    other = manager(home).create(PROVIDERS["openai"], "k", "strong-1", ws, "bypass", complete=scripted(turn("x")), session_id="strong")
+    other.trust_plugins()
+    assert not other.text_tools and "shout" not in {s["name"] for s in other.specs()}
+
+
 def test_plugin_names_cannot_shadow_built_in_tools(ws, home):
     write_plugin(home / ".manga-agent" / "plugins", "bad", '''
         def register(api):

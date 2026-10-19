@@ -135,9 +135,9 @@ def register(api):
 |---|---|
 | Một giao thức | Chỉ dùng chat completions kiểu OpenAI, vì gần như mọi model và server đều hỗ trợ: OpenAI, Gemini, Claude (lớp tương thích), Ollama, LM Studio, vLLM, OpenRouter, DeepSeek... Không viết adapter riêng cho từng hãng. |
 | Tự dò đường dẫn | Bạn dán URL nào cũng được: host trơn, `/v1`, hay endpoint đầy đủ. Chat trả 404 thì thử lần lượt `{base}/chat/completions`, `/v1/chat/completions`, `/api/v1/...`, `/openai/v1/...`, `/v1beta/openai/...`, rồi nhớ đường nào chạy được. Hiện mới dò khi thêm provider và chỉ qua `/models`, nên server không có `/models` sẽ thiếu. |
-| Dự phòng cho giao thức lạ | `api.provider(name, adapter)` trong plugin, với `adapter(request) -> {"text", "calls", "usage"}` theo đúng định dạng nội bộ mà `client.complete` trả. Chỉ dùng khi gặp model không nói được chat completions. |
-| Bảng năng lực model | `profile.json` → `models.<id>` khai báo: `tools` (native/text), `vision`, `reasoning`, `context_window`, `max_output`. Mục nào thiếu thì đoán từ `models.py`, và đoán sai thì tự sửa theo lỗi lần đầu (đã làm cho context window). |
-| Model yếu | Đặt `"tools": "lean"` thì chỉ gửi tool cốt lõi (read, edit, run, search). Tool MCP và tool đã create chỉ được gửi khi model gọi `tool_search` (tìm theo tên hoặc mô tả). |
+| Dự phòng cho giao thức lạ | `api.provider(name, adapter)` trong plugin, với `adapter(ctx, request) -> {"text", "calls", "usage"}`; `request` có `model`, `messages`, `tools`, `api_key`, `api_base`. Dùng cho provider có id trùng tên, hoặc khi `profile.json` ghi `"adapters": {"<provider id>": "<tên>"}`. |
+| Bảng năng lực model | `profile.json` → `models."<regex tên model>"` khai báo: `tools` (`native`/`text`), `vision`, `context_window`, `max_output`, `direct_tools`, cùng chỗ với `request` và `prompt_extra` đã có. Mục nào thiếu thì đoán như cũ, và đoán sai thì tự sửa theo lỗi lần đầu. |
+| Tool gửi cho model | Mặc định đã gọn: read, edit, run, create; tool MCP và plugin gọi qua code của `create` (tìm bằng `tools._search`). Model gọi tool tốt nhưng viết code kém thì đặt `direct_tools: true` để nhận thẳng tool MCP và plugin. |
 | Prompt trung lập | System prompt không giả định hãng. Hướng dẫn riêng cho từng model đặt ở `models.<id>.prompt` hoặc trong plugin. |
 
 ## 5. Thứ tự làm
@@ -154,7 +154,7 @@ Mỗi bước có test, 4 script sanity và ảnh chụp UI, rồi mới sang b�
 4. **Provider:**
    - Dò đường dẫn chat khi gặp 404, và nhớ đường chạy được.
    - `api.provider`.
-   - Bảng năng lực, chế độ `lean` và `tool_search`.
+   - Bảng năng lực và `direct_tools`.
 5. **Tầng 2 do model viết:** `plugin_write`, luôn hỏi bạn, nạp nóng.
 6. **UI "Mở rộng":** một bảng chung cho MCP, tool đã create và plugin, gồm trạng thái, tin cậy, công tắc và lỗi.
 

@@ -41,7 +41,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "fallback_models": [], "prewalk_model": "",
-                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "plugins": {}}
+                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "plugins": {}, "adapters": {}}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -99,6 +99,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                 if isinstance(data.get("replace"), dict):
                     profile["replace"].update({k: v for k, v in data["replace"].items()
                                                if k in REPLACEABLE and isinstance(v, str) and v.startswith("mcp__")})
+                if isinstance(data.get("adapters"), dict):
+                    profile["adapters"].update({str(k): v for k, v in data["adapters"].items() if isinstance(v, str)})
                 if isinstance(data.get("plugins"), dict):
                     profile["plugins"].update({k: v for k, v in data["plugins"].items() if isinstance(v, dict)})
                 if isinstance(data.get("model_roles"), dict):
@@ -130,6 +132,7 @@ class Registry:
         self.hooks: dict[str, list[Callable]] = {e: [] for e in EVENTS}
         self.prompts: list[Callable] = []
         self.loops: dict[str, Callable] = {}
+        self.providers: dict[str, Callable] = {}
         self.plugins: list[dict] = []
         self._current = ""
 
@@ -170,6 +173,12 @@ class Registry:
     def loop(self, name: str, fn: Callable) -> None:
         """fn(session, max_steps) replaces the step loop; the session API (_turn, _run_calls, history, emit) does the work."""
         self.loops[name] = fn
+
+    def provider(self, name: str, adapter: Callable) -> None:
+        """adapter(session, request) answers a model call for a protocol other than OpenAI chat."""
+        if not NAME_RE.match(name.replace("-", "_")) or not callable(adapter):
+            raise ValueError(f"model adapter {name!r} cannot be registered")
+        self.providers[name] = adapter
 
 
 def load_module_bytes(source: bytes, label: str, filename: str = "<plugin>"):

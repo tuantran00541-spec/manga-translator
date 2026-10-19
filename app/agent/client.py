@@ -11,6 +11,7 @@ from contextvars import ContextVar
 from email.utils import parsedate_to_datetime
 
 import requests
+from fastapi import HTTPException
 
 from app.ai_providers import AIProvider, auth_headers
 from app.logging_config import logger
@@ -80,7 +81,21 @@ def chat_url(provider: AIProvider) -> str:
     if provider.protocol == "gemini":
         # Gemini serves the same chat format under its OpenAI-compatible path.
         return f"{provider.api_base.rstrip('/')}/openai/chat/completions"
-    return str(provider.chat_url)
+    return _FOUND_PATH.get(provider.api_base.rstrip("/"), str(provider.chat_url))
+
+
+# The chat path that answered for a custom provider whose own path said 404, by its API root.
+_FOUND_PATH: dict[str, str] = {}
+
+
+def chat_candidates(provider: AIProvider) -> list[str]:
+    """Where servers that speak the OpenAI chat format put it, for a root that gave 404."""
+    base = provider.api_base.rstrip("/")
+    root = re.sub(r"/v\d+[a-z0-9]*$", "", base)
+    tails = [f"{base}/chat/completions", f"{base}/v1/chat/completions", f"{root}/v1/chat/completions", f"{root}/chat/completions",
+             f"{root}/api/v1/chat/completions", f"{root}/openai/v1/chat/completions", f"{root}/v1beta/openai/chat/completions",
+             f"{root}/compatible-mode/v1/chat/completions"]
+    return list(dict.fromkeys(tails))
 
 
 def native_tools(specs: list[dict]) -> list[dict]:
@@ -308,8 +323,29 @@ def _note_rate_limit(provider: AIProvider, response: requests.Response, wait: fl
 
 
 def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> requests.Response:
-    """The request, with the shared 429 cooldown and retries."""
-    url = chat_url(provider)
+    """The request, with the shared 429 cooldown and retries; a custom provider whose path gives 404 is tried at the usual others."""
+    response = _post_to(chat_url(provider), provider, api_key, payload, stream)
+    if response.status_code not in (404, 405) or provider.builtin or provider.protocol != "openai" or provider.api_base.rstrip("/") in _FOUND_PATH:
+        return response
+    tried = {chat_url(provider)}
+    for url in chat_candidates(provider):
+        if url in tried:
+            continue
+        tried.add(url)
+        try:
+            other = _post_to(url, provider, api_key, payload, stream)
+        except (HTTPException, ValueError):
+            continue
+        if other.status_code not in (404, 405):
+            response.close()
+            _FOUND_PATH[provider.api_base.rstrip("/")] = url
+            logger.info("{} answers chat at {}", provider.label, url)
+            return other
+        other.close()
+    return response
+
+
+def _post_to(url: str, provider: AIProvider, api_key: str, payload: dict, stream: bool) -> requests.Response:
     validate_url(url)
     key = slot(provider, api_key)
     for attempt in range(RATE_LIMIT_RETRIES + 1):

@@ -664,6 +664,7 @@ class AgentSession:
         self.max_steps = self.profile["max_steps"]
         self._max_out = int(self.profile["max_output_tokens"])
         self.quirks = models.quirks(model, self.profile["models"])
+        self._apply_caps()
         self.disabled = set(self.profile["disable"])
         self.echo_reasoning = provider.id == "deepseek" if self.profile["echo_reasoning"] is None else self.profile["echo_reasoning"]
         if depth:
@@ -888,6 +889,17 @@ class AgentSession:
         """Switch the model; its prompt quirks come with it."""
         self.model = model
         self.quirks = models.quirks(model, self.profile["models"])
+        self._apply_caps()
+
+    def _apply_caps(self) -> None:
+        """What profile.json says this model can do: its window, reply size and whether it takes native tool calls."""
+        window = self.quirks.get("context_window")
+        if isinstance(window, int) and 4_000 <= window <= 10_000_000:
+            self.compact_at = int(window * WINDOW_SHARE)
+        if isinstance(self.quirks.get("max_output"), int) and self.quirks["max_output"] > 0:
+            self._max_out = self.quirks["max_output"]
+        if self.quirks.get("tools") in ("text", "native"):
+            self.text_tools = self.quirks["tools"] == "text"
 
     def set_effort(self, effort: str) -> None:
         """How hard the model thinks from the next request on; "" leaves it to the model and profile.json."""
@@ -1180,6 +1192,9 @@ class AgentSession:
             token = client.ASK_ON_LIMIT.set(key == root.api_key and len(root.api_keys) > 1)
             extra = client.REQUEST_EXTRA.set(self._request_fields())
             try:
+                adapter = self._adapter(provider)
+                if adapter is not None:
+                    return self._via_adapter(adapter, provider, key, *args, **kwargs)
                 return self._raw_complete(provider, key, *args, **kwargs)
             except client.KeyLimited as exc:
                 if not root._ask_next_key(key, str(exc)):
@@ -1187,6 +1202,21 @@ class AgentSession:
             finally:
                 client.REQUEST_EXTRA.reset(extra)
                 client.ASK_ON_LIMIT.reset(token)
+
+    def _adapter(self, provider):
+        """A plugin's model protocol for this provider: by the provider's id, or as profile.json "adapters" names it."""
+        name = self.profile["adapters"].get(provider.id, provider.id)
+        return self.registry.providers.get(name)
+
+    def _via_adapter(self, adapter, provider, key, model, messages, *, tools=None, on_delta=None, max_tokens=None):
+        out = adapter(self, {"model": model, "messages": messages, "tools": tools, "api_key": key,
+                             "api_base": provider.api_base, "max_tokens": max_tokens, "fields": self._request_fields()})
+        if not isinstance(out, dict) or not isinstance(out.get("text", ""), str):
+            raise RuntimeError(f"model adapter for {provider.id} returned {type(out).__name__}, not a turn dict")
+        calls = [c for c in out.get("calls") or [] if isinstance(c, dict) and c.get("name")]
+        return {"text": out.get("text") or "", "reasoning": str(out.get("reasoning") or ""), "usage": dict(out.get("usage") or {}),
+                "calls": [{"id": str(c.get("id") or uuid.uuid4().hex[:12]), "name": str(c["name"]),
+                           "args": c.get("args") if isinstance(c.get("args"), dict) else {}} for c in calls]}
 
     def _request_fields(self) -> dict:
         """Extra request fields for this model; with a clock, late_request takes over in the last third (say, less reasoning when time runs short)."""
@@ -1418,7 +1448,7 @@ class AgentSession:
     # Tools.
 
     def specs(self, listed: list[dict] | None = None) -> list[dict]:
-        sees = models.sees_images(self.provider.id, self.model, self.profile["vision"])
+        sees = models.sees_images(self.provider.id, self.model, self.quirks["vision"] if isinstance(self.quirks.get("vision"), bool) else self.profile["vision"])
         swap = self.replaced
         tools = self._root().mcp_tools
         rows = []
@@ -1448,6 +1478,12 @@ class AgentSession:
         if self.workspace.policy.mode != "read-only":
             rows.append(SESSION_SPECS["create"])
             rows += [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
+        if self.quirks.get("direct_tools"):
+            # A model that calls tools well but writes code poorly gets plugin and MCP tools by name.
+            rows += [t.spec for t in self.registry.tools.values() if not self.plan_mode or t.kind == "read"]
+            rows += [{"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
+                      "parameters": tool.get("inputSchema") or OBJ} for name, (server, tool) in self._root().mcp_tools.items()
+                     if not self.plan_mode or self._role(name) == "read"]
         if self.jobs:
             # Only while something runs in the background; it is how the model reads, types into or stops it.
             rows += [SESSION_SPECS["job_output"], SESSION_SPECS["job_input"], SESSION_SPECS["job_stop"]]
