@@ -1,0 +1,2667 @@
+{
+ "url": "https://asurascans.com/comics/ode-of-the-brave-11fe7da3/chapter/0",
+ "model": "openai/gpt-6-luna",
+ "price_usd_per_m": {
+  "input": 0.105,
+  "output": 0.525
+ },
+ "polish": true,
+ "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+ "status": "completed",
+ "error": null,
+ "wall_s": 390.5,
+ "stages": [
+  {
+   "key": "download",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 3.0,
+   "detail": "34 lát"
+  },
+  {
+   "key": "scan",
+   "status": "done",
+   "done": 34,
+   "total": 34,
+   "elapsed_s": 50.9,
+   "detail": "2 lát credit, 1 lát không chữ, 1 logo"
+  },
+  {
+   "key": "clean",
+   "status": "done",
+   "done": 31,
+   "total": 31,
+   "elapsed_s": 105.1,
+   "detail": ""
+  },
+  {
+   "key": "review",
+   "status": "done",
+   "done": 31,
+   "total": 31,
+   "elapsed_s": 70.4,
+   "detail": "6 tờ crop, repaint 17"
+  },
+  {
+   "key": "translate",
+   "status": "done",
+   "done": 31,
+   "total": 31,
+   "elapsed_s": 116.5,
+   "detail": "Dịch 55 vùng"
+  },
+  {
+   "key": "polish",
+   "status": "done",
+   "done": 41,
+   "total": 41,
+   "elapsed_s": 33.6,
+   "detail": "Chấm 41 câu, sửa 4"
+  },
+  {
+   "key": "render",
+   "status": "done",
+   "done": 31,
+   "total": 31,
+   "elapsed_s": 7.6,
+   "detail": ""
+  },
+  {
+   "key": "finish",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 0.1,
+   "detail": "Xong"
+  }
+ ],
+ "report": {
+  "credit_pages": [
+   0,
+   33
+  ],
+  "credit_rejected": [],
+  "logo_regions": 1,
+  "scan_errors": [],
+  "repainted_regions": 17,
+  "repaint_pages": [
+   4,
+   10,
+   8,
+   2,
+   12,
+   1,
+   13,
+   27,
+   25,
+   29,
+   30,
+   17,
+   32
+  ],
+  "qc_flagged": 0,
+  "qc_errors": [],
+  "translated": 55,
+  "unreadable": 7,
+  "review_flags": 2,
+  "translate_errors": [],
+  "render_errors": [],
+  "editorial_blockers": 0,
+  "blocker_samples": [],
+  "source_lang": "en",
+  "textless_pages": [
+   22
+  ],
+  "textless_rejected": [],
+  "kept_regions": 0,
+  "missed_added": 2,
+  "retried_pages": [
+   8,
+   26
+  ],
+  "restored_regions": 0,
+  "sfx_kept": 1,
+  "review_list": [],
+  "unboxed_pages": [
+   8,
+   26
+  ],
+  "repaint_retried": 0,
+  "residue_left": [],
+  "art_kept": 0,
+  "skip_kept": [],
+  "skip_unjudged": [],
+  "polish": {
+   "judged": 41,
+   "flagged": 5,
+   "rewritten": 4,
+   "still_flagged": 2,
+   "errors": [],
+   "samples": [
+    {
+     "page": 6,
+     "source": "BUT I'VE BEEN A SHEPHERD FOR OVER TEN YEARS.",
+     "before": "Nhưng tôi đã chăn cừu hơn mười năm rồi.",
+     "after": "Nhưng tôi đã làm Mục Đồng hơn mười năm rồi.",
+     "scores_before": {
+      "natural": 2.479654968741407,
+      "clear": 1.9104964190644833,
+      "faithful": 1.8670270515806793,
+      "settled": 0.6869152456567875
+     },
+     "scores_after": {
+      "natural": 2.5316763139542786,
+      "clear": 1.9252316462692827,
+      "faithful": 1.9597942596908182,
+      "settled": 1.9735541623133572
+     }
+    },
+    {
+     "page": 16,
+     "source": "I WAS FORGED. TEMPERED.",
+     "before": "Tôi được tôi rèn.\nTôi luyện.",
+     "after": "Tôi được tôi luyện.\nTôi được trui rèn.",
+     "scores_before": {
+      "natural": 1.8814532327498155,
+      "clear": 1.461806737575935,
+      "faithful": 1.6546129246392354
+     },
+     "scores_after": {
+      "natural": 2.389860903974678,
+      "clear": 1.8246195077402978,
+      "faithful": 1.8286453736831287
+     }
+    },
+    {
+     "page": 24,
+     "source": "WE'RE HUMAN, JUST LIKE YOU.",
+     "before": "Chúng ta là người,\ngiống như ngươi.",
+     "after": "Bọn ta cũng là con người,\nnhư ngươi thôi.",
+     "scores_before": {
+      "natural": 2.320420272146534,
+      "clear": 1.87493537602619,
+      "faithful": 1.895405017573218,
+      "settled": 0.9006568151887042
+     },
+     "scores_after": {
+      "natural": 2.5219917186258636,
+      "clear": 1.951364933327618,
+      "faithful": 1.947253558758454,
+      "settled": 1.962319519496687
+     }
+    },
+    {
+     "page": 4,
+     "source": "THIS WOULD BE IT.",
+     "before": "Đó là tất cả.",
+     "after": "Chính là nó.",
+     "scores_before": {
+      "natural": 2.1387442370611573,
+      "clear": 1.6306695696873412,
+      "faithful": 1.290631736977618
+     },
+     "scores_after": {
+      "natural": 2.2325280014360285,
+      "clear": 1.4791597985531244,
+      "faithful": 1.5836372201207276
+     }
+    }
+   ],
+   "scores": [
+    {
+     "page": 4,
+     "text": "Đó là tất cả.",
+     "scores": {
+      "natural": 2.1387442370611573,
+      "clear": 1.6306695696873412,
+      "faithful": 1.290631736977618
+     }
+    },
+    {
+     "page": 4,
+     "text": "Nếu tóm gọn\ncuộc đời mình...",
+     "scores": {
+      "natural": 2.301278598182541,
+      "clear": 1.7529808787854035,
+      "faithful": 1.7957331799353342
+     }
+    },
+    {
+     "page": 5,
+     "text": "Tôi đang sống\nmột cuộc đời\nbình thường...",
+     "scores": {
+      "natural": 2.653725150312537,
+      "clear": 1.9502658172586098,
+      "faithful": 1.9489767934787967
+     }
+    },
+    {
+     "page": 5,
+     "text": "Mục Đồng,\nngươi bao nhiêu tuổi?",
+     "scores": {
+      "natural": 2.380594431347271,
+      "clear": 1.9274432968476443,
+      "faithful": 1.9588840735357125,
+      "settled": 1.9441317987144464
+     }
+    },
+    {
+     "page": 5,
+     "text": "Thì một người đàn ông\ntrông như quý tộc\nxuất hiện trước tôi.",
+     "scores": {
+      "natural": 2.445731747406607,
+      "clear": 1.8748602057215575,
+      "faithful": 1.897862211797025
+     }
+    },
+    {
+     "page": 6,
+     "text": "Nhưng tôi đã chăn cừu hơn mười năm rồi.",
+     "scores": {
+      "natural": 2.479654968741407,
+      "clear": 1.9104964190644833,
+      "faithful": 1.8670270515806793,
+      "settled": 0.6869152456567875
+     }
+    },
+    {
+     "page": 6,
+     "text": "Tôi không biết mình sinh ra khi nào...",
+     "scores": {
+      "natural": 2.5307000259293964,
+      "clear": 1.9552184453863928,
+      "faithful": 1.9745125480555403,
+      "settled": 1.9606723638894077
+     }
+    },
+    {
+     "page": 6,
+     "text": "Ngươi kết hôn chưa?",
+     "scores": {
+      "natural": 2.3989128885995785,
+      "clear": 1.9338541059040624,
+      "faithful": 1.9538448432283557
+     }
+    },
+    {
+     "page": 7,
+     "text": "Trưởng Thôn sẽ giới thiệu\ncho ngươi một mối xứng đáng.",
+     "scores": {
+      "natural": 2.428709914114938,
+      "clear": 1.8800340488439675,
+      "faithful": 1.7930624760892673,
+      "settled": 1.8753445583285293
+     }
+    },
+    {
+     "page": 7,
+     "text": "Sống hạnh phúc nhé,",
+     "scores": {
+      "natural": 2.6356039688230597,
+      "clear": 1.939550579535002,
+      "faithful": 1.9380345513211874
+     }
+    },
+    {
+     "page": 7,
+     "text": "Ngươi đúng là kẻ\nthật thà hiếm có.",
+     "scores": {
+      "natural": 2.520289834633888,
+      "clear": 1.9250615400706148,
+      "faithful": 1.872607387812565
+     }
+    },
+    {
+     "page": 7,
+     "text": "Tôi không quen\nngười phụ nữ nào.",
+     "scores": {
+      "natural": 2.4718489480861554,
+      "clear": 1.9096416773916545,
+      "faithful": 1.8957516115172732
+     }
+    },
+    {
+     "page": 8,
+     "text": "Hỡi người tỏa sáng\nnhư một vì sao!",
+     "scores": {
+      "natural": 2.4402706092166015,
+      "clear": 1.9215832976877283,
+      "faithful": 1.9368829285338571
+     }
+    },
+    {
+     "page": 8,
+     "text": "Hỡi người tỏa sáng\nnhư một vì sao!",
+     "scores": {
+      "natural": 2.4936063804919133,
+      "clear": 1.9082537854740127,
+      "faithful": 1.9484066610387918
+     }
+    },
+    {
+     "page": 9,
+     "text": "Vừa khi tôi ổn định\ncuộc sống vợ chồng\nvà lần đầu hiểu ra\nhạnh phúc là gì...",
+     "scores": {
+      "natural": 2.5598090332395436,
+      "clear": 1.9126139600555028,
+      "faithful": 1.9221423729536051
+     }
+    },
+    {
+     "page": 9,
+     "text": "Quả nhiên, một thời gian sau,\ntôi cưới người phụ nữ\nmà Trưởng Thôn giới thiệu.",
+     "scores": {
+      "natural": 2.4470977362907256,
+      "clear": 1.8690707580717218,
+      "faithful": 1.8509902842330208,
+      "settled": 1.9568180651876221
+     }
+    },
+    {
+     "page": 10,
+     "text": "Tin tồi tệ nhất\nđã đến làng của chúng tôi.",
+     "scores": {
+      "natural": 2.482675750016657,
+      "clear": 1.9256065158810753,
+      "faithful": 1.775022001843401
+     }
+    },
+    {
+     "page": 10,
+     "text": "Hoàng Đế Bệ Hạ đã tuyên bố\nmột cuộc viễn chinh về phía đông!",
+     "scores": {
+      "natural": 2.405290290795424,
+      "clear": 1.926925708955706,
+      "faithful": 1.9043199112941327,
+      "settled": 1.9170700722183025
+     }
+    },
+    {
+     "page": 10,
+     "text": "Hãy cùng ta bước lên\ncon đường vinh quang!!",
+     "scores": {
+      "natural": 2.5480835216132016,
+      "clear": 1.934677076319146,
+      "faithful": 1.9469202234438332,
+      "settled": 1.8852478002237425
+     }
+    },
+    {
+     "page": 11,
+     "text": "Mỗi làng phải cử ít nhất một người,\nnên chúng tôi bốc thăm...",
+     "scores": {
+      "natural": 2.604009921467915,
+      "clear": 1.9271802025875138,
+      "faithful": 1.9468941825168422
+     }
+    },
+    {
+     "page": 11,
+     "text": "Và tôi là người\nbị chọn.",
+     "scores": {
+      "natural": 2.387414209976834,
+      "clear": 1.8525118832656575,
+      "faithful": 1.8497240454814627
+     }
+    },
+    {
+     "page": 12,
+     "text": "Tôi bảo vợ tôi sẽ gửi tiền lương về,\nđể cô ấy khỏi phải lo chuyện thiếu trước hụt sau...",
+     "scores": {
+      "natural": 2.536536212270412,
+      "clear": 1.9007671925851084,
+      "faithful": 1.8841727208633343
+     }
+    },
+    {
+     "page": 13,
+     "text": "Và bỏ lại\nngôi làng phía sau.",
+     "scores": {
+      "natural": 2.612884296175079,
+      "clear": 1.8709637564186243,
+      "faithful": 1.9535099664531568
+     }
+    },
+    {
+     "page": 14,
+     "text": "May mà chỉ sượt qua má...",
+     "scores": {
+      "natural": 2.450721303762183,
+      "clear": 1.7341706993209163,
+      "faithful": 1.8382605489312256
+     }
+    },
+    {
+     "page": 15,
+     "text": "Và khi mũi tên trút xuống,\nmay thay chỉ sượt qua má tôi...",
+     "scores": {
+      "natural": 2.34562791479075,
+      "clear": 1.8191027568831708,
+      "faithful": 1.8376667435767295
+     }
+    },
+    {
+     "page": 16,
+     "text": "Tôi được tôi rèn.\nTôi luyện.",
+     "scores": {
+      "natural": 1.8814532327498155,
+      "clear": 1.461806737575935,
+      "faithful": 1.6546129246392354
+     }
+    },
+    {
+     "page": 24,
+     "text": "Chúng ta là người,\ngiống như ngươi.",
+     "scores": {
+      "natural": 2.320420272146534,
+      "clear": 1.87493537602619,
+      "faithful": 1.895405017573218,
+      "settled": 0.9006568151887042
+     }
+    },
+    {
+     "page": 24,
+     "text": "Ngươi muốn chúng ta\nsống ở đâu?",
+     "scores": {
+      "natural": 2.3384693828522582,
+      "clear": 1.8927777317687204,
+      "faithful": 1.7727174340771248,
+      "settled": 1.5135723022972791
+     }
+    },
+    {
+     "page": 24,
+     "text": "Ngươi là quái vật.",
+     "scores": {
+      "natural": 2.5712003777869494,
+      "clear": 1.946101872378139,
+      "faithful": 1.9138039269000386
+     }
+    },
+    {
+     "page": 26,
+     "text": "Quay về đi...",
+     "scores": {
+      "natural": 2.6237252957563824,
+      "clear": 1.8755069348947186,
+      "faithful": 1.931680461821115
+     }
+    },
+    {
+     "page": 26,
+     "text": "...Về với gia đình đi.",
+     "scores": {
+      "natural": 2.4001996398586747,
+      "clear": 1.8440959448920986,
+      "faithful": 1.5115284561426674
+     }
+    },
+    {
+     "page": 26,
+     "text": "...Về với\ngia đình đi.",
+     "scores": {
+      "natural": 2.3965746719621395,
+      "clear": 1.8324206554699423,
+      "faithful": 1.7559498012199872
+     }
+    },
+    {
+     "page": 27,
+     "text": "Về nơi người vợ\nđang đợi tôi—",
+     "scores": {
+      "natural": 2.137359345534109,
+      "clear": 1.7044102050686147,
+      "faithful": 1.7986941072156963
+     }
+    },
+    {
+     "page": 27,
+     "text": "Sau đó, tôi xin giải ngũ\nvà quyết định trở về...",
+     "scores": {
+      "natural": 2.742650507485579,
+      "clear": 1.938556141023471,
+      "faithful": 1.9532536274423387
+     }
+    },
+    {
+     "page": 29,
+     "text": "Và dùng số tiền tôi gửi\nđể nuôi con của hắn.",
+     "scores": {
+      "natural": 2.539033351107075,
+      "clear": 1.8244311774266802,
+      "faithful": 1.9325958302226818
+     }
+    },
+    {
+     "page": 29,
+     "text": "Nhưng vợ tôi\nlại sống với\nmột người đàn ông khác...",
+     "scores": {
+      "natural": 2.7395387193424323,
+      "clear": 1.963781556825386,
+      "faithful": 1.9665805403363683
+     }
+    },
+    {
+     "page": 30,
+     "text": "Từ khi chúng tôi\nbốc thăm...",
+     "scores": {
+      "natural": 2.119341327183255,
+      "clear": 1.5418044412192637,
+      "faithful": 1.7177890516005938
+     }
+    },
+    {
+     "page": 31,
+     "text": "Tôi bị gài rồi.",
+     "scores": {
+      "natural": 2.525348336220907,
+      "clear": 1.7850874902434843,
+      "faithful": 1.8428713956537126
+     }
+    },
+    {
+     "page": 32,
+     "text": "Đi chết đi...",
+     "scores": {
+      "natural": 2.5240083639488233,
+      "clear": 1.8999350823848866,
+      "faithful": 1.7687168577083923
+     }
+    },
+    {
+     "page": 33,
+     "text": "Đây là bản xem trước của bộ truyện sắp ra mắt\nmang tên \"Ode of the Brave\",\ndo MAPPA của manhwa là Studio Redice (haha) mang đến.\nNgày phát hành chính thức là 20 tháng 9, 2026.",
+     "scores": {
+      "natural": 2.6219309546879805,
+      "clear": 1.9426844602072062,
+      "faithful": 1.940523819724851,
+      "settled": 1.967795794961511
+     }
+    },
+    {
+     "page": 33,
+     "text": "Từng người một trong các ngươi.",
+     "scores": {
+      "natural": 2.0114577687453035,
+      "clear": 1.6553450194941224,
+      "faithful": 1.6860941983430515
+     }
+    }
+   ]
+  },
+  "glossary_text_slices": 31,
+  "glossary_image_slices": 0,
+  "glossary": {
+   "names": [
+    {
+     "source": "RIKI",
+     "target": "Riki",
+     "note": "person - soldier acclaimed by comrades (Slices 17-19)"
+    },
+    {
+     "source": "HIS MAJESTY THE EMPEROR",
+     "target": "Hoàng Đế Bệ Hạ",
+     "note": "title - ruler who declared expedition to the east (Slice 10)"
+    },
+    {
+     "source": "ODE OF THE BRAVE",
+     "target": "Ode of the Brave",
+     "note": "work title - preview series name (Slice 33)"
+    },
+    {
+     "source": "STUDIO REDICE",
+     "target": "Studio Redice",
+     "note": "organisation - publisher (Slice 33)"
+    }
+   ],
+   "terms": [
+    {
+     "source": "emperor",
+     "target": "Hoàng Đế"
+    },
+    {
+     "source": "village chief",
+     "target": "Trưởng Thôn"
+    },
+    {
+     "source": "shepherd",
+     "target": "Mục Đồng"
+    },
+    {
+     "source": "soldier",
+     "target": "Binh Sĩ"
+    }
+   ],
+   "address": [
+    {
+     "from": "hooded figure",
+     "to": "shepherd",
+     "self": "ta",
+     "other": "ngươi"
+    },
+    {
+     "from": "shepherd",
+     "to": "hooded figure",
+     "self": "tôi",
+     "other": "ngài"
+    },
+    {
+     "from": "young man with spiky blond hair",
+     "to": "hooded figure",
+     "self": "tôi",
+     "other": "ngài"
+    },
+    {
+     "from": "soldier shouting",
+     "to": "villagers/crowd",
+     "self": "ta",
+     "other": "các ngươi"
+    },
+    {
+     "from": "blonde man (close up on eye)",
+     "to": "armored figure",
+     "self": "ta",
+     "other": "ngươi"
+    },
+    {
+     "from": "armored figure",
+     "to": "blonde man (close up on eye)",
+     "self": "bọn ta",
+     "other": "ngươi"
+    }
+   ]
+  },
+  "review_sheets": 6,
+  "review_crops": 59,
+  "logos_freed": 1,
+  "series": {
+   "key": "asurascans-ode-of-the-brave",
+   "names": 0,
+   "terms": 0,
+   "address": 0,
+   "characters": 0,
+   "chapters": 0
+  },
+  "lines_joined": 0,
+  "overlaps_dropped": 0,
+  "seam_copies": 3,
+  "characters": [
+   {
+    "name": "Riki",
+    "note": "young soldier with spiky blond hair in red cloak, standing before defeated bloodied armored soldiers; speaks with quiet authority, sparing them"
+   },
+   {
+    "name": "shepherd",
+    "note": "young blond spiky-haired boy, thin, holds a staff; humble and uncertain, speaking to the hooded stranger"
+   },
+   {
+    "name": "hooded figure",
+    "note": "cloaked stranger, older/wiser, speaks with authority like a mentor"
+   },
+   {
+    "name": "Mục Đồng",
+    "note": "thiếu niên tóc vàng nhọn, mặc đồng phục sáng màu, người đang được hỏi chuyện"
+   },
+   {
+    "name": "soldier shouting",
+    "note": "armed soldier in helmet and mail, shouting news to the village crowd"
+   },
+   {
+    "name": "wounded soldier",
+    "note": "helmeted soldier, bloodied, voice cracking as he calls out to Riki"
+   },
+   {
+    "name": "armored figure",
+    "note": "soldier in bloodied helmet and mail, mortally wounded, speaking to Riki"
+   },
+   {
+    "name": "narration",
+    "note": "giọng người lính kể lại chuyện vợ mình phản bội, đau đớn, cay đắng"
+   },
+   {
+    "name": "người đàn ông",
+    "note": "người lớn trong quán, đang cười lớn; chưa rõ danh tính"
+   }
+  ],
+  "address": [
+   {
+    "from": "shepherd",
+    "to": "hooded figure",
+    "self": "tôi",
+    "other": "ngài"
+   },
+   {
+    "from": "hooded figure",
+    "to": "Riki",
+    "self": "ta",
+    "other": "ngươi"
+   },
+   {
+    "from": "Riki",
+    "to": "hooded figure",
+    "self": "tôi",
+    "other": "ngài"
+   },
+   {
+    "from": "soldier shouting",
+    "to": "Riki",
+    "self": "ta",
+    "other": "ngươi"
+   },
+   {
+    "from": "Riki",
+    "to": "armored soldiers",
+    "self": "ta",
+    "other": "các ngươi"
+   },
+   {
+    "from": "wounded soldier",
+    "to": "Riki",
+    "self": "tôi",
+    "other": "cậu"
+   }
+  ],
+  "blanks_settled": 6
+ },
+ "gateway_job": {
+  "status": "completed",
+  "requests": 106,
+  "prompt_tokens": 156575,
+  "completion_tokens": 40292,
+  "cost_usd": 0.017797510459999995,
+  "charged_micros": 18691
+ },
+ "transport": {
+  "scan": {
+   "requests": 17,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 9.1,
+    "p90": 11.2,
+    "max": 11.8,
+    "sum": 152.9
+   },
+   "span_s": 50.7,
+   "images": 34,
+   "request_kb_avg": 340.8,
+   "prompt_tokens": 24085,
+   "cached_tokens": 0,
+   "completion_tokens": 5947,
+   "reasoning_tokens": 0
+  },
+  "glossary": {
+   "requests": 1,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 14.7,
+    "p90": 14.7,
+    "max": 14.7,
+    "sum": 14.7
+   },
+   "span_s": 14.7,
+   "images": 0,
+   "request_kb_avg": 5.1,
+   "prompt_tokens": 1464,
+   "cached_tokens": 0,
+   "completion_tokens": 1415,
+   "reasoning_tokens": 1042
+  },
+  "review": {
+   "requests": 6,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 7.8,
+    "p90": 17.4,
+    "max": 17.4,
+    "sum": 56.2
+   },
+   "span_s": 17.4,
+   "images": 6,
+   "request_kb_avg": 525.8,
+   "prompt_tokens": 14721,
+   "cached_tokens": 0,
+   "completion_tokens": 197,
+   "reasoning_tokens": 0
+  },
+  "translate": {
+   "requests": 30,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 7.3,
+    "p90": 17.9,
+    "max": 26.2,
+    "sum": 257.1
+   },
+   "span_s": 110.8,
+   "images": 30,
+   "request_kb_avg": 324.4,
+   "prompt_tokens": 99890,
+   "cached_tokens": 45312,
+   "completion_tokens": 32508,
+   "reasoning_tokens": 26931
+  },
+  "judge": {
+   "requests": 50,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 2.8,
+    "p90": 12.8,
+    "max": 13.2,
+    "sum": 204.5
+   },
+   "span_s": 33.5,
+   "images": 0,
+   "request_kb_avg": 0.0,
+   "prompt_tokens": 14045,
+   "cached_tokens": 0,
+   "completion_tokens": 0,
+   "reasoning_tokens": 0
+  },
+  "polish": {
+   "requests": 2,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 2.7,
+    "p90": 2.7,
+    "max": 2.7,
+    "sum": 4.6
+   },
+   "span_s": 7.6,
+   "images": 0,
+   "request_kb_avg": 5.7,
+   "prompt_tokens": 2370,
+   "cached_tokens": 0,
+   "completion_tokens": 225,
+   "reasoning_tokens": 0
+  }
+ },
+ "zip_pages": 8,
+ "slices": 34,
+ "slices_active": 31,
+ "clean_ms": {
+  "auto_inpaint": 150995,
+  "auto_inpaint.lama_model_ms": 95801,
+  "auto_inpaint.ort_global_lock_wait_ms": 0,
+  "auto_inpaint.session_lock_wait_ms": 0,
+  "detect": 117841,
+  "manual_inpaint": 0,
+  "manual_inpaint.lama_model_ms": 0,
+  "manual_inpaint.ort_global_lock_wait_ms": 0,
+  "manual_inpaint.session_lock_wait_ms": 0,
+  "read": 3269,
+  "screen": 0,
+  "total": 276062,
+  "write": 3897
+ },
+ "pairs": 31,
+ "lines": [
+  {
+   "slice": 2,
+   "id": "text_4ae50ffbaf244f09",
+   "source": "EARLY PREVIEW EPISODE 0",
+   "translation": "Xem trước sớm\nTập 0",
+   "role": "title",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 144,
+   "font_px_at_800": 128.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Xem trước sớm",
+    "Tập 0"
+   ],
+   "box_w": 900,
+   "box_h": 536,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 127,
+   "split_word": false
+  },
+  {
+   "slice": 2,
+   "id": "text_5ab040dcd7a74ce5",
+   "source": "THE LONG-AWAITED DEBUT",
+   "translation": "Màn ra mắt\nđược mong chờ",
+   "role": "title",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 98,
+   "font_px_at_800": 87.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Màn ra mắt",
+    "được mong chờ"
+   ],
+   "box_w": 748,
+   "box_h": 493,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 74,
+   "split_word": false
+  },
+  {
+   "slice": 2,
+   "id": "text_8f067a7ce9dd40a7",
+   "source": "GLOBAL DROP",
+   "translation": "Phát hành\ntoàn cầu",
+   "role": "title",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 96,
+   "font_px_at_800": 85.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Phát hành",
+    "toàn cầu"
+   ],
+   "box_w": 551,
+   "box_h": 363,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 104,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_bdeda575dc964bef",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 4,
+   "id": "text_9fb5b566eb0943bd",
+   "source": "THIS WOULD BE IT.",
+   "translation": "Chính là nó.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 109,
+   "font_px_at_800": 96.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chính",
+    "là nó."
+   ],
+   "box_w": 351,
+   "box_h": 405,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 60,
+   "split_word": false
+  },
+  {
+   "slice": 4,
+   "id": "text_995c6c25fc7e4b3a",
+   "source": "IF I HAD TO SUM UP MY LIFE...",
+   "translation": "Nếu tóm gọn\ncuộc đời mình...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Nếu tóm",
+    "gọn",
+    "cuộc đời",
+    "mình..."
+   ],
+   "box_w": 352,
+   "box_h": 343,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 47,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_bf392cec42fb47f7",
+   "source": "I WAS LIVING AN ORDINARY LIFE...",
+   "translation": "Tôi đang sống\nmột cuộc đời\nbình thường...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 5,
+   "wrapped": [
+    "Tôi đang",
+    "sống",
+    "một cuộc đời",
+    "bình",
+    "thường..."
+   ],
+   "box_w": 394,
+   "box_h": 447,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 50,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_eda6c4d3e20345ff",
+   "source": "SHEPHERD, HOW OLD ARE YOU?",
+   "translation": "Mục Đồng,\nngươi bao nhiêu tuổi?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Mục Đồng,",
+    "ngươi bao nhiêu",
+    "tuổi?"
+   ],
+   "box_w": 428,
+   "box_h": 294,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_3a0952ec17f04ef2",
+   "source": "WHEN A MAN WHO LOOKED LIKE A NOBLE APPEARED BEFORE ME.",
+   "translation": "Thì một người đàn ông\ntrông như quý tộc\nxuất hiện trước tôi.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 49,
+   "font_px_at_800": 43.6,
+   "size_source": "fit",
+   "lines": 5,
+   "wrapped": [
+    "Thì một người đàn",
+    "ông",
+    "trông như quý tộc",
+    "xuất hiện trước",
+    "tôi."
+   ],
+   "box_w": 382,
+   "box_h": 319,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_64d1dd1e4a784692",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 6,
+   "id": "text_999dfe8795914db9",
+   "source": "BUT I'VE BEEN A SHEPHERD FOR OVER TEN YEARS.",
+   "translation": "Nhưng tôi đã làm Mục Đồng hơn mười năm rồi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 46,
+   "font_px_at_800": 40.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nhưng tôi đã làm",
+    "Mục Đồng hơn mười",
+    "năm rồi."
+   ],
+   "box_w": 385,
+   "box_h": 283,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 25,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_eea5d42327ac4318",
+   "source": "I DON'T KNOW WHEN I WAS BORN...",
+   "translation": "Tôi không biết mình sinh ra khi nào...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 46,
+   "font_px_at_800": 40.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tôi không biết",
+    "mình sinh ra khi",
+    "nào..."
+   ],
+   "box_w": 320,
+   "box_h": 228,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 25,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_1cca9ffc73744ea9",
+   "source": "ARE YOU MARRIED?",
+   "translation": "Ngươi kết hôn chưa?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ngươi kết",
+    "hôn chưa?"
+   ],
+   "box_w": 316,
+   "box_h": 213,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_92c4077332ef4377",
+   "source": "THE VILLAGE CHIEF SHOULD INTRODUCE YOU TO A SUITABLE MATCH.",
+   "translation": "Trưởng Thôn sẽ giới thiệu\ncho ngươi một mối xứng đáng.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Trưởng Thôn sẽ giới",
+    "thiệu",
+    "cho ngươi một mối",
+    "xứng đáng."
+   ],
+   "box_w": 514,
+   "box_h": 446,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_df16364f096b4a6b",
+   "source": "LIVE A HAPPY LIFE,",
+   "translation": "Sống hạnh phúc nhé,",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 83,
+   "font_px_at_800": 73.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Sống hạnh",
+    "phúc nhé,"
+   ],
+   "box_w": 366,
+   "box_h": 355,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 46,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_7385573cc58946dc",
+   "source": "YOU'RE AN UNUSUALLY HONEST FELLOW.",
+   "translation": "Ngươi đúng là kẻ\nthật thà hiếm có.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ngươi đúng là kẻ",
+    "thật thà hiếm có."
+   ],
+   "box_w": 449,
+   "box_h": 265,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_381ad1f746d54e6a",
+   "source": "I DON'T KNOW ANY WOMEN.",
+   "translation": "Tôi không quen\nngười phụ nữ nào.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 54,
+   "font_px_at_800": 48.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Tôi không",
+    "quen",
+    "người phụ nữ",
+    "nào."
+   ],
+   "box_w": 325,
+   "box_h": 265,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 32,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_aa3a03f1f30940e9",
+   "source": "O ONE WHO SHINES LIKE A STAR!",
+   "translation": "Hỡi người tỏa sáng\nnhư một vì sao!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 117,
+   "font_px_at_800": 104.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Hỡi người tỏa",
+    "sáng",
+    "như một vì",
+    "sao!"
+   ],
+   "box_w": 621,
+   "box_h": 529,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 81,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_4739eb5f966142c2",
+   "source": "O ONE WHO SHINES LIKE A STAR!",
+   "translation": "Hỡi người tỏa sáng\nnhư một vì sao!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 7,
+   "wrapped": [
+    "Hỡi",
+    "người",
+    "tỏa",
+    "sáng",
+    "như",
+    "một vì",
+    "sao!"
+   ],
+   "box_w": 511,
+   "box_h": 1832,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 478,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_881f6441548a4e4f",
+   "source": "JUST AS I SETTLED INTO MY MARRIED LIFE AND LEARNED WHAT HAPPINESS WAS FOR THE FIRST TIME...",
+   "translation": "Vừa khi tôi ổn định\ncuộc sống vợ chồng\nvà lần đầu hiểu ra\nhạnh phúc là gì...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 62,
+   "font_px_at_800": 55.1,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Vừa khi tôi ổn định",
+    "cuộc sống vợ chồng",
+    "và lần đầu hiểu ra",
+    "hạnh phúc là gì..."
+   ],
+   "box_w": 500,
+   "box_h": 552,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_82b6c1ad5537427d",
+   "source": "SURE ENOUGH, SOME TIME LATER, I MARRIED A WOMAN THE VILLAGE CHIEF INTRODUCED ME TO.",
+   "translation": "Quả nhiên, một thời gian sau,\ntôi cưới người phụ nữ\nmà Trưởng Thôn giới thiệu.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 6,
+   "wrapped": [
+    "Quả nhiên, một",
+    "thời gian sau,",
+    "tôi cưới người phụ",
+    "nữ",
+    "mà Trưởng Thôn",
+    "giới thiệu."
+   ],
+   "box_w": 455,
+   "box_h": 444,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 32,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_723080afb9be4fcb",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 10,
+   "id": "text_e33935791d664c0b",
+   "source": "THE WORST POSSIBLE NEWS REACHED OUR VILLAGE.",
+   "translation": "Tin tồi tệ nhất\nđã đến làng của chúng tôi.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 131,
+   "font_px_at_800": 116.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tin tồi tệ nhất",
+    "đã đến làng",
+    "của chúng tôi."
+   ],
+   "box_w": 792,
+   "box_h": 614,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 72,
+   "split_word": false
+  },
+  {
+   "slice": 10,
+   "id": "text_fc9377d756c44b87",
+   "source": "HIS MAJESTY THE EMPEROR HAS DECLARED AN EXPEDITION TO THE EAST!",
+   "translation": "Hoàng Đế Bệ Hạ đã tuyên bố\nmột cuộc viễn chinh về phía đông!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Hoàng Đế Bệ Hạ đã tuyên",
+    "bố",
+    "một cuộc viễn chinh về",
+    "phía đông!"
+   ],
+   "box_w": 527,
+   "box_h": 423,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 10,
+   "id": "text_93b385bb5c5140e5",
+   "source": "LET US WALK THE PATH TO GLORY TOGETHER!!",
+   "translation": "Hãy cùng ta bước lên\ncon đường vinh quang!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Hãy cùng ta bước",
+    "lên",
+    "con đường vinh",
+    "quang!!"
+   ],
+   "box_w": 436,
+   "box_h": 351,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 11,
+   "id": "text_31e62e35c7bf44f1",
+   "source": "EVERY VILLAGE HAD TO SEND AT LEAST ONE PERSON, SO WE DREW LOTS...",
+   "translation": "Mỗi làng phải cử ít nhất một người,\nnên chúng tôi bốc thăm...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 105,
+   "font_px_at_800": 93.3,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Mỗi làng phải cử ít",
+    "nhất một người,",
+    "nên chúng tôi bốc",
+    "thăm..."
+   ],
+   "box_w": 841,
+   "box_h": 505,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 58,
+   "split_word": false
+  },
+  {
+   "slice": 11,
+   "id": "text_7072aa2688464053",
+   "source": "AND I WAS CHOSEN.",
+   "translation": "Và tôi là người\nbị chọn.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 129,
+   "font_px_at_800": 114.7,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Và tôi là",
+    "người",
+    "bị chọn."
+   ],
+   "box_w": 712,
+   "box_h": 438,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 108,
+   "split_word": false
+  },
+  {
+   "slice": 12,
+   "id": "text_c29ec152aa784c88",
+   "source": "I TOLD MY WIFE I'D SEND HER MY PAY, SO SHE WOULDN'T HAVE TO WORRY ABOUT MAKING ENDS MEET...",
+   "translation": "Tôi bảo vợ tôi sẽ gửi tiền lương về,\nđể cô ấy khỏi phải lo chuyện thiếu trước hụt sau...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 5,
+   "wrapped": [
+    "Tôi bảo vợ tôi sẽ gửi",
+    "tiền lương về,",
+    "để cô ấy khỏi phải lo",
+    "chuyện thiếu trước",
+    "hụt sau..."
+   ],
+   "box_w": 484,
+   "box_h": 367,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 13,
+   "id": "text_adba377f28244917",
+   "source": "AND LEFT THE VILLAGE BEHIND.",
+   "translation": "Và bỏ lại\nngôi làng phía sau.",
+   "role": "narration",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 88,
+   "font_px_at_800": 78.2,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Và bỏ lại",
+    "ngôi làng phía",
+    "sau."
+   ],
+   "box_w": 675,
+   "box_h": 498,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 77,
+   "split_word": false
+  },
+  {
+   "slice": 14,
+   "id": "text_28e82001964f4990",
+   "source": "",
+   "translation": "Và khi mũi tên trút xuống,\nmay thay chỉ sượt qua má tôi...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Và khi mũi tên trút",
+    "xuống,",
+    "may thay chỉ sượt",
+    "qua má tôi..."
+   ],
+   "box_w": 588,
+   "box_h": 423,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 14,
+   "id": "text_aa7bf95732484665",
+   "source": "I STABBED,",
+   "translation": "Tôi đâm,",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 140,
+   "font_px_at_800": 124.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Tôi đâm,"
+   ],
+   "box_w": 530,
+   "box_h": 204,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 77,
+   "split_word": false
+  },
+  {
+   "slice": 14,
+   "id": "text_5a512ce3345a4c6c",
+   "source": "I SLASHED,",
+   "translation": "Tôi chém,",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 132,
+   "font_px_at_800": 117.3,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Tôi chém,"
+   ],
+   "box_w": 509,
+   "box_h": 201,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 78,
+   "split_word": false
+  },
+  {
+   "slice": 14,
+   "id": "text_a622e22025d444b2",
+   "source": "LUCKILY ONLY GRAZING MY CHEEKS...",
+   "translation": "May mà chỉ sượt qua má...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 42,
+   "font_px_at_800": 37.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "May mà chỉ sượt",
+    "qua má..."
+   ],
+   "box_w": 292,
+   "box_h": 127,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 23,
+   "split_word": false
+  },
+  {
+   "slice": 15,
+   "id": "text_32bc1cc482aa4645",
+   "source": "AND AS ARROWS RAINED DOWN, LUCKILY ONLY GRAZING MY CHEEKS...",
+   "translation": "Và khi mũi tên trút xuống,\nmay thay chỉ sượt qua má tôi...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 69,
+   "font_px_at_800": 61.3,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Và khi mũi tên trút",
+    "xuống,",
+    "may thay chỉ sượt",
+    "qua má tôi..."
+   ],
+   "box_w": 588,
+   "box_h": 423,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 16,
+   "id": "text_af1ca1fc71734e93",
+   "source": "I WAS FORGED. TEMPERED.",
+   "translation": "Tôi được tôi luyện.\nTôi được trui rèn.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 50,
+   "font_px_at_800": 44.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tôi được tôi",
+    "luyện.",
+    "Tôi được trui rèn."
+   ],
+   "box_w": 375,
+   "box_h": 241,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 17,
+   "id": "text_d118e71d902f4084",
+   "source": "KILLLL—",
+   "translation": "Vút!",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Vút!"
+   ],
+   "box_w": 893,
+   "box_h": 753,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 324,
+   "split_word": false
+  },
+  {
+   "slice": 18,
+   "id": "text_5efe40a50e804542",
+   "source": "",
+   "translation": "Riki!!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": true,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Riki!!!"
+   ],
+   "box_w": 489,
+   "box_h": 424,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 184,
+   "split_word": false
+  },
+  {
+   "slice": 18,
+   "id": "text_e7f36ae4e55b4300",
+   "source": "RIKI....!!",
+   "translation": "Riki....!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 116,
+   "font_px_at_800": 103.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Riki....!!"
+   ],
+   "box_w": 422,
+   "box_h": 345,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 76,
+   "split_word": false
+  },
+  {
+   "slice": 18,
+   "id": "text_97c54793dae14c33",
+   "source": "R... RIKI!",
+   "translation": "R... Riki!",
+   "role": "whisper",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "R... Riki!"
+   ],
+   "box_w": 239,
+   "box_h": 131,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 19,
+   "id": "text_7ef44d2d1aca4d72",
+   "source": "RIKI!!!",
+   "translation": "Riki!!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": true,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Riki!!!"
+   ],
+   "box_w": 489,
+   "box_h": 424,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 184,
+   "split_word": false
+  },
+  {
+   "slice": 19,
+   "id": "text_f35059a0f5804520",
+   "source": "RIKI!!!",
+   "translation": "Riki!!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": true,
+   "page_width": 900,
+   "font_px": 149,
+   "font_px_at_800": 132.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Riki!!!"
+   ],
+   "box_w": 345,
+   "box_h": 285,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 104,
+   "split_word": false
+  },
+  {
+   "slice": 19,
+   "id": "text_9be0047632ea4efc",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 24,
+   "id": "text_eda49222e80242d7",
+   "source": "WE'RE HUMAN, JUST LIKE YOU.",
+   "translation": "Bọn ta cũng là con người,\nnhư ngươi thôi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 84,
+   "font_px_at_800": 74.7,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Bọn ta cũng là",
+    "con người,",
+    "như ngươi",
+    "thôi."
+   ],
+   "box_w": 497,
+   "box_h": 393,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 61,
+   "split_word": false
+  },
+  {
+   "slice": 24,
+   "id": "text_6e32429fa32546d5",
+   "source": "WHERE DO YOU EXPECT US TO LIVE?",
+   "translation": "Ngươi muốn chúng ta\nsống ở đâu?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 102,
+   "font_px_at_800": 90.7,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Ngươi muốn",
+    "chúng ta",
+    "sống ở đâu?"
+   ],
+   "box_w": 510,
+   "box_h": 378,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 58,
+   "split_word": false
+  },
+  {
+   "slice": 24,
+   "id": "text_c0a03a6e4c704f0e",
+   "source": "YOU MONSTER.",
+   "translation": "Ngươi là quái vật.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 98,
+   "font_px_at_800": 87.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ngươi là",
+    "quái vật."
+   ],
+   "box_w": 350,
+   "box_h": 264,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 54,
+   "split_word": false
+  },
+  {
+   "slice": 24,
+   "id": "text_71fb3512aa554e79",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 25,
+   "id": "text_88f530669d814184",
+   "source": "...GO...",
+   "translation": "...Đi...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 120,
+   "font_px_at_800": 106.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "...Đi..."
+   ],
+   "box_w": 396,
+   "box_h": 192,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 66,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_ff281d85dd40463a",
+   "source": "GO BACK...",
+   "translation": "Quay về đi...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 109,
+   "font_px_at_800": 96.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Quay về",
+    "đi..."
+   ],
+   "box_w": 396,
+   "box_h": 315,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 60,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_47c8fe6c87ee4051",
+   "source": "...TO YOUR FAMILIES.",
+   "translation": "...Về với gia đình đi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "...Về với gia",
+    "đình đi."
+   ],
+   "box_w": 345,
+   "box_h": 224,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_643f38bf6423432d",
+   "source": "...TO YOUR FAMILIES.",
+   "translation": "...Về với\ngia đình đi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 176,
+   "font_px_at_800": 156.4,
+   "size_source": "fit",
+   "lines": 5,
+   "wrapped": [
+    "...Về",
+    "với",
+    "gia",
+    "đình",
+    "đi."
+   ],
+   "box_w": 346,
+   "box_h": 1286,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 220,
+   "split_word": false
+  },
+  {
+   "slice": 27,
+   "id": "text_ddb84fc8bb9f47ff",
+   "source": "TO WHERE MY WIFE WAS WAITING—",
+   "translation": "Về nơi người vợ\nđang đợi tôi—",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 140,
+   "font_px_at_800": 124.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Về nơi người vợ",
+    "đang đợi tôi-"
+   ],
+   "box_w": 886,
+   "box_h": 373,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 77,
+   "split_word": false
+  },
+  {
+   "slice": 27,
+   "id": "text_6ce357c8225744ca",
+   "source": "AFTER THAT, I REQUESTED A DISCHARGE AND DECIDED TO RETURN...",
+   "translation": "Sau đó, tôi xin giải ngũ\nvà quyết định trở về...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Sau đó, tôi xin giải",
+    "ngũ",
+    "và quyết định trở",
+    "về..."
+   ],
+   "box_w": 547,
+   "box_h": 414,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 28,
+   "id": "text_3dc6b1f8e0ca45b4",
+   "source": "HOME.",
+   "translation": "Về nhà.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 189,
+   "font_px_at_800": 168.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Về nhà."
+   ],
+   "box_w": 542,
+   "box_h": 301,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 130,
+   "split_word": false
+  },
+  {
+   "slice": 28,
+   "id": "text_f01ffb9de37543f0",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 29,
+   "id": "text_ed1425b08eb14d18",
+   "source": "AND USING THE MONEY I SENT HER TO RAISE HIS CHILD.",
+   "translation": "Và dùng số tiền tôi gửi\nđể nuôi con của hắn.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Và dùng số tiền",
+    "tôi gửi",
+    "để nuôi con",
+    "của hắn."
+   ],
+   "box_w": 423,
+   "box_h": 354,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 29,
+   "id": "text_0c8285f3374f4b22",
+   "source": "BUT MY WIFE WAS LIVING WITH ANOTHER MAN...",
+   "translation": "Nhưng vợ tôi\nlại sống với\nmột người đàn ông khác...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Nhưng vợ tôi",
+    "lại sống với",
+    "một người đàn",
+    "ông khác..."
+   ],
+   "box_w": 393,
+   "box_h": 282,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 30,
+   "id": "text_3f6e11b64e1f42fd",
+   "source": "EVER SINCE WE DREW LOTS...",
+   "translation": "Từ khi chúng tôi\nbốc thăm...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 112,
+   "font_px_at_800": 99.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Từ khi chúng tôi",
+    "bốc thăm..."
+   ],
+   "box_w": 733,
+   "box_h": 362,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 85,
+   "split_word": false
+  },
+  {
+   "slice": 31,
+   "id": "text_9bd08c9105404a8d",
+   "source": "I'VE BEEN SET UP.",
+   "translation": "Tôi bị gài rồi.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Tôi bị gài",
+    "rồi."
+   ],
+   "box_w": 748,
+   "box_h": 448,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 121,
+   "split_word": false
+  },
+  {
+   "slice": 31,
+   "id": "text_0d7781eabc764546",
+   "source": "HAHAHA...",
+   "translation": "Hahaha...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hahaha..."
+   ],
+   "box_w": 260,
+   "box_h": 122,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 31,
+   "id": "text_e49d80dd163f433a",
+   "source": "",
+   "translation": "Hahahaha...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 43,
+   "font_px_at_800": 38.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hahahaha..."
+   ],
+   "box_w": 246,
+   "box_h": 116,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 24,
+   "split_word": false
+  },
+  {
+   "slice": 32,
+   "id": "text_ca7439cb0bed4572",
+   "source": "DROP DEAD...",
+   "translation": "Đi chết đi...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 93,
+   "font_px_at_800": 82.7,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Đi chết",
+    "đi..."
+   ],
+   "box_w": 338,
+   "box_h": 265,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 51,
+   "split_word": false
+  },
+  {
+   "slice": 32,
+   "id": "text_5f167e35124e4dce",
+   "source": "HAHAHAHA...",
+   "translation": "Hahahaha...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 43,
+   "font_px_at_800": 38.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hahahaha..."
+   ],
+   "box_w": 246,
+   "box_h": 116,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 24,
+   "split_word": false
+  },
+  {
+   "slice": 33,
+   "id": "text_4648c81ae36943bf",
+   "source": "THIS IS A PREVIEW OF AN UPCOMING SERIES NAMED \"ODE OF THE BRAVE,\" BROUGHT TO YOU BY THE MAPPA OF MANHWA, STUDIO REDICE (HAHA). ITS OFFICIAL RELEASE IS SEPTEMBER 20TH, 2026.",
+   "translation": "Đây là bản xem trước của bộ truyện sắp ra mắt\nmang tên \"Ode of the Brave\",\ndo MAPPA của manhwa là Studio Redice (haha) mang đến.\nNgày phát hành chính thức là 20 tháng 9, 2026.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 7,
+   "wrapped": [
+    "Đây là bản xem trước của bộ",
+    "truyện sắp ra mắt",
+    "mang tên \"Ode of the Brave\",",
+    "do MAPPA của manhwa là Studio",
+    "Redice (haha) mang đến.",
+    "Ngày phát hành chính thức là",
+    "20 tháng 9, 2026."
+   ],
+   "box_w": 900,
+   "box_h": 583,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 33,
+   "id": "text_0eae02529d194a51",
+   "source": "EVERY LAST ONE OF YOU.",
+   "translation": "Từng người một trong các ngươi.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 126,
+   "font_px_at_800": 112.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Từng người",
+    "một trong",
+    "các ngươi."
+   ],
+   "box_w": 627,
+   "box_h": 627,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 69,
+   "split_word": false
+  },
+  {
+   "slice": 33,
+   "id": "text_4220c8d5ea7641e0",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  }
+ ],
+ "readability": {
+  "rendered": 58,
+  "font_px_at_800": {
+   "min": 37.3,
+   "p10": 43.6,
+   "median": 74.7,
+   "max": 177.8
+  },
+  "under_16px": 0,
+  "under_20px": 0,
+  "split_word": 0,
+  "does_not_fit": 0,
+  "missing_glyphs": 0,
+  "size_from_ocr": 0,
+  "by_role": {
+   "dialogue": [
+    38.2,
+    38.2,
+    40.9,
+    40.9,
+    48.0,
+    48.9,
+    52.4,
+    56.9,
+    57.8,
+    59.6,
+    59.6,
+    73.8,
+    74.7,
+    82.7,
+    87.1,
+    90.7,
+    96.9,
+    104.0,
+    106.7,
+    112.0,
+    156.4,
+    177.8
+   ],
+   "narration": [
+    37.3,
+    43.6,
+    44.4,
+    48.9,
+    51.6,
+    52.4,
+    55.1,
+    57.8,
+    59.6,
+    61.3,
+    61.3,
+    64.0,
+    64.0,
+    64.0,
+    78.2,
+    93.3,
+    96.9,
+    99.6,
+    114.7,
+    116.4,
+    117.3,
+    124.4,
+    124.4,
+    168.0,
+    177.8
+   ],
+   "sfx": [
+    177.8
+   ],
+   "shout": [
+    48.9,
+    49.8,
+    103.1,
+    132.4,
+    177.8,
+    177.8
+   ],
+   "title": [
+    85.3,
+    87.1,
+    128.0
+   ],
+   "whisper": [
+    52.4
+   ]
+  }
+ },
+ "per_chapter": {
+  "prompt_tokens": 156575,
+  "completion_tokens": 40292,
+  "cost_usd": 0.0178
+ },
+ "per_slice": {
+  "prompt_tokens": 5051,
+  "completion_tokens": 1300
+ },
+ "scorecard": {
+  "clean": {
+   "slices": 31,
+   "text_left": 0,
+   "ghosts": 0,
+   "items": []
+  },
+  "text": {
+   "objects": 64,
+   "translated": 58,
+   "untranslated": 6,
+   "needs_review": 3,
+   "kept_original": 0
+  },
+  "spend": {
+   "cost_usd": 0.0178,
+   "requests": 106,
+   "prompt_tokens": 156575,
+   "images": 70,
+   "wall_s": 390.5,
+   "by_stage": {
+    "scan": {
+     "requests": 17,
+     "images": 34,
+     "prompt_tokens": 24085,
+     "completion_tokens": 5947
+    },
+    "glossary": {
+     "requests": 1,
+     "images": 0,
+     "prompt_tokens": 1464,
+     "completion_tokens": 1415
+    },
+    "review": {
+     "requests": 6,
+     "images": 6,
+     "prompt_tokens": 14721,
+     "completion_tokens": 197
+    },
+    "translate": {
+     "requests": 30,
+     "images": 30,
+     "prompt_tokens": 99890,
+     "completion_tokens": 32508
+    },
+    "judge": {
+     "requests": 50,
+     "images": 0,
+     "prompt_tokens": 14045,
+     "completion_tokens": 0
+    },
+    "polish": {
+     "requests": 2,
+     "images": 0,
+     "prompt_tokens": 2370,
+     "completion_tokens": 225
+    }
+   },
+   "stage_s": {
+    "download": 3.0,
+    "scan": 50.9,
+    "clean": 105.1,
+    "review": 70.4,
+    "translate": 116.5,
+    "polish": 33.6,
+    "render": 7.6,
+    "finish": 0.1
+   }
+  },
+  "polish": {
+   "judged": 41,
+   "flagged": 5,
+   "rewritten": 4,
+   "still_flagged": 2
+  },
+  "fit": {
+   "does_not_fit": 0,
+   "under_20px": 0,
+   "split_word": 0,
+   "missing_glyphs": 0
+  }
+ }
+}
