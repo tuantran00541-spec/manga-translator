@@ -99,6 +99,15 @@ def test_the_judge_sees_the_speakers_settled_address_and_the_glossary_terms_in_t
     assert polish.problems({"natural": 3.0, "clear": 2.0, "faithful": 2.0, "settled": 0.4}) == [polish.PROBLEMS["settled"]]
 
 
+def test_address_is_asked_only_when_the_line_names_the_speaker_or_the_listener():
+    memory = {"address": [{"from": "Sunny", "to": "Nephis", "self": "tôi", "other": "cô"}]}
+    line = lambda source: polish.Line(0, "a", source, "x", speaker="Sunny")  # noqa: E731
+    assert polish.settled(line("Madness takes root in human hearts."), memory)[0] == []
+    assert polish.settled(line("Are you lost?"), memory)[0] == ['to Nephis: "cô"']
+    assert polish.settled(line("I'm lost."), memory)[0] == ['self "tôi"']
+    assert polish.settled(line("너 길을 잃었어?"), memory)[0] == ['self "tôi"', 'to Nephis: "cô"'], "other languages are always asked"
+
+
 def test_address_shows_only_what_holds_for_any_listener_and_a_rewrite_keeps_its_voice():
     memory = {"address": [{"from": "Hero", "to": "Goddess", "self": "ta", "other": "ngươi"},
                           {"from": "Hero", "to": "Maid", "self": "tôi", "other": "cô"}]}

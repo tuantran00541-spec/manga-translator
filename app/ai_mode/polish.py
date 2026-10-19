@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 import requests
@@ -43,8 +44,9 @@ SETTLED = {
     "instructions": "Does TRANSLATION use the forms of address in ADDRESS and the terms in GLOSSARY wherever they apply?",
     "criteria": ["uses other forms or terms", "uses some of them", "uses them all"],
 }
-# A line under one is sent back; on 40 labelled lines Jev and the decider both flag no good line and 25 of 30 bad ones.
-LIMITS = {"natural": 2.0, "clear": 1.8, "faithful": 1.5, "settled": 1.0}  # settled is not calibrated yet
+# A line under one is sent back; on 40 labelled lines Jev and the decider both flag no good line and 25 of 30 bad ones,
+# at any clear limit from 1.5 to 1.8, and 1.6 stops flagging sound lines that sit just under 1.8 in real chapters.
+LIMITS = {"natural": 2.0, "clear": 1.6, "faithful": 1.5, "settled": 1.0}  # settled is not calibrated yet
 PROBLEMS = {
     "natural": "it sounds unnatural or word-for-word in Vietnamese",
     "clear": "its meaning is unclear",
@@ -116,6 +118,10 @@ def _flat(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
+_FIRST_PERSON = re.compile(r"\b(i|i'm|i've|i'll|i'd|me|my|mine|myself|we|we're|we've|we'll|us|our|ours|ourselves)\b")
+_SECOND_PERSON = re.compile(r"\b(you|you're|you've|you'll|you'd|your|yours|yourself|yourselves|ya)\b")
+
+
 def settled(line: Line, memory: dict | None) -> tuple[list[str], list[str]]:
     """The speaker's settled forms of address and the glossary entries whose source is in the line."""
     memory = memory or {}
@@ -126,11 +132,14 @@ def settled(line: Line, memory: dict | None) -> tuple[list[str], list[str]]:
             pairs[_flat(entry.get("to"))] = entry
     # The listener of a line is unknown, so only what holds for every listener is settled: one self form, and
     # the form for the other person when the speaker talks to just one.
-    selves = {_flat(entry.get("self")) for entry in pairs.values() if _flat(entry.get("self"))}
-    address = [f"self \"{selves.pop()}\""] if len(selves) == 1 else []
-    if len(pairs) == 1 and (other := _flat(next(iter(pairs.values())).get("other"))):
-        address.append(f"to {next(iter(pairs))}: \"{other}\"")
     source = _flat(line.source).lower()
+    # An English line names the speaker or the listener only through its pronouns; other languages are always asked.
+    english = source.isascii()
+    selves = {_flat(entry.get("self")) for entry in pairs.values() if _flat(entry.get("self"))}
+    address = [f"self \"{selves.pop()}\""] if len(selves) == 1 and (not english or _FIRST_PERSON.search(source)) else []
+    if (len(pairs) == 1 and (other := _flat(next(iter(pairs.values())).get("other")))
+            and (not english or _SECOND_PERSON.search(source) or next(iter(pairs)).lower() in source)):
+        address.append(f"to {next(iter(pairs))}: \"{other}\"")
     terms = [f"{_flat(entry.get('source'))} = {_flat(entry.get('target'))}"
              for entry in [*(glossary.get("names") or []), *(glossary.get("terms") or [])]
              if isinstance(entry, dict) and _flat(entry.get("source")) and _flat(entry.get("source")).lower() in source
