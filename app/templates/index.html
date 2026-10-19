@@ -78,32 +78,32 @@
           </section>
         </section>
       </div>
-      <div id="agent-view" class="agent-view" hidden>
-        <aside class="agent-side" aria-label="Phiên">
-          <button id="agent-new" class="agent-btn" type="button">Phiên mới</button>
-          <ul id="agent-sessions" class="agent-sessions"></ul>
-        </aside>
-        <div class="agent-main">
-          <form id="agent-setup" class="agent-setup">
-            <label>Dịch vụ<select id="agent-provider" required></select></label>
-            <label>Model<input id="agent-model" autocomplete="off" spellcheck="false" required></label>
-            <label class="agent-wide">Thư mục làm việc<input id="agent-workspace" autocomplete="off" spellcheck="false" required></label>
-            <label>Mức suy nghĩ<select id="agent-effort"><option value="">Mặc định</option><option value="low">Thấp</option><option value="medium">Vừa</option><option value="high">Cao</option></select></label>
-          </form>
-          <div class="agent-top"><p id="agent-status" class="agent-status" aria-live="polite"></p>
-            <label class="agent-mode">Duyệt<select id="agent-mode"><option value="ask">Hỏi trước mọi thay đổi và lệnh</option><option value="edits">Tự sửa file, hỏi trước khi chạy lệnh</option></select></label></div>
-          <div id="agent-log" class="agent-log"></div>
-          <div id="agent-approval" class="agent-approval" hidden>
-            <p>Agent muốn <strong id="agent-approval-name"></strong>:</p><pre id="agent-approval-args"></pre>
-            <div class="agent-row"><button id="agent-allow" class="agent-btn agent-primary" type="button">Cho phép</button><button id="agent-deny" class="agent-btn" type="button">Từ chối</button></div>
-          </div>
-          <form id="agent-composer" class="agent-composer">
-            <label class="sr-only" for="agent-input">Tin nhắn cho agent</label>
-            <textarea id="agent-input" rows="2" placeholder="Giao việc cho agent… (Enter để gửi, Shift+Enter xuống dòng)" required></textarea>
-            <button id="agent-stop" class="agent-btn" type="button" hidden>Dừng</button>
-            <button id="agent-send" class="agent-btn agent-primary" type="submit">Gửi</button>
-          </form>
+      <div id="agent-view" class="landing-page agent-view" hidden>
+        <div class="page-intro"><span class="ui-eyebrow">Agent</span><h1>Chaos</h1><p>Agent đọc, sửa file và chạy lệnh trong một thư mục. Lệnh nào cũng phải bạn cho phép.</p></div>
+        <div class="agent-bar">
+          <label class="ui-field agent-session-field" for="agent-sessions"><span>Phiên</span><select id="agent-sessions"><option value="">Phiên mới</option></select></label>
+          <button id="agent-delete" class="ui-btn" type="button" hidden>Xoá phiên</button>
         </div>
+        <form id="agent-setup" class="agent-setup">
+          <label class="ui-field" for="agent-provider"><span>Dịch vụ AI</span><select id="agent-provider" required></select></label>
+          <label class="ui-field" for="agent-model"><span>Model</span><input id="agent-model" autocomplete="off" spellcheck="false" required></label>
+          <label class="ui-field" for="agent-effort"><span>Mức suy nghĩ</span><select id="agent-effort"><option value="">Mặc định</option><option value="low">Thấp</option><option value="medium">Vừa</option><option value="high">Cao</option></select></label>
+          <label class="ui-field agent-wide" for="agent-workspace"><span>Thư mục làm việc</span><input id="agent-workspace" autocomplete="off" spellcheck="false" required></label>
+        </form>
+        <p id="agent-status" class="agent-status" aria-live="polite"></p>
+        <div id="agent-log" class="agent-log"><p class="agent-empty">Chưa có tin nhắn. Giao việc ở ô bên dưới.</p></div>
+        <div id="agent-approval" class="agent-approval" hidden>
+          <p>Agent muốn <strong id="agent-approval-name"></strong>:</p><pre id="agent-approval-args"></pre>
+          <div class="agent-actions"><button id="agent-allow" class="ui-btn ui-btn-primary" type="button">Cho phép</button><button id="agent-deny" class="ui-btn" type="button">Từ chối</button></div>
+        </div>
+        <form id="agent-composer" class="agent-composer">
+          <label class="ui-field" for="agent-input"><span class="sr-only">Tin nhắn cho agent</span><textarea id="agent-input" rows="3" placeholder="Giao việc cho agent… (Enter để gửi, Shift+Enter xuống dòng)" required></textarea></label>
+          <div class="agent-actions">
+            <label class="ui-field agent-mode" for="agent-mode"><span class="sr-only">Duyệt</span><select id="agent-mode"><option value="ask">Hỏi trước mọi thay đổi và lệnh</option><option value="edits">Tự sửa file, hỏi trước khi chạy lệnh</option></select></label>
+            <button id="agent-stop" class="ui-btn" type="button" hidden>Dừng</button>
+            <button id="agent-send" class="ui-btn ui-btn-primary" type="submit">Gửi</button>
+          </div>
+        </form>
       </div>
     </section>
     <main id="page-view" class="app-workspace" hidden></main>

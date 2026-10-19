@@ -45,6 +45,7 @@
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
     const results = new Map(messages.filter((m) => m.role === "tool").map((m) => [m.tool_call_id, m.content]));
     log.replaceChildren();
+    if (!messages.length) log.append(el("p", "agent-empty", "Chưa có tin nhắn. Giao việc ở ô bên dưới."));
     for (const message of messages) {
       if (message.role === "user") log.append(el("div", "agent-msg agent-user", message.content));
       if (message.role !== "assistant") continue;
@@ -68,6 +69,7 @@
     $("agent-setup").hidden = true;
     $("agent-mode").value = view.mode;
     $("agent-status").textContent = `${view.model} · ${view.workspace} · ${view.error ? `Lỗi: ${view.error}` : STATUS[view.status] || view.status}`;
+    $("agent-delete").hidden = false;
     renderLog(view.messages);
     const pending = view.pending;
     $("agent-approval").hidden = !pending;
@@ -90,29 +92,13 @@
   }
 
   async function listSessions() {
-    const list = $("agent-sessions");
+    const select = $("agent-sessions");
     const sessions = await call("/sessions");
-    list.replaceChildren();
-    for (const session of sessions) {
-      const item = el("li");
-      const open = el("button", `agent-session${current?.id === session.id ? " active" : ""}`, session.title || "(chưa có tin nhắn)");
-      open.type = "button";
-      open.addEventListener("click", () => load(session.id).then(listSessions));
-      const remove = el("button", "agent-remove", "×");
-      remove.type = "button";
-      remove.setAttribute("aria-label", "Xoá phiên");
-      remove.addEventListener("click", async () => {
-        try {
-          await call(`/sessions/${session.id}`, { method: "DELETE" });
-          if (current?.id === session.id) newSession();
-          await listSessions();
-        } catch (error) {
-          fail(error);
-        }
-      });
-      item.append(open, remove);
-      list.append(item);
-    }
+    const fresh = el("option", "", "Phiên mới");
+    fresh.value = "";
+    select.replaceChildren(fresh, ...sessions.map((item) => Object.assign(el("option", "", item.title || "(chưa có tin nhắn)"), { value: item.id })));
+    select.value = current?.id || "";
+    $("agent-delete").hidden = !current;
   }
 
   function newSession() {
@@ -122,8 +108,21 @@
     $("agent-approval").hidden = true;
     $("agent-stop").hidden = true;
     $("agent-send").disabled = false;
-    $("agent-status").textContent = "Chọn model và thư mục, rồi giao việc.";
-    $("agent-log").replaceChildren();
+    $("agent-delete").hidden = true;
+    $("agent-sessions").value = "";
+    $("agent-status").textContent = "";
+    $("agent-log").replaceChildren(el("p", "agent-empty", "Chưa có tin nhắn. Giao việc ở ô bên dưới."));
+  }
+
+  async function removeSession() {
+    if (!current || !confirm("Xoá phiên này?")) return;
+    try {
+      await call(`/sessions/${current.id}`, { method: "DELETE" });
+      newSession();
+      await listSessions();
+    } catch (error) {
+      fail(error);
+    }
   }
 
   async function send(event) {
@@ -179,7 +178,11 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     if (!$("agent-view")) return;
-    $("agent-new").addEventListener("click", () => { newSession(); listSessions().catch(fail); });
+    $("agent-sessions").addEventListener("change", (event) => {
+      if (event.target.value) load(event.target.value).then(listSessions);
+      else newSession();
+    });
+    $("agent-delete").addEventListener("click", removeSession);
     $("agent-composer").addEventListener("submit", send);
     $("agent-input").addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
