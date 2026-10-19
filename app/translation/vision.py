@@ -6,6 +6,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import cv2
+import numpy as np
 import requests
 
 from app.ai_mode.vision_json import stage_headers
@@ -13,7 +14,7 @@ from app.box_format import scaled_box
 from app.ai_providers import AIProvider, auth_headers
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
-from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
+from app.render.font_guide import DEFAULT_LETTERING_FONT, SFX_FONT_BY_STYLE, font_for
 from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.cost import language_name, usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
@@ -200,6 +201,30 @@ ELSEWHERE_COLOR = (128, 128, 128)  # text lettered by the neighbouring slice
 ELSEWHERE_LABEL = "X"
 
 
+_HANGUL = re.compile(r"[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]")
+SFX_SIDE = 256  # each sound effect is shown this large, so similar syllables can be told apart
+SFX_LABEL = 28
+SFX_PER_ROW = 4
+MAX_SFX_REREAD = 12
+
+
+def sfx_sheet(image, regions) -> np.ndarray:
+    """Numbered close-ups of sound effects, four to a row."""
+    tiles = []
+    for number, (x1, y1, x2, y2) in enumerate(regions, start=1):
+        pad = int(0.15 * max(x2 - x1, y2 - y1))
+        crop = image[max(0, y1 - pad):y2 + pad, max(0, x1 - pad):x2 + pad]
+        scale = SFX_SIDE / max(crop.shape[:2])
+        crop = cv2.resize(crop, (max(1, round(crop.shape[1] * scale)), max(1, round(crop.shape[0] * scale))),
+                          interpolation=cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA)
+        tile = np.full((SFX_SIDE + SFX_LABEL, SFX_SIDE, 3), 255, np.uint8)
+        tile[SFX_LABEL:SFX_LABEL + crop.shape[0], :crop.shape[1]] = crop[:SFX_SIDE, :SFX_SIDE]
+        cv2.putText(tile, str(number), (6, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        tiles.append(tile)
+    tiles += [np.full_like(tiles[0], 255)] * (-len(tiles) % SFX_PER_ROW if len(tiles) > SFX_PER_ROW else 0)
+    return np.vstack([np.hstack(tiles[i:i + SFX_PER_ROW]) for i in range(0, len(tiles), SFX_PER_ROW)])
+
+
 def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
     """A copy of the slice with each object's box outlined and labelled with its id; grey X boxes are lettered elsewhere."""
     marked = image.copy()
@@ -298,7 +323,15 @@ class VisionPageTranslator:
                 sources[str(entry["id"])] = " ".join(entry["source"].split())[:1000]
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
-        fonts = {key: {"font_id": font_for(roles.get(key), containers.get(key), target_lang), "font_mode": "ai"}
+        by_id = {str(item["id"]): item for item in items}
+        sfx = [key for key, role in roles.items() if role == "sfx" and result.translations.get(key)
+               and _HANGUL.search(sources.get(key) or by_id[key]["text"])][:MAX_SFX_REREAD]
+        styles: dict[str, str] = {}
+        if sfx:
+            result, sources, styles = self._reread_sfx(original, [by_id[key] for key in sfx], result, sources,
+                                                       api_key=api_key, target_lang=target_lang)
+        fonts = {key: {"font_id": SFX_FONT_BY_STYLE.get(styles.get(key, "")) or font_for(
+                     roles.get(key), containers.get(key), target_lang), "font_mode": "ai"}
                  for key in (result.font_choices or {})}
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
@@ -313,7 +346,40 @@ class VisionPageTranslator:
             enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources, speakers=speakers,
         )
 
-    def _openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
+    def _reread_sfx(self, original, items, result, sources, *, api_key, target_lang):
+        """Korean sound effects read again from close-ups, as a whole slice shows their strokes too small to tell apart."""
+        alias = {str(n): str(item["id"]) for n, item in enumerate(items, start=1)}
+        sheet = _encode_for_gemini(sfx_sheet(original, [item["region"] for item in items]))
+        system = (f"You read Korean sound effects drawn in comic art and letter each as a {language_name(target_lang)} "
+                  "sound effect. Answer with JSON only.")
+        prompt = ("Each numbered close-up shows one sound effect. Read its Hangul exactly as drawn, syllable by syllable, "
+                  "as similar syllables are easy to confuse. Then give the short sound effect a native comic in the target "
+                  "language letters for the same sound or motion, with full diacritics. style is how it is drawn: \"thin\" "
+                  "pen strokes, a dynamic \"brush\", or \"heavy\" block letters. Answer {\"translations\": [{\"id\": "
+                  "\"1\", \"source\": \"...\", \"translated_text\": \"...\", \"style\": \"thin\"}]}.")
+        call = self._gemini if self.provider.protocol == "gemini" else self._openai
+        try:
+            again, data = call(system, prompt, sheet, api_key=api_key, ids=set(alias), max_tokens=300 + 80 * len(items),
+                               label="NUMBERED SOUND EFFECT CLOSE-UPS")
+        except RuntimeError:
+            return result, sources, {}  # the first read stands
+        translations, sources, styles = dict(result.translations), dict(sources), {}
+        for entry in data.get("translations") or []:
+            key = alias.get(str(entry.get("id"))) if isinstance(entry, dict) else None
+            if key is None:
+                continue
+            text = again.translations.get(str(entry["id"])) or ""
+            if text and not _HANGUL.search(text) and not _missing_diacritics(text):
+                translations[key] = text
+                if isinstance(entry.get("source"), str) and entry["source"].strip():
+                    sources[key] = " ".join(entry["source"].split())[:200]
+            if entry.get("style") in SFX_FONT_BY_STYLE:
+                styles[key] = entry["style"]
+        first, extra = result.estimated_cost_usd, again.estimated_cost_usd
+        cost = None if first is None or extra is None else first + extra
+        return replace(result, translations=translations, estimated_cost_usd=cost), sources, styles
+
+    def _openai(self, system, prompt, marked, *, api_key, ids, max_tokens, label="RAW SLICE WITH TEXT BOXES"):
         url = str(self.provider.chat_url or "")
         if not url:
             raise ValueError("Provider does not have chat completions")
@@ -322,7 +388,7 @@ class VisionPageTranslator:
         payload = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": [
-                {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
+                {"type": "text", "text": label},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{marked}"}},
                 {"type": "text", "text": prompt},  # the ask goes last, after the images it refers to
             ]}],
@@ -361,12 +427,12 @@ class VisionPageTranslator:
         cost = usage_cost_usd(usage) if self.provider.tracks_cost else None
         return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
 
-    def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens):
+    def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens, label="RAW SLICE WITH TEXT BOXES"):
         payload = {
             "model": self.model, "store": False,
             "input": [
                 {"type": "text", "text": system},
-                {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
+                {"type": "text", "text": label},
                 {"type": "image", "data": marked, "mime_type": "image/jpeg"},
                 {"type": "text", "text": prompt},
             ],
