@@ -1,16 +1,9 @@
 name: Scan probe
 
 on:
-  workflow_dispatch:
-    inputs:
-      chapter_url:
-        required: true
-      models:
-        required: true
-      count:
-        default: "10"
-      label:
-        default: probe
+  push:
+    paths:
+      - ".github/scan-probe/config.json"
 
 permissions:
   contents: write
@@ -29,11 +22,19 @@ jobs:
             loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 \
             pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 keyring==25.6.0 psutil==6.1.1
           python -m playwright install --with-deps chromium
+      - id: conf
+        run: python -c 'import json; c=json.load(open(".github/scan-probe/config.json")); print("label=" + c["label"])' >> "$GITHUB_OUTPUT"
       - env:
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
-        run: python .github/scan-probe/probe.py "${{ github.event.inputs.chapter_url }}" "audit-results/scan-probe/${{ github.event.inputs.label }}" "${{ github.event.inputs.models }}" "${{ github.event.inputs.count }}"
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          c = json.load(open(".github/scan-probe/config.json"))
+          sys.exit(subprocess.call([sys.executable, ".github/scan-probe/probe.py", c["chapter_url"],
+                                    "audit-results/scan-probe/" + c["label"], c["models"], str(c["count"])]))
+          PY
       - if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/scan-probe/${{ github.event.inputs.label }}
-          message: "audit: scan probe ${{ github.event.inputs.label }} (run ${{ github.run_id }})"
+          paths: audit-results/scan-probe/${{ steps.conf.outputs.label }}
+          message: "audit: scan probe ${{ steps.conf.outputs.label }} (run ${{ github.run_id }})"
