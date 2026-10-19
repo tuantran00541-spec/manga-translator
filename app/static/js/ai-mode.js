@@ -282,6 +282,7 @@
     if (r.credit_rejected?.length) lines.push(`AI coi ${r.credit_rejected.length} lát là credit — quá nhiều nên không bỏ lát nào`);
     if (r.textless_pages?.length) lines.push(`Bỏ qua ${r.textless_pages.length} lát không có chữ (giữ ảnh gốc)`);
     if (r.logo_regions) lines.push(`Giữ nguyên ${r.logo_regions} vùng logo`);
+    if (r.series?.chapters) lines.push(`Bộ nhớ bộ truyện: ${r.series.names} tên, ${r.series.terms} thuật ngữ, ${r.series.address} cặp xưng hô từ ${r.series.chapters} chương trước`);
     if (r.skip_kept?.length) lines.push(`Không bỏ qua ${r.skip_kept.length} lát vì vẫn thấy chữ truyện: lát ${r.skip_kept.map((i) => i + 1).join(", ")}`);
     if (r.art_kept) lines.push(`Giữ nguyên ${r.art_kept} ô hình vẽ bị nhận nhầm là chữ`);
     if (r.kept_regions) lines.push(`Trả lại ${r.kept_regions} vùng hình vẽ bị xoá nhầm`);
@@ -413,6 +414,37 @@
     }
   }
 
+  async function loadSeries() {
+    const url = $("ai-mode-url")?.value.trim();
+    const box = $("ai-mode-series-text");
+    if (!url || !box) return;
+    try {
+      const data = await requestJson("/api/ai_mode/series/read", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }),
+      });
+      box.value = data.text;
+      box.placeholder = data.chapters ? "" : "Bộ truyện này chưa có chương nào chạy A.I mode; có thể nhập trước tên và xưng hô.";
+    } catch (err) {
+      box.value = "";
+      box.placeholder = "Không đọc được bộ nhớ: " + err.message;
+    }
+  }
+
+  async function saveSeries() {
+    const url = $("ai-mode-url")?.value.trim();
+    if (!url) return window.showToast?.("Dán URL chương trước.", "error");
+    try {
+      const data = await requestJson("/api/ai_mode/series/save", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, text: $("ai-mode-series-text").value }),
+      });
+      $("ai-mode-series-text").value = data.text;
+      window.showToast?.("Đã lưu bộ nhớ bộ truyện.", "success");
+    } catch (err) {
+      window.showToast?.("Không lưu được: " + err.message, "error");
+    }
+  }
+
   async function restore() {
     try {
       const active = await requestJson("/api/ai_mode/active");
@@ -435,6 +467,9 @@
       ensureCloudOption();
       syncProviderFields();
     });
+    $("ai-mode-series")?.addEventListener("toggle", (event) => { if (event.target.open) loadSeries(); });
+    $("ai-mode-url")?.addEventListener("change", () => { if ($("ai-mode-series")?.open) loadSeries(); });
+    $("ai-mode-series-save")?.addEventListener("click", saveSeries);
     $("ai-mode-login-form").addEventListener("submit", submitLogin);
     $("ai-mode-signout").addEventListener("click", signOut);
     $("ai-mode-signout-all").addEventListener("click", signOutEverywhere);

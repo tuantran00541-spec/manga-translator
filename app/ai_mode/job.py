@@ -23,6 +23,7 @@ from fastapi import HTTPException
 
 from app.ai_mode import decider
 from app.ai_mode.checkpoints import _covered
+from app import series_memory
 from app.ai_mode.page_scan import scan_slices
 from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.image_io import read_image
@@ -148,6 +149,7 @@ class AIModeRunner:
             "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "errors": [], "samples": []},
         })
         self._memory = None
+        self._series: dict | None = None
         self._glossary_task: asyncio.Task | None = None
         self._review_queue: asyncio.Queue | None = None
         self._review_task: asyncio.Task | None = None
@@ -560,7 +562,14 @@ class AIModeRunner:
         except Exception as exc:  # the glossary only helps; translation goes on without it
             _append(self.report["translate_errors"], f"Bảng thuật ngữ: {_detail(exc)[:150]}")
             glossary = {}
-        memory = self._memory = ChapterMemory(self.settings.story_notes, glossary)
+        # What earlier chapters of this series settled wins over this chapter's own reading.
+        key = series_memory.series_key(self.settings.url)
+        series = self._series = series_memory.load(key)
+        glossary = series_memory.settled_glossary(series, glossary or {})
+        memory = self._memory = ChapterMemory(self.settings.story_notes or series["notes"], glossary)
+        for character in series["characters"]:
+            memory.characters[character["name"]] = character["note"]
+        self.report["series"] = {"key": key, **{k: len(series[k]) for k in ("names", "terms", "address", "characters", "chapters")}}
         slice_total = self._slice_total = len(self._manifest().get("pages", []))
         # Admit slices in reading order so each sees the memory of earlier ones.
         gate = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
@@ -977,6 +986,13 @@ class AIModeRunner:
             {"kind": item.get("kind"), "page": int(item.get("page_index", 0)) + 1, "reason": item.get("reason")}
             for item in (preflight.get("blockers") or [])[:10]
         ]
+        key = series_memory.series_key(self.settings.url)
+        if key and self._memory is not None:
+            # The next chapter of this series starts from what this one settled.
+            snapshot = self._memory.snapshot(settled=False)
+            series_memory.save(key, series_memory.learn(
+                self._series or series_memory.load(key), self.report.get("glossary") or {}, snapshot["characters"],
+                snapshot["address"], self.settings.url, self.settings.story_notes))
         report_path = OUTPUT_DIR / chapter_id / "ai_mode_report.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(self.report, ensure_ascii=False, indent=1), encoding="utf-8")

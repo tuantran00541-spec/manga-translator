@@ -7,7 +7,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
 from app.ai_mode.job import AIModeJobManager, AIModeSettings
-from app import cloud
+from app import cloud, series_memory
 from app.ai_providers import bind_cloud_job, normalize_provider_id, unbind_cloud_job, validate_model_name
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.routers.translation import _resolve_vision_provider, validate_lang_code
@@ -138,3 +138,40 @@ async def cancel_ai_mode_job(job_id: str) -> dict:
         return ai_mode_jobs.cancel(job_id)
     except KeyError as exc:
         raise HTTPException(404, "A.I mode job not found") from exc
+
+
+class SeriesMemoryRequest(BaseModel):
+    url: str = Field(max_length=MAX_REMOTE_URL_LENGTH)
+    text: str | None = Field(default=None, max_length=60000)
+    notes: str | None = Field(default=None, max_length=1500)
+
+
+def _series_key(url: str) -> str:
+    key = series_memory.series_key(url)
+    if not key:
+        raise HTTPException(400, "This URL does not name a series")
+    return key
+
+
+@router.get("/series")
+def list_series_memory() -> list[dict]:
+    return series_memory.list_series()
+
+
+@router.post("/series/read")
+def read_series_memory(req: SeriesMemoryRequest) -> dict:
+    """What the series behind a chapter URL has settled, as the lines the user edits."""
+    key = _series_key(req.url)
+    data = series_memory.load(key)
+    return {"key": key, "text": series_memory.to_text(data), "notes": data["notes"], "chapters": len(data["chapters"])}
+
+
+@router.post("/series/save")
+def save_series_memory(req: SeriesMemoryRequest) -> dict:
+    key = _series_key(req.url)
+    current = series_memory.load(key)
+    data = series_memory.from_text(req.text if req.text is not None else series_memory.to_text(current), current)
+    if req.notes is not None:
+        data["notes"] = req.notes
+    data = series_memory.save(key, data)
+    return {"key": key, "text": series_memory.to_text(data), "notes": data["notes"], "chapters": len(data["chapters"])}
