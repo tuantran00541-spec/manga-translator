@@ -102,7 +102,7 @@ def register(api):
     api.log(msg)
 ```
 
-**`ctx` mà handler nhận**, chỉ gồm những thứ đọc được:
+**`ctx` mà handler nhận.** `ctx` là API ổn định chứ không phải sandbox, vì code trong tiến trình vẫn với tới được mọi thứ; ranh giới an toàn thật là bước tin cậy theo digest. `ctx` chỉ gồm những thứ đọc được:
 - workspace root;
 - `ctx.run(cmd)`: chạy lệnh qua sandbox và qua duyệt;
 - `ctx.read(path)`;
@@ -131,8 +131,9 @@ def register(api):
 
 | Mục | Cách làm |
 |---|---|
-| Giao thức Anthropic Messages | Adapter thứ ba trong `client.py`, gồm tool use, ảnh, thinking và prompt cache. |
-| Adapter từ plugin | `api.provider(name, adapter)`, với `adapter(request) -> {"text", "calls", "usage"}` theo đúng định dạng nội bộ mà `client.complete` trả. Provider tùy chỉnh có thể chọn `protocol` là tên này. |
+| Một giao thức | Chỉ dùng chat completions kiểu OpenAI, vì gần như mọi model và server đều hỗ trợ: OpenAI, Gemini, Claude (lớp tương thích), Ollama, LM Studio, vLLM, OpenRouter, DeepSeek... Không viết adapter riêng cho từng hãng. |
+| Tự dò đường dẫn | Bạn dán URL nào cũng được: host trơn, `/v1`, hay endpoint đầy đủ. Chat trả 404 thì thử lần lượt `{base}/chat/completions`, `/v1/chat/completions`, `/api/v1/...`, `/openai/v1/...`, `/v1beta/openai/...`, rồi nhớ đường nào chạy được. Hiện mới dò khi thêm provider và chỉ qua `/models`, nên server không có `/models` sẽ thiếu. |
+| Dự phòng cho giao thức lạ | `api.provider(name, adapter)` trong plugin, với `adapter(request) -> {"text", "calls", "usage"}` theo đúng định dạng nội bộ mà `client.complete` trả. Chỉ dùng khi gặp model không nói được chat completions. |
 | Bảng năng lực model | `profile.json` → `models.<id>` khai báo: `tools` (native/text), `vision`, `reasoning`, `context_window`, `max_output`. Mục nào thiếu thì đoán từ `models.py`, và đoán sai thì tự sửa theo lỗi lần đầu (đã làm cho context window). |
 | Model yếu | Đặt `"tools": "lean"` thì chỉ gửi tool cốt lõi (read, edit, run, search). Tool MCP và tool đã create chỉ được gửi khi model gọi `tool_search` (tìm theo tên hoặc mô tả). |
 | Prompt trung lập | System prompt không giả định hãng. Hướng dẫn riêng cho từng model đặt ở `models.<id>.prompt` hoặc trong plugin. |
@@ -149,17 +150,17 @@ Mỗi bước có test, 4 script sanity và ảnh chụp UI, rồi mới sang b�
 2. **Mở rộng `create`:** `kind` có kiểm tra, `scope` workspace kèm tin cậy, `requires`, lệnh `/tools`, xuất ra MCP.
 3. **MCP thêm:** lọc tool, kinds, prompts, resources, ảnh, `list_changed`, tự khởi động lại, công tắc cho từng tool trên UI.
 4. **Provider:**
-   - Adapter Anthropic.
+   - Dò đường dẫn chat khi gặp 404, và nhớ đường chạy được.
    - `api.provider`.
    - Bảng năng lực, chế độ `lean` và `tool_search`.
 5. **Tầng 2 do model viết:** `plugin_write`, luôn hỏi bạn, nạp nóng.
 6. **UI "Mở rộng":** một bảng chung cho MCP, tool đã create và plugin, gồm trạng thái, tin cậy, công tắc và lỗi.
 
-## 6. Cần bạn chốt
+## 6. Đã chốt
 
-1. **Tầng 1 là `create`** và mở rộng như bảng trên. Được chưa?
+1. Tầng 1 là `create`, mở rộng như bảng ở mục 3.
 2. **Duyệt:**
-   - `create`: không hỏi khi tạo, chỉ hỏi khi chạy.
-   - `plugin_write`: luôn hỏi.
-3. **Đổi `session` thô sang `api`:** plugin `register(api)` hiện tại sẽ phải sửa. Có giữ một lớp tương thích tạm cho chúng không? Đề xuất: không giữ, vì hiện chưa có plugin ngoài nào.
-4. **Adapter Anthropic native** có cần ngay không, hay giao thức kiểu OpenAI là đủ?
+   - `create`: không hỏi khi tạo hoặc sửa tool.
+   - `plugin_write`: luôn hỏi, vì plugin model viết chạy trong harness và chưa rõ nó sẽ kết nối tới đâu.
+3. Đổi sang bộ API mới và không giữ lớp tương thích.
+4. Chỉ dùng một giao thức chat completions kiểu OpenAI, kèm tự dò đường dẫn. Giao thức khác thì đi qua plugin.
