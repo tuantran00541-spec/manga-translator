@@ -638,6 +638,7 @@ class AgentSession:
         self.rate_limited = {"count": 0, "waited_s": 0.0}
         self._plain = False
         self._mcp_ready = depth > 0
+        self._started = False
 
     def _outputs_dir(self) -> Path:
         return (self.home if self.home is not None else Path.home()) / ".manga-agent" / "outputs" / self.id.split("-")[0]
@@ -649,7 +650,7 @@ class AgentSession:
 
     def _build_registry(self, home_path: Path) -> registry.Registry:
         reg = registry.Registry({s["name"] for s in SPECS} | set(SESSION_SPECS))
-        registry.load_plugins(reg, self.workspace.root, home_path, self.trust)
+        registry.load_plugins(reg, self.workspace.root, home_path, self.trust, self.profile.get("plugins"))
         return reg
 
     def _enabled(self, name: str) -> bool:
@@ -690,6 +691,11 @@ class AgentSession:
         except Exception as exc:
             logger.warning("Agent plugin hook failed: {}", exc)
             return ""
+
+    def _fire(self, event: str, *args) -> None:
+        """Tell the plugins that watch an event; what they return is ignored."""
+        for fn in self.registry.hooks[event]:
+            self._hook_call(fn, *copy.deepcopy(args))
 
     # Events, state and persistence.
 
@@ -1538,7 +1544,7 @@ class AgentSession:
             self._watch.refresh()
             self._watch_request = self._request_no
         guard = gitguard.snapshot(self.workspace.root)
-        top = not self.plan_mode and not str(call.get("id", "")).startswith(("chain-", "script-", "mcp-"))
+        top = not self.plan_mode and not str(call.get("id", "")).startswith(("chain-", "script-", "mcp-", "plugin-"))
         if top:
             self._auto_mark(f"before-{tool['name']}")
         # Calls run one after another in the session's kernel, where imports and memo last; one made while another still runs gets a fresh process.
@@ -2733,8 +2739,8 @@ class AgentSession:
         if call.get("error"):
             return call["error"], False
         offered = {s["name"]: s for s in self.specs()}
-        if str(call.get("id", "")).startswith(("chain-", "script-", "mcp-")) and call["name"] not in offered:
-            # Code run with create (and its scripts) and MCP clients reach the library the model's own list leaves out.
+        if str(call.get("id", "")).startswith(("chain-", "script-", "mcp-", "plugin-")) and call["name"] not in offered:
+            # Code run with create (and its scripts), plugins and MCP clients reach the library the model's own list leaves out.
             offered |= {s["name"]: s for s in self.specs(self.library_specs()) if s["name"] not in offered}
             if call["name"] not in offered and (spec := self._target_spec(call["name"])):
                 offered[call["name"]] = spec
@@ -3009,13 +3015,16 @@ class AgentSession:
 
     def _turn_once(self) -> dict:
         system, specs = self._header()
+        self._fire("before_model", {"model": self.model, "messages": len(self.history), "tools": [s["name"] for s in specs]})
         try:
-            return self._call_model(client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
+            turn = self._call_model(client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
                                     None if self.text_tools else specs)
         except client.ToolsUnsupported as exc:
             self.text_tools = True
             self.emit("notice", text=f"The model does not take native tool calls; switching to tool calls written as text ({exc}).")
-            return self._call_model(client.render(self.history, system, True, specs, reasoning=self.echo_reasoning), None)
+            turn = self._call_model(client.render(self.history, system, True, specs, reasoning=self.echo_reasoning), None)
+        self._fire("after_model", {k: turn.get(k) for k in ("text", "calls", "usage")})
+        return turn
 
     def _learn_window(self, message: str) -> None:
         """A context error often names the model's real window; the auto-compaction mark moves under it so the next overflow does not happen."""
@@ -3551,10 +3560,15 @@ class AgentSession:
             if self._mcp_stale:
                 self._refresh_mcp()
             self._ensure_mcp()
+            if not self._started:
+                self._started = True
+                self._fire("session_start")
             custom = self.registry.loops.get(self.profile["loop"])
             if self.profile["loop"] != "default" and custom is None:
                 self.emit("notice", text=f"No loop named {self.profile['loop']!r}; using the default loop.")
             (custom or AgentSession._steps)(self, max_steps)
+            last = next((m for m in reversed(self.history[start:]) if m.get("role") == "assistant"), {})
+            self._fire("turn_end", str(last.get("content") or ""))
         except Exception as exc:
             logger.opt(exception=True).warning("Agent session {} failed", self.id)
             self.emit("error", text=str(exc)[:1000])

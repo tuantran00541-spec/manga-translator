@@ -1099,14 +1099,14 @@ PLUGIN = '''
     def register(api):
         api.tool({"name": "shout", "description": "Upper-case text.",
                   "parameters": {"type": "object", "required": ["text"], "properties": {"text": {"type": "string"}}}},
-                 lambda session, args: args["text"].upper(), kind="exec")
-        api.command("hello", "Say hello", lambda session, args: "hello " + args)
-        api.prompt(lambda session: "PLUGIN-NOTE: be brief")
-        api.hook("pre_tool", lambda session, call: "blocked by plugin" if call["name"] == "list_dir" else None)
-        api.hook("post_tool", lambda session, call, output: "[seen by plugin]" if call["name"] == "shout" else None)
-        def steps(session, max_steps):
-            session.emit("notice", text="custom loop ran")
-            session.history.append({"role": "assistant", "content": "custom", "calls": []})
+                 lambda ctx, args: args["text"].upper(), kind="exec")
+        api.command("hello", "Say hello", lambda ctx, args: "hello " + args)
+        api.prompt(lambda ctx: "PLUGIN-NOTE: be brief")
+        api.on("pre_tool", lambda ctx, call: "blocked by plugin" if call["name"] == "list_dir" else None)
+        api.on("post_tool", lambda ctx, call, output: "[seen by plugin]" if call["name"] == "shout" else None)
+        def steps(ctx, max_steps):
+            ctx.emit("ran", loop="mine")
+            ctx.append({"role": "assistant", "content": "custom", "calls": []})
 
         api.loop("mine", steps)
 '''
@@ -1130,7 +1130,8 @@ def test_a_user_plugin_adds_tools_commands_hooks_prompt_and_a_loop(ws, home):
     looped = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted())
     looped.trust_plugins()  # C4: the custom loop plugin needs its own trust pin
     run_to_idle(looped)
-    assert any(e["type"] == "notice" and e["text"] == "custom loop ran" for e in looped.events)
+    assert any(e["type"] == "plugin" and e["name"] == "ran" and e["plugin"] == "extras" for e in looped.events)
+    assert looped.history[-1]["content"] == "custom"
 
 
 def test_plugin_names_cannot_shadow_built_in_tools(ws, home):

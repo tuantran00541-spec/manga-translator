@@ -104,10 +104,12 @@ def register(api):
 
 **`ctx` mà handler nhận.** `ctx` là API ổn định chứ không phải sandbox, vì code trong tiến trình vẫn với tới được mọi thứ; ranh giới an toàn thật là bước tin cậy theo digest. `ctx` chỉ gồm những thứ đọc được:
 - workspace root;
+- `ctx.call(tool, args)`: gọi bất kỳ tool nào như model gọi, qua đúng bước duyệt và hook;
 - `ctx.run(cmd)`: chạy lệnh qua sandbox và qua duyệt;
 - `ctx.read(path)`;
 - `ctx.ask_user(q)`;
-- `ctx.emit(kind, data)`.
+- `ctx.emit(kind, data)`;
+- cho vòng lặp riêng: `ctx.turn()`, `ctx.run_calls(calls)`, `ctx.append(msg)`, `ctx.default_loop(n)`.
 
 `ctx` không có key, không có `mode` và không có `registry`.
 

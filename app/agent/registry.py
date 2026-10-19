@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 from typing import Callable
 
-from app.agent import context, roles
+from app.agent import context, plugin_api, roles
 
 # The tool each group switches, so a profile can turn whole features off (shell, web, edits, subagents...).
 GROUPS = {
@@ -28,7 +28,7 @@ REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "sear
 ROLES = ("read", "edit", "exec", "net")
 PROFILE_FILES = {"user": (".manga-agent/profile.json",), "workspace": (".agents/profile.json",)}
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
-EVENTS = ("pre_tool", "post_tool")
+EVENTS = ("pre_tool", "post_tool", "session_start", "before_model", "after_model", "turn_end")
 
 
 def group_of(tool: str) -> str | None:
@@ -41,7 +41,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "fallback_models": [], "prewalk_model": "",
-                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}}
+                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "plugins": {}}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -99,6 +99,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                 if isinstance(data.get("replace"), dict):
                     profile["replace"].update({k: v for k, v in data["replace"].items()
                                                if k in REPLACEABLE and isinstance(v, str) and v.startswith("mcp__")})
+                if isinstance(data.get("plugins"), dict):
+                    profile["plugins"].update({k: v for k, v in data["plugins"].items() if isinstance(v, dict)})
                 if isinstance(data.get("model_roles"), dict):
                     profile["model_roles"].update(roles.parse(data["model_roles"]))
                 if isinstance(data.get("model_sources"), dict):
@@ -157,7 +159,7 @@ class Registry:
         self.commands[name] = (description, handler)
 
     def hook(self, event: str, fn: Callable) -> None:
-        """pre_tool(session, call) returns a message to block the call; post_tool(session, call, output) returns text to append."""
+        """pre_tool returns a message to block the call; post_tool returns text to append; the other events only observe."""
         if event not in EVENTS:
             raise ValueError(f"hook event must be one of {', '.join(EVENTS)}")
         self.hooks[event].append(fn)
@@ -232,7 +234,7 @@ def trust_user_plugin(trust: context.TrustStore, home: Path, path: Path, data: b
     trust.allow(home, f"plugin-user:{path.name}", hashlib.sha256(data).hexdigest())
 
 
-def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.TrustStore) -> None:
+def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.TrustStore, config: dict | None = None) -> None:
     """Python files that define register(api); a workspace's own plugins run only once the user trusts their exact contents.
 
     User-scope plugins need the same explicit trust: an unpinned or changed
@@ -257,7 +259,7 @@ def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.Trus
         reg._current = path.stem
         try:
             module = load_module_bytes(data, f"manga_agent_plugin_{scope}_{path.stem}", str(path))
-            module.register(reg)
+            module.register(plugin_api.API(reg, path.stem, (config or {}).get(path.stem), home / ".manga-agent" / "plugin-state"))
         except Exception as exc:
             row.update(state="failed", error=f"{type(exc).__name__}: {exc}"[:300])
         finally:

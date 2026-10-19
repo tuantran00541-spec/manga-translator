@@ -121,30 +121,30 @@ def test_h8_load_plugins_fail_closed_on_change(home, wsroot):
     """PoC r4-09 shape, deterministic: file changed after pinning -> untrusted, never executed."""
     plugdir = wsroot / ".agents" / "plugins"
     plugdir.mkdir(parents=True)
-    (plugdir / "w.py").write_text('def register(api):\n    api._h8_marker = "v1"\n', encoding="utf-8")
+    (plugdir / "w.py").write_text("def register(api):\n    api.tool({'name': 'h8_v1'}, lambda c, a: 'v1')\n", encoding="utf-8")
     trust = context.TrustStore(None)
     trust.allow(wsroot, "plugins", registry.sources_digest(registry.plugin_sources(wsroot, home)))
-    (plugdir / "w.py").write_text('def register(api):\n    api._h8_marker = "v2-evil"\n', encoding="utf-8")
+    (plugdir / "w.py").write_text("def register(api):\n    api.tool({'name': 'h8_v2'}, lambda c, a: 'v2-evil')\n", encoding="utf-8")
 
     reg = registry.Registry(set())
     registry.load_plugins(reg, wsroot, home, trust)
     row = next(p for p in reg.plugins if p["name"] == "w")
     assert row["state"] == "untrusted"
-    assert not hasattr(reg, "_h8_marker")
+    assert not reg.tools
 
 
 def test_h8_load_plugins_unchanged_still_loads(home, wsroot):
     """Legit flow: pinned and unchanged workspace plugin loads and runs."""
     plugdir = wsroot / ".agents" / "plugins"
     plugdir.mkdir(parents=True)
-    (plugdir / "w.py").write_text('def register(api):\n    api._h8_marker = "v1"\n', encoding="utf-8")
+    (plugdir / "w.py").write_text("def register(api):\n    api.tool({'name': 'h8_v1'}, lambda c, a: 'v1')\n", encoding="utf-8")
     trust = context.TrustStore(None)
     trust.allow(wsroot, "plugins", registry.sources_digest(registry.plugin_sources(wsroot, home)))
     reg = registry.Registry(set())
     registry.load_plugins(reg, wsroot, home, trust)
     row = next(p for p in reg.plugins if p["name"] == "w")
     assert row["state"] == "loaded"
-    assert reg._h8_marker == "v1"
+    assert "h8_v1" in reg.tools
 
 
 # ---- skill squatting ----
