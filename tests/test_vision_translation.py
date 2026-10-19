@@ -332,6 +332,24 @@ def test_english_left_as_the_translation_is_treated_as_untranslated():
     assert not _untranslated_english("Level của ngươi là bao nhiêu?")
 
 
+def test_vietnamese_written_without_diacritics_is_treated_as_untranslated():
+    from app.translation.vision import _missing_diacritics
+
+    assert _missing_diacritics("Hậu quả do năng lực\ndang tro thanh mot van de xoi hoi moi")
+    assert _missing_diacritics("Toi khong the lam nhu vay")
+    assert not _missing_diacritics("Bọn tôi không thể!") and not _missing_diacritics("Level Up! Dungeon Break")
+
+
+def test_recent_lines_keep_the_source_so_a_sentence_can_run_into_the_next_slice():
+    from app.translation.context import ChapterMemory
+
+    memory = ChapterMemory("")
+    memory.update(3, {"translations": [{"id": "a", "source": "THEY CONQUERED THE WORLD IN THE"}], "speakers": {"a": "narration"}},
+                  {"a": "Họ chinh phục thế giới"}, ["a"])
+    assert memory.snapshot()["recent_lines"] == [
+        {"slice": 3, "speaker": "narration", "source": "THEY CONQUERED THE WORLD IN THE", "text": "Họ chinh phục thế giới"}]
+
+
 def test_the_font_follows_role_and_container_not_the_model():
     from app.render.font_guide import font_for
 
