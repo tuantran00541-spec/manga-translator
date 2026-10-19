@@ -1,0 +1,274 @@
+{
+ "summary": {
+  "chain": {
+   "passed": 3,
+   "of": 4,
+   "refused": 36,
+   "chained_calls": 81
+  },
+  "shell": {
+   "passed": 3,
+   "of": 4,
+   "refused": 0,
+   "chained_calls": 7
+  }
+ },
+ "rows": [
+  {
+   "arm": "chain",
+   "task": "bug-hunt",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 725,
+   "replies_with_calls": 17,
+   "calls_per_reply": 1.18,
+   "tools": {
+    "create": 16,
+    "read_file": 3,
+    "edit_file": 1
+   },
+   "refused": 7,
+   "chained_calls": 28,
+   "tools_in_create_code": {
+    "run_command": 19,
+    "check": 4,
+    "read_file": 3,
+    "edit_file": 2
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 133157,
+    "completion_tokens": 5051,
+    "cached_tokens": 87552
+   },
+   "stats": {
+    "model_seconds": 520.2,
+    "tool_seconds": 76.0,
+    "cache_pct": 66,
+    "cost": 0.0074
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "bug-hunt",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 409,
+   "replies_with_calls": 12,
+   "calls_per_reply": 1.08,
+   "tools": {
+    "run_command": 10,
+    "read_file": 2,
+    "edit_file": 1
+   },
+   "refused": 0,
+   "chained_calls": 0,
+   "tools_in_create_code": {},
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 63557,
+    "completion_tokens": 2185,
+    "cached_tokens": 44288
+   },
+   "stats": {
+    "model_seconds": 365.5,
+    "tool_seconds": 29.8,
+    "cache_pct": 70,
+    "cost": 0.0035
+   }
+  },
+  {
+   "arm": "chain",
+   "task": "sales-report",
+   "passed": true,
+   "check": "{\n  \"revenue_by_region\": {\n    \"west\": 127.0,\n    \"east\": 80.0\n  },\n  \"top_product\": \"x\",\n  \"skipped_rows\": 18\n}\nPASS\n",
+   "seconds": 517,
+   "replies_with_calls": 9,
+   "calls_per_reply": 1.33,
+   "tools": {
+    "read_file": 5,
+    "create": 5,
+    "check": 2
+   },
+   "refused": 4,
+   "chained_calls": 7,
+   "tools_in_create_code": {
+    "run_command": 4,
+    "check": 2,
+    "edit_file": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 149692,
+    "completion_tokens": 2403,
+    "cached_tokens": 106496
+   },
+   "stats": {
+    "model_seconds": 486.9,
+    "tool_seconds": 29.4,
+    "cache_pct": 71,
+    "cost": 0.0078
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "sales-report",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 307,
+   "replies_with_calls": 5,
+   "calls_per_reply": 1.0,
+   "tools": {
+    "create": 2,
+    "read_file": 1,
+    "run_command": 1,
+    "check": 1
+   },
+   "refused": 0,
+   "chained_calls": 3,
+   "tools_in_create_code": {
+    "run_command": 2,
+    "check": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 81817,
+    "completion_tokens": 1818,
+    "cached_tokens": 54272
+   },
+   "stats": {
+    "model_seconds": 209.3,
+    "tool_seconds": 97.4,
+    "cache_pct": 66,
+    "cost": 0.0044
+   }
+  },
+  {
+   "arm": "chain",
+   "task": "stuck-requests",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 880,
+   "replies_with_calls": 18,
+   "calls_per_reply": 1.11,
+   "tools": {
+    "create": 20
+   },
+   "refused": 17,
+   "chained_calls": 14,
+   "tools_in_create_code": {
+    "run_command": 14
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 205658,
+    "completion_tokens": 7299,
+    "cached_tokens": 134400
+   },
+   "stats": {
+    "model_seconds": 830.5,
+    "tool_seconds": 37.0,
+    "cache_pct": 65,
+    "cost": 0.0114
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "stuck-requests",
+   "passed": true,
+   "check": "PASS\n",
+   "seconds": 257,
+   "replies_with_calls": 9,
+   "calls_per_reply": 1.0,
+   "tools": {
+    "run_command": 5,
+    "create": 2,
+    "write_file": 1,
+    "edit_file": 1
+   },
+   "refused": 0,
+   "chained_calls": 0,
+   "tools_in_create_code": {},
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 85646,
+    "completion_tokens": 2057,
+    "cached_tokens": 61952
+   },
+   "stats": {
+    "model_seconds": 255.4,
+    "tool_seconds": 0.5,
+    "cache_pct": 72,
+    "cost": 0.0046
+   }
+  },
+  {
+   "arm": "chain",
+   "task": "wordcount-json",
+   "passed": false,
+   "check": "py\", line 14, in <module>\n    assert r.returncode == 0 and len([f for f in os.listdir(os.path.join(root, \"tests\")) if f.startswith(\"test_\")]) >= 2, r.stdout[-500:]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: .                                                                        [100%]\n1 passed in 0.03s\n\n",
+   "seconds": 885,
+   "replies_with_calls": 20,
+   "calls_per_reply": 1.1,
+   "tools": {
+    "create": 15,
+    "read_file": 3,
+    "run_command": 2,
+    "list_directory": 1,
+    "edit_file": 1
+   },
+   "refused": 8,
+   "chained_calls": 32,
+   "tools_in_create_code": {
+    "run_command": 26,
+    "read_file": 5,
+    "check": 1
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 243290,
+    "completion_tokens": 9913,
+    "cached_tokens": 162560
+   },
+   "stats": {
+    "model_seconds": 805.7,
+    "tool_seconds": 31.7,
+    "cache_pct": 67,
+    "cost": 0.0137
+   }
+  },
+  {
+   "arm": "shell",
+   "task": "wordcount-json",
+   "passed": false,
+   "check": "y\", line 14, in <module>\n    assert r.returncode == 0 and len([f for f in os.listdir(os.path.join(root, \"tests\")) if f.startswith(\"test_\")]) >= 2, r.stdout[-500:]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ..........                                                               [100%]\n10 passed in 0.33s\n\n",
+   "seconds": 716,
+   "replies_with_calls": 18,
+   "calls_per_reply": 1.17,
+   "tools": {
+    "run_command": 13,
+    "read_file": 4,
+    "create": 2,
+    "edit_file": 2
+   },
+   "refused": 0,
+   "chained_calls": 4,
+   "tools_in_create_code": {
+    "edit_file": 2,
+    "run_command": 2
+   },
+   "status": "idle",
+   "usage": {
+    "prompt_tokens": 138246,
+    "completion_tokens": 5368,
+    "cached_tokens": 110592
+   },
+   "stats": {
+    "model_seconds": 626.4,
+    "tool_seconds": 41.3,
+    "cache_pct": 80,
+    "cost": 0.0077
+   }
+  }
+ ]
+}
