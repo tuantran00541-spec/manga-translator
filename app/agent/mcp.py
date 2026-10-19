@@ -1,6 +1,7 @@
 """Model Context Protocol client: stdio and streamable HTTP servers, their tools offered to the agent."""
 from __future__ import annotations
 
+import base64
 import collections
 import hashlib
 import itertools
@@ -33,6 +34,8 @@ REQUEST_TIMEOUT = 120
 MAX_RESULT_CHARS = 20_000
 # A fresh nextCursor on every tools/list page would hang startup; cap the pages.
 MAX_TOOL_LIST_PAGES = 50
+KINDS = ("read", "edit", "exec", "net")
+MAX_RESTARTS = 3
 # Redirects are followed manually so each hop goes through the SSRF guard again.
 _MAX_HTTP_REDIRECTS = 5
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
@@ -82,17 +85,6 @@ def _json_servers(path: Path, key: str = "mcpServers") -> dict:
     return servers if isinstance(servers, dict) else {}
 
 
-def _plugin_rows(path: Path) -> dict:
-    """MCP servers written as rows of the plugin tree: {"id": "github", "mcp": {...}, "disabled": false}."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    rows = data.get("rows") if isinstance(data, dict) else None
-    return {str(r["id"]): {**r["mcp"], **({"disabled": True} if r.get("disabled") else {})}
-            for r in rows or [] if isinstance(r, dict) and isinstance(r.get("mcp"), dict) and r.get("id")}
-
-
 NAME_RE = re.compile(r"[A-Za-z0-9_.-]{1,40}")
 SECRET_VALUE = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}$")
 
@@ -119,6 +111,7 @@ def clean_config(config) -> dict:
         raise ValueError("a server's settings must be a JSON object")
     kind = str(config.get("type") or config.get("transport") or ("http" if config.get("url") else "stdio")).lower()
     out: dict = {"disabled": True} if config.get("disabled") or config.get("enabled") is False else {}
+    out.update(client_settings(config))
     if kind in ("http", "streamable-http", "streamable_http", "sse"):
         url = str(config.get("url") or "").strip()
         if not re.match(r"^https?://[^\s/]+", url):
@@ -154,6 +147,44 @@ def clean_config(config) -> dict:
     if isinstance(config.get("cwd"), str) and config["cwd"].strip():
         out["cwd"] = config["cwd"].strip()
     return out
+
+
+def client_settings(config: dict) -> dict:
+    """What the harness itself reads from a server's settings: which tools to offer, their kinds and a timeout."""
+    out: dict = {}
+    tools = config.get("tools")
+    if isinstance(tools, dict):
+        lists = {k: [str(n) for n in tools[k] if isinstance(n, str)][:500] for k in ("allow", "deny") if isinstance(tools.get(k), list)}
+        if lists:
+            out["tools"] = lists
+    if isinstance(config.get("kinds"), dict):
+        kinds = {str(k): v for k, v in config["kinds"].items() if v in KINDS}
+        if kinds:
+            out["kinds"] = kinds
+    if isinstance(config.get("timeout"), (int, float)) and 5 <= config["timeout"] <= 3600:
+        out["timeout"] = config["timeout"]
+    return out
+
+
+def offered(config: dict, tool: str) -> bool:
+    """True when the server's allow and deny lists let the harness offer this tool."""
+    lists = config.get("tools") if isinstance(config.get("tools"), dict) else {}
+    allow, deny = lists.get("allow"), lists.get("deny") or []
+    return tool not in deny and (not allow or tool in allow)
+
+
+def set_user_tool(home: Path, server: str, tool: str, on: bool) -> None:
+    """Switch one tool of a server in ~/.manga-agent/mcp.json by its deny list."""
+    data = _read_user(home)
+    table = data.get("mcpServers") if isinstance(data.get("mcpServers"), dict) else {}
+    if server not in table or not isinstance(table[server], dict):
+        raise KeyError(server)
+    lists = table[server].setdefault("tools", {})
+    deny = [n for n in lists.get("deny") or [] if n != tool] + ([] if on else [tool])
+    lists["deny"] = deny
+    if on and isinstance(lists.get("allow"), list) and lists["allow"] and tool not in lists["allow"]:
+        lists["allow"].append(tool)
+    _write_user(home, data)
 
 
 def parse_pasted(text: str, name: str = "") -> dict[str, dict]:
@@ -246,7 +277,7 @@ def public(row: dict) -> dict:
     kind = "http" if config.get("url") else "stdio"
     where = config.get("url") if kind == "http" else " ".join([str(config.get("command") or ""), *[str(a) for a in config.get("args") or []]])
     return {"name": row["name"], "scope": row["scope"], "source": row["source"], "type": kind, "target": str(where)[:300],
-            "env": hide(config.get("env")), "headers": hide(config.get("headers")),
+            "env": hide(config.get("env")), "headers": hide(config.get("headers")), "denied": list((config.get("tools") or {}).get("deny") or []),
             "disabled": bool(config.get("disabled") or config.get("enabled") is False), "editable": row["source"] == "~/.manga-agent/mcp.json"}
 
 
@@ -271,7 +302,6 @@ def configured(workspace: Path, home: Path | None = None) -> list[dict]:
 
     add(_json_servers(workspace / ".mcp.json"), ".mcp.json", "workspace")
     add(_json_servers(home / ".manga-agent" / "mcp.json"), "~/.manga-agent/mcp.json", "user")
-    add(_plugin_rows(home / ".manga-agent" / "plugins.json"), "~/.manga-agent/plugins.json", "user")
     add(_json_servers(home / ".claude.json"), "~/.claude.json", "user")
     try:
         codex = tomllib.loads((home / ".codex" / "config.toml").read_text(encoding="utf-8")).get("mcp_servers", {}) if tomllib else {}
@@ -300,6 +330,7 @@ class _StdioTransport:
                                      env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                      text=True, encoding="utf-8", errors="replace", bufsize=1)
         self.waiting: dict[int, dict] = {}
+        self.on_notify = None
         self.lock = threading.Condition()
         # The last lines a server wrote to stderr say why it failed to start or stopped.
         self.errors: collections.deque[str] = collections.deque(maxlen=20)
@@ -328,6 +359,10 @@ class _StdioTransport:
                 reply.update({"result": result} if result is not None else {"error": {"code": -32601, "message": "not supported"}})
                 self.send(reply)
                 continue
+            if "method" in message:
+                if self.on_notify is not None:
+                    self.on_notify(str(message["method"]))
+                continue
             with self.lock:
                 if message.get("id") in self.waiting:
                     self.waiting[message["id"]] = message
@@ -355,6 +390,9 @@ class _StdioTransport:
             raise MCPError(f"server exited (code {self.proc.poll()}){self.why()}")
         return reply
 
+    def alive(self) -> bool:
+        return self.proc.poll() is None
+
     def close(self) -> None:
         try:
             self.proc.terminate()
@@ -378,6 +416,10 @@ class _HttpTransport:
         if token:
             self.headers["Authorization"] = f"Bearer {token}"
         self.session_id: str | None = None
+        self.on_notify = None
+
+    def alive(self) -> bool:
+        return True
 
     def _check_url(self, url: str, what: str) -> None:
         try:
@@ -432,6 +474,8 @@ class _HttpTransport:
                     data = []
                     if event.get("id") == message["id"]:
                         return event
+                    if "method" in event and "id" not in event and self.on_notify is not None:
+                        self.on_notify(str(event["method"]))
             raise MCPError("stream ended without an answer")
         except ValueError as exc:
             raise MCPError("server sent an unreadable answer") from exc
@@ -447,60 +491,128 @@ class _HttpTransport:
 
 
 class Server:
-    """One running MCP server and the tools it offers."""
+    """One running MCP server: its tools (as its allow and deny lists leave them), prompts and resources."""
 
     def __init__(self, name: str, config: dict, cwd: Path):
-        self.name = name
-        config = _expand(config)
+        self.name, self.cwd = name, cwd
+        self.config = _expand(config)
+        self.timeout = float(self.config.get("timeout") or REQUEST_TIMEOUT)
+        # Images a tool returns are saved here so the model can look at them with view_image.
+        self.media_dir: Path | None = None
+        self.tools_stale = False
+        self.restarts = 0
+        self._connect()
+
+    def _connect(self) -> None:
+        config = self.config
         kind = str(config.get("type") or config.get("transport") or ("http" if config.get("url") else "stdio")).lower()
         if kind in ("http", "streamable-http", "streamable_http"):
             self.transport = _HttpTransport(config)
         elif kind == "stdio":
-            self.transport = _StdioTransport(config, cwd)
+            self.transport = _StdioTransport(config, self.cwd)
         else:
             raise MCPError(f"transport {kind!r} is not supported; use stdio or http")
+        self.transport.on_notify = self._notified
         self.ids = itertools.count(1)
-        self.tools: list[dict] = []
         try:
-            self._call("initialize", {"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": CLIENT_INFO}, 60)
+            started = self._call("initialize", {"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": CLIENT_INFO}, 60)
+            self.capabilities = started.get("capabilities") or {}
             self.transport.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
-            cursor, pages = None, 0
-            while True:
-                page = self._call("tools/list", {"cursor": cursor} if cursor else {}, 60)
-                self.tools += [t for t in page.get("tools") or [] if isinstance(t, dict) and t.get("name")]
-                pages += 1
-                cursor = page.get("nextCursor")
-                if not cursor or len(self.tools) > 500:
-                    break
-                if pages >= MAX_TOOL_LIST_PAGES:
-                    logger.warning("MCP server {} still paginating tools/list after {} pages; stopping",
-                                   name, MAX_TOOL_LIST_PAGES)
-                    break
+            self.tools = self._list_tools()
+            self.prompts = self._list("prompts/list", "prompts") if "prompts" in self.capabilities else []
         except Exception:
             self.close()
             raise
 
-    def _call(self, method: str, params: dict, timeout: float = REQUEST_TIMEOUT) -> dict:
-        reply = self.transport.request({"jsonrpc": "2.0", "id": next(self.ids), "method": method, "params": params}, timeout)
+    def _notified(self, method: str) -> None:
+        if method == "notifications/tools/list_changed":
+            self.tools_stale = True
+
+    def _list(self, method: str, key: str) -> list[dict]:
+        found, cursor = [], None
+        for page in range(MAX_TOOL_LIST_PAGES):
+            reply = self._call(method, {"cursor": cursor} if cursor else {}, 60)
+            found += [t for t in reply.get(key) or [] if isinstance(t, dict) and (t.get("name") or t.get("uri"))]
+            cursor = reply.get("nextCursor")
+            if not cursor or len(found) > 500:
+                return found
+        logger.warning("MCP server {} still paginating {} after {} pages; stopping", self.name, method, MAX_TOOL_LIST_PAGES)
+        return found
+
+    def _list_tools(self) -> list[dict]:
+        # Every tool is kept for the page's switches; only the allowed ones reach the model.
+        self.all_tools = self._list("tools/list", "tools")
+        return [t for t in self.all_tools if offered(self.config, str(t["name"]))]
+
+    def refresh_tools(self) -> None:
+        """Read the tool list again after the server said it changed."""
+        self.tools_stale = False
+        self.tools = self._list_tools()
+
+    def _call(self, method: str, params: dict, timeout: float | None = None) -> dict:
+        reply = self.transport.request({"jsonrpc": "2.0", "id": next(self.ids), "method": method, "params": params}, timeout or self.timeout)
         if reply.get("error"):
             raise MCPError(str(reply["error"].get("message") or reply["error"])[:500])
         return reply.get("result") or {}
 
-    def call_tool(self, tool: str, arguments: dict) -> tuple[str, bool]:
-        result = self._call("tools/call", {"name": tool, "arguments": arguments})
+    def _call_alive(self, method: str, params: dict) -> dict:
+        """A call to a server found stopped starts it again first; a call that fails midway is never sent twice."""
+        if not self.transport.alive() and self.restarts < MAX_RESTARTS:
+            self.restarts += 1
+            logger.info("MCP server {} stopped; starting it again", self.name)
+            self.close()
+            self._connect()
+        return self._call(method, params)
+
+    def _content(self, items: list) -> list[str]:
         parts = []
-        for item in result.get("content") or []:
+        for item in items or []:
             if item.get("type") == "text":
                 parts.append(str(item.get("text", "")))
             elif item.get("type") == "resource":
                 resource = item.get("resource") or {}
                 parts.append(str(resource.get("text") or f"[resource {resource.get('uri', '')}]"))
+            elif item.get("type") == "image" and self.media_dir is not None and item.get("data"):
+                parts.append(self._save_image(item))
             else:
                 parts.append(f"[{item.get('type', 'content')} omitted]")
+        return parts
+
+    def _save_image(self, item: dict) -> str:
+        ext = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}.get(str(item.get("mimeType")), "png")
+        try:
+            data = base64.b64decode(str(item["data"]), validate=True)
+            self.media_dir.mkdir(parents=True, exist_ok=True)
+            path = self.media_dir / f"{self.name}-{hashlib.sha256(data).hexdigest()[:12]}.{ext}"
+            path.write_bytes(data)
+        except (ValueError, OSError) as exc:
+            return f"[image could not be saved: {exc}]"
+        return f"[image saved to {path}; look at it with view_image]"
+
+    def call_tool(self, tool: str, arguments: dict) -> tuple[str, bool]:
+        result = self._call_alive("tools/call", {"name": tool, "arguments": arguments})
+        parts = self._content(result.get("content"))
         if result.get("structuredContent") and not parts:
             parts.append(json.dumps(result["structuredContent"], ensure_ascii=False))
         text = "\n".join(parts) or "(no output)"
         return text[:MAX_RESULT_CHARS], not result.get("isError")
+
+    def get_prompt(self, prompt: str, arguments: dict) -> str:
+        result = self._call_alive("prompts/get", {"name": prompt, "arguments": {k: str(v) for k, v in arguments.items()}})
+        return "\n\n".join(p for m in result.get("messages") or [] for p in self._content([m.get("content") or {}]))
+
+    def resources(self) -> list[dict]:
+        if "resources" not in self.capabilities:
+            return []
+        return self._list("resources/list", "resources")
+
+    def read_resource(self, uri: str) -> str:
+        result = self._call_alive("resources/read", {"uri": uri})
+        text = "\n".join(self._content([{"type": "resource", "resource": c} if "text" in c else
+                                          {"type": "image", "data": c.get("blob"), "mimeType": c.get("mimeType")}
+                                          if str(c.get("mimeType", "")).startswith("image/") else {"type": "blob"}
+                                          for c in result.get("contents") or []]))
+        return (text or "(empty)")[:MAX_RESULT_CHARS]
 
     def close(self) -> None:
         try:

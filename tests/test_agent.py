@@ -2718,6 +2718,12 @@ def test_users_add_test_switch_and_remove_their_own_mcp_servers_from_the_page(ap
     assert session.mcp_status["calc"]["state"] == "disabled"
     http.post("/api/agent/mcp/calc/enabled", headers=head, json={"enabled": True})
     assert session.mcp_status["calc"]["state"] == "running" and "mcp__calc__get_sum" in session.mcp_tools, "an idle session picks the change up at once"
+    listed = http.get(f"/api/agent/mcp?workspace={root}", headers=head).json()
+    assert next(r for r in listed["servers"] if r["name"] == "calc")["tool_list"] == [{"name": "get_sum", "description": "Add two numbers", "on": True}]
+    held = http.post(f"/api/agent/mcp/calc/tools/get_sum?workspace={root}", headers=head, json={"enabled": False}).json()
+    assert next(r for r in held["servers"] if r["name"] == "calc")["denied"] == ["get_sum"] and "mcp__calc__get_sum" not in session.mcp_tools
+    http.post(f"/api/agent/mcp/calc/tools/get_sum?workspace={root}", headers=head, json={"enabled": True})
+    assert "mcp__calc__get_sum" in session.mcp_tools
     gone = http.delete("/api/agent/mcp/calc", headers=head)
     assert gone.status_code == 200 and all(r["name"] != "calc" for r in gone.json()["servers"]) and "mcp__calc__get_sum" not in session.mcp_tools
     assert http.delete("/api/agent/mcp/calc", headers=head).status_code == 404

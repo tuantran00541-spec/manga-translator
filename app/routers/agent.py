@@ -281,6 +281,9 @@ def _mcp_rows(workspace: str) -> dict:
     for session in agent_sessions.sessions.values():
         if session.workspace.root == root.resolve():
             live.update({n: {"state": st["state"], "tools": st["tools"], "error": st["error"]} for n, st in session.mcp_status.items()})
+            for n, server in session.mcp_servers.items():
+                live.setdefault(n, {})["tool_list"] = [{"name": str(t["name"]), "description": str(t.get("description") or "")[:200],
+                                                        "on": mcp.offered(server.config, str(t["name"]))} for t in getattr(server, "all_tools", server.tools)]
     for row in rows:
         row.update(live.get(row["name"], {}))
     return {"servers": rows, "file": str(mcp.user_file(home))}
@@ -333,6 +336,19 @@ async def test_mcp(name: str, workspace: str = "") -> dict:
 async def switch_mcp(name: str, req: McpSwitch, workspace: str = "") -> dict:
     try:
         await run_in_threadpool(mcp.set_user_enabled, _skill_home(), name, req.enabled)
+    except KeyError as exc:
+        raise HTTPException(404, "Only servers in ~/.manga-agent/mcp.json can be switched here") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    await run_in_threadpool(_mcp_changed)
+    return _mcp_rows(workspace)
+
+
+@router.post("/mcp/{name}/tools/{tool}")
+async def switch_mcp_tool(name: str, tool: str, req: McpSwitch, workspace: str = "") -> dict:
+    """Offer one tool of your own server to the agent, or hold it back."""
+    try:
+        await run_in_threadpool(mcp.set_user_tool, _skill_home(), name, tool, req.enabled)
     except KeyError as exc:
         raise HTTPException(404, "Only servers in ~/.manga-agent/mcp.json can be switched here") from exc
     except ValueError as exc:

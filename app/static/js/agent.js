@@ -384,7 +384,7 @@
     const skills = snap.skills || [];
     box.append(el("p", "agent-muted", skills.length ? `Skill: ${skills.map((s) => s.name).join(", ")}` : "Chưa có skill (.agents/skills, .claude/skills, .codex/skills)."));
     (snap.mcp || []).forEach((server) => {
-      const state = { running: `${server.tools} công cụ`, untrusted: "chưa cho phép", failed: `lỗi: ${server.error}`, disabled: "tắt", stopped: "đã dừng (/plugins enable mcp:" + server.name + ")" }[server.state] || server.state;
+      const state = { running: `${server.tools} công cụ`, untrusted: "chưa cho phép", failed: `lỗi: ${server.error}`, disabled: "tắt", stopped: "đã dừng" }[server.state] || server.state;
       const row = el("p", "agent-muted agent-info-row", `MCP ${server.name} · ${state}`);
       if (server.state === "untrusted") row.append(button("Cho phép", "agent-btn", () => trust(`mcp/${encodeURIComponent(server.name)}`)));
       box.append(row);
@@ -818,9 +818,36 @@
       const label = server.disabled ? "đã tắt" : server.state ? `${MCP_STATE[server.state] || server.state}${server.state === "running" ? `, ${server.tools} công cụ` : ""}` : "";
       const state = el("span", `agent-mcp-state${server.state === "running" ? " ok" : server.state === "failed" ? " bad" : ""}`, label + (server.error ? `: ${server.error}` : ""));
       item.append(title, actions, about, state);
+      if ((server.tool_list || []).length) item.append(mcpTools(server));
       return item;
     });
     $("agent-mcp-list").replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", "Chưa có MCP server nào.")]));
+  }
+
+  function mcpTools(server) {
+    const box = el("details", "agent-mcp-tools");
+    const on = server.tool_list.filter((t) => t.on).length;
+    box.append(el("summary", "agent-muted", `Công cụ: ${on}/${server.tool_list.length} đang bật`));
+    server.tool_list.forEach((tool) => {
+      const row = el("label", "agent-mcp-tool");
+      const box_ = document.createElement("input");
+      box_.type = "checkbox";
+      box_.checked = tool.on;
+      box_.disabled = !server.editable;
+      box_.addEventListener("change", () => switchMcpTool(server.name, tool.name, box_.checked));
+      row.title = tool.description;
+      row.append(box_, el("span", "", tool.name));
+      box.append(row);
+    });
+    return box;
+  }
+
+  async function switchMcpTool(name, tool, enabled) {
+    try {
+      showMcp(await post(`/api/agent/mcp/${encodeURIComponent(name)}/tools/${encodeURIComponent(tool)}${mcpQuery()}`, { enabled }));
+    } catch (error) {
+      window.showToast?.(error.message, "error");
+    }
   }
 
   async function loadMcp() {

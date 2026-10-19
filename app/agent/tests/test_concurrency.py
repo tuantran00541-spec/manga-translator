@@ -469,7 +469,7 @@ class _FakeServer:
     def __init__(self, name, config, cwd, constructions, lock):
         with lock:
             constructions.append(name)
-        self.name, self.tools = name, []
+        self.name, self.tools, self.config, self.prompts = name, [], config, []
 
     def close(self):
         pass

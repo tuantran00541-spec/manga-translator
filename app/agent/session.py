@@ -450,6 +450,9 @@ SESSION_SPECS = {
             "action": {"type": "string", "enum": ["show", "save", "pin", "restore"]}, "name": {"type": "string"}, "note": {"type": "string"},
             "path": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "diff": {"type": "boolean"},
             "why": {"type": "string"}}}},
+    "mcp_resource": {"name": "mcp_resource", "description": "List an MCP server's resources, or read one by its uri.",
+                     "parameters": {"type": "object", "required": ["server"], "properties": {
+                         "server": {"type": "string"}, "uri": {"type": "string", "description": "Leave out to list them."}}}},
     "memory": {"name": "memory", "description": "Add, remove or list notes kept for later sessions.",
                "parameters": {"type": "object", "required": ["action"], "properties": {
                    "action": {"type": "string", "enum": ["add", "remove", "list"]}, "scope": {"type": "string", "enum": ["project", "user"]},
@@ -675,6 +678,8 @@ class AgentSession:
         self.mcp_servers: dict[str, mcp.Server] = {}
         self.mcp_status: dict[str, dict] = {}
         self.mcp_tools: dict[str, tuple[str, dict]] = {}
+        # Kinds the user gave a server's tools in their own mcp.json; a project's file cannot lower approval.
+        self.mcp_kinds: dict[str, str] = {}
         self.created = parent.created if depth else self._load_created()
         self._mcp_stale = False
         self.rate_limited = {"count": 0, "waited_s": 0.0}
@@ -791,7 +796,8 @@ class AgentSession:
                 "commands": [{"name": k, "description": v} for k, v in self._builtin_commands().items()]
                 + [{"name": k, "description": d} for k, (d, _) in self.registry.commands.items()]
                 + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
-                + [{"name": c["name"], "description": c["description"]} for c in self.commands.values()]}
+                + [{"name": c["name"], "description": c["description"]} for c in self.commands.values()]
+                + [{"name": k, "description": str(p.get("description") or p["name"])[:120]} for k, (_, p) in self._mcp_prompts().items()]}
 
     def snapshot(self, after: int = 0, rev: str = "") -> dict:
         with self._lock:
@@ -984,6 +990,7 @@ class AgentSession:
             raise ValueError(f"/{name} đang tắt trong profile.json")
         if name == "help":
             rows = [f"/{k} — {v}" for k, v in self._builtin_commands().items()] + [f"/{k} — {d}" for k, (d, _) in self.registry.commands.items()]
+            rows += [f"/{k} — {str(p.get('description') or p['name'])[:120]}" for k, (_, p) in self._mcp_prompts().items()]
             return {"message": "\n".join(rows + [f"/{c['name']} — {c['description']}" for c in self.commands.values()])}
         if name == "plugins":
             return {"message": self._plugins_command(args)}
@@ -1079,7 +1086,44 @@ class AgentSession:
         if name in self.commands:
             self.send(context.expand_command(self.commands[name]["body"], args))
             return {"sent": True}
+        if name.startswith("mcp:") and name.count(":") == 2:
+            self.send(self._mcp_prompt(name, args))
+            return {"sent": True}
         raise ValueError(f"Unknown command /{name}; type /help")
+
+    def _mcp_resource(self, args: dict) -> str:
+        server = self._root().mcp_servers.get(str(args.get("server") or ""))
+        if server is None:
+            raise ToolError(f"no running MCP server {args.get('server')!r}; running: {', '.join(self._root().mcp_servers) or 'none'}")
+        # What a server hands back is outside content, like a web page.
+        self.tainted = True
+        try:
+            if not args.get("uri"):
+                rows = server.resources()
+                return "\n".join(f"{r.get('uri')} — {r.get('name') or ''} {r.get('description') or ''}".strip()[:300] for r in rows[:200]) or "(no resources)"
+            return server.read_resource(str(args["uri"]))
+        except mcp.MCPError as exc:
+            raise ToolError(f"MCP {server.name}: {exc}") from exc
+
+    def _mcp_prompts(self) -> dict[str, tuple[str, dict]]:
+        """Each running MCP server's prompts as /mcp:server:prompt commands."""
+        return {f"mcp:{name}:{p['name']}": (name, p) for name, server in self.mcp_servers.items() for p in getattr(server, "prompts", [])}
+
+    def _mcp_prompt(self, command: str, args: str) -> str:
+        self._ensure_mcp()
+        found = self._mcp_prompts().get(command)
+        if found is None:
+            raise ValueError(f"Không có prompt /{command}")
+        server, prompt = found
+        names = [str(a.get("name")) for a in prompt.get("arguments") or [] if isinstance(a, dict) and a.get("name")]
+        pairs = dict(re.findall(r"(\w+)=(\S+)", args))
+        if not pairs and args and names:
+            # Plain text after the command fills the prompt's first argument.
+            pairs = {names[0]: args}
+        try:
+            return self.mcp_servers[server].get_prompt(prompt["name"], pairs)
+        except mcp.MCPError as exc:
+            raise ValueError(f"MCP {server}: {exc}") from exc
 
     def reload_skills(self) -> None:
         """Pick up skills added, written or removed since the session started; the model sees the change on its next turn."""
@@ -1235,7 +1279,7 @@ class AgentSession:
 
     def _role(self, name: str) -> str | None:
         """The role a profile gives an MCP tool (read, edit, exec, net), which decides approvals like a built-in of that kind."""
-        return self.profile["roles"].get(name)
+        return self.profile["roles"].get(name) or self._root().mcp_kinds.get(name)
 
     def _ensure_mcp(self) -> None:
         """Start every configured MCP server that is switched on and trusted, side by side, and offer their tools."""
@@ -1266,16 +1310,45 @@ class AgentSession:
         except Exception as exc:
             status.update(state="failed", error=f"{type(exc).__name__}: {exc}"[:300])
             return
+        server.media_dir = self._outputs_dir() / "mcp-media"
         with self._mcp_lock:
             self.mcp_servers[name] = server
-            for tool in server.tools:
-                self.mcp_tools[mcp.tool_name(name, tool["name"])] = (name, tool)
-        status.update(state="running", tools=len(server.tools), error="")
+            self._offer_mcp_tools(name, row["scope"])
+        status.update(state="running", tools=len(server.tools), prompts=len(server.prompts), error="")
+
+    def _offer_mcp_tools(self, name: str, scope: str) -> None:
+        """Offer a running server's tools (again), with the kinds the user's own config gives them."""
+        server = self.mcp_servers[name]
+        for tool_name in [n for n, (s, _) in self.mcp_tools.items() if s == name]:
+            self.mcp_tools.pop(tool_name, None)
+            self.mcp_kinds.pop(tool_name, None)
+        kinds = server.config.get("kinds") if scope == "user" and isinstance(server.config.get("kinds"), dict) else {}
+        for tool in server.tools:
+            full = mcp.tool_name(name, tool["name"])
+            self.mcp_tools[full] = (name, tool)
+            if kinds.get(tool["name"]) in mcp.KINDS:
+                self.mcp_kinds[full] = kinds[tool["name"]]
+
+    def _sync_mcp_tools(self) -> None:
+        """Read again the tool lists of servers that said theirs changed."""
+        for name, server in list(self.mcp_servers.items()):
+            if not getattr(server, "tools_stale", False):
+                continue
+            try:
+                server.refresh_tools()
+            except mcp.MCPError as exc:
+                logger.warning("MCP server {} could not list its tools again: {}", name, exc)
+                continue
+            with self._mcp_lock:
+                self._offer_mcp_tools(name, self.mcp_status.get(name, {}).get("scope", "workspace"))
+            self.mcp_status.get(name, {})["tools"] = len(server.tools)
+            self.emit("notice", text=f"MCP server {name} changed its tools; it now offers {len(server.tools)}.")
 
     def _stop_mcp(self, name: str) -> None:
         with self._mcp_lock:
             for tool_name in [n for n, (server, _) in self.mcp_tools.items() if server == name]:
                 self.mcp_tools.pop(tool_name, None)
+                self.mcp_kinds.pop(tool_name, None)
             server = self.mcp_servers.pop(name, None)
         if server is not None:
             server.close()
@@ -1402,6 +1475,8 @@ class AgentSession:
             rows += [SESSION_SPECS["context_notes"], SESSION_SPECS["new_context"]]
         rows += [{"name": name, "description": f"[MCP {server}] {tool.get('description') or tool['name']}"[:1024],
                   "parameters": tool.get("inputSchema") or OBJ} for name, (server, tool) in self.mcp_tools.items()]
+        if any("resources" in getattr(s, "capabilities", {}) for s in self._root().mcp_servers.values()):
+            rows.append(SESSION_SPECS["mcp_resource"])
         if self.plan_mode:
             reads = agents.READ_TOOLS | {"checkpoint", "todo_write", "task", "fan_out", "ask_user", "memory", "spawn_agent", "wait_agent", "send_input", "close_agent"}
             reads |= {n for n, t in self.registry.tools.items() if t.kind == "read"}
@@ -2283,6 +2358,8 @@ class AgentSession:
             if args.get("keep") is not False:
                 return f"{made}\n{output}"
             return f"Ran a one-off tool (not kept).\n{output}{self._note_one_off(name, kept, output)}"
+        if call["name"] == "mcp_resource":
+            return self._mcp_resource(args)
         if call["name"] == "skill":
             found = self.skills.get(str(args.get("name") or ""))
             if found is None:
@@ -3144,6 +3221,8 @@ class AgentSession:
             return self._turn_once()
 
     def _turn_once(self) -> dict:
+        if not self.depth:
+            self._sync_mcp_tools()
         system, specs = self._header()
         self._fire("before_model", {"model": self.model, "messages": len(self.history), "tools": [s["name"] for s in specs]})
         try:
