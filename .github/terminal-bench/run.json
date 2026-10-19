@@ -1,0 +1,17 @@
+{
+  "secret": "POLAGRID_",
+  "base_url": "https://api.mia-01.edge.polargrid.ai/v1",
+  "model": "qwen-3.8-27b",
+  "check_only": true,
+  "tasks": [],
+  "concurrent": 3,
+  "shards": 3,
+  "minutes": 200,
+  "request": {
+    "reasoning_effort": "xhigh",
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 20
+  },
+  "max_output_tokens": 16000
+}
