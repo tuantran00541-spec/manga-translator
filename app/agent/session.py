@@ -410,14 +410,17 @@ SESSION_SPECS = {
         "Write a Python tool you can then call by name; inside its code tools.<name>(...) calls any other tool (built-in, created, plugin, MCP), "
         "so one call can chain many steps. code defines def <name>(param, ...) that returns the result; its signature becomes the tool's "
         "parameters and its docstring the description unless you give them. Pass args to run it now; keep: false runs it once now and drops it. "
-        "Same name replaces it, empty code deletes it."),
+        "Same name replaces it, empty code deletes it. kind: read makes it a looking tool that runs read-only without asking; "
+        "scope: workspace keeps it with the project instead of for you."),
                "parameters": {"type": "object", "required": ["name", "code"], "properties": {
                    "name": {"type": "string", "description": "lower_case name, also the function's name."},
                    "description": {"type": "string", "description": "What it does, its arguments and what it returns."},
                    "parameters": {"type": "object", "description": "JSON schema of the arguments; taken from the signature when left out."},
                    "code": {"type": "string", "description": "Python that defines the function; return values, do not return at top level."},
                    "args": {"type": "object", "description": "Run it with these arguments right after writing it."},
-                   "keep": {"type": "boolean", "description": "false runs it once right away (args optional) without keeping it."}}}},
+                   "keep": {"type": "boolean", "description": "false runs it once right away (args optional) without keeping it."},
+                   "kind": {"type": "string", "enum": ["read", "exec"], "description": "read: only looks, runs read-only and offline, and may call only looking tools; exec (default) asks like a command."},
+                   "scope": {"type": "string", "enum": ["user", "workspace"], "description": "user (default) keeps it for every project; workspace saves it in .agents/tools/."}}}},
     "goal_done": {"name": "goal_done", "description": "Mark the goal met, after its check has passed.",
                   "parameters": {"type": "object", "required": ["summary"], "properties": {"summary": {"type": "string"}}}},
     "job_output": {"name": "job_output", "description": "Read what a background job printed since you last looked, waiting up to wait_s for more.",
@@ -452,19 +455,58 @@ SESSION_SPECS = {
                    "action": {"type": "string", "enum": ["add", "remove", "list"]}, "scope": {"type": "string", "enum": ["project", "user"]},
                    "text": {"type": "string"}, "index": {"type": "integer"}}}},
 }
+# A created tool as a stand-alone stdio MCP server: its code plus a small JSON-RPC loop.
+MCP_EXPORT = '''"""MCP server exported from a Chaos created tool."""
+import json, sys
+
+{code}
+
+SPEC = {spec}
+
+
+def reply(id_, result=None, error=None):
+    out = {{"jsonrpc": "2.0", "id": id_}}
+    out.update({{"error": error}} if error else {{"result": result}})
+    sys.stdout.write(json.dumps(out) + "\\n")
+    sys.stdout.flush()
+
+
+for line in sys.stdin:
+    try:
+        msg = json.loads(line)
+    except ValueError:
+        continue
+    method, id_ = msg.get("method"), msg.get("id")
+    if id_ is None:
+        continue
+    if method == "initialize":
+        reply(id_, {{"protocolVersion": "2025-06-18", "capabilities": {{"tools": {{}}}}, "serverInfo": {{"name": SPEC["name"], "version": "1"}}}})
+    elif method == "tools/list":
+        reply(id_, {{"tools": [SPEC]}})
+    elif method == "tools/call":
+        try:
+            result = {name}(**(msg.get("params", {{}}).get("arguments") or {{}}))
+            text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
+            reply(id_, {{"content": [{{"type": "text", "text": text}}]}})
+        except Exception as exc:
+            reply(id_, {{"content": [{{"type": "text", "text": f"{{type(exc).__name__}}: {{exc}}"}}], "isError": True}})
+    else:
+        reply(id_, error={{"code": -32601, "message": f"unknown method {{method}}"}})
+'''
 BUILTIN_NAMES = frozenset({s["name"] for s in SPECS} | set(SESSION_SPECS) | set(KIND))
 BUILTIN_COMMANDS = {
     "help": "Xem các lệnh", "compact": "Tóm gọn hội thoại để giải phóng chỗ (có thể ghi điều cần giữ); /compact auto 900k đặt mức tự tóm gọn",
     "init": "Viết AGENTS.md mô tả dự án này", "skills": "Xem skill; /skills add CHỦ/REPO[/THƯ-MỤC] cài skill từ GitHub",
     "mcp": "Xem MCP server và công cụ của chúng", "model": "Đổi model: /model TÊN",
-    "mode": "Đổi cách duyệt: /mode ask|edits|auto",
+    "mode": "Đổi cách duyệt: /mode ask|edits|bypass",
     "effort": "Đổi mức suy nghĩ: /effort mặc định|thấp|vừa|cao|rất cao",
     "sandbox": "Đổi sandbox: /sandbox read-only|workspace-write|full-access [net]",
     "clear": "Mở phiên mới", "plan": "Chế độ lập kế hoạch (chỉ đọc đến khi bạn duyệt): /plan [việc] hoặc /plan off",
     "goal": "Giao mục tiêu để agent tự làm nhiều lượt: /goal MỤC TIÊU hoặc /goal off",
     "undo": "Hoàn tác file agent đã sửa ở lượt gần nhất", "memory": "Xem ghi nhớ: /memory, /memory add NỘI DUNG, /memory rm project|user SỐ",
     "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn", "cache": "Xem tỉ lệ cache và những lần tiền tố yêu cầu bị đổi", "receipts": "Xem mọi file đã sửa, lệnh đã chạy và lần duyệt của phiên này",
-    "plugins": "Xem plugin, tính năng đã tắt và agent ngoài (Codex, Claude Code)",
+    "plugins": "Xem plugin và tính năng đã tắt; /plugins reload nạp lại",
+    "tools": "Tool model đã tạo: /tools, /tools show TÊN, /tools rm TÊN, /tools trust, /tools export TÊN",
     "models": "Nguồn và vai model: /models xem nguồn, vai và lượng dùng hôm nay; /models NGUỒN [từ khoá] xem model và giá",
     "intent": "Xem bản agent hình dung yêu cầu hiện tại (intent.md), viết tự động khi chuỗi đầu tiên của yêu cầu chạy",
 }
@@ -665,6 +707,39 @@ class AgentSession:
             if scope == "user" and data is not None:
                 registry.trust_user_plugin(self.trust, home_path, path, data)
         self.registry = self._build_registry(home_path)
+
+    def _tools_command(self, args: str) -> str:
+        """/tools lists the tools the model created; show, rm, trust and export act on them."""
+        verb, _, name = args.strip().partition(" ")
+        created, name = self._root().created, name.strip()
+        if verb == "trust":
+            self._root().trust_tools()
+            return f"Đã tin cậy tool của dự án: {', '.join(n for n in created if created[n].get('scope') == 'workspace') or 'không có'}."
+        if verb in ("show", "rm", "export") and name not in created:
+            return f"Không có tool {name!r}; đã tạo: {', '.join(created) or 'chưa có'}"
+        if verb == "show":
+            return f"{created[name]['description']}\n\n{created[name]['code']}"
+        if verb == "rm":
+            return self._create({"name": name, "code": ""})
+        if verb == "export":
+            return self._export_tool(created[name])
+        if verb:
+            return "Dùng: /tools, /tools show TÊN, /tools rm TÊN, /tools trust, /tools export TÊN"
+        rows = [f"  {t['name']} ({t.get('kind', 'exec')}, {t.get('scope', 'user')}): {t.get('about') or t['description']}"[:200] for t in created.values()]
+        rows += [f"  {n} (dự án, chưa tin cậy: /tools trust)" for n in getattr(self._root(), "untrusted_tools", [])]
+        return "\n".join(["Tool đã tạo:"] + rows) if rows else "Chưa có tool nào; model tạo tool bằng create."
+
+    def _export_tool(self, tool: dict) -> str:
+        """Write a created tool as a stand-alone stdio MCP server, for other agents."""
+        if re.search(r"\btools\.", tool["code"]):
+            return "Tool này gọi tool khác qua tools.…, nên chỉ chạy được trong Chaos; chưa xuất được ra MCP."
+        folder = self._outputs_dir() / "mcp"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{tool['name']}_server.py"
+        spec = {"name": tool["name"], "description": tool.get("about") or tool["description"], "inputSchema": tool["parameters"]}
+        path.write_text(MCP_EXPORT.format(code=tool["code"], spec=json.dumps(spec, ensure_ascii=False), name=tool["name"]), encoding="utf-8")
+        return (f"Đã xuất {path}. Thêm vào MCP của agent khác, ví dụ:\n"
+                + json.dumps({"mcpServers": {tool["name"]: {"command": "python3", "args": [str(path)]}}}, indent=1))
 
     def _plugins_command(self, args: str) -> str:
         """/plugins lists the plugin files; /plugins reload loads them again."""
@@ -912,6 +987,8 @@ class AgentSession:
             return {"message": "\n".join(rows + [f"/{c['name']} — {c['description']}" for c in self.commands.values()])}
         if name == "plugins":
             return {"message": self._plugins_command(args)}
+        if name == "tools":
+            return {"message": self._tools_command(args)}
         if name in self.registry.commands:
             result = self.registry.commands[name][1](self, args)
             return result if isinstance(result, dict) else {"message": str(result)}
@@ -1349,8 +1426,11 @@ class AgentSession:
         if name == "memory":
             return self.mode not in HANDS_OFF and call["args"].get("action") != "list"
         if name == "create":
-            # Writing a tool asks where edits ask; running it is a command and asks like one.
-            return self.mode == "ask" and verdict != "allow"
+            # Writing a tool never asks; running it is a command and asks like one.
+            return False
+        created = self._root().created.get(name)
+        if created is not None and created.get("kind") == "read" and self._confined() and verdict != "ask":
+            return False
         if name == "checkpoint":
             # Putting files back is an edit, so it asks wherever edits ask.
             return call["args"].get("action") == "restore" and self.mode == "ask" and verdict != "allow"
@@ -1455,20 +1535,43 @@ class AgentSession:
                 self.pending, self.status = previous_pending, previous_status
             return decision
 
-    def _tools_folder(self) -> Path:
+    def _tools_folder(self, scope: str = "user") -> Path:
+        if scope == "workspace":
+            return self.workspace.root / ".agents" / "tools"
         return (self.home if self.home is not None else Path.home()) / ".manga-agent" / "tools"
 
-    def _load_created(self) -> dict[str, dict]:
-        """Tools the model wrote with create, kept across sessions."""
-        found = {}
-        for path in sorted(self._tools_folder().glob("*.json")):
+    def _workspace_tools_digest(self) -> str:
+        h = hashlib.sha256()
+        for path in sorted(self._tools_folder("workspace").glob("*.json")):
             try:
-                tool = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
+                h.update(path.name.encode() + b"\0" + path.read_bytes())
+            except OSError:
                 continue
-            if isinstance(tool, dict) and CREATED_NAME.fullmatch(str(tool.get("name"))) and tool.get("name") not in BUILTIN_NAMES and isinstance(tool.get("code"), str):
+        return h.hexdigest()
+
+    def _load_created(self) -> dict[str, dict]:
+        """Tools the model wrote with create, kept across sessions; a project's own run only once the user trusts their exact contents."""
+        found = {}
+        self.untrusted_tools: list[str] = []
+        trusted = self.trust.trusted(self.workspace.root, "tools", self._workspace_tools_digest())
+        for scope in ("user", "workspace"):
+            for path in sorted(self._tools_folder(scope).glob("*.json")):
+                try:
+                    tool = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if not (isinstance(tool, dict) and CREATED_NAME.fullmatch(str(tool.get("name"))) and tool.get("name") not in BUILTIN_NAMES and isinstance(tool.get("code"), str)):
+                    continue
+                if scope == "workspace" and not trusted:
+                    self.untrusted_tools.append(tool["name"])
+                    continue
+                tool["scope"], tool["kind"] = scope, "read" if tool.get("kind") == "read" else "exec"
                 found[tool["name"]] = tool
         return found
+
+    def trust_tools(self) -> None:
+        self.trust.allow(self.workspace.root, "tools", self._workspace_tools_digest())
+        self._root().created.update(self._load_created())
 
     def _create(self, args: dict) -> str:
         """Write, replace or (with empty code) delete a tool the model defines in its own function-calling form."""
@@ -1479,13 +1582,17 @@ class AgentSession:
         if name in BUILTIN_NAMES or name in self.registry.tools or name in self._root().mcp_tools:
             # A built-in name carries that tool's approval kind and dispatch, so a created tool may not borrow it.
             raise ToolError(f"{name} is reserved; pick another name, e.g. shell, read, edit")
-        path = self._tools_folder() / f"{name}.json"
+        old = created.get(name)
+        scope = args.get("scope") if args.get("scope") in ("user", "workspace") else (old or {}).get("scope", "user")
+        path = self._tools_folder(scope) / f"{name}.json"
         code = str(args.get("code") or "")
         if not code.strip():
             if name not in created:
                 raise ToolError(f"No created tool {name}; created: {', '.join(created) or 'none'}")
-            created.pop(name)
-            path.unlink(missing_ok=True)
+            gone = created.pop(name)
+            (self._tools_folder(gone.get("scope", "user")) / f"{name}.json").unlink(missing_ok=True)
+            if gone.get("scope") == "workspace":
+                self.trust.allow(self.workspace.root, "tools", self._workspace_tools_digest())
             return f"Deleted tool {name}."
         code = _as_function(name, code)
         try:
@@ -1495,17 +1602,37 @@ class AgentSession:
         signature, doc, inferred = _signature(name, code)
         params = args.get("parameters") if isinstance(args.get("parameters"), dict) and args["parameters"].get("properties") else inferred
         params = {"type": "object", "properties": {}, **params}
-        old = created.get(name)
         about = str(args.get("description") or doc or (old or {}).get("about", (old or {}).get("description")) or "").strip()
+        kind = args.get("kind") if args.get("kind") in ("read", "exec") else (old or {}).get("kind", "exec")
         tool = {"name": name, "description": (f"{signature}: {about}" if about and signature not in about else about or signature)[:1024],
-                "about": about, "parameters": params, "code": code}
+                "about": about, "parameters": params, "code": code, "kind": kind}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(tool, ensure_ascii=False, indent=1), encoding="utf-8")
-        created[name] = tool
+        if old and old.get("scope", "user") != scope:
+            (self._tools_folder(old.get("scope", "user")) / f"{name}.json").unlink(missing_ok=True)
+        if "workspace" in (scope, (old or {}).get("scope")):
+            # The agent's own writes stay trusted; a change made outside the session does not.
+            self.trust.allow(self.workspace.root, "tools", self._workspace_tools_digest())
+        created[name] = {**tool, "scope": scope}
         takes = ", ".join(params["properties"]) or "no arguments"
         loose = "" if "def " in code else " It has no function, so it reads its arguments from the dict args."
+        where = "with this project" if scope == "workspace" else "for later sessions"
+        how = "read-only and offline, without asking" if kind == "read" and self._confined() else "in the sandbox"
         return (f"{'Updated' if old else 'Created'} tool {tool['description'].rstrip('.')}. Call {name} directly as a tool ({takes}); "
-                f"it runs in the sandbox and is kept for later sessions.{loose}")
+                f"it runs {how} and is kept {where}.{loose}")
+
+    def _confined(self) -> bool:
+        """True when the sandbox really enforces a read-only run, so a read tool may skip approval."""
+        return sandbox.backend() != "none" and self.workspace.policy.mode != "full-access"
+
+    def _looks_only(self, name: str) -> bool:
+        """A tool a read tool's code may reach: one whose kind is read."""
+        plugin = self.registry.tools.get(name)
+        if plugin is not None:
+            return plugin.kind == "read"
+        if name in self._root().mcp_tools:
+            return self._role(name) == "read"
+        return name in LOOK_ONLY or KIND.get(name) == "read" or name in ("skill", "_search", "_describe", "_source", "_intent", "_chain", "_long")
 
     def _run_created(self, call: dict) -> str:
         """A created tool runs as a sandboxed Python process; past CREATED_TIMEOUT it goes on in the background, and the files it changes are tracked."""
@@ -1515,7 +1642,8 @@ class AgentSession:
         if problems:
             raise ToolError("The chain was not run, because its code calls tools that cannot work:\n" + "\n".join(problems[:10]))
         # In plan mode a created tool may look but not change anything.
-        policy = sandbox.Policy("read-only", self.workspace.policy.network) if self.plan_mode else self.workspace.policy
+        looks = tool.get("kind") == "read"
+        policy = sandbox.Policy("read-only", False) if looks else sandbox.Policy("read-only", self.workspace.policy.network) if self.plan_mode else self.workspace.policy
         state = self._outputs_dir() / "state"
         state.mkdir(parents=True, exist_ok=True)
         docker = sandbox.backend() == "docker" and policy.mode != "full-access"
@@ -1555,7 +1683,7 @@ class AgentSession:
         if job is None:
             job = sandbox.Job(command, policy, self.workspace.root, scratch=str(state))
             job.close_input()
-        server = threading.Thread(target=self._serve_chain, args=(rpc, job), name=f"agent-chain-{self.id}", daemon=True)
+        server = threading.Thread(target=self._serve_chain, args=(rpc, job, None, looks), name=f"agent-chain-{self.id}", daemon=True)
         server.start()
         output = self._await_job(job, CREATED_TIMEOUT, guard)
         if job.code is not None:
@@ -1614,14 +1742,16 @@ class AgentSession:
         names |= {"vote", "models"} if self.profile["model_roles"] or self._sources() else set()
         return names | ({"skill"} if self.skills else set())
 
-    def _serve_chain(self, folder: Path, job: "sandbox.Job", ws: Workspace | None = None) -> None:
+    def _serve_chain(self, folder: Path, job: "sandbox.Job", ws: Workspace | None = None, looks: bool = False) -> None:
         """Answer the requests a running created tool leaves in its rpc folder, each through the same rules and approvals as the model's own calls; a branch's workspace tools run on its copy."""
         targets = self._chain_targets()
 
         def answer(request: Path, data: dict) -> None:
             name, args = str(data.get("name") or ""), data.get("args") if isinstance(data.get("args"), dict) else {}
             try:
-                if name in ("_chain", "_long"):
+                if looks and not self._looks_only(name):
+                    output, ok = f"{name!r} changes things, and this tool was created with kind read; create it with kind exec to call it", False
+                elif name in ("_chain", "_long"):
                     output, ok = self._spend_chain(name)
                 elif name in ("_search", "_describe"):
                     output, ok = self._find_tools(name, args, targets)

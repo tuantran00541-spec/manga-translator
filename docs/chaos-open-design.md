@@ -66,7 +66,7 @@ Quyết định chính: tầng 1 **chính là `create`**, giữ nguyên cách d�
 |---|---|
 | `kind` | `create(..., kind="read")` khai báo tool chỉ đọc. Harness kiểm lại: tool `read` mà gọi tool sửa hoặc lệnh thì bị chặn, nên khai `read` không lách được duyệt. Mặc định là `exec`, như hiện nay. |
 | `scope` | `user` (mặc định, như hiện nay) hoặc `workspace`. Workspace lưu ở `.agents/tools/`, commit chung với dự án. Người khác mở dự án thì phải tin cậy theo digest, giống `.mcp.json`. |
-| Thư viện | Tool đã create gọi lẫn nhau như module (đang có). Thêm `requires: ["requests"]` để cài gói vào venv riêng của tools. |
+| Thư viện | Tool đã create gọi lẫn nhau như module (đang có). Cài thêm gói thì model tự chạy `pip install` qua `run_command` (có duyệt); chưa làm `requires` riêng. |
 | Danh sách | `/tools` liệt kê, xem code, xóa. Giao diện có bảng tương ứng. |
 | Xuất ra MCP | `/tools export <tên>` gói tool thành MCP server, để Claude Code hoặc Cursor dùng lại. |
 
@@ -149,7 +149,7 @@ Mỗi bước có test, 4 script sanity và ảnh chụp UI, rồi mới sang b�
    - Thêm 4 sự kiện mới.
    - `api.config` và `api.state`.
    - Test bảo mật: plugin không với tới key, mode, registry.
-2. **Mở rộng `create`:** `kind` có kiểm tra, `scope` workspace kèm tin cậy, `requires`, lệnh `/tools`, xuất ra MCP.
+2. **Mở rộng `create`:** `kind` có kiểm tra, `scope` workspace kèm tin cậy, lệnh `/tools`, xuất ra MCP.
 3. **MCP thêm:** lọc tool, kinds, prompts, resources, ảnh, `list_changed`, tự khởi động lại, công tắc cho từng tool trên UI.
 4. **Provider:**
    - Dò đường dẫn chat khi gặp 404, và nhớ đường chạy được.

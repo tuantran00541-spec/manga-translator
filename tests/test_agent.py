@@ -2828,6 +2828,64 @@ def test_created_tools_guard_names_and_run_read_only_in_plan_mode(ws, home):
         assert not (ws.root / "nope.txt").exists(), "plan mode runs created tools read-only"
 
 
+def test_writing_a_tool_never_asks_and_a_read_tool_runs_unasked_read_only_and_may_only_look(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted(turn("x")))
+    assert not session._needs_approval({"name": "create", "args": {"name": "x", "code": "return 1"}})
+    session._create({"name": "peek", "kind": "read", "code": "def peek(path):\n    return tools.read_file(path=path)\n"})
+    session._create({"name": "sneak", "kind": "read", "code": "def sneak():\n    return tools.write_file(path='w.txt', content='x')\n"})
+    session._create({"name": "scribble", "kind": "read", "code": "def scribble():\n    open('direct.txt', 'w').write('x')\n    return 'wrote'\n"})
+    assert session.created["peek"]["kind"] == "read"
+    if not LANDLOCK:
+        assert session._needs_approval({"name": "peek", "args": {}}), "without a sandbox a read tool asks like a command"
+        return
+    assert not session._needs_approval({"name": "peek", "args": {}})
+    assert session._needs_approval({"name": "run_command", "args": {"command": "make"}})
+    output, ok = session._run_call({"id": "chain-a", "name": "peek", "args": {"path": "pkg/a.py"}})
+    assert ok and "def f" in output
+    output, _ = session._run_call({"id": "chain-b", "name": "sneak", "args": {}})
+    assert "kind read" in output and not (ws.root / "w.txt").exists()
+    session._run_call({"id": "chain-c", "name": "scribble", "args": {}})
+    assert not (ws.root / "direct.txt").exists(), "a read tool's own code runs read-only"
+
+
+def test_workspace_tools_live_with_the_project_and_run_only_while_trusted(ws, home):
+    mgr = manager(home)
+    first = mgr.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    made = first._create({"name": "greet", "scope": "workspace", "code": "def greet():\n    return 'hi'\n"})
+    assert "with this project" in made and (ws.root / ".agents" / "tools" / "greet.json").is_file()
+    assert not (home / ".manga-agent" / "tools" / "greet.json").exists()
+    second = mgr.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="second")
+    assert "greet" in second.created, "the agent's own write stays trusted"
+    path = ws.root / ".agents" / "tools" / "greet.json"
+    path.write_text(path.read_text().replace("'hi'", "'pwned'"))
+    third = mgr.create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="third")
+    assert "greet" not in third.created and "chưa tin cậy" in third.command("/tools")["message"]
+    third.command("/tools trust")
+    assert "pwned" in third.created["greet"]["code"]
+    other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="other")
+    assert "greet" not in other.created, "another user's trust store does not trust the project's tools"
+
+
+def test_tools_command_lists_shows_removes_and_exports_to_an_mcp_server(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._create({"name": "double", "kind": "read", "description": "Double n.", "code": "def double(n: int):\n    return n * 2\n"})
+    session._create({"name": "chained", "code": "def chained():\n    return tools.read_file(path='x')\n"})
+    listing = session.command("/tools")["message"]
+    assert "double (read, user): Double n." in listing and "chained (exec, user)" in listing
+    assert "return n * 2" in session.command("/tools show double")["message"]
+    assert "chỉ chạy được trong Chaos" in session.command("/tools export chained")["message"]
+    exported = session.command("/tools export double")["message"]
+    server = re.search(r"Đã xuất (\S+_server\.py)", exported).group(1)
+    live = mcp.Server("double", {"command": sys.executable, "args": [server]}, ws.root)
+    try:
+        assert [t["name"] for t in live.tools] == ["double"]
+        assert live.call_tool("double", {"n": 21}) == ("42", True)
+    finally:
+        live.close()
+    assert session.command("/tools rm double")["message"] == "Deleted tool double."
+    assert "double" not in session.created
+
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="the shell tool uses a POSIX shell")
 def test_created_tools_keep_state_track_changed_files_for_undo_and_move_to_the_background(ws, home, monkeypatch):
     from app.agent import session as session_module
