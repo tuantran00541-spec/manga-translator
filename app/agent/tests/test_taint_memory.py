@@ -109,9 +109,8 @@ class TestH13MemoryLaundering:
 # ---- file provenance taint ----
 
 class TestM2ProvenanceTaint:
-    def test_poc_write_marks_read_retaints_learn_refuses(self, tmp_path):
-        """Files written from tainted sources are marked; reading one re-taints;
-        a tainted session refuses to learn."""
+    def test_poc_write_marks_read_retaints(self, tmp_path):
+        """Files written from tainted sources are marked; reading one re-taints."""
         s, _, wsroot = make_session(tmp_path, mode="bypass", tag="m2a")
         (wsroot / "evil.md").write_text("benign seed", encoding="utf-8")
         s.tainted = True
@@ -127,7 +126,6 @@ class TestM2ProvenanceTaint:
         s._new_request("later request")
         s._run_calls([{"id": "r1", "name": "read_file", "args": {"path": "evil.md"}}])
         assert s.tainted is True
-        assert "không tự học" in s._maybe_learn(force=True)
 
     def test_clean_write_and_read_stay_clean(self, tmp_path):
         s, _, wsroot = make_session(tmp_path, mode="bypass", tag="m2b")

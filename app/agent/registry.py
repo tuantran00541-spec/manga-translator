@@ -20,7 +20,7 @@ GROUPS = {
     "schedule_create": "schedule", "schedule_list": "schedule", "schedule_delete": "schedule", "context_notes": "goal", "new_context": "goal", "exit_plan_mode": "plan", "goal_done": "goal", "delegate": "external",
     "plugin_write": "extensions", "plugin_remove": "extensions",
 }
-COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "learn": "skills", "models": "subagents", "intent": "subagents", "mcp": "mcp"}
+COMMAND_GROUPS = {"plan": "plan", "goal": "goal", "undo": "edit", "memory": "memory", "agents": "subagents", "skills": "skills", "models": "subagents", "intent": "subagents", "mcp": "mcp"}
 ALL_GROUPS = sorted(set(GROUPS.values()) | {"mcp"})
 REPLACEABLE = frozenset({"list_dir", "read_file", "symbols", "view_image", "search", "glob", "write_file", "edit_file", "edit_lines",
                          "apply_patch", "run_command", "web_fetch", "web_search", "web_download"})
@@ -38,8 +38,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
     profile: dict = {"disable": [], "loop": "default", "external_agents": {}, "echo_reasoning": None, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
-                     "models": {}, "prices": {}, "vision": None, "review_model": "", "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
-                     "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "fallback_models": [], "learn_every": 10, "prewalk_model": "",
+                     "models": {}, "prices": {}, "vision": None, "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
+                     "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "fallback_models": [], "prewalk_model": "",
                      "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "services": {}}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
@@ -65,8 +65,6 @@ def load_profile(workspace: Path, home: Path) -> dict:
                         profile[key].update({k: v for k, v in data[key].items() if isinstance(v, dict)})
                 if isinstance(data.get("vision"), bool):
                     profile["vision"] = data["vision"]
-                if isinstance(data.get("review_model"), str):
-                    profile["review_model"] = data["review_model"].strip()[:100]
                 if isinstance(data.get("max_steps"), int) and data["max_steps"] > 0:
                     profile["max_steps"] = data["max_steps"]
                 if isinstance(data.get("token_budget"), int) and data["token_budget"] > 0:
@@ -86,8 +84,6 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["context_window"] = data["context_window"]
                 if isinstance(data.get("timeout_to_background"), bool):
                     profile["timeout_to_background"] = data["timeout_to_background"]
-                if isinstance(data.get("learn_every"), int) and data["learn_every"] >= 0:
-                    profile["learn_every"] = data["learn_every"]
                 if isinstance(data.get("notes_context"), bool):
                     profile["notes_context"] = data["notes_context"]
                 if isinstance(data.get("goal_turns"), int) and data["goal_turns"] > 0:

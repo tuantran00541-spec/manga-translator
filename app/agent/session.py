@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.agent import agents, aliases, chaincheck, client, codemode, context, external, gitguard, isolate, kernel, learn, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
+from app.agent import agents, aliases, chaincheck, client, codemode, context, external, gitguard, isolate, kernel, mcp, memory, models, registry, repl, roles, rules, sandbox, schema as schemas, services, skill_install, skills, watch
 from app.agent.checkpoint import Checkpoints
 from app.ai_providers import auth_headers, resolve_provider
 from app.agent.tools import COMMAND_TIMEOUT, KIND, MAX_COMMAND_TIMEOUT, SPECS, ToolError, Workspace, clip
@@ -34,6 +34,8 @@ from app.logging_config import logger
 MODES = ("ask", "edits", "bypass")
 HANDS_OFF = ("bypass",)
 MAX_STEPS = 300
+# Calls that only look; redoing one after a summary is not wasted work.
+LOOK_ONLY = frozenset({"read_file", "list_dir", "search", "glob", "symbols", "todo_write", "think"})
 MAX_JOBS = 8
 MAX_SCHEDULES = 10
 # Per request, across the session and its helpers: chains (runs making 2+ tools.* calls), long chains (11+ calls), helpers started from chains.
@@ -476,7 +478,6 @@ BUILTIN_COMMANDS = {
     "undo": "Hoàn tác file agent đã sửa ở lượt gần nhất", "memory": "Xem ghi nhớ: /memory, /memory add NỘI DUNG, /memory rm project|user SỐ",
     "agents": "Xem các agent con", "rules": "Xem luật cho phép/hỏi/chặn", "cache": "Xem tỉ lệ cache và những lần tiền tố yêu cầu bị đổi", "receipts": "Xem mọi file đã sửa, lệnh đã chạy và lần duyệt của phiên này",
     "plugins": "Xem plugin, tính năng đã tắt và agent ngoài (Codex, Claude Code)",
-    "learn": "Xem lại phiên và tự viết hoặc sửa skill ngay; /learn history xem các lần tự học, /learn undo [mã] hoàn tác một lần",
     "models": "Nguồn và vai model: /models xem nguồn, vai và lượng dùng hôm nay; /models NGUỒN [từ khoá] xem model và giá",
     "intent": "Xem bản agent hình dung yêu cầu hiện tại (intent.md), viết tự động khi chuỗi đầu tiên của yêu cầu chạy",
 }
@@ -587,15 +588,12 @@ class AgentSession:
         self.role = ""
         self.role_usage: dict[str, dict] = {}
         # Past lessons are sent once at each cold start: a new or resumed session, and after a compaction.
-        self._digest_due = True
         self._before_summary: dict[str, str] = {}
         self._after_summary = self._repeats = 0
         self.asked_s = 0.0
         self._one_offs: dict[str, dict] = {}
         self.chain_budget: dict[str, int] = {}
         self._watch_request = self._request_no = 0
-        self._since_learn = self._learned_to = 0
-        self._learning: threading.Thread | None = None
         self._scheduler: threading.Thread | None = None
         self._closing = False
         self._edited = self._plan_nudged = self._continued = False
@@ -627,7 +625,6 @@ class AgentSession:
         self._save_lock = threading.Lock()    # Turn and scheduler threads both save; serialize them.
         self._sched_lock = threading.Lock()   # _start_scheduler is check-then-act; serialize it.
         self._mcp_lock = threading.Lock()     # _ensure_mcp is check-then-act; serialize it.
-        self._learn_lock = threading.Lock()   # Overlapping _learn threads; serialize them.
         self.agents = agents.discover(workspace.root, home_path) if not depth else {}
         self.rules = rules.load(workspace.root, home_path) if not depth else parent.rules
         self.profile = registry.load_profile(workspace.root, home_path) if not depth else parent.profile
@@ -663,8 +660,7 @@ class AgentSession:
         return (self.home if self.home is not None else Path.home()) / ".manga-agent" / "outputs" / self.id.split("-")[0]
 
     def _set_read_roots(self) -> None:
-        home = self.home if self.home is not None else Path.home()
-        self.workspace.read_roots = [s.folder for s in self.skills.values()] + [self._outputs_dir(), home / learn.LESSONS]
+        self.workspace.read_roots = [s.folder for s in self.skills.values()] + [self._outputs_dir()]
 
     # Plugins and feature groups.
 
@@ -937,11 +933,6 @@ class AgentSession:
         if update:
             self.history.append({"role": "user", "content": update})
             self.cache_log["context updates"] += 1
-        if self._digest_due and not self.depth:
-            self._digest_due = False
-            lessons = learn.digest(self.home if self.home is not None else Path.home(), self.workspace.root, text)
-            if lessons:
-                self.history.append({"role": "user", "content": lessons})
         self.history.append({"role": "user", "content": text + extra, "from_user": True})
         threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
         return False
@@ -991,8 +982,6 @@ class AgentSession:
                 return {"message": self._install_skills(args[3:].strip())}
             rows = [f"{'/' if s.manual else ''}{s.name}{' (có sẵn)' if s.builtin else ''}: {s.description[:150]}" for s in self.skills.values()]
             return {"message": "\n".join(rows) or "Không có skill nào."}
-        if name == "learn":
-            return {"message": self._learn_command(args)}
         if name == "models":
             return {"message": self._models_command(args)}
         if name == "intent":
@@ -3100,7 +3089,6 @@ class AgentSession:
         if not self.depth:
             parts.append(self._pinned.get("Project instructions", ""))
             parts.append(self._pinned.get("Memory", ""))
-            parts.append(self._pinned.get("Lessons", ""))
             parts += [self._hook_call(fn) for fn in self.registry.prompts]
             if self.plan_mode:
                 parts.append(PLAN_PROMPT)
@@ -3127,7 +3115,6 @@ class AgentSession:
         if not self.depth:
             rows["Project instructions"] = context.instructions(self.workspace.root, self.home)
             rows["Memory"] = memory.prompt(home, self.workspace.root)
-            rows["Lessons"] = learn.lessons_prompt(home, self.workspace.root)
         return rows
 
     def _context_update(self) -> str:
@@ -3362,11 +3349,10 @@ class AgentSession:
             # Taint survives summarization: the guard stays on.
             self._taint_latch = True
         self._before_summary = {self._signature(c): hashlib.sha1(results[c["id"]].encode()).hexdigest() for item in head if item["role"] == "assistant"
-                                for c in item.get("calls") or [] if c.get("id") in results and c.get("name") not in learn.LOOK_ONLY}
+                                for c in item.get("calls") or [] if c.get("id") in results and c.get("name") not in LOOK_ONLY}
         self._after_summary = self._repeats = 0
         self.history = marker + ack + tail
         self._pinned = None
-        self._digest_due = True
         self.cache_log["compactions"] += 1
         self.emit("notice", text=f"Compacted {len(head)} older conversation items.")
         return True
@@ -3526,80 +3512,6 @@ class AgentSession:
             self.send(f"[Scheduled by you] {task['prompt']}", scheduled=True)
             self.save()
 
-    def _maybe_learn(self, force: bool = False) -> str:
-        """Review the work since the last review in the background and keep what is worth reusing as skills."""
-        every = int(self.profile["learn_every"] or 0)
-        if self.depth or "skills" in self.disabled or not (force or (every and self._since_learn >= every)):
-            return "Tự học skill đang tắt (learn_every = 0 hoặc skills bị tắt)." if force else ""
-        if self.tainted:
-            # Text from the web or an MCP server could plant instructions in a skill, so such sessions teach nothing.
-            return "Phiên này đã đọc nội dung từ web/MCP nên không tự học skill, tránh bị cài lệnh lạ."
-        start = min(self._learned_to, len(self.history))
-        if not any(item["role"] == "tool" for item in self.history[start:]):
-            return "Chưa có việc gì mới để học."
-        chains = {r["name"]: r["tool"] for r in self._one_offs.values() if r["name"] not in self._root().created}
-        self._since_learn, self._learned_to = 0, len(self.history)
-        if not force and not learn.worth_review(self.history[start:], chains):
-            # Only reads that all went well leave nothing to learn, so no model is asked.
-            return ""
-        transcript = self._transcript(self.history[start:])
-        root = learn.project_root(self._touched(self.history[start:]), self.workspace.root)
-        with self._learn_lock:
-            # One _learn review at a time; overlapping runs tear the files they both write.
-            if self._learning is not None and self._learning.is_alive():
-                return "Phiên trước vẫn đang được xem lại; đợi xong đã."
-            self._learning = threading.Thread(target=self._learn, args=(transcript, root), name=f"agent-learn-{self.id}", daemon=True)
-            self._learning.start()
-        return "Đang xem lại phiên để viết hoặc sửa skill; xong sẽ báo."
-
-    def _touched(self, items: list[dict]) -> list[Path]:
-        """Paths the model's calls worked on, including folders its commands cd into, so notes follow the project rather than the workspace."""
-        found = []
-        for item in items:
-            for c in item.get("calls") or [] if item["role"] == "assistant" else []:
-                args = c.get("args") if isinstance(c.get("args"), dict) else {}
-                spots = [str(args["path"])] if isinstance(args.get("path"), str) and args["path"] else []
-                if c.get("name") == "run_command":
-                    spots += [m.group(2) for m in re.finditer(r"(?:^|&&|;|\|\|)\s*cd\s+([\"']?)([^\s\"'&;|]+)\1", str(args.get("command") or ""))]
-                for spot in spots:
-                    path = Path(os.path.expanduser(spot))
-                    found.append(path if path.is_absolute() else self.workspace.root / path)
-        return found
-
-    def wait_learning(self, timeout: float = 180.0) -> None:
-        """Let a review that is still writing skills or lesson notes finish, for callers about to exit."""
-        if self._learning is not None:
-            self._learning.join(timeout)
-
-    def _learn(self, transcript: str, root: Path) -> None:
-        home = self.home if self.home is not None else Path.home()
-        model = self.profile["review_model"] or self.model
-        folder = learn.project_folder(home, root)
-        chains = {r["name"]: r["tool"] for r in self._one_offs.values() if r["name"] not in self._root().created}
-        items, lessons, usage, keep = learn.review(self.complete, self.provider, self.api_key, model, transcript, home, learn.session_file(folder, self.id), chains)
-        changes = learn.Changes()
-        try:
-            done = learn.write(home, items, (self.api_key,), changes)
-            for name in keep:
-                if name in chains and name not in self._root().created:
-                    self._create({k: chains[name][k] for k in ("name", "description", "parameters", "code")})
-                    done.append(f"kept the chain {name} as a tool")
-            if learn.write_lessons(folder, root, self.id, lessons["add"], (self.api_key,), lessons["drop"], changes):
-                done.append(f"lesson notes for {root.name}")
-            merged, more = learn.consolidate(self.complete, self.provider, self.api_key, model, folder, (self.api_key,), changes)
-            usage = {k: int(usage.get(k) or 0) + int(more.get(k) or 0) for k in set(usage) | set(more)}
-            if merged:
-                done.append(merged)
-        except OSError as exc:
-            done = [f"could not write: {exc}"]
-        with self._usage_lock:
-            for key in self.usage:
-                self.usage[key] += int(usage.get(key) or 0)
-        if done:
-            entry = changes.commit(home, "auto review", self.id, done)
-            self.reload_skills()
-            self.emit("notice", text="Learned: " + "; ".join(done) + (f" (/learn undo {entry} to roll back)" if entry else ""))
-
     def _models_command(self, args: str) -> str:
         """/models lists the model sources and roles with today's use; /models SOURCE [words] lists that source's models with prices."""
         table, sources = self.profile["model_roles"], self._sources()
@@ -3623,21 +3535,6 @@ class AgentSession:
         money = lambda p, k: f"${p[k]:g}" if k in p else "?"
         return "\n".join(f"{r['id']} · vào {money(r['price'], 'in')} ra {money(r['price'], 'out')} cache {money(r['price'], 'cached')} /1M"
                          + (f" · {r['context']:,} ctx" if isinstance(r["context"], int) else "") + (" · ảnh" if r["vision"] else "") for r in found) or "Không có model nào khớp."
-
-    def _learn_command(self, args: str) -> str:
-        """/learn reviews now; /learn history lists past reviews; /learn undo [id] rolls one back."""
-        home = self.home if self.home is not None else Path.home()
-        word, _, rest = args.strip().partition(" ")
-        if word == "history":
-            rows = learn.history(home)[-15:]
-            return "\n".join(f"{r['id']} · {r['at']} · {'đã hoàn tác · ' if r['undone'] else ''}{'; '.join(r['summary'])[:200]}" for r in rows) or "Chưa có lần tự học nào."
-        if word == "undo":
-            done = learn.undo(home, rest.strip())
-            if not done:
-                return "Không có lần tự học nào để hoàn tác."
-            self.reload_skills()
-            return f"Đã hoàn tác lần tự học {done}."
-        return self._maybe_learn(force=True)
 
     def _more_work(self) -> bool:
         """True when a queued message or an unfinished goal means the turn should go on."""
@@ -3839,7 +3736,6 @@ class AgentSession:
                     continue
                 break
             self._run_calls(calls)
-            self._since_learn += 1
             self._show_images()
             self._advance_prewalk()
             if self._rollover:
@@ -3887,7 +3783,6 @@ class AgentSession:
             if not again:
                 # Saved before going idle, so whoever sees idle also finds the session on disk.
                 self.emit("done")
-                self._maybe_learn()
                 self.save()
                 with self._lock:
                     again = bool(self.queue) and not self._stop

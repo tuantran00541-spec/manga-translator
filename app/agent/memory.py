@@ -2,14 +2,23 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import re
 from pathlib import Path
 
-from app.agent import learn
+from app.agent import sandbox
 
 MAX_ENTRY = 400
 MAX_ENTRIES = 60
 MAX_PROMPT_CHARS = 6000
 SCOPES = ("project", "user")
+SECRET_LIKE = re.compile(r"\b(sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,})|Bearer\s+[A-Za-z0-9._-]{20,}")
+
+
+def has_secret(text: str) -> bool:
+    """True when text looks like a key or holds the value of a secret environment variable."""
+    values = [v for k, v in os.environ.items() if v and len(v) >= 8 and sandbox.SECRET_NAME.search(k)]
+    return bool(SECRET_LIKE.search(text)) or any(v in text for v in values)
 
 
 def _file(home: Path, workspace: Path, scope: str) -> Path:
@@ -37,7 +46,7 @@ def add(home: Path, workspace: Path, scope: str, text: str) -> int:
     text = " ".join(str(text).split())[:MAX_ENTRY]
     if not text:
         raise ValueError("text is empty")
-    if learn.has_secret(text, learn.known_secrets()):
+    if has_secret(text):
         # A note carrying a secret is refused, not persisted into future prompts.
         raise ValueError("not saved: the note looks like it contains a secret")
     rows = entries(home, workspace, scope)

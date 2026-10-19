@@ -18,7 +18,7 @@ from unittest import mock
 
 import pytest
 
-from app.agent import gitguard, kernel, learn, mcp, sandbox
+from app.agent import gitguard, kernel, mcp, sandbox
 from app.agent.session import AgentSession, AgentSessionManager, TOOLS_LIBRARY
 from app.agent.tools import Workspace
 
@@ -575,72 +575,6 @@ def test_m11_jobstop_frees_slots(mgr, ws):
     assert "job1" in msg
     for j in list(s.jobs.values()):
         j.stop()
-
-
-# ---- _maybe_learn must not overlap _learn threads ----
-
-def test_l5_learn_no_overlap(mgr, ws):
-    """a second _maybe_learn while a review runs must not spawn another."""
-    windows, clock = [], threading.Lock()
-    real_review = learn.review
-
-    def slow_review(*a, **k):
-        with clock:
-            windows.append([time.time(), None])
-            me = windows[-1]
-        time.sleep(1.5)
-        with clock:
-            me[1] = time.time()
-        return [], {"add": [], "drop": []}, {}, []
-
-    learn.review = slow_review
-    try:
-        s = _make_session(mgr, ws, "1401020304050607")
-        s.history.append({"role": "tool", "id": "t1", "name": "read_file", "content": "x"})
-        s._since_learn = 99
-        s._maybe_learn(force=True)
-        assert _wait_until(lambda: len(windows) == 1, timeout=10), "first review never started"
-        # New tool work happens while the first review is still running.
-        s.history.append({"role": "tool", "id": "t2", "name": "read_file", "content": "y"})
-        s._maybe_learn(force=True)
-        time.sleep(2.5)  # the first review finishes inside this window
-        assert len(windows) == 1, f"{len(windows)} overlapping _learn threads ran"
-        s.wait_learning(timeout=10)
-    finally:
-        learn.review = real_review
-
-
-def test_l5_learn_runs_again_when_idle(mgr, ws):
-    """Normal flow: once the review finishes, new work is reviewed again."""
-    windows, clock = [], threading.Lock()
-    real_review = learn.review
-
-    def slow_review(*a, **k):
-        with clock:
-            windows.append([time.time(), None])
-            me = windows[-1]
-        time.sleep(1.0)
-        with clock:
-            me[1] = time.time()
-        return [], {"add": [], "drop": []}, {}, []
-
-    learn.review = slow_review
-    try:
-        s = _make_session(mgr, ws, "1402020304050607")
-        s.history.append({"role": "tool", "id": "t1", "name": "read_file", "content": "x"})
-        s._since_learn = 99
-        s._maybe_learn(force=True)
-        s.wait_learning(timeout=15)
-        assert len(windows) == 1
-        s.history.append({"role": "tool", "id": "t2", "name": "read_file", "content": "y"})
-        s._since_learn = 99
-        s._maybe_learn(force=True)
-        s.wait_learning(timeout=15)
-        assert len(windows) == 2, "learning stayed blocked after the review finished"
-        (a0, b0), (a1, b1) = windows
-        assert b0 <= a1, "the two reviews overlapped after all"
-    finally:
-        learn.review = real_review
 
 
 # ---- delete() during a turn stays deleted ----

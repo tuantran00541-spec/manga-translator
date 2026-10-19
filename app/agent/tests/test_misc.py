@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from app.agent import learn, memory, roles, watch
+from app.agent import memory, roles, watch
 from app.agent.session import AgentSessionManager
 from app.agent import sandbox
 from app.agent.tools import Workspace
@@ -156,7 +156,7 @@ class TestL2PrivateStateFiles:
         assert out == "short"
 
 
-# ---- memory.add redacts like learn.py ----
+# ---- memory.add refuses secrets ----
 
 class TestL3MemoryRedaction:
     def test_add_refuses_secret_looking_note(self, agent_home, ws_root):
@@ -176,59 +176,6 @@ class TestL3MemoryRedaction:
         n = memory.add(agent_home, ws_root, "user", "the user prefers concise answers")
         assert n == 1
         assert "concise answers" in memory.prompt(agent_home, ws_root)
-
-
-# ---- learn redaction covers every known secret value ----
-
-class TestL4LearnRedaction:
-    @pytest.fixture()
-    def lessons(self, tmp_path):
-        folder = tmp_path / "lessons"
-        root = tmp_path / "ws"
-        folder.mkdir()
-        root.mkdir()
-        return folder, root
-
-    def test_write_lessons_refuses_service_key(self, lessons, monkeypatch):
-        """a Tavily-style key is refused even though only the
-        session api_key was passed as the known secret."""
-        monkeypatch.setenv("TAVILY_API_KEY", "tvly-r3-canary-07-abcdefgh")
-        folder, root = lessons
-        api_key = "sk-session-key-canary"
-        kept = learn.write_lessons(folder, root, "s2",
-                                   ["- deploy step: set TAVILY_API_KEY=tvly-r3-canary-07-abcdefgh before search"],
-                                   (api_key,), [])
-        assert kept is False
-        path = learn.session_file(folder, "s2")
-        assert not path.is_file() or "tvly-r3-canary" not in path.read_text(encoding="utf-8")
-
-    def test_write_lessons_still_refuses_session_key(self, lessons):
-        """The old behavior is kept: the session's own key is refused."""
-        folder, root = lessons
-        refused = not learn.write_lessons(folder, root, "s1",
-                                          ["fixed it by exporting KEY=sk-session-key-canary now"],
-                                          ("sk-session-key-canary",), [])
-        assert refused
-
-    def test_write_lessons_accepts_clean_lesson(self, lessons):
-        """Legitimate behavior: clean lessons are still written."""
-        folder, root = lessons
-        kept = learn.write_lessons(folder, root, "s3",
-                                   ["- run the linter before committing, it catches unused imports"],
-                                   ("sk-session-key-canary",), [])
-        assert kept is True
-        assert "linter" in learn.session_file(folder, "s3").read_text(encoding="utf-8")
-
-    def test_write_refuses_role_key_value(self, tmp_path, monkeypatch):
-        """Role keys (key_env) found in the environment are refused in skills too."""
-        monkeypatch.setenv("AGNES_KEY2", "agnes-role-key-value-12345")
-        done = learn.write(tmp_path, [{
-            "action": "create", "name": "deploy-notes",
-            "description": "how to deploy",
-            "body": "## deploy\nSet AGNES_KEY2=agnes-role-key-value-12345 first",
-        }], ("sk-session-key-canary",))
-        assert done == []
-        assert not (tmp_path / ".manga-agent" / "skills" / "deploy-notes" / "SKILL.md").is_file()
 
 
 # ---- role-usage.json: atomic writes, fail-closed reads, no budget race ----
