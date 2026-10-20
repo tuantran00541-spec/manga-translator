@@ -319,6 +319,7 @@ async function loadChapter() {
   } catch (err) {
     if (navigationSeq === _chapterNavigationSeq) {
       showToast("Không tải được chương: " + err.message, "error");
+      window.suggestExtension?.();
     }
   } finally {
     if (loadBtn) {

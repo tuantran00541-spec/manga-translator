@@ -85,6 +85,18 @@
   .source-copy p { font-size: 12px; }
   .chapter-input-grid, #upload-dropzone { grid-column: 1 / -1; }
   .chapter-input-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .extension-hint { grid-column: 1 / -1; margin: 0; color: var(--text-secondary); font-size: 12px; }
+  .extension-hint.attention { color: var(--text-primary); font-weight: 650; }
+  .extension-link { padding: 0; border: 0; background: none; color: var(--focus-ring); font: inherit; text-decoration: underline; cursor: pointer; }
+  .extension-guide { width: min(560px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-panel); color: var(--text-primary); }
+  .extension-guide::backdrop { background: var(--surface-overlay); }
+  .extension-guide h2 { margin: 0 0 8px; font-size: 17px; }
+  .extension-guide p, .extension-guide li { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+  .extension-guide ol { display: grid; gap: 6px; padding-left: 20px; }
+  .extension-path { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .extension-path code { flex: 1 1 220px; min-width: 0; padding: 7px 9px; overflow-wrap: anywhere; border-radius: var(--radius-sm); background: var(--surface-raised); font-size: 12px; }
+  .extension-guide .extension-outdated { color: var(--text-primary); font-weight: 650; }
+  .extension-guide form { display: flex; justify-content: flex-end; margin-top: 8px; }
   #upload-dropzone { display: grid; min-height: 170px; place-content: center; justify-items: center; gap: 8px; padding: 20px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-app); color: var(--text-secondary); text-align: center; cursor: pointer; }
   #upload-dropzone:hover, #upload-dropzone:focus-visible, #upload-dropzone.dragover { border-color: var(--focus-ring); background: var(--accent-soft); }
   #upload-dropzone > svg { width: 25px; height: 25px; }
