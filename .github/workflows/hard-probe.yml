@@ -87,7 +87,7 @@ jobs:
           sudo pkill -u probe || true
           sudo cp -r /opt/grader /tmp/grader && sudo chown -R probe /tmp/grader
           (cd /tmp/work && sudo -u probe -H env PATH="$PATH" timeout 900 python run_examples.py 2>&1 | tail -3) | tee "$D/examples.txt" || true
-          (cd /tmp/grader && sudo -u probe -H env PATH="$PATH" timeout 2400 python grade.py /tmp/work/data hidden.sql /tmp/work/minisql.py /tmp/grader/report.json) | tee "$D/grade.txt" || true
+          sudo -u probe -H env PATH="$PATH" sh -c 'cd /tmp/grader && timeout 2400 python grade.py /tmp/work/data hidden.sql /tmp/work/minisql.py /tmp/grader/report.json' 2>&1 | tail -20 | tee "$D/grade.txt" || true
           sudo cp /tmp/grader/report.json "$D/report.json" 2>/dev/null || true
           sudo cp /tmp/work/minisql.py "$D/minisql.py" 2>/dev/null || true
           sudo chown -R "$(id -u)" "$D"
