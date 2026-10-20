@@ -1,0 +1,24 @@
+{
+ "tool_calls": {
+  "run_command": 88,
+  "read_file": 2
+ },
+ "agent_tool": {},
+ "tools_dot_in_create": {},
+ "skills": [],
+ "helpers": 0,
+ "notices": [
+  "The model spent all 16000 tokens reasoning and wrote nothing; raising the reply limit to 32,000 tokens.",
+  "The model spent all 32000 tokens reasoning and wrote nothing; raising the reply limit to 32,768 tokens.",
+  "Stream rule 'long_call': dropped the reply in progress and reminded the model.",
+  "The model finished without a passing check; asking it once to run one."
+ ],
+ "minutes": 18.5,
+ "status": "done",
+ "usage": {
+  "prompt_tokens": 6327337,
+  "completion_tokens": 129287,
+  "cached_tokens": 5793408
+ },
+ "final": "That failure was an expected SQLite limitation (`HAVING` on a non-aggregate query is an error), not an engine bug. The engine’s aggregate case already matches SQLite (`SELECT COUNT(*) ... HAVING COUNT(*)=0` returns `[(0,)]`). No fix needed."
+}
