@@ -282,7 +282,7 @@ def _prepare() -> None:
         logger.warning("Missing files in models/:")
         for name in missing:
             logger.warning(f"  • {name}")
-        logger.warning("Run the installer again (install.bat / install.sh) or see README.md → Models")
+        logger.warning("Run the installer again (install.bat / install.sh) or see docs/INSTALL.md → Models")
         logger.warning("=" * 60)
     else:
         logger.info("All required ONNX models found in models/")
