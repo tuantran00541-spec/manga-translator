@@ -1,0 +1,41 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 2,
+            "passed": 1,
+            "failed": 1,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792482764.5461712,
+            "stop": 1792482764.746982
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_extract_js_exists",
+                "status": "passed",
+                "duration": 0.0002936430000204382,
+                "start": 1792482764.585084,
+                "stop": 1792482764.585536,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_output_matches_reference",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.15315286299994568,
+                "start": 1792482764.5856378,
+                "stop": 1792482764.7468367,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_output_matches_reference():\n        \"\"\"Test that the output of extract.js matches the reference solution\"\"\"\n        # Run the student's script to generate output\n    \n        # Write a simple C program for testing\n        with open(\"/app/new.c\", \"w\") as f:\n            f.write(\"\"\"#include<stdio.h>\n    \n    int main(int argc, char** argv) {\n      printf(\"Here are the %d arguments you requested\\\\n\", argc);\n      for (int i = 0; i < argc; i++) {\n        printf(\"Argument %d: %s\\\\n\", i, argv[i]);\n      }\n      return 0;\n    }\"\"\")\n    \n        # Compile with full paths\n        result = subprocess.run(\n            [\"gcc\", \"-o\", \"/app/new.o\", \"/app/new.c\"], capture_output=True, text=True\n        )\n        assert result.returncode == 0, f\"Compilation failed: {result.stderr}\"\n    \n        # Run extract.js on the compiled binary\n        result = subprocess.run(\n            [\"node\", \"/app/extract.js\", \"/app/new.o\"],\n            stdout=open(\"/app/out.json\", \"w\"),\n            stderr=subprocess.PIPE,\n            text=True,\n        )\n        assert result.returncode == 0, f\"extract.js execution failed: {result.stderr}\"\n    \n        # Write the reference script with correct shebang line handling\n        with open(\"/app/ref.js\", \"w\") as f:\n            f.write(REF.strip())\n    \n        result = subprocess.run(\n            [\"node\", \"/app/ref.js\", \"/app/new.o\"],\n            stdout=open(\"/app/reference.json\", \"w\"),\n            stderr=subprocess.PIPE,\n            text=True,\n        )\n        assert result.returncode == 0, f\"Reference script execution failed: {result.stderr}\"\n    \n        # Check that out.json exists\n        out_json_path = Path(\"/app/out.json\")\n        assert out_json_path.exists(), f\"File {out_json_path} does not exist\"\n    \n        # Load the reference output\n        reference_path = Path(\"/app/reference.json\")\n        assert reference_path.exists(), f\"Reference file {reference_path} does not exist\"\n    \n        # Parse both JSON files\n        with open(out_json_path, \"r\") as f:\n            out_json = json.load(f)\n    \n        with open(reference_path, \"r\") as f:\n            reference_json = json.load(f)\n    \n        # Check requirement #1: Two memory addresses never have different values\n        inconsistent_values = {}\n        for addr, value in out_json.items():\n            if addr in reference_json and reference_json[addr] != value:\n                inconsistent_values[addr] = (value, reference_json[addr])\n    \n>       assert len(inconsistent_values) == 0, (\n            f\"Found memory addresses with inconsistent values: {inconsistent_values}\"\n        )\nE       AssertionError: Found memory addresses with inconsistent values: {'4192': (-98693133, 4196274163), '4196': (-1991643855, 2303323441), '4200': (-1991745839, 2303221457), '4204': (-461158174, 3833809122), '4212': (-919486415, 3375480881), '4216': (-901935800, 3393031496), '4220': (-16777216, 4278190080), '4264': (-2058878976, 2236088320), '4268': (-16157504, 4278809792), '4272': (-2145447968, 2149519328), '4280': (-2145447997, 2149519299), '4304': (-259438338, 4035528958), '4344': (-2145447997, 2149519299), '4352': (-98693133, 4196274163), '4364': (-2092411605, 2202555691), '4372': (-1991770112, 2303197184), '4388': (-385875969, 3909091327), '4392': (-156, 4294967140), '4408': (-2145447997, 2149519299), '4416': (-98693133, 4196274163), '4420': (-34839, 4294932457), '4428': (-1991748102, 2303219194), '4432': (-326940443, 3968026853), '4436': (-327317216, 3967650080), '4440': (-529168056, 3765799240), '4444': (-1981004405, 2313962891), '4456': (-1194882744, 3100084552), '4464': (-74776, 4294892520), '4468': (-62535681, 4232431615), '4496': (-1958162431, 2336804865), '4500': (-62551280, 4232416016), '4504': (-1924610423, 2370356873), '4512': (-947304448, 3347662848), '4520': (-22878208, 4272089088), '4532': (-331006980, 3963960316), '4540': (-922746880, 3372220416)}\nE       assert 36 == 0\nE        +  where 36 = len({'4192': (-98693133, 4196274163), '4196': (-1991643855, 2303323441), '4200': (-1991745839, 2303221457), '4204': (-461158174, 3833809122), ...})\n\n/tests/test_outputs.py:380: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            }
+        ]
+    }
+}
