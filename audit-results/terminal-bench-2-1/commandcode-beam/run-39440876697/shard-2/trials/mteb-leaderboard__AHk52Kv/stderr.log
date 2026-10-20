@@ -1,0 +1,8 @@
+Exception in thread Thread-121:
+Traceback (most recent call last):
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/opt/mg/src/app/agent/sandbox.py", line 344, in run
+    chunk = self.stream.read1(65536) if hasattr(self.stream, "read1") else self.stream.read(65536)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: I/O operation on closed file
