@@ -1,0 +1,125 @@
+{
+    "id": "848e42b7-42e7-4bef-943c-2e12f810e78f",
+    "task_name": "terminal-bench/custom-memory-heap-crash",
+    "trial_name": "custom-memory-heap-crash__makxBmP",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-20__04-36-38/custom-memory-heap-crash__makxBmP",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/custom-memory-heap-crash"
+    },
+    "source": "tasks",
+    "task_checksum": "949f44d01f9411e5858fdfd0861e2c35e9622cbfe91542b761039a7a16286381",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/custom-memory-heap-crash",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "custom-memory-heap-crash__makxBmP",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-20__04-36-38",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "manga_agent:MangaAgent",
+            "model_name": "reflection/beam:free",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "ac7013bc-d454-4c37-9c9d-56e90cdacf7a",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "chaos",
+        "version": "d951704eb427a8a3408912f53853378f1a2eb7af",
+        "model_info": {
+            "name": "beam:free",
+            "provider": "reflection"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 417720,
+        "n_cache_tokens": 339648,
+        "n_output_tokens": 7291,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": "done",
+            "stats": {
+                "model_s": 47.206632137298584,
+                "tool_s": 13.585357904434204
+            }
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-20T04:40:33.790266Z",
+    "finished_at": "2026-10-20T04:42:59.415662Z",
+    "environment_setup": {
+        "started_at": "2026-10-20T04:40:33.794138Z",
+        "finished_at": "2026-10-20T04:41:32.407118Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-20T04:41:32.407143Z",
+        "finished_at": "2026-10-20T04:41:33.373382Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-20T04:41:33.373482Z",
+        "finished_at": "2026-10-20T04:42:35.365654Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-20T04:42:35.588610Z",
+        "finished_at": "2026-10-20T04:42:46.985675Z"
+    },
+    "step_results": null
+}

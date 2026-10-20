@@ -1,0 +1,277 @@
+{
+ "passed": 20,
+ "trials": 27,
+ "rate": 0.741,
+ "rows": [
+  {
+   "trial": "break-filter-js-from-html__AFGqmnS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1879991,
+    1564608,
+    28678
+   ]
+  },
+  {
+   "trial": "build-pov-ray__ZPg6iZp",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    764061,
+    608384,
+    10113
+   ]
+  },
+  {
+   "trial": "chess-best-move__wwAVFcr",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1531607,
+    1172864,
+    44924
+   ]
+  },
+  {
+   "trial": "code-from-image__d8qLhDx",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3908056,
+    3303168,
+    49681
+   ]
+  },
+  {
+   "trial": "constraints-scheduling__Zkygvzi",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    116134,
+    80576,
+    7468
+   ]
+  },
+  {
+   "trial": "custom-memory-heap-crash__makxBmP",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    417720,
+    339648,
+    7291
+   ]
+  },
+  {
+   "trial": "dna-assembly__aS5DNTC",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1170284,
+    914368,
+    49594
+   ]
+  },
+  {
+   "trial": "extract-moves-from-video__TqFP3cS",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    3582680,
+    3016256,
+    30140
+   ]
+  },
+  {
+   "trial": "filter-js-from-html__Lnc9qZz",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1758918,
+    1426176,
+    30249
+   ]
+  },
+  {
+   "trial": "fix-git__YFG7DAu",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    122615,
+    89984,
+    3408
+   ]
+  },
+  {
+   "trial": "git-leak-recovery__qGR2cnK",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    45293,
+    34624,
+    2887
+   ]
+  },
+  {
+   "trial": "headless-terminal__yeg67zh",
+   "reward": null,
+   "exception": "VerifierTimeoutError",
+   "tokens": [
+    1049923,
+    894464,
+    17534
+   ]
+  },
+  {
+   "trial": "kv-store-grpc__RR6SZtp",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    86259,
+    70912,
+    3980
+   ]
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__62JnYpy",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    669173,
+    492288,
+    23636
+   ]
+  },
+  {
+   "trial": "make-doom-for-mips__9hpCNao",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    9555857,
+    8260992,
+    59167
+   ]
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__jR9F6Zb",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    290269,
+    251584,
+    12357
+   ]
+  },
+  {
+   "trial": "mteb-leaderboard__EvquoRU",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2826379,
+    2294016,
+    37247
+   ]
+  },
+  {
+   "trial": "nginx-request-logging__gDWxc5D",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    113573,
+    101120,
+    4158
+   ]
+  },
+  {
+   "trial": "password-recovery__zeJVYMj",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    490130,
+    410688,
+    9162
+   ]
+  },
+  {
+   "trial": "polyglot-c-py__TtvEeKY",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    194677,
+    167936,
+    11043
+   ]
+  },
+  {
+   "trial": "protein-assembly__Hv5Jt5o",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2401547,
+    1772480,
+    27011
+   ]
+  },
+  {
+   "trial": "pytorch-model-cli__Z48GgjH",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    439387,
+    393280,
+    11705
+   ]
+  },
+  {
+   "trial": "qemu-startup__zutnJ4v",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    3059240,
+    2741824,
+    37205
+   ]
+  },
+  {
+   "trial": "rstan-to-pystan__hqeCo5a",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    948856,
+    695104,
+    15460
+   ]
+  },
+  {
+   "trial": "schemelike-metacircular-eval__CovVpTv",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2707462,
+    2312832,
+    33808
+   ]
+  },
+  {
+   "trial": "sqlite-with-gcov__a2Bh54K",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    88235,
+    75328,
+    2946
+   ]
+  },
+  {
+   "trial": "vulnerable-secret__4meTDt4",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    53599,
+    31936,
+    1629
+   ]
+  }
+ ]
+}
