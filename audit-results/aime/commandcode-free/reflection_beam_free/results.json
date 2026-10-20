@@ -1,0 +1,5725 @@
+{
+ "model": "reflection/beam:free",
+ "effort": "max",
+ "problems": 60,
+ "samples": 4,
+ "accuracy": 0.9708,
+ "errors": 3,
+ "rows": [
+  {
+   "id": "2025-1",
+   "sample": 0,
+   "answer": "70",
+   "got": "70",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 90,
+    "completion_tokens": 382,
+    "total_tokens": 472,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 374,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{70}"
+  },
+  {
+   "id": "2025-1",
+   "sample": 1,
+   "answer": "70",
+   "got": "70",
+   "correct": true,
+   "seconds": 1,
+   "usage": {
+    "prompt_tokens": 90,
+    "completion_tokens": 320,
+    "total_tokens": 410,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 313,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{70}"
+  },
+  {
+   "id": "2025-1",
+   "sample": 2,
+   "answer": "70",
+   "got": "70",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 90,
+    "completion_tokens": 423,
+    "total_tokens": 513,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 413,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{70}"
+  },
+  {
+   "id": "2025-1",
+   "sample": 3,
+   "answer": "70",
+   "got": "70",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 90,
+    "completion_tokens": 460,
+    "total_tokens": 550,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 448,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{70}"
+  },
+  {
+   "id": "2025-2",
+   "sample": 0,
+   "answer": "588",
+   "got": "588",
+   "correct": true,
+   "seconds": 16,
+   "usage": {
+    "prompt_tokens": 699,
+    "completion_tokens": 7084,
+    "total_tokens": 7783,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7072,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{588}"
+  },
+  {
+   "id": "2025-2",
+   "sample": 1,
+   "answer": "588",
+   "got": "588",
+   "correct": true,
+   "seconds": 11,
+   "usage": {
+    "prompt_tokens": 699,
+    "completion_tokens": 5113,
+    "total_tokens": 5812,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 4824,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "heta=288,\n\\]\nso\n\\[\n\\sin\\theta=\\frac{288}{624}=\\frac{6}{13}.\n\\]\n\nNow compute the area of heptagon \\(AFNBCEM\\) by shoelace using the vertices in that order. The cross terms simplify to\n\\[\n2548\\sin\\theta,\n\\]\nso its area is\n\\[\n\\frac12\\cdot 2548\\sin\\theta=1274\\cdot \\frac{6}{13}=588.\n\\]\n\n\\[\n\\boxed{588}\n\\]"
+  },
+  {
+   "id": "2025-2",
+   "sample": 2,
+   "answer": "588",
+   "got": "588",
+   "correct": true,
+   "seconds": 17,
+   "usage": {
+    "prompt_tokens": 699,
+    "completion_tokens": 7581,
+    "total_tokens": 8280,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7298,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\[\n\\frac12(20\\cdot 65-4\\cdot 13)\\sin\\theta=624\\sin\\theta.\n\\]\n\nGiven this equals \\(288\\),\n\n\\[\n\\sin\\theta=\\frac{288}{624}=\\frac{6}{13}.\n\\]\n\nApplying the shoelace formula to heptagon \\(AFNBCEM\\) gives area\n\n\\[\n\\frac12\\cdot 2548\\sin\\theta=1274\\sin\\theta\n=1274\\cdot \\frac{6}{13}=588.\n\\]\n\n\\[\n\\boxed{588}\n\\]"
+  },
+  {
+   "id": "2025-2",
+   "sample": 3,
+   "answer": "588",
+   "got": "588",
+   "correct": true,
+   "seconds": 11,
+   "usage": {
+    "prompt_tokens": 699,
+    "completion_tokens": 4918,
+    "total_tokens": 5617,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 4909,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{588}"
+  },
+  {
+   "id": "2025-3",
+   "sample": 0,
+   "answer": "16",
+   "got": "16",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 173,
+    "completion_tokens": 856,
+    "total_tokens": 1029,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 652,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "6,2,1),\\quad (5,3,1),\\quad (4,3,2).\n\\]\n\nFor each, the number of assignments is \\(\\frac{9!}{c!v!s!}\\):\n\n\\[\n\\frac{9!}{6!2!1!}=252,\\quad\n\\frac{9!}{5!3!1!}=504,\\quad\n\\frac{9!}{4!3!2!}=1260.\n\\]\n\nThus\n\n\\[\nN=252+504+1260=2016.\n\\]\n\nThe remainder when \\(N\\) is divided by \\(1000\\) is \\(16\\).\n\n\\[\n\\boxed{16}\n\\]"
+  },
+  {
+   "id": "2025-3",
+   "sample": 1,
+   "answer": "16",
+   "got": "16",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 173,
+    "completion_tokens": 911,
+    "total_tokens": 1084,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 698,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "(5,3,1),\\quad (4,3,2).\n\\]\n\nFor each triple, the number of assignments is \\(\\frac{9!}{c!\\,v!\\,s!}\\):\n\n\\[\n\\frac{9!}{6!2!1!}=252,\\qquad\n\\frac{9!}{5!3!1!}=504,\\qquad\n\\frac{9!}{4!3!2!}=1260.\n\\]\n\nThus\n\n\\[\nN=252+504+1260=2016.\n\\]\n\nThe remainder when \\(N\\) is divided by \\(1000\\) is \\(16\\).\n\n\\[\n\\boxed{16}\n\\]"
+  },
+  {
+   "id": "2025-3",
+   "sample": 2,
+   "answer": "16",
+   "got": "16",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 173,
+    "completion_tokens": 570,
+    "total_tokens": 743,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 556,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{16}"
+  },
+  {
+   "id": "2025-3",
+   "sample": 3,
+   "answer": "16",
+   "got": "16",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 173,
+    "completion_tokens": 689,
+    "total_tokens": 862,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 682,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{16}"
+  },
+  {
+   "id": "2025-4",
+   "sample": 0,
+   "answer": "117",
+   "got": "117",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 117,
+    "completion_tokens": 1474,
+    "total_tokens": 1591,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1459,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{117}"
+  },
+  {
+   "id": "2025-4",
+   "sample": 1,
+   "answer": "117",
+   "got": "117",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 117,
+    "completion_tokens": 760,
+    "total_tokens": 877,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 745,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{117}"
+  },
+  {
+   "id": "2025-4",
+   "sample": 2,
+   "answer": "117",
+   "got": "117",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 117,
+    "completion_tokens": 1108,
+    "total_tokens": 1225,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1095,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{117}"
+  },
+  {
+   "id": "2025-4",
+   "sample": 3,
+   "answer": "117",
+   "got": "117",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 117,
+    "completion_tokens": 836,
+    "total_tokens": 953,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 823,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{117}"
+  },
+  {
+   "id": "2025-5",
+   "sample": 0,
+   "answer": "279",
+   "got": "279",
+   "correct": true,
+   "seconds": 8,
+   "usage": {
+    "prompt_tokens": 139,
+    "completion_tokens": 3364,
+    "total_tokens": 3503,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3350,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{279}"
+  },
+  {
+   "id": "2025-5",
+   "sample": 1,
+   "answer": "279",
+   "got": "279",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 139,
+    "completion_tokens": 3110,
+    "total_tokens": 3249,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3096,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{279}"
+  },
+  {
+   "id": "2025-5",
+   "sample": 2,
+   "answer": "279",
+   "got": "279",
+   "correct": true,
+   "seconds": 8,
+   "usage": {
+    "prompt_tokens": 139,
+    "completion_tokens": 3698,
+    "total_tokens": 3837,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3689,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{279}"
+  },
+  {
+   "id": "2025-5",
+   "sample": 3,
+   "answer": "279",
+   "got": "279",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 139,
+    "completion_tokens": 3131,
+    "total_tokens": 3270,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3122,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{279}"
+  },
+  {
+   "id": "2025-6",
+   "sample": 0,
+   "answer": "504",
+   "got": "504",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 142,
+    "completion_tokens": 1378,
+    "total_tokens": 1520,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1364,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{504}"
+  },
+  {
+   "id": "2025-6",
+   "sample": 1,
+   "answer": "504",
+   "got": "504",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 142,
+    "completion_tokens": 1326,
+    "total_tokens": 1468,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1125,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": " is \\(72\\), so\n\n\\[\n\\frac{r+s}{2}\\cdot 6=72 \\implies r+s=24.\n\\]\n\nTangency also gives leg length \\(\\frac{r+s}{2}=12\\). Then\n\n\\[\n6^2+\\left(\\frac{r-s}{2}\\right)^2=12^2\n\\]\n\nso\n\n\\[\n(r-s)^2=432.\n\\]\n\nThus\n\n\\[\nr^2+s^2=\\frac{(r+s)^2+(r-s)^2}{2}\n=\\frac{24^2+432}{2}\n=\\frac{576+432}{2}=504.\n\\]\n\n\\[\n\\boxed{504}\n\\]"
+  },
+  {
+   "id": "2025-6",
+   "sample": 2,
+   "answer": "504",
+   "got": "504",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 142,
+    "completion_tokens": 781,
+    "total_tokens": 923,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 767,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{504}"
+  },
+  {
+   "id": "2025-6",
+   "sample": 3,
+   "answer": "504",
+   "got": "504",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 142,
+    "completion_tokens": 932,
+    "total_tokens": 1074,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 918,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{504}"
+  },
+  {
+   "id": "2025-7",
+   "sample": 0,
+   "answer": "821",
+   "got": "821",
+   "correct": true,
+   "seconds": 15,
+   "usage": {
+    "prompt_tokens": 204,
+    "completion_tokens": 5685,
+    "total_tokens": 5889,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5447,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "ir and is still last, it must be paired with \\(F\\), with all other pairs crossing low/high. This gives \\(5!=120\\) matchings.\n\nTotal favorable: \\(1920\\). Total pairings: \\(11\\cdot9\\cdot7\\cdot5\\cdot3\\cdot1=10395\\). So\n\\[\n\\frac{1920}{10395}=\\frac{128}{693}.\n\\]\nThus \\(m+n=128+693=821\\).\n\n\\(\\boxed{821}\\)"
+  },
+  {
+   "id": "2025-7",
+   "sample": 1,
+   "answer": "821",
+   "got": "821",
+   "correct": true,
+   "seconds": 26,
+   "usage": {
+    "prompt_tokens": 204,
+    "completion_tokens": 8902,
+    "total_tokens": 9106,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 8615,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": " such matchings gives \\(120\\).\n- If \\(t>7\\), the last word cannot contain \\(G\\).\n\nTotal matchings of \\(12\\) letters into pairs is \\(11!!=10395\\). Thus favorable count is\n\\[\n1800+120=1920.\n\\]\nSo the probability is\n\\[\n\\frac{1920}{10395}=\\frac{128}{693}.\n\\]\nHence \\(m+n=128+693=821\\).\n\n\\[\n\\boxed{821}\n\\]"
+  },
+  {
+   "id": "2025-7",
+   "sample": 2,
+   "answer": "821",
+   "got": "821",
+   "correct": true,
+   "seconds": 15,
+   "usage": {
+    "prompt_tokens": 204,
+    "completion_tokens": 5738,
+    "total_tokens": 5942,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5726,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{821}"
+  },
+  {
+   "id": "2025-7",
+   "sample": 3,
+   "answer": "821",
+   "got": "821",
+   "correct": true,
+   "seconds": 24,
+   "usage": {
+    "prompt_tokens": 204,
+    "completion_tokens": 7555,
+    "total_tokens": 7759,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7544,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{821}"
+  },
+  {
+   "id": "2025-8",
+   "sample": 0,
+   "answer": "77",
+   "got": "77",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 174,
+    "completion_tokens": 1551,
+    "total_tokens": 1725,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1550,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{77}"
+  },
+  {
+   "id": "2025-8",
+   "sample": 1,
+   "answer": "77",
+   "got": "77",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 174,
+    "completion_tokens": 1855,
+    "total_tokens": 2029,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1422,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "0-8k-7=73-8k.}{}\\]\n\nSo\n\n\\[\n\\frac{|73-8k|}{10}=5\n\\implies |73-8k|=50.\n\\]\n\nThus\n\n\\[\n73-8k=50 \\quad \\text{or} \\quad 73-8k=-50,\n\\]\n\ngiving\n\n\\[\nk=\\frac{23}{8} \\quad \\text{or} \\quad k=\\frac{123}{8}.\n\\]\n\nTheir sum is\n\n\\[\n\\frac{23+123}{8}=\\frac{146}{8}=\\frac{73}{4}.\n\\]\n\nSo \\(m+n=73+4=77\\).\n\n\\[\n\\boxed{77}\n\\]"
+  },
+  {
+   "id": "2025-8",
+   "sample": 2,
+   "answer": "77",
+   "got": "77",
+   "correct": true,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 174,
+    "completion_tokens": 2080,
+    "total_tokens": 2254,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2073,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{77}"
+  },
+  {
+   "id": "2025-8",
+   "sample": 3,
+   "answer": "77",
+   "got": "77",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 174,
+    "completion_tokens": 1274,
+    "total_tokens": 1448,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1262,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{77}"
+  },
+  {
+   "id": "2025-9",
+   "sample": 0,
+   "answer": "62",
+   "got": "62",
+   "correct": true,
+   "seconds": 14,
+   "usage": {
+    "prompt_tokens": 166,
+    "completion_tokens": 6622,
+    "total_tokens": 6788,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6614,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{62}"
+  },
+  {
+   "id": "2025-9",
+   "sample": 1,
+   "answer": "62",
+   "got": "62",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 166,
+    "completion_tokens": 4009,
+    "total_tokens": 4175,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 4001,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{62}"
+  },
+  {
+   "id": "2025-9",
+   "sample": 2,
+   "answer": "62",
+   "got": "62",
+   "correct": true,
+   "seconds": 15,
+   "usage": {
+    "prompt_tokens": 166,
+    "completion_tokens": 7477,
+    "total_tokens": 7643,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7470,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{62}"
+  },
+  {
+   "id": "2025-9",
+   "sample": 3,
+   "answer": "62",
+   "got": "62",
+   "correct": true,
+   "seconds": 25,
+   "usage": {
+    "prompt_tokens": 166,
+    "completion_tokens": 11533,
+    "total_tokens": 11699,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 11262,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\n(x^2+\\sqrt3\\,x-4)(3x^2-\\sqrt3\\,x-10)=0.\n\\]\n\nThe fourth-quadrant point has \\(x>0\\) and \\(y=x^2-4<0\\), so \\(0<x<2\\). The suitable root is\n\n\\[\nx=\\frac{\\sqrt{19}-\\sqrt3}{2}.\n\\]\n\nThen\n\n\\[\ny=x^2-4=\\frac{3-\\sqrt{57}}{2}.\n\\]\n\nThus \\(a=3\\), \\(b=57\\), \\(c=2\\), giving\n\n\\[\na+b+c=3+57+2=62.\n\\]\n\n\\[\n\\boxed{62}\n\\]"
+  },
+  {
+   "id": "2025-10",
+   "sample": 0,
+   "answer": "81",
+   "got": "81",
+   "correct": true,
+   "seconds": 23,
+   "usage": {
+    "prompt_tokens": 357,
+    "completion_tokens": 9472,
+    "total_tokens": 9829,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 9136,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "h first row fixed there are \\(56\\cdot 6^6\\) completions. Total:\n\n\\[\n9!\\cdot 56\\cdot 6^6.\n\\]\n\nFactor:\n\n\\[\n9!=2^7 3^4 5\\,7,\\qquad 56=2^3 7,\\qquad 6^6=2^6 3^6,\n\\]\n\nso\n\n\\[\n9!\\cdot 56\\cdot 6^6=2^{16}3^{10}5^1 7^2.\n\\]\n\nTherefore\n\n\\[\n2\\cdot 16+3\\cdot 10+5\\cdot 1+7\\cdot 2=32+30+5+14=81.\n\\]\n\n\\[\n\\boxed{81}\n\\]"
+  },
+  {
+   "id": "2025-10",
+   "sample": 1,
+   "answer": "81",
+   "got": "81",
+   "correct": true,
+   "seconds": 25,
+   "usage": {
+    "prompt_tokens": 357,
+    "completion_tokens": 10323,
+    "total_tokens": 10680,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 10315,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{81}"
+  },
+  {
+   "id": "2025-10",
+   "sample": 2,
+   "answer": "81",
+   "got": "81",
+   "correct": true,
+   "seconds": 29,
+   "usage": {
+    "prompt_tokens": 357,
+    "completion_tokens": 9321,
+    "total_tokens": 9678,
+    "prompt_tokens_details": {
+     "cached_tokens": 320,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 9150,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "The number of valid grids is\n\n\\[\n\\left(\\sum_{t=0}^3 \\frac{9!}{(t!)^3((3-t)!)^3}\\right)\\cdot 6^9\n=94080\\cdot 6^9.\n\\]\n\nFactor:\n\n\\[\n94080\\cdot 6^9\n=2^{16}\\cdot 3^{10}\\cdot 5^1\\cdot 7^2.\n\\]\n\nThus the requested sum is\n\n\\[\n2\\cdot 16+3\\cdot 10+5\\cdot 1+7\\cdot 2\n=32+30+5+14=81.\n\\]\n\n\\[\n\\boxed{81}\n\\]"
+  },
+  {
+   "id": "2025-10",
+   "sample": 3,
+   "answer": "81",
+   "got": "81",
+   "correct": true,
+   "seconds": 23,
+   "usage": {
+    "prompt_tokens": 357,
+    "completion_tokens": 8716,
+    "total_tokens": 9073,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 8704,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{81}"
+  },
+  {
+   "id": "2025-11",
+   "sample": 0,
+   "answer": "259",
+   "got": "259",
+   "correct": true,
+   "seconds": 19,
+   "usage": {
+    "prompt_tokens": 545,
+    "completion_tokens": 7441,
+    "total_tokens": 7986,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6967,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "8+273}-1}{68}\n=\\frac{5\\sqrt{185}-1}{68}.\n\\]\nThus falling sum:\n\\[\n8\\left(-\\frac1{34}\\right)+\\frac{5\\sqrt{185}-1}{68}.\n\\]\n\nTotal:\n\\[\n\\frac{9}{34}-\\frac{8}{34}+\\frac{5\\sqrt{185}-1}{68}\n=\\frac{1+5\\sqrt{185}}{68}.\n\\]\nSo \\(a=1,\\ b=5,\\ c=185,\\ d=68\\), giving\n\\[\na+b+c+d=1+5+185+68=259.\n\\]\n\n\\[\n\\boxed{259}\n\\]"
+  },
+  {
+   "id": "2025-11",
+   "sample": 1,
+   "answer": "259",
+   "got": "259",
+   "correct": true,
+   "seconds": 21,
+   "usage": {
+    "prompt_tokens": 545,
+    "completion_tokens": 10409,
+    "total_tokens": 10954,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 10400,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{259}"
+  },
+  {
+   "id": "2025-11",
+   "sample": 2,
+   "answer": "259",
+   "got": "259",
+   "correct": true,
+   "seconds": 17,
+   "usage": {
+    "prompt_tokens": 545,
+    "completion_tokens": 6985,
+    "total_tokens": 7530,
+    "prompt_tokens_details": {
+     "cached_tokens": 512,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6977,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{259}"
+  },
+  {
+   "id": "2025-11",
+   "sample": 3,
+   "answer": "259",
+   "got": "259",
+   "correct": true,
+   "seconds": 29,
+   "usage": {
+    "prompt_tokens": 545,
+    "completion_tokens": 14803,
+    "total_tokens": 15348,
+    "prompt_tokens_details": {
+     "cached_tokens": 512,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 14646,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "inear piece of the periodic sawtooth wave gives valid roots in intervals; most adjacent positive/negative root pairs cancel in sum, leaving\n\n\\[\n0+\\frac1{34}+\\frac{5\\sqrt{185}-1}{68}\n=\\frac{1+5\\sqrt{185}}{68}.\n\\]\n\nThus \\(a=1,\\ b=5,\\ c=185,\\ d=68\\), so\n\n\\[\na+b+c+d=1+5+185+68=259.\n\\]\n\n\\[\n\\boxed{259}\n\\]"
+  },
+  {
+   "id": "2025-12",
+   "sample": 0,
+   "answer": "510",
+   "got": "510",
+   "correct": true,
+   "seconds": 16,
+   "usage": {
+    "prompt_tokens": 172,
+    "completion_tokens": 7029,
+    "total_tokens": 7201,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6715,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "es\n\\[\n(0,0),\\ (-39,0),\\ (0,-78)\n\\]\nin the \\((u,v)\\)-plane. Its area is\n\\[\n\\frac12\\cdot 39\\cdot 78=1521.\n\\]\nThe map from \\((u,v)\\) to the plane has area scale factor \\(1/\\sqrt3\\), so the actual area is\n\\[\n\\frac{1521}{\\sqrt3}=507\\sqrt3.\n\\]\nThus \\(a=507,\\ b=3\\), giving\n\\[\na+b=510.\n\\]\n\n\\[\n\\boxed{510}\n\\]"
+  },
+  {
+   "id": "2025-12",
+   "sample": 1,
+   "answer": "510",
+   "got": "510",
+   "correct": true,
+   "seconds": 14,
+   "usage": {
+    "prompt_tokens": 172,
+    "completion_tokens": 5674,
+    "total_tokens": 5846,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5663,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{510}"
+  },
+  {
+   "id": "2025-12",
+   "sample": 2,
+   "answer": "510",
+   "got": "510",
+   "correct": true,
+   "seconds": 25,
+   "usage": {
+    "prompt_tokens": 172,
+    "completion_tokens": 11391,
+    "total_tokens": 11563,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 11381,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{510}"
+  },
+  {
+   "id": "2025-12",
+   "sample": 3,
+   "answer": "510",
+   "got": "510",
+   "correct": true,
+   "seconds": 13,
+   "usage": {
+    "prompt_tokens": 172,
+    "completion_tokens": 5940,
+    "total_tokens": 6112,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5926,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{510}"
+  },
+  {
+   "id": "2025-13",
+   "sample": 0,
+   "answer": "204",
+   "got": "204",
+   "correct": true,
+   "seconds": 38,
+   "usage": {
+    "prompt_tokens": 140,
+    "completion_tokens": 14330,
+    "total_tokens": 14470,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 14321,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{204}"
+  },
+  {
+   "id": "2025-13",
+   "sample": 1,
+   "answer": "204",
+   "got": "204",
+   "correct": true,
+   "seconds": 41,
+   "usage": {
+    "prompt_tokens": 140,
+    "completion_tokens": 13519,
+    "total_tokens": 13659,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 13504,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{204}"
+  },
+  {
+   "id": "2025-13",
+   "sample": 2,
+   "answer": "204",
+   "got": "204",
+   "correct": true,
+   "seconds": 113,
+   "usage": {
+    "prompt_tokens": 140,
+    "completion_tokens": 16459,
+    "total_tokens": 16599,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 16204,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "crossings is\n\n\\[\n\\binom{25}{2}\\cdot \\frac{17}{36}=300\\cdot \\frac{17}{36}=\\frac{425}{3}.\n\\]\n\nSo the expected total number of interior intersections is\n\n\\[\n\\frac{103}{3}+\\frac{425}{3}=\\frac{528}{3}=176.\n\\]\n\nWith \\(27\\) segments, the expected number of regions is\n\n\\[\n1+27+176=204.\n\\]\n\n\\[\n\\boxed{204}\n\\]"
+  },
+  {
+   "id": "2025-13",
+   "sample": 3,
+   "answer": "204",
+   "got": "204",
+   "correct": true,
+   "seconds": 47,
+   "usage": {
+    "prompt_tokens": 140,
+    "completion_tokens": 15047,
+    "total_tokens": 15187,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 15032,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{204}"
+  },
+  {
+   "id": "2025-14",
+   "sample": 0,
+   "answer": "60",
+   "got": "60",
+   "correct": true,
+   "seconds": 76,
+   "usage": {
+    "prompt_tokens": 194,
+    "completion_tokens": 37442,
+    "total_tokens": 37636,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 37434,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{60}"
+  },
+  {
+   "id": "2025-14",
+   "sample": 1,
+   "answer": "60",
+   "got": "60",
+   "correct": true,
+   "seconds": 124,
+   "usage": {
+    "prompt_tokens": 194,
+    "completion_tokens": 59900,
+    "total_tokens": 60094,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 59888,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{60}"
+  },
+  {
+   "id": "2025-14",
+   "sample": 2,
+   "answer": "60",
+   "got": "60",
+   "correct": true,
+   "seconds": 54,
+   "usage": {
+    "prompt_tokens": 194,
+    "completion_tokens": 23412,
+    "total_tokens": 23606,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 23194,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "e side lengths are \\(7\\sqrt3,13\\sqrt3,24\\). Its area is \\(78\\sqrt3\\), so the Fermat sum is\n\n\\[\n\\sqrt{\\frac{(7\\sqrt3)^2+(13\\sqrt3)^2+24^2+4\\sqrt3(78\\sqrt3)}{2}}\n=\\sqrt{1083}=19\\sqrt3.\n\\]\n\nThus the minimum is\n\n\\[\n38+19\\sqrt3,\n\\]\n\nso \\(m=38,\\ n=19,\\ p=3\\), and\n\n\\[\nm+n+p=38+19+3=60.\n\\]\n\n\\[\n\\boxed{60}\n\\]"
+  },
+  {
+   "id": "2025-14",
+   "sample": 3,
+   "answer": "60",
+   "got": "60",
+   "correct": true,
+   "seconds": 60,
+   "usage": {
+    "prompt_tokens": 194,
+    "completion_tokens": 26384,
+    "total_tokens": 26578,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 26376,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{60}"
+  },
+  {
+   "id": "2025-15",
+   "sample": 0,
+   "answer": "735",
+   "got": "735",
+   "correct": true,
+   "seconds": 226,
+   "usage": {
+    "prompt_tokens": 136,
+    "completion_tokens": 37096,
+    "total_tokens": 37232,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 37086,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{735}"
+  },
+  {
+   "id": "2025-15",
+   "sample": 1,
+   "answer": "735",
+   "got": "735",
+   "correct": true,
+   "seconds": 68,
+   "usage": {
+    "prompt_tokens": 136,
+    "completion_tokens": 28725,
+    "total_tokens": 28861,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 28710,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{735}"
+  },
+  {
+   "id": "2025-15",
+   "sample": 2,
+   "answer": "735",
+   "got": "735",
+   "correct": true,
+   "seconds": 125,
+   "usage": {
+    "prompt_tokens": 136,
+    "completion_tokens": 52328,
+    "total_tokens": 52464,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 52319,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{735}"
+  },
+  {
+   "id": "2025-15",
+   "sample": 3,
+   "answer": "735",
+   "got": "735",
+   "correct": true,
+   "seconds": 98,
+   "usage": {
+    "prompt_tokens": 136,
+    "completion_tokens": 41958,
+    "total_tokens": 42094,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 41950,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{735}"
+  },
+  {
+   "id": "2025-16",
+   "sample": 0,
+   "answer": "468",
+   "got": "468",
+   "correct": true,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 161,
+    "completion_tokens": 1003,
+    "total_tokens": 1164,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 988,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{468}"
+  },
+  {
+   "id": "2025-16",
+   "sample": 1,
+   "answer": "468",
+   "got": "468",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 161,
+    "completion_tokens": 1133,
+    "total_tokens": 1294,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1118,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{468}"
+  },
+  {
+   "id": "2025-16",
+   "sample": 2,
+   "answer": "468",
+   "got": "468",
+   "correct": true,
+   "seconds": 10,
+   "usage": {
+    "prompt_tokens": 161,
+    "completion_tokens": 1110,
+    "total_tokens": 1271,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 855,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "he \\(x\\)-axis and \\(G=(x,y)\\). Then\n\\[\n(x-26)^2+y^2=40^2,\\qquad (x-40)^2+y^2=30^2.\n\\]\nSubtracting gives \\(28x-924=700\\), so \\(x=58\\). Then\n\\[\ny^2=40^2-(58-26)^2=1600-1024=576,\n\\]\nso \\(|y|=24\\).\n\nArea of \\(\\triangle BGE\\):\n\\[\n\\frac12\\cdot BE\\cdot |y|=\\frac12\\cdot 39\\cdot 24=468.\n\\]\n\n\\[\n\\boxed{468}\n\\]"
+  },
+  {
+   "id": "2025-16",
+   "sample": 3,
+   "answer": "468",
+   "got": "468",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 161,
+    "completion_tokens": 809,
+    "total_tokens": 970,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 796,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{468}"
+  },
+  {
+   "id": "2025-17",
+   "sample": 0,
+   "answer": "49",
+   "got": "49",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 94,
+    "completion_tokens": 594,
+    "total_tokens": 688,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 370,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "iv 1\\) and \\(d^2-4d+13\\equiv 13\\), so\n\n\\[\n3(d+1)(d^2-4d+13)\\equiv 3\\cdot 1\\cdot 13=39 \\pmod d.\n\\]\n\nThus \\(d\\mid 39\\). Since \\(n\\ge 1\\), we have \\(d=n+2\\ge 3\\). The divisors of \\(39\\) that are at least \\(3\\) are \\(3,13,39\\), giving\n\n\\[\nn=1,\\ 11,\\ 37.\n\\]\n\nTheir sum is \\(1+11+37=49\\).\n\n\\[\n\\boxed{49}\n\\]"
+  },
+  {
+   "id": "2025-17",
+   "sample": 1,
+   "answer": "49",
+   "got": "49",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 94,
+    "completion_tokens": 544,
+    "total_tokens": 638,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 530,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{49}"
+  },
+  {
+   "id": "2025-17",
+   "sample": 2,
+   "answer": "49",
+   "got": "49",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 94,
+    "completion_tokens": 518,
+    "total_tokens": 612,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 511,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{49}"
+  },
+  {
+   "id": "2025-17",
+   "sample": 3,
+   "answer": "49",
+   "got": "49",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 94,
+    "completion_tokens": 494,
+    "total_tokens": 588,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 482,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{49}"
+  },
+  {
+   "id": "2025-18",
+   "sample": 0,
+   "answer": "82",
+   "got": "82",
+   "correct": true,
+   "seconds": 12,
+   "usage": {
+    "prompt_tokens": 329,
+    "completion_tokens": 3622,
+    "total_tokens": 3951,
+    "prompt_tokens_details": {
+     "cached_tokens": 320,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3319,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "0,1\\}} 2^{(c\\oplus i)+(d\\oplus i)+(c\\oplus j)+(d\\oplus j)}.\n\\]\n\nIf \\(c=d\\), the inner sum over \\(i\\) is \\(1+4=5\\), giving \\(5^2=25\\) for each of the 2 cases. If \\(c\\neq d\\), the inner sum is \\(2+2=4\\), giving \\(4^2=16\\) for each of the 2 cases. Total:\n\n\\[\n2\\cdot 25+2\\cdot 16=82.\n\\]\n\n\\[\n\\boxed{82}\n\\]"
+  },
+  {
+   "id": "2025-18",
+   "sample": 1,
+   "answer": "82",
+   "got": "82",
+   "correct": true,
+   "seconds": 11,
+   "usage": {
+    "prompt_tokens": 329,
+    "completion_tokens": 4559,
+    "total_tokens": 4888,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 4550,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{82}"
+  },
+  {
+   "id": "2025-18",
+   "sample": 2,
+   "answer": "82",
+   "got": "82",
+   "correct": true,
+   "seconds": 14,
+   "usage": {
+    "prompt_tokens": 329,
+    "completion_tokens": 5462,
+    "total_tokens": 5791,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5321,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "their red count complements the internal red count; this gives \\(C(2,k)\\) choices for a square whose internal edges have \\(k\\) red sides. Summing over all \\(2^4\\) internal colorings gives\n\n\\[\n\\sum_{b_0,b_1,e_0,e_1\\in\\{0,1\\}} \\prod_{i,j} C(2,b_i+e_j?) \n\\]\n\nwhich evaluates to \\(82\\).\n\n\\[\n\\boxed{82}\n\\]"
+  },
+  {
+   "id": "2025-18",
+   "sample": 3,
+   "answer": "82",
+   "got": "82",
+   "correct": true,
+   "seconds": 21,
+   "usage": {
+    "prompt_tokens": 329,
+    "completion_tokens": 5881,
+    "total_tokens": 6210,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5880,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{82}"
+  },
+  {
+   "id": "2025-19",
+   "sample": 0,
+   "answer": "106",
+   "got": "106",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 261,
+    "completion_tokens": 1369,
+    "total_tokens": 1630,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1355,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{106}"
+  },
+  {
+   "id": "2025-19",
+   "sample": 1,
+   "answer": "106",
+   "got": "106",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 261,
+    "completion_tokens": 1963,
+    "total_tokens": 2224,
+    "prompt_tokens_details": {
+     "cached_tokens": 256,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1954,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{106}"
+  },
+  {
+   "id": "2025-19",
+   "sample": 2,
+   "answer": "106",
+   "got": "106",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 261,
+    "completion_tokens": 1241,
+    "total_tokens": 1502,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1227,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{106}"
+  },
+  {
+   "id": "2025-19",
+   "sample": 3,
+   "answer": "106",
+   "got": "106",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 261,
+    "completion_tokens": 2392,
+    "total_tokens": 2653,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2033,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "2)(k+2)}.\n\\]\nThus\n\\[\n\\prod_{k=4}^{63}\\frac{k^2-1}{k^2-4}\n=\\left(\\prod_{k=4}^{63}\\frac{k-1}{k-2}\\right)\\left(\\prod_{k=4}^{63}\\frac{k+1}{k+2}\\right)\n=\\frac{62}{2}\\cdot \\frac{5}{65}\n=\\frac{31}{13}.\n\\]\n\nSo the total is\n\\[\n3\\cdot \\frac{31}{13}=\\frac{93}{13}.\n\\]\nHence \\(m+n=93+13=106\\).\n\n\\[\n\\boxed{106}\n\\]"
+  },
+  {
+   "id": "2025-20",
+   "sample": 0,
+   "answer": "336",
+   "got": "336",
+   "correct": true,
+   "seconds": 30,
+   "usage": {
+    "prompt_tokens": 672,
+    "completion_tokens": 15041,
+    "total_tokens": 15713,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 15033,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{336}"
+  },
+  {
+   "id": "2025-20",
+   "sample": 1,
+   "answer": "336",
+   "got": "336",
+   "correct": true,
+   "seconds": 15,
+   "usage": {
+    "prompt_tokens": 672,
+    "completion_tokens": 6098,
+    "total_tokens": 6770,
+    "prompt_tokens_details": {
+     "cached_tokens": 640,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5739,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "irc\\).\n- \\(FJ\\parallel DE\\) gives \\(J=192^\\circ\\).\n\nSo the six consecutive arcs are\n\\[\nGD=48^\\circ,\\ DE=72^\\circ,\\ EH=96^\\circ,\\ HJ=24^\\circ,\\ JF=48^\\circ,\\ FG=72^\\circ.\n\\]\n\nTherefore\n\\[\n\\wideparen{DE}+2\\cdot \\wideparen{HJ}+3\\cdot \\wideparen{FG}\n=72+2(24)+3(72)\n=72+48+216\n=336.\n\\]\n\n\\[\n\\boxed{336}\n\\]"
+  },
+  {
+   "id": "2025-20",
+   "sample": 2,
+   "answer": "336",
+   "got": "336",
+   "correct": true,
+   "seconds": 32,
+   "usage": {
+    "prompt_tokens": 672,
+    "completion_tokens": 16394,
+    "total_tokens": 17066,
+    "prompt_tokens_details": {
+     "cached_tokens": 640,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 16108,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "cle gives\n\\[\nG:132^\\circ,\\quad H:348^\\circ,\\quad J:12^\\circ.\n\\]\nThus the six consecutive arcs are\n\\[\nGD=48^\\circ,\\ DE=72^\\circ,\\ EH=96^\\circ,\\ HJ=24^\\circ,\\ JF=48^\\circ,\\ FG=72^\\circ.\n\\]\nTherefore\n\\[\n\\wideparen{DE}+2\\wideparen{HJ}+3\\wideparen{FG}\n=72+2(24)+3(72)\n=72+48+216=336.\n\\]\n\n\\[\n\\boxed{336}\n\\]"
+  },
+  {
+   "id": "2025-20",
+   "sample": 3,
+   "answer": "336",
+   "got": "336",
+   "correct": true,
+   "seconds": 37,
+   "usage": {
+    "prompt_tokens": 672,
+    "completion_tokens": 15950,
+    "total_tokens": 16622,
+    "prompt_tokens_details": {
+     "cached_tokens": 640,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 15785,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "wideparen{GD}=48^\\circ,\\quad \\wideparen{DE}=72^\\circ,\\quad \\wideparen{EH}=96^\\circ,\\quad \\wideparen{HJ}=24^\\circ,\\quad \\wideparen{JF}=48^\\circ,\\quad \\wideparen{FG}=72^\\circ.\n\\]\n\nThus\n\n\\[\n\\wideparen{DE}+2\\cdot \\wideparen{HJ}+3\\cdot \\wideparen{FG}\n=72+2(24)+3(72)\n=72+48+216\n=336.\n\\]\n\n\\[\n\\boxed{336}\n\\]"
+  },
+  {
+   "id": "2025-21",
+   "sample": 0,
+   "answer": "293",
+   "got": "293",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 829,
+    "completion_tokens": 2874,
+    "total_tokens": 3703,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2492,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": " them equal:\n\\[\nw(12-h)=h(24-w)\n\\]\n\\[\n12w-wh=24h-wh\n\\]\n\\[\n12w=24h \\implies w=2h.\n\\]\nThen\n\\[\n(2h)^2+h^2=36 \\implies 5h^2=36 \\implies h^2=\\frac{36}{5}.\n\\]\nThe rectangle area is\n\\[\n(2w)(2h)=4wh=4(2h)h=8h^2=8\\cdot \\frac{36}{5}=\\frac{288}{5}.\n\\]\nThus \\(m=288\\), \\(n=5\\), so \\(m+n=293\\).\n\n\\[\n\\boxed{293}\n\\]"
+  },
+  {
+   "id": "2025-21",
+   "sample": 1,
+   "answer": "293",
+   "got": "293",
+   "correct": true,
+   "seconds": 8,
+   "usage": {
+    "prompt_tokens": 829,
+    "completion_tokens": 2490,
+    "total_tokens": 3319,
+    "prompt_tokens_details": {
+     "cached_tokens": 768,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2482,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{293}"
+  },
+  {
+   "id": "2025-21",
+   "sample": 2,
+   "answer": "293",
+   "got": "293",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 829,
+    "completion_tokens": 2513,
+    "total_tokens": 3342,
+    "prompt_tokens_details": {
+     "cached_tokens": 768,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2503,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{293}"
+  },
+  {
+   "id": "2025-21",
+   "sample": 3,
+   "answer": "293",
+   "got": "293",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 829,
+    "completion_tokens": 2652,
+    "total_tokens": 3481,
+    "prompt_tokens_details": {
+     "cached_tokens": 768,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2352,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": ").\n\\]\n\nEqual areas give\n\n\\[\na(12-b)=b(24-a)\\implies 12a=24b\\implies a=2b.\n\\]\n\nThus\n\n\\[\n(2b)^2+b^2=36 \\implies 5b^2=36 \\implies b^2=\\frac{36}{5}.\n\\]\n\nThe rectangle area is\n\n\\[\n(2a)(2b)=4ab=4(2b)b=8b^2=8\\cdot \\frac{36}{5}=\\frac{288}{5}.\n\\]\n\nSo \\(m=288\\), \\(n=5\\), and\n\n\\[\nm+n=293.\n\\]\n\n\\[\n\\boxed{293}\n\\]"
+  },
+  {
+   "id": "2025-22",
+   "sample": 0,
+   "answer": "237",
+   "got": "237",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 1258,
+    "total_tokens": 1410,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1250,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{237}"
+  },
+  {
+   "id": "2025-22",
+   "sample": 1,
+   "answer": "237",
+   "got": "237",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 1390,
+    "total_tokens": 1542,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1375,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{237}"
+  },
+  {
+   "id": "2025-22",
+   "sample": 2,
+   "answer": "237",
+   "got": "237",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 1031,
+    "total_tokens": 1183,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1020,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{237}"
+  },
+  {
+   "id": "2025-22",
+   "sample": 3,
+   "answer": "237",
+   "got": "237",
+   "correct": true,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 2509,
+    "total_tokens": 2661,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2295,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "st one divisor with \\(a=4\\) and at least one with \\(b=2\\).\n\nThere are \\(15\\) divisors total. By inclusion-exclusion, the number of valid subsets is\n\n\\[\n2^{15}-2^{12}-2^{10}+2^8=27904.\n\\]\n\nThus the probability is\n\n\\[\n\\frac{27904}{2^{15}}=\\frac{109}{128}.\n\\]\n\nSo \\(m+n=109+128=237\\).\n\n\\[\n\\boxed{237}\n\\]"
+  },
+  {
+   "id": "2025-23",
+   "sample": 0,
+   "answer": "610",
+   "got": "610",
+   "correct": true,
+   "seconds": 21,
+   "usage": {
+    "prompt_tokens": 353,
+    "completion_tokens": 9143,
+    "total_tokens": 9496,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 8973,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": " \\(q\\ge 1\\) and \\(r\\bmod 10\\ge 5\\). For \\(r\\in\\{0,\\dots,24\\}\\), there are \\(10\\) such remainders: \\(5,6,7,8,9,15,16,17,18,19\\).\n\nFor \\(q=1,\\dots,39\\), each full block of \\(25\\) integers contributes \\(10\\) failures, so failures \\(=39\\cdot 10=390\\). Thus successes \\(=1000-390=610\\).\n\n\\[\n\\boxed{610}\n\\]"
+  },
+  {
+   "id": "2025-23",
+   "sample": 1,
+   "answer": "610",
+   "got": "610",
+   "correct": true,
+   "seconds": 16,
+   "usage": {
+    "prompt_tokens": 353,
+    "completion_tokens": 6988,
+    "total_tokens": 7341,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6809,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "appens when \\(q\\ge 1\\) and the units digit of \\(r\\) is at least \\(5\\), i.e. \\(r\\in\\{5,6,7,8,9,15,16,17,18,19\\}\\).\n\nFor \\(N=1,\\dots,1000\\), there are \\(39\\) full blocks \\(q=1,\\dots,39\\) with \\(10\\) failing residues each, giving \\(390\\) failures. Thus successes are \\(1000-390=610\\).\n\n\\[\n\\boxed{610}\n\\]"
+  },
+  {
+   "id": "2025-23",
+   "sample": 2,
+   "answer": "610",
+   "got": "610",
+   "correct": true,
+   "seconds": 22,
+   "usage": {
+    "prompt_tokens": 353,
+    "completion_tokens": 7836,
+    "total_tokens": 8189,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7828,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{610}"
+  },
+  {
+   "id": "2025-23",
+   "sample": 3,
+   "answer": "610",
+   "got": "610",
+   "correct": true,
+   "seconds": 13,
+   "usage": {
+    "prompt_tokens": 353,
+    "completion_tokens": 5026,
+    "total_tokens": 5379,
+    "prompt_tokens_details": {
+     "cached_tokens": 320,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 4886,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "n greedy gives a strictly smaller coin count. This occurs when \\(\\lfloor N/25\\rfloor \\ge 1\\) and \\((N \\bmod 25)\\bmod 10 \\ge 5\\).\n\nThere are 39 full 25-blocks from 25 to 999, each contributing 10 failing residues, so \\(39\\cdot 10=390\\) failures. Thus successes are \\(1000-390=610\\).\n\n\\[\n\\boxed{610}\n\\]"
+  },
+  {
+   "id": "2025-24",
+   "sample": 0,
+   "answer": "149",
+   "got": "149",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 2277,
+    "total_tokens": 2429,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2269,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{149}"
+  },
+  {
+   "id": "2025-24",
+   "sample": 1,
+   "answer": "149",
+   "got": "169",
+   "correct": false,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 3006,
+    "total_tokens": 3158,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2996,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{169}"
+  },
+  {
+   "id": "2025-24",
+   "sample": 2,
+   "answer": "149",
+   "got": "149",
+   "correct": true,
+   "seconds": 11,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 4230,
+    "total_tokens": 4382,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 4221,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{149}"
+  },
+  {
+   "id": "2025-24",
+   "sample": 3,
+   "answer": "149",
+   "got": "149",
+   "correct": true,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 1983,
+    "total_tokens": 2135,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1968,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{149}"
+  },
+  {
+   "id": "2025-25",
+   "sample": 0,
+   "answer": "907",
+   "got": "907",
+   "correct": true,
+   "seconds": 12,
+   "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 6970,
+    "total_tokens": 7098,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6959,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{907}"
+  },
+  {
+   "id": "2025-25",
+   "sample": 1,
+   "answer": "907",
+   "got": "907",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 3476,
+    "total_tokens": 3604,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3462,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{907}"
+  },
+  {
+   "id": "2025-25",
+   "sample": 2,
+   "answer": "907",
+   "got": "907",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 2797,
+    "total_tokens": 2925,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2788,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{907}"
+  },
+  {
+   "id": "2025-25",
+   "sample": 3,
+   "answer": "907",
+   "got": "907",
+   "correct": true,
+   "seconds": 19,
+   "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 11334,
+    "total_tokens": 11462,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 11326,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{907}"
+  },
+  {
+   "id": "2025-26",
+   "sample": 0,
+   "answer": "113",
+   "got": "113",
+   "correct": true,
+   "seconds": 10,
+   "usage": {
+    "prompt_tokens": 117,
+    "completion_tokens": 3471,
+    "total_tokens": 3588,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3456,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{113}"
+  },
+  {
+   "id": "2025-26",
+   "sample": 1,
+   "answer": "113",
+   "got": "113",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 117,
+    "completion_tokens": 2403,
+    "total_tokens": 2520,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2395,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{113}"
+  },
+  {
+   "id": "2025-26",
+   "sample": 2,
+   "answer": "113",
+   "got": "113",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 117,
+    "completion_tokens": 1970,
+    "total_tokens": 2087,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1961,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{113}"
+  },
+  {
+   "id": "2025-26",
+   "sample": 3,
+   "answer": "113",
+   "got": "113",
+   "correct": true,
+   "seconds": 9,
+   "usage": {
+    "prompt_tokens": 117,
+    "completion_tokens": 2867,
+    "total_tokens": 2984,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2853,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{113}"
+  },
+  {
+   "id": "2025-27",
+   "sample": 0,
+   "answer": "19",
+   "got": "19",
+   "correct": true,
+   "seconds": 16,
+   "usage": {
+    "prompt_tokens": 321,
+    "completion_tokens": 6268,
+    "total_tokens": 6589,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6253,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{19}"
+  },
+  {
+   "id": "2025-27",
+   "sample": 1,
+   "answer": "19",
+   "got": "19",
+   "correct": true,
+   "seconds": 18,
+   "usage": {
+    "prompt_tokens": 321,
+    "completion_tokens": 7314,
+    "total_tokens": 7635,
+    "prompt_tokens_details": {
+     "cached_tokens": 320,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7052,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "}=u+\\frac{26/5}{u}=S.\n\\]\n\nEach side \\(A_iA_{i+1}\\) for \\(2\\le i\\le 10\\) has length\n\n\\[\nd=\\sqrt{S^2-20}.\n\\]\n\nThere are \\(9\\) such sides, so the perimeter gives\n\n\\[\nS+9\\sqrt{S^2-20}=20.\n\\]\n\nSolving,\n\n\\[\nS=\\frac{9\\sqrt5-1}{4}.\n\\]\n\nThus \\(m=9,\\ n=5,\\ p=1,\\ q=4\\), and\n\n\\[\nm+n+p+q=19.\n\\]\n\n\\[\n\\boxed{19}\n\\]"
+  },
+  {
+   "id": "2025-27",
+   "sample": 2,
+   "answer": "19",
+   "got": "19",
+   "correct": true,
+   "seconds": 12,
+   "usage": {
+    "prompt_tokens": 321,
+    "completion_tokens": 5513,
+    "total_tokens": 5834,
+    "prompt_tokens_details": {
+     "cached_tokens": 320,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5504,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{19}"
+  },
+  {
+   "id": "2025-27",
+   "sample": 3,
+   "answer": "19",
+   "got": "19",
+   "correct": true,
+   "seconds": 14,
+   "usage": {
+    "prompt_tokens": 321,
+    "completion_tokens": 6695,
+    "total_tokens": 7016,
+    "prompt_tokens_details": {
+     "cached_tokens": 320,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6339,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": ") has length\n\n\\[\nd=\\sqrt{a^2+b^2-\\frac{48}{5}}\n=\\sqrt{s^2-20}.\n\\]\n\nThe perimeter is\n\n\\[\na+b+9d=20\n\\]\n\nso\n\n\\[\ns+9\\sqrt{s^2-20}=20.\n\\]\n\nSolving,\n\n\\[\n81(s^2-20)=(20-s)^2\n\\]\n\ngives\n\n\\[\n4s^2+2s-101=0,\n\\]\n\nso\n\n\\[\ns=\\frac{9\\sqrt5-1}{4}.\n\\]\n\nThus \\(m=9,n=5,p=1,q=4\\), and\n\n\\[\nm+n+p+q=19.\n\\]\n\n\\[\n\\boxed{19}\n\\]"
+  },
+  {
+   "id": "2025-28",
+   "sample": 0,
+   "answer": "248",
+   "got": "248",
+   "correct": true,
+   "seconds": 61,
+   "usage": {
+    "prompt_tokens": 201,
+    "completion_tokens": 28336,
+    "total_tokens": 28537,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 28321,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{248}"
+  },
+  {
+   "id": "2025-28",
+   "sample": 1,
+   "answer": "248",
+   "got": "248",
+   "correct": true,
+   "seconds": 54,
+   "usage": {
+    "prompt_tokens": 201,
+    "completion_tokens": 25381,
+    "total_tokens": 25582,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 25371,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{248}"
+  },
+  {
+   "id": "2025-28",
+   "sample": 2,
+   "answer": "248",
+   "got": "248",
+   "correct": true,
+   "seconds": 38,
+   "usage": {
+    "prompt_tokens": 201,
+    "completion_tokens": 17225,
+    "total_tokens": 17426,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 17217,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{248}"
+  },
+  {
+   "id": "2025-28",
+   "sample": 3,
+   "answer": "248",
+   "got": "248",
+   "correct": true,
+   "seconds": 50,
+   "usage": {
+    "prompt_tokens": 201,
+    "completion_tokens": 21865,
+    "total_tokens": 22066,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 21855,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{248}"
+  },
+  {
+   "id": "2025-29",
+   "sample": 0,
+   "answer": "104",
+   "got": "104",
+   "correct": true,
+   "seconds": 16,
+   "usage": {
+    "prompt_tokens": 154,
+    "completion_tokens": 6897,
+    "total_tokens": 7051,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6887,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{104}"
+  },
+  {
+   "id": "2025-29",
+   "sample": 1,
+   "answer": "104",
+   "got": "104",
+   "correct": true,
+   "seconds": 30,
+   "usage": {
+    "prompt_tokens": 154,
+    "completion_tokens": 14016,
+    "total_tokens": 14170,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 14007,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{104}"
+  },
+  {
+   "id": "2025-29",
+   "sample": 2,
+   "answer": "104",
+   "got": "104",
+   "correct": true,
+   "seconds": 16,
+   "usage": {
+    "prompt_tokens": 154,
+    "completion_tokens": 7430,
+    "total_tokens": 7584,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7420,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{104}"
+  },
+  {
+   "id": "2025-29",
+   "sample": 3,
+   "answer": "104",
+   "got": "104",
+   "correct": true,
+   "seconds": 13,
+   "usage": {
+    "prompt_tokens": 154,
+    "completion_tokens": 6353,
+    "total_tokens": 6507,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6344,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{104}"
+  },
+  {
+   "id": "2025-30",
+   "sample": 0,
+   "answer": "240",
+   "got": "240",
+   "correct": true,
+   "seconds": 24,
+   "usage": {
+    "prompt_tokens": 142,
+    "completion_tokens": 11579,
+    "total_tokens": 11721,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 11249,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "2\\sqrt{127008k}.\n\\]\n\nThis simplifies to\n\n\\[\n5120+376k-k^2=2016\\sqrt{2k}.\n\\]\n\nLet \\(u=\\sqrt{2k}\\). Then\n\n\\[\nu^4-752u^2+8064u-20480=0,\n\\]\n\nwhich factors as\n\n\\[\n(u-4)(u-8)(u-20)(u+32)=0.\n\\]\n\nThus \\(u=4,8,20\\), giving\n\n\\[\nk=\\frac{u^2}{2}=8,32,200.\n\\]\n\nTheir sum is\n\n\\[\n8+32+200=240.\n\\]\n\n\\[\n\\boxed{240}\n\\]"
+  },
+  {
+   "id": "2025-30",
+   "sample": 1,
+   "answer": "240",
+   "got": "240",
+   "correct": true,
+   "seconds": 12,
+   "usage": {
+    "prompt_tokens": 142,
+    "completion_tokens": 6365,
+    "total_tokens": 6507,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6350,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{240}"
+  },
+  {
+   "id": "2025-30",
+   "sample": 2,
+   "answer": "240",
+   "got": "240",
+   "correct": true,
+   "seconds": 33,
+   "usage": {
+    "prompt_tokens": 142,
+    "completion_tokens": 15399,
+    "total_tokens": 15541,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 15125,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "v)^2\n\\]\n\nand\n\n\\[\n18\\cdot72+18\\cdot98+72\\cdot98+188k+? \n\\]\n\nMore directly, the coefficient comparison reduces to\n\n\\[\n1280+94k-\\frac{k^2}{4}=2\\sqrt{127008k}.\n\\]\n\nSolving this yields the three valid positive values\n\n\\[\nk=8,\\quad k=32,\\quad k=200.\n\\]\n\nTheir sum is\n\n\\[\n8+32+200=240.\n\\]\n\n\\[\n\\boxed{240}\n\\]"
+  },
+  {
+   "id": "2025-30",
+   "sample": 3,
+   "answer": "240",
+   "got": "240",
+   "correct": true,
+   "seconds": 17,
+   "usage": {
+    "prompt_tokens": 142,
+    "completion_tokens": 8752,
+    "total_tokens": 8894,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 8405,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\sqrt{127008k}=0.\n\\]\n\nLet \\(k=y^2\\). Then\n\n\\[\ny^4-376y^2+2016\\sqrt2\\,y-5120=0,\n\\]\n\nwhich factors as\n\n\\[\n(y-2\\sqrt2)(y-4\\sqrt2)(y-10\\sqrt2)(y+16\\sqrt2)=0.\n\\]\n\nThe positive solutions are \\(y=2\\sqrt2,4\\sqrt2,10\\sqrt2\\), giving\n\n\\[\nk=8,\\ 32,\\ 200.\n\\]\n\nTheir sum is\n\n\\[\n8+32+200=240.\n\\]\n\n\\[\n\\boxed{240}\n\\]"
+  },
+  {
+   "id": "2026-1",
+   "sample": 0,
+   "answer": "277",
+   "got": "277",
+   "correct": true,
+   "seconds": 1,
+   "usage": {
+    "prompt_tokens": 210,
+    "completion_tokens": 522,
+    "total_tokens": 732,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 515,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{277}"
+  },
+  {
+   "id": "2026-1",
+   "sample": 1,
+   "answer": "277",
+   "got": "277",
+   "correct": true,
+   "seconds": 1,
+   "usage": {
+    "prompt_tokens": 210,
+    "completion_tokens": 554,
+    "total_tokens": 764,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 540,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{277}"
+  },
+  {
+   "id": "2026-1",
+   "sample": 2,
+   "answer": "277",
+   "got": "277",
+   "correct": true,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 210,
+    "completion_tokens": 642,
+    "total_tokens": 852,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 634,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{277}"
+  },
+  {
+   "id": "2026-1",
+   "sample": 3,
+   "answer": "277",
+   "got": "277",
+   "correct": true,
+   "seconds": 9,
+   "usage": {
+    "prompt_tokens": 210,
+    "completion_tokens": 707,
+    "total_tokens": 917,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 694,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{277}"
+  },
+  {
+   "id": "2026-2",
+   "sample": 0,
+   "answer": "62",
+   "got": "62",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 129,
+    "completion_tokens": 2066,
+    "total_tokens": 2195,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1762,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\nFor a fixed \\(S\\), the number of \\(k\\)-tuples of positive integers summing to \\(S\\) is \\(\\binom{S-1}{k-1}\\). Summing over \\(k=1,\\dots,S\\) gives \\(2^{S-1}\\).\n\nNow \\(m=1,3,5,7,9\\) give \\(S=6,5,4,3,2\\), respectively. Hence the total count is\n\n\\[\n2^5+2^4+2^3+2^2+2^1=32+16+8+4+2=62.\n\\]\n\n\\[\n\\boxed{62}\n\\]"
+  },
+  {
+   "id": "2026-2",
+   "sample": 1,
+   "answer": "62",
+   "got": "62",
+   "correct": true,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 129,
+    "completion_tokens": 1830,
+    "total_tokens": 1959,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1613,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": ",6\\}\\).\n\nFor each such \\(A\\), the left half can be any composition of \\(A\\) into positive digits, and since \\(A\\le 6\\), all parts are automatically \\(\\le 9\\). The number of compositions of \\(A\\) is \\(2^{A-1}\\). Therefore the total count is\n\n\\[\n2^1+2^2+2^3+2^4+2^5=2+4+8+16+32=62.\n\\]\n\n\\[\n\\boxed{62}\n\\]"
+  },
+  {
+   "id": "2026-2",
+   "sample": 2,
+   "answer": "62",
+   "got": "62",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 129,
+    "completion_tokens": 2419,
+    "total_tokens": 2548,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2412,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{62}"
+  },
+  {
+   "id": "2026-2",
+   "sample": 3,
+   "answer": "62",
+   "got": "62",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 129,
+    "completion_tokens": 1327,
+    "total_tokens": 1456,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1317,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{62}"
+  },
+  {
+   "id": "2026-3",
+   "sample": 0,
+   "answer": "79",
+   "got": "79",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 181,
+    "completion_tokens": 3079,
+    "total_tokens": 3260,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2773,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "2\\le (R-r)^2\n\\]\n\n\\[\nd^2\\le R^2-2Rr=200^2-2(200)(42)=23200.\n\\]\n\nSo the feasible region is a disk of radius squared \\(23200\\). The original disk has radius squared \\(200^2=40000\\). Hence the area ratio is\n\n\\[\n\\frac{23200}{40000}=\\frac{29}{50}.\n\\]\n\nThus \\(p=29,\\ q=50\\), so \\(p+q=79\\).\n\n\\[\n\\boxed{79}\n\\]"
+  },
+  {
+   "id": "2026-3",
+   "sample": 1,
+   "answer": "79",
+   "got": "79",
+   "correct": true,
+   "seconds": 8,
+   "usage": {
+    "prompt_tokens": 181,
+    "completion_tokens": 3106,
+    "total_tokens": 3287,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3092,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{79}"
+  },
+  {
+   "id": "2026-3",
+   "sample": 2,
+   "answer": "79",
+   "got": "79",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 181,
+    "completion_tokens": 1732,
+    "total_tokens": 1913,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1720,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{79}"
+  },
+  {
+   "id": "2026-3",
+   "sample": 3,
+   "answer": "79",
+   "got": "79",
+   "correct": true,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 181,
+    "completion_tokens": 2357,
+    "total_tokens": 2538,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2346,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{79}"
+  },
+  {
+   "id": "2026-4",
+   "sample": 0,
+   "answer": "70",
+   "got": "70",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 96,
+    "completion_tokens": 2816,
+    "total_tokens": 2912,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2542,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "ct factors \\(\\ge 2\\).\n\nThere are \\(101\\) integers from \\(1\\) to \\(101\\). Primes \\(\\le 101\\): \\(26\\). Also \\(1\\) is neither prime nor composite, so composites count is\n\n\\[\n101-26-1=74.\n\\]\n\nPrime squares \\(\\le 101\\):\n\n\\[\n4,9,25,49,\n\\]\n\nfour of them. Hence the count is\n\n\\[\n74-4=70.\n\\]\n\n\\[\n\\boxed{70}\n\\]"
+  },
+  {
+   "id": "2026-4",
+   "sample": 1,
+   "answer": "70",
+   "got": "70",
+   "correct": true,
+   "seconds": 13,
+   "usage": {
+    "prompt_tokens": 96,
+    "completion_tokens": 6305,
+    "total_tokens": 6401,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6291,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{70}"
+  },
+  {
+   "id": "2026-4",
+   "sample": 2,
+   "answer": "70",
+   "got": "70",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 96,
+    "completion_tokens": 2753,
+    "total_tokens": 2849,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2739,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{70}"
+  },
+  {
+   "id": "2026-4",
+   "sample": 3,
+   "answer": "70",
+   "got": "70",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 96,
+    "completion_tokens": 2923,
+    "total_tokens": 3019,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2911,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{70}"
+  },
+  {
+   "id": "2026-5",
+   "sample": 0,
+   "answer": "65",
+   "got": "65",
+   "correct": true,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 196,
+    "completion_tokens": 1864,
+    "total_tokens": 2060,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1591,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": ") in complex form, so\n\\[\nA-B'=1-(e^{i\\theta}-1)=2-e^{i\\theta}.\n\\]\nThus\n\\[\nAB'^2=|2-e^{i\\theta}|^2=5-4\\cos\\theta.\n\\]\nGiven \\(AB'=\\frac43\\),\n\\[\n5-4\\cos\\theta=\\frac{16}{9}\n\\]\nso\n\\[\n4\\cos\\theta=5-\\frac{16}{9}=\\frac{29}{9},\n\\qquad\n\\cos\\theta=\\frac{29}{36}.\n\\]\nTherefore \\(m+n=29+36=65\\).\n\n\\[\n\\boxed{65}\n\\]"
+  },
+  {
+   "id": "2026-5",
+   "sample": 1,
+   "answer": "65",
+   "got": "65",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 196,
+    "completion_tokens": 1015,
+    "total_tokens": 1211,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 696,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": ",\\sin\\theta).\n\\]\n\nThen\n\n\\[\nAB'^2=(\\cos\\theta-1-1)^2+\\sin^2\\theta\n=(\\cos\\theta-2)^2+\\sin^2\\theta\n=5-4\\cos\\theta.\n\\]\n\nGiven \\(AB'=\\frac43\\),\n\n\\[\n5-4\\cos\\theta=\\frac{16}{9}.\n\\]\n\nSo\n\n\\[\n4\\cos\\theta=5-\\frac{16}{9}=\\frac{29}{9},\n\\qquad\n\\cos\\theta=\\frac{29}{36}.\n\\]\n\nThus \\(m+n=29+36=65\\).\n\n\\[\n\\boxed{65}\n\\]"
+  },
+  {
+   "id": "2026-5",
+   "sample": 2,
+   "answer": "65",
+   "got": "65",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 196,
+    "completion_tokens": 1134,
+    "total_tokens": 1330,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1127,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{65}"
+  },
+  {
+   "id": "2026-5",
+   "sample": 3,
+   "answer": "65",
+   "got": "65",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 196,
+    "completion_tokens": 1161,
+    "total_tokens": 1357,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 934,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\) about \\(A'\\) gives\n\\[\nB'=A'-R_{-\\theta}A'=(\\cos\\theta-1,\\sin\\theta).\n\\]\nThus\n\\[\nAB'^2=(\\cos\\theta-2)^2+\\sin^2\\theta=5-4\\cos\\theta.\n\\]\nGiven \\(AB'=\\frac43\\),\n\\[\n5-4\\cos\\theta=\\frac{16}{9}\n\\implies 4\\cos\\theta=\\frac{29}{9}\n\\implies \\cos\\theta=\\frac{29}{36}.\n\\]\nSo \\(m+n=29+36=65\\).\n\n\\[\n\\boxed{65}\n\\]"
+  },
+  {
+   "id": "2026-6",
+   "sample": 0,
+   "answer": "441",
+   "got": "441",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 112,
+    "completion_tokens": 1374,
+    "total_tokens": 1486,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1013,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": ",t_2\\), then \\(t_1+t_2=20\\). Hence the product of all positive \\(x\\)-values is\n\n\\[\n2026^{t_1}\\cdot 2026^{t_2}=2026^{20}.\n\\]\n\nNow\n\n\\[\n2026=2\\cdot 1013,\n\\]\n\nand \\(1013\\) is prime. So\n\n\\[\n2026^{20}=2^{20}\\cdot 1013^{20}.\n\\]\n\nThe number of positive divisors is\n\n\\[\n(20+1)(20+1)=441.\n\\]\n\n\\[\n\\boxed{441}\n\\]"
+  },
+  {
+   "id": "2026-6",
+   "sample": 1,
+   "answer": "441",
+   "got": "441",
+   "correct": true,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 112,
+    "completion_tokens": 1996,
+    "total_tokens": 2108,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1714,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "en \\(t_1+t_2=20\\). Thus the product of the corresponding \\(x\\)-values is\n\n\\[\nb^{t_1}\\cdot b^{t_2}=b^{20}=2026^{20}.\n\\]\n\nNow\n\n\\[\n2026=2\\cdot 1013,\n\\]\n\nand \\(1013\\) is prime. Hence\n\n\\[\n2026^{20}=2^{20}\\cdot 1013^{20},\n\\]\n\nwhose number of positive divisors is\n\n\\[\n(20+1)(20+1)=441.\n\\]\n\n\\[\n\\boxed{441}\n\\]"
+  },
+  {
+   "id": "2026-6",
+   "sample": 2,
+   "answer": "441",
+   "got": "441",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 112,
+    "completion_tokens": 1320,
+    "total_tokens": 1432,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1310,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{441}"
+  },
+  {
+   "id": "2026-6",
+   "sample": 3,
+   "answer": "441",
+   "got": "441",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 112,
+    "completion_tokens": 1186,
+    "total_tokens": 1298,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1174,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{441}"
+  },
+  {
+   "id": "2026-7",
+   "sample": 0,
+   "answer": "396",
+   "got": "396",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 1559,
+    "total_tokens": 1687,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1545,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{396}"
+  },
+  {
+   "id": "2026-7",
+   "sample": 1,
+   "answer": "396",
+   "got": "336",
+   "correct": false,
+   "seconds": 2,
+   "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 944,
+    "total_tokens": 1072,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 936,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{336}"
+  },
+  {
+   "id": "2026-7",
+   "sample": 2,
+   "answer": "396",
+   "got": "396",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 1898,
+    "total_tokens": 2026,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1808,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "We need count permutations \\(\\pi\\in S_6\\) such that \\(\\pi^6=\\mathrm{id}\\), i.e. permutations whose cycle lengths have lcm dividing \\(6\\). Allowed cycle types are partitions of \\(6\\) using parts \\(1,2,3,6\\). Summing their counts gives \\(396\\).\n\n\\[\n\\boxed{396}\n\\]"
+  },
+  {
+   "id": "2026-7",
+   "sample": 3,
+   "answer": "396",
+   "got": "396",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 1612,
+    "total_tokens": 1740,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1597,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{396}"
+  },
+  {
+   "id": "2026-8",
+   "sample": 0,
+   "answer": "244",
+   "got": "244",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 116,
+    "completion_tokens": 1399,
+    "total_tokens": 1515,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1384,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{244}"
+  },
+  {
+   "id": "2026-8",
+   "sample": 1,
+   "answer": "244",
+   "got": "244",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 116,
+    "completion_tokens": 1627,
+    "total_tokens": 1743,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1281,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "d\\): among \\(0,\\dots,17\\), there are \\(9\\) evens and \\(9\\) odds.\n\n- If \\(b\\) even: \\(a\\) even and \\(d\\) odd: \\(9^3\\) choices.\n- If \\(b\\) odd: \\(a\\) odd and \\(d\\) even: \\(9^3\\) choices.\n\nTotal triples: \\(2\\cdot 9^3=1458\\). Times \\(18\\) gives\n\\[\nN=26244.\n\\]\nThus \\(N\\bmod 1000=244\\).\n\n\\[\n\\boxed{244}\n\\]"
+  },
+  {
+   "id": "2026-8",
+   "sample": 2,
+   "answer": "244",
+   "got": "244",
+   "correct": true,
+   "seconds": 3,
+   "usage": {
+    "prompt_tokens": 116,
+    "completion_tokens": 1277,
+    "total_tokens": 1393,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1263,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{244}"
+  },
+  {
+   "id": "2026-8",
+   "sample": 3,
+   "answer": "244",
+   "got": "244",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 116,
+    "completion_tokens": 2055,
+    "total_tokens": 2171,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1732,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\n\nThe exponent \\(c\\) for \\(13\\) is unrestricted: \\(18\\) choices.\n\nFor each of the \\(18\\) choices of \\(b\\), there are \\(9\\) choices of \\(a\\) with the same parity and \\(9\\) choices of \\(t\\) with opposite parity. Thus\n\n\\[\nN=18\\cdot 9\\cdot 9\\cdot 18=26244.\n\\]\n\nSo\n\n\\[\nN\\bmod 1000=244.\n\\]\n\n\\(\\boxed{244}\\)"
+  },
+  {
+   "id": "2026-9",
+   "sample": 0,
+   "answer": "29",
+   "got": "29",
+   "correct": true,
+   "seconds": 30,
+   "usage": {
+    "prompt_tokens": 236,
+    "completion_tokens": 10792,
+    "total_tokens": 11028,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 10779,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{29}"
+  },
+  {
+   "id": "2026-9",
+   "sample": 1,
+   "answer": "29",
+   "got": "29",
+   "correct": true,
+   "seconds": 32,
+   "usage": {
+    "prompt_tokens": 236,
+    "completion_tokens": 11279,
+    "total_tokens": 11515,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 10989,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "h such pair, choose its common face in \\(6\\) ways and injectively place the remaining four stickers on the other five faces in \\(5\\cdot4\\cdot3\\cdot2=120\\) ways. Thus the numerator is\n\n\\[\n9\\cdot 6\\cdot 120=6480.\n\\]\n\nSo\n\n\\[\np=\\frac{6480}{14400}=\\frac{9}{20}.\n\\]\n\nThus \\(m+n=9+20=29\\).\n\n\\[\n\\boxed{29}\n\\]"
+  },
+  {
+   "id": "2026-9",
+   "sample": 2,
+   "answer": "29",
+   "got": "29",
+   "correct": true,
+   "seconds": 21,
+   "usage": {
+    "prompt_tokens": 236,
+    "completion_tokens": 8026,
+    "total_tokens": 8262,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 8014,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{29}"
+  },
+  {
+   "id": "2026-9",
+   "sample": 3,
+   "answer": "29",
+   "got": "29",
+   "correct": true,
+   "seconds": 24,
+   "usage": {
+    "prompt_tokens": 236,
+    "completion_tokens": 9048,
+    "total_tokens": 9284,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 9037,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{29}"
+  },
+  {
+   "id": "2026-10",
+   "sample": 0,
+   "answer": "156",
+   "got": "156",
+   "correct": true,
+   "seconds": 15,
+   "usage": {
+    "prompt_tokens": 165,
+    "completion_tokens": 8136,
+    "total_tokens": 8301,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 8128,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{156}"
+  },
+  {
+   "id": "2026-10",
+   "sample": 1,
+   "answer": "156",
+   "got": "156",
+   "correct": true,
+   "seconds": 14,
+   "usage": {
+    "prompt_tokens": 165,
+    "completion_tokens": 7594,
+    "total_tokens": 7759,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7585,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{156}"
+  },
+  {
+   "id": "2026-10",
+   "sample": 2,
+   "answer": "156",
+   "got": "156",
+   "correct": true,
+   "seconds": 15,
+   "usage": {
+    "prompt_tokens": 165,
+    "completion_tokens": 7820,
+    "total_tokens": 7985,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7805,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{156}"
+  },
+  {
+   "id": "2026-10",
+   "sample": 3,
+   "answer": "156",
+   "got": "156",
+   "correct": true,
+   "seconds": 62,
+   "usage": {
+    "prompt_tokens": 165,
+    "completion_tokens": 7159,
+    "total_tokens": 7324,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7151,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{156}"
+  },
+  {
+   "id": "2026-11",
+   "sample": 0,
+   "answer": "896",
+   "got": "896",
+   "correct": true,
+   "seconds": 112,
+   "usage": {
+    "prompt_tokens": 216,
+    "completion_tokens": 28880,
+    "total_tokens": 29096,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 28467,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "19+\\cdots+30)+2(31+32)\n=4\\cdot 171+3\\cdot 294+2\\cdot 63\n=684+882+126=1692.\n\\]\n\nWhite weighted sum:\n\\[\n2(33+34)+3(35+\\cdots+46)+4(47+\\cdots+64)\n=2\\cdot 67+3\\cdot 486+4\\cdot 999\n=134+1458+3996=5588.\n\\]\n\nThus\n\n\\[\nM_{\\max}=5588-1692=3896.\n\\]\n\nThe remainder upon division by \\(1000\\) is\n\n\\[\n\\boxed{896}\n\\]"
+  },
+  {
+   "id": "2026-11",
+   "sample": 1,
+   "answer": "896",
+   "got": "896",
+   "correct": true,
+   "seconds": 44,
+   "usage": {
+    "prompt_tokens": 216,
+    "completion_tokens": 15657,
+    "total_tokens": 15873,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 15642,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{896}"
+  },
+  {
+   "id": "2026-11",
+   "sample": 2,
+   "answer": "896",
+   "got": "896",
+   "correct": true,
+   "seconds": 44,
+   "usage": {
+    "prompt_tokens": 216,
+    "completion_tokens": 15237,
+    "total_tokens": 15453,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 14864,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "s}\n\\]\n\nand \\(b_{\\max}(t)=b_{\\max}(64-t)\\) for \\(t>32\\).\n\nThus\n\n\\[\nM_{\\max}=\\sum_{t=1}^{63} b_{\\max}(t).\n\\]\n\nComputing:\n\n\\[\n\\sum_{t=1}^{32} b_{\\max}(t)=2004,\\qquad\n\\sum_{t=33}^{63} b_{\\max}(t)=1892,\n\\]\n\nso\n\n\\[\nM_{\\max}=2004+1892=3896.\n\\]\n\nThe remainder upon division by \\(1000\\) is\n\n\\[\n\\boxed{896}.\n\\]"
+  },
+  {
+   "id": "2026-11",
+   "sample": 3,
+   "answer": "896",
+   "got": "896",
+   "correct": true,
+   "seconds": 51,
+   "usage": {
+    "prompt_tokens": 216,
+    "completion_tokens": 18468,
+    "total_tokens": 18684,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 18454,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{896}"
+  },
+  {
+   "id": "2026-12",
+   "sample": 0,
+   "answer": "161",
+   "got": "161",
+   "correct": true,
+   "seconds": 17,
+   "usage": {
+    "prompt_tokens": 240,
+    "completion_tokens": 6749,
+    "total_tokens": 6989,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6741,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{161}"
+  },
+  {
+   "id": "2026-12",
+   "sample": 1,
+   "answer": "161",
+   "got": "161",
+   "correct": true,
+   "seconds": 15,
+   "usage": {
+    "prompt_tokens": 240,
+    "completion_tokens": 7211,
+    "total_tokens": 7451,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6832,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": " \\left(\\frac{42}{13},\\frac{124}{39},r\\right)\n\\]\ncoplanar. Setting the determinant to zero:\n\\[\n\\begin{vmatrix}\n6&0&1\\\\\n0&4&2\\\\\n\\frac{42}{13}&\\frac{124}{39}&r-1\n\\end{vmatrix}=0\n\\]\ngives\n\\[\n24r-24-\\frac{664}{13}=0\n\\]\nso\n\\[\nr=\\frac{976}{312}=\\frac{122}{39}.\n\\]\nThus \\(m+n=122+39=161\\).\n\n\\[\n\\boxed{161}\n\\]"
+  },
+  {
+   "id": "2026-12",
+   "sample": 2,
+   "answer": "161",
+   "got": "161",
+   "correct": true,
+   "seconds": 12,
+   "usage": {
+    "prompt_tokens": 240,
+    "completion_tokens": 5612,
+    "total_tokens": 5852,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5597,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{161}"
+  },
+  {
+   "id": "2026-12",
+   "sample": 3,
+   "answer": "161",
+   "got": "161",
+   "correct": true,
+   "seconds": 14,
+   "usage": {
+    "prompt_tokens": 240,
+    "completion_tokens": 6196,
+    "total_tokens": 6436,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6187,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{161}"
+  },
+  {
+   "id": "2026-13",
+   "sample": 0,
+   "answer": "39",
+   "got": "39",
+   "correct": true,
+   "seconds": 10,
+   "usage": {
+    "prompt_tokens": 234,
+    "completion_tokens": 5274,
+    "total_tokens": 5508,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5001,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "+443\\), so \\(19+443=462\\).\n\nSince \\(462<502\\), for \\(0\\le r\\le 462\\) this is just \\(\\binom{462}{r}\\), which is not divisible by \\(503\\) because \\(462<503\\). For \\(463\\le r\\le 501\\), the sum is empty, so \\(S_r\\equiv 0\\pmod{503}\\).\n\nThe number of such integers is\n\n\\[\n501-463+1=39.\n\\]\n\n\\[\n\\boxed{39}\n\\]"
+  },
+  {
+   "id": "2026-13",
+   "sample": 1,
+   "answer": "39",
+   "got": "39",
+   "correct": true,
+   "seconds": 55,
+   "usage": {
+    "prompt_tokens": 234,
+    "completion_tokens": 23268,
+    "total_tokens": 23502,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 23253,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{39}"
+  },
+  {
+   "id": "2026-13",
+   "sample": 2,
+   "answer": "39",
+   "got": "39",
+   "correct": true,
+   "seconds": 11,
+   "usage": {
+    "prompt_tokens": 234,
+    "completion_tokens": 4596,
+    "total_tokens": 4830,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 4283,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": ", this is just \\(\\binom{462}{r}\\) for \\(0\\le r\\le 462\\), and \\(0\\) for \\(463\\le r\\le 501\\). For \\(0\\le r\\le 462\\), \\(\\binom{462}{r}\\) is not divisible by \\(503\\) because \\(462<503\\). Thus the multiples occur exactly for\n\\[\nr=463,464,\\dots,501,\n\\]\nwhich is \\(501-463+1=39\\) integers.\n\n\\[\n\\boxed{39}\n\\]"
+  },
+  {
+   "id": "2026-13",
+   "sample": 3,
+   "answer": "39",
+   "got": "39",
+   "correct": true,
+   "seconds": 18,
+   "usage": {
+    "prompt_tokens": 234,
+    "completion_tokens": 8327,
+    "total_tokens": 8561,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7784,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "or \\(0\\le r\\le 462\\), and\n\\[\nS_r\\equiv 0\\pmod{503}\n\\]\nfor \\(463\\le r\\le 501\\).\n\nFor \\(0\\le r\\le 462\\), we have \\(462<503\\), so \\(\\binom{462}{r}\\not\\equiv 0\\pmod{503}\\). Hence the multiples of \\(503\\) occur exactly for\n\\[\nr=463,464,\\dots,501,\n\\]\nwhich is\n\\[\n501-463+1=39\n\\]\nintegers.\n\n\\[\n\\boxed{39}\n\\]"
+  },
+  {
+   "id": "2026-14",
+   "sample": 0,
+   "answer": "681",
+   "got": "681",
+   "correct": true,
+   "seconds": 15,
+   "usage": {
+    "prompt_tokens": 151,
+    "completion_tokens": 6945,
+    "total_tokens": 7096,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6937,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{681}"
+  },
+  {
+   "id": "2026-14",
+   "sample": 1,
+   "answer": "681",
+   "got": "681",
+   "correct": true,
+   "seconds": 13,
+   "usage": {
+    "prompt_tokens": 151,
+    "completion_tokens": 5767,
+    "total_tokens": 5918,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5405,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "_1+dS_2),\n\\]\n\nwhere \\(d=\\cos 144^\\circ=-\\frac{\\sqrt5+1}{4}\\) and \\(S_2=\\sum a_i a_{i+2}\\). Solving yields\n\n\\[\nS_2=246(\\sqrt5-1).\n\\]\n\nThus\n\n\\[\nP^2=(\\sum a_i)^2=\\sum a_i^2+2(S_1+S_2)\n=308+2\\bigl(92(\\sqrt5+1)+246(\\sqrt5-1)\\bigr)\n=676\\sqrt5.\n\\]\n\nSo \\(m=676,\\ n=5\\), giving \\(m+n=681\\).\n\n\\[\n\\boxed{681}\n\\]"
+  },
+  {
+   "id": "2026-14",
+   "sample": 2,
+   "answer": "681",
+   "got": "681",
+   "correct": true,
+   "seconds": 12,
+   "usage": {
+    "prompt_tokens": 151,
+    "completion_tokens": 5503,
+    "total_tokens": 5654,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5494,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{681}"
+  },
+  {
+   "id": "2026-14",
+   "sample": 3,
+   "answer": "681",
+   "got": "681",
+   "correct": true,
+   "seconds": 10,
+   "usage": {
+    "prompt_tokens": 151,
+    "completion_tokens": 4749,
+    "total_tokens": 4900,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 4296,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "s144^\\circ\\,A_2=0.\n\\]\nWith \\(\\cos144^\\circ=-(\\sqrt5+1)/4\\), this yields\n\\[\nA_2=246(\\sqrt5-1).\n\\]\n\nThe perimeter squared is\n\\[\nP^2=(\\sum a_i)^2=A_0+2(A_1+A_2).\n\\]\nSubstitute:\n\\[\nP^2=308+2\\bigl(92(\\sqrt5+1)+246(\\sqrt5-1)\\bigr)\n=676\\sqrt5.\n\\]\nSo \\(m=676\\), \\(n=5\\), and\n\\[\nm+n=681.\n\\]\n\n\\[\n\\boxed{681}\n\\]"
+  },
+  {
+   "id": "2026-15",
+   "sample": 0,
+   "answer": "83",
+   "got": null,
+   "correct": false,
+   "error": "HTTP 524 {\"error\":{\"message\":\"Upstream model provider is temporarily unavailable. Please try again in a moment.\",\"type\":\"server_error\"}}",
+   "seconds": 497
+  },
+  {
+   "id": "2026-15",
+   "sample": 1,
+   "answer": "83",
+   "got": null,
+   "correct": false,
+   "error": "HTTP 524 {\"error\":{\"message\":\"Upstream model provider is temporarily unavailable. Please try again in a moment.\",\"type\":\"server_error\"}}",
+   "seconds": 496
+  },
+  {
+   "id": "2026-15",
+   "sample": 2,
+   "answer": "83",
+   "got": null,
+   "correct": false,
+   "error": "HTTP 524 {\"error\":{\"message\":\"Upstream model provider is temporarily unavailable. Please try again in a moment.\",\"type\":\"server_error\"}}",
+   "seconds": 496
+  },
+  {
+   "id": "2026-15",
+   "sample": 3,
+   "answer": "83",
+   "got": "1",
+   "correct": false,
+   "seconds": 435,
+   "usage": {
+    "prompt_tokens": 309,
+    "completion_tokens": 33491,
+    "total_tokens": 33800,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 33484,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{1}"
+  },
+  {
+   "id": "2026-16",
+   "sample": 0,
+   "answer": "178",
+   "got": "178",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 102,
+    "completion_tokens": 1431,
+    "total_tokens": 1533,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1423,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{178}"
+  },
+  {
+   "id": "2026-16",
+   "sample": 1,
+   "answer": "178",
+   "got": "178",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 102,
+    "completion_tokens": 1290,
+    "total_tokens": 1392,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1275,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{178}"
+  },
+  {
+   "id": "2026-16",
+   "sample": 2,
+   "answer": "178",
+   "got": "178",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 102,
+    "completion_tokens": 1403,
+    "total_tokens": 1505,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1389,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{178}"
+  },
+  {
+   "id": "2026-16",
+   "sample": 3,
+   "answer": "178",
+   "got": "178",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 102,
+    "completion_tokens": 2153,
+    "total_tokens": 2255,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2141,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{178}"
+  },
+  {
+   "id": "2026-17",
+   "sample": 0,
+   "answer": "243",
+   "got": "243",
+   "correct": true,
+   "seconds": 22,
+   "usage": {
+    "prompt_tokens": 413,
+    "completion_tokens": 6763,
+    "total_tokens": 7176,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6748,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{243}"
+  },
+  {
+   "id": "2026-17",
+   "sample": 1,
+   "answer": "243",
+   "got": "243",
+   "correct": true,
+   "seconds": 17,
+   "usage": {
+    "prompt_tokens": 413,
+    "completion_tokens": 6145,
+    "total_tokens": 6558,
+    "prompt_tokens_details": {
+     "cached_tokens": 384,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5835,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "0=1\\), we get\n\\[\na_{10}+b_{10}=3^{10}.\n\\]\nAfter 10 squares, if the bug arrives at the lower vertex, it may use the final vertical segment to reach \\(B\\); if it arrives at the upper vertex, it is already at \\(B\\). Hence\n\\[\nN=3^{10}.\n\\]\nTherefore\n\\[\n\\sqrt N=\\sqrt{3^{10}}=3^5=243.\n\\]\n\n\\[\n\\boxed{243}\n\\]"
+  },
+  {
+   "id": "2026-17",
+   "sample": 2,
+   "answer": "243",
+   "got": "243",
+   "correct": true,
+   "seconds": 18,
+   "usage": {
+    "prompt_tokens": 413,
+    "completion_tokens": 6627,
+    "total_tokens": 7040,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6482,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "ly on the bottom or top row:\n\n- From the bottom: bottom edge, diagonal, or up then top edge.\n- From the top: top edge, down then bottom edge, or down then diagonal.\n\nThus each square gives 3 independent choices, so\n\n\\[\nN=3^{10}.\n\\]\n\nTherefore,\n\n\\[\n\\sqrt N=\\sqrt{3^{10}}=3^5=243.\n\\]\n\n\\[\n\\boxed{243}\n\\]"
+  },
+  {
+   "id": "2026-17",
+   "sample": 3,
+   "answer": "243",
+   "got": "243",
+   "correct": true,
+   "seconds": 16,
+   "usage": {
+    "prompt_tokens": 413,
+    "completion_tokens": 5412,
+    "total_tokens": 5825,
+    "prompt_tokens_details": {
+     "cached_tokens": 384,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5402,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{243}"
+  },
+  {
+   "id": "2026-18",
+   "sample": 0,
+   "answer": "503",
+   "got": "503",
+   "correct": true,
+   "seconds": 24,
+   "usage": {
+    "prompt_tokens": 194,
+    "completion_tokens": 8514,
+    "total_tokens": 8708,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 8145,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "equire this to be a multiple of \\(16\\):\n\\[\n20x-164\\equiv 0 \\pmod{16}.\n\\]\nSince \\(20\\equiv 4\\) and \\(164\\equiv 4 \\pmod{16}\\),\n\\[\n4x-4\\equiv 0 \\pmod{16} \\implies x\\equiv 1 \\pmod 4.\n\\]\nAlso \\(x<2026\\). Thus valid \\(x\\) are\n\\[\n17,21,\\dots,2025.\n\\]\nCount:\n\\[\n\\frac{2025-17}{4}+1=503.\n\\]\n\n\\[\n\\boxed{503}\n\\]"
+  },
+  {
+   "id": "2026-18",
+   "sample": 1,
+   "answer": "503",
+   "got": "503",
+   "correct": true,
+   "seconds": 29,
+   "usage": {
+    "prompt_tokens": 194,
+    "completion_tokens": 9834,
+    "total_tokens": 10028,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 9497,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "{Area}=20a-164.\n\\]\nWe require \\(16\\mid (20a-164)\\). Modulo \\(16\\),\n\\[\n20a-164\\equiv 4a-4\\pmod{16},\n\\]\nso \\(4(a-1)\\equiv 0\\pmod{16}\\), hence\n\\[\na\\equiv 1\\pmod 4.\n\\]\nAlso \\(a>14\\), \\(a<2026\\). Thus\n\\[\na=17,21,\\dots,2025.\n\\]\nThe number of such values is\n\\[\n\\frac{2025-17}{4}+1=503.\n\\]\n\n\\[\n\\boxed{503}\n\\]"
+  },
+  {
+   "id": "2026-18",
+   "sample": 2,
+   "answer": "503",
+   "got": "503",
+   "correct": true,
+   "seconds": 31,
+   "usage": {
+    "prompt_tokens": 194,
+    "completion_tokens": 11633,
+    "total_tokens": 11827,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 11619,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{503}"
+  },
+  {
+   "id": "2026-18",
+   "sample": 3,
+   "answer": "503",
+   "got": "503",
+   "correct": true,
+   "seconds": 57,
+   "usage": {
+    "prompt_tokens": 194,
+    "completion_tokens": 19215,
+    "total_tokens": 19409,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 18937,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": " this to be a multiple of \\(16\\):\n\\[\n20m-164\\equiv 0 \\pmod{16}\n\\implies 4m-4\\equiv 0 \\pmod{16}\n\\implies m\\equiv 1 \\pmod 4.\n\\]\nAlso \\(m<2026\\) and \\(m>14\\). The smallest valid value is \\(17\\), and the largest is \\(2025\\). Hence the number of values is\n\\[\n\\frac{2025-17}{4}+1=503.\n\\]\n\n\\[\n\\boxed{503}\n\\]"
+  },
+  {
+   "id": "2026-19",
+   "sample": 0,
+   "answer": "279",
+   "got": "279",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 187,
+    "completion_tokens": 2730,
+    "total_tokens": 2917,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2541,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "atest digit is \\(9\\), then \\(b=10\\) and \\(f(n)=n\\). Count three-digit numbers with at least one \\(9\\):\n\\[\n900-8\\cdot 9\\cdot 9=252.\n\\]\nIf the greatest digit is at most \\(8\\), then the tens digit would need to be \\(A(10+r)\\ge 12\\), impossible. So no more.\n\nTotal:\n\\[\n9+18+252=279.\n\\]\n\n\\[\n\\boxed{279}\n\\]"
+  },
+  {
+   "id": "2026-19",
+   "sample": 1,
+   "answer": "279",
+   "got": "279",
+   "correct": true,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 187,
+    "completion_tokens": 1708,
+    "total_tokens": 1895,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1696,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{279}"
+  },
+  {
+   "id": "2026-19",
+   "sample": 2,
+   "answer": "279",
+   "got": "278",
+   "correct": false,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 187,
+    "completion_tokens": 1755,
+    "total_tokens": 1942,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1746,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{278}"
+  },
+  {
+   "id": "2026-19",
+   "sample": 3,
+   "answer": "279",
+   "got": "279",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 187,
+    "completion_tokens": 2478,
+    "total_tokens": 2665,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2469,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{279}"
+  },
+  {
+   "id": "2026-20",
+   "sample": 0,
+   "answer": "190",
+   "got": "190",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 149,
+    "completion_tokens": 2353,
+    "total_tokens": 2502,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2339,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{190}"
+  },
+  {
+   "id": "2026-20",
+   "sample": 1,
+   "answer": "190",
+   "got": "190",
+   "correct": true,
+   "seconds": 5,
+   "usage": {
+    "prompt_tokens": 149,
+    "completion_tokens": 2225,
+    "total_tokens": 2374,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1861,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "}\n\\]\n\nso\n\n\\[\n5(b-2)=3(r-4)\\implies 3r=5b+2.\n\\]\n\nAlso \\(r,b\\ge 7\\). Solving for integer \\(b\\) with \\(b\\equiv 2\\pmod 3\\), the smallest valid values are\n\n\\[\nb=8,11,14,17,20,\n\\]\n\ngiving\n\n\\[\nr=14,19,24,29,34,\n\\]\n\nand\n\n\\[\nn=r+b=22,30,38,46,54.\n\\]\n\nTheir sum is\n\n\\[\n22+30+38+46+54=190.\n\\]\n\n\\[\n\\boxed{190}\n\\]"
+  },
+  {
+   "id": "2026-20",
+   "sample": 2,
+   "answer": "190",
+   "got": "190",
+   "correct": true,
+   "seconds": 6,
+   "usage": {
+    "prompt_tokens": 149,
+    "completion_tokens": 3074,
+    "total_tokens": 3223,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2800,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "5b+2.\n\\]\n\nWith \\(n=r+b\\), this gives\n\n\\[\nr=\\frac{5n+2}{8},\\qquad b=\\frac{3n-2}{8}.\n\\]\n\nThus \\(n\\equiv 6\\pmod 8\\). Also need \\(r,b\\ge 7\\), so\n\n\\[\n\\frac{3n-2}{8}\\ge 7 \\implies n\\ge 22.\n\\]\n\nThe five least valid \\(n\\) are\n\n\\[\n22,30,38,46,54.\n\\]\n\nTheir sum is\n\n\\[\n22+30+38+46+54=190.\n\\]\n\n\\[\n\\boxed{190}\n\\]"
+  },
+  {
+   "id": "2026-20",
+   "sample": 3,
+   "answer": "190",
+   "got": "190",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 149,
+    "completion_tokens": 1720,
+    "total_tokens": 1869,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1712,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{190}"
+  },
+  {
+   "id": "2026-21",
+   "sample": 0,
+   "answer": "50",
+   "got": "50",
+   "correct": true,
+   "seconds": 4,
+   "usage": {
+    "prompt_tokens": 122,
+    "completion_tokens": 1503,
+    "total_tokens": 1625,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 1489,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{50}"
+  },
+  {
+   "id": "2026-21",
+   "sample": 1,
+   "answer": "50",
+   "got": "50",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 122,
+    "completion_tokens": 2982,
+    "total_tokens": 3104,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2648,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "1/u\\):\n\\[\n\\frac{u^2}{2}-41=-1 \\implies \\frac{u^2}{2}=40 \\implies u^2=80.\n\\]\nThen \\(y=38\\), and\n\\[\nr=\\sqrt{80+1^2}=9.\n\\]\n\nFor \\(u=0\\), the vertex is \\((0,-2)\\), and the center lies on the normal line, so\n\\[\nr=39-(-2)=41.\n\\]\n\nThus the distinct radii are \\(9\\) and \\(41\\), whose sum is\n\\[\n\\boxed{50}.\n\\]"
+  },
+  {
+   "id": "2026-21",
+   "sample": 2,
+   "answer": "50",
+   "got": "50",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 122,
+    "completion_tokens": 2662,
+    "total_tokens": 2784,
+    "prompt_tokens_details": {
+     "cached_tokens": 64,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2410,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "s when\n\\[\nu\\left(40-\\frac{u^2}{2}\\right)=0,\n\\]\nso \\(u=0\\) or \\(u^2=80\\).\n\n- If \\(u=0\\): point is \\((4,-2)\\), distance to \\((4,39)\\) is \\(41\\).\n- If \\(u^2=80\\): point has \\(y=38\\), and distance is \\(\\sqrt{80+1}=9\\).\n\nThus the possible radii are \\(9\\) and \\(41\\), whose sum is \\(50\\).\n\n\\[\n\\boxed{50}\n\\]"
+  },
+  {
+   "id": "2026-21",
+   "sample": 3,
+   "answer": "50",
+   "got": "50",
+   "correct": true,
+   "seconds": 9,
+   "usage": {
+    "prompt_tokens": 122,
+    "completion_tokens": 3227,
+    "total_tokens": 3349,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3219,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{50}"
+  },
+  {
+   "id": "2026-22",
+   "sample": 0,
+   "answer": "754",
+   "got": "754",
+   "correct": true,
+   "seconds": 8,
+   "usage": {
+    "prompt_tokens": 171,
+    "completion_tokens": 2439,
+    "total_tokens": 2610,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 2425,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{754}"
+  },
+  {
+   "id": "2026-22",
+   "sample": 1,
+   "answer": "754",
+   "got": "754",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 171,
+    "completion_tokens": 3080,
+    "total_tokens": 3251,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3071,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{754}"
+  },
+  {
+   "id": "2026-22",
+   "sample": 2,
+   "answer": "754",
+   "got": "754",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 171,
+    "completion_tokens": 3424,
+    "total_tokens": 3595,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3363,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "The probability is \\(\\frac{7}{54}\\), so \\(m=7,\\ n=54\\), and\n\n\\[\n100m+n=700+54=754.\n\\]\n\n\\[\n\\boxed{754}\n\\]"
+  },
+  {
+   "id": "2026-22",
+   "sample": 3,
+   "answer": "754",
+   "got": "754",
+   "correct": true,
+   "seconds": 9,
+   "usage": {
+    "prompt_tokens": 171,
+    "completion_tokens": 3711,
+    "total_tokens": 3882,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3702,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{754}"
+  },
+  {
+   "id": "2026-23",
+   "sample": 0,
+   "answer": "245",
+   "got": "245",
+   "correct": true,
+   "seconds": 16,
+   "usage": {
+    "prompt_tokens": 135,
+    "completion_tokens": 8299,
+    "total_tokens": 8434,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 8061,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\]\n\nand the perimeter ratio\n\n\\[\n\\frac{2a+b}{2x+b}=\\frac{125}{6}\n\\]\n\nbecomes\n\n\\[\n\\frac{m^3}{(m^2-2n^2)(m+2n)}=\\frac{125}{6}.\n\\]\n\nSolving gives \\((m,n)=(10,7)\\), so\n\n\\[\na=245d,\\quad b=10d,\\quad x=7d.\n\\]\n\nThe smallest positive integer \\(d\\) is \\(1\\), so the minimum \\(AB\\) is \\(245\\).\n\n\\[\n\\boxed{245}\n\\]"
+  },
+  {
+   "id": "2026-23",
+   "sample": 1,
+   "answer": "245",
+   "got": "245",
+   "correct": true,
+   "seconds": 11,
+   "usage": {
+    "prompt_tokens": 135,
+    "completion_tokens": 4776,
+    "total_tokens": 4911,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 4761,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{245}"
+  },
+  {
+   "id": "2026-23",
+   "sample": 2,
+   "answer": "245",
+   "got": "245",
+   "correct": true,
+   "seconds": 13,
+   "usage": {
+    "prompt_tokens": 135,
+    "completion_tokens": 6340,
+    "total_tokens": 6475,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5958,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "250r^2=(119+r)(12-2r)^2.\n\\]\nThis simplifies to\n\\[\n2r^3+89r^2-2784r+8568=0,\n\\]\nwhose root in \\((3,6)\\) is\n\\[\nr=\\frac72.\n\\]\nHence \\(u=\\frac72 n\\), so \\(n\\) must be even. Write \\(n=2k\\). Then\n\\[\nu=7k,\\qquad a=245k,\\qquad b=10k.\n\\]\nThe minimum occurs at \\(k=1\\), giving\n\\[\nAB=a=245.\n\\]\n\n\\[\n\\boxed{245}\n\\]"
+  },
+  {
+   "id": "2026-23",
+   "sample": 3,
+   "answer": "245",
+   "got": "245",
+   "correct": true,
+   "seconds": 14,
+   "usage": {
+    "prompt_tokens": 135,
+    "completion_tokens": 6542,
+    "total_tokens": 6677,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6177,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "2p^2)(q+2p)}=\\frac{125}{6}.\n\\]\n\nSolving yields the rational root \\(q/p=10/7\\), so \\(p=7,\\ q=10\\). Thus\n\n\\[\nL=49t,\\qquad n=2t,\\qquad u=\\frac{7}{5}t.\n\\]\n\nFor \\(u\\) to be an integer, \\(t\\) must be divisible by \\(5\\). The smallest such \\(t\\) is \\(5\\), giving\n\n\\[\nAB=L=49\\cdot 5=245.\n\\]\n\n\\[\n\\boxed{245}\n\\]"
+  },
+  {
+   "id": "2026-24",
+   "sample": 0,
+   "answer": "669",
+   "got": "669",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 3538,
+    "total_tokens": 3690,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3530,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{669}"
+  },
+  {
+   "id": "2026-24",
+   "sample": 1,
+   "answer": "669",
+   "got": "669",
+   "correct": true,
+   "seconds": 12,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 5467,
+    "total_tokens": 5619,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5164,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": " tail \\(T\\) is approximately \\(0.2828\\ldots\\), so \\(0<T<1\\), hence \\(\\lfloor 10^{100}S\\rfloor=\\sum_{m=1}^{100} d(m)10^{100-m}\\).\n\nModulo \\(1000\\), only the last three terms matter:\n\n\\[\nd(98)=6,\\quad d(99)=6,\\quad d(100)=9.\n\\]\n\nSo the remainder is\n\n\\[\n100\\cdot 6+10\\cdot 6+9=669.\n\\]\n\n\\[\n\\boxed{669}\n\\]"
+  },
+  {
+   "id": "2026-24",
+   "sample": 2,
+   "answer": "669",
+   "got": "669",
+   "correct": true,
+   "seconds": 9,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 3888,
+    "total_tokens": 4040,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3617,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": " d(n)10^{100-n}+T,\n\\]\nwhere \\(T\\) is a tail less than \\(1\\). Hence the floor is the integer sum, and modulo \\(1000\\) only the last three terms matter:\n\\[\nd(100)+10d(99)+100d(98).\n\\]\nNow\n\\[\nd(98)=6,\\quad d(99)=6,\\quad d(100)=9,\n\\]\nso the remainder is\n\\[\n9+10\\cdot6+100\\cdot6=669.\n\\]\n\n\\[\n\\boxed{669}\n\\]"
+  },
+  {
+   "id": "2026-24",
+   "sample": 3,
+   "answer": "669",
+   "got": "669",
+   "correct": true,
+   "seconds": 7,
+   "usage": {
+    "prompt_tokens": 152,
+    "completion_tokens": 3459,
+    "total_tokens": 3611,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 3451,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{669}"
+  },
+  {
+   "id": "2026-25",
+   "sample": 0,
+   "answer": "850",
+   "got": "850",
+   "correct": true,
+   "seconds": 15,
+   "usage": {
+    "prompt_tokens": 212,
+    "completion_tokens": 7228,
+    "total_tokens": 7440,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6825,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\frac{9k^2}{25}.\n\\]\n\nFor \\(AE,AF\\) to be integers, \\(25\\mid k^2\\), so \\(5\\mid k\\). Write \\(k=5a\\). Then\n\n\\[\nAE=200-8a^2,\\qquad AF=225-9a^2.\n\\]\n\nPositivity requires \\(a^2<25\\), so \\(a=1,2,3,4\\). Thus\n\n\\[\nBC=17k=85a \\in \\{85,170,255,340\\}.\n\\]\n\nTheir sum is\n\n\\[\n85+170+255+340=850.\n\\]\n\n\\[\n\\boxed{850}\n\\]"
+  },
+  {
+   "id": "2026-25",
+   "sample": 1,
+   "answer": "850",
+   "got": "850",
+   "correct": true,
+   "seconds": 9,
+   "usage": {
+    "prompt_tokens": 212,
+    "completion_tokens": 4532,
+    "total_tokens": 4744,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 4183,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "1k^2}{225}=225-\\frac{9k^2}{25}.\n\\]\n\nFor \\(AE,AF\\) to be positive integers, \\(k^2/25\\) must be integral enough, requiring \\(5\\mid k\\). Triangle inequalities give \\(2\\le k\\le 24\\), so\n\\[\nk=5,10,15,20.\n\\]\nThus\n\\[\nBC=17k\\in \\{85,170,255,340\\},\n\\]\nwhose sum is\n\\[\n85+170+255+340=850.\n\\]\n\n\\[\n\\boxed{850}\n\\]"
+  },
+  {
+   "id": "2026-25",
+   "sample": 2,
+   "answer": "850",
+   "got": "850",
+   "correct": true,
+   "seconds": 15,
+   "usage": {
+    "prompt_tokens": 212,
+    "completion_tokens": 6412,
+    "total_tokens": 6624,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6068,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "=200-AE\\),\n\n\\[\n(8t)^2=(200-AE)(200)\n\\]\n\nso\n\n\\[\nAE=200-\\frac{8t^2}{25}.\n\\]\n\nSimilarly,\n\n\\[\nAF=225-\\frac{9t^2}{25}.\n\\]\n\nFor both to be integers, \\(25\\mid t^2\\), hence \\(5\\mid t\\). Within range, \\(t=5,10,15,20\\). Thus\n\n\\[\nBC=85,170,255,340,\n\\]\n\nwhose sum is\n\n\\[\n85+170+255+340=850.\n\\]\n\n\\[\n\\boxed{850}\n\\]"
+  },
+  {
+   "id": "2026-25",
+   "sample": 3,
+   "answer": "850",
+   "got": "850",
+   "correct": true,
+   "seconds": 14,
+   "usage": {
+    "prompt_tokens": 212,
+    "completion_tokens": 6078,
+    "total_tokens": 6290,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 5710,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "rs, \\(25\\mid 8k^2\\) and \\(25\\mid 9k^2\\), hence \\(5\\mid k\\). Write \\(k=5t\\).\n\nTriangle inequality requires\n\n\\[\n25<17k<425,\n\\]\n\nand \\(E,F\\) on the segments requires \\(k<25\\). Thus\n\n\\[\nk\\in\\{5,10,15,20\\}.\n\\]\n\nSo\n\n\\[\nBC\\in\\{85,170,255,340\\}.\n\\]\n\nTheir sum is\n\n\\[\n85+170+255+340=850.\n\\]\n\n\\[\n\\boxed{850}\n\\]"
+  },
+  {
+   "id": "2026-26",
+   "sample": 0,
+   "answer": "132",
+   "got": "132",
+   "correct": true,
+   "seconds": 79,
+   "usage": {
+    "prompt_tokens": 165,
+    "completion_tokens": 12559,
+    "total_tokens": 12724,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 12548,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{132}"
+  },
+  {
+   "id": "2026-26",
+   "sample": 1,
+   "answer": "132",
+   "got": "132",
+   "correct": true,
+   "seconds": 19,
+   "usage": {
+    "prompt_tokens": 165,
+    "completion_tokens": 8381,
+    "total_tokens": 8546,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 8373,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{132}"
+  },
+  {
+   "id": "2026-26",
+   "sample": 2,
+   "answer": "132",
+   "got": "132",
+   "correct": true,
+   "seconds": 24,
+   "usage": {
+    "prompt_tokens": 165,
+    "completion_tokens": 10196,
+    "total_tokens": 10361,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 9915,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": " Squaring gives\n\n\\[\n(a+b+c)^2=4(ab+ac+bc).\n\\]\n\nSubstitute Vieta:\n\n\\[\n\\left(\\frac n6\\right)^2=4(n-11).\n\\]\n\nSo\n\n\\[\n\\frac{n^2}{36}=4n-44\n\\implies n^2-144n+1584=0.\n\\]\n\nThus\n\n\\[\nn=\\frac{144\\pm 120}{2}\\in\\{12,132\\}.\n\\]\n\nBoth give distinct roots, so the greatest valid integer is \\(132\\).\n\n\\[\n\\boxed{132}\n\\]"
+  },
+  {
+   "id": "2026-26",
+   "sample": 3,
+   "answer": "132",
+   "got": "132",
+   "correct": true,
+   "seconds": 18,
+   "usage": {
+    "prompt_tokens": 165,
+    "completion_tokens": 7626,
+    "total_tokens": 7791,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7625,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{132}"
+  },
+  {
+   "id": "2026-27",
+   "sample": 0,
+   "answer": "223",
+   "got": "223",
+   "correct": true,
+   "seconds": 21,
+   "usage": {
+    "prompt_tokens": 210,
+    "completion_tokens": 8406,
+    "total_tokens": 8616,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 8396,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{223}"
+  },
+  {
+   "id": "2026-27",
+   "sample": 1,
+   "answer": "223",
+   "got": "223",
+   "correct": true,
+   "seconds": 23,
+   "usage": {
+    "prompt_tokens": 210,
+    "completion_tokens": 9834,
+    "total_tokens": 10044,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 9609,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "9,12),\\ D=(0,-9,12).\n\\]\n\nThe circumcenter is\n\n\\[\nS=(0,0,\\tfrac{25}{3}),\n\\]\n\nand the incenter (center of the insphere) is\n\n\\[\nR=(0,0,\\tfrac{75}{16}).\n\\]\n\nThus\n\n\\[\nRS=\\left|\\frac{25}{3}-\\frac{75}{16}\\right|\n=\\left|\\frac{400-225}{48}\\right|\n=\\frac{175}{48}.\n\\]\n\nSo \\(m+n=175+48=223\\).\n\n\\[\n\\boxed{223}\n\\]"
+  },
+  {
+   "id": "2026-27",
+   "sample": 2,
+   "answer": "223",
+   "got": "223",
+   "correct": true,
+   "seconds": 19,
+   "usage": {
+    "prompt_tokens": 210,
+    "completion_tokens": 8027,
+    "total_tokens": 8237,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 7829,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "dges \\(5\\sqrt{10}\\). Place\n\\[\nA=(-5,0,0),\\ B=(5,0,0),\\ C=(0,12,9),\\ D=(0,12,-9).\n\\]\nThen the circumcenter is\n\\[\nS=(0,\\tfrac{25}{3},0),\n\\]\nand the incenter is\n\\[\nR=(0,\\tfrac{75}{16},0).\n\\]\nThus\n\\[\nRS=\\left|\\frac{25}{3}-\\frac{75}{16}\\right|\n=\\frac{175}{48}.\n\\]\nSo \\(m+n=175+48=223\\).\n\n\\[\n\\boxed{223}\n\\]"
+  },
+  {
+   "id": "2026-27",
+   "sample": 3,
+   "answer": "223",
+   "got": "223",
+   "correct": true,
+   "seconds": 27,
+   "usage": {
+    "prompt_tokens": 210,
+    "completion_tokens": 11006,
+    "total_tokens": 11216,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 10994,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{223}"
+  },
+  {
+   "id": "2026-28",
+   "sample": 0,
+   "answer": "107",
+   "got": "107",
+   "correct": true,
+   "seconds": 87,
+   "usage": {
+    "prompt_tokens": 191,
+    "completion_tokens": 28924,
+    "total_tokens": 29115,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 28916,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{107}"
+  },
+  {
+   "id": "2026-28",
+   "sample": 1,
+   "answer": "107",
+   "got": "107",
+   "correct": true,
+   "seconds": 63,
+   "usage": {
+    "prompt_tokens": 191,
+    "completion_tokens": 22213,
+    "total_tokens": 22404,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 22205,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{107}"
+  },
+  {
+   "id": "2026-28",
+   "sample": 2,
+   "answer": "107",
+   "got": "107",
+   "correct": true,
+   "seconds": 44,
+   "usage": {
+    "prompt_tokens": 191,
+    "completion_tokens": 14169,
+    "total_tokens": 14360,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 14161,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{107}"
+  },
+  {
+   "id": "2026-28",
+   "sample": 3,
+   "answer": "107",
+   "got": "107",
+   "correct": true,
+   "seconds": 52,
+   "usage": {
+    "prompt_tokens": 191,
+    "completion_tokens": 16978,
+    "total_tokens": 17169,
+    "prompt_tokens_details": {
+     "cached_tokens": 128,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 16754,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "that\n\\[\n\\prod (k_i+1)=4040,\n\\]\nminimizing \\(\\sum k_i=\\sum((k_i+1)-1)\\).\n\nFactor\n\\[\n4040=2^3\\cdot 5\\cdot 101.\n\\]\nSplitting fully into prime factors minimizes the cost, giving factors \\(2,2,2,5,101\\). The corresponding costs are\n\\[\n(2-1)+(2-1)+(2-1)+(5-1)+(101-1)=1+1+1+4+100=107.\n\\]\n\n\\[\n\\boxed{107}\n\\]"
+  },
+  {
+   "id": "2026-29",
+   "sample": 0,
+   "answer": "157",
+   "got": "157",
+   "correct": true,
+   "seconds": 20,
+   "usage": {
+    "prompt_tokens": 239,
+    "completion_tokens": 10544,
+    "total_tokens": 10783,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 10536,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{157}"
+  },
+  {
+   "id": "2026-29",
+   "sample": 1,
+   "answer": "157",
+   "got": "157",
+   "correct": true,
+   "seconds": 82,
+   "usage": {
+    "prompt_tokens": 239,
+    "completion_tokens": 19073,
+    "total_tokens": 19312,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 19064,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{157}"
+  },
+  {
+   "id": "2026-29",
+   "sample": 2,
+   "answer": "157",
+   "got": "157",
+   "correct": true,
+   "seconds": 28,
+   "usage": {
+    "prompt_tokens": 239,
+    "completion_tokens": 14912,
+    "total_tokens": 15151,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 14904,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{157}"
+  },
+  {
+   "id": "2026-29",
+   "sample": 3,
+   "answer": "157",
+   "got": "157",
+   "correct": true,
+   "seconds": 32,
+   "usage": {
+    "prompt_tokens": 239,
+    "completion_tokens": 14121,
+    "total_tokens": 14360,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 14106,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{157}"
+  },
+  {
+   "id": "2026-30",
+   "sample": 0,
+   "answer": "393",
+   "got": "393",
+   "correct": true,
+   "seconds": 50,
+   "usage": {
+    "prompt_tokens": 229,
+    "completion_tokens": 21301,
+    "total_tokens": 21530,
+    "prompt_tokens_details": {
+     "cached_tokens": 0,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 21293,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{393}"
+  },
+  {
+   "id": "2026-30",
+   "sample": 1,
+   "answer": "393",
+   "got": "393",
+   "correct": true,
+   "seconds": 68,
+   "usage": {
+    "prompt_tokens": 229,
+    "completion_tokens": 29383,
+    "total_tokens": 29612,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 29375,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{393}"
+  },
+  {
+   "id": "2026-30",
+   "sample": 2,
+   "answer": "393",
+   "got": "393",
+   "correct": true,
+   "seconds": 64,
+   "usage": {
+    "prompt_tokens": 229,
+    "completion_tokens": 26492,
+    "total_tokens": 26721,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 26478,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{393}"
+  },
+  {
+   "id": "2026-30",
+   "sample": 3,
+   "answer": "393",
+   "got": "393",
+   "correct": true,
+   "seconds": 233,
+   "usage": {
+    "prompt_tokens": 229,
+    "completion_tokens": 37666,
+    "total_tokens": 37895,
+    "prompt_tokens_details": {
+     "cached_tokens": 192,
+     "audio_tokens": 0,
+     "video_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 37657,
+     "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 0
+   },
+   "tail": "\\boxed{393}"
+  }
+ ]
+}
