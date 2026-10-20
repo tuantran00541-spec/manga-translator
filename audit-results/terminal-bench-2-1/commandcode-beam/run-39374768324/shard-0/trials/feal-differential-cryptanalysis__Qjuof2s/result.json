@@ -1,0 +1,125 @@
+{
+    "id": "fb0e24a0-f708-4310-b567-f19b782ad331",
+    "task_name": "terminal-bench/feal-differential-cryptanalysis",
+    "trial_name": "feal-differential-cryptanalysis__Qjuof2s",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-20__05-27-38/feal-differential-cryptanalysis__Qjuof2s",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/feal-differential-cryptanalysis"
+    },
+    "source": "tasks",
+    "task_checksum": "2fd257d8cb635acb45004f6b50d584f8d5e686165635be4445e862fe6241954a",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/feal-differential-cryptanalysis",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "feal-differential-cryptanalysis__Qjuof2s",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-20__05-27-38",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "manga_agent:MangaAgent",
+            "model_name": "reflection/beam:free",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "38f0219d-d1b9-47a9-9e90-cebe9b5332a9",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "chaos",
+        "version": "cbe99932e8b8296cda5f7db76f62487a60949aba",
+        "model_info": {
+            "name": "beam:free",
+            "provider": "reflection"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 256211,
+        "n_cache_tokens": 192000,
+        "n_output_tokens": 16967,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": "done",
+            "stats": {
+                "model_s": 57.145835638046265,
+                "tool_s": 77.72891855239868
+            }
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-20T05:43:00.529900Z",
+    "finished_at": "2026-10-20T05:45:59.900463Z",
+    "environment_setup": {
+        "started_at": "2026-10-20T05:43:00.531197Z",
+        "finished_at": "2026-10-20T05:43:03.483367Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-20T05:43:03.483394Z",
+        "finished_at": "2026-10-20T05:43:06.915410Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-20T05:43:06.915494Z",
+        "finished_at": "2026-10-20T05:45:24.324928Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-20T05:45:25.095837Z",
+        "finished_at": "2026-10-20T05:45:47.753110Z"
+    },
+    "step_results": null
+}
