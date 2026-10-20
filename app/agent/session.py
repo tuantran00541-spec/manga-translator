@@ -272,6 +272,27 @@ class _Tools:
 
 
 tools = _Tools()
+
+if __name__ == "__main__":
+    import sys as _sys
+    if len(_sys.argv) < 2:
+        print("usage: agent-tool <name> [key=value ... | JSON object]", file=_sys.stderr)
+        _sys.exit(2)
+    _rest = _sys.argv[2:]
+
+    def _value(text):
+        try:
+            return _json.loads(text)
+        except ValueError:
+            return text
+    _args = (_json.loads(_rest[0]) if len(_rest) == 1 and _rest[0].lstrip()[:1] == "{{"
+             else {{k: _value(v) for k, v in (a.split("=", 1) for a in _rest if "=" in a)}})
+    try:
+        _out = getattr(tools, _sys.argv[1])(**_args)
+    except Exception as _exc:
+        print(f"Error: {{_exc}}", file=_sys.stderr)
+        _sys.exit(1)
+    print(_out if isinstance(_out, str) else _json.dumps(_out, ensure_ascii=False, default=str))
 """
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
@@ -332,13 +353,6 @@ EXAMPLE_CHECK = '''def check():
     """PASS when the text tests pass, else the end of the failure."""
     out = tools.run_command(command="python3 -m pytest tests/test_text.py -q")
     return "PASS" if "[exit code 0]" in out else out[-1500:]'''
-EXAMPLE_CHAIN = '''src = tools.read_file(path="app/text.py")
-if 'return text.lower().replace(" ", "-")' not in src:
-    return src[:3000]  # not what I expected: show the file and stop
-tools.edit_file(path="app/text.py", old_text='return text.lower().replace(" ", "-")',
-                new_text='return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")')
-tools.edit_file(path="app/text.py", old_text="def slugify", new_text="import re\\n\\n\\ndef slugify")
-return tools.check()'''
 EXAMPLE_BRANCH = """regex = '''
 tools.edit_file(path="app/text.py", old_text='return text.lower().replace(" ", "-")',
                 new_text='return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")')
@@ -352,32 +366,27 @@ return tools.branch({"regex": regex, "strip": strip}, check="print(tools.check()
 EXAMPLE_ADOPT = '''tools.adopt("regex")
 return tools.check()'''
 LEAN_CREATE = ("How your tools fit together:\n"
-               "- read_file, edit_file and run_command each do one thing; use them to look around and for single steps.\n"
-               "- create runs Python you write. In it tools.read_file, tools.edit_file, tools.run_command, tools.think(question) and every tool "
-               "you made are plain functions, so one create call reads, edits, runs and checks without a reply in between. " + MADE_TOOLS + "\n"
-               "- tools.branch({'a': code_a, 'b': code_b}, check=check_code), called inside create, runs two or three attempts at the same time, "
-               "each on its own copy of the workspace, then the check on each copy. Each attempt is a string of Python with the same tools. You "
-               "get back, per attempt, the diff it made, what it printed and what its check printed; the real workspace is untouched until you "
-               "keep one with tools.adopt(name), which applies it and drops the other copies. An attempt cannot branch again.\n"
-               "- The rest of the harness lives only inside create: web search and fetch, ask_user, memory, todo_write, skills, view_image, "
-               "checkpoint (diffs, named marks and going back to one), "
-               "helper agents (task, fan_out), schedules, plugins and MCP tools. tools.search(words) finds one, tools.describe(name) shows its "
-               "parameters, and tools.<name>(...) calls it under the same rules and approvals.\n\n"
-               "One request, start to finish. The user says: slugify in app/text.py turns 'Hello, World!' into 'hello,-world!' "
-               "instead of 'hello-world'.\n\n"
-               "1. Pin down done as a kept tool, and run it once to see it fail (args runs it right away):\n"
-               "create name=\"check\", args={}, code=\n" + EXAMPLE_CHECK + "\n"
-               "From now on check is yours: call it by name, or as tools.check() inside any code, including a branch's check.\n\n"
-               "2. Look, act and check in one go when the fix is clear (keep=false makes it a one-off; a top-level return ends it):\n"
-               "create name=\"fix_slug\", keep=false, code=\n" + EXAMPLE_CHAIN + "\n"
-               "It returns PASS, or the failure to read before the next try.\n\n"
-               "3. Or, when you cannot tell which of two fixes is right, try both on copies and let the check pick:\n"
-               "create name=\"try_both\", keep=false, code=\n" + EXAMPLE_BRANCH + "\n"
-               "You get a table: == branch regex == with its diff and PASS, == branch strip == with its diff and the failing test.\n\n"
-               "4. Keep the winner and check the real workspace:\n"
-               "create name=\"keep_it\", keep=false, code=\n" + EXAMPLE_ADOPT + "\n"
-               "Finish only once this returns PASS. Single reads and edits still go straight through read_file and edit_file; reach for create when "
-               "steps follow each other without needing your judgment in between, when the same work repeats, or when you want the check to choose.")
+               "- run_command is the shell and does most of the work; chain steps there as usual, with && or a script. read_file and "
+               "edit_file read and change one file.\n"
+               "- What the shell cannot do is in the tool library: helper agents (task, fan_out, tools.agent(prompt)), a second look from "
+               "another model (tools.think(question)), skills, web search and fetch, view_image, ask_user, memory, todo_write, checkpoint "
+               "(diffs and going back), schedules, plugins and MCP tools. tools.search(words) finds one, tools.describe(name) shows its parameters.\n"
+               "- run_command reaches all of it{script}, under the same rules and approvals: from the shell, `agent-tool <name> key=value ...` "
+               "(or one JSON object) prints a tool's result, e.g. agent-tool skill name=pdf or agent-tool web_search query='...'; from Python "
+               "run by the command, `from agent_tools import tools` makes them plain functions, tools.<name>(...). create keeps such Python as "
+               "a tool of its own. "
+               + MADE_TOOLS + "\n"
+               "- tools.branch({{'a': code_a, 'b': code_b}}, check=check_code), called inside create, runs two or three attempts at the same time, "
+               "each on its own copy of the workspace, then the check on each copy, and returns per attempt its diff, output and check result. "
+               "Nothing reaches the real workspace until tools.adopt(name) keeps one. An attempt cannot branch again.\n\n"
+               "Example: slugify in app/text.py turns 'Hello, World!' into 'hello,-world!' instead of 'hello-world', and two fixes look plausible.\n"
+               "1. Keep the check as a tool and see it fail (args runs it right away):\n"
+               "create name=\"check\", args={{}}, code=\n" + EXAMPLE_CHECK.replace("{", "{{").replace("}", "}}") + "\n"
+               "2. Try both fixes on copies and let the check pick (keep=false runs code once; a top-level return ends it):\n"
+               "create name=\"try_both\", keep=false, code=\n" + EXAMPLE_BRANCH.replace("{", "{{").replace("}", "}}") + "\n"
+               "3. Keep the winner and check the real workspace:\n"
+               "create name=\"keep_it\", keep=false, code=\n" + EXAMPLE_ADOPT.replace("{", "{{").replace("}", "}}") + "\n"
+               "Finish only once this returns PASS.")
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {
@@ -1824,11 +1833,7 @@ class AgentSession:
         state = self._outputs_dir() / "state"
         state.mkdir(parents=True, exist_ok=True)
         docker = sandbox.backend() == "docker" and policy.mode != "full-access"
-        # The other created tools are a library the code calls in-process, so one call can chain many steps.
-        (state / "lib").mkdir(exist_ok=True)
-        sources = {n: t["code"] for n, t in self._root().created.items()}
-        (state / "lib" / "agent_tools.py").write_text(TOOLS_LIBRARY.format(sources=json.dumps(sources, ensure_ascii=False),
-                                                                          remote=json.dumps(sorted(self._chain_targets()))), encoding="utf-8")
+        self._write_library(state)
         # Each run has its own request folder, so runs side by side or in the background never answer each other.
         run_id = uuid.uuid4().hex[:12]
         rpc = state / "rpc" / run_id
@@ -1870,6 +1875,29 @@ class AgentSession:
             self._auto_mark(f"pass-{tool['name']}")
         check = f"\n{INTENT_CHECK}" if not self.depth and self.profile["intent"] and self._intent(write=False) else ""
         return note + output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "") + check
+
+    def _write_library(self, state: Path) -> None:
+        """Write agent_tools.py, the library through which Python the agent runs calls created and reachable tools in one process."""
+        (state / "lib").mkdir(parents=True, exist_ok=True)
+        sources = {n: t["code"] for n, t in self._root().created.items()}
+        # Commands run side by side, so the file is swapped in whole and an import never reads half of it.
+        part = state / "lib" / f"agent_tools.{uuid.uuid4().hex[:8]}.part"
+        part.write_text(TOOLS_LIBRARY.format(sources=json.dumps(sources, ensure_ascii=False),
+                                             remote=json.dumps(sorted(self._chain_targets()))), encoding="utf-8")
+        part.replace(state / "lib" / "agent_tools.py")
+        # agent-tool runs the library with the harness's own Python, so the shell reaches it where the task has no Python.
+        (state / "bin").mkdir(exist_ok=True)
+        lib = state / "lib"
+        if os.name == "nt":
+            (state / "bin" / "agent-tool.cmd").write_text(f'@set "PYTHONPATH={lib};%PYTHONPATH%"\r\n@"{sys.executable}" -m agent_tools %*\r\n', encoding="utf-8")
+        else:
+            tool = state / "bin" / "agent-tool"
+            tool.write_text(f'#!/bin/sh\nPYTHONPATH={shlex.quote(str(lib))}${{PYTHONPATH:+:$PYTHONPATH}} exec {shlex.quote(sys.executable)} -m agent_tools "$@"\n', encoding="utf-8")
+            tool.chmod(0o755)
+
+    def _bridged(self, policy: "sandbox.Policy") -> bool:
+        """Whether Python run by run_command can import agent_tools; a Docker sandbox does not get the host's environment."""
+        return sandbox.backend() != "docker" or policy.mode == "full-access"
 
     def _chain_arguments(self) -> dict[str, set[str] | None]:
         """Every tool a chain can call with its argument names, or None where any are accepted."""
@@ -2601,7 +2629,17 @@ class AgentSession:
         policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
         root = self.workspace.root
         guard = gitguard.snapshot(root)
-        job = sandbox.Job(command, policy, root)
+        if not self._bridged(policy):
+            job = sandbox.Job(command, policy, root)
+        else:
+            # The command reaches the library as created tools do: agent-tool from the shell, `from agent_tools import tools` from Python.
+            state = self._outputs_dir() / "state"
+            self._write_library(state)
+            rpc = state / "rpc" / uuid.uuid4().hex[:12]
+            rpc.mkdir(parents=True)
+            job = sandbox.Job(command, policy, root, scratch=str(state),
+                              env={"PYTHONPATH": str(state / "lib"), "PATH": str(state / "bin"), "AGENT_RPC": str(rpc), "AGENT_STATE": str(state)})
+            threading.Thread(target=self._serve_chain, args=(rpc, job, None, self.plan_mode), name=f"agent-bridge-{self.id}", daemon=True).start()
         # Nobody types into a plain command, so one that asks a question fails at once instead of hanging until the clock runs out.
         if hasattr(job, "close_input"):
             job.close_input()
@@ -3216,7 +3254,7 @@ class AgentSession:
             parts.append(self.agent.prompt if self.agent else agents.BUILTIN["explore"].prompt)
             parts.append("Keep working until the job is done, then end with one complete report: your final reply is all the parent sees.")
         if not self.depth and self.workspace.policy.mode != "read-only":
-            parts.append(LEAN_CREATE)
+            parts.append(LEAN_CREATE.format(script="" if self._bridged(self.workspace.policy) else " (only through create in this Docker sandbox)"))
         if not self.depth and (self.profile["model_roles"] or self._sources()):
             table = self.profile["model_roles"]
             rows = "; ".join(f"{n} ({c['model']}{': ' + c['note'] if c['note'] else ''})" for n, c in table.items())

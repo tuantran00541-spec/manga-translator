@@ -236,13 +236,15 @@ def _env_for(policy: Policy, scratch: str) -> dict | None:
 class Job:
     """A command left running in the background, under the same policy as any other."""
 
-    def __init__(self, command: str, policy: Policy, root: Path, tty: bool = False, scratch: str | None = None):
+    def __init__(self, command: str, policy: Policy, root: Path, tty: bool = False, scratch: str | None = None, env: dict | None = None):
         self.command, self.started, self.outside, self.tty = command, time.time(), policy.mode == "full-access", tty and os.name == "posix"
         # A given scratch folder is the caller's to keep, so stop leaves it in place.
         self.own_scratch = scratch is None
         self.scratch = scratch or tempfile.mkdtemp(prefix="agent-job-")
         target, shell = wrap(command, policy, root, os.path.realpath(self.scratch))
-        env = _env_for(policy, self.scratch)
+        base = _env_for(policy, self.scratch)
+        # A PATH or PYTHONPATH given here goes in front of the one already set, so the job's own programs and imports still work.
+        env = {**base, **{k: os.pathsep.join(filter(None, [v, base.get(k)])) if k in ("PATH", "PYTHONPATH") else v for k, v in (env or {}).items()}}
         if tty and os.name == "posix":
             import pty
             master, slave = pty.openpty()

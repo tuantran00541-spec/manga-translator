@@ -2101,7 +2101,7 @@ def test_a_command_that_outlives_its_timeout_moves_to_the_background_and_a_quick
     assert "hi" in outs[0][2] and "[exit code 3]" in outs[0][2]
     assert "started" in outs[1][2] and "moved to the background as job1" in outs[1][2] and "stopped after" not in outs[1][2], outs[1]
     assert "Stopped job1" in outs[2][2]
-    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent").mkdir(exist_ok=True)
     (home / ".manga-agent" / "profile.json").write_text(json.dumps({"timeout_to_background": False}))
     fake = scripted(turn(calls=[call("run_command", command="sleep 20", timeout=1)]), turn("ok"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
@@ -3323,13 +3323,24 @@ def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, hom
     session._new_request("go")
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create"]
     prompt = session.system_prompt()
-    assert "Your tools are read_file, edit_file, run_command" in prompt and "Finish only after you have seen the check pass" in prompt and "tools.read_file, tools.edit_file, tools.run_command" in prompt
+    assert "Your tools are read_file, edit_file, run_command" in prompt and "Finish only after you have seen the check pass" in prompt and "from agent_tools import tools" in prompt and "agent-tool <name>" in prompt
     chain = ("def go():\n    tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 3')\n"
              "    return tools.read_file(path='pkg/a.py').count('return 3')\n")
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": True}})
     assert out.splitlines()[1].strip() == "1" and "[changed: pkg/a.py]" in out, out
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create", "go"], "a kept tool joins the four"
-    assert "The rest of the harness lives only inside create" in prompt
+    assert "What the shell cannot do is in the tool library" in prompt
+
+
+def test_python_run_by_run_command_calls_the_library_through_the_agent(ws, home):
+    (ws.root / "notes.txt").write_text("hello\n")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    (ws.root / "use.py").write_text("from agent_tools import tools\nprint(tools.read_file(path='notes.txt').count('hello'))\n")
+    out = session._run_foreground({"command": f'"{sys.executable}" use.py'})
+    assert out.strip().splitlines()[0].strip() == "1" and "[exit code 0]" in out, out
+    out = session._run_foreground({"command": "agent-tool read_file path=notes.txt && agent-tool nope; echo $?"})
+    assert "hello" in out and "no tool 'nope'" in out and out.strip().splitlines()[-2].strip() == "1", out
 
 
 def test_the_worked_example_in_the_prompt_runs_as_written(ws, home):
@@ -3349,8 +3360,6 @@ def test_the_worked_example_in_the_prompt_runs_as_written(ws, home):
     assert "== branch regex ==" in table and "== branch strip ==" in table and table.count("PASS") == 1, table
     assert "replace" in (ws.root / "app" / "text.py").read_text(), "nothing is applied before adopting"
     assert "PASS" in run("keep_it", session_module.EXAMPLE_ADOPT, keep=False)
-    (ws.root / "app" / "text.py").write_text('def slugify(text):\n    return text.lower().replace(" ", "-")\n')
-    assert "PASS" in run("fix_slug", session_module.EXAMPLE_CHAIN, keep=False), "the one-go chain fixes it too"
 
 
 def test_branches_try_fixes_on_copies_and_the_model_adopts_one(ws, home):
