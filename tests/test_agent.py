@@ -1839,7 +1839,10 @@ def test_shell_only_offers_the_shell_alone_and_says_so(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("Done.")))
     assert [s["name"] for s in session.specs()] == ["run_command"]
     prompt = session.system_prompt()
-    assert "Your one tool is run_command" in prompt and "create name=" not in prompt
+    assert "Your only tool is run_command" in prompt and "create name=" not in prompt and "branch a=" not in prompt
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"shell_only": "commands"}))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("Done.")))
+    assert [s["name"] for s in session.specs()] == ["run_command"] and "branch a=" in session.system_prompt()
 
 
 def test_timeouts_dropped_connections_and_server_errors_are_asked_again_with_a_pause(monkeypatch):
@@ -3434,7 +3437,7 @@ def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, hom
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": True}})
     assert out.splitlines()[1].strip() == "1" and "[changed: pkg/a.py]" in out, out
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create", "go", "skill"], "a kept tool joins them"
-    assert "What the shell cannot do is in the tool library" in prompt
+    assert "Everything else is in the tool library" in prompt
 
 
 @pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="bash and stand-ins are for POSIX shells")

@@ -87,7 +87,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["timeout_to_background"] = data["timeout_to_background"]
                 if isinstance(data.get("notes_context"), bool):
                     profile["notes_context"] = data["notes_context"]
-                if isinstance(data.get("shell_only"), bool):
+                if isinstance(data.get("shell_only"), bool) or data.get("shell_only") == "commands":
                     profile["shell_only"] = data["shell_only"]
                 if isinstance(data.get("goal_turns"), int) and data["goal_turns"] > 0:
                     profile["goal_turns"] = data["goal_turns"]
