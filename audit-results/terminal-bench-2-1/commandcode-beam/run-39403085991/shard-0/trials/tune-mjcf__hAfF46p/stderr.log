@@ -1,0 +1,17 @@
+2026-10-20 11:09:23 | WARNING  | app.agent.client:536 - bench HTTP 503: <!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->
+<!--[if IE 7]>    <html class="no-js ie7 oldie" lang="en-US"> <![endif]-->
+<!--[if IE 8]>    <html class="no-js ie8 oldie" lang="en-US"> <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en-US"> <!--<![endif]-->
+<head>
+<title>Worker exceeded resource limits | api.commandcode.ai | Cloudflare</title>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<m (bench); asking again in 2s
+2026-10-20 11:09:26 | INFO     | app.agent.client:349 - bench answered 429 (1 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:09:33 | INFO     | app.agent.client:349 - bench answered 429 (2 so far, waiting 12 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:09:46 | INFO     | app.agent.client:349 - bench answered 429 (3 so far, waiting 24 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:10:10 | INFO     | app.agent.client:349 - bench answered 429 (4 so far, waiting 48 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:11:29 | INFO     | app.agent.client:349 - bench answered 429 (5 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:11:38 | INFO     | app.agent.client:349 - bench answered 429 (6 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:18:12 | INFO     | app.agent.client:349 - bench answered 429 (7 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}

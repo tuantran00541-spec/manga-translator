@@ -1,0 +1,35 @@
+2026-10-20 11:20:21 | INFO     | app.agent.client:349 - bench answered 429 (1 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:20:27 | INFO     | app.agent.client:349 - bench answered 429 (2 so far, waiting 12 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:20:41 | INFO     | app.agent.client:349 - bench answered 429 (3 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:21:52 | INFO     | app.agent.client:349 - bench answered 429 (4 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:22:29 | INFO     | app.agent.client:349 - bench answered 429 (5 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:22:36 | INFO     | app.agent.client:349 - bench answered 429 (6 so far, waiting 12 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:22:49 | INFO     | app.agent.client:349 - bench answered 429 (7 so far, waiting 24 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:23:15 | INFO     | app.agent.client:349 - bench answered 429 (8 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:23:37 | INFO     | app.agent.client:349 - bench answered 429 (9 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:23:47 | INFO     | app.agent.client:349 - bench answered 429 (10 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:24:21 | INFO     | app.agent.client:349 - bench answered 429 (11 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:24:27 | INFO     | app.agent.client:349 - bench answered 429 (12 so far, waiting 12 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:24:41 | INFO     | app.agent.client:349 - bench answered 429 (13 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:24:48 | INFO     | app.agent.client:349 - bench answered 429 (14 so far, waiting 12 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:25:20 | INFO     | app.agent.client:349 - bench answered 429 (15 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:27:50 | INFO     | app.agent.client:349 - bench answered 429 (16 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+Exception in thread Thread-26:
+Traceback (most recent call last):
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/opt/mg/src/app/agent/sandbox.py", line 340, in run
+    chunk = self.stream.read1(65536) if hasattr(self.stream, "read1") else self.stream.read(65536)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: I/O operation on closed file
+2026-10-20 11:33:04 | INFO     | app.agent.client:349 - bench answered 429 (17 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:34:02 | INFO     | app.agent.client:349 - bench answered 429 (18 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:36:06 | INFO     | app.agent.client:349 - bench answered 429 (19 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:36:14 | INFO     | app.agent.client:349 - bench answered 429 (20 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:36:20 | INFO     | app.agent.client:349 - bench answered 429 (21 so far, waiting 12 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:36:33 | INFO     | app.agent.client:349 - bench answered 429 (22 so far, waiting 24 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:36:58 | INFO     | app.agent.client:349 - bench answered 429 (23 so far, waiting 48 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:39:49 | INFO     | app.agent.client:349 - bench answered 429 (24 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:48:20 | INFO     | app.agent.client:349 - bench answered 429 (25 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:48:55 | INFO     | app.agent.client:349 - bench answered 429 (26 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 11:49:02 | INFO     | app.agent.client:349 - bench answered 429 (27 so far, waiting 12 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
