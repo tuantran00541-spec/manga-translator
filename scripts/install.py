@@ -117,6 +117,8 @@ def write_marker(target: Path, home: Path, uv: str | None, done: bool) -> None:
     (target / MARKER).write_text(json.dumps({
         "mode": "clone" if (target / ".git").exists() else "download",
         "ref": os.environ.get("MANGA_REF", "main"),
+        # "release" follows new releases on `manga update`; "ref" stays on the branch or tag asked for.
+        "channel": os.environ.get("MANGA_CHANNEL", "ref"),
         "uv": uv,
         "home": str(home),
         "complete": done,

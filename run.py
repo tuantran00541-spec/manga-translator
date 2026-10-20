@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -119,7 +120,7 @@ def _install_info() -> dict:
 def _run_installer(source: Path, info: dict) -> None:
     """Run the installer of ``source`` on this folder with the same uv and home as the first install."""
     uv = info.get("uv") if info.get("uv") and Path(info["uv"]).is_file() else shutil.which("uv")
-    env = {**os.environ, "MANGA_REF": str(info.get("ref") or "main")}
+    env = {**os.environ, "MANGA_REF": str(info.get("ref") or "main"), "MANGA_CHANNEL": str(info.get("channel") or "ref")}
     if info.get("home"):
         env["MANGA_HOME"] = str(info["home"])
         env["UV_PYTHON_INSTALL_DIR"] = str(Path(info["home"]) / "python")
@@ -166,6 +167,18 @@ def _verify_archive(archive: Path, ref: str, info: dict) -> None:
         )
 
 
+def _latest_release() -> str | None:
+    """The newest release named like V0.4.0, skipping drafts, pre-releases and data releases."""
+    url = f"https://api.github.com/repos/{REPO}/releases?per_page=30"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"}), timeout=30) as response:
+            releases = json.load(response)
+    except (OSError, ValueError):
+        return None
+    return next((r["tag_name"] for r in releases if not r.get("draft") and not r.get("prerelease")
+                 and re.match(r"[Vv]?\d+\.\d+", str(r.get("tag_name", "")))), None)
+
+
 def _update() -> None:
     """Get the latest code and rerun the installer, which keeps models, chapters and the environment."""
     if _running_port() is not None:
@@ -176,14 +189,16 @@ def _update() -> None:
         _run_installer(BASE_DIR, info)
         return
     ref = str(info.get("ref") or "main")
+    if info.get("channel") == "release":
+        ref = _latest_release() or ref
     with tempfile.TemporaryDirectory() as work:
         archive = Path(work) / "source.zip"
         print(f"Đang tải bản mới ({ref})…", flush=True)
-        urllib.request.urlretrieve(f"https://codeload.github.com/{REPO}/zip/refs/heads/{ref}", archive)
+        urllib.request.urlretrieve(f"https://codeload.github.com/{REPO}/zip/{ref}", archive)
         _verify_archive(archive, ref, info)
         shutil.unpack_archive(archive, work)
         source = next(p for p in Path(work).iterdir() if p.is_dir())
-        _run_installer(source, info)
+        _run_installer(source, {**info, "ref": ref})
 
 
 def _safe_console() -> None:

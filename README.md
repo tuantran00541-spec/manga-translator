@@ -199,6 +199,8 @@ manga update    # gets the latest version; models, chapters and settings stay
 manga --version
 ~~~
 
+It installs the latest release, and `manga update` moves to the next one. To try the newest code instead, set `MANGA_REF=main` before the command (`$env:MANGA_REF='main'` in PowerShell).
+
 The installer works in one folder (`%LOCALAPPDATA%\manga-translator` on Windows, `~/.local/share/manga-translator` elsewhere):
 
 - downloads [uv](https://github.com/astral-sh/uv) (pinned, hash checked), which fetches Python 3.12 and installs the dependencies with CPU-only PyTorch;
