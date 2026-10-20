@@ -80,6 +80,13 @@ CHECK_NUDGE = ("[Before you finish: no passing check was seen since the work beg
                "a change, run its check now and finish only once it passes. If it was a question, or the failure is expected, answer again as is.]")
 FAILED_NUDGE = ("[Before you finish: this command failed and has not been run again with a passing result since:\n{command}\nIf it checks the "
                 "work, fix what it shows and run it again until it passes. If the failure is expected or no longer matters, say why and answer again.]")
+CUT_NUDGE = ("[Your last reply was cut off at the reply limit before it finished. Go on from where it stopped: make the tool call you were "
+             "about to make, and keep long reasoning short.]")
+HANDOFF_NUDGE = ("[Nobody else will run anything in this run: your last reply leaves steps for the reader (running, checking or confirming "
+                 "something). Do those steps yourself now with tool calls, then finish. If nothing is left to do, answer again as is.]")
+# Words a final report uses when it hands the remaining work to the reader instead of doing it.
+HANDOFF = re.compile(r"\b(you (can|should|may|might|need to|could)|please (run|check|verify)|(then|and|to) (re-?)?run|re-?run (the|it)\b|re-?check"
+                     r"|before finaliz\w*|(and|to) (confirm|verify|check)|until it|next( steps?)?:|I would)\b", re.I)
 RECENT_COMMANDS = 15  # a failure among this many latest commands still counts against finishing
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
@@ -669,7 +676,7 @@ class AgentSession:
         self._watch_request = self._request_no = 0
         self._scheduler: threading.Thread | None = None
         self._closing = False
-        self._edited = self._plan_nudged = self._continued = self._check_nudged = False
+        self._edited = self._plan_nudged = self._continued = self._check_nudged = self._handoff_nudged = False
         self._last_command: str | None = None
         self._failing: dict[str, int] = {}
         self._commands = 0
@@ -1067,7 +1074,7 @@ class AgentSession:
         else:
             self.tainted = True
         self._inherit_taint = False
-        self._edited = self._plan_nudged = self._continued = self._check_nudged = False
+        self._edited = self._plan_nudged = self._continued = self._check_nudged = self._handoff_nudged = False
         self._last_command: str | None = None
         self._failing: dict[str, int] = {}
         self._commands = 0
@@ -3759,6 +3766,12 @@ class AgentSession:
         last = self._last_command or ""
         return "" if "[exit code 0]" in last[-400:] or re.search(r"^PASS\b", last, re.M) else CHECK_NUDGE
 
+    def _handed_off(self, text: str) -> bool:
+        """Whether autonomous work ends on a report that leaves steps for the reader, once per request."""
+        if self.depth or self.mode != "bypass" or self._handoff_nudged or (self._deadline and not self._notice_at):
+            return False
+        return bool(HANDOFF.search(text.strip()[-300:]))
+
     def _more_work(self) -> bool:
         """True when a queued message or an unfinished goal means the turn should go on."""
         with self._lock:
@@ -3895,7 +3908,7 @@ class AgentSession:
 
     def _steps(self, max_steps: int) -> None:
         """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
-        broken = empties = 0
+        broken = empties = cuts = 0
         for _ in range(max_steps):
             if self._stop:
                 self.emit("notice", text="Stopped.")
@@ -3956,7 +3969,19 @@ class AgentSession:
                                     if self.echo_reasoning and turn["reasoning"] else {})})
             self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)
             if not calls:
+                # A reply cut off by the limit is unfinished, not an answer: the model goes on with a larger budget.
+                if turn.get("finish") == "length" and cuts < EMPTY_RETRIES:
+                    cuts += 1
+                    self._max_out = min(self._max_out * 2, MAX_OUT_CEILING)
+                    self.history.append({"role": "user", "content": CUT_NUDGE})
+                    self.emit("notice", text=f"The reply was cut off at the limit; asking the model to go on ({self._max_out:,} tokens).")
+                    continue
                 if self._more_work():
+                    continue
+                if self._handed_off(turn["text"]):
+                    self._handoff_nudged = True
+                    self.history.append({"role": "user", "content": HANDOFF_NUDGE})
+                    self.emit("notice", text="The model left steps for the reader; asking it once to do them itself.")
                     continue
                 if nudge := self._unchecked():
                     self._check_nudged = True
@@ -3964,6 +3989,7 @@ class AgentSession:
                     self.emit("notice", text="The model finished without a passing check; asking it once to run one.")
                     continue
                 break
+            cuts = 0
             self._run_calls(calls)
             self._show_images()
             self._advance_prewalk()

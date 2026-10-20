@@ -2565,6 +2565,37 @@ def test_a_reply_that_spent_its_whole_budget_on_reasoning_is_asked_again_with_a_
     assert sum("raising the reply limit" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
 
 
+def test_a_reply_cut_off_at_the_limit_goes_on_with_a_larger_budget_instead_of_ending(ws, home, monkeypatch):
+    sizes = []
+
+    def fake(provider, key, model, messages, *, tools, on_delta=None, max_tokens=None):
+        sizes.append(max_tokens)
+        if len(sizes) == 1:
+            return {**turn("The math checks out. Now writing the program."), "finish": "length"}
+        return turn("Done.")
+
+    monkeypatch.setattr(client, "complete", fake)
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=client.complete)
+    run_to_idle(session, "go")
+    assert sizes == [8192, 16384] and session.history[-1]["content"] == "Done."
+    assert any(m["role"] == "user" and "cut off at the reply limit" in m["content"] for m in session.history)
+
+
+def test_a_final_report_that_leaves_steps_for_the_reader_is_sent_back_once_in_autonomous_mode(ws, home):
+    handoff = "Fixed the build. Next step: rerun the check and confirm it prints PASS."
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn(handoff), turn(handoff)))
+    run_to_idle(session, "go")
+    assert sum(m["role"] == "user" and "Nobody else will run anything" in m["content"] for m in session.history) == 1
+    assert [e["text"] for e in session.events if e["type"] == "assistant"] == [handoff, handoff]
+    asked = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", session_id="ask", complete=scripted(turn(handoff)))
+    run_to_idle(asked, "go")
+    assert not any("Nobody else will run anything" in str(m["content"]) for m in asked.history)
+    done = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", session_id="done",
+                                complete=scripted(turn("All checks ran; the last one was re-run and printed PASS.")))
+    run_to_idle(done, "go")
+    assert not any("Nobody else will run anything" in str(m["content"]) for m in done.history)
+
+
 def test_a_turn_that_dies_after_changing_files_says_what_it_changed_and_what_is_left(ws, home):
     replies = iter([turn(calls=[call("todo_write", items=[{"content": "write a.txt", "status": "completed"}, {"content": "test it", "status": "pending"}])]),
                     turn(calls=[call("write_file", path="a.txt", content="x")])])
