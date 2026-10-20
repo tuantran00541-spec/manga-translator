@@ -191,7 +191,9 @@ def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
         ink = source_ink_hex(raw, candidate["region"])
         if ink:
             candidate["source_ink"] = ink
-        cap = source_cap_px(raw, candidate["region"])
+        # A lone "!" or "?" is one or two ink pieces, too few to trust in longer text but all the letters it has.
+        short = len("".join(str(candidate.get("text") or "").split())) <= 2
+        cap = source_cap_px(raw, candidate["region"], min_pieces=1 if short else 3)
         if cap:
             candidate["source_cap_px"] = cap
             candidate["max_chars"] = char_budget(font_path, candidate.get("fit_region") or candidate["region"], cap)

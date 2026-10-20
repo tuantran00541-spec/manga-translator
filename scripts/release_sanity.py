@@ -6,7 +6,8 @@ import importlib.util
 from pathlib import Path
 import re
 
-PYTHON_PATHS = sorted([*Path("app").rglob("*.py"), Path("run.py")])
+# Test folders under app are left out, as tests/ at the root is.
+PYTHON_PATHS = sorted([*(p for p in Path("app").rglob("*.py") if "tests" not in p.parts), Path("run.py")])
 JS_PATHS = sorted(Path("app/static/js").rglob("*.js"))
 HTML_PATHS = sorted(Path("app/templates").rglob("*.html"))
 
@@ -169,7 +170,8 @@ def _module_name(path: Path) -> str:
 
 
 def check_python_module_reachability() -> None:
-    app_paths = sorted(Path("app").rglob("*.py"))
+    # Tests are run by pytest, not imported by the app.
+    app_paths = sorted(p for p in Path("app").rglob("*.py") if "tests" not in p.parts)
     existing = {
         _module_name(path)
         for path in app_paths

@@ -212,3 +212,22 @@ def test_letter_tops_cut_by_the_image_edge_are_erased():
     ink[:, :40] = ink[:, 660:] = False  # leave the outline out
     top = ink[:6]
     assert (_full(image, box, mask)[:6] & top).sum() >= 0.9 * top.sum(), "letter parts at the edge go too"
+
+
+def test_a_balloon_outline_the_model_reads_stays_out_of_the_seed():
+    image = np.full((200, 300, 3), 255, np.uint8)
+    cv2.ellipse(image, (150, 100), (140, 90), 0, 0, 360, (0, 0, 0), 3)
+    seed = np.zeros((200, 300), bool)
+    seed[100:130, 120:180] = True  # the letters
+    seed[8:16, 120:180] = True  # a stretch of outline read as a letter
+    image[100:130, 120:180] = 0
+    kept = ctd_mask._line_art(image, seed, (0, 0))
+    assert kept[110, 150] and not kept[10:14, 140:160].any()
+
+
+def test_light_letters_on_a_dark_ground_are_not_taken_for_outline():
+    image = np.zeros((120, 300, 3), np.uint8)
+    seed = np.zeros((120, 300), bool)
+    seed[40:80, 50:250] = True
+    image[50:70, 60:240] = 255  # the letters
+    assert ctd_mask._line_art(image, seed, (0, 0)).sum() == seed.sum()

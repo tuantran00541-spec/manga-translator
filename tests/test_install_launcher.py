@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import socket
@@ -101,6 +102,37 @@ class _Response:
 
     def __exit__(self, *_):
         return False
+
+
+def test_the_prebuilt_ctd_model_is_used_and_a_failed_download_builds_it(tmp_path, monkeypatch):
+    fetched, ran = [], []
+
+    def fetch(url, path, expected):
+        fetched.append(url)
+        if url == install.CTD_SEG_URL and len(fetched) > 1:
+            raise SystemExit("mạng lỗi")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+
+    monkeypatch.setattr(install, "download", fetch)
+    monkeypatch.setattr(install, "run", lambda *args, **kw: ran.append(args))
+    install.build_ctd(tmp_path / "a", "uv")
+    assert fetched == [install.CTD_SEG_URL] and ran == []
+    (tmp_path / "b").mkdir()
+    install.build_ctd(tmp_path / "b", "uv")
+    assert fetched[1:] == [install.CTD_SEG_URL, install.CTD_URL] and any("export_ctd_onnx.py" in str(a[-1]) for a in ran)
+
+
+def test_steps_are_numbered_and_timed(monkeypatch, capsys):
+    clock = iter([0, 0, 5, 5, 70, 70])
+    monkeypatch.setattr(install.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(install, "COLOUR", False)
+    steps = install.Steps(2)
+    steps.next("Một")
+    steps.next("Hai")
+    assert steps.elapsed() == "1 phút 10 giây"
+    out = capsys.readouterr().out
+    assert "[1/2] Một" in out and "[2/2] Hai" in out and "5 giây" in out and "1 phút 05 giây" in out
 
 
 def test_an_existing_model_is_kept_and_a_bad_download_is_refused(tmp_path, monkeypatch):
@@ -264,7 +296,7 @@ def test_update_of_a_downloaded_install_reruns_the_new_installer_on_this_folder(
     (tmp_path / ".manga-install.json").write_text(json.dumps({"ref": "main", "home": str(tmp_path / "h")}))
 
     def fetch(url, path):
-        assert url.endswith("/zip/refs/heads/main")
+        assert url.endswith("/zip/main")
         import zipfile
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr("manga-translator-main/scripts/install.py", "")
@@ -277,6 +309,41 @@ def test_update_of_a_downloaded_install_reruns_the_new_installer_on_this_folder(
     command, env = ran[0]
     assert command[-2:] == ["--target", str(tmp_path)] and command[1].endswith(os.path.join("scripts", "install.py"))
     assert env["MANGA_HOME"] == str(tmp_path / "h")
+
+
+def test_a_release_install_updates_to_the_newest_app_release(monkeypatch, tmp_path):
+    monkeypatch.setattr(run, "_running_port", lambda: None)
+    monkeypatch.setattr(run, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(run, "MARKER", tmp_path / ".manga-install.json")
+    (tmp_path / ".manga-install.json").write_text(json.dumps({"ref": "V0.3.1", "channel": "release"}))
+    releases = [{"tag_name": "models-v2", "draft": False, "prerelease": False},
+                {"tag_name": "V0.5.0", "draft": True, "prerelease": False},
+                {"tag_name": "V0.4.1", "draft": False, "prerelease": True},
+                {"tag_name": "V0.4.0", "draft": False, "prerelease": False}]
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(run.urllib.request, "urlopen", lambda request, timeout: Response(json.dumps(releases).encode()))
+    urls = []
+
+    def fetch(url, path):
+        urls.append(url)
+        import zipfile
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("manga-translator-0.4.0/scripts/install.py", "")
+
+    ran = []
+    monkeypatch.setattr(run.urllib.request, "urlretrieve", fetch)
+    monkeypatch.setattr(run.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(run.subprocess, "run", lambda command, **kw: ran.append(kw["env"]))
+    run._update()
+    assert urls[0].endswith("/zip/V0.4.0")
+    assert ran[0]["MANGA_REF"] == "V0.4.0" and ran[0]["MANGA_CHANNEL"] == "release"
 
 
 def test_messages_survive_a_windows_cp1252_pipe(monkeypatch):

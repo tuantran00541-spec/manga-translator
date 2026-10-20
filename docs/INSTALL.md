@@ -39,11 +39,13 @@ manga update    # gets the latest version; models, chapters and settings stay
 manga --version
 ~~~
 
+It installs the latest release, and `manga update` moves to the next one. To try the newest code instead, set `MANGA_REF=main` before the command (`$env:MANGA_REF='main'` in PowerShell).
+
 The installer works in one folder (`%LOCALAPPDATA%\manga-translator` on Windows, `~/.local/share/manga-translator` elsewhere):
 
-- downloads [uv](https://github.com/astral-sh/uv) (pinned, hash checked), which fetches Python 3.12 and installs the dependencies with CPU-only PyTorch;
+- downloads [uv](https://github.com/astral-sh/uv) (pinned, hash checked), which fetches Python 3.12 and installs the dependencies (no PyTorch);
 - on Windows, installs the Microsoft Visual C++ runtime when it is missing or older than 14.40 (onnxruntime and PaddleOCR need it; Windows asks for admin once). `manga` checks it at every start, so a runtime removed later is put back instead of failing with WinError 126;
-- downloads the LaMa model (hash checked, resumes broken downloads) and builds `ctd_seg.onnx`;
+- downloads the LaMa model and `ctd_seg.onnx` (hash checked, resumes broken downloads); `ctd_seg.onnx` is prebuilt by `scripts/export_ctd_onnx.py` on the [models-v1](https://github.com/tuantran00541-spec/manga-translator/releases/tag/models-v1) release, and is built locally only if that download fails;
 - adds a `manga` command to the user PATH and, on Windows, the desktop and Start menu icons.
 
 A Windows user folder with accents (for example `C:\Users\Nguyễn`) breaks PaddleOCR, so the installer then uses `C:\ProgramData\manga-translator`. From a clone, `install.bat` / `./install.sh` install that clone in place.

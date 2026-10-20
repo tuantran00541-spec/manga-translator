@@ -67,7 +67,7 @@ def pack(crops: list[Crop]) -> list[tuple[np.ndarray, list[Crop]]]:
         nonlocal placed, rows
         if placed:
             height = max(top + c.image.shape[0] + TAG_PX for _, top, c in rows)
-            width = max(left + c.image.shape[1] for left, _, c in rows)
+            width = max(left + max(c.image.shape[1], 70) for left, _, c in rows)
             sheet = np.full((height, width, 3), 255, np.uint8)
             for left, top, crop in rows:
                 ch, cw = crop.image.shape[:2]

@@ -328,6 +328,44 @@ def _faint_letters(seed: np.ndarray, prob: np.ndarray) -> np.ndarray:
     return seed | np.isin(labels, keep)
 
 
+LINE_INK = 110  # grey level under which a pixel is drawn ink, the stuff of balloon outlines and panel borders
+LINE_WIDE = 0.9  # an ink stroke as wide as this share of the box and
+LINE_TALL = 0.6  # as tall as this share of it surrounds the text: a balloon outline or panel border, not lettering
+LINE_ON = 0.6  # share of a seed part's ink lying on such a stroke that marks it as a misread
+LINE_PAPER = 0.6  # share of light pixels round a misread outline piece: an outline is drawn on paper, lettering on a dark ground is not
+LINE_DARK = 0.4  # share of a seed part that must be dark ink before it can be a misread outline
+
+
+def _line_art(around: np.ndarray, seed: np.ndarray, at: tuple[int, int]) -> np.ndarray:
+    """Seed parts the model read on a balloon outline or panel border, which is one ink stroke round the whole text."""
+    if not seed.any():
+        return seed
+    gray = cv2.cvtColor(around, cv2.COLOR_BGR2GRAY) if around.ndim == 3 else around
+    _, ink, stats, _ = cv2.connectedComponentsWithStats((gray < LINE_INK).astype(np.uint8), connectivity=8)
+    lines = np.flatnonzero((stats[:, cv2.CC_STAT_WIDTH] >= LINE_WIDE * gray.shape[1])
+                           & (stats[:, cv2.CC_STAT_HEIGHT] >= LINE_TALL * gray.shape[0]))
+    lines = lines[lines > 0]
+    if not len(lines):
+        return seed
+    oy, ox = at
+    view = (slice(oy, oy + seed.shape[0]), slice(ox, ox + seed.shape[1]))
+    on_line = np.isin(ink[view], lines)
+    dark = gray[view] < LINE_INK
+    count, parts = cv2.connectedComponents(seed.astype(np.uint8), connectivity=8)
+    # Light lettering on a dark ground sits in the ground's ink stroke but is not ink itself, so only dark parts count.
+    dark_px = np.bincount(parts[seed & dark], minlength=count)
+    hits = np.bincount(parts[seed & on_line], minlength=count)
+    sizes = np.maximum(np.bincount(parts[seed], minlength=count), 1)
+    drop = (dark_px >= LINE_DARK * sizes) & (hits >= LINE_ON * np.maximum(dark_px, 1))
+    drop[0] = False
+    for k in np.flatnonzero(drop):
+        piece = (parts == k).astype(np.uint8)
+        rim = (cv2.dilate(piece, np.ones((7, 7), np.uint8)) > 0) & (piece == 0) & ~seed
+        if rim.any() and (~dark[rim]).mean() < LINE_PAPER:
+            drop[k] = False
+    return seed & ~drop[parts]
+
+
 def _edge_fragments(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, size: int,
                     at_edge: tuple[bool, bool]) -> np.ndarray:
     """Letter parts cut by the top or bottom of the image, too short for the model to read, join the mask."""
@@ -375,6 +413,7 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_lette
     seed = _faint_letters(seed, prob)
     crop = image[by1:by2, bx1:bx2]
     ex1, ey1, ex2, ey2 = max(0, bx1 - RING), max(0, by1 - RING), min(w, bx2 + RING), min(h, by2 + RING)
+    seed = _line_art(image[ey1:ey2, ex1:ex2], seed, (by1 - ey1, bx1 - ex1))
     ring = np.ones((ey2 - ey1, ex2 - ex1), bool)
     ring[by1 - ey1:by2 - ey1, bx1 - ex1:bx2 - ex1] = False
     bg = cv2.cvtColor(image[ey1:ey2, ex1:ex2], cv2.COLOR_BGR2LAB)[ring]

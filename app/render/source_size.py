@@ -14,8 +14,20 @@ BUDGET_SCALE = 0.85  # the character budget assumes lettering slightly smaller t
 _SAMPLE = "Nhưng tôi không thể bỏ cuộc dễ dàng như vậy"
 
 
-def source_cap_px(raw: np.ndarray, rect) -> int | None:
-    """Median letter height in ``rect`` of the raw slice, or None when no letters stand out."""
+def _letter_pieces(ink: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Labels of the ink and the stats of its pieces shaped like letters, not outlines or art reaching the crop edge."""
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    height, width = ink.shape[:2]
+    x, y, w, h, area = (stats[:, i] for i in range(5))
+    # Letters of a one-line shout can fill most of the height.
+    keep = ((area >= 12) & (h >= 5) & (h <= 0.9 * height) & (w <= 3 * h)
+            & (x > 0) & (y > 0) & (x + w < width) & (y + h < height))
+    keep[0] = False
+    return labels, np.where(keep[:, None], stats, -1)
+
+
+def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3) -> int | None:
+    """Median letter height in ``rect`` of the raw slice, or None when fewer than ``min_pieces`` letters stand out."""
     x1, y1, x2, y2 = (int(v) for v in rect)
     crop = raw[max(0, y1):y2, max(0, x1):x2]
     if crop.size == 0 or min(crop.shape[:2]) < 8:
@@ -24,13 +36,9 @@ def source_cap_px(raw: np.ndarray, rect) -> int | None:
     _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     if np.count_nonzero(ink) > ink.size / 2:
         ink = 255 - ink  # letters are the minority class
-    count, _, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
-    height, width = crop.shape[:2]
-    # Bubble outlines and art reach the crop edge; letters of a one-line shout can fill most of its height.
-    pieces = sorted((int(h), int(area)) for x, y, w, h, area in stats[1:count]
-                    if area >= 12 and 5 <= h <= 0.9 * height and w <= 3 * h
-                    and x > 0 and y > 0 and x + w < width and y + h < height)
-    if len(pieces) < 3:
+    _labels, stats = _letter_pieces(ink)
+    pieces = sorted((int(h), int(area)) for _x, _y, _w, h, area in stats if area > 0)
+    if len(pieces) < max(1, min_pieces):
         return None
     # The height holding the middle of the ink: specks of art are many but carry little of it.
     ink = np.cumsum([area for _h, area in pieces])
@@ -47,8 +55,10 @@ def source_ink_hex(raw: np.ndarray, rect) -> str | None:
     _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     if np.count_nonzero(ink) > ink.size / 2:
         ink = 255 - ink
-    # Skip the anti-aliased rim so the colour comes from the letter bodies.
-    body = cv2.erode(ink, np.ones((3, 3), np.uint8)) > 0
+    labels, stats = _letter_pieces(ink)
+    letters = (stats[:, 4] > 0)[labels].astype(np.uint8)
+    # Skip the anti-aliased rim so the colour comes from the letter bodies, not the outline or art the box also holds.
+    body = cv2.erode(letters, np.ones((3, 3), np.uint8)) > 0
     if np.count_nonzero(body) < 20:
         return None
     b, g, r = (int(np.median(crop[..., channel][body])) for channel in range(3))
