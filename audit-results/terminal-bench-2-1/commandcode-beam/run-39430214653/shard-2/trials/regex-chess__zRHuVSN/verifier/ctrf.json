@@ -1,0 +1,59 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 4,
+            "passed": 3,
+            "failed": 1,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792505827.9027948,
+            "stop": 1792506013.16448
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_immortal_game",
+                "status": "passed",
+                "duration": 52.142499445999874,
+                "start": 1792505828.1872804,
+                "stop": 1792505880.3302503,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_game_of_century",
+                "status": "passed",
+                "duration": 83.81955548300039,
+                "start": 1792505880.3307204,
+                "stop": 1792505964.1506336,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_naroditsky_ivanchuk",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 48.977940220000164,
+                "start": 1792505964.1509209,
+                "stop": 1792506013.1533449,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_naroditsky_ivanchuk():\n        pgn = \"\"\"[Event \"World Blitz Championship\"]\n    [Site \"New York, NY USA\"]\n    [Date \"2024.12.30\"]\n    [EventDate \"2024.12.30\"]\n    [Round \"11.9\"]\n    [Result \"0-1\"]\n    [White \"Vasyl Ivanchuk\"]\n    [Black \"Daniel Naroditsky\"]\n    [ECO \"E60\"]\n    [WhiteElo \"2651\"]\n    [BlackElo \"2711\"]\n    [PlyCount \"82\"]\n    \n    1. d4 Nf6 2. c4 g6 3. f3 Bg7 4. e4 d6 5. Be3 O-O 6. Nc3 a6 7. Bd3 Nfd7 8.\n    Nge2 c5 9. d5 Ne5 10. a4 Nbd7 11. b3 Nxd3+ 12. Qxd3 f5 13. Rd1 b5 14. cxb5\n    axb5 15. axb5 Ne5 16. Qc2 fxe4 17. Nxe4 Qa5+ 18. N2c3 Nxf3+ 19. gxf3 Rxf3\n    20. Kd2 Bd4 21. Ra1 Bxe3+ 22. Ke2 Bg4 23. Rxa5 Rxa5 24. Kd3 Bd4+ 25. Kc4\n    Bf5 26. Qd2 Bxc3 27. Nxc3 e5 28. Re1 Rf4+ 29. Qxf4 exf4 30. Ne4 Bxe4 31.\n    Rxe4 g5 32. b6 Ra8 33. Kb5 f3 34. Re1 g4 35. Kc6 h5 36. Kxd6 Rf8 37. b7 h4\n    38. Rg1 f2 39. Rxg4+ Kh7 40. Rxh4+ Kg6 41. Rg4+ 0-1\"\"\"\n>       do_test_game(pgn)\n\n/tests/test_outputs.py:141: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n/tests/test_outputs.py:86: in do_test_game\n    verify_legal_moves(fen)\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nfen = '6k1/7p/3p2p1/rPpPpb2/2K5/1PN2r2/3Q3P/7R w - e6 0 28'\n\n    def verify_legal_moves(fen):\n        \"\"\"Verify that the solution generates all legal moves for a given position.\"\"\"\n        our_moves = run_solution(fen)\n    \n        board = chess.Board(fen)\n        python_chess_moves = set()\n        for move in board.legal_moves:\n            if move.promotion and move.promotion != chess.QUEEN:\n                continue\n    \n            board_copy = board.copy()\n            board_copy.push(move)\n            python_chess_moves.add(\" \".join(board_copy.fen().split(\" \")[:-2]))\n    \n        print(f\"Position: {fen}, Our moves: {len(our_moves)}, Python-chess moves: {len(python_chess_moves)}\")\n    \n        for x in our_moves:\n            assert x in python_chess_moves or x.rpartition(\" \")[0]+\" -\" in python_chess_moves, (\n                f\"Position: {fen}, Our move: {x} not found in Python-chess moves: {python_chess_moves}\"\n            )\n    \n>       assert len(our_moves) == len(python_chess_moves), (\n            f\"Position: {fen}, Our moves: {len(our_moves)}, Python-chess moves: {len(python_chess_moves)}\"\n        )\nE       AssertionError: Position: 6k1/7p/3p2p1/rPpPpb2/2K5/1PN2r2/3Q3P/7R w - e6 0 28, Our moves: 32, Python-chess moves: 33\nE       assert 32 == 33\nE        +  where 32 = len(['6k1/7p/3p2p1/rPpPpb2/2K5/1PN2r2/3Q3P/R7 b - -', '6k1/7p/3p2p1/rPpPpb2/2K5/1PN2r2/3Q3P/1R6 b - -', '6k1/7p/3p2p1/rPpP...3P/3R4 b - -', '6k1/7p/3p2p1/rPpPpb2/2K5/1PN2r2/3Q3P/4R3 b - -', '6k1/7p/3p2p1/rPpPpb2/2K5/1PN2r2/3Q3P/5R2 b - -', ...])\nE        +  and   33 = len({'6k1/7p/1P1p2p1/r1pPpb2/2K5/1PN2r2/3Q3P/7R b - -', '6k1/7p/3p2p1/rPpPpb2/1PK5/2N2r2/3Q3P/7R b - -', '6k1/7p/3p2p1/rPp...2/7P/7R b - -', '6k1/7p/3p2p1/rPpPpb2/2K4P/1PN2r2/3Q4/7R b - -', '6k1/7p/3p2p1/rPpPpb2/2K5/1P3r2/3Q3P/1N5R b - -', ...})\n\n/tests/test_outputs.py:39: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_not_long",
+                "status": "passed",
+                "duration": 0.010463098999935028,
+                "start": 1792506013.153627,
+                "stop": 1792506013.1642559,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
