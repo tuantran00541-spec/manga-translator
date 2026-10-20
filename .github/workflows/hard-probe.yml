@@ -1,0 +1,127 @@
+name: Hard probe (offline SQL engine)
+
+on:
+  push:
+    paths:
+      - ".github/hard-probe/config.json"
+
+permissions:
+  contents: write
+
+jobs:
+  config:
+    runs-on: ubuntu-24.04
+    outputs:
+      runs: ${{ steps.c.outputs.runs }}
+      minutes: ${{ steps.c.outputs.minutes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: c
+        run: |
+          python3 -c 'import json; c=json.load(open(".github/hard-probe/config.json")); print("runs=" + json.dumps(c["runs"])); print("minutes=" + str(c["minutes"]))' >> "$GITHUB_OUTPUT"
+
+  probe:
+    needs: config
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    strategy:
+      fail-fast: false
+      matrix:
+        run: ${{ fromJson(needs.config.outputs.runs) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Start the key relay as another user
+        env:
+          COMMANDCODE: ${{ secrets.COMMANDCODE }}
+        run: |
+          python -m pip install -q requests
+          sudo mkdir -p /opt/relay && sudo chown nobody /opt/relay
+          sudo install -m 755 .github/terminal-bench/proxy.py /opt/relay/proxy.py
+          printf '%s' "$COMMANDCODE" | sudo -u nobody tee /opt/relay/key > /dev/null
+          sudo chmod 600 /opt/relay/key
+          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json 18081 https://api.commandcode.ai/provider/v1 '{}' "${{ matrix.run.model }}" > /dev/null 2>&1 &
+          sleep 2
+      - name: Lay out the task; hide the grader; cut the agent user off the internet
+        run: |
+          python -m pip install -q -r requirements-test.txt
+          sudo useradd -m probe
+          sudo mkdir -p /tmp/work /home/probe/.manga-agent /home/probe/src /opt/grader
+          H=.github/hard-probe
+          sudo "$(which python)" $H/gen_data.py /tmp/work/data
+          sudo PYTHONPATH=$H "$(which python)" $H/make_examples.py /tmp/work/data $H/examples.sql /tmp/work/examples
+          sudo cp $H/spec.md $H/run_examples.py $H/sqlcheck.py /tmp/work/
+          sudo cp $H/hidden.sql $H/answers.py $H/grade.py $H/sqlcheck.py /opt/grader/ && sudo chmod -R go-rwx /opt/grader
+          sudo cp -r app .github/terminal-bench/run_agent.py /home/probe/src/
+          python -c 'import json, sys; r = json.loads(sys.argv[1]); p = {"token_budget": 10**15, "max_steps": 100000, "max_output_tokens": 16000, "models": {".": {"request": {"reasoning_effort": r["effort"]}, "max_output": 16000}}}; p.update({"echo_reasoning": r["echo_reasoning"]} if r.get("echo_reasoning") else {}); print(json.dumps(p))' '${{ toJson(matrix.run) }}' | sudo tee /home/probe/.manga-agent/profile.json > /dev/null
+          sudo chown -R probe /tmp/work /home/probe
+          # The repository (with the hidden statements) is not readable by the agent user.
+          chmod 700 "$GITHUB_WORKSPACE" /home/runner/work 2>/dev/null || true
+          # Only the loopback (the model relay) is reachable for the agent user.
+          for t in iptables ip6tables; do
+            sudo $t -I OUTPUT -m owner --uid-owner probe -j REJECT
+            sudo $t -I OUTPUT -o lo -m owner --uid-owner probe -j ACCEPT
+          done
+          (sudo -u probe curl -sS -m 8 -o /dev/null https://pypi.org && echo "::error::the agent user still reaches the internet" && exit 1) || echo "internet is off for the agent user"
+          sudo -u probe curl -sS -m 8 -o /dev/null -w "relay: HTTP %{http_code}\n" http://127.0.0.1:18081/v1/models || true
+          sudo -u probe test -r "$GITHUB_WORKSPACE/.github/hard-probe/hidden.sql" && echo "::error::hidden statements are readable" && exit 1 || echo "hidden statements are out of reach"
+      - name: Run the agent
+        run: |
+          mkdir -p out
+          cd /tmp/work
+          sudo -u probe -H env PATH="$PATH" PYTHONPATH=/home/probe/src "$(which python)" -X faulthandler /home/probe/src/run_agent.py - \
+            --base http://127.0.0.1:18081/v1 --model "${{ matrix.run.model }}" --workspace /tmp/work --minutes "${{ needs.config.outputs.minutes }}" \
+            < "$GITHUB_WORKSPACE/.github/hard-probe/task.md" > "$GITHUB_WORKSPACE/out/events.jsonl" 2> "$GITHUB_WORKSPACE/out/stderr.log" && rc=0 || rc=$?
+          echo "agent exit code: $rc" | tee "$GITHUB_WORKSPACE/out/exit.txt"
+      - name: Grade on the hidden statements and count what the agent used
+        if: always()
+        run: |
+          D=audit-results/hard-probe/${{ matrix.run.label }}/run-${{ github.run_id }}
+          mkdir -p "$D"
+          sudo pkill -u probe || true
+          sudo cp -r /opt/grader /tmp/grader && sudo chown -R probe /tmp/grader
+          (cd /tmp/work && sudo -u probe -H env PATH="$PATH" timeout 900 python run_examples.py 2>&1 | tail -3) | tee "$D/examples.txt" || true
+          (cd /tmp/grader && sudo -u probe -H env PATH="$PATH" timeout 2400 python grade.py /tmp/work/data hidden.sql /tmp/work/minisql.py /tmp/grader/report.json) | tee "$D/grade.txt" || true
+          sudo cp /tmp/grader/report.json "$D/report.json" 2>/dev/null || true
+          sudo cp /tmp/work/minisql.py "$D/minisql.py" 2>/dev/null || true
+          sudo chown -R "$(id -u)" "$D"
+          python - "$D" <<'PY'
+          import collections, json, re, sys
+          d = sys.argv[1]
+          events = [json.loads(line) for line in open("out/events.jsonl", encoding="utf-8") if line.startswith("{")]
+          calls = [c for e in events if e.get("type") == "assistant" for c in e.get("calls") or []]
+          names = collections.Counter(c["name"] for c in calls)
+          text = lambda c: json.dumps(c.get("args") or {}, ensure_ascii=False)
+          bridge = collections.Counter(m for c in calls if c["name"] == "run_command" for m in re.findall(r"agent-tool\s+(\w+)", text(c)))
+          dots = collections.Counter(m for c in calls if c["name"] == "create" for m in re.findall(r"tools\.(\w+)\(", text(c)))
+          times = [e["time"] for e in events if "time" in e]
+          result = next((e for e in events if e.get("type") == "result"), {})
+          summary = {"tool_calls": dict(names.most_common()), "agent_tool": dict(bridge), "tools_dot_in_create": dict(dots.most_common()),
+                     "skills": [(c.get("args") or {}).get("name") for c in calls if c["name"] == "skill"],
+                     "helpers": sum(names[n] for n in ("task", "spawn_agent", "fan_out", "agent")) + bridge["task"] + bridge["agent"] + dots["agent"] + dots["task"],
+                     "notices": [e.get("text", "")[:160] for e in events if e.get("type") in ("notice", "error")][:40],
+                     "minutes": round((times[-1] - times[0]) / 60, 1) if times else None, "status": result.get("status"), "usage": result.get("usage"),
+                     "final": next((e.get("text", "") for e in reversed(events) if e.get("type") == "assistant" and e.get("text")), "")[-2500:]}
+          json.dump(summary, open(f"{d}/summary.json", "w"), indent=1, ensure_ascii=False)
+          print(json.dumps({k: summary[k] for k in ("tool_calls", "agent_tool", "skills", "helpers", "minutes", "status")}, indent=1))
+          PY
+          gzip -c out/events.jsonl > "$D/events.jsonl.gz"; cp out/stderr.log out/exit.txt "$D/" || true
+          sudo cat /opt/relay/stats.json > "$D/relay-stats.json" 2>/dev/null || true
+      - name: Restore push credentials for the evidence step
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          chmod 755 "$GITHUB_WORKSPACE" /home/runner/work 2>/dev/null || true
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/hard-probe/${{ matrix.run.label }}/run-${{ github.run_id }}
+          message: "audit: hard probe ${{ matrix.run.label }} (run ${{ github.run_id }})"
