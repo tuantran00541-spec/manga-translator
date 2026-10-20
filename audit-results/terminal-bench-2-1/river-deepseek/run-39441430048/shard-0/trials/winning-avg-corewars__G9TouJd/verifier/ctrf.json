@@ -1,0 +1,47 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 3,
+            "passed": 3,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792515533.2090473,
+            "stop": 1792515533.482283
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_opponents_integrity",
+                "status": "passed",
+                "duration": 0.00034610000057000434,
+                "start": 1792515533.2259984,
+                "stop": 1792515533.2264724,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_warrior_exists",
+                "status": "passed",
+                "duration": 0.00016577000042161671,
+                "start": 1792515533.2265754,
+                "stop": 1792515533.2268069,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_warrior_performance",
+                "status": "passed",
+                "duration": 0.2552098569994996,
+                "start": 1792515533.2268858,
+                "stop": 1792515533.4821837,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

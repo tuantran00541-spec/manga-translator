@@ -1,0 +1,77 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 6,
+            "passed": 5,
+            "failed": 1,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792513007.3261137,
+            "stop": 1792513338.6506543
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_compare_golden_vs_my_sql_query_correctness",
+                "status": "passed",
+                "duration": 325.5644629699991,
+                "start": 1792513007.377498,
+                "stop": 1792513332.9422407,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_check_for_db_modifications",
+                "status": "passed",
+                "duration": 0.04032854200067959,
+                "start": 1792513332.942442,
+                "stop": 1792513332.9829378,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_compare_golden_vs_solution_runtime",
+                "status": "passed",
+                "duration": 4.853316929999892,
+                "start": 1792513332.9831216,
+                "stop": 1792513337.836617,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_outputs_match_exactly",
+                "status": "passed",
+                "duration": 0.8030081990000326,
+                "start": 1792513337.8367941,
+                "stop": 1792513338.639995,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_solution_contains_single_sql_query",
+                "status": "passed",
+                "duration": 0.0014838790002613678,
+                "start": 1792513338.6402102,
+                "stop": 1792513338.641802,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_solution_is_small",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.0003817229999185656,
+                "start": 1792513338.6419306,
+                "stop": 1792513338.6505241,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_solution_is_small():\n        \"\"\"\n        Verify that the solution file is small.\n        \"\"\"\n        assert SOL_SQL_PATH.exists(), f\"Solution SQL not found at {SOL_SQL_PATH}\"\n    \n        sql_content = _read_sql(SOL_SQL_PATH)\n        char_count = len(sql_content)\n    \n        # Check that the solution is reasonably small (under 2000 characters)\n        MAX_CHARS = 2000\n>       assert char_count <= MAX_CHARS, (\n            f\"Solution SQL is too large: {char_count} characters \"\n            f\"(maximum allowed: {MAX_CHARS})\"\n        )\nE       AssertionError: Solution SQL is too large: 2746 characters (maximum allowed: 2000)\nE       assert 2746 <= 2000\n\n/tests/test_outputs.py:244: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            }
+        ]
+    }
+}
