@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -26,8 +27,64 @@ MARKER = ".manga-install.json"
 FREE_GB_NEEDED = 5
 
 
-def say(message: str) -> None:
-    print(f"\n==> {message}", flush=True)
+def _colour_ok() -> bool:
+    """Colour only on a real terminal that can show it, and never with NO_COLOR set."""
+    if os.environ.get("NO_COLOR") or os.environ.get("TERM") == "dumb" or not sys.stdout.isatty():
+        return False
+    if not WINDOWS:
+        return True
+    try:  # Windows 10+ consoles show colour once asked to.
+        import ctypes
+        kernel = ctypes.windll.kernel32
+        handle, mode = kernel.GetStdHandle(-11), ctypes.c_uint32()
+        return bool(kernel.GetConsoleMode(handle, ctypes.byref(mode)) and kernel.SetConsoleMode(handle, mode.value | 4))
+    except (AttributeError, OSError):
+        return False
+
+
+COLOUR = _colour_ok()
+# Consolas, the old Windows console font, has no check mark.
+TICK = "√" if WINDOWS else "✓"
+
+
+def paint(text: str, code: str) -> str:
+    return f"\033[{code}m{text}\033[0m" if COLOUR else text
+
+
+def took(seconds: float) -> str:
+    minutes, seconds = divmod(int(round(seconds)), 60)
+    return f"{minutes} phút {seconds:02d} giây" if minutes else f"{seconds} giây"
+
+
+def note(message: str) -> None:
+    print(f"    {paint('·', '2')} {message}", flush=True)
+
+
+class Steps:
+    """Numbered step headers, each closed with the time it took."""
+
+    def __init__(self, total: int):
+        self.total, self.number, self.began, self.step_began = total, 0, time.monotonic(), None
+
+    def next(self, title: str) -> None:
+        self.close()
+        self.number += 1
+        print(f"\n{paint(f'[{self.number}/{self.total}]', '1;36')} {paint(title, '1')}", flush=True)
+        self.step_began = time.monotonic()
+
+    def close(self) -> None:
+        if self.step_began is not None:
+            print(paint(f"    {TICK} {took(time.monotonic() - self.step_began)}", "32"), flush=True)
+            self.step_began = None
+
+    def elapsed(self) -> str:
+        self.close()
+        return took(time.monotonic() - self.began)
+
+
+def app_version(target: Path) -> str:
+    match = re.search(r'^VERSION = "(.+)"', (target / "run.py").read_text(encoding="utf-8"), re.M)
+    return match.group(1) if match else "?"
 
 
 def default_home() -> Path:
@@ -133,23 +190,27 @@ def check_disk(target: Path) -> None:
         raise SystemExit(f"Ổ đĩa còn {free_gb:.1f} GB, cần khoảng {FREE_GB_NEEDED} GB trống để cài.")
 
 
-def ensure_vc_runtime() -> None:
-    """Install or update the Microsoft Visual C++ runtime that onnxruntime and paddle need."""
+def vc_runtime_problems() -> list[str]:
+    """What is missing or too old in the Microsoft Visual C++ runtime that onnxruntime and paddle need."""
     if not WINDOWS:
-        return
+        return []
     sys.path.insert(0, str(ROOT))
     from app import vc_runtime
 
-    found = vc_runtime.problems()
-    if not found:
-        return
-    say(f"Cài Microsoft Visual C++ Runtime ({', '.join(found)}); Windows sẽ hỏi quyền admin")
+    return vc_runtime.problems()
+
+
+def ensure_vc_runtime(found: list[str]) -> None:
+    """Install or update the Microsoft Visual C++ runtime; Windows asks for admin once."""
+    from app import vc_runtime
+
+    note(f"cần: {', '.join(found)}; Windows sẽ hỏi quyền admin")
     try:
-        note = vc_runtime.install()
+        outcome = vc_runtime.install()
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
-    if note:
-        print(f"    {note}")
+    if outcome:
+        note(outcome)
 
 
 def python_version(python: Path) -> tuple[int, int] | None:
@@ -195,7 +256,7 @@ def remove_old_caches() -> None:
     """Delete the manga-ocr model that versions before 0.3 downloaded; nothing uses it now."""
     old = Path.home() / ".cache" / "huggingface" / "hub" / "models--kha-white--manga-ocr-base"
     if old.is_dir():
-        say("Xóa model manga-ocr cũ không còn dùng")
+        note("xóa model manga-ocr cũ không còn dùng")
         shutil.rmtree(old, ignore_errors=True)
 
 
@@ -212,8 +273,9 @@ def build_ctd(target: Path, uv: str | None) -> None:
     python = venv_python(build)
     packages = ["numpy==1.26.4", "onnx==1.17.0", "onnx2torch==1.5.15", "onnxruntime==1.20.1"]
     if uv:
-        run(uv, "venv", "--clear", "--python", "3.12", build)
-        run(uv, "pip", "install", "--python", python, TORCH, *packages, "--torch-backend", "cpu")
+        # A throwaway cache: torch is only needed here, so it must not stay in the kept one.
+        run(uv, "venv", "--no-cache", "--clear", "--python", "3.12", build)
+        run(uv, "pip", "install", "--no-cache", "--python", python, TORCH, *packages, "--torch-backend", "cpu")
     else:
         run(sys.executable, "-m", "venv", "--clear", build)
         torch_index = [] if sys.platform == "darwin" else ["--index-url", TORCH_CPU_INDEX]
@@ -355,36 +417,40 @@ def main(argv: list[str] | None = None) -> None:
     uv = find_uv()
 
     check_disk(target)
+    missing_runtime = vc_runtime_problems()
+    steps = Steps(4 + (target != ROOT) + bool(missing_runtime))
+    print(f"\n{paint('Manga Translator ' + app_version(ROOT), '1')} {paint('→ ' + str(target), '2')}", flush=True)
     if target != ROOT:
-        say(f"Cập nhật mã nguồn vào {target}")
+        steps.next("Chép mã nguồn")
         sync_code(ROOT, target)
     write_marker(target, home, uv, done=False)
-    ensure_vc_runtime()
-    say("Chuẩn bị Python 3.12 (.venv)")
+    if missing_runtime:
+        steps.next("Cài Microsoft Visual C++ Runtime")
+        ensure_vc_runtime(missing_runtime)
+    steps.next("Chuẩn bị Python 3.12")
     python = ensure_venv(target, uv)
-    say("Cài thư viện (lần đầu mất vài phút)")
+    steps.next("Cài thư viện (lần đầu mất vài phút, lần cập nhật nhanh hơn nhiều)")
     install_packages(python, target, uv, exact=target != ROOT)
     if target != ROOT:
         remove_old_caches()
-    say("Tải và chuẩn bị model")
+    steps.next("Tải model")
     (target / "models").mkdir(exist_ok=True)
     download(LAMA_URL, target / "models" / "lama-manga-dynamic.onnx", LAMA_SHA256)
     build_ctd(target, uv)
-    say("Tạo lệnh `manga`")
+    steps.next("Tạo lệnh `manga`" + (" và biểu tượng trên desktop" if WINDOWS else ""))
     shim = install_command(python, target, home)
-    print(f"    {shim}")
+    note(str(shim))
     if WINDOWS:
-        say("Tạo biểu tượng Manga Translator trên desktop và Start menu")
         try:
             add_shortcuts_windows(python, target)
         except (OSError, subprocess.CalledProcessError) as exc:
-            print(f"    Không tạo được biểu tượng ({exc}); vẫn mở app bằng lệnh `manga`.")
+            note(f"không tạo được biểu tượng ({exc}); vẫn mở app bằng lệnh `manga`")
     write_marker(target, home, uv, done=True)
-    if WINDOWS:
-        say("Xong. Bấm đúp biểu tượng Manga Translator trên desktop để mở app.")
-    else:
-        say("Xong. Mở một cửa sổ cmd/terminal MỚI và gõ:  manga")
-    print("    `manga update` để cập nhật bản mới.")
+    elapsed = steps.elapsed()
+    print(f"\n{paint(f'{TICK} Đã cài Manga Translator {app_version(target)} sau {elapsed}', '1;32')}")
+    opening = "bấm đúp biểu tượng Manga Translator trên desktop" if WINDOWS else "mở một terminal MỚI rồi gõ  manga"
+    for label, text in (("Mở app", opening), ("Cập nhật", "manga update"), ("Thư mục", str(target))):
+        print(f"  {paint(f'{label:<9}', '2')} {text}")
 
 
 if __name__ == "__main__":

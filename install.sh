@@ -11,8 +11,13 @@ set -eu
 REPO="tuantran00541-spec/manga-translator"
 UV_VERSION="0.12.20"
 
-say() { printf '\n==> %s\n' "$1"; }
-fail() { printf '\nLỖI: %s\n' "$1" >&2; exit 1; }
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != dumb ]; then
+  BOLD="$(printf '\033[1m')"; DIM="$(printf '\033[2m')"; RED="$(printf '\033[1;31m')"; OFF="$(printf '\033[0m')"
+else
+  BOLD=; DIM=; RED=; OFF=
+fi
+say() { printf '    %s·%s %s\n' "$DIM" "$OFF" "$1"; }
+fail() { printf '\n%sLỖI:%s %s\n' "$RED" "$OFF" "$1" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "cần lệnh $1"; }
 fetch() { curl --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 -fLsS "$@"; }
 # The newest release named like V0.4.0, so a data release such as a model pack is never taken for the app.
@@ -39,7 +44,7 @@ mkdir -p "$MANGA_HOME"
 WORK="$(mktemp -d)"
 trap 'rm -rf -- "${WORK:?}"' EXIT
 
-say "Chuẩn bị uv $UV_VERSION (trình cài Python)"
+printf '\n%sManga Translator%s %s· chuẩn bị bộ cài%s\n' "$BOLD" "$OFF" "$DIM" "$OFF"
 UV="$MANGA_HOME/uv/uv"
 if ! "$UV" --version 2>/dev/null | grep -q "$UV_VERSION"; then
   fetch -o "$WORK/uv.tar.gz" "https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$TRIPLE.tar.gz"
@@ -47,6 +52,7 @@ if ! "$UV" --version 2>/dev/null | grep -q "$UV_VERSION"; then
   mkdir -p "$MANGA_HOME/uv"
   tar xzf "$WORK/uv.tar.gz" -C "$MANGA_HOME/uv" --strip-components 1
 fi
+say "uv $UV_VERSION sẵn sàng"
 
 HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
 case "$0" in
@@ -60,23 +66,24 @@ else
   if [ -z "$REF" ]; then
     CHANNEL=release
     REF="$(latest_release || true)"
-    [ -n "$REF" ] || { CHANNEL=ref; REF=main; printf 'Không đọc được bản phát hành mới nhất, cài bản main.\n'; }
+    [ -n "$REF" ] || { CHANNEL=ref; REF=main; say "không đọc được bản phát hành mới nhất, cài bản main"; }
   fi
-  say "Tải mã nguồn ($REF)"
   fetch -o "$WORK/source.tar.gz" "https://codeload.github.com/$REPO/tar.gz/$REF"
   mkdir -p "$WORK/source"
   tar xzf "$WORK/source.tar.gz" -C "$WORK/source" --strip-components 1
   SOURCE="$WORK/source"
   TARGET="$MANGA_HOME/app"
+  say "đã tải mã nguồn $REF"
 fi
 
-# The download cache only speeds up a re-run, so it lives here and is removed after a good install.
-UV_PYTHON_INSTALL_DIR="$MANGA_HOME/python" UV_PYTHON_PREFERENCE=only-managed UV_CACHE_DIR="$MANGA_HOME/uv-cache" \
+# The library cache shares its files with the app's environment (hard links), so it costs little disk
+# and is kept: an update then only fetches what changed.
+export UV_CACHE_DIR="$MANGA_HOME/uv-cache"
+UV_PYTHON_INSTALL_DIR="$MANGA_HOME/python" UV_PYTHON_PREFERENCE=only-managed \
   MANGA_UV="$UV" MANGA_HOME="$MANGA_HOME" MANGA_REF="${REF:-${MANGA_REF:-main}}" MANGA_CHANNEL="${CHANNEL:-ref}" \
   "$UV" run --no-project --python 3.12 "$SOURCE/scripts/install.py" --target "$TARGET" \
   || fail "cài đặt chưa xong, xem lỗi ở trên rồi chạy lại lệnh cài"
-rm -rf "${MANGA_HOME:?}/uv-cache"
-say "Xong. Mở terminal mới và gõ:  manga"
+"$UV" cache prune >/dev/null 2>&1 || true
 }
 
 main "$@"

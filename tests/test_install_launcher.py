@@ -104,6 +104,18 @@ class _Response:
         return False
 
 
+def test_steps_are_numbered_and_timed(monkeypatch, capsys):
+    clock = iter([0, 0, 5, 5, 70, 70])
+    monkeypatch.setattr(install.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(install, "COLOUR", False)
+    steps = install.Steps(2)
+    steps.next("Một")
+    steps.next("Hai")
+    assert steps.elapsed() == "1 phút 10 giây"
+    out = capsys.readouterr().out
+    assert "[1/2] Một" in out and "[2/2] Hai" in out and "5 giây" in out and "1 phút 05 giây" in out
+
+
 def test_an_existing_model_is_kept_and_a_bad_download_is_refused(tmp_path, monkeypatch):
     kept = tmp_path / "mine.onnx"
     kept.write_bytes(b"my own model")

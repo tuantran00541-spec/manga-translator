@@ -11,12 +11,12 @@
     $uvVersion = '0.12.20'
     $uvSha256 = '95f9bc30fbb3574d276e28ac4a6de932d25153645853d13da8c21eec3bc88d06'
 
-    function Say($text) { Write-Host ""; Write-Host "==> $text" -ForegroundColor Cyan }
+    function Say($text) { Write-Host '    . ' -ForegroundColor DarkGray -NoNewline; Write-Host $text }
     function Fetch($url, $file) {
         # A home network drops now and then; three tries before giving up.
         for ($try = 1; ; $try++) {
             try { Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $file; return }
-            catch { if ($try -ge 3) { throw }; Write-Host "    mang loi, thu lai lan $($try + 1)..."; Start-Sleep -Seconds (2 * $try) }
+            catch { if ($try -ge 3) { throw }; Say "mang loi, thu lai lan $($try + 1)"; Start-Sleep -Seconds (2 * $try) }
         }
     }
     # The newest release named like V0.4.0, so a data release such as a model pack is never taken for the app.
@@ -37,7 +37,9 @@
     if (-not $env:MANGA_HOME -and $home_ -match '[^\x00-\x7F]') { $home_ = Join-Path $env:ProgramData 'manga-translator' }
     New-Item -ItemType Directory -Force -Path $home_ | Out-Null
 
-    Say "Chuan bi uv $uvVersion (trinh cai Python)"
+    Write-Host ''
+    Write-Host 'Manga Translator' -NoNewline
+    Write-Host ' . chuan bi bo cai' -ForegroundColor DarkGray
     $uvDir = Join-Path $home_ 'uv'
     $uv = Join-Path $uvDir 'uv.exe'
     $haveUv = (Test-Path $uv) -and ((& $uv --version) -match [regex]::Escape($uvVersion))
@@ -48,6 +50,7 @@
         Expand-Archive -Force -Path $zip -DestinationPath $uvDir
         Remove-Item $zip
     }
+    Say "uv $uvVersion san sang"
 
     $work = $null
     $ref = if ($env:MANGA_REF) { $env:MANGA_REF } else { 'main' }
@@ -59,9 +62,8 @@
         if (-not $env:MANGA_REF) {
             $ref = LatestRelease
             $channel = 'release'
-            if (-not $ref) { $ref = 'main'; $channel = 'ref'; Write-Host 'Khong doc duoc ban phat hanh moi nhat, cai ban main.' }
+            if (-not $ref) { $ref = 'main'; $channel = 'ref'; Say 'khong doc duoc ban phat hanh moi nhat, cai ban main' }
         }
-        Say "Tai ma nguon ($ref)"
         $work = Join-Path ([IO.Path]::GetTempPath()) ("manga-translator-" + [guid]::NewGuid())
         New-Item -ItemType Directory -Path $work | Out-Null
         $archive = Join-Path $work 'source.zip'
@@ -69,13 +71,15 @@
         Expand-Archive -Path $archive -DestinationPath $work
         $source = (Get-ChildItem -Directory $work | Select-Object -First 1).FullName
         $target = Join-Path $home_ 'app'
+        Say "da tai ma nguon $ref"
     }
 
     # Settings for this install only; the user's own session gets them back afterwards.
     $settings = @{
         UV_PYTHON_INSTALL_DIR = (Join-Path $home_ 'python')
         UV_PYTHON_PREFERENCE = 'only-managed'
-        # The download cache only speeds up a re-run, so it lives here and is removed after a good install.
+        # The library cache shares its files with the app's environment (hard links), so it costs little disk
+        # and is kept: an update then only fetches what changed.
         UV_CACHE_DIR = (Join-Path $home_ 'uv-cache')
         MANGA_UV = $uv
         MANGA_HOME = $home_
@@ -91,13 +95,10 @@
     try {
         & $uv run --no-project --python 3.12 (Join-Path $source 'scripts\install.py') --target $target
         if ($LASTEXITCODE -ne 0) { throw 'Cai dat chua xong, xem loi o tren roi chay lai lenh cai.' }
-        # Tens of thousands of small files: uv clears them far faster than Remove-Item, which looked like a hang.
-        Say 'Don bo nho tam cua lan cai (co the mat 1-2 phut)'
-        # uv reports on stderr, which PowerShell 5.1 turns into an error under 'Stop'.
+        # Drops only what no install uses any more; uv reports on stderr, which 'Stop' would turn into an error.
         $ErrorActionPreference = 'Continue'
-        & $uv cache clean 2>&1 | Out-Null
+        & $uv cache prune 2>&1 | Out-Null
         $ErrorActionPreference = 'Stop'
-        Remove-Item -Recurse -Force (Join-Path $home_ 'uv-cache') -ErrorAction SilentlyContinue
     } finally {
         foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
         if ($work -and $work.StartsWith([IO.Path]::GetTempPath())) { Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue }
@@ -106,5 +107,4 @@
     # This window can use the command at once; new windows read it from the user Path.
     $bin = Join-Path $home_ 'bin'
     if (-not (($env:Path -split ';') -contains $bin)) { $env:Path = "$bin;$env:Path" }
-    Say 'Xong. Go lenh:  manga'
 }

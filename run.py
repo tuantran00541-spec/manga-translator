@@ -125,6 +125,7 @@ def _run_installer(source: Path, info: dict) -> None:
         env["MANGA_HOME"] = str(info["home"])
         env["UV_PYTHON_INSTALL_DIR"] = str(Path(info["home"]) / "python")
         env["UV_PYTHON_PREFERENCE"] = "only-managed"
+        env["UV_CACHE_DIR"] = str(Path(info["home"]) / "uv-cache")
     script = [str(source / "scripts" / "install.py"), "--target", str(BASE_DIR)]
     if uv:
         env["MANGA_UV"] = uv
@@ -132,6 +133,8 @@ def _run_installer(source: Path, info: dict) -> None:
     else:
         command = [sys.executable, *script]
     subprocess.run(command, check=True, env=env)
+    if uv:
+        subprocess.run([uv, "cache", "prune"], env=env, capture_output=True)
 
 
 def _sha256_file(path: Path) -> str:
