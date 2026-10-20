@@ -1,0 +1,297 @@
+{
+ "passed": 15,
+ "trials": 29,
+ "rate": 0.517,
+ "rows": [
+  {
+   "trial": "break-filter-js-from-html__fXETUwQ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    298331,
+    282533,
+    55077
+   ]
+  },
+  {
+   "trial": "build-pov-ray__FazUsuj",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    24918825,
+    23307084,
+    898607
+   ]
+  },
+  {
+   "trial": "chess-best-move__zFzUjZk",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    999000,
+    835201,
+    98096
+   ]
+  },
+  {
+   "trial": "code-from-image__8DcWRER",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1030752,
+    944818,
+    102818
+   ]
+  },
+  {
+   "trial": "constraints-scheduling__9Z4b6rE",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    104481,
+    81240,
+    20900
+   ]
+  },
+  {
+   "trial": "custom-memory-heap-crash__sbGpgGd",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    995821,
+    822494,
+    194038
+   ]
+  },
+  {
+   "trial": "dna-assembly__Ss5cPke",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "extract-moves-from-video__qUWkCcD",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    735717,
+    662883,
+    28399
+   ]
+  },
+  {
+   "trial": "filter-js-from-html__voQmeJ3",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    246249,
+    218357,
+    115859
+   ]
+  },
+  {
+   "trial": "fix-git__JkiEitq",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    183039,
+    163376,
+    10216
+   ]
+  },
+  {
+   "trial": "git-leak-recovery__8FCeajb",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    352381,
+    306916,
+    18389
+   ]
+  },
+  {
+   "trial": "headless-terminal__jDiBRbk",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    257718,
+    218558,
+    43288
+   ]
+  },
+  {
+   "trial": "kv-store-grpc__rkJ5S88",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    92277,
+    54784,
+    16996
+   ]
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__cg9hTk6",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    141337,
+    109493,
+    127470
+   ]
+  },
+  {
+   "trial": "make-doom-for-mips__8Xd9Y5A",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    797539,
+    579072,
+    74117
+   ]
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__PGPYtQE",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    349163,
+    297315,
+    112188
+   ]
+  },
+  {
+   "trial": "mteb-leaderboard__s92foGo",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3603649,
+    3165118,
+    136977
+   ]
+  },
+  {
+   "trial": "nginx-request-logging__oAgTufA",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    272192,
+    238325,
+    12926
+   ]
+  },
+  {
+   "trial": "password-recovery__DprEKrF",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    454828,
+    403456,
+    25975
+   ]
+  },
+  {
+   "trial": "polyglot-c-py__hdBHmsW",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    11175,
+    9216,
+    14835
+   ]
+  },
+  {
+   "trial": "protein-assembly__mXR8fKZ",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    735082,
+    519774,
+    186759
+   ]
+  },
+  {
+   "trial": "pytorch-model-cli__4hAhAWE",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    652636,
+    582055,
+    34345
+   ]
+  },
+  {
+   "trial": "qemu-startup__cEgUjkP",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    603201,
+    516291,
+    38534
+   ]
+  },
+  {
+   "trial": "regex-chess__qcjqxUx",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    33490,
+    28651,
+    179183
+   ]
+  },
+  {
+   "trial": "rstan-to-pystan__U44dCoa",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1568288,
+    1264704,
+    132402
+   ]
+  },
+  {
+   "trial": "schemelike-metacircular-eval__wA5EK6a",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    595062,
+    512768,
+    347911
+   ]
+  },
+  {
+   "trial": "sqlite-with-gcov__gYSmPvp",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    589263,
+    485376,
+    25985
+   ]
+  },
+  {
+   "trial": "train-fasttext__jWE5cqz",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    613528,
+    490525,
+    67261
+   ]
+  },
+  {
+   "trial": "vulnerable-secret__KKwePAn",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    94904,
+    69888,
+    5674
+   ]
+  }
+ ]
+}
