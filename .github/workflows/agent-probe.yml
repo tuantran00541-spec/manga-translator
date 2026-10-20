@@ -1,0 +1,88 @@
+name: Agent probe (one small project)
+
+on:
+  push:
+    paths:
+      - ".github/agent-probe/config.json"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - id: c
+        run: python -c 'import json; c=json.load(open(".github/agent-probe/config.json")); [print(f"{k}={c[k]}") for k in ("model", "effort", "minutes", "label")]' >> "$GITHUB_OUTPUT"
+      - name: Start the key relay as another user
+        env:
+          COMMANDCODE: ${{ secrets.COMMANDCODE }}
+        run: |
+          python -m pip install -q requests
+          sudo mkdir -p /opt/relay && sudo chown nobody /opt/relay
+          sudo install -m 755 .github/terminal-bench/proxy.py /opt/relay/proxy.py
+          printf '%s' "$COMMANDCODE" | sudo -u nobody tee /opt/relay/key > /dev/null
+          sudo chmod 600 /opt/relay/key
+          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json 18081 https://api.commandcode.ai/provider/v1 '{}' "${{ steps.c.outputs.model }}" > /dev/null 2>&1 &
+          sleep 2
+      - name: Start the TinyFish search relay as another user
+        env:
+          TINYFISH_KEY: ${{ secrets.TINYFISH }}
+        run: |
+          [ -n "$TINYFISH_KEY" ] || { echo "no TINYFISH secret; web search falls back to DuckDuckGo"; exit 0; }
+          sudo install -m 755 .github/terminal-bench/search_relay.py /opt/relay/search_relay.py
+          printf '%s' "$TINYFISH_KEY" | sudo -u nobody tee /opt/relay/search_key > /dev/null
+          sudo chmod 600 /opt/relay/search_key
+          sudo -u nobody nohup "$(which python)" /opt/relay/search_relay.py /opt/relay/search_key /opt/relay/search-stats.json 18082 > /dev/null 2>&1 &
+          sleep 2
+          echo "MANGA_SEARCH=http://127.0.0.1:18082" >> "$GITHUB_ENV"
+      - name: Run the agent on the project as a user without sudo
+        env:
+          EFFORT: ${{ steps.c.outputs.effort }}
+        run: |
+          python -m pip install -q -r requirements-test.txt
+          # The runner user has sudo, which could read the key; the agent runs as its own plain user instead.
+          sudo useradd -m probe
+          sudo mkdir -p /tmp/work /home/probe/.manga-agent /home/probe/src && sudo cp -r app .github/terminal-bench/run_agent.py /home/probe/src/
+          python -c 'import json, os; print(json.dumps({"token_budget": 10**15, "max_steps": 100000, "max_output_tokens": 16000, "keep_jobs": True, "models": {".": {"request": {"reasoning_effort": os.environ["EFFORT"]}, "max_output": 16000}}}))' | sudo tee /home/probe/.manga-agent/profile.json > /dev/null
+          sudo chown -R probe /tmp/work /home/probe
+          mkdir -p out
+          SEARCH=()
+          [ -n "${MANGA_SEARCH:-}" ] && SEARCH=(TINYFISH_API_KEY=relay "TINYFISH_SEARCH_URL=$MANGA_SEARCH/search" "TINYFISH_FETCH_URL=$MANGA_SEARCH/fetch")
+          cd /tmp/work
+          sudo -u probe -H env PATH="$PATH" PYTHONPATH=/home/probe/src "${SEARCH[@]}" "$(which python)" /home/probe/src/run_agent.py "$(cat "$GITHUB_WORKSPACE/.github/agent-probe/task.md")" \
+            --base http://127.0.0.1:18081/v1 --model "${{ steps.c.outputs.model }}" --workspace /tmp/work --minutes "${{ steps.c.outputs.minutes }}" \
+            > "$GITHUB_WORKSPACE/out/events.jsonl" 2> "$GITHUB_WORKSPACE/out/stderr.log" || true
+      - name: Check the result and count what was used
+        if: always()
+        run: |
+          D=audit-results/agent-probe/${{ steps.c.outputs.label }}/run-${{ github.run_id }}
+          mkdir -p "$D"
+          (curl -s -m 5 http://127.0.0.1:8091/metrics; echo; echo "workers running: $(pgrep -fc worker.py)")  | tee "$D/check.txt"
+          (cd /tmp/work && sudo -u probe -H env PATH="$PATH" timeout 900 python -m pytest -q 2>&1 | tail -15) | tee -a "$D/check.txt" || true
+          python .github/agent-probe/summary.py out/events.jsonl | tee "$D/summary.json" || true
+          gzip -c out/events.jsonl > "$D/events.jsonl.gz"; cp out/stderr.log "$D/" || true
+          sudo cat /opt/relay/stats.json > "$D/relay-stats.json" 2>/dev/null || true
+          tar -czf "$D/project.tgz" -C /tmp/work --exclude=__pycache__ --exclude=.pytest_cache . || true
+      - name: Restore push credentials for the evidence step
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/agent-probe/${{ steps.c.outputs.label }}/run-${{ github.run_id }}
+          message: "audit: agent probe ${{ steps.c.outputs.label }} (run ${{ github.run_id }})"
