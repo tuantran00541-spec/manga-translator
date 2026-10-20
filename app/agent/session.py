@@ -1895,6 +1895,19 @@ class AgentSession:
             tool.write_text(f'#!/bin/sh\nPYTHONPATH={shlex.quote(str(lib))}${{PYTHONPATH:+:$PYTHONPATH}} exec {shlex.quote(sys.executable)} -m agent_tools "$@"\n', encoding="utf-8")
             tool.chmod(0o755)
 
+    def _command_job(self, command: str, policy: "sandbox.Policy", tty: bool = False) -> "sandbox.Job":
+        """Start a run_command job that reaches the library as created tools do: agent-tool from the shell, agent_tools from Python."""
+        if not self._bridged(policy):
+            return sandbox.Job(command, policy, self.workspace.root, tty=tty)
+        state = self._outputs_dir() / "state"
+        self._write_library(state)
+        rpc = state / "rpc" / uuid.uuid4().hex[:12]
+        rpc.mkdir(parents=True)
+        job = sandbox.Job(command, policy, self.workspace.root, tty=tty, scratch=str(state),
+                          env={"PYTHONPATH": str(state / "lib"), "PATH": str(state / "bin"), "AGENT_RPC": str(rpc), "AGENT_STATE": str(state)})
+        threading.Thread(target=self._serve_chain, args=(rpc, job, None, self.plan_mode, "chain-shell-"), name=f"agent-bridge-{self.id}", daemon=True).start()
+        return job
+
     def _bridged(self, policy: "sandbox.Policy") -> bool:
         """Whether Python run by run_command can import agent_tools; a Docker sandbox does not get the host's environment."""
         return sandbox.backend() != "docker" or policy.mode == "full-access"
@@ -1947,7 +1960,7 @@ class AgentSession:
         names |= {"vote", "models"} if self.profile["model_roles"] or self._sources() else set()
         return names | ({"skill"} if self.skills else set())
 
-    def _serve_chain(self, folder: Path, job: "sandbox.Job", ws: Workspace | None = None, looks: bool = False) -> None:
+    def _serve_chain(self, folder: Path, job: "sandbox.Job", ws: Workspace | None = None, looks: bool = False, origin: str = "chain-") -> None:
         """Answer the requests a running created tool leaves in its rpc folder, each through the same rules and approvals as the model's own calls; a branch's workspace tools run on its copy."""
         targets = self._chain_targets()
 
@@ -1991,7 +2004,7 @@ class AgentSession:
                 elif name == "create":
                     output, ok = self._create(args), True
                 else:
-                    output, ok = self._run_call({"id": f"chain-{uuid.uuid4().hex[:8]}", "name": name, "args": args})
+                    output, ok = self._run_call({"id": f"{origin}{uuid.uuid4().hex[:8]}", "name": name, "args": args})
             except Exception as exc:
                 output, ok = f"Error: {type(exc).__name__}: {exc}", False
             reply = folder / request.name.replace(".req", ".res")
@@ -2629,17 +2642,7 @@ class AgentSession:
         policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
         root = self.workspace.root
         guard = gitguard.snapshot(root)
-        if not self._bridged(policy):
-            job = sandbox.Job(command, policy, root)
-        else:
-            # The command reaches the library as created tools do: agent-tool from the shell, `from agent_tools import tools` from Python.
-            state = self._outputs_dir() / "state"
-            self._write_library(state)
-            rpc = state / "rpc" / uuid.uuid4().hex[:12]
-            rpc.mkdir(parents=True)
-            job = sandbox.Job(command, policy, root, scratch=str(state),
-                              env={"PYTHONPATH": str(state / "lib"), "PATH": str(state / "bin"), "AGENT_RPC": str(rpc), "AGENT_STATE": str(state)})
-            threading.Thread(target=self._serve_chain, args=(rpc, job, None, self.plan_mode), name=f"agent-bridge-{self.id}", daemon=True).start()
+        job = self._command_job(command, policy)
         # Nobody types into a plain command, so one that asks a question fails at once instead of hanging until the clock runs out.
         if hasattr(job, "close_input"):
             job.close_input()
@@ -2702,7 +2705,7 @@ class AgentSession:
                 raise ToolError("command is empty")
             policy = sandbox.Policy("full-access", True) if args.get("outside_sandbox") else self.workspace.policy
             name = f"job{next(i for i in range(1, 100) if f'job{i}' not in self.jobs)}"
-            self.jobs[name] = sandbox.Job(command, policy, self.workspace.root, tty=bool(args.get("tty")))
+            self.jobs[name] = self._command_job(command, policy, tty=bool(args.get("tty")))
         time.sleep(1.0)
         with self._usage_lock:
             job = self.jobs.get(name)
@@ -3108,13 +3111,15 @@ class AgentSession:
             return (f"{call['name']} needs {', '.join(missing)}; this call arrived with {got}. A very long argument can be cut or garbled "
                     "on the way: write long content to a file first and pass its path where the tool takes one."), False
         signature = self._signature(call)
-        if signature in self._before_summary and self._repeats >= DOOM_LOOP:
+        # A shell loop calling the same tool is the script's choice, not the model repeating itself.
+        coded = str(call.get("id", "")).startswith("chain-shell-")
+        if not coded and signature in self._before_summary and self._repeats >= DOOM_LOOP:
             return (f"Blocked: after the summary you have redone {self._repeats} calls exactly as before and got the same results. "
                     "Read the summary's Progress and continue from there, or ask the user."), False
-        self._recent = (self._recent + [signature])[-DOOM_LOOP:]
+        self._recent = self._recent if coded else (self._recent + [signature])[-DOOM_LOOP:]
         # Waiting on a job that is still running is progress, not a loop.
         polling = call["name"] == "job_output" and isinstance(call["args"], dict) and getattr(self.jobs.get(str(call["args"].get("id"))), "alive", False)
-        if len(self._recent) == DOOM_LOOP and len(set(self._recent)) == 1 and call["name"] != "wait_agent" and not polling:
+        if not coded and len(self._recent) == DOOM_LOOP and len(set(self._recent)) == 1 and call["name"] != "wait_agent" and not polling:
             self._recent = []
             self.emit("notice", text=f"{call['name']} called {DOOM_LOOP} times with the same arguments; blocked.")
             return (f"Blocked: you made this exact {call['name']} call {DOOM_LOOP} times in a row. "

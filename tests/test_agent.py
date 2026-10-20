@@ -3341,6 +3341,13 @@ def test_python_run_by_run_command_calls_the_library_through_the_agent(ws, home)
     assert out.strip().splitlines()[0].strip() == "1" and "[exit code 0]" in out, out
     out = session._run_foreground({"command": "agent-tool read_file path=notes.txt && agent-tool nope; echo $?"})
     assert "hello" in out and "no tool 'nope'" in out and out.strip().splitlines()[-2].strip() == "1", out
+    seen = session._start_job({"command": "agent-tool read_file path=notes.txt; sleep 30"})
+    deadline = time.time() + 10
+    while "hello" not in seen and time.time() < deadline:
+        time.sleep(0.1)
+        seen += session.jobs["job1"].read()
+    assert "hello" in seen and "Blocked" not in seen, "a background job reaches it too, and a script's repeats are not a loop"
+    session.jobs.pop("job1").stop()
 
 
 def test_the_worked_example_in_the_prompt_runs_as_written(ws, home):
