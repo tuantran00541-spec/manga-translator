@@ -1,0 +1,21 @@
+{
+ "tool_calls": {
+  "run_command": 38
+ },
+ "agent_tool_from_shell": {
+  "web_search": 1,
+  "web_fetch": 1
+ },
+ "tools_dot_calls": {},
+ "skills_loaded": [],
+ "background_commands": 0,
+ "check_nudges": 0,
+ "notices": [],
+ "status": "done",
+ "usage": {
+  "prompt_tokens": 955862,
+  "completion_tokens": 27434,
+  "cached_tokens": 837696
+ },
+ "final_text": "Implemented durable job queue with stdlib only.\n\n- `queue_server.py`: SQLite-backed HTTP server (default port 8091), endpoints for jobs/lease/done/fail/metrics, idempotency keys, lease expiry, retries with full jitter, dead-letter handling.\n- `worker.py`: leases jobs and runs `sleep`, `fail_n`, `hash`.\n- `README.md`: cites AWS full-jitter formula and implemented formula.\n- `tests/test_integration.py`: integration tests (200 jobs/4 workers, SIGKILL recovery, idempotency/409/retries/dead, server restart).\n\nVerification: `python3 -m pytest -q` → `4 passed`. Server on 8091 and two workers are running; `curl http://127.0.0.1:8091/metrics` answers."
+}

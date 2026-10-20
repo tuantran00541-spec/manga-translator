@@ -1,0 +1,40 @@
+[    4.071577] pci_bus 7870:00: busn_res: [bus 00-ff] end is updated to 00
+[    4.071588] pci 7870:00:00.0: BAR 0 [mem 0xfc0000000-0xfc1ffffff 64bit pref]: assigned
+[    4.073420] pci 7870:00:00.0: BAR 4 [mem 0xfc2000000-0xfc2007fff 64bit pref]: assigned
+[    4.075005] mana 7870:00:00.0: enabling device (0000 -> 0002)
+[    4.086853] mana 7870:00:00.0: Microsoft Azure Network Adapter protocol version: 0.1.1
+[    4.088238] hv_netvsc f8615163-0000-1000-2000-6045bd4b08ef eth0: VF registering: eth1
+[    4.088270] mana 7870:00:00.0 eth1: joined to eth0
+[    4.091995] mana 7870:00:00.0 ens1: renamed from eth1
+[    4.188635] mana 7870:00:00.0 ens1: Configured vPort 0 PD 18 DB 16
+[    4.193956] mana 7870:00:00.0 ens1: Configured steering vPort 0 entries 64
+[    4.194706] hv_netvsc f8615163-0000-1000-2000-6045bd4b08ef eth0: Data path switched to VF: ens1
+[    6.058022] hv_netvsc f8615163-0000-1000-2000-6045bd4b08ef eth0: Data path switched from VF: ens1
+[    6.058197] mana 7870:00:00.0 ens1: Configured steering vPort 0 entries 64
+[    6.601387] mana 7870:00:00.0 ens1: Configured vPort 0 PD 18 DB 16
+[    6.607709] mana 7870:00:00.0 ens1: Configured steering vPort 0 entries 64
+[    6.608301] hv_netvsc f8615163-0000-1000-2000-6045bd4b08ef eth0: Data path switched to VF: ens1
+[    6.608462] mana 7870:00:00.0 mana_0: Port: 1 Link ACTIVE
+[    9.505043] EXT4-fs (sda1): resizing filesystem from 19398395 to 39059195 blocks
+[   10.445254] EXT4-fs (sda1): resized filesystem to 39059195
+[   10.495626] ephemeral0: Can't lookup blockdev
+[   10.543034] systemd-fstab-generator[983]: Checking was requested for "ephemeral0", but it is not a device.
+[   10.543046] systemd-fstab-generator[983]: x-systemd.device-timeout ignored for ephemeral0
+[   11.506707] ephemeral0: Can't lookup blockdev
+[   11.808477] evm: overlay not supported
+[   11.916590] kauditd_printk_skb: 113 callbacks suppressed
+[   11.916594] audit: type=1400 audit(1792479991.543:124): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="rsyslogd" pid=1144 comm="apparmor_parser"
+[   12.136941] systemd-journald[157]: /var/log/journal/2d791d5cce6240faa3c626058b1ffc7d/user-1001.journal: Journal file uses a different sequence number ID, rotating.
+[   12.204077] loop0: detected capacity change from 0 to 8
+[   12.377440] audit: type=1400 audit(1792479992.044:125): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="/usr/lib/snapd/snap-confine" pid=1406 comm="apparmor_parser"
+[   12.501496] Adding 3145724k swap on /swapfile.  Priority:-2 extents:106 across:50995196k 
+[   12.534953] audit: type=1400 audit(1792479992.202:126): apparmor="STATUS" operation="profile_load" profile="unconfined" name="docker-default" pid=1512 comm="apparmor_parser"
+[   13.189041] Initializing XFRM netlink socket
+[   13.357050] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[   13.725669] systemd-fstab-generator[1832]: Checking was requested for "ephemeral0", but it is not a device.
+[   13.725680] systemd-fstab-generator[1832]: x-systemd.device-timeout ignored for ephemeral0
+[   24.897131] systemd-fstab-generator[2009]: Checking was requested for "ephemeral0", but it is not a device.
+[   24.897143] systemd-fstab-generator[2009]: x-systemd.device-timeout ignored for ephemeral0
+[   25.120261] systemd-fstab-generator[2075]: Checking was requested for "ephemeral0", but it is not a device.
+[   25.120274] systemd-fstab-generator[2075]: x-systemd.device-timeout ignored for ephemeral0
+[   49.832927] hv_balloon: Max. dynamic memory size: 16384 MB
