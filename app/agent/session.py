@@ -76,6 +76,8 @@ RULINGS = ("Nobody is watching this run. When something is ambiguous, conflictin
            "Stop to ask only before something that cannot be undone, touches security or reaches outside this workspace (a push, a merge, "
            "a publish), or when every way forward is a guess.")
 EMPTY_NUDGE = "[Your last reply was empty. Go on: make a tool call or write your answer.]"
+CHECK_NUDGE = ("[Before you finish: no passing check was seen since the work began; the last command did not exit 0. If the request asked for "
+               "a change, run its check now and finish only once it passes. If it was a question, or the failure is expected, answer again as is.]")
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
 WAIT_MAX = 900
@@ -647,7 +649,8 @@ class AgentSession:
         self._watch_request = self._request_no = 0
         self._scheduler: threading.Thread | None = None
         self._closing = False
-        self._edited = self._plan_nudged = self._continued = False
+        self._edited = self._plan_nudged = self._continued = self._check_nudged = False
+        self._last_command: str | None = None
         self._prewalk = False
         self._interrupt: dict | None = None
         self._pinned: dict[str, str] | None = None
@@ -1042,7 +1045,8 @@ class AgentSession:
         else:
             self.tainted = True
         self._inherit_taint = False
-        self._edited = self._plan_nudged = self._continued = False
+        self._edited = self._plan_nudged = self._continued = self._check_nudged = False
+        self._last_command: str | None = None
         self._fallback_at = 0
         self._request_no += 1
         self.chain_budget = {}
@@ -1543,12 +1547,15 @@ class AgentSession:
         return self._lean_specs()
 
     def _lean_specs(self) -> list[dict]:
-        """The model's own tools: read, edit, run and create, plus the tools the model made, and whatever a running job or a mode needs."""
+        """The model's own tools: read, edit, run, create and skill, plus the tools the model made, and whatever a running job or a mode needs."""
         # A plan only looks: read_file, and create, whose code runs read-only then.
         rows = [s for s in SPECS if s["name"] in (("read_file",) if self.plan_mode else LEAN_TOOLS)]
         if self.workspace.policy.mode != "read-only":
             rows.append(SESSION_SPECS["create"])
             rows += [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
+        if self.skills:
+            # The prompt lists the skills, so the tool that loads one is offered by name too.
+            rows.append(SESSION_SPECS["skill"])
         if self.quirks.get("direct_tools"):
             # A model that calls tools well but writes code poorly gets plugin and MCP tools by name.
             rows += [t.spec for t in self.registry.tools.values() if not self.plan_mode or t.kind == "read"]
@@ -1771,7 +1778,8 @@ class AgentSession:
         old = created.get(name)
         scope = args.get("scope") if args.get("scope") in ("user", "workspace") else (old or {}).get("scope", "user")
         path = self._tools_folder(scope) / f"{name}.json"
-        code = str(args.get("code") or "")
+        # Code wrapped in a Markdown fence, as models often send it, loses the fence instead of failing to compile.
+        code = re.sub(r"\A\s*```[\w+-]*[ \t]*\n(.*?)\n?```\s*\Z", r"\1", str(args.get("code") or ""), flags=re.S)
         if not code.strip():
             if name not in created:
                 raise ToolError(f"No created tool {name}; created: {', '.join(created) or 'none'}")
@@ -3215,6 +3223,8 @@ class AgentSession:
             self.tainted = True
         if ok and (KIND.get(name) == "edit" or role == "edit") and name != "web_download":
             self._edited = True
+        if name == "run_command" or name in self._root().created:
+            self._last_command = output
         if name == "run_command" or name in self.mcp_tools or name in self.replaced or name in self.registry.tools or name in self._root().created:
             output = self._offload(call, output)
         if call["name"] not in SESSION_SPECS:
@@ -3688,6 +3698,13 @@ class AgentSession:
         return "\n".join(f"{r['id']} · vào {money(r['price'], 'in')} ra {money(r['price'], 'out')} cache {money(r['price'], 'cached')} /1M"
                          + (f" · {r['context']:,} ctx" if isinstance(r["context"], int) else "") + (" · ảnh" if r["vision"] else "") for r in found) or "Không có model nào khớp."
 
+    def _unchecked(self) -> bool:
+        """Whether autonomous work ends with files changed or commands run but no passing check seen, once per request and not when time is short."""
+        if self.depth or self.mode != "bypass" or self._check_nudged or (self._deadline and not self._notice_at) or not (self._edited or self._last_command is not None):
+            return False
+        last = self._last_command or ""
+        return not ("[exit code 0]" in last[-400:] or re.search(r"^PASS\b", last, re.M))
+
     def _more_work(self) -> bool:
         """True when a queued message or an unfinished goal means the turn should go on."""
         with self._lock:
@@ -3886,6 +3903,11 @@ class AgentSession:
             self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)
             if not calls:
                 if self._more_work():
+                    continue
+                if self._unchecked():
+                    self._check_nudged = True
+                    self.history.append({"role": "user", "content": CHECK_NUDGE})
+                    self.emit("notice", text="The model finished without a passing check; asking it once to run one.")
                     continue
                 break
             self._run_calls(calls)

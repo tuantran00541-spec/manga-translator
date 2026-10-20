@@ -339,6 +339,35 @@ def test_a_named_wait_is_kept_even_with_spare_keys(monkeypatch):
     assert waits == [3.0]
 
 
+def test_invoke_xml_calls_are_read_with_or_without_a_tool_call_block():
+    text, calls = client.parse_text_calls('Look.\n<minimax:tool_call>\n<invoke name="run_command">\n<parameter name="command">ls /app</parameter>\n'
+                                          '</invoke>\n<invoke name="edit_file"><parameter name="edits">[{"a": 1}]</parameter></invoke>\n</minimax:tool_call>')
+    assert text == "Look." and [c["name"] for c in calls] == ["run_command", "edit_file"], (text, calls)
+    assert calls[0]["args"] == {"command": "ls /app"} and calls[1]["args"] == {"edits": [{"a": 1}]}
+    _, calls = client.parse_text_calls('<tool_call><invoke name="read_file"><parameter name="path">x</parameter></invoke></tool_call>')
+    assert calls[0]["name"] == "read_file" and calls[0]["args"] == {"path": "x"}
+    built = client._build({"content": '<invoke name="read_file"><parameter name="path">y</parameter></invoke>'}, {})
+    assert built["calls"][0]["args"] == {"path": "y"} and built["text"] == "", "a native reply that writes the XML still calls"
+
+
+def test_create_takes_code_wrapped_in_a_markdown_fence(ws, home):
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    out = session._session_tool({"id": "c", "name": "create", "args": {"name": "two", "code": "```python\ndef two():\n    return 2\n```", "args": {}}})
+    assert "Syntax error" not in out and "\n2\n" in out, out
+
+
+def test_autonomous_work_that_ends_without_a_passing_check_is_asked_once_to_run_one(ws, home):
+    fake = scripted(turn(calls=[call("run_command", command="exit 3")]), turn("Done."), turn("Still done."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    run_to_idle(session)
+    assert len(fake.seen) == 3 and "no passing check was seen" in fake.seen[2][0][-1]["content"], "one nudge, then it may finish"
+    fake = scripted(turn(calls=[call("run_command", command="true")]), turn("Done."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    run_to_idle(session)
+    assert len(fake.seen) == 2, "a command that passed needs no nudge"
+
+
 def test_ask_mode_waits_for_approval_then_writes(ws, home):
     fake = scripted(turn(calls=[call("write_file", path="new.txt", content="hi")]), turn("Xong."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
@@ -3321,14 +3350,14 @@ def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, hom
     write_profile(home, {"tools": "hybrid"})
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     session._new_request("go")
-    assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create"]
+    assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create", "skill"], "skills are listed, so skill is offered"
     prompt = session.system_prompt()
     assert "Your tools are read_file, edit_file, run_command" in prompt and "Finish only after you have seen the check pass" in prompt and "from agent_tools import tools" in prompt and "agent-tool <name>" in prompt
     chain = ("def go():\n    tools.edit_file(path='pkg/a.py', old_text='return 1', new_text='return 3')\n"
              "    return tools.read_file(path='pkg/a.py').count('return 3')\n")
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": True}})
     assert out.splitlines()[1].strip() == "1" and "[changed: pkg/a.py]" in out, out
-    assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create", "go"], "a kept tool joins the four"
+    assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create", "go", "skill"], "a kept tool joins them"
     assert "What the shell cannot do is in the tool library" in prompt
 
 

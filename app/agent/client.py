@@ -48,6 +48,10 @@ IN_RE = re.compile(r"(?:try again|retry) in (\d+(?:\.\d+)?) ?(ms|milliseconds?|s
 # A block may lack its closing tag when the model stops early or opens the next call.
 TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*(?:</tool_call>|(?=<tool_call>)|\Z)", re.S)
 PARAMETER_RE = re.compile(r"<parameter=(\w+)>\s*(.*?)\s*</parameter>", re.S)
+# The XML form some models write, MiniMax's among them: <invoke name="x"><parameter name="y">value</parameter></invoke>.
+INVOKE_RE = re.compile(r"<invoke\b[^>]*?\bname\s*=\s*[\"']?([\w.-]+)[\"']?[^>]*>(.*?)(?:</invoke>|\Z)", re.S | re.I)
+INVOKE_PARAM_RE = re.compile(r"<parameter\b[^>]*?\bname\s*=\s*[\"']?(\w+)[\"']?[^>]*>(.*?)</parameter>", re.S | re.I)
+INVOKE_WRAP_RE = re.compile(r"</?(?:[\w-]+:)?(?:function_calls|tool_calls?)>", re.I)
 TEXT_TOOLS_GUIDE = """To call a tool, write one block per call anywhere in your reply:
 <tool_call>{"name": "read_file", "arguments": {"path": "app/main.py"}}</tool_call>
 The results come back in <tool_result> blocks; end your reply after the calls and wait for them. Tools:
@@ -172,16 +176,37 @@ def schemas_of(tools: list[dict] | None) -> dict:
 
 
 def parse_text_calls(text: str, tools: list[dict] | None = None) -> tuple[str, list[dict]]:
-    """Tool calls written as <tool_call> blocks, and the reply with those blocks taken out."""
+    """Tool calls written as <tool_call> blocks or <invoke> XML, and the reply with them taken out."""
     calls = []
     schemas = schemas_of(tools)
     for raw in TOOL_CALL_RE.findall(text or ""):
+        if INVOKE_RE.search(raw):
+            calls += _invokes(raw)
+            continue
         found = _read_call(raw, schemas)
         if found is None:
             calls.append({"id": uuid.uuid4().hex[:12], "name": "", "args": {}, "error": f"Unreadable tool call: {raw[:200]}{' … ' + raw[-150:] if len(raw) > 400 else ''}. Write one valid JSON object: escape newlines as \\n and quotes as \\\", and keep arguments short."})
         else:
             calls.append({"id": uuid.uuid4().hex[:12], "name": found[0], "args": found[1]})
-    return TOOL_CALL_RE.sub("", text or "").strip(), calls
+    text = TOOL_CALL_RE.sub("", text or "")
+    if INVOKE_RE.search(text):
+        calls += _invokes(text)
+        text = INVOKE_WRAP_RE.sub("", INVOKE_RE.sub("", text))
+    return text.strip(), calls
+
+
+def _invokes(raw: str) -> list[dict]:
+    """Each <invoke> call in raw, with JSON-looking values read as JSON."""
+    def value(text: str):
+        text = text.strip()
+        if text[:1] in ("{", "["):
+            try:
+                return json.loads(text, strict=False)
+            except ValueError:
+                pass
+        return text
+    return [{"id": uuid.uuid4().hex[:12], "name": name, "args": {k: value(v) for k, v in INVOKE_PARAM_RE.findall(body)}}
+            for name, body in INVOKE_RE.findall(raw)]
 
 
 def render(history: list[dict], system: str, text_mode: bool, specs: list[dict], *, reasoning: bool | str = False) -> list[dict]:
@@ -469,7 +494,7 @@ def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
     if isinstance(text, list):
         text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
     # Models without native tools, and some with them, write their calls into the text.
-    if "<tool_call>" in text:
+    if "<tool_call>" in text or "<invoke" in text:
         text, written = parse_text_calls(text, tools)
         if not calls:
             calls = written
