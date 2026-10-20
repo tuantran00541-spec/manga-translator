@@ -1,0 +1,74 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 6,
+            "passed": 6,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792484669.1259089,
+            "stop": 1792484695.4547844
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_caffe_version_and_source",
+                "status": "passed",
+                "duration": 0.06864666199999192,
+                "start": 1792484669.181943,
+                "stop": 1792484669.2508812,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_cifar10_model_exists",
+                "status": "passed",
+                "duration": 0.00038962000007813913,
+                "start": 1792484669.2510998,
+                "stop": 1792484669.251588,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_prototxt_files_exist",
+                "status": "passed",
+                "duration": 0.00030287799972938956,
+                "start": 1792484669.2516966,
+                "stop": 1792484669.252079,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_cpu_only_training_configured",
+                "status": "passed",
+                "duration": 0.0005931369996687863,
+                "start": 1792484669.252172,
+                "stop": 1792484669.252839,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_training_completed_500_iterations",
+                "status": "passed",
+                "duration": 0.00033916299980774056,
+                "start": 1792484669.2529416,
+                "stop": 1792484669.2533526,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_model_accuracy_verification",
+                "status": "passed",
+                "duration": 26.20099481699981,
+                "start": 1792484669.2534401,
+                "stop": 1792484695.4545977,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
