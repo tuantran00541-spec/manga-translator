@@ -44,8 +44,9 @@ jobs:
         run: |
           mkdir -p probe/work && git archive 509fe361 | tar -x -C probe/work
           mkdir -p probe/work/models
-          python -m venv /tmp/yolo && /tmp/yolo/bin/pip install -q torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
-          /tmp/yolo/bin/pip install -q ultralytics==8.3.40 onnx==1.17.0 onnxslim==0.1.42
+          python -m venv /tmp/yolo
+          /tmp/yolo/bin/pip install -q --extra-index-url https://download.pytorch.org/whl/cpu torch==2.5.1+cpu torchvision==0.20.1+cpu \
+            ultralytics==8.3.40 onnx==1.17.0 onnxslim==0.1.42 onnxruntime==1.20.1
           for m in comic-speech-bubble-detector:bubble_yolo comic-text-segmenter:text_segmenter; do
             curl -fsSL -o /tmp/${m%%:*}.pt https://huggingface.co/ogkalu/${m%%:*}-yolov8m/resolve/main/${m%%:*}.pt
             /tmp/yolo/bin/python -c 'import sys; from ultralytics import YOLO; YOLO(sys.argv[1]).export(format="onnx", imgsz=1024, opset=12)' /tmp/${m%%:*}.pt
