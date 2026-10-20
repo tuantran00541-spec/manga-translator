@@ -1,0 +1,127 @@
+[
+ {
+  "status": 200,
+  "answer": "Kệ đi. Chuyện gì cũng được. Người ta nói tôi sẽ chết sau bốn ngày.",
+  "tool_calls": [],
+  "usage": {
+   "total_tokens": 458,
+   "prompt_tokens": 250,
+   "completion_tokens": 208,
+   "completion_tokens_details": {
+    "reasoning_tokens": 166
+   },
+   "prompt_tokens_details": {
+    "cached_tokens": 197
+   }
+  },
+  "error": "",
+  "model": "minimax/minimax-m3.1-flash:free",
+  "test": "text",
+  "seconds": 6.3
+ },
+ {
+  "status": 200,
+  "answer": "GOBLIN 47",
+  "tool_calls": [],
+  "usage": {
+   "total_tokens": 314,
+   "prompt_tokens": 281,
+   "completion_tokens": 33,
+   "completion_tokens_details": {
+    "reasoning_tokens": 25
+   },
+   "prompt_tokens_details": {
+    "cached_tokens": 198
+   }
+  },
+  "error": "",
+  "model": "minimax/minimax-m3.1-flash:free",
+  "test": "image",
+  "seconds": 1.7
+ },
+ {
+  "status": 200,
+  "answer": "I'll list the files in /tmp for you.",
+  "tool_calls": [
+   {
+    "name": "run_command",
+    "arguments": "{\"command\":\"ls -la /tmp\"}"
+   }
+  ],
+  "usage": {
+   "total_tokens": 478,
+   "prompt_tokens": 436,
+   "completion_tokens": 42,
+   "prompt_tokens_details": {
+    "cached_tokens": 128
+   }
+  },
+  "error": "",
+  "model": "minimax/minimax-m3.1-flash:free",
+  "test": "tool",
+  "seconds": 1.5
+ },
+ {
+  "status": 200,
+  "answer": "Kệ đi. Sao cũng được. Nó nói tôi sẽ chết trong bốn ngày nữa.",
+  "tool_calls": [],
+  "usage": {
+   "prompt_tokens": 78,
+   "completion_tokens": 226,
+   "total_tokens": 304,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 204,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0
+  },
+  "error": "",
+  "model": "reflection/beam:free",
+  "test": "text",
+  "seconds": 1.4
+ },
+ {
+  "status": 400,
+  "answer": "",
+  "tool_calls": [],
+  "usage": null,
+  "error": "{\"error\":{\"message\":\"{\\\"error\\\":{\\\"message\\\":\\\"Beam supports text input only. This conversation contains an image. Remove the image from the conversation and try again.\\\",\\\"type\\\":\\\"AI_APICallError\\\",\\\"param\\\":{\\\"error\\\":\\\"Beam supports text input only. This conversation contains an image. Remove the image from the conversation and try again.\\\",\\\"statusCode\\\":400,\\\"name\\\":\\\"AI_APICallError\\\",\\\"mes",
+  "model": "reflection/beam:free",
+  "test": "image",
+  "seconds": 0.6
+ },
+ {
+  "status": 200,
+  "answer": "",
+  "tool_calls": [
+   {
+    "name": "run_command",
+    "arguments": "{\"command\": \"ls -la /tmp\"}"
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 84,
+   "completion_tokens": 40,
+   "total_tokens": 124,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 17,
+    "image_tokens": 0
+   },
+   "cache_creation_input_tokens": 0
+  },
+  "error": "",
+  "model": "reflection/beam:free",
+  "test": "tool",
+  "seconds": 0.8
+ }
+]
