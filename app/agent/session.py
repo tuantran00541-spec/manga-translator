@@ -3820,7 +3820,8 @@ class AgentSession:
                 continue
             empties = 0
             self.history.append({"role": "assistant", "content": turn["text"], "calls": calls,
-                                 **({"reasoning": turn["reasoning"][-20000:]} if self.echo_reasoning and turn["reasoning"] else {})})
+                                 **({"reasoning": turn["reasoning"] if self.echo_reasoning == "all" else turn["reasoning"][-20000:]}
+                                    if self.echo_reasoning and turn["reasoning"] else {})})
             self.emit("assistant", text=turn["text"], reasoning=turn["reasoning"][-4000:], calls=calls)
             if not calls:
                 if self._more_work():

@@ -54,7 +54,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
             if scope == "user":
                 if isinstance(data.get("loop"), str):
                     profile["loop"] = data["loop"]
-                if isinstance(data.get("echo_reasoning"), bool):
+                if isinstance(data.get("echo_reasoning"), bool) or data.get("echo_reasoning") == "all":
                     profile["echo_reasoning"] = data["echo_reasoning"]
                 for key in ("subagent_model", "compact_model", "prewalk_model"):
                     if isinstance(data.get(key), str):

@@ -184,7 +184,7 @@ def parse_text_calls(text: str, tools: list[dict] | None = None) -> tuple[str, l
     return TOOL_CALL_RE.sub("", text or "").strip(), calls
 
 
-def render(history: list[dict], system: str, text_mode: bool, specs: list[dict], *, reasoning: bool = False) -> list[dict]:
+def render(history: list[dict], system: str, text_mode: bool, specs: list[dict], *, reasoning: bool | str = False) -> list[dict]:
     """The neutral history as chat messages, with tool calls native or written as text."""
     messages = [{"role": "system", "content": system + ("\n\n" + text_tools_prompt(specs) if text_mode and specs else "")}]
     last_user = max((i for i, item in enumerate(history) if item["role"] == "user"), default=-1)
@@ -204,8 +204,10 @@ def render(history: list[dict], system: str, text_mode: bool, specs: list[dict],
                 messages.append({"role": "assistant", "content": (item.get("content") or "") + blocks})
             else:
                 message = {"role": "assistant", "content": item.get("content") or ""}
-                # DeepSeek's thinking mode needs the reasoning of the current turn's tool steps sent back.
-                if reasoning and item.get("reasoning") and index > last_user:
+                # DeepSeek's thinking mode needs the reasoning of the current turn's tool steps sent back; "all" sends every turn's.
+                if reasoning == "all":
+                    message["reasoning_content"] = item.get("reasoning") or ""
+                elif reasoning and item.get("reasoning") and index > last_user:
                     message["reasoning_content"] = item["reasoning"]
                 if calls:
                     message["tool_calls"] = [{"id": c["id"], "type": "function",

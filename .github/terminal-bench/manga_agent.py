@@ -79,8 +79,12 @@ class MangaAgent(BaseInstalledAgent):
         max_output = int(os.environ.get("MANGA_AGENT_MAX_OUTPUT", "16000"))
         request = json.loads(os.environ.get("MANGA_AGENT_REQUEST") or "{}")
         # No token or step ceiling: the task's clock is the only limit.
-        profile = json.dumps({"token_budget": 10 ** 15, "max_steps": 100_000, "max_output_tokens": max_output,
-                              "models": {".": {"request": request, "max_output": max_output}}})
+        profile = {"token_budget": 10 ** 15, "max_steps": 100_000, "max_output_tokens": max_output,
+                   "models": {".": {"request": request, "max_output": max_output}}}
+        echo = os.environ.get("MANGA_AGENT_ECHO_REASONING", "")
+        if echo:
+            profile["echo_reasoning"] = echo if echo == "all" else echo == "true"
+        profile = json.dumps(profile)
         var = f"MANGA_INSTRUCTION_{uuid.uuid4().hex}".upper()
         env = {"PYTHONPATH": f"{HOME}/src", "HOME": f"{HOME}/home", var: instruction}
         if os.environ.get("MANGA_AGENT_SEARCH"):

@@ -1221,6 +1221,8 @@ def test_deepseek_gets_the_current_turns_reasoning_sent_back(ws, home):
     sent = client.render(history, "sys", False, [], reasoning=True)
     assert [m.get("reasoning_content") for m in sent if m["role"] == "assistant"] == [None, "step thoughts"]
     assert all("reasoning_content" not in m for m in client.render(history, "sys", False, []))
+    everything = client.render(history + [{"role": "assistant", "content": "done", "calls": []}], "sys", False, [], reasoning="all")
+    assert [m.get("reasoning_content") for m in everything if m["role"] == "assistant"] == ["old thoughts", "step thoughts", ""]
     session = manager(home).create(P["deepseek"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert session.echo_reasoning
     assert not manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="o").echo_reasoning

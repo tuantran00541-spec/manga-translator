@@ -7,8 +7,7 @@ on:
   push:
     branches-ignore: [main]
     paths:
-      - ".github/workflows/terminal-bench-polargrid.yml"
-      - ".github/terminal-bench/**"
+      - ".github/terminal-bench/run.json"
 
 permissions:
   contents: write
