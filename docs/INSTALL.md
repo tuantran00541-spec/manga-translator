@@ -91,6 +91,8 @@ Sites behind Cloudflare usually refuse Playwright. The extension in [`extension/
 2. Click **Load unpacked** and pick the `extension` folder: in the app folder for a source checkout, or `%LOCALAPPDATA%\manga-translator\app\extension` after the Windows setup.
 3. With the app running, open a chapter, then click the Manga Translator icon and **Gửi chương vào app**.
 
+The same steps, with a button that opens the folder, are in the app under **Nhập nội dung → Dùng tiện ích trình duyệt**. After `manga update`, click **Reload** on the extension card; the extension says so after a send when its copy is older than the app's.
+
 It scrolls the page so lazy images load, takes the wide images and canvases in reading order, converts formats the app does not read (GIF, AVIF) to PNG, and opens the new chapter in the app. It only talks to the app on this computer.
 
 ## Docker

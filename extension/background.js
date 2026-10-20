@@ -100,6 +100,16 @@ async function findServer() {
   return null;
 }
 
+// Tells the app which version Chrome loaded; true when the app holds a newer one.
+async function outdated(server) {
+  try {
+    const reply = await fetch(`${server}/api/extension/hello`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: chrome.runtime.getManifest().version }),
+    });
+    return Boolean((await reply.json()).outdated);
+  } catch { return false; }
+}
+
 // Image hosts often refuse requests that do not come from the chapter page.
 async function sendAsPage(page) {
   if (sendAsPage.current === page) return;
@@ -145,6 +155,7 @@ async function grab(tabId, autoScroll) {
     await setStatus({ state: "error", text: "Chưa thấy app. Mở Manga Translator trước rồi bấm lại." });
     return;
   }
+  const stale = await outdated(server);
   await setStatus({ state: "busy", text: autoScroll ? "Đang cuộn trang để tải hết ảnh…" : "Đang tìm ảnh trên trang…" });
   let frames;
   try {
@@ -187,7 +198,8 @@ async function grab(tabId, autoScroll) {
     return;
   }
   const skipped = items.length - kept;
-  const notes = [skipped && `bỏ ${skipped} ảnh lỗi`, missing && `${missing} ảnh chưa tải kịp, thử bấm lại`].filter(Boolean);
+  const notes = [skipped && `bỏ ${skipped} ảnh lỗi`, missing && `${missing} ảnh chưa tải kịp, thử bấm lại`,
+    stale && "tiện ích có bản mới: vào trang Tiện ích bấm Tải lại"].filter(Boolean);
   await setStatus({ state: "done", text: `Đã gửi ${kept} ảnh${notes.length ? `, ${notes.join(", ")}` : ""}.` });
   await chrome.tabs.create({ url: `${server}/#${body.chapter_id}` });
 }

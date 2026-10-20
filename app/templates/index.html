@@ -70,6 +70,7 @@
           <section class="landing-panel landing-url-source" aria-labelledby="url-source-title">
             <span class="source-index">01</span><div class="source-copy"><h2 id="url-source-title">Mở từ liên kết</h2><p>Hỗ trợ liên kết chương từ nguồn truyện.</p></div>
             <div id="chapter-input" class="chapter-input-grid"><label class="ui-field chapter-url-field" for="chapter-url"><span class="sr-only">Liên kết chương</span><input type="url" id="chapter-url" placeholder="Dán URL chương tại đây" autocomplete="url"></label><button id="load-btn" class="ui-btn ui-btn-primary" type="button">Tải chương</button></div>
+            <p id="extension-hint" class="extension-hint">Trang chặn tải tự động (Cloudflare)? <button id="extension-guide-open" class="extension-link" type="button">Dùng tiện ích trình duyệt</button></p>
           </section>
           <section class="landing-panel landing-file-source" aria-labelledby="file-source-title">
             <span class="source-index">02</span><div class="source-copy"><h2 id="file-source-title">Tải tệp lên</h2><p>PNG, JPG, WEBP, BMP, ZIP hoặc CBZ.</p></div>
@@ -169,7 +170,20 @@
   <header class="settings-header"><h2 id="settings-title">Cài đặt</h2><button id="settings-close" class="ui-icon-btn ui-btn-ghost" type="button" aria-label="Đóng bảng cài đặt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
   <div class="settings-body"><section class="settings-section" aria-labelledby="ai-settings-title"><div class="settings-section-heading"><h3 id="ai-settings-title">Dịch vụ AI</h3><p>API key được giữ trong kho bí mật của hệ điều hành.</p></div><div id="ai-settings-host" class="ai-settings-host"><p class="settings-placeholder">Đang tải cấu hình AI…</p></div></section></div>
 </aside>
+<dialog id="extension-guide" class="extension-guide" aria-labelledby="extension-guide-title">
+  <h2 id="extension-guide-title">Cài tiện ích gửi chương</h2>
+  <p>Tiện ích lấy ảnh từ chương bạn đang mở trong Chrome hoặc Edge, nên trang chặn tải tự động vẫn lấy được. Cài một lần:</p>
+  <ol>
+    <li>Mở trang Tiện ích: gõ <code>chrome://extensions</code> (Edge: <code>edge://extensions</code>) vào thanh địa chỉ. <button id="extension-copy-page" class="extension-link" type="button">Sao chép</button></li>
+    <li>Bật <strong>Chế độ dành cho nhà phát triển</strong> (Developer mode) ở góc trang.</li>
+    <li>Bấm <strong>Tải tiện ích đã giải nén</strong> (Load unpacked) và chọn thư mục dưới đây.</li>
+  </ol>
+  <div class="extension-path"><code id="extension-path">extension</code><button id="extension-open-folder" class="ui-btn ui-btn-ghost" type="button">Mở thư mục</button><button id="extension-copy-path" class="ui-btn ui-btn-ghost" type="button">Sao chép</button></div>
+  <p>Dùng: mở chương, bấm biểu tượng Manga Translator trên thanh tiện ích rồi bấm <strong>Gửi chương vào app</strong>. Chrome có thể nhắc tắt tiện ích ở chế độ nhà phát triển; cứ giữ lại.</p>
+  <p id="extension-outdated" class="extension-outdated" hidden>Tiện ích đang cài cũ hơn bản trong app: vào trang Tiện ích, bấm <strong>Tải lại</strong> ở thẻ Manga Translator.</p>
+  <form method="dialog"><button class="ui-btn ui-btn-primary" type="submit">Đóng</button></form>
+</dialog>
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
-<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/source-language.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script type="module" src="/static/js/review-stitch/index.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-history.js"></script><script src="/static/js/editor-presets.js"></script><script src="/static/js/editor-inspector.js"></script><script src="/static/js/editor-persistence.js"></script><script src="/static/js/editor-geometry.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script><script src="/static/js/ai-mode.js"></script><script src="/static/js/agent.js"></script>
+<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/source-language.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script type="module" src="/static/js/review-stitch/index.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-history.js"></script><script src="/static/js/editor-presets.js"></script><script src="/static/js/editor-inspector.js"></script><script src="/static/js/editor-persistence.js"></script><script src="/static/js/editor-geometry.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script><script src="/static/js/ai-mode.js"></script><script src="/static/js/extension-guide.js"></script><script src="/static/js/agent.js"></script>
 </body>
 </html>
