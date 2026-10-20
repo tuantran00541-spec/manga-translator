@@ -112,9 +112,12 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
     paths = STATIC_ADAPTER.download_urls(selected, output_dir, referer=chapter_url)
     # Static HTML gives no rendered sizes, so thumbnails and logos are dropped by the browser path's width bar.
     pages = [path for path in paths if _image_width(path) >= DOWNLOAD_JS_MIN_IMAGE_WIDTH]
+    # When every image is narrow the chapter is kept whole rather than deleted.
+    if not pages:
+        return paths
     for path in set(paths) - set(pages):
         path.unlink(missing_ok=True)
-    return pages or paths
+    return pages
 
 
 def _image_width(path: Path) -> int:

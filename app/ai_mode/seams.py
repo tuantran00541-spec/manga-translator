@@ -113,7 +113,8 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
             continue
         core = _core(page)
         for obj in page.get("text_objects") or []:
-            if not isinstance(obj, dict) or obj.get("joined_into"):
+            # An object dropped for overlapping another stays empty, or the two would garble each other again.
+            if not isinstance(obj, dict) or obj.get("joined_into") or obj.get("overlap_dropped"):
                 continue
             found = _owner(pages, page_index, obj)
             if found is None or not str(found[1].get("translation") or "").strip():
