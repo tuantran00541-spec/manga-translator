@@ -1,0 +1,8 @@
+{
+ "clean": {"what": "the image-cleaning pipeline: chapter download and slicing of tall pages, Kiuyha text detection, letter masks, LaMa inpaint, seams between slices, page processing jobs",
+           "files": ["app/detector/**/*.py", "app/inpaint/**/*.py", "app/downloader/**/*.py", "app/pipeline.py", "app/page_processing.py",
+                     "app/page_processing_jobs.py", "app/optimized_pipeline.py", "app/mask_store.py", "app/ort_utils.py", "app/parameters.py"]},
+ "translate": {"what": "the A.I mode and translation path: scan, glossary, review, translate, polish stages, seams across slices, lettering (fit, size, colour), render commit and export",
+               "files": ["app/ai_mode/**/*.py", "app/translation/**/*.py", "app/render/**/*.py", "app/routers/translation.py", "app/routers/render_commit.py",
+                         "app/routers/export.py", "app/editorial_gate.py", "app/manifest_utils.py", "app/series_memory.py"]}
+}
