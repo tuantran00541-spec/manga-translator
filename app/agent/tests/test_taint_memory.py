@@ -90,8 +90,8 @@ class TestH13MemoryLaundering:
 
     def test_memory_add_works_when_clean(self, tmp_path):
         s, home, wsroot = make_session(tmp_path, mode="bypass", tag="h13b")
-        out = s._memory_tool({"action": "add", "scope": "project",
-                              "text": "H13 legit note: deploy on Fridays"})
+        s._memory_tool({"action": "add", "scope": "project",
+                       "text": "H13 legit note: deploy on Fridays"})
         assert "H13 legit note" in memory.prompt(home, wsroot)
         mgr = AgentSessionManager(home / ".manga-agent", home=home)
         ws = Workspace(wsroot, sandbox.Policy("workspace-write", False))

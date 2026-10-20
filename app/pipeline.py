@@ -419,7 +419,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 if "provider_image" in locals():
                     del provider_image
 
-            for idx, target_path, target_core in seam_consumers:
+            for idx, _target_path, target_core in seam_consumers:
                 try:
                     target_source_y1 = int(target_core["source_y1"])
                     target_height = int(target_core["source_y2"]) - target_source_y1

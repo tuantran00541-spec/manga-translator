@@ -2146,8 +2146,8 @@ class AgentSession:
         self.checkpoints.mark(f"{self.checkpoints.auto_no}-{label}", auto=True)
 
     def _drop_branches(self) -> None:
-        for copy, _ in self._branches.values():
-            shutil.rmtree(copy, ignore_errors=True)
+        for branch, _ in self._branches.values():
+            shutil.rmtree(branch, ignore_errors=True)
         self._branches = {}
 
     def _target_spec(self, name: str) -> dict | None:
