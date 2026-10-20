@@ -1,0 +1,29 @@
+2026-10-20 00:25:56 | WARNING  | app.agent.session:3873 - Agent session adf7fd8912784fb2 failed
+Traceback (most recent call last):
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1032, in _bootstrap
+    self._bootstrap_inner()
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+> File "/opt/mg/src/app/agent/session.py", line 3869, in _loop
+    (custom or AgentSession._steps)(self, max_steps)
+  File "/opt/mg/src/app/agent/session.py", line 3785, in _steps
+    turn = self._turn()
+  File "/opt/mg/src/app/agent/session.py", line 3303, in _turn
+    return self._turn_once()
+  File "/opt/mg/src/app/agent/session.py", line 3320, in _turn_once
+    turn = self._call_model(client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
+  File "/opt/mg/src/app/agent/session.py", line 3272, in _call_model
+    return self._call_model_once(messages, tools, streams, started)
+  File "/opt/mg/src/app/agent/session.py", line 3291, in _call_model_once
+    return self.complete(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
+  File "/opt/mg/src/app/agent/session.py", line 562, in __call__
+    return self.session._complete_keyed(*args, **kwargs)
+  File "/opt/mg/src/app/agent/session.py", line 1251, in _complete_keyed
+    return self._raw_complete(provider, key, *args, **kwargs)
+  File "/opt/mg/src/app/agent/client.py", line 504, in complete
+    return _complete_once(provider, api_key, model, messages, tools=tools, on_delta=on_delta, max_tokens=max_tokens)
+  File "/opt/mg/src/app/agent/client.py", line 560, in _complete_once
+    raise error(f"{provider.label} HTTP {response.status_code}: {detail}")
+RuntimeError: bench HTTP 400: {"error":{"message":"Missing required parameter: 'messages[2].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message.","type":"AI_APICallError","param":{"error":"Missing required parameter: 'messages[2].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message.","statusCode":400,"name":"AI_APICallError","message":"M
