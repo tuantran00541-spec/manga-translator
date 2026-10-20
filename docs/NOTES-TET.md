@@ -1,0 +1,35 @@
+# Ghi chú bàn giao (20/10/2026)
+
+## Trạng thái
+- Main có đủ app, A.I mode, hướng dẫn cài tiện ích và tab Chaos (PR #85, merge 5393d57f).
+- Bản phát hành mới nhất vẫn là V0.3.1. V0.4.0 chưa phát hành.
+- Models lấy từ release `models-v1` (xem `scripts/install.py`).
+- SonarCloud đỏ trên main từ trước. Phần lớn cảnh báo ở `app/agent/` là chủ ý: agent chạy lệnh và đọc đường dẫn do model chọn, router chỉ nhận yêu cầu từ máy này.
+
+## Terminal-Bench 2.1 (harness hiện tại, 89 bài)
+"Sạch" không tính bài mà agent chạm tới nguồn của benchmark.
+
+| Model | Đạt | Sạch | Harness cũ |
+|---|---|---|---|
+| DeepSeek V4.1 Flash (River) | 72 | 71 | 71 |
+| Beam (CommandCode) | 64 | 61 | 42/59 |
+
+Kết quả nằm ở `audit-results/terminal-bench-2-1/` trên nhánh `audit-evidence`. Mỗi trial có `events.jsonl.gz`, `result.json` và `verifier/`.
+
+## Chi phí River
+| Lượt | USD |
+|---|---|
+| 39404992762 | 5.35 |
+| 39430009322 (shard 1 chạy lại) | 3.76 + shard 1 |
+| 39441430048 | 6.00 |
+
+## Lỗi đã biết
+- Bài `sanitize-git-repo` có token giả nên push protection chặn lưu. `save-evidence` đã che token từ commit 6523f472; các lượt cũ hơn mất shard 1.
+- Runner GitHub đôi khi không bật Docker, khiến shard đó ra 0 bài. Chạy lại job đó là được.
+- `/etc/hosts` không chặn github.com, nên agent vẫn có thể mở repo của benchmark trên GitHub.
+- Popup của tiện ích bật lại sau 120 giây.
+
+## Ý tưởng chưa làm
+- A/B: agent chỉ có `run_command`, so với bộ công cụ đầy đủ.
+- Adapter `dsh` cho harness của DeepSeek.
+- Relay giảm tốc dần khi gặp 429 (AIMD), chưa được duyệt.
