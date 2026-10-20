@@ -1,0 +1,104 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 9,
+            "passed": 8,
+            "failed": 1,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792503101.3821793,
+            "stop": 1792503126.6310549
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_python_file_exists",
+                "status": "passed",
+                "duration": 0.0005610270000033779,
+                "start": 1792503102.7089596,
+                "stop": 1792503102.7097676,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_run_script",
+                "status": "passed",
+                "duration": 23.7256635570011,
+                "start": 1792503102.709956,
+                "stop": 1792503126.43593,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_csv_output_exists",
+                "status": "passed",
+                "duration": 0.0005093309991934802,
+                "start": 1792503126.4362223,
+                "stop": 1792503126.4368927,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_csv_shape_cols",
+                "status": "passed",
+                "duration": 0.004342841000834596,
+                "start": 1792503126.4370606,
+                "stop": 1792503126.4415505,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_masks_are_no_longer_rect",
+                "status": "passed",
+                "duration": 0.015347590000601485,
+                "start": 1792503126.4417763,
+                "stop": 1792503126.4572759,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_mask_alignment",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.04812040900105785,
+                "start": 1792503126.457456,
+                "stop": 1792503126.5719538,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_mask_alignment():\n        '''Test that the predicted masks align reasonably with the masks generated\n         by solution.sh '''\n        out_df = _read_polylines_csv(\"/app/test_output.csv\")\n        correct_df = _read_polylines_csv(\"/app/correct_output.csv\")\n        for (_, row_out), (_, row_correct) in zip(out_df.iterrows(), correct_df.iterrows()):\n            points_out = list(zip(row_out['coords_x'], row_out['coords_y']))\n            points_correct = list(zip(row_correct['coords_x'], row_correct['coords_y']))\n            iou = calculate_iou(np.array(points_out), np.array(points_correct))\n>           assert iou >= 0.5, f\"IoU is too low: {iou}\"\nE           AssertionError: IoU is too low: 0.4828941621779007\nE           assert 0.4828941621779007 >= 0.5\n\n/tests/test_outputs.py:221: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_no_polyline_overlaps",
+                "status": "passed",
+                "duration": 0.03485262300091563,
+                "start": 1792503126.5721893,
+                "stop": 1792503126.6072738,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_single_contiguous_mask_per_cell",
+                "status": "passed",
+                "duration": 0.014763258002858493,
+                "start": 1792503126.607519,
+                "stop": 1792503126.6224546,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_coords_are_flat_lists",
+                "status": "passed",
+                "duration": 0.008056534999923315,
+                "start": 1792503126.622681,
+                "stop": 1792503126.6308792,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
