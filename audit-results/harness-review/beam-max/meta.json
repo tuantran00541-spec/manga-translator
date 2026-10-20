@@ -1,0 +1,61 @@
+{
+ "model": "reflection/beam:free",
+ "effort": "max",
+ "status": 200,
+ "seconds": 47,
+ "files": [
+  "app/agent/__init__.py",
+  "app/agent/agents.py",
+  "app/agent/builtin_skills/mcp-builder/scripts/connections.py",
+  "app/agent/builtin_skills/mcp-builder/scripts/evaluation.py",
+  "app/agent/builtin_skills/webapp-testing/examples/console_logging.py",
+  "app/agent/builtin_skills/webapp-testing/examples/element_discovery.py",
+  "app/agent/builtin_skills/webapp-testing/examples/static_html_automation.py",
+  "app/agent/builtin_skills/webapp-testing/scripts/with_server.py",
+  "app/agent/chaincheck.py",
+  "app/agent/checkpoint.py",
+  "app/agent/client.py",
+  "app/agent/codemode.py",
+  "app/agent/context.py",
+  "app/agent/gitguard.py",
+  "app/agent/isolate.py",
+  "app/agent/landlock_run.py",
+  "app/agent/mcp.py",
+  "app/agent/memory.py",
+  "app/agent/models.py",
+  "app/agent/plugin_api.py",
+  "app/agent/registry.py",
+  "app/agent/repl.py",
+  "app/agent/roles.py",
+  "app/agent/rules.py",
+  "app/agent/sandbox.py",
+  "app/agent/schema.py",
+  "app/agent/session.py",
+  "app/agent/skill_install.py",
+  "app/agent/skills.py",
+  "app/agent/tools.py",
+  "app/agent/watch.py",
+  "app/agent/webread.py",
+  "app/agent/websearch.py",
+  "app/agent/win_low.py",
+  ".github/terminal-bench/run_agent.py",
+  "docs/chaos-open-design.md"
+ ],
+ "prompt_chars": 537557,
+ "usage": {
+  "prompt_tokens": 132360,
+  "completion_tokens": 17582,
+  "total_tokens": 149942,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 13475,
+   "image_tokens": 0
+  },
+  "cache_creation_input_tokens": 0
+ },
+ "error": ""
+}
