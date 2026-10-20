@@ -62,12 +62,12 @@ Runs saved before 2026-10-20T07:44:00Z predate the fix that hid the benchmark fr
 | 2026-10-20 11:27 | commandcode-beam | [39403085991](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39403085991) | 0,2 | 42 | 40 | 59 |  |
 | 2026-10-20 12:25 | river-deepseek | [39404992762](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39404992762) | 0,1,2 | 71 | 71 | 89 |  |
 | 2026-10-20 12:40 | commandcode-minimax | [39403085916](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39403085916) | 0,1,2 | 47 | 45 | 89 |  |
-| 2026-10-20 13:30 | river-deepseek | [39430009322](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39430009322) | 0,1,2 | 48 | 48 | 59 | empty shard |
 | 2026-10-20 14:35 | commandcode-beam | [39430214653](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39430214653) | 0,2 | 45 | 45 | 59 |  |
 | 2026-10-20 14:38 | commandcode-beam | [39430009313](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39430009313) | 0,1,2 | 64 | 63 | 89 |  |
 | 2026-10-20 14:57 | commandcode-beam | [39430257233](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39430257233) | 0,2 | 45 | 45 | 59 |  |
 | 2026-10-20 15:27 | commandcode-beam | [39434893183](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39434893183) | 0,2 | 44 | 42 | 59 |  |
 | 2026-10-20 15:57 | commandcode-beam | [39440876697](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39440876697) | 0,2 | 45 | 43 | 59 |  |
+| 2026-10-20 15:57 | river-deepseek | [39430009322](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39430009322) | 0,1,2 | 71 | 71 | 89 |  |
 | 2026-10-20 15:59 | commandcode-beam | [39440937766](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39440937766) | 0,1,2 | 64 | 61 | 89 |  |
 | 2026-10-20 16:52 | river-deepseek | [39441430048](https://github.com/tuantran00541-spec/manga-translator/actions/runs/39441430048) | 0,1,2 | 72 | 71 | 89 |  |
 

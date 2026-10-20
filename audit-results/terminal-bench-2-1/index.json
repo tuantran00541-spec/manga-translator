@@ -1719,43 +1719,6 @@
   "flags": []
  },
  {
-  "group": "river-deepseek",
-  "run": "39430009322",
-  "saved": "2026-10-20T13:30:04+00:00",
-  "shards": {
-   "0": {
-    "passed": 27,
-    "clean": 27,
-    "trials": 30,
-    "exceptions": 1,
-    "contaminated": [],
-    "saved": "2026-10-20T16:13:15+00:00"
-   },
-   "1": {
-    "passed": 0,
-    "clean": 0,
-    "trials": 0,
-    "exceptions": 0,
-    "contaminated": [],
-    "saved": "2026-10-20T13:30:04+00:00"
-   },
-   "2": {
-    "passed": 21,
-    "clean": 21,
-    "trials": 29,
-    "exceptions": 2,
-    "contaminated": [],
-    "saved": "2026-10-20T15:57:54+00:00"
-   }
-  },
-  "passed": 48,
-  "clean": 48,
-  "trials": 59,
-  "flags": [
-   "empty shard"
-  ]
- },
- {
   "group": "commandcode-beam",
   "run": "39430214653",
   "saved": "2026-10-20T14:35:56+00:00",
@@ -1913,6 +1876,41 @@
   "passed": 45,
   "clean": 43,
   "trials": 59,
+  "flags": []
+ },
+ {
+  "group": "river-deepseek",
+  "run": "39430009322",
+  "saved": "2026-10-20T15:57:54+00:00",
+  "shards": {
+   "0": {
+    "passed": 27,
+    "clean": 27,
+    "trials": 30,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-20T16:13:15+00:00"
+   },
+   "1": {
+    "passed": 23,
+    "clean": 23,
+    "trials": 30,
+    "exceptions": 2,
+    "contaminated": [],
+    "saved": "2026-10-20T18:15:35+00:00"
+   },
+   "2": {
+    "passed": 21,
+    "clean": 21,
+    "trials": 29,
+    "exceptions": 2,
+    "contaminated": [],
+    "saved": "2026-10-20T15:57:54+00:00"
+   }
+  },
+  "passed": 71,
+  "clean": 71,
+  "trials": 89,
   "flags": []
  },
  {
