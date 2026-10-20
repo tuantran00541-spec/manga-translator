@@ -16,12 +16,15 @@ NOBODY = "Nobody can answer during this run; choose what fits the task best and 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    # "-" reads it from stdin, so it is not in the command line, where `pkill -f <a word of the task>` would match this process.
     parser.add_argument("instruction")
     parser.add_argument("--base", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--workspace", default=".")
     parser.add_argument("--minutes", type=float, default=60)
     args = parser.parse_args()
+    if args.instruction == "-":
+        args.instruction = sys.stdin.read()
     # The relay sits on the Docker host's private address, which the app's guard against private hosts would refuse.
     client.validate_url = lambda url: url
     provider = dataclasses.replace(PROVIDERS["openai"], id="bench", label="bench", api_base=args.base.rstrip("/"), builtin=False, tracks_cost=False)

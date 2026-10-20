@@ -61,7 +61,7 @@ jobs:
           SEARCH=()
           [ -n "${MANGA_SEARCH:-}" ] && SEARCH=(TINYFISH_API_KEY=relay "TINYFISH_SEARCH_URL=$MANGA_SEARCH/search" "TINYFISH_FETCH_URL=$MANGA_SEARCH/fetch")
           cd /tmp/work
-          sudo -u probe -H env PATH="$PATH" PYTHONPATH=/home/probe/src "${SEARCH[@]}" "$(which python)" -X faulthandler /home/probe/src/run_agent.py "$(cat "$GITHUB_WORKSPACE/.github/agent-probe/task.md")" \
+          sudo -u probe -H env PATH="$PATH" PYTHONPATH=/home/probe/src "${SEARCH[@]}" "$(which python)" -X faulthandler /home/probe/src/run_agent.py - < "$GITHUB_WORKSPACE/.github/agent-probe/task.md" \
             --base http://127.0.0.1:18081/v1 --model "${{ steps.c.outputs.model }}" --workspace /tmp/work --minutes "${{ steps.c.outputs.minutes }}" \
             > "$GITHUB_WORKSPACE/out/events.jsonl" 2> "$GITHUB_WORKSPACE/out/stderr.log" && rc=0 || rc=$?
           # How the agent process ended (128+N is signal N) and what was left running, for a run that stops early.
