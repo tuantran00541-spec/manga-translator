@@ -1,0 +1,125 @@
+{
+    "id": "520e5bc9-fa0d-495b-b425-b547ab833b67",
+    "task_name": "terminal-bench/sam-cell-seg",
+    "trial_name": "sam-cell-seg__6xcogej",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-20__00-23-31/sam-cell-seg__6xcogej",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/sam-cell-seg"
+    },
+    "source": "tasks",
+    "task_checksum": "9d6e0538e93d2fc3c8c8ba361125c08ece2c191b1b1148c5bcb5d94e77a622c5",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/sam-cell-seg",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "sam-cell-seg__6xcogej",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-20__00-23-31",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "manga_agent:MangaAgent",
+            "model_name": "minimax/minimax-m3.1-flash:free",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "3691b753-52e3-4016-935a-10224cace082",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "chaos",
+        "version": "223101b5cd36c5b3e70f04840576d16c1f1b188d",
+        "model_info": {
+            "name": "minimax-m3.1-flash:free",
+            "provider": "minimax"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 6517483,
+        "n_cache_tokens": 5824287,
+        "n_output_tokens": 296961,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": "done",
+            "stats": {
+                "model_s": 3871.6566298007965,
+                "tool_s": 2963.444583415985
+            }
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-20T02:39:19.058814Z",
+    "finished_at": "2026-10-20T04:34:59.036155Z",
+    "environment_setup": {
+        "started_at": "2026-10-20T02:39:19.060331Z",
+        "finished_at": "2026-10-20T02:39:37.125587Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-20T02:39:37.125614Z",
+        "finished_at": "2026-10-20T02:39:40.180198Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-20T02:39:40.180279Z",
+        "finished_at": "2026-10-20T04:33:38.516690Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-20T04:33:39.224287Z",
+        "finished_at": "2026-10-20T04:34:42.734673Z"
+    },
+    "step_results": null
+}
