@@ -1,0 +1,253 @@
+name: Terminal-Bench 2.1 (CommandCode minimax)
+
+# CommandCode run: the full 89-task Terminal-Bench 2.1 suite through Harbor on the
+# Chaos harness, 3 shards in parallel. Settings come from .github/tb-runs/minimax.json;
+# a relay on the runner holds the API key so the task containers never see it.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/tb-runs/minimax.json"
+
+permissions:
+  contents: write
+
+jobs:
+  config:
+    runs-on: ubuntu-22.04
+    outputs:
+      secret: ${{ steps.cfg.outputs.secret }}
+      base: ${{ steps.cfg.outputs.base }}
+      model: ${{ steps.cfg.outputs.model }}
+      check_only: ${{ steps.cfg.outputs.check_only }}
+      tasks: ${{ steps.cfg.outputs.tasks }}
+      concurrent: ${{ steps.cfg.outputs.concurrent }}
+      minutes: ${{ steps.cfg.outputs.minutes }}
+      request: ${{ steps.cfg.outputs.request }}
+      max_output: ${{ steps.cfg.outputs.max_output }}
+      shards: ${{ steps.cfg.outputs.shards }}
+      shard_total: ${{ steps.cfg.outputs.shard_total }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read the run settings
+        id: cfg
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, re, sys
+          from urllib.parse import urlparse
+          cfg = json.load(open(".github/tb-runs/minimax.json"))
+          url = urlparse(cfg["base_url"])
+          if url.scheme != "https" or not url.hostname or url.username or url.query:
+              sys.exit("base_url must be https without credentials or query")
+          if not re.fullmatch(r"[A-Za-z0-9_]+", cfg["secret"]):
+              sys.exit("secret must be a plain secret name")
+          print(f"secret={cfg['secret']}")
+          print(f"base={cfg['base_url'].rstrip('/')}")
+          print(f"model={cfg['model']}")
+          print(f"check_only={'true' if cfg.get('check_only') else 'false'}")
+          print(f"tasks={' '.join('-i ' + re.sub(r'[^A-Za-z0-9_.-]', '', t) for t in cfg.get('tasks') or [])}")
+          print(f"concurrent={int(cfg.get('concurrent') or 2)}")
+          print(f"minutes={int(cfg.get('minutes') or 60)}")
+          print(f"request={json.dumps(cfg.get('request') or {})}")
+          print(f"max_output={int(cfg.get('max_output_tokens') or 16000)}")
+          total = max(1, int(cfg.get("shards") or 1))
+          print(f"shards={json.dumps(list(range(total)))}")
+          print(f"shard_total={total}")
+          PY
+
+  check:
+    # The key is tried first: the model list and one short chat, before any task runs.
+    needs: config
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Try the CommandCode key
+        env:
+          API_KEY: ${{ secrets[needs.config.outputs.secret] }}
+          BASE: ${{ needs.config.outputs.base }}
+          MODEL: ${{ needs.config.outputs.model }}
+          REQUEST: ${{ needs.config.outputs.request }}
+        run: |
+          [ -n "$API_KEY" ] || { echo "::error::secret ${{ needs.config.outputs.secret }} is not set"; exit 1; }
+          python3 -m pip install -q requests
+          python3 - <<'PY'
+          import json, os, sys, time, requests
+          head = {"Authorization": f"Bearer {os.environ['API_KEY']}"}
+          base, model = os.environ["BASE"], os.environ["MODEL"]
+          r = requests.get(f"{base}/models", headers=head, timeout=60)
+          print(f"models: HTTP {r.status_code}")
+          try:
+              print("  ", [m.get("id") for m in r.json().get("data", [])])
+          except ValueError:
+              print("  ", r.text[:300])
+          body = {"model": model, "messages": [{"role": "user", "content": "Reply with the single word OK."}], "max_tokens": 200,
+                  **json.loads(os.environ["REQUEST"])}
+          started = time.time()
+          r = requests.post(f"{base}/chat/completions", headers=head, json=body, timeout=600)
+          print(f"chat: HTTP {r.status_code} in {time.time() - started:.1f}s")
+          if r.status_code != 200:
+              print("  ", r.text[:500])
+              sys.exit("::error::the CommandCode key or model does not answer")
+          data = r.json()
+          print("  answer:", repr(((data.get("choices") or [{}])[0].get("message") or {}).get("content"))[:200], "usage:", data.get("usage"))
+          PY
+
+  bench:
+    needs: [config, check]
+    if: needs.config.outputs.check_only != 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.config.outputs.shards) }}
+    env:
+      OUT: audit-results/terminal-bench-2-1/commandcode-minimax/run-${{ github.run_id }}/shard-${{ matrix.shard }}
+      PORT: "18080"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h / | tail -1
+
+      - name: Install Harbor and get the tasks
+        run: |
+          python -m pip install -q uv
+          uv tool install harbor 2>&1 | tail -2
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          git clone -q --depth 1 https://github.com/harbor-framework/terminal-bench-2-1 /tmp/tb21
+          echo "tasks: $(find /tmp/tb21/tasks -mindepth 1 -maxdepth 1 -type d | wc -l)"
+
+      - name: Start the key relay as another user
+        env:
+          API_KEY: ${{ secrets[needs.config.outputs.secret] }}
+        run: |
+          python -m pip install -q requests
+          sudo install -d -o nobody -m 711 /opt/relay
+          sudo install -m 755 .github/terminal-bench/proxy.py /opt/relay/proxy.py
+          printf '%s' "$API_KEY" | sudo -u nobody tee /opt/relay/key > /dev/null
+          sudo chmod 600 /opt/relay/key
+          # No limits: no token, request or dollar ceiling on this run.
+          sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" "${{ needs.config.outputs.base }}" '{}' "${{ needs.config.outputs.model }}" > /dev/null 2>&1 &
+          sleep 3
+          mkdir -p "$OUT"
+          curl -sS -m 60 -o /dev/null -w "models endpoint: HTTP %{http_code}\n" "http://127.0.0.1:$PORT/v1/models" || true
+          (cat /opt/relay/key > /dev/null 2>&1 && echo "::error::the runner user can read the key" && exit 1) || echo "key file is not readable by the runner user"
+
+      - name: Start the TinyFish search relay as another user
+        env:
+          TINYFISH_KEY: ${{ secrets.TINYFISH }}
+        run: |
+          # Web search goes through its own relay, so the search key never reaches the task containers either.
+          [ -n "$TINYFISH_KEY" ] || { echo "no TINYFISH secret; web search falls back to DuckDuckGo"; exit 0; }
+          sudo install -m 755 .github/terminal-bench/search_relay.py /opt/relay/search_relay.py
+          printf '%s' "$TINYFISH_KEY" | sudo -u nobody tee /opt/relay/search_key > /dev/null
+          sudo chmod 600 /opt/relay/search_key
+          sudo -u nobody nohup "$(which python)" /opt/relay/search_relay.py /opt/relay/search_key /opt/relay/search-stats.json 18082 > /dev/null 2>&1 &
+          sleep 2
+          echo "SEARCH_RELAY=18082" >> "$GITHUB_ENV"
+
+      - name: Package the harness
+        run: |
+          python -m pip install -q -r requirements-test.txt
+          python - <<'PY'
+          import importlib, os, sys, tarfile
+          importlib.import_module("app.agent.session")
+          files = set()
+          for name, mod in list(sys.modules.items()):
+              path = getattr(mod, "__file__", None)
+              if name.split(".")[0] == "app" and path and path.endswith(".py"):
+                  files.add(os.path.relpath(path))
+          for root, dirs, names in os.walk("app/agent"):
+              dirs[:] = [d for d in dirs if d != "__pycache__"]
+              files.update(os.path.join(root, n) for n in names if not n.endswith(".pyc"))
+          with tarfile.open("/tmp/manga-agent.tgz", "w:gz") as tar:
+              for f in sorted(files):
+                  tar.add(f)
+              tar.add(".github/terminal-bench/run_agent.py", arcname="run_agent.py")
+          print(len(files) + 1, "files")
+          PY
+          ip -4 -o addr show docker0 | awk '{print $4}' | cut -d/ -f1 | tee /tmp/docker-gateway
+
+      - name: Run Harbor (CommandCode)
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.github/terminal-bench
+          MANGA_AGENT_TGZ: /tmp/manga-agent.tgz
+          MANGA_AGENT_MODEL: ${{ needs.config.outputs.model }}
+          MANGA_AGENT_MINUTES: ${{ needs.config.outputs.minutes }}
+          MANGA_AGENT_TASKS_DIR: /tmp/tb21/tasks
+          MANGA_AGENT_MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
+          MANGA_AGENT_REQUEST: ${{ needs.config.outputs.request }}
+          MANGA_AGENT_SHA: ${{ github.sha }}
+        run: |
+          export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"
+          [ -n "${SEARCH_RELAY:-}" ] && export MANGA_AGENT_SEARCH="http://$(cat /tmp/docker-gateway):$SEARCH_RELAY"
+          export MANGA_AGENT_UV="$(readlink -f "$(command -v uv)")"
+          TASKS="${{ needs.config.outputs.tasks }}"
+          # With no task list, each shard takes every Nth task of the sorted set so hard and easy ones spread evenly.
+          [ -z "$TASKS" ] && TASKS=$(find /tmp/tb21/tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | awk -v n="${{ needs.config.outputs.shard_total }}" -v k="${{ matrix.shard }}" '(NR-1)%n==k {printf "-i %s ", $0}')
+          echo "tasks in this shard: $(echo "$TASKS" | grep -o -- '-i ' | wc -l)"
+          # Large task images fill the disk, so images no container uses go once space runs low.
+          (while sleep 120; do [ "$(df --output=avail -BG / | tail -1 | tr -dc 0-9)" -lt 25 ] && docker image prune -af >/dev/null; done) &
+          # Stop Harbor before the job limit so the summary and evidence steps still run.
+          timeout 330m harbor run -p /tmp/tb21/tasks $TASKS --agent-import-path manga_agent:MangaAgent --model "$MANGA_AGENT_MODEL" \
+            --env docker --n-concurrent "${{ needs.config.outputs.concurrent }}" --max-retries 1 \
+            --jobs-dir "$PWD/jobs" --yes 2>&1 | tail -80 || true
+
+      - name: Summarize
+        if: always()
+        run: |
+          mkdir -p "$OUT"
+          cp /opt/relay/stats.json "$OUT/relay-stats.json" 2>/dev/null || true
+          cp /opt/relay/search-stats.json "$OUT/search-stats.json" 2>/dev/null || true
+          python - <<'PY'
+          import glob, json, os, shutil
+          out = os.environ["OUT"]
+          rows = []
+          for path in sorted(glob.glob("jobs/*/*/result.json")):
+              try:
+                  data = json.load(open(path))
+              except ValueError:
+                  continue
+              trial = os.path.basename(os.path.dirname(path))
+              rewards = (data.get("verifier_result") or {}).get("rewards") or {}
+              error = data.get("exception_info")
+              rows.append({"trial": trial, "reward": rewards.get("reward"),
+                           "exception": error.get("exception_type") if isinstance(error, dict) else error,
+                           "tokens": [(data.get("agent_result") or {}).get(k) for k in ("n_input_tokens", "n_cache_tokens", "n_output_tokens")]})
+              d = f"{out}/trials/{trial}"
+              os.makedirs(d, exist_ok=True)
+              shutil.copy(path, d)
+              for name in ("events.jsonl", "stderr.log"):
+                  for src in glob.glob(f"{os.path.dirname(path)}/agent/{name}"):
+                      shutil.copy(src, d)
+          passed = sum(1 for r in rows if (r["reward"] or 0) >= 1)
+          summary = {"passed": passed, "trials": len(rows), "rate": round(passed / len(rows), 3) if rows else None, "rows": rows}
+          json.dump(summary, open(f"{out}/summary.json", "w"), indent=1)
+          print(f"PASSED {passed}/{len(rows)}")
+          print(json.dumps(rows, indent=1)[:4000])
+          PY
+          gzip -f "$OUT"/trials/*/events.jsonl 2>/dev/null || true
+
+      - name: Give git access only now that the agents are done
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/terminal-bench-2-1/commandcode-minimax/run-${{ github.run_id }}/shard-${{ matrix.shard }}
+          message: "audit: Terminal-Bench 2.1, Chaos open harness, CommandCode (run ${{ github.run_id }}, shard ${{ matrix.shard }})"
