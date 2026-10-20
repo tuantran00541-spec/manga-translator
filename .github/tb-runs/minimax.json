@@ -1,0 +1,1 @@
+{"secret": "COMMANDCODE", "base_url": "https://api.commandcode.ai/provider/v1", "model": "minimax/minimax-m3.1-flash:free", "check_only": false, "tasks": [], "concurrent": 4, "shards": 3, "minutes": 200, "request": {"reasoning_effort": "xhigh"}, "max_output_tokens": 16000, "label": "shell-tools"}

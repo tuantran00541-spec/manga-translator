@@ -189,6 +189,7 @@ jobs:
           SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
           GATEWAY_SOVINFRA_KEY: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          GATEWAY_COMMANDCODE_KEY: ${{ secrets.COMMANDCODE }}
         run: |
           KEY="${!PROVIDER_SECRET}" python - <<'PY'
           import base64, json, os, sys, time, cv2, numpy as np, requests
@@ -230,6 +231,7 @@ jobs:
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
           # A stage route with "base" and "key_env": "GATEWAY_SOVINFRA_KEY" runs on sovinfra's free tokens.
           GATEWAY_SOVINFRA_KEY: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          GATEWAY_COMMANDCODE_KEY: ${{ secrets.COMMANDCODE }}
           CHAPTER_URL: ${{ matrix.url }}
           OUT: audit-results/ai-cost/${{ github.event.inputs.label || 'push' }}/${{ matrix.slug }}
           INPUT_POLISH: ${{ github.event.inputs.polish }}

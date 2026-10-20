@@ -20,6 +20,9 @@ runs:
         [ ${#keep[@]} -gt 0 ] || exit 0
         rm -rf /tmp/evidence && mkdir -p /tmp/evidence
         for p in "${keep[@]}"; do mkdir -p "/tmp/evidence/$p" && cp -r "$p/." "/tmp/evidence/$p/"; done
+        # Task fixtures carry fake tokens that push protection rejects, so they are masked.
+        grep -rlIZE 'hf_[A-Za-z0-9]{30,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}' /tmp/evidence \
+          | xargs -0r sed -i -E 's/hf_[A-Za-z0-9]{30,}/hf_MASKED/g; s/gh([pousr])_[A-Za-z0-9]{30,}/gh\1_MASKED/g; s/github_pat_[A-Za-z0-9_]{30,}/github_pat_MASKED/g; s/AKIA[0-9A-Z]{16}/AKIA_MASKED/g' || true
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
         # A separate worktree, so the job's checkout (and the post steps of its actions) stays as it was.

@@ -226,6 +226,25 @@ def test_a_secret_store_that_crashes_while_loading_falls_back_to_the_file(monkey
     assert (tmp_path / "manga-translator" / "secrets.json").is_file()
 
 
+def test_extra_keys_are_kept_after_the_first_and_the_first_is_what_other_features_use(monkeypatch, tmp_path):
+    import keyring
+    from keyring.backends import fail
+
+    from app import secret_store
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(secret_store, "_os_store_works", None)
+    monkeypatch.setattr(keyring, "get_keyring", lambda: fail.Keyring())
+    assert secret_store.set_provider_api_key("openai", "k1") == 1
+    assert secret_store.set_provider_api_key("openai", "k2", append=True) == 2
+    assert secret_store.set_provider_api_key("openai", "k2", append=True) == 2, "the same key is not stored twice"
+    assert secret_store.get_provider_api_keys("openai") == ["k1", "k2"]
+    assert secret_store.get_provider_api_key("openai") == "k1"
+    assert secret_store.provider_key_status("openai")["count"] == 2
+    assert secret_store.set_provider_api_key("openai", "k3") == 1, "Lưu replaces every stored key"
+    assert secret_store.get_provider_api_keys("openai") == ["k3"]
+
+
 @pytest.mark.parametrize("pasted, base", [
     ("https://api.groq.com", "https://api.groq.com/openai/v1"),
     ("api.openai.com/v1/chat/completions", "https://api.openai.com/v1"),
