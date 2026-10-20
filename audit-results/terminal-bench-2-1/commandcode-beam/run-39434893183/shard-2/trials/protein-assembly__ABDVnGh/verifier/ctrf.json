@@ -1,0 +1,29 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 1,
+            "passed": 1,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792506420.9265454,
+            "stop": 1792506421.0549219
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_gblock",
+                "status": "passed",
+                "duration": 0.002478092000046672,
+                "start": 1792506421.0518608,
+                "stop": 1792506421.0546672,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
