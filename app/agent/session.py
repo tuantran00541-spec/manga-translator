@@ -321,6 +321,8 @@ MADE_TOOLS = ("The code is a function def name(...) or just its body (a top-leve
               "it runs once; otherwise it stays as a tool you call by name from your next reply on, and in later sessions. You see only what "
               "the code prints or returns. A failing tools.<name>(...) raises an exception that carries the tool's error.")
 LEAN_TOOLS = frozenset({"read_file", "edit_file", "run_command"})
+TOOL_ALIASES = {"bash": "run_command", "shell": "run_command", "execute": "run_command",
+                "create_file": "write_file"}  # names other harnesses use for the same tool and arguments
 LEAN_PROMPT = IDENTITY + """
 Your tools are read_file, edit_file, run_command (the shell: list, search, build, test) and create; how they fit together is below.
 
@@ -1328,6 +1330,13 @@ class AgentSession:
 
     def close(self) -> None:
         self._closing = True
+        if self.profile.get("keep_jobs"):
+            # A service the task asked for (a web server, a VM) must outlive the agent, so running jobs are left behind.
+            with self._usage_lock:
+                for job in list(self.jobs.values()):
+                    if job.alive:
+                        job.detach()
+                self.jobs.clear()
         self.stop()
         self._join_turn()
         for child in list(self.children.values()):
@@ -1739,7 +1748,11 @@ class AgentSession:
 
     def _create(self, args: dict) -> str:
         """Write, replace or (with empty code) delete a tool the model defines in its own function-calling form."""
-        name = str(args.get("name") or "").strip()
+        asked = str(args.get("name") or "").strip()
+        # A name like "Check-Build" or "2fa" is made valid rather than refused, which would cost a whole turn.
+        name = re.sub(r"[^a-z0-9_]+", "_", asked.lower()).strip("_")[:41]
+        if name and not name[0].isalpha():
+            name = f"t_{name}"[:41]
         if not CREATED_NAME.fullmatch(name):
             raise ToolError("name must be lower_case letters, digits and _, starting with a letter")
         created = self._root().created
@@ -1783,7 +1796,7 @@ class AgentSession:
         where = "with this project" if scope == "workspace" else "for later sessions"
         how = "read-only and offline, without asking" if kind == "read" and self._confined() else "in the sandbox"
         return (f"{'Updated' if old else 'Created'} tool {tool['description'].rstrip('.')}. Call {name} directly as a tool ({takes}); "
-                f"it runs {how} and is kept {where}.{loose}")
+                f"it runs {how} and is kept {where}.{loose}" + (f" The name {asked!r} was not valid, so it is {name}." if asked != name else ""))
 
     def _confined(self) -> bool:
         """True when the sandbox really enforces a read-only run, so a read tool may skip approval."""
@@ -3044,6 +3057,9 @@ class AgentSession:
                 offered[call["name"]] = spec
         known = set(offered)
         self.workspace.offered = known
+        if call["name"] not in known and TOOL_ALIASES.get(call["name"]) in known:
+            # Names other harnesses use for the same tool are taken as ours rather than refused.
+            call["name"] = TOOL_ALIASES[call["name"]]
         if call["name"] not in known:
             return f"Unknown tool {call['name']!r}; available: {', '.join(sorted(known))}", False
         required = offered[call["name"]].get("parameters", {}).get("required") or []
@@ -3058,7 +3074,9 @@ class AgentSession:
             return (f"Blocked: after the summary you have redone {self._repeats} calls exactly as before and got the same results. "
                     "Read the summary's Progress and continue from there, or ask the user."), False
         self._recent = (self._recent + [signature])[-DOOM_LOOP:]
-        if len(self._recent) == DOOM_LOOP and len(set(self._recent)) == 1 and call["name"] != "wait_agent":
+        # Waiting on a job that is still running is progress, not a loop.
+        polling = call["name"] == "job_output" and isinstance(call["args"], dict) and getattr(self.jobs.get(str(call["args"].get("id"))), "alive", False)
+        if len(self._recent) == DOOM_LOOP and len(set(self._recent)) == 1 and call["name"] != "wait_agent" and not polling:
             self._recent = []
             self.emit("notice", text=f"{call['name']} called {DOOM_LOOP} times with the same arguments; blocked.")
             return (f"Blocked: you made this exact {call['name']} call {DOOM_LOOP} times in a row. "

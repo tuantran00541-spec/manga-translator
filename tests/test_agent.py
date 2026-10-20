@@ -3599,3 +3599,38 @@ def test_reading_git_is_allowed_and_writing_into_it_or_reading_env_is_denied():
     assert rules.check(found, "run_command", {"command": "cd repo && ls -la .git/logs && git reflog"}, lambda p: p) is None
     assert rules.check(found, "run_command", {"command": "git rev-parse HEAD > .git/ORIG_HEAD"}, lambda p: p) == "deny"
     assert rules.check(found, "run_command", {"command": "cat .env"}, lambda p: p) == "deny"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups")
+def test_with_keep_jobs_a_running_service_outlives_the_session(ws, home):
+    import signal
+    write_profile(home, {"keep_jobs": True})
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._start_job({"command": "sleep 300"})
+    job = session.jobs["job1"]
+    session.close()
+    try:
+        assert job.code is None and not session.jobs, "a server the task asked for must still run for the checker"
+    finally:
+        os.killpg(job.proc.pid, signal.SIGKILL)
+
+
+def test_polling_a_running_job_is_not_taken_for_a_loop(ws, home):
+    script = "python3 -u -c \"import time; time.sleep(300)\""
+    fake = scripted(turn(calls=[call("run_command", command=script, background=True)]),
+                    *[turn(calls=[call("job_output", id="job1", wait_s=1)]) for _ in range(4)],
+                    turn(calls=[call("job_stop", id="job1")]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    run_to_idle(session)
+    assert not any("Blocked" in o for _, _, o in tool_outputs(session))
+
+
+def test_other_harness_tool_names_and_loose_tool_names_are_taken(ws, home):
+    fake = scripted(turn(calls=[call("bash", command="echo aliased")]), turn("done"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    run_to_idle(session)
+    assert "aliased" in tool_outputs(session)[0][2]
+    out = session._create({"name": "Check-Build", "code": "def check_build():\n    return 1\n"})
+    assert "check_build" in session._root().created and "was not valid" in out
+    (ws.root / "pkg").mkdir(exist_ok=True)
+    assert "is a folder; its entries" in ws.run("read_file", {"path": "pkg"})

@@ -37,7 +37,7 @@ def group_of(tool: str) -> str | None:
 
 def load_profile(workspace: Path, home: Path) -> dict:
     """User profile first; a workspace profile may only switch more features off."""
-    profile: dict = {"disable": [], "loop": "default", "echo_reasoning": None, "subagent_model": "",
+    profile: dict = {"disable": [], "loop": "default", "echo_reasoning": None, "keep_jobs": False, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "fallback_models": [], "prewalk_model": "",
@@ -56,6 +56,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["loop"] = data["loop"]
                 if isinstance(data.get("echo_reasoning"), bool) or data.get("echo_reasoning") == "all":
                     profile["echo_reasoning"] = data["echo_reasoning"]
+                if isinstance(data.get("keep_jobs"), bool):
+                    profile["keep_jobs"] = data["keep_jobs"]
                 for key in ("subagent_model", "compact_model", "prewalk_model"):
                     if isinstance(data.get(key), str):
                         profile[key] = data[key].strip()[:100]

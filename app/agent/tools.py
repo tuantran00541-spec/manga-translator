@@ -374,8 +374,11 @@ class Workspace:
 
     def _tool_read_file(self, path: str, offset: int = 1, limit: int = MAX_READ_LINES) -> str:
         target = self.resolve(path)
+        if target.is_dir():
+            # Reading a folder is a request to see what is in it.
+            return f"{path} is a folder; its entries:\n{self._tool_list_dir(path)}"
         if not target.is_file():
-            raise self.missing(path) if not target.exists() else ToolError(f"{path!r} is a folder; list it with list_dir")
+            raise self.missing(path)
         data = target.read_bytes()
         if b"\0" in data[:8192]:
             raise ToolError(f"{path!r} is a binary file")
