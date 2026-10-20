@@ -3370,6 +3370,8 @@ def test_python_run_by_run_command_calls_the_library_through_the_agent(ws, home)
     assert out.strip().splitlines()[0].strip() == "1" and "[exit code 0]" in out, out
     out = session._run_foreground({"command": "agent-tool read_file path=notes.txt && agent-tool nope; echo $?"})
     assert "hello" in out and "no tool 'nope'" in out and out.strip().splitlines()[-2].strip() == "1", out
+    out = session._run_foreground({"command": "agent-tool --help; agent-tool skill nope"})
+    assert "read_file:" in out and "No skill named 'nope'" in out, "help lists the tools and a bare value goes to the first parameter"
     seen = session._start_job({"command": "agent-tool read_file path=notes.txt; sleep 30"})
     deadline = time.time() + 10
     while "hello" not in seen and time.time() < deadline:

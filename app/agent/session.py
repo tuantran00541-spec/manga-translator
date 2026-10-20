@@ -277,9 +277,13 @@ tools = _Tools()
 
 if __name__ == "__main__":
     import sys as _sys
-    if len(_sys.argv) < 2:
-        print("usage: agent-tool <name> [key=value ... | JSON object]", file=_sys.stderr)
-        _sys.exit(2)
+    if len(_sys.argv) < 2 or _sys.argv[1] in ("-h", "--help", "help"):
+        # The tool list itself, so a model that asks for help learns what it can call.
+        print("usage: agent-tool <name> [key=value ... | JSON object]; skill, agent, think and created tools also take bare values in order; "
+              "agent-tool describe <name> shows a tool's parameters\\ntools:")
+        for _row in tools.search("", 200):
+            print(f"  {{_row['name']}}: {{_row['description']}}")
+        _sys.exit(0)
     _rest = _sys.argv[2:]
 
     def _value(text):
@@ -287,10 +291,12 @@ if __name__ == "__main__":
             return _json.loads(text)
         except ValueError:
             return text
-    _args = (_json.loads(_rest[0]) if len(_rest) == 1 and _rest[0].lstrip()[:1] == "{{"
-             else {{k: _value(v) for k, v in (a.split("=", 1) for a in _rest if "=" in a)}})
+    _whole = len(_rest) == 1 and _rest[0].lstrip()[:1] == "{{"
+    _args = _json.loads(_rest[0]) if _whole else {{k: _value(v) for k, v in (a.split("=", 1) for a in _rest if "=" in a)}}
+    # A bare value goes to the tool's first parameter, as in agent-tool skill pdf.
+    _plain = [] if _whole else [a for a in _rest if "=" not in a]
     try:
-        _out = getattr(tools, _sys.argv[1])(**_args)
+        _out = getattr(tools, _sys.argv[1])(*_plain, **_args)
     except Exception as _exc:
         print(f"Error: {{_exc}}", file=_sys.stderr)
         _sys.exit(1)
