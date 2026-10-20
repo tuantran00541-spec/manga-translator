@@ -1,0 +1,50 @@
+{
+ "area": "clean",
+ "model": "reflection/beam:free",
+ "effort": "max",
+ "status": 200,
+ "seconds": 186,
+ "files": [
+  "app/detector/__init__.py",
+  "app/detector/boxes.py",
+  "app/detector/ctd_mask.py",
+  "app/detector/kiuyha_detector.py",
+  "app/detector/mask_builder.py",
+  "app/downloader/__init__.py",
+  "app/downloader/asura.py",
+  "app/downloader/base.py",
+  "app/downloader/generic_js.py",
+  "app/downloader/http.py",
+  "app/downloader/image_urls.py",
+  "app/downloader/registry.py",
+  "app/downloader/slicer.py",
+  "app/inpaint/__init__.py",
+  "app/inpaint/clustering.py",
+  "app/inpaint/lama_inpainter.py",
+  "app/inpaint/mask_geometry.py",
+  "app/mask_store.py",
+  "app/optimized_pipeline.py",
+  "app/ort_utils.py",
+  "app/page_processing.py",
+  "app/page_processing_jobs.py",
+  "app/parameters.py",
+  "app/pipeline.py"
+ ],
+ "prompt_chars": 261595,
+ "usage": {
+  "prompt_tokens": 64087,
+  "completion_tokens": 31542,
+  "total_tokens": 95629,
+  "prompt_tokens_details": {
+   "cached_tokens": 64064,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 29375,
+   "image_tokens": 0
+  },
+  "cache_creation_input_tokens": 0
+ },
+ "error": ""
+}
