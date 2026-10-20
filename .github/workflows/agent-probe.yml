@@ -55,7 +55,7 @@ jobs:
           # The runner user has sudo, which could read the key; the agent runs as its own plain user instead.
           sudo useradd -m probe
           sudo mkdir -p /tmp/work /home/probe/.manga-agent /home/probe/src && sudo cp -r app .github/terminal-bench/run_agent.py /home/probe/src/
-          python -c 'import json, os; print(json.dumps({"token_budget": 10**15, "max_steps": 100000, "max_output_tokens": 16000, "keep_jobs": True, "models": {".": {"request": {"reasoning_effort": os.environ["EFFORT"]}, "max_output": 16000}}}))' | sudo tee /home/probe/.manga-agent/profile.json > /dev/null
+          python -c 'import json, os; c = json.load(open(".github/agent-probe/config.json")); print(json.dumps({"token_budget": 10**15, "max_steps": 100000, "max_output_tokens": 16000, "keep_jobs": True, **({"echo_reasoning": c["echo_reasoning"]} if c.get("echo_reasoning") else {}), "models": {".": {"request": {"reasoning_effort": os.environ["EFFORT"]}, "max_output": 16000}}}))' | sudo tee /home/probe/.manga-agent/profile.json > /dev/null
           sudo chown -R probe /tmp/work /home/probe
           mkdir -p out
           SEARCH=()
