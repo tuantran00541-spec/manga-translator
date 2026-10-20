@@ -185,11 +185,15 @@ def _seatbelt_profile(policy: Policy, root: Path, scratch: str) -> str:
     return " ".join(forms)
 
 
+# Commands run under bash where there is one, so time, source, [[ ]] and pipefail work as models expect.
+BASH = shutil.which("bash") if os.name == "posix" else None
+
+
 def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[str] | str, bool]:
     """The process to start for a shell command under the policy, and whether it goes through a shell string."""
     kind = backend()
     if policy.mode == "full-access" or kind == "none":
-        return command, True
+        return ([BASH, "-c", command], False) if BASH else (command, True)
     if kind == "docker":
         image = settings()["image"]
         mount = f"{root}:/workspace" + (":ro" if policy.mode == "read-only" else "")
@@ -217,8 +221,8 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
             args += ["--deny-read", path]
         if not policy.network:
             args.append("--no-network")
-        return args + ["--", "/bin/sh", "-c", command], False
-    return ["sandbox-exec", "-p", _seatbelt_profile(policy, root, scratch), "/bin/sh", "-c", command], False
+        return args + ["--", BASH or "/bin/sh", "-c", command], False
+    return ["sandbox-exec", "-p", _seatbelt_profile(policy, root, scratch), BASH or "/bin/sh", "-c", command], False
 
 
 _labelled: set[str] = set()

@@ -3428,6 +3428,42 @@ def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, hom
     assert "What the shell cannot do is in the tool library" in prompt
 
 
+@pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="bash and stand-ins are for POSIX shells")
+def test_run_command_uses_bash_and_stands_in_only_for_commands_the_machine_lacks(ws, home, monkeypatch):
+    from app.agent import session as session_module
+
+    real_which = shutil.which
+    monkeypatch.setattr(session_module.shutil, "which", lambda name, *a, **k: None if name in ("xxd", "python3") else real_which(name, *a, **k))
+    (ws.root / "b.bin").write_bytes(b"Hi\x00there")
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
+    session._new_request("go")
+    out = session._run_foreground({"command": "[[ -n $BASH_VERSION ]] && echo bash; xxd b.bin; xxd -p b.bin | xxd -r -p | cmp - b.bin && echo same; "
+                                              "python3 -c 'print(6*7)'; command -v ls"})
+    assert "bash" in out and "00000000: 4869 0074 6865 7265" in out and "Hi.there" in out and "same" in out and "42" in out, out
+    assert "harness's small stand-in" in out and "harness's own Python" in out, "a stand-in says once that it is one"
+    bin_dir = session._outputs_dir() / "state" / "bin"
+    assert (bin_dir / "xxd").exists() and not (bin_dir / "ls").exists() and (bin_dir / "file").exists() == (real_which("file") is None)
+    again = session._run_foreground({"command": "xxd b.bin >/dev/null"})
+    assert "stand-in" not in again
+
+
+def test_the_stand_ins_answer_like_the_real_commands(tmp_path, monkeypatch, capsys):
+    from PIL import Image
+
+    from app.agent import fallbacks
+
+    monkeypatch.setenv("AGENT_STATE", str(tmp_path))
+    png = tmp_path / "a.png"
+    Image.new("RGBA", (12, 7)).save(png)
+    (tmp_path / "s.sh").write_text("#!/usr/bin/env bash\necho hi\n")
+    assert fallbacks.main(["file", str(png), str(tmp_path / "s.sh"), str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "PNG image data, 12 x 7, 8-bit/color RGBA" in out and "Bourne-Again shell script" in out and ": directory" in out
+    (tmp_path / "b.bin").write_bytes(b"ab\x01cdefgh")
+    assert fallbacks.main(["strings", "-n", "5", str(tmp_path / "b.bin")]) == 0 and capsys.readouterr().out == "cdefgh\n"
+    assert fallbacks.main(["curl", "--bogus", "http://x"]) == 2 and "unsupported option" in capsys.readouterr().err
+
+
 def test_python_run_by_run_command_calls_the_library_through_the_agent(ws, home):
     (ws.root / "notes.txt").write_text("hello\n")
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))

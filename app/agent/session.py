@@ -320,6 +320,8 @@ if __name__ == "__main__":
 """
 SHIM_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,63}")
 SHIM_MARK = "agent-tool shim"  # marks the per-tool commands, so stale ones can be told from anything else in bin
+FALLBACK_MARK = "agent fallback"  # marks the stand-ins for commands the machine lacks
+FALLBACK_NOTE = "[python: not installed here; this is the harness's own Python {version}]"
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
 POST_SUMMARY_WINDOW = 30
@@ -1934,6 +1936,30 @@ class AgentSession:
             tool.write_text(f'#!/bin/sh\nPYTHONPATH={shlex.quote(str(lib))}${{PYTHONPATH:+:$PYTHONPATH}} exec {shlex.quote(sys.executable)} -m agent_tools "$@"\n', encoding="utf-8")
             tool.chmod(0o755)
         self._write_shims(state / "bin")
+        self._write_fallbacks(state)
+
+    def _write_fallbacks(self, state: Path) -> None:
+        """Stand-ins for common commands the machine lacks, Python first; a real command of the same name always wins."""
+        if os.name == "nt" or getattr(self, "_fallbacks", None) == state:
+            return
+        from app.agent import fallbacks
+
+        bin_dir, lib = state / "bin", state / "lib"
+        (lib / "agent_fallbacks.py").write_text(Path(fallbacks.__file__).read_text(encoding="utf-8"), encoding="utf-8")
+        python = shlex.quote(sys.executable)
+        note = shlex.quote(FALLBACK_NOTE.format(version=".".join(map(str, sys.version_info[:2]))))
+        for name in ("python3", "python", *fallbacks.COMMANDS):
+            if shutil.which(name):
+                continue
+            if name in fallbacks.COMMANDS:
+                body = f'PYTHONPATH={shlex.quote(str(lib))} exec {python} -m agent_fallbacks {name} "$@"'
+            else:
+                body = (f'[ -e "${{AGENT_STATE:-/tmp}}/.fallback-python" ] || {{ : > "${{AGENT_STATE:-/tmp}}/.fallback-python"; echo {note} >&2; }}\n'
+                        f'exec {python} "$@"')
+            shim = bin_dir / name
+            shim.write_text(f"#!/bin/sh\n# {FALLBACK_MARK}\n{body}\n", encoding="utf-8")
+            shim.chmod(0o755)
+        self._fallbacks = state
 
     def _write_shims(self, bin_dir: Path) -> None:
         """Make each reachable tool a shell command of its own name; a plugin, MCP or created tool gives way to a real command of that name."""
