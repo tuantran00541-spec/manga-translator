@@ -1,0 +1,297 @@
+{
+ "passed": 18,
+ "trials": 29,
+ "rate": 0.621,
+ "rows": [
+  {
+   "trial": "break-filter-js-from-html__XweoUT5",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    544949,
+    490688,
+    16212
+   ]
+  },
+  {
+   "trial": "build-pov-ray__BVr2oae",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    649102,
+    536000,
+    7811
+   ]
+  },
+  {
+   "trial": "chess-best-move__SGZK98L",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    5178199,
+    4446912,
+    74326
+   ]
+  },
+  {
+   "trial": "code-from-image__KmDcVRE",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    879656,
+    741760,
+    17441
+   ]
+  },
+  {
+   "trial": "constraints-scheduling__odWcScf",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    230331,
+    200704,
+    9479
+   ]
+  },
+  {
+   "trial": "custom-memory-heap-crash__orQ9bHt",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    597060,
+    533504,
+    10301
+   ]
+  },
+  {
+   "trial": "dna-assembly__zs7sEva",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1175630,
+    1092736,
+    42354
+   ]
+  },
+  {
+   "trial": "extract-moves-from-video__gvPfoaN",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    991998,
+    790656,
+    13735
+   ]
+  },
+  {
+   "trial": "filter-js-from-html__MRHRhVg",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1145760,
+    1005952,
+    23767
+   ]
+  },
+  {
+   "trial": "fix-git__G5b6JwQ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    105648,
+    79616,
+    4220
+   ]
+  },
+  {
+   "trial": "git-leak-recovery__SUUU3S5",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    75396,
+    62528,
+    3271
+   ]
+  },
+  {
+   "trial": "headless-terminal__mnnYeef",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    489513,
+    439936,
+    16972
+   ]
+  },
+  {
+   "trial": "kv-store-grpc__bNjmL4w",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    137896,
+    110528,
+    6284
+   ]
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__3RQsCBU",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    400576,
+    364032,
+    25997
+   ]
+  },
+  {
+   "trial": "make-doom-for-mips__tF2oSgj",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    8689497,
+    8083648,
+    58756
+   ]
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__fqpEa2z",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    262367,
+    232448,
+    8249
+   ]
+  },
+  {
+   "trial": "mteb-leaderboard__YnLTXdZ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1298717,
+    1101376,
+    14506
+   ]
+  },
+  {
+   "trial": "nginx-request-logging__btUuTH7",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    44939,
+    38016,
+    4028
+   ]
+  },
+  {
+   "trial": "password-recovery__ip5ozd3",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    631199,
+    522432,
+    18535
+   ]
+  },
+  {
+   "trial": "polyglot-c-py__u8at7ZM",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    189108,
+    166272,
+    9613
+   ]
+  },
+  {
+   "trial": "protein-assembly__vpLyqEm",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1127262,
+    620672,
+    22938
+   ]
+  },
+  {
+   "trial": "pytorch-model-cli__SCdoof9",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    341371,
+    298688,
+    9460
+   ]
+  },
+  {
+   "trial": "qemu-startup__QnHZFXg",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    646530,
+    522240,
+    12566
+   ]
+  },
+  {
+   "trial": "regex-chess__C2F4zeW",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    5944742,
+    5512064,
+    105639
+   ]
+  },
+  {
+   "trial": "rstan-to-pystan__dedLAfA",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    747262,
+    579264,
+    12648
+   ]
+  },
+  {
+   "trial": "schemelike-metacircular-eval__uy3Zm2q",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    7280659,
+    6531456,
+    60095
+   ]
+  },
+  {
+   "trial": "sqlite-with-gcov__3BgkDuQ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    149582,
+    125760,
+    3008
+   ]
+  },
+  {
+   "trial": "train-fasttext__kU5H4ao",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    3089498,
+    2593408,
+    13730
+   ]
+  },
+  {
+   "trial": "vulnerable-secret__cA8bWhm",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    82780,
+    67968,
+    4498
+   ]
+  }
+ ]
+}
