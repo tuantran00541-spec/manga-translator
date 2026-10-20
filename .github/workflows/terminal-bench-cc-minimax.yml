@@ -213,8 +213,9 @@ jobs:
           cp /opt/relay/stats.json "$OUT/relay-stats.json" 2>/dev/null || true
           cp /opt/relay/search-stats.json "$OUT/search-stats.json" 2>/dev/null || true
           python - <<'PY'
-          import glob, json, os, shutil
+          import glob, json, os, re, shutil
           out = os.environ["OUT"]
+          LOOKUP = re.compile(r"harbor-?framework[^\s\"']*|hub\.harborframework\.com|tbench\.ai|/tests/test_outputs\.py|/logs/verifier", re.I)
           rows = []
           for path in sorted(glob.glob("jobs/*/*/result.json")):
               try:
@@ -233,10 +234,22 @@ jobs:
               for name in ("events.jsonl", "stderr.log"):
                   for src in glob.glob(f"{os.path.dirname(path)}/agent/{name}"):
                       shutil.copy(src, d)
+              # What the verifier printed, its last 20 kB per file, so a failed trial shows which test broke.
+              for src in glob.glob(f"{os.path.dirname(path)}/verifier/*"):
+                  if os.path.isfile(src):
+                      os.makedirs(f"{d}/verifier", exist_ok=True)
+                      open(f"{d}/verifier/{os.path.basename(src)}", "wb").write(open(src, "rb").read()[-20000:])
+              # A trial whose agent reached for the benchmark's own tests or pages is counted apart.
+              log = open(f"{d}/events.jsonl", encoding="utf-8", errors="replace").read() if os.path.exists(f"{d}/events.jsonl") else ""
+              calls = [json.dumps(c.get("args")) for line in log.splitlines() if line.startswith("{")
+                       for c in (json.loads(line).get("calls") or [])]
+              rows[-1]["contaminated"] = sorted({m.group(0).lower() for c in calls for m in re.finditer(LOOKUP, c)})
           passed = sum(1 for r in rows if (r["reward"] or 0) >= 1)
-          summary = {"passed": passed, "trials": len(rows), "rate": round(passed / len(rows), 3) if rows else None, "rows": rows}
+          clean = sum(1 for r in rows if (r["reward"] or 0) >= 1 and not r.get("contaminated"))
+          summary = {"passed": passed, "clean_passed": clean, "trials": len(rows), "rate": round(passed / len(rows), 3) if rows else None,
+                     "contaminated": [r["trial"] for r in rows if r.get("contaminated")], "rows": rows}
           json.dump(summary, open(f"{out}/summary.json", "w"), indent=1)
-          print(f"PASSED {passed}/{len(rows)}")
+          print(f"PASSED {passed}/{len(rows)}, {clean} without touching the benchmark's own sources")
           print(json.dumps(rows, indent=1)[:4000])
           PY
           gzip -f "$OUT"/trials/*/events.jsonl 2>/dev/null || true

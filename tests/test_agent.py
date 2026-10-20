@@ -361,11 +361,26 @@ def test_autonomous_work_that_ends_without_a_passing_check_is_asked_once_to_run_
     fake = scripted(turn(calls=[call("run_command", command="exit 3")]), turn("Done."), turn("Still done."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
-    assert len(fake.seen) == 3 and "no passing check was seen" in fake.seen[2][0][-1]["content"], "one nudge, then it may finish"
+    assert len(fake.seen) == 3 and "exit 3" in fake.seen[2][0][-1]["content"], "one nudge naming the failed command, then it may finish"
     fake = scripted(turn(calls=[call("run_command", command="true")]), turn("Done."))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert len(fake.seen) == 2, "a command that passed needs no nudge"
+    check = "python3 -c \"raise SystemExit('boom')\" || true; python3 -c 'import sys; sys.stderr.write(\"Traceback (most recent call last):\\n\")'"
+    fake = scripted(turn(calls=[call("run_command", command=check)]), turn(calls=[call("run_command", command="cat pkg/a.py")]), turn("Done."), turn("Ok."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    run_to_idle(session)
+    assert len(fake.seen) == 4 and "this command failed" in fake.seen[3][0][-1]["content"], "a failed check is not hidden by a later passing cat"
+    fake = scripted(turn(calls=[call("run_command", command="test -f done.txt")]), turn(calls=[call("run_command", command="touch done.txt")]),
+                    turn(calls=[call("run_command", command="test -f done.txt")]), turn("Done."))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    run_to_idle(session)
+    assert len(fake.seen) == 4, "the same check passing later clears it"
+
+
+def test_a_path_holding_the_other_arguments_gets_a_clear_error(ws):
+    with pytest.raises(ToolError, match="other arguments ended up inside it"):
+        ws.resolve('pkg/a.py\nold_text="return 1"')
 
 
 def test_ask_mode_waits_for_approval_then_writes(ws, home):

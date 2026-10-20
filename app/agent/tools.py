@@ -216,6 +216,10 @@ class Workspace:
         self.new_images: list[tuple[str, str]] = []
 
     def resolve(self, path: str | None, *, write: bool = False) -> Path:
+        if path and "\n" in path:
+            # A line break in a path means the call's other arguments were written into it.
+            raise ToolError(f"path holds a line break, so the other arguments ended up inside it: {path.splitlines()[0]!r} … "
+                            "Pass each argument (path, old_text, new_text, content) as its own field.")
         target = (self.root / (path or ".")).resolve()
         roots = [self.root] + ([] if write else self.read_roots)
         # Without a sandbox commands reach every file, so the file tools may too; permission rules still apply.

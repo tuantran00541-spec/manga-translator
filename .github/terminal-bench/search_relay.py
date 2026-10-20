@@ -5,11 +5,15 @@ import sys
 import threading
 
 import requests
+import re
+from urllib.parse import unquote
 
 KEY = open(sys.argv[1], encoding="utf-8").read().strip()
 STATS, PORT = sys.argv[2], int(sys.argv[3])
 ROUTES = {"/search": ("GET", "https://api.search.tinyfish.ai"), "/fetch": ("POST", "https://api.fetch.tinyfish.ai")}
-stats = {"search": 0, "fetch": 0, "errors": 0}
+stats = {"search": 0, "fetch": 0, "errors": 0, "blocked": 0}
+# The benchmark's own tasks, tests and solutions are off limits to the agent under test.
+BLOCKED = re.compile(r"terminal[-_ ]?bench|harbor[-_ ]?framework|tbench|laude[-_ ]?institute", re.I)
 lock = threading.Lock()
 
 
@@ -21,6 +25,16 @@ class Relay(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
             return
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0)) if method == "POST" else None
+        if BLOCKED.search(unquote(query) + (body or b"").decode("utf-8", "replace")):
+            with lock:
+                stats["blocked"] += 1
+            data = json.dumps({"error": "blocked: sources about this benchmark are off limits during the run"}).encode()
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         headers = {"X-API-Key": KEY, "Accept": "application/json", **({"Content-Type": "application/json"} if body else {})}
         try:
             up = requests.request(method, upstream + (f"?{query}" if query else ""), data=body, headers=headers, timeout=(10, 90))

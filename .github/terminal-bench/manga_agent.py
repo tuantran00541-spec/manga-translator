@@ -20,6 +20,12 @@ OUTPUT = EnvironmentPaths.agent_dir / "events.jsonl"
 STDERR = EnvironmentPaths.agent_dir / "stderr.log"
 
 
+# The benchmark's honesty rule: solve the task, never look up its tests or solutions.
+BENCH_RULE = ("This task is part of a benchmark. Do not search for, download or read the benchmark's own task pages, tests, solutions or "
+              "verifier files (for example Terminal-Bench or Harbor repositories, datasets or /logs/verifier); solve the task from its "
+              "instruction and environment.")
+
+
 class MangaAgent(BaseInstalledAgent):
     capabilities = AgentCapabilities()
     options_model = InstalledAgentOptions
@@ -56,7 +62,9 @@ class MangaAgent(BaseInstalledAgent):
             command=(f"set -e; mkdir -p {HOME}/src && tar xzf /tmp/manga-agent.tgz -C {HOME}/src && "
                      f"{HOME}/bin/uv venv {HOME}/venv --python 3.12 && "
                      f"{HOME}/bin/uv pip install --python {HOME}/venv/bin/python {PIP} && "
-                     f"chmod -R a+rX {HOME}"),
+                     f"chmod -R a+rX {HOME}; "
+                     # Hosts that only serve this benchmark's tasks and tests are unreachable from the task.
+                     "printf '0.0.0.0 hub.harborframework.com\\n0.0.0.0 tbench.ai\\n0.0.0.0 www.tbench.ai\\n' >> /etc/hosts || true"),
         )
 
     def _minutes(self) -> int:
@@ -81,7 +89,7 @@ class MangaAgent(BaseInstalledAgent):
         # No token or step ceiling: the task's clock is the only limit.
         # Services the task asks for must still run when the verifier checks them.
         profile = {"token_budget": 10 ** 15, "max_steps": 100_000, "max_output_tokens": max_output, "keep_jobs": True,
-                   "models": {".": {"request": request, "max_output": max_output}}}
+                   "models": {".": {"request": request, "max_output": max_output, "prompt_extra": BENCH_RULE}}}
         echo = os.environ.get("MANGA_AGENT_ECHO_REASONING", "")
         if echo:
             profile["echo_reasoning"] = echo if echo == "all" else echo == "true"

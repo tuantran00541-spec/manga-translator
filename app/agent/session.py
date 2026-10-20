@@ -78,6 +78,9 @@ RULINGS = ("Nobody is watching this run. When something is ambiguous, conflictin
 EMPTY_NUDGE = "[Your last reply was empty. Go on: make a tool call or write your answer.]"
 CHECK_NUDGE = ("[Before you finish: no passing check was seen since the work began; the last command did not exit 0. If the request asked for "
                "a change, run its check now and finish only once it passes. If it was a question, or the failure is expected, answer again as is.]")
+FAILED_NUDGE = ("[Before you finish: this command failed and has not been run again with a passing result since:\n{command}\nIf it checks the "
+                "work, fix what it shows and run it again until it passes. If the failure is expected or no longer matters, say why and answer again.]")
+RECENT_COMMANDS = 15  # a failure among this many latest commands still counts against finishing
 MAX_CHILDREN = 24
 WAIT_DEFAULT = 120
 WAIT_MAX = 900
@@ -657,6 +660,8 @@ class AgentSession:
         self._closing = False
         self._edited = self._plan_nudged = self._continued = self._check_nudged = False
         self._last_command: str | None = None
+        self._failing: dict[str, int] = {}
+        self._commands = 0
         self._prewalk = False
         self._interrupt: dict | None = None
         self._pinned: dict[str, str] | None = None
@@ -1053,6 +1058,8 @@ class AgentSession:
         self._inherit_taint = False
         self._edited = self._plan_nudged = self._continued = self._check_nudged = False
         self._last_command: str | None = None
+        self._failing: dict[str, int] = {}
+        self._commands = 0
         self._fallback_at = 0
         self._request_no += 1
         self.chain_budget = {}
@@ -3231,6 +3238,13 @@ class AgentSession:
             self._edited = True
         if name == "run_command" or name in self._root().created:
             self._last_command = output
+            self._commands += 1
+            args = call["args"] if isinstance(call["args"], dict) else {}
+            command = str(args.get("command") or "") if name == "run_command" else f"{name} {json.dumps(args, ensure_ascii=False, default=str)}"
+            if _failed(output):
+                self._failing[command] = self._commands
+            else:
+                self._failing.pop(command, None)
         if name == "run_command" or name in self.mcp_tools or name in self.replaced or name in self.registry.tools or name in self._root().created:
             output = self._offload(call, output)
         if call["name"] not in SESSION_SPECS:
@@ -3704,12 +3718,15 @@ class AgentSession:
         return "\n".join(f"{r['id']} · vào {money(r['price'], 'in')} ra {money(r['price'], 'out')} cache {money(r['price'], 'cached')} /1M"
                          + (f" · {r['context']:,} ctx" if isinstance(r["context"], int) else "") + (" · ảnh" if r["vision"] else "") for r in found) or "Không có model nào khớp."
 
-    def _unchecked(self) -> bool:
-        """Whether autonomous work ends with files changed or commands run but no passing check seen, once per request and not when time is short."""
+    def _unchecked(self) -> str:
+        """The nudge for autonomous work that ends on a recent failed check or no passing one, once per request and not when time is short."""
         if self.depth or self.mode != "bypass" or self._check_nudged or (self._deadline and not self._notice_at) or not (self._edited or self._last_command is not None):
-            return False
+            return ""
+        recent = [command for command, at in self._failing.items() if at > self._commands - RECENT_COMMANDS]
+        if recent:
+            return FAILED_NUDGE.format(command=recent[-1][:400])
         last = self._last_command or ""
-        return not ("[exit code 0]" in last[-400:] or re.search(r"^PASS\b", last, re.M))
+        return "" if "[exit code 0]" in last[-400:] or re.search(r"^PASS\b", last, re.M) else CHECK_NUDGE
 
     def _more_work(self) -> bool:
         """True when a queued message or an unfinished goal means the turn should go on."""
@@ -3910,9 +3927,9 @@ class AgentSession:
             if not calls:
                 if self._more_work():
                     continue
-                if self._unchecked():
+                if nudge := self._unchecked():
                     self._check_nudged = True
-                    self.history.append({"role": "user", "content": CHECK_NUDGE})
+                    self.history.append({"role": "user", "content": nudge})
                     self.emit("notice", text="The model finished without a passing check; asking it once to run one.")
                     continue
                 break
@@ -3982,6 +3999,12 @@ class AgentSession:
                 self._new_request(nxt)
                 threading.Thread(target=self._loop, name=f"agent-{self.id}", daemon=True).start()
                 self.save()
+
+
+def _failed(output: str) -> bool:
+    """Whether a command's output shows it failed: a non-zero exit, a Python traceback or failed tests."""
+    code = re.findall(r"\[exit code (-?\d+)", output[-400:])
+    return bool(code and code[-1] != "0") or "Traceback (most recent call last)" in output[-3000:] or bool(re.search(r"\b\d+ failed\b|^FAILED ", output[-3000:], re.M))
 
 
 def _alive(job) -> bool:
