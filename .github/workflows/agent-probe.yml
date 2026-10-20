@@ -61,9 +61,13 @@ jobs:
           SEARCH=()
           [ -n "${MANGA_SEARCH:-}" ] && SEARCH=(TINYFISH_API_KEY=relay "TINYFISH_SEARCH_URL=$MANGA_SEARCH/search" "TINYFISH_FETCH_URL=$MANGA_SEARCH/fetch")
           cd /tmp/work
-          sudo -u probe -H env PATH="$PATH" PYTHONPATH=/home/probe/src "${SEARCH[@]}" "$(which python)" /home/probe/src/run_agent.py "$(cat "$GITHUB_WORKSPACE/.github/agent-probe/task.md")" \
+          sudo -u probe -H env PATH="$PATH" PYTHONPATH=/home/probe/src "${SEARCH[@]}" "$(which python)" -X faulthandler /home/probe/src/run_agent.py "$(cat "$GITHUB_WORKSPACE/.github/agent-probe/task.md")" \
             --base http://127.0.0.1:18081/v1 --model "${{ steps.c.outputs.model }}" --workspace /tmp/work --minutes "${{ steps.c.outputs.minutes }}" \
-            > "$GITHUB_WORKSPACE/out/events.jsonl" 2> "$GITHUB_WORKSPACE/out/stderr.log" || true
+            > "$GITHUB_WORKSPACE/out/events.jsonl" 2> "$GITHUB_WORKSPACE/out/stderr.log" && rc=0 || rc=$?
+          # How the agent process ended (128+N is signal N) and what was left running, for a run that stops early.
+          echo "agent exit code: $rc" | tee "$GITHUB_WORKSPACE/out/exit.txt"
+          ps -eo pid,ppid,pgid,sid,user,stat,etime,args --forest > "$GITHUB_WORKSPACE/out/ps.txt" || true
+          sudo dmesg 2>/dev/null | tail -40 > "$GITHUB_WORKSPACE/out/dmesg.txt" || true
       - name: Check the result and count what was used
         if: always()
         run: |
@@ -72,7 +76,7 @@ jobs:
           (curl -s -m 5 http://127.0.0.1:8091/metrics; echo; echo "workers running: $(pgrep -fc worker.py)")  | tee "$D/check.txt"
           (cd /tmp/work && sudo -u probe -H env PATH="$PATH" timeout 900 python -m pytest -q 2>&1 | tail -15) | tee -a "$D/check.txt" || true
           python .github/agent-probe/summary.py out/events.jsonl | tee "$D/summary.json" || true
-          gzip -c out/events.jsonl > "$D/events.jsonl.gz"; cp out/stderr.log "$D/" || true
+          gzip -c out/events.jsonl > "$D/events.jsonl.gz"; cp out/stderr.log out/exit.txt out/ps.txt out/dmesg.txt "$D/" || true
           sudo cat /opt/relay/stats.json > "$D/relay-stats.json" 2>/dev/null || true
           tar -czf "$D/project.tgz" -C /tmp/work --exclude=__pycache__ --exclude=.pytest_cache . || true
       - name: Restore push credentials for the evidence step
