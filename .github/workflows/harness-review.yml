@@ -1,0 +1,33 @@
+name: Harness review
+
+on:
+  push:
+    paths:
+      - ".github/harness-review/config.json"
+
+permissions:
+  contents: write
+
+jobs:
+  review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -q requests
+      - id: c
+        run: python -c 'import json; c=json.load(open(".github/harness-review/config.json")); print("model=" + c["model"]); print("effort=" + c["effort"]); print("label=" + c["label"])' >> "$GITHUB_OUTPUT"
+      - env:
+          COMMANDCODE: ${{ secrets.COMMANDCODE }}
+          MODEL: ${{ steps.c.outputs.model }}
+          EFFORT: ${{ steps.c.outputs.effort }}
+          OUT: audit-results/harness-review/${{ steps.c.outputs.label }}
+        run: python .github/harness-review/review.py "$MODEL" "$EFFORT" "$OUT"
+      - if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/harness-review/${{ steps.c.outputs.label }}
+          message: "audit: harness review ${{ steps.c.outputs.label }} (run ${{ github.run_id }})"
