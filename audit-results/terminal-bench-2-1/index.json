@@ -1,0 +1,1998 @@
+[
+ {
+  "group": "chaos",
+  "run": "38189721215",
+  "saved": "2026-10-12T00:58:26+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 10,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T00:58:26+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 10,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38190247211",
+  "saved": "2026-10-12T02:07:59+00:00",
+  "shards": {
+   "0": {
+    "passed": 1,
+    "clean": 1,
+    "trials": 10,
+    "exceptions": 4,
+    "contaminated": [],
+    "saved": "2026-10-12T02:07:59+00:00"
+   }
+  },
+  "passed": 1,
+  "clean": 1,
+  "trials": 10,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38194236105",
+  "saved": "2026-10-12T06:34:58+00:00",
+  "shards": {
+   "0": {
+    "passed": 32,
+    "clean": 32,
+    "trials": 57,
+    "exceptions": 23,
+    "contaminated": [],
+    "saved": "2026-10-12T06:34:58+00:00"
+   }
+  },
+  "passed": 32,
+  "clean": 32,
+  "trials": 57,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38213751011",
+  "saved": "2026-10-12T08:45:22+00:00",
+  "shards": {
+   "0": {
+    "passed": 9,
+    "clean": 9,
+    "trials": 23,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T08:45:22+00:00"
+   }
+  },
+  "passed": 9,
+  "clean": 9,
+  "trials": 23,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38232353264",
+  "saved": "2026-10-12T12:53:44+00:00",
+  "shards": {
+   "0": {
+    "passed": 23,
+    "clean": 23,
+    "trials": 45,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-12T12:53:44+00:00"
+   },
+   "1": {
+    "passed": 23,
+    "clean": 23,
+    "trials": 44,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-12T14:01:49+00:00"
+   }
+  },
+  "passed": 46,
+  "clean": 46,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38266794429",
+  "saved": "2026-10-12T15:02:06+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T15:02:06+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T15:03:29+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 0,
+  "flags": [
+   "before lookup fix",
+   "empty shard"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38267846774",
+  "saved": "2026-10-12T15:10:01+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T15:10:01+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T15:10:16+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 0,
+  "flags": [
+   "before lookup fix",
+   "empty shard"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38268305414",
+  "saved": "2026-10-12T15:15:29+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 14,
+    "exceptions": 14,
+    "contaminated": [],
+    "saved": "2026-10-12T15:28:21+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T15:15:29+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 14,
+  "flags": [
+   "before lookup fix",
+   "empty shard",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38269020211",
+  "saved": "2026-10-12T15:21:22+00:00",
+  "shards": {
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T15:21:22+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 0,
+  "flags": [
+   "before lookup fix",
+   "empty shard"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38263038425",
+  "saved": "2026-10-12T15:21:38+00:00",
+  "shards": {
+   "0": {
+    "passed": 5,
+    "clean": 5,
+    "trials": 45,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T15:21:38+00:00"
+   },
+   "1": {
+    "passed": 3,
+    "clean": 3,
+    "trials": 44,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T15:29:52+00:00"
+   }
+  },
+  "passed": 8,
+  "clean": 8,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38264578091",
+  "saved": "2026-10-12T15:24:17+00:00",
+  "shards": {
+   "0": {
+    "passed": 6,
+    "clean": 6,
+    "trials": 45,
+    "exceptions": 39,
+    "contaminated": [],
+    "saved": "2026-10-12T15:24:57+00:00"
+   },
+   "1": {
+    "passed": 4,
+    "clean": 4,
+    "trials": 44,
+    "exceptions": 40,
+    "contaminated": [],
+    "saved": "2026-10-12T15:24:17+00:00"
+   }
+  },
+  "passed": 10,
+  "clean": 10,
+  "trials": 89,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38274500046",
+  "saved": "2026-10-12T16:09:25+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T16:09:53+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T16:09:25+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 0,
+  "flags": [
+   "before lookup fix",
+   "empty shard"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38276023935",
+  "saved": "2026-10-12T16:17:51+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T16:17:51+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T16:19:13+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 0,
+  "flags": [
+   "before lookup fix",
+   "empty shard"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38276499203",
+  "saved": "2026-10-12T16:35:24+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 8,
+    "exceptions": 8,
+    "contaminated": [],
+    "saved": "2026-10-12T16:38:05+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 8,
+    "exceptions": 8,
+    "contaminated": [],
+    "saved": "2026-10-12T16:35:24+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 16,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38277060683",
+  "saved": "2026-10-12T17:18:37+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 45,
+    "exceptions": 45,
+    "contaminated": [],
+    "saved": "2026-10-12T17:18:37+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 44,
+    "exceptions": 44,
+    "contaminated": [],
+    "saved": "2026-10-12T17:36:42+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 89,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38273632234",
+  "saved": "2026-10-12T17:30:37+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 10,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T17:30:37+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 10,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38277644107",
+  "saved": "2026-10-12T17:49:26+00:00",
+  "shards": {
+   "0": {
+    "passed": 1,
+    "clean": 1,
+    "trials": 45,
+    "exceptions": 44,
+    "contaminated": [],
+    "saved": "2026-10-12T17:49:26+00:00"
+   },
+   "1": {
+    "passed": 1,
+    "clean": 1,
+    "trials": 44,
+    "exceptions": 43,
+    "contaminated": [],
+    "saved": "2026-10-12T17:58:04+00:00"
+   }
+  },
+  "passed": 2,
+  "clean": 2,
+  "trials": 89,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38285291408",
+  "saved": "2026-10-12T18:34:34+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 45,
+    "exceptions": 45,
+    "contaminated": [],
+    "saved": "2026-10-12T18:34:34+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 44,
+    "exceptions": 44,
+    "contaminated": [],
+    "saved": "2026-10-12T18:42:02+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 89,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38275063347",
+  "saved": "2026-10-12T19:18:25+00:00",
+  "shards": {
+   "0": {
+    "passed": 31,
+    "clean": 31,
+    "trials": 45,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-12T19:18:25+00:00"
+   },
+   "1": {
+    "passed": 29,
+    "clean": 29,
+    "trials": 44,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-12T20:48:51+00:00"
+   }
+  },
+  "passed": 60,
+  "clean": 60,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38292362944",
+  "saved": "2026-10-12T19:48:48+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 45,
+    "exceptions": 44,
+    "contaminated": [],
+    "saved": "2026-10-12T19:48:48+00:00"
+   },
+   "1": {
+    "passed": 2,
+    "clean": 2,
+    "trials": 44,
+    "exceptions": 43,
+    "contaminated": [],
+    "saved": "2026-10-12T19:51:49+00:00"
+   }
+  },
+  "passed": 2,
+  "clean": 2,
+  "trials": 89,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38292320853",
+  "saved": "2026-10-12T21:09:53+00:00",
+  "shards": {
+   "0": {
+    "passed": 33,
+    "clean": 33,
+    "trials": 45,
+    "exceptions": 10,
+    "contaminated": [],
+    "saved": "2026-10-12T21:09:53+00:00"
+   },
+   "1": {
+    "passed": 32,
+    "clean": 32,
+    "trials": 44,
+    "exceptions": 9,
+    "contaminated": [],
+    "saved": "2026-10-12T22:07:24+00:00"
+   }
+  },
+  "passed": 65,
+  "clean": 65,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38306010124",
+  "saved": "2026-10-12T22:11:47+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 45,
+    "exceptions": 45,
+    "contaminated": [],
+    "saved": "2026-10-12T22:16:14+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 44,
+    "exceptions": 44,
+    "contaminated": [],
+    "saved": "2026-10-12T22:11:47+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 89,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38318881631",
+  "saved": "2026-10-12T23:12:30+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 4,
+    "exceptions": 4,
+    "contaminated": [],
+    "saved": "2026-10-12T23:12:30+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 4,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38321175622",
+  "saved": "2026-10-13T00:07:16+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 45,
+    "exceptions": 45,
+    "contaminated": [],
+    "saved": "2026-10-13T00:07:16+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 44,
+    "exceptions": 44,
+    "contaminated": [],
+    "saved": "2026-10-13T00:25:25+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 89,
+  "flags": [
+   "before lookup fix",
+   "many trial errors"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38326788912",
+  "saved": "2026-10-13T00:24:31+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T00:24:31+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 0,
+  "flags": [
+   "before lookup fix",
+   "empty shard"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38326228683",
+  "saved": "2026-10-13T00:39:19+00:00",
+  "shards": {
+   "0": {
+    "passed": 3,
+    "clean": 3,
+    "trials": 4,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T00:39:19+00:00"
+   },
+   "1": {
+    "passed": 2,
+    "clean": 2,
+    "trials": 3,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T00:39:52+00:00"
+   }
+  },
+  "passed": 5,
+  "clean": 5,
+  "trials": 7,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38312752230",
+  "saved": "2026-10-13T00:46:57+00:00",
+  "shards": {
+   "0": {
+    "passed": 29,
+    "clean": 29,
+    "trials": 45,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T00:46:57+00:00"
+   },
+   "1": {
+    "passed": 27,
+    "clean": 27,
+    "trials": 38,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T01:04:29+00:00"
+   }
+  },
+  "passed": 56,
+  "clean": 56,
+  "trials": 83,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38312707724",
+  "saved": "2026-10-13T00:51:20+00:00",
+  "shards": {
+   "0": {
+    "passed": 32,
+    "clean": 32,
+    "trials": 45,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-13T00:51:20+00:00"
+   },
+   "1": {
+    "passed": 24,
+    "clean": 24,
+    "trials": 37,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-13T01:05:32+00:00"
+   }
+  },
+  "passed": 56,
+  "clean": 56,
+  "trials": 82,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38328231499",
+  "saved": "2026-10-13T01:05:02+00:00",
+  "shards": {
+   "0": {
+    "passed": 2,
+    "clean": 2,
+    "trials": 3,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T01:05:02+00:00"
+   },
+   "1": {
+    "passed": 2,
+    "clean": 2,
+    "trials": 3,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T01:05:10+00:00"
+   }
+  },
+  "passed": 4,
+  "clean": 4,
+  "trials": 6,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38330291977",
+  "saved": "2026-10-13T04:03:53+00:00",
+  "shards": {
+   "0": {
+    "passed": 32,
+    "clean": 32,
+    "trials": 45,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-13T04:03:53+00:00"
+   },
+   "1": {
+    "passed": 25,
+    "clean": 25,
+    "trials": 44,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-13T05:48:58+00:00"
+   }
+  },
+  "passed": 57,
+  "clean": 57,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38330300327",
+  "saved": "2026-10-13T04:09:42+00:00",
+  "shards": {
+   "0": {
+    "passed": 32,
+    "clean": 32,
+    "trials": 45,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T04:09:42+00:00"
+   },
+   "1": {
+    "passed": 29,
+    "clean": 29,
+    "trials": 44,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T05:42:23+00:00"
+   }
+  },
+  "passed": 61,
+  "clean": 61,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38351581309",
+  "saved": "2026-10-13T08:54:33+00:00",
+  "shards": {
+   "0": {
+    "passed": 30,
+    "clean": 30,
+    "trials": 45,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-13T08:54:33+00:00"
+   },
+   "1": {
+    "passed": 27,
+    "clean": 27,
+    "trials": 43,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T10:21:34+00:00"
+   }
+  },
+  "passed": 57,
+  "clean": 57,
+  "trials": 88,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38351577312",
+  "saved": "2026-10-13T09:09:46+00:00",
+  "shards": {
+   "0": {
+    "passed": 24,
+    "clean": 24,
+    "trials": 45,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T09:09:46+00:00"
+   },
+   "1": {
+    "passed": 27,
+    "clean": 27,
+    "trials": 44,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-13T10:22:37+00:00"
+   }
+  },
+  "passed": 51,
+  "clean": 51,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38372857492",
+  "saved": "2026-10-13T09:16:12+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 1,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T09:16:12+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 1,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38361928216",
+  "saved": "2026-10-13T10:22:02+00:00",
+  "shards": {
+   "0": {
+    "passed": 24,
+    "clean": 24,
+    "trials": 24,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T10:22:02+00:00"
+   },
+   "1": {
+    "passed": 21,
+    "clean": 21,
+    "trials": 22,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-13T10:23:05+00:00"
+   }
+  },
+  "passed": 45,
+  "clean": 45,
+  "trials": 46,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38361931114",
+  "saved": "2026-10-13T10:22:13+00:00",
+  "shards": {
+   "0": {
+    "passed": 21,
+    "clean": 21,
+    "trials": 22,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-13T10:22:31+00:00"
+   },
+   "1": {
+    "passed": 20,
+    "clean": 20,
+    "trials": 21,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-13T10:22:13+00:00"
+   }
+  },
+  "passed": 41,
+  "clean": 41,
+  "trials": 43,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38381917397",
+  "saved": "2026-10-13T13:48:03+00:00",
+  "shards": {
+   "0": {
+    "passed": 31,
+    "clean": 31,
+    "trials": 45,
+    "exceptions": 3,
+    "contaminated": [],
+    "saved": "2026-10-13T13:48:03+00:00"
+   },
+   "1": {
+    "passed": 27,
+    "clean": 27,
+    "trials": 44,
+    "exceptions": 3,
+    "contaminated": [],
+    "saved": "2026-10-13T15:12:13+00:00"
+   }
+  },
+  "passed": 58,
+  "clean": 58,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38505080145",
+  "saved": "2026-10-14T06:29:41+00:00",
+  "shards": {
+   "0": {
+    "passed": 32,
+    "clean": 32,
+    "trials": 45,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-14T06:29:41+00:00"
+   },
+   "1": {
+    "passed": 28,
+    "clean": 28,
+    "trials": 44,
+    "exceptions": 2,
+    "contaminated": [],
+    "saved": "2026-10-14T08:20:32+00:00"
+   }
+  },
+  "passed": 60,
+  "clean": 60,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "38536227492",
+  "saved": "2026-10-14T12:12:04+00:00",
+  "shards": {
+   "0": {
+    "passed": 33,
+    "clean": 33,
+    "trials": 45,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-14T12:12:04+00:00"
+   },
+   "1": {
+    "passed": 23,
+    "clean": 23,
+    "trials": 44,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-14T13:38:52+00:00"
+   }
+  },
+  "passed": 56,
+  "clean": 56,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "39246002268",
+  "saved": "2026-10-19T11:41:40+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-19T11:41:40+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 0,
+  "flags": [
+   "before lookup fix",
+   "empty shard"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "39227806045",
+  "saved": "2026-10-19T12:59:41+00:00",
+  "shards": {
+   "0": {
+    "passed": 22,
+    "clean": 22,
+    "trials": 45,
+    "exceptions": 3,
+    "contaminated": [],
+    "saved": "2026-10-19T12:59:41+00:00"
+   },
+   "1": {
+    "passed": 19,
+    "clean": 19,
+    "trials": 44,
+    "exceptions": 2,
+    "contaminated": [],
+    "saved": "2026-10-19T13:42:29+00:00"
+   }
+  },
+  "passed": 41,
+  "clean": 41,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "chaos",
+  "run": "39246388869",
+  "saved": "2026-10-19T13:51:49+00:00",
+  "shards": {
+   "0": {
+    "passed": 3,
+    "clean": 3,
+    "trials": 30,
+    "exceptions": 5,
+    "contaminated": [],
+    "saved": "2026-10-19T14:54:41+00:00"
+   },
+   "1": {
+    "passed": 9,
+    "clean": 9,
+    "trials": 30,
+    "exceptions": 3,
+    "contaminated": [],
+    "saved": "2026-10-19T14:47:45+00:00"
+   },
+   "2": {
+    "passed": 9,
+    "clean": 9,
+    "trials": 29,
+    "exceptions": 5,
+    "contaminated": [],
+    "saved": "2026-10-19T13:51:49+00:00"
+   }
+  },
+  "passed": 21,
+  "clean": 21,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "commandcode",
+  "run": "39253347966",
+  "saved": "2026-10-19T14:12:11+00:00",
+  "shards": {
+   "0": {
+    "passed": 17,
+    "clean": 17,
+    "trials": 23,
+    "exceptions": 3,
+    "contaminated": [],
+    "saved": "2026-10-19T14:13:10+00:00"
+   },
+   "1": {
+    "passed": 17,
+    "clean": 17,
+    "trials": 25,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-19T14:12:11+00:00"
+   },
+   "2": {
+    "passed": 14,
+    "clean": 14,
+    "trials": 22,
+    "exceptions": 2,
+    "contaminated": [],
+    "saved": "2026-10-19T14:13:45+00:00"
+   }
+  },
+  "passed": 48,
+  "clean": 48,
+  "trials": 70,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "polargrid",
+  "run": "39253347977",
+  "saved": "2026-10-19T14:52:08+00:00",
+  "shards": {
+   "0": {
+    "passed": 4,
+    "clean": 4,
+    "trials": 30,
+    "exceptions": 5,
+    "contaminated": [],
+    "saved": "2026-10-19T15:22:24+00:00"
+   },
+   "1": {
+    "passed": 7,
+    "clean": 7,
+    "trials": 30,
+    "exceptions": 2,
+    "contaminated": [],
+    "saved": "2026-10-19T15:36:00+00:00"
+   },
+   "2": {
+    "passed": 5,
+    "clean": 5,
+    "trials": 29,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-19T14:52:08+00:00"
+   }
+  },
+  "passed": 16,
+  "clean": 16,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39346816204",
+  "saved": "2026-10-20T00:21:20+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T00:21:58+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T00:21:47+00:00"
+   },
+   "2": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T00:21:20+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 0,
+  "flags": [
+   "before lookup fix",
+   "empty shard"
+  ]
+ },
+ {
+  "group": "commandcode-minimax",
+  "run": "39346816396",
+  "saved": "2026-10-20T00:22:24+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T00:22:42+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T00:22:24+00:00"
+   },
+   "2": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T00:23:26+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 0,
+  "flags": [
+   "before lookup fix",
+   "empty shard"
+  ]
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39347025473",
+  "saved": "2026-10-20T00:25:13+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T00:39:24+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T00:31:52+00:00"
+   },
+   "2": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T00:25:13+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 59,
+  "flags": [
+   "before lookup fix",
+   "empty shard"
+  ]
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39348800842",
+  "saved": "2026-10-20T01:51:32+00:00",
+  "shards": {
+   "0": {
+    "passed": 24,
+    "clean": 24,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T01:51:32+00:00"
+   },
+   "1": {
+    "passed": 17,
+    "clean": 17,
+    "trials": 30,
+    "exceptions": 3,
+    "contaminated": [],
+    "saved": "2026-10-20T02:03:03+00:00"
+   },
+   "2": {
+    "passed": 18,
+    "clean": 18,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T02:23:26+00:00"
+   }
+  },
+  "passed": 59,
+  "clean": 59,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "commandcode-minimax",
+  "run": "39347025493",
+  "saved": "2026-10-20T03:25:17+00:00",
+  "shards": {
+   "0": {
+    "passed": 14,
+    "clean": 14,
+    "trials": 30,
+    "exceptions": 6,
+    "contaminated": [],
+    "saved": "2026-10-20T04:36:05+00:00"
+   },
+   "1": {
+    "passed": 15,
+    "clean": 15,
+    "trials": 30,
+    "exceptions": 9,
+    "contaminated": [],
+    "saved": "2026-10-20T03:25:17+00:00"
+   },
+   "2": {
+    "passed": 8,
+    "clean": 8,
+    "trials": 29,
+    "exceptions": 5,
+    "contaminated": [],
+    "saved": "2026-10-20T03:49:16+00:00"
+   }
+  },
+  "passed": 37,
+  "clean": 37,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39370295254",
+  "saved": "2026-10-20T05:25:45+00:00",
+  "shards": {
+   "0": {
+    "passed": 16,
+    "clean": 16,
+    "trials": 19,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T05:27:38+00:00"
+   },
+   "1": {
+    "passed": 16,
+    "clean": 16,
+    "trials": 21,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-20T05:26:20+00:00"
+   },
+   "2": {
+    "passed": 20,
+    "clean": 20,
+    "trials": 27,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-20T05:25:45+00:00"
+   }
+  },
+  "passed": 52,
+  "clean": 52,
+  "trials": 67,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39374768324",
+  "saved": "2026-10-20T06:37:14+00:00",
+  "shards": {
+   "0": {
+    "passed": 25,
+    "clean": 25,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T06:37:54+00:00"
+   },
+   "1": {
+    "passed": 21,
+    "clean": 21,
+    "trials": 30,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-20T06:37:14+00:00"
+   },
+   "2": {
+    "passed": 23,
+    "clean": 23,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T07:14:46+00:00"
+   }
+  },
+  "passed": 69,
+  "clean": 69,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "commandcode-minimax",
+  "run": "39370764459",
+  "saved": "2026-10-20T07:26:35+00:00",
+  "shards": {
+   "0": {
+    "passed": 19,
+    "clean": 19,
+    "trials": 30,
+    "exceptions": 4,
+    "contaminated": [],
+    "saved": "2026-10-20T08:36:28+00:00"
+   },
+   "1": {
+    "passed": 16,
+    "clean": 16,
+    "trials": 30,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-20T07:26:35+00:00"
+   },
+   "2": {
+    "passed": 15,
+    "clean": 15,
+    "trials": 29,
+    "exceptions": 2,
+    "contaminated": [],
+    "saved": "2026-10-20T08:26:03+00:00"
+   }
+  },
+  "passed": 50,
+  "clean": 50,
+  "trials": 89,
+  "flags": [
+   "before lookup fix"
+  ]
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39388574333",
+  "saved": "2026-10-20T08:59:05+00:00",
+  "shards": {
+   "0": {
+    "passed": 26,
+    "clean": 24,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [
+     "count-dataset-tokens__Rrkfhtj",
+     "db-wal-recovery__HkYYeLo",
+     "polyglot-rust-c__L4S8Ppw"
+    ],
+    "saved": "2026-10-20T09:04:44+00:00"
+   },
+   "1": {
+    "passed": 19,
+    "clean": 19,
+    "trials": 30,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-20T08:59:05+00:00"
+   }
+  },
+  "passed": 45,
+  "clean": 43,
+  "trials": 60,
+  "flags": []
+ },
+ {
+  "group": "river-deepseek",
+  "run": "39404348058",
+  "saved": "2026-10-20T09:59:07+00:00",
+  "shards": {
+   "0": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T09:59:36+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T09:59:07+00:00"
+   },
+   "2": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T10:00:11+00:00"
+   }
+  },
+  "passed": 0,
+  "clean": 0,
+  "trials": 0,
+  "flags": [
+   "empty shard"
+  ]
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39403085991",
+  "saved": "2026-10-20T11:27:21+00:00",
+  "shards": {
+   "0": {
+    "passed": 22,
+    "clean": 22,
+    "trials": 30,
+    "exceptions": 1,
+    "contaminated": [
+     "db-wal-recovery__jeGTZPU"
+    ],
+    "saved": "2026-10-20T11:51:05+00:00"
+   },
+   "2": {
+    "passed": 20,
+    "clean": 18,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [
+     "build-pov-ray__7F8ceCb",
+     "mteb-leaderboard__RDdSRs9"
+    ],
+    "saved": "2026-10-20T11:27:21+00:00"
+   }
+  },
+  "passed": 42,
+  "clean": 40,
+  "trials": 59,
+  "flags": []
+ },
+ {
+  "group": "river-deepseek",
+  "run": "39404992762",
+  "saved": "2026-10-20T12:25:29+00:00",
+  "shards": {
+   "0": {
+    "passed": 24,
+    "clean": 24,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [
+     "db-wal-recovery__Zjm43Go"
+    ],
+    "saved": "2026-10-20T12:42:25+00:00"
+   },
+   "1": {
+    "passed": 26,
+    "clean": 26,
+    "trials": 30,
+    "exceptions": 4,
+    "contaminated": [
+     "extract-elf__hT6sjd8"
+    ],
+    "saved": "2026-10-20T12:25:29+00:00"
+   },
+   "2": {
+    "passed": 21,
+    "clean": 21,
+    "trials": 29,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-20T12:32:43+00:00"
+   }
+  },
+  "passed": 71,
+  "clean": 71,
+  "trials": 89,
+  "flags": []
+ },
+ {
+  "group": "commandcode-minimax",
+  "run": "39403085916",
+  "saved": "2026-10-20T12:40:52+00:00",
+  "shards": {
+   "0": {
+    "passed": 17,
+    "clean": 16,
+    "trials": 30,
+    "exceptions": 3,
+    "contaminated": [
+     "git-multibranch__eMr5xF9"
+    ],
+    "saved": "2026-10-20T13:34:07+00:00"
+   },
+   "1": {
+    "passed": 17,
+    "clean": 16,
+    "trials": 30,
+    "exceptions": 2,
+    "contaminated": [
+     "configure-git-webserver__ddLCvMy"
+    ],
+    "saved": "2026-10-20T12:40:52+00:00"
+   },
+   "2": {
+    "passed": 13,
+    "clean": 13,
+    "trials": 29,
+    "exceptions": 1,
+    "contaminated": [
+     "fix-git__fYyVvn7"
+    ],
+    "saved": "2026-10-20T13:13:32+00:00"
+   }
+  },
+  "passed": 47,
+  "clean": 45,
+  "trials": 89,
+  "flags": []
+ },
+ {
+  "group": "river-deepseek",
+  "run": "39430009322",
+  "saved": "2026-10-20T13:30:04+00:00",
+  "shards": {
+   "0": {
+    "passed": 27,
+    "clean": 27,
+    "trials": 30,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-20T16:13:15+00:00"
+   },
+   "1": {
+    "passed": 0,
+    "clean": 0,
+    "trials": 0,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T13:30:04+00:00"
+   },
+   "2": {
+    "passed": 21,
+    "clean": 21,
+    "trials": 29,
+    "exceptions": 2,
+    "contaminated": [],
+    "saved": "2026-10-20T15:57:54+00:00"
+   }
+  },
+  "passed": 48,
+  "clean": 48,
+  "trials": 59,
+  "flags": [
+   "empty shard"
+  ]
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39430214653",
+  "saved": "2026-10-20T14:35:56+00:00",
+  "shards": {
+   "0": {
+    "passed": 25,
+    "clean": 25,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [
+     "db-wal-recovery__28UghUQ"
+    ],
+    "saved": "2026-10-20T14:35:56+00:00"
+   },
+   "2": {
+    "passed": 20,
+    "clean": 20,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T15:11:09+00:00"
+   }
+  },
+  "passed": 45,
+  "clean": 45,
+  "trials": 59,
+  "flags": []
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39430009313",
+  "saved": "2026-10-20T14:38:24+00:00",
+  "shards": {
+   "0": {
+    "passed": 23,
+    "clean": 23,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [
+     "db-wal-recovery__bh4sbm3"
+    ],
+    "saved": "2026-10-20T14:40:20+00:00"
+   },
+   "1": {
+    "passed": 20,
+    "clean": 20,
+    "trials": 30,
+    "exceptions": 1,
+    "contaminated": [],
+    "saved": "2026-10-20T14:38:24+00:00"
+   },
+   "2": {
+    "passed": 21,
+    "clean": 20,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [
+     "mteb-leaderboard__FfN65LM"
+    ],
+    "saved": "2026-10-20T15:07:52+00:00"
+   }
+  },
+  "passed": 64,
+  "clean": 63,
+  "trials": 89,
+  "flags": []
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39430257233",
+  "saved": "2026-10-20T14:57:31+00:00",
+  "shards": {
+   "0": {
+    "passed": 24,
+    "clean": 24,
+    "trials": 30,
+    "exceptions": 1,
+    "contaminated": [
+     "db-wal-recovery__5JaSiTq"
+    ],
+    "saved": "2026-10-20T14:57:31+00:00"
+   },
+   "2": {
+    "passed": 21,
+    "clean": 21,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T15:15:49+00:00"
+   }
+  },
+  "passed": 45,
+  "clean": 45,
+  "trials": 59,
+  "flags": []
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39434893183",
+  "saved": "2026-10-20T15:27:51+00:00",
+  "shards": {
+   "0": {
+    "passed": 23,
+    "clean": 22,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [
+     "count-dataset-tokens__frDg6C8",
+     "db-wal-recovery__pxQrUxr"
+    ],
+    "saved": "2026-10-20T15:27:51+00:00"
+   },
+   "2": {
+    "passed": 21,
+    "clean": 20,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [
+     "headless-terminal__EEsN29M"
+    ],
+    "saved": "2026-10-20T16:02:54+00:00"
+   }
+  },
+  "passed": 44,
+  "clean": 42,
+  "trials": 59,
+  "flags": []
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39440876697",
+  "saved": "2026-10-20T15:57:10+00:00",
+  "shards": {
+   "0": {
+    "passed": 25,
+    "clean": 24,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [
+     "db-wal-recovery__MJvLpqC"
+    ],
+    "saved": "2026-10-20T15:57:10+00:00"
+   },
+   "2": {
+    "passed": 20,
+    "clean": 19,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [
+     "mteb-leaderboard__AHk52Kv"
+    ],
+    "saved": "2026-10-20T16:14:32+00:00"
+   }
+  },
+  "passed": 45,
+  "clean": 43,
+  "trials": 59,
+  "flags": []
+ },
+ {
+  "group": "commandcode-beam",
+  "run": "39440937766",
+  "saved": "2026-10-20T15:59:55+00:00",
+  "shards": {
+   "0": {
+    "passed": 26,
+    "clean": 25,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [
+     "count-dataset-tokens__uz9VBPL",
+     "db-wal-recovery__a6NcJxf"
+    ],
+    "saved": "2026-10-20T16:14:56+00:00"
+   },
+   "1": {
+    "passed": 19,
+    "clean": 19,
+    "trials": 30,
+    "exceptions": 2,
+    "contaminated": [],
+    "saved": "2026-10-20T15:59:55+00:00"
+   },
+   "2": {
+    "passed": 19,
+    "clean": 17,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [
+     "headless-terminal__TyaEVhK",
+     "mteb-leaderboard__YqWKDAD"
+    ],
+    "saved": "2026-10-20T16:31:40+00:00"
+   }
+  },
+  "passed": 64,
+  "clean": 61,
+  "trials": 89,
+  "flags": []
+ },
+ {
+  "group": "river-deepseek",
+  "run": "39441430048",
+  "saved": "2026-10-20T16:52:10+00:00",
+  "shards": {
+   "0": {
+    "passed": 26,
+    "clean": 26,
+    "trials": 30,
+    "exceptions": 0,
+    "contaminated": [],
+    "saved": "2026-10-20T17:04:32+00:00"
+   },
+   "1": {
+    "passed": 24,
+    "clean": 24,
+    "trials": 30,
+    "exceptions": 3,
+    "contaminated": [
+     "extract-elf__6mvwS4A"
+    ],
+    "saved": "2026-10-20T17:03:52+00:00"
+   },
+   "2": {
+    "passed": 22,
+    "clean": 21,
+    "trials": 29,
+    "exceptions": 0,
+    "contaminated": [
+     "password-recovery__u9PUC9X"
+    ],
+    "saved": "2026-10-20T16:52:10+00:00"
+   }
+  },
+  "passed": 72,
+  "clean": 71,
+  "trials": 89,
+  "flags": []
+ }
+]
