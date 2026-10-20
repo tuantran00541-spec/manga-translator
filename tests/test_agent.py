@@ -1778,9 +1778,30 @@ def test_the_output_limit_is_sent_dropped_when_refused_and_a_cut_off_call_gets_a
         return FakeResponse(400, {"error": "max_tokens is too large"}) if "max_tokens" in payload else FakeResponse(200, ok)
 
     monkeypatch.setattr(client, "_post", fake_post)
+    monkeypatch.setattr(client, "OUTPUT_CAPS", {})
     turn_ = client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[], max_tokens=8192)
-    assert "max_tokens" in sent[0] and "max_tokens" not in sent[1]
+    assert [p.get("max_tokens") for p in sent] == [8192, 4096, 2048, 1024, None], "halved, then dropped when no cap is taken"
     assert turn_["finish"] == "length" and "reached the output limit" in turn_["calls"][0]["error"]
+
+
+def test_a_provider_that_names_its_reply_cap_is_asked_again_at_that_cap_and_it_is_remembered(ws, home, monkeypatch):
+    sent = []
+    ok = {"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+    def fake_post(provider, key, payload, stream):
+        sent.append(payload.get("max_tokens"))
+        if payload.get("max_tokens", 0) > 32768:
+            return FakeResponse(400, {"error": f"max_tokens {payload['max_tokens']:,} is too large; this model supports at most 32,768"})
+        return FakeResponse(200, ok)
+
+    monkeypatch.setattr(client, "_post", fake_post)
+    monkeypatch.setattr(client, "OUTPUT_CAPS", {})
+    client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[], max_tokens=65536)
+    client.complete(PROVIDERS["openai"], "k", "m", [{"role": "user", "content": "x"}], tools=[], max_tokens=1_000_000)
+    assert sent == [65536, 32768, 32768]
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=client.complete)
+    from app.agent import session as session_module
+    assert session._out_ceiling() == 32768 and session_module.MAX_OUT_CEILING == 1_000_000
 
 
 def test_a_models_request_fields_from_the_profile_are_sent_and_dropped_when_refused(ws, home, monkeypatch):

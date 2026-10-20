@@ -59,7 +59,7 @@ SCRIPT_AGENTS = 40
 MAX_NOTES = 16_000
 EVENT_OUTPUT = 20_000
 EMPTY_RETRIES = 3
-MAX_OUT_CEILING = 32_768  # The most a reply may be raised to when a model spends it all on reasoning.
+MAX_OUT_CEILING = 1_000_000  # Soft ceiling for raising the reply limit; the provider's own cap, once learned, wins.
 LONG_CALL = ("[Reminder] This tool call grew too long for one reply and would have been cut off, so it was dropped. Write long content in parts: "
              "start the file small, then extend it with edit_file or a shell append (cat >> file <<'EOF').")
 WRAP_UP = ("[The {limit} for this turn is reached. Make no more tool calls. Report, in the language of the user's request, what you did, what your "
@@ -3766,6 +3766,10 @@ class AgentSession:
         last = self._last_command or ""
         return "" if "[exit code 0]" in last[-400:] or re.search(r"^PASS\b", last, re.M) else CHECK_NUDGE
 
+    def _out_ceiling(self) -> int:
+        """The most a reply may be raised to: the soft ceiling, or the provider's cap once it named one."""
+        return min(MAX_OUT_CEILING, client.output_cap(self.provider, self.model) or MAX_OUT_CEILING)
+
     def _handed_off(self, text: str) -> bool:
         """Whether autonomous work ends on a report that leaves steps for the reader, once per request."""
         if self.depth or self.mode != "bypass" or self._handoff_nudged or (self._deadline and not self._notice_at):
@@ -3946,8 +3950,8 @@ class AgentSession:
                 used = turn["usage"].get("completion_tokens") or 0
                 debug = turn.get("debug") or {}
                 # A reasoning model that spends the whole reply budget thinking writes nothing; it gets a larger budget, not the same one again.
-                if debug.get("finish") == "length" and self._max_out < MAX_OUT_CEILING:
-                    self._max_out = min(self._max_out * 2, MAX_OUT_CEILING)
+                if debug.get("finish") == "length" and self._max_out < self._out_ceiling():
+                    self._max_out = min(self._max_out * 2, self._out_ceiling())
                     self.emit("notice", text=f"The model spent all {used} tokens reasoning and wrote nothing; raising the reply limit to {self._max_out:,} tokens.")
                     empties -= 1
                     continue
@@ -3972,7 +3976,7 @@ class AgentSession:
                 # A reply cut off by the limit is unfinished, not an answer: the model goes on with a larger budget.
                 if turn.get("finish") == "length" and cuts < EMPTY_RETRIES:
                     cuts += 1
-                    self._max_out = min(self._max_out * 2, MAX_OUT_CEILING)
+                    self._max_out = min(self._max_out * 2, self._out_ceiling())
                     self.history.append({"role": "user", "content": CUT_NUDGE})
                     self.emit("notice", text=f"The reply was cut off at the limit; asking the model to go on ({self._max_out:,} tokens).")
                     continue

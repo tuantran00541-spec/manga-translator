@@ -523,6 +523,15 @@ def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
     return result
 
 
+# The largest reply each (api base, model) has accepted after refusing a larger one.
+OUTPUT_CAPS: dict[tuple[str, str], int] = {}
+
+
+def output_cap(provider: AIProvider, model: str) -> int | None:
+    """The reply limit this provider is known to enforce for the model, if one was learned."""
+    return OUTPUT_CAPS.get((provider.api_base, model))
+
+
 def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None,
              max_tokens: int | None = None) -> dict:
     """One assistant turn: its text, tool calls, reasoning and token usage; streamed when on_delta is given. Transient failures are retried."""
@@ -547,7 +556,7 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
     if on_delta:
         payload["stream_options"] = {"include_usage": True}
     if max_tokens:
-        payload["max_tokens"] = int(max_tokens)
+        payload["max_tokens"] = min(int(max_tokens), output_cap(provider, model) or int(max_tokens))
     refused = (provider.api_base, model)
     extra = {} if refused in _REFUSED_EXTRA else {k: v for k, v in REQUEST_EXTRA.get().items() if k not in ("model", "messages", "stream", "tools")}
     payload.update(extra)
@@ -560,11 +569,16 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
             payload.pop(key, None)
         response.close()
         response = _post(provider, api_key, payload, bool(on_delta))
-    if max_tokens and response.status_code == 400 and "max_tokens" in response.text.lower() or (
-            max_tokens and response.status_code == 400 and "max_completion_tokens" in response.text.lower()):
-        # A provider with a lower cap, or none to set, refuses the field; ask again without it.
-        payload.pop("max_tokens")
+    while "max_tokens" in payload and response.status_code == 400 and re.search(r"max_(completion_)?tokens", response.text, re.I):
+        # A provider with a lower cap names it, or is asked again with half; one that takes no cap at all gets none.
+        asked = payload["max_tokens"]
+        named = [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", response.text[:2000])]
+        lower = max((n for n in named if 256 <= n < asked), default=asked // 2)
         response.close()
+        if lower < 1024:
+            payload.pop("max_tokens")
+        else:
+            payload["max_tokens"] = OUTPUT_CAPS[(provider.api_base, model)] = lower
         response = _post(provider, api_key, payload, bool(on_delta))
     if on_delta and response.status_code == 400 and "stream_options" in response.text.lower():
         payload.pop("stream_options")
