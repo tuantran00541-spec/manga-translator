@@ -13,6 +13,7 @@
 |---|---|---|---|
 | DeepSeek V4.1 Flash (River) | 72 | 71 | 71 |
 | Beam (CommandCode) | 64 | 61 | 42/59 |
+| DeepSeek, bản cắt/bàn giao/1M | 71 | 71 | 71 |
 
 Kết quả nằm ở `audit-results/terminal-bench-2-1/` trên nhánh `audit-evidence`. Mỗi trial có `events.jsonl.gz`, `result.json` và `verifier/`.
 
@@ -20,8 +21,10 @@ Kết quả nằm ở `audit-results/terminal-bench-2-1/` trên nhánh `audit-ev
 | Lượt | USD |
 |---|---|
 | 39404992762 | 5.35 |
-| 39430009322 (shard 1 chạy lại) | 3.76 + shard 1 |
+| 39430009322 (shard 1 chạy lại) | 5.42 |
 | 39441430048 | 6.00 |
+
+Tổng River hôm nay: 16,77 USD.
 
 ## Lỗi đã biết
 - Bài `sanitize-git-repo` có token giả nên push protection chặn lưu. `save-evidence` đã che token từ commit 6523f472; các lượt cũ hơn mất shard 1.
