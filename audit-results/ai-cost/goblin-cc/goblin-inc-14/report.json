@@ -1,0 +1,5680 @@
+{
+ "url": "https://asurascans.com/comics/goblin-inc-11fe7da3/chapter/14",
+ "model": "openai/gpt-6-luna",
+ "price_usd_per_m": {
+  "input": 0.105,
+  "output": 0.525
+ },
+ "polish": true,
+ "cpu": "AMD EPYC 9V74 80-Core Processor",
+ "status": "completed",
+ "error": null,
+ "wall_s": 846.0,
+ "stages": [
+  {
+   "key": "download",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 5.1,
+   "detail": "85 lát"
+  },
+  {
+   "key": "scan",
+   "status": "done",
+   "done": 85,
+   "total": 85,
+   "elapsed_s": 106.2,
+   "detail": "2 lát credit, 0 lát không chữ, 1 logo"
+  },
+  {
+   "key": "clean",
+   "status": "done",
+   "done": 83,
+   "total": 83,
+   "elapsed_s": 218.2,
+   "detail": ""
+  },
+  {
+   "key": "review",
+   "status": "done",
+   "done": 83,
+   "total": 83,
+   "elapsed_s": 55.9,
+   "detail": "14 tờ crop, repaint 8"
+  },
+  {
+   "key": "translate",
+   "status": "done",
+   "done": 83,
+   "total": 83,
+   "elapsed_s": 229.0,
+   "detail": "Dịch 137 vùng"
+  },
+  {
+   "key": "polish",
+   "status": "done",
+   "done": 100,
+   "total": 100,
+   "elapsed_s": 213.8,
+   "detail": "Chấm 100 câu, sửa 2"
+  },
+  {
+   "key": "render",
+   "status": "done",
+   "done": 83,
+   "total": 83,
+   "elapsed_s": 14.9,
+   "detail": ""
+  },
+  {
+   "key": "finish",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 0.2,
+   "detail": "Xong"
+  }
+ ],
+ "report": {
+  "credit_pages": [
+   0,
+   84
+  ],
+  "credit_rejected": [],
+  "logo_regions": 1,
+  "scan_errors": [],
+  "repainted_regions": 8,
+  "repaint_pages": [
+   60,
+   14,
+   70,
+   50
+  ],
+  "qc_flagged": 0,
+  "qc_errors": [],
+  "translated": 137,
+  "unreadable": 23,
+  "review_flags": 2,
+  "translate_errors": [],
+  "render_errors": [],
+  "editorial_blockers": 0,
+  "blocker_samples": [],
+  "source_lang": "en",
+  "textless_pages": [],
+  "textless_rejected": [],
+  "kept_regions": 0,
+  "missed_added": 2,
+  "retried_pages": [
+   15,
+   32
+  ],
+  "restored_regions": 0,
+  "sfx_kept": 21,
+  "review_list": [],
+  "unboxed_pages": [
+   15,
+   32
+  ],
+  "repaint_retried": 0,
+  "residue_left": [],
+  "art_kept": 0,
+  "skip_kept": [],
+  "skip_unjudged": [],
+  "polish": {
+   "judged": 100,
+   "flagged": 2,
+   "rewritten": 2,
+   "still_flagged": 0,
+   "errors": [],
+   "samples": [
+    {
+     "page": 53,
+     "source": "IF A THUMBS-UP EXPLAINED EVERYTHING, WOULD I HAVE ASKED?",
+     "before": "Nếu chỉ giơ ngón cái\nlà giải thích được mọi thứ\nthì tôi hỏi cô làm gì?",
+     "after": "Nếu chỉ giơ ngón cái\nlà giải thích được mọi thứ\nthì tôi hỏi các cậu làm gì?",
+     "scores_before": {
+      "natural": 2.027276733178357,
+      "clear": 1.4636397644568055,
+      "faithful": 1.438610095797157
+     },
+     "scores_after": {
+      "natural": 2.388969478072032,
+      "clear": 1.6967518562382469,
+      "faithful": 1.7554927890226502
+     }
+    },
+    {
+     "page": 75,
+     "source": "DEPARTMENT HEAD / DEPUTY DEPARTMENT HEAD / MANAGER / ASSISTANT MANAGER / EMPLOYEE / INTERN",
+     "before": "Sơ đồ tổ chức",
+     "after": "Trưởng phòng / Phó trưởng phòng / Quản lý / Phó quản lý / Nhân viên / Thực tập sinh",
+     "scores_before": {
+      "natural": 2.095145684693427,
+      "clear": 1.5408129907389703,
+      "faithful": 0.4112548804454471,
+      "settled": 0.1454222316940036
+     },
+     "scores_after": {
+      "natural": 2.707254385685302,
+      "clear": 1.9516059947897908,
+      "faithful": 1.9686398806575531,
+      "settled": 1.9811558982924362
+     }
+    }
+   ],
+   "scores": [
+    {
+     "page": 3,
+     "text": "Cậu tỉnh dậy ở đây\nbốn ngày trước à?",
+     "scores": {
+      "natural": 2.5941996913457457,
+      "clear": 1.9456527653735265,
+      "faithful": 1.9673796662157348
+     }
+    },
+    {
+     "page": 4,
+     "text": "Và rồi Hệ thống đột nhiên\ntuyên bố chị là Lãnh chúa sao?",
+     "scores": {
+      "natural": 2.4856903845221456,
+      "clear": 1.9205721938288418,
+      "faithful": 1.9273225602562891,
+      "settled": 1.877653226360251
+     }
+    },
+    {
+     "page": 5,
+     "text": "Và bọn Orc nhốt cô ở đây\nvì chúng không chịu\ncông nhận cô là Lãnh chúa?",
+     "scores": {
+      "natural": 2.594881308628196,
+      "clear": 1.9349097004577505,
+      "faithful": 1.9320521025368012,
+      "settled": 1.9054367304571358
+     }
+    },
+    {
+     "page": 6,
+     "text": "nên chúng nói sẽ chờ đến khi\ntôi tự bỏ cuộc.",
+     "scores": {
+      "natural": 2.5778631754146213,
+      "clear": 1.9221706459818702,
+      "faithful": 1.866695258390088,
+      "settled": 1.9403517131825714
+     }
+    },
+    {
+     "page": 6,
+     "text": "Orc không thể trực tiếp\nlàm hại tôi,",
+     "scores": {
+      "natural": 2.6240305656405614,
+      "clear": 1.9668102897210353,
+      "faithful": 1.980640000186852,
+      "settled": 1.98817566083394
+     }
+    },
+    {
+     "page": 7,
+     "text": "Nghe cứ như kiểu\nHàn Quốc...",
+     "scores": {
+      "natural": 2.4499737765927585,
+      "clear": 1.8269028885530616,
+      "faithful": 1.7816269718613098,
+      "settled": 1.927792400549791
+     }
+    },
+    {
+     "page": 7,
+     "text": "Ép người ta từ chức,\nđúng không?",
+     "scores": {
+      "natural": 2.5195203885811903,
+      "clear": 1.869971779309979,
+      "faithful": 1.8830882619415548
+     }
+    },
+    {
+     "page": 8,
+     "text": "Tất nhiên, trong trường hợp này\nanh có thể chết thật, nên nó\ntệ hơn không thể so sánh được...",
+     "scores": {
+      "natural": 2.1519871789449283,
+      "clear": 1.7537564638315652,
+      "faithful": 1.8305684470291492,
+      "settled": 1.8697758936025168
+     }
+    },
+    {
+     "page": 8,
+     "text": "Tôi cũng nghĩ vậy.",
+     "scores": {
+      "natural": 2.7869894120218808,
+      "clear": 1.9666449352136668,
+      "faithful": 1.9795549705094508,
+      "settled": 1.9653899749742194
+     }
+    },
+    {
+     "page": 9,
+     "text": "Ừm, thế còn bọn Orc\nthì sao?",
+     "scores": {
+      "natural": 2.6398096467036116,
+      "clear": 1.9227730770880678,
+      "faithful": 1.9228515077604444,
+      "settled": 1.972842469143657
+     }
+    },
+    {
+     "page": 11,
+     "text": "Họ chết cả rồi sao?\nKhông sót một ai ư?",
+     "scores": {
+      "natural": 2.715695113344728,
+      "clear": 1.9620931680329727,
+      "faithful": 1.9632460100814928
+     }
+    },
+    {
+     "page": 11,
+     "text": "Họ chết cả rồi.",
+     "scores": {
+      "natural": 2.613890675243425,
+      "clear": 1.9428936695261179,
+      "faithful": 1.957145584499477
+     }
+    },
+    {
+     "page": 12,
+     "text": "Bọn Orc chết hết rồi.",
+     "scores": {
+      "natural": 2.6113930084488066,
+      "clear": 1.9670979812963565,
+      "faithful": 1.9777230337923888,
+      "settled": 1.984037450861017
+     }
+    },
+    {
+     "page": 14,
+     "text": "Chiến tranh lãnh địa\nvẫn chưa kết thúc.",
+     "scores": {
+      "natural": 2.8504728297273285,
+      "clear": 1.981762437513756,
+      "faithful": 1.989696994784472,
+      "settled": 1.9910919841229333
+     }
+    },
+    {
+     "page": 14,
+     "text": "[Chiến tranh lãnh địa\nđang diễn ra]",
+     "scores": {
+      "natural": 2.6654356573318236,
+      "clear": 1.9609020806567332,
+      "faithful": 1.9635976705961686,
+      "settled": 1.977088826268879
+     }
+    },
+    {
+     "page": 15,
+     "text": "Chiến tranh lãnh địa không kết thúc\ncho đến khi một Lãnh chúa chết...",
+     "scores": {
+      "natural": 2.3776798792821556,
+      "clear": 1.9362688882025583,
+      "faithful": 1.9653299685562584,
+      "settled": 1.9719579618184446
+     }
+    },
+    {
+     "page": 15,
+     "text": "Tôi phải làm gì đây...?",
+     "scores": {
+      "natural": 2.719177571584379,
+      "clear": 1.9542996968723552,
+      "faithful": 1.9598865540102346
+     }
+    },
+    {
+     "page": 16,
+     "text": "Dứt điểm cô ta\nkhông, sếp?",
+     "scores": {
+      "natural": 2.245637814714982,
+      "clear": 1.8178137868937656,
+      "faithful": 1.8575438344347586,
+      "settled": 1.1314177676839043
+     }
+    },
+    {
+     "page": 17,
+     "text": "Cậu là người,\nkhông phải Orc!",
+     "scores": {
+      "natural": 2.484718292201562,
+      "clear": 1.8527710702311802,
+      "faithful": 1.9218738186687994
+     }
+    },
+    {
+     "page": 17,
+     "text": "Không! Cậu đang nghĩ gì vậy,\nOH HYUNMIN?!",
+     "scores": {
+      "natural": 2.5819850434522147,
+      "clear": 1.9391156854811158,
+      "faithful": 1.9411099218950907,
+      "settled": 1.8964718960363984
+     }
+    },
+    {
+     "page": 18,
+     "text": "Vậy tôi xin đầu hàng.",
+     "scores": {
+      "natural": 2.7102863399709856,
+      "clear": 1.9671047774340924,
+      "faithful": 1.9711072132792287,
+      "settled": 1.9749089085282192
+     }
+    },
+    {
+     "page": 19,
+     "text": "Lãnh chúa đối địch\nđã đầu hàng.",
+     "scores": {
+      "natural": 2.614867172661949,
+      "clear": 1.9631355652189344,
+      "faithful": 1.9826993068429914,
+      "settled": 1.9868769447074321
+     }
+    },
+    {
+     "page": 20,
+     "text": "Bạn đã thắng Chiến tranh lãnh địa.",
+     "scores": {
+      "natural": 2.437869650149794,
+      "clear": 1.9370236499485058,
+      "faithful": 1.976688094133766,
+      "settled": 1.9847940459552227
+     }
+    },
+    {
+     "page": 20,
+     "text": "Vậy cũng được à?",
+     "scores": {
+      "natural": 2.388811380943424,
+      "clear": 1.6107950002490994,
+      "faithful": 1.6451690788811413
+     }
+    },
+    {
+     "page": 21,
+     "text": "Hả? Còn cách nào khác nữa à?",
+     "scores": {
+      "natural": 2.756016775554985,
+      "clear": 1.944372910868605,
+      "faithful": 1.941069581436399
+     }
+    },
+    {
+     "page": 21,
+     "text": "Khoan đã, hóa ra\ncó cách đơn giản vậy...?",
+     "scores": {
+      "natural": 2.636706760331731,
+      "clear": 1.9371619694880025,
+      "faithful": 1.8941026874663587
+     }
+    },
+    {
+     "page": 22,
+     "text": "Dù sao thì,\ngiờ mọi chuyện xong—",
+     "scores": {
+      "natural": 2.475697278676585,
+      "clear": 1.8812887549064097,
+      "faithful": 1.8548395282121006
+     }
+    },
+    {
+     "page": 22,
+     "text": "Lãnh chúa đối địch đã xin\nvề phe của bạn.",
+     "scores": {
+      "natural": 2.5525523408875324,
+      "clear": 1.935369395765659,
+      "faithful": 1.9470303329522618,
+      "settled": 1.960939723514141
+     }
+    },
+    {
+     "page": 22,
+     "text": "Ô, k-không.\nKhông hề.",
+     "scores": {
+      "natural": 2.5362459595736104,
+      "clear": 1.898697022996987,
+      "faithful": 1.9465533196122817
+     }
+    },
+    {
+     "page": 23,
+     "text": "Bạn có chấp nhận?\nCó/Không",
+     "scores": {
+      "natural": 2.4199188891766874,
+      "clear": 1.9201420739411947,
+      "faithful": 1.9236200846565197
+     }
+    },
+    {
+     "page": 24,
+     "text": "Bạn có chấp nhận?\nCó/Không",
+     "scores": {
+      "natural": 2.398686420653692,
+      "clear": 1.920501502475406,
+      "faithful": 1.9267150969143878
+     }
+    },
+    {
+     "page": 24,
+     "text": "Chà, đương nhiên rồi...",
+     "scores": {
+      "natural": 2.6928772456379724,
+      "clear": 1.9060781361757273,
+      "faithful": 1.9392338337406716
+     }
+    },
+    {
+     "page": 25,
+     "text": "Tôi chẳng biết gì về Mina cả...",
+     "scores": {
+      "natural": 2.7189284939774825,
+      "clear": 1.9724977068517864,
+      "faithful": 1.977777284425281,
+      "settled": 1.931809477730565
+     }
+    },
+    {
+     "page": 25,
+     "text": "Khoan đã, nghĩ lại thì...",
+     "scores": {
+      "natural": 2.6812701010993223,
+      "clear": 1.9127995950692824,
+      "faithful": 1.8888989369435618
+     }
+    },
+    {
+     "page": 26,
+     "text": "Tuyển người mà qua loa thế này\nthì thật là vô trách nhiệm.",
+     "scores": {
+      "natural": 2.5528353449871797,
+      "clear": 1.9112413921625433,
+      "faithful": 1.8243575961261005
+     }
+    },
+    {
+     "page": 27,
+     "text": "Hồi ở Hàn Quốc\nsếp làm nghề gì ạ?",
+     "scores": {
+      "natural": 2.576706312812035,
+      "clear": 1.9284135508463494,
+      "faithful": 1.8625351610632113,
+      "settled": 1.7800573159258077
+     }
+    },
+    {
+     "page": 28,
+     "text": "Tôi từng là nghiên cứu viên cao cấp ở Cơ quan Phát triển Quốc phòng.",
+     "scores": {
+      "natural": 2.565346822898601,
+      "clear": 1.9417913137849143,
+      "faithful": 1.9612930993966489,
+      "settled": 1.9070080497254218
+     }
+    },
+    {
+     "page": 28,
+     "text": "Nghiên cứu về những gì...?",
+     "scores": {
+      "natural": 2.3389897925264815,
+      "clear": 1.7991936718395447,
+      "faithful": 1.7516649775351056
+     }
+    },
+    {
+     "page": 29,
+     "text": "Nói đơn giản, đó là thứ\nanh phóng đi thật xa.",
+     "scores": {
+      "natural": 2.354678946721621,
+      "clear": 1.7888361368968044,
+      "faithful": 1.7673394044456683
+     }
+    },
+    {
+     "page": 29,
+     "text": "Chủ yếu tôi làm về vũ khí\ncó hệ thống đẩy.",
+     "scores": {
+      "natural": 2.479249545421136,
+      "clear": 1.8346320819903952,
+      "faithful": 1.891981449945922,
+      "settled": 1.9665412268625004
+     }
+    },
+    {
+     "page": 31,
+     "text": "Những thứ có thể phóng... đi xa được?",
+     "scores": {
+      "natural": 2.2700225969201617,
+      "clear": 1.8038265381289125,
+      "faithful": 1.6977417656352836
+     }
+    },
+    {
+     "page": 32,
+     "text": "Cô phải nói\nsớm hơn chứ!",
+     "scores": {
+      "natural": 2.411194127936749,
+      "clear": 1.8667327632731574,
+      "faithful": 1.8396354722312673
+     }
+    },
+    {
+     "page": 33,
+     "text": "Tôi rất mong được\nhợp tác với cô,",
+     "scores": {
+      "natural": 2.5778127806449382,
+      "clear": 1.9390057109249235,
+      "faithful": 1.8928978112754107
+     }
+    },
+    {
+     "page": 33,
+     "text": "Bạn đã chấp nhận\nyêu cầu đào tẩu.",
+     "scores": {
+      "natural": 2.4028942953307197,
+      "clear": 1.865851010956609,
+      "faithful": 1.8992423720197957
+     }
+    },
+    {
+     "page": 34,
+     "text": "Đã thêm một cư dân lãnh địa.\n-KIM MINA-",
+     "scores": {
+      "natural": 2.227545930533026,
+      "clear": 1.7971653338418268,
+      "faithful": 1.922019784606649,
+      "settled": 1.7731895761793102
+     }
+    },
+    {
+     "page": 34,
+     "text": "Giám đốc nghiên cứu!",
+     "scores": {
+      "natural": 2.6631044411061335,
+      "clear": 1.956605001618127,
+      "faithful": 1.986429446103805,
+      "settled": 1.9907650858724244
+     }
+    },
+    {
+     "page": 35,
+     "text": "Đã tuyển: KIM MINA,\nmột người đồng hương.",
+     "scores": {
+      "natural": 2.425697523850901,
+      "clear": 1.8793675626112054,
+      "faithful": 1.9129759700655897,
+      "settled": 1.962004207742233
+     }
+    },
+    {
+     "page": 36,
+     "text": "Chức vụ:\nGiám đốc Nghiên cứu Vũ khí",
+     "scores": {
+      "natural": 2.60835207619997,
+      "clear": 1.9477017113169794,
+      "faithful": 1.9734610596010693,
+      "settled": 1.9798731438776185
+     }
+    },
+    {
+     "page": 37,
+     "text": "Vài ngày sau...",
+     "scores": {
+      "natural": 2.82374653988296,
+      "clear": 1.9751655504623074,
+      "faithful": 1.9679550509780153
+     }
+    },
+    {
+     "page": 37,
+     "text": "Hò dô ta!",
+     "scores": {
+      "natural": 2.5347349702080115,
+      "clear": 1.6875252295810488,
+      "faithful": 1.8716483982585743
+     }
+    },
+    {
+     "page": 39,
+     "text": "Bắt được\ncả tấn rồi!!",
+     "scores": {
+      "natural": 2.384935348005864,
+      "clear": 1.8596163463357587,
+      "faithful": 1.8755683422396172,
+      "settled": 1.2139201845985572
+     }
+    },
+    {
+     "page": 40,
+     "text": "Một mùa bội thu!!",
+     "scores": {
+      "natural": 2.5845481211077845,
+      "clear": 1.8962195618956579,
+      "faithful": 1.8589314689320195
+     }
+    },
+    {
+     "page": 40,
+     "text": "Thịt là ngon nhất!",
+     "scores": {
+      "natural": 2.462780118695296,
+      "clear": 1.9178620152809887,
+      "faithful": 1.8536713245811944,
+      "settled": 1.943306818632795
+     }
+    },
+    {
+     "page": 42,
+     "text": "Tôi đã nói rồi, các sợi dây hai bên lưới phải cân nhau, nhớ chưa?",
+     "scores": {
+      "natural": 2.518675564959026,
+      "clear": 1.8539497964190905,
+      "faithful": 1.9284238931350883,
+      "settled": 1.9248427820629566
+     }
+    },
+    {
+     "page": 42,
+     "text": "Rõ ràng là sợi dây bên trái dài hơn mà.",
+     "scores": {
+      "natural": 2.58702871351639,
+      "clear": 1.930666802092255,
+      "faithful": 1.8337734590494725
+     }
+    },
+    {
+     "page": 43,
+     "text": "Không cần xin lỗi đâu.\nCác cậu cứ kiểm tra nhanh\ncho tôi là được.",
+     "scores": {
+      "natural": 2.5048549174728816,
+      "clear": 1.9161164419927574,
+      "faithful": 1.8520279356745253
+     }
+    },
+    {
+     "page": 43,
+     "text": "Em... em xin lỗi...",
+     "scores": {
+      "natural": 2.6977142327267662,
+      "clear": 1.9555717697549237,
+      "faithful": 1.9329032638360097
+     }
+    },
+    {
+     "page": 44,
+     "text": "Mọi người\nchú ý!!",
+     "scores": {
+      "natural": 2.5637415034607964,
+      "clear": 1.9412933685150366,
+      "faithful": 1.921170403373107
+     }
+    },
+    {
+     "page": 44,
+     "text": "Vâng, em sẽ sửa lại.",
+     "scores": {
+      "natural": 2.7219853395035982,
+      "clear": 1.935975060178155,
+      "faithful": 1.9570106256606297,
+      "settled": 1.9837858521091738
+     }
+    },
+    {
+     "page": 46,
+     "text": "Mọi người, tạm dừng việc\nđang làm và tập trung\nlại giữa sân một lát!",
+     "scores": {
+      "natural": 2.616951199078814,
+      "clear": 1.9365171103725656,
+      "faithful": 1.8535359993850138
+     }
+    },
+    {
+     "page": 46,
+     "text": "Tôi có chuyện\nmuốn nói với mọi người!",
+     "scores": {
+      "natural": 2.6775960063649364,
+      "clear": 1.9545022123478901,
+      "faithful": 1.942005391599535
+     }
+    },
+    {
+     "page": 47,
+     "text": "Đúng rồi, MINA! Tôi có một việc\nmuốn nhờ cô, nên cô mau qua đây nhé!",
+     "scores": {
+      "natural": 2.4443460436631947,
+      "clear": 1.8992741468020173,
+      "faithful": 1.689441990763239,
+      "settled": 1.779798883339918
+     }
+    },
+    {
+     "page": 47,
+     "text": "Tôi cũng vậy?",
+     "scores": {
+      "natural": 2.3025958387231737,
+      "clear": 1.707849883667406,
+      "faithful": 1.785360616302667,
+      "settled": 1.9180560046011705
+     }
+    },
+    {
+     "page": 48,
+     "text": "Một ân huệ ư?\nKhông biết là chuyện gì đây?",
+     "scores": {
+      "natural": 2.116670816994361,
+      "clear": 1.7683723808686116,
+      "faithful": 1.6325699024212033
+     }
+    },
+    {
+     "page": 51,
+     "text": "Ơ, Hyunmin...\nCái này là gì thế...?",
+     "scores": {
+      "natural": 2.6835252508943834,
+      "clear": 1.9526403827053926,
+      "faithful": 1.9514176678867057,
+      "settled": 1.9618773916689298
+     }
+    },
+    {
+     "page": 52,
+     "text": "Các cậu biết đó là gì\nrồi, phải không?",
+     "scores": {
+      "natural": 2.5411660710962405,
+      "clear": 1.9209401328713247,
+      "faithful": 1.8834628813648773
+     }
+    },
+    {
+     "page": 53,
+     "text": "Nếu chỉ giơ ngón cái\nlà giải thích được mọi thứ\nthì tôi hỏi cô làm gì?",
+     "scores": {
+      "natural": 2.027276733178357,
+      "clear": 1.4636397644568055,
+      "faithful": 1.438610095797157
+     }
+    },
+    {
+     "page": 53,
+     "text": "Không?\nKhông có manh mối nào?",
+     "scores": {
+      "natural": 2.4208361003862953,
+      "clear": 1.8394810903863172,
+      "faithful": 1.9039391928093867
+     }
+    },
+    {
+     "page": 55,
+     "text": "Từ giờ trở đi,\ntôi sẽ gọi các cậu\nlà nhân viên.",
+     "scores": {
+      "natural": 2.7221447869320134,
+      "clear": 1.962456250611039,
+      "faithful": 1.96699608544734,
+      "settled": 1.944051686814031
+     }
+    },
+    {
+     "page": 56,
+     "text": "Các nhân viên goblin\ncủa tôi!",
+     "scores": {
+      "natural": 2.5657921233236904,
+      "clear": 1.952270807020013,
+      "faithful": 1.9789426612649588,
+      "settled": 1.9724686728450624
+     }
+    },
+    {
+     "page": 56,
+     "text": "Ngay tại đây,\nngay bây giờ!",
+     "scores": {
+      "natural": 2.706587835961038,
+      "clear": 1.9620188993496304,
+      "faithful": 1.9734088004896508
+     }
+    },
+    {
+     "page": 57,
+     "text": "Tôi xin tuyên bố\nthành lập Công Ty Goblin!",
+     "scores": {
+      "natural": 2.6143028594967967,
+      "clear": 1.9579224402578177,
+      "faithful": 1.9321687896749553,
+      "settled": 1.9796051045485263
+     }
+    },
+    {
+     "page": 59,
+     "text": "Nhưng lưỡi dao này\ncó sắc đâu—",
+     "scores": {
+      "natural": 2.3812196156760734,
+      "clear": 1.8769031864957426,
+      "faithful": 1.7309192589218858,
+      "settled": 1.8131672714045095
+     }
+    },
+    {
+     "page": 59,
+     "text": "Mina! Mau lên!\nXông đi!",
+     "scores": {
+      "natural": 2.5059251045031665,
+      "clear": 1.8687972059141438,
+      "faithful": 1.809389200924166,
+      "settled": 1.9183516583955815
+     }
+    },
+    {
+     "page": 62,
+     "text": "Là thứ để ăn à?",
+     "scores": {
+      "natural": 2.367066745038551,
+      "clear": 1.7827990160839031,
+      "faithful": 1.7993057234751133
+     }
+    },
+    {
+     "page": 62,
+     "text": "Công ty là gì?",
+     "scores": {
+      "natural": 2.531961769078692,
+      "clear": 1.8345799569012051,
+      "faithful": 1.8505829923072523,
+      "settled": 1.9532745762691972
+     }
+    },
+    {
+     "page": 62,
+     "text": "Hay là tên một loại vũ khí?",
+     "scores": {
+      "natural": 2.465421886555091,
+      "clear": 1.7938194153824991,
+      "faithful": 1.9421632210577766
+     }
+    },
+    {
+     "page": 63,
+     "text": "Một công ty.",
+     "scores": {
+      "natural": 2.428658693910775,
+      "clear": 1.8016675075248672,
+      "faithful": 1.9227234742223296,
+      "settled": 1.948986632173387
+     }
+    },
+    {
+     "page": 64,
+     "text": "Đó là một tổ chức\nnơi mọi người cùng nhau\ntạo ra lợi nhuận...",
+     "scores": {
+      "natural": 2.3149359648980843,
+      "clear": 1.8827525134536134,
+      "faithful": 1.8958989655175178
+     }
+    },
+    {
+     "page": 65,
+     "text": "...rồi chia lợi nhuận đó\ncho các thành viên.",
+     "scores": {
+      "natural": 2.5899248092433704,
+      "clear": 1.8742476460111228,
+      "faithful": 1.9437784782935958
+     }
+    },
+    {
+     "page": 66,
+     "text": "Và để quản lý hiệu quả\nmột tổ chức lớn cỡ này—",
+     "scores": {
+      "natural": 2.448665772698548,
+      "clear": 1.9052973053216136,
+      "faithful": 1.9489679230765504
+     }
+    },
+    {
+     "page": 67,
+     "text": "Chúng ta có cấp bậc.",
+     "scores": {
+      "natural": 2.584205479830464,
+      "clear": 1.903235077331783,
+      "faithful": 1.951319460950975,
+      "settled": 1.9791027377274455
+     }
+    },
+    {
+     "page": 68,
+     "text": "Đúng vậy.\nTừ hôm nay, tôi sẽ trao điểm\ncho những goblin có đóng góp giá trị.",
+     "scores": {
+      "natural": 2.6104208721864186,
+      "clear": 1.9288881352421456,
+      "faithful": 1.9531657013200032,
+      "settled": 1.9682401314765798
+     }
+    },
+    {
+     "page": 69,
+     "text": "Câu cá, và bạn nhận được điểm.",
+     "scores": {
+      "natural": 2.1403972010966976,
+      "clear": 1.811131026362191,
+      "faithful": 1.8327803110059562,
+      "settled": 1.886581032948758
+     }
+    },
+    {
+     "page": 70,
+     "text": "Tích đủ điểm,\ncác cậu sẽ được\nthăng chức.",
+     "scores": {
+      "natural": 2.5735094547812203,
+      "clear": 1.91555421923386,
+      "faithful": 1.8999500053767673,
+      "settled": 1.8541468793288938
+     }
+    },
+    {
+     "page": 70,
+     "text": "Đánh giỏi trong trận,\ncác cậu được điểm.",
+     "scores": {
+      "natural": 2.3740460337875304,
+      "clear": 1.860811235703628,
+      "faithful": 1.8676099025993789,
+      "settled": 1.8506771056749451
+     }
+    },
+    {
+     "page": 70,
+     "text": "Sửa cọc rào,\ncác cậu được điểm.",
+     "scores": {
+      "natural": 2.2982777724188956,
+      "clear": 1.6301781543423193,
+      "faithful": 1.658983887177075,
+      "settled": 1.7923807064609607
+     }
+    },
+    {
+     "page": 71,
+     "text": "Mỗi lần sẽ thăng một cấp.",
+     "scores": {
+      "natural": 2.460083284120313,
+      "clear": 1.846042050395109,
+      "faithful": 1.845220151592834
+     }
+    },
+    {
+     "page": 72,
+     "text": "Vậy thăng chức\nthì được lợi gì?",
+     "scores": {
+      "natural": 2.657875160486485,
+      "clear": 1.9413506781263097,
+      "faithful": 1.9433307474977506,
+      "settled": 1.9566724147344594
+     }
+    },
+    {
+     "page": 74,
+     "text": "Đúng vậy. Thăng chức là các cậu được chia thịt trước—và còn được nhiều hơn nữa.",
+     "scores": {
+      "natural": 2.6091958780751296,
+      "clear": 1.9356237477889005,
+      "faithful": 1.9355945093174731,
+      "settled": 1.920142662436494
+     }
+    },
+    {
+     "page": 75,
+     "text": "Các cậu sẽ được ăn nhiều thịt\nhơn tất cả những kẻ khác.",
+     "scores": {
+      "natural": 2.5236672646089753,
+      "clear": 1.9413119531664895,
+      "faithful": 1.910888028585248,
+      "settled": 1.8952339632548172
+     }
+    },
+    {
+     "page": 75,
+     "text": "Sơ đồ tổ chức",
+     "scores": {
+      "natural": 2.095145684693427,
+      "clear": 1.5408129907389703,
+      "faithful": 0.4112548804454471,
+      "settled": 0.1454222316940036
+     }
+    },
+    {
+     "page": 75,
+     "text": "Nếu các cậu chăm chỉ hơn\nmọi kẻ khác,",
+     "scores": {
+      "natural": 2.3600324250360556,
+      "clear": 1.9092676231009005,
+      "faithful": 1.9082140230140063
+     }
+    },
+    {
+     "page": 75,
+     "text": "Và còn một chuyện nữa.",
+     "scores": {
+      "natural": 2.567879746197407,
+      "clear": 1.9159892559682552,
+      "faithful": 1.9239568922928383
+     }
+    },
+    {
+     "page": 76,
+     "text": "Tôi sẽ đích thân\nđặt tên cho từng người.",
+     "scores": {
+      "natural": 2.6301385101532913,
+      "clear": 1.9342934239934229,
+      "faithful": 1.9359772610236265
+     }
+    },
+    {
+     "page": 78,
+     "text": "Sếp sẽ đặt tên cho bọn em...?",
+     "scores": {
+      "natural": 2.4321710238190626,
+      "clear": 1.8856620246507996,
+      "faithful": 1.796605146061707,
+      "settled": 1.8112873035971095
+     }
+    },
+    {
+     "page": 78,
+     "text": "Như KIM PRO ạ?",
+     "scores": {
+      "natural": 2.586295683450057,
+      "clear": 1.7572026918035553,
+      "faithful": 1.944228174972504,
+      "settled": 1.9402751130721394
+     }
+    },
+    {
+     "page": 79,
+     "text": "Đúng rồi.\nNhư KIM PRO\nvà GAEBUL.",
+     "scores": {
+      "natural": 2.456502733410709,
+      "clear": 1.8383461978593072,
+      "faithful": 1.9640293933121364,
+      "settled": 1.9377634816999467
+     }
+    },
+    {
+     "page": 83,
+     "text": "Tăng ca!\nTăng ca!",
+     "scores": {
+      "natural": 2.594389921147033,
+      "clear": 1.8398327724873564,
+      "faithful": 1.9155798897094878
+     }
+    },
+    {
+     "page": 84,
+     "text": "Đến giờ tăng ca\nvui vẻ rồi!!!!!!",
+     "scores": {
+      "natural": 2.1506431924437504,
+      "clear": 1.7475130698412944,
+      "faithful": 1.7675245474661585
+     }
+    }
+   ]
+  },
+  "glossary_text_slices": 83,
+  "glossary_image_slices": 0,
+  "glossary": {
+   "names": [
+    {
+     "source": "MINA",
+     "target": "MINA",
+     "note": "short form of KIM MINA"
+    },
+    {
+     "source": "OH HYUNMIN",
+     "target": "OH HYUNMIN",
+     "note": "person, subordinate"
+    },
+    {
+     "source": "KIM MINA",
+     "target": "KIM MINA",
+     "note": "person, opposing lord turned weapons director"
+    },
+    {
+     "source": "KOREA",
+     "target": "Hàn Quốc",
+     "note": "place"
+    },
+    {
+     "source": "AGENCY FOR DEFENSE DEVELOPMENT",
+     "target": "Cơ quan Phát triển Quốc phòng",
+     "note": "organisation"
+    },
+    {
+     "source": "WEAPONS SYSTEMS RESEARCH CENTER",
+     "target": "Trung tâm Nghiên cứu Hệ thống Vũ khí",
+     "note": "organisation unit"
+    },
+    {
+     "source": "ADD",
+     "target": "ADD",
+     "note": "abbreviation of organisation"
+    },
+    {
+     "source": "HYUNMIN",
+     "target": "HYUNMIN",
+     "note": "young man in white shirt"
+    },
+    {
+     "source": "KIM PRO",
+     "target": "KIM PRO",
+     "note": "goblin name"
+    },
+    {
+     "source": "GAEBUL",
+     "target": "GAEBUL",
+     "note": "goblin name"
+    },
+    {
+     "source": "GOBLIN INCORPORATED",
+     "target": "Công Ty Goblin",
+     "note": "organisation launched by man in white shirt"
+    }
+   ],
+   "terms": [
+    {
+     "source": "lord",
+     "target": "Lãnh chúa"
+    },
+    {
+     "source": "opposing lord",
+     "target": "Lãnh chúa đối địch"
+    },
+    {
+     "source": "territory war",
+     "target": "Chiến tranh lãnh địa"
+    },
+    {
+     "source": "system",
+     "target": "Hệ thống"
+    },
+    {
+     "source": "orcs",
+     "target": "Orc"
+    },
+    {
+     "source": "senior researcher",
+     "target": "Nghiên cứu viên cao cấp"
+    },
+    {
+     "source": "research director",
+     "target": "Giám đốc nghiên cứu"
+    },
+    {
+     "source": "weapons research director",
+     "target": "Giám đốc Nghiên cứu Vũ khí"
+    },
+    {
+     "source": "territory resident",
+     "target": "Cư dân lãnh địa"
+    },
+    {
+     "source": "company",
+     "target": "công ty"
+    },
+    {
+     "source": "troops",
+     "target": "binh lính"
+    },
+    {
+     "source": "employees",
+     "target": "nhân viên"
+    },
+    {
+     "source": "employee",
+     "target": "nhân viên"
+    },
+    {
+     "source": "department head",
+     "target": "trưởng phòng"
+    },
+    {
+     "source": "deputy department head",
+     "target": "phó trưởng phòng"
+    },
+    {
+     "source": "manager",
+     "target": "quản lý"
+    },
+    {
+     "source": "assistant manager",
+     "target": "phó quản lý"
+    },
+    {
+     "source": "intern",
+     "target": "thực tập sinh"
+    },
+    {
+     "source": "ranks",
+     "target": "cấp bậc"
+    },
+    {
+     "source": "points",
+     "target": "điểm"
+    },
+    {
+     "source": "promoted",
+     "target": "thăng chức"
+    },
+    {
+     "source": "meat",
+     "target": "thịt"
+    }
+   ],
+   "address": [
+    {
+     "from": "young man with brown hair in white shirt",
+     "to": "woman with long brown hair",
+     "self": "tôi",
+     "other": "cô"
+    },
+    {
+     "from": "woman with long brown hair",
+     "to": "young man with brown hair in white shirt",
+     "self": "tôi",
+     "other": "anh"
+    },
+    {
+     "from": "small green goblin child",
+     "to": "woman with long brown hair",
+     "self": "em",
+     "other": "chị"
+    },
+    {
+     "from": "pale bald goblin-like creature",
+     "to": "man in white shirt covering his face",
+     "self": "em",
+     "other": "sếp"
+    },
+    {
+     "from": "young man in white shirt",
+     "to": "goblins",
+     "self": "tôi",
+     "other": "các cậu"
+    },
+    {
+     "from": "young man in white shirt",
+     "to": "young woman with long brown hair",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "young woman with long brown hair",
+     "to": "young man in white shirt",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "woman with long brown hair in white blouse and dark skirt",
+     "to": "green goblin",
+     "self": "tôi",
+     "other": "cậu"
+    },
+    {
+     "from": "goblin",
+     "to": "man in white shirt",
+     "self": "em",
+     "other": "sếp"
+    },
+    {
+     "from": "goblin",
+     "to": "goblin",
+     "self": "tôi",
+     "other": "cậu"
+    }
+   ]
+  },
+  "review_sheets": 14,
+  "review_crops": 161,
+  "series": {
+   "key": "asurascans-goblin-inc",
+   "names": 0,
+   "terms": 0,
+   "address": 0,
+   "characters": 0,
+   "chapters": 0
+  },
+  "lines_joined": 1,
+  "overlaps_dropped": 0,
+  "seam_copies": 3,
+  "characters": [
+   {
+    "name": "Goblin trẻ",
+    "note": "goblin nhỏ da xanh, đội khăn đỏ, tò mò hỏi chuyện"
+   },
+   {
+    "name": "con sói trắng",
+    "note": "sói trắng to lớn, đang hú"
+   },
+   {
+    "name": "KIM MINA",
+    "note": "nữ tóc nâu dài, sơ mi trắng, quỳ đối diện, ngạc nhiên vì không biết còn cách khác"
+   },
+   {
+    "name": "goblin da xanh đầu trọc",
+    "note": "sinh vật da xanh đầu trọc, mắt vàng, mệt mỏi, thuộc hạ của sếp"
+   },
+   {
+    "name": "Hyunmin",
+    "note": "chàng trai tóc nâu áo trắng, đang giảng cho bọn goblin cách kiếm điểm và thăng chức"
+   },
+   {
+    "name": "bọn goblin quỳ",
+    "note": "những goblin nhỏ da xanh, quỳ gối trước mặt KIM MINA, sợ sệt nhận lỗi"
+   },
+   {
+    "name": "bọn goblin",
+    "note": "đám goblin da xanh, hỏi chuyện Hyunmin"
+   },
+   {
+    "name": "goblin trẻ",
+    "note": "goblin nhỏ da xanh, khăn đỏ, reo hò cổ vũ"
+   },
+   {
+    "name": "goblin nhỏ",
+    "note": "goblin da xanh bé xíu, quàng khăn đỏ, mắt tròn xoe, đang kinh ngạc nhìn đống cá"
+   },
+   {
+    "name": "goblin da xanh",
+    "note": "goblin da xanh, đang chạy hối hả, hét lên"
+   }
+  ],
+  "address": [
+   {
+    "from": "KIM MINA",
+    "to": "chàng trai tóc nâu áo trắng",
+    "self": "tôi",
+    "other": "anh"
+   },
+   {
+    "from": "goblin da xanh đầu trọc",
+    "to": "người đàn ông áo trắng",
+    "self": "em",
+    "other": "sếp"
+   },
+   {
+    "from": "Hyunmin",
+    "to": "Hyunmin",
+    "self": "cậu",
+    "other": "cậu"
+   },
+   {
+    "from": "Hyunmin",
+    "to": "KIM MINA",
+    "self": "tôi",
+    "other": "cô"
+   },
+   {
+    "from": "KIM MINA",
+    "to": "Hyunmin",
+    "self": "tôi",
+    "other": "anh"
+   },
+   {
+    "from": "KIM MINA",
+    "to": "bọn goblin",
+    "self": "tôi",
+    "other": "các cậu"
+   },
+   {
+    "from": "Hyunmin",
+    "to": "bọn goblin",
+    "self": "tôi",
+    "other": "các cậu"
+   },
+   {
+    "from": "goblin nhỏ",
+    "to": "Hyunmin",
+    "self": "em",
+    "other": "sếp"
+   },
+   {
+    "from": "bọn goblin",
+    "to": "Hyunmin",
+    "self": "em",
+    "other": "sếp"
+   }
+  ],
+  "blanks_settled": 4
+ },
+ "gateway_job": {
+  "status": "completed",
+  "requests": 240,
+  "prompt_tokens": 491129,
+  "completion_tokens": 108125,
+  "cost_usd": 0.05457483731000006,
+  "charged_micros": 57311
+ },
+ "transport": {
+  "scan": {
+   "requests": 43,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 7.7,
+    "p90": 11.7,
+    "max": 19.2,
+    "sum": 357.9
+   },
+   "span_s": 106.1,
+   "images": 85,
+   "request_kb_avg": 276.8,
+   "prompt_tokens": 81505,
+   "cached_tokens": 13845,
+   "completion_tokens": 32951,
+   "reasoning_tokens": 23484
+  },
+  "glossary": {
+   "requests": 3,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 24.9,
+    "p90": 33.1,
+    "max": 33.1,
+    "sum": 65.6
+   },
+   "span_s": 33.1,
+   "images": 0,
+   "request_kb_avg": 4.6,
+   "prompt_tokens": 3724,
+   "cached_tokens": 0,
+   "completion_tokens": 6814,
+   "reasoning_tokens": 5431
+  },
+  "review": {
+   "requests": 14,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 8.2,
+    "p90": 14.1,
+    "max": 16.0,
+    "sum": 128.4
+   },
+   "span_s": 21.8,
+   "images": 14,
+   "request_kb_avg": 669.4,
+   "prompt_tokens": 54716,
+   "cached_tokens": 1287,
+   "completion_tokens": 8626,
+   "reasoning_tokens": 8029
+  },
+  "translate": {
+   "requests": 77,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 6.7,
+    "p90": 10.7,
+    "max": 27.3,
+    "sum": 564.1
+   },
+   "span_s": 227.6,
+   "images": 77,
+   "request_kb_avg": 286.1,
+   "prompt_tokens": 318767,
+   "cached_tokens": 174592,
+   "completion_tokens": 58984,
+   "reasoning_tokens": 45594
+  },
+  "judge": {
+   "requests": 102,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 14.7,
+    "p90": 22.6,
+    "max": 29.1,
+    "sum": 1526.9
+   },
+   "span_s": 213.6,
+   "images": 0,
+   "request_kb_avg": 0.0,
+   "prompt_tokens": 30363,
+   "cached_tokens": 0,
+   "completion_tokens": 0,
+   "reasoning_tokens": 0
+  },
+  "polish": {
+   "requests": 1,
+   "failed": 0,
+   "retried": 0,
+   "truncated": 0,
+   "latency_s": {
+    "p50": 5.1,
+    "p90": 5.1,
+    "max": 5.1,
+    "sum": 5.1
+   },
+   "span_s": 5.1,
+   "images": 0,
+   "request_kb_avg": 8.4,
+   "prompt_tokens": 2054,
+   "cached_tokens": 0,
+   "completion_tokens": 750,
+   "reasoning_tokens": 637
+  }
+ },
+ "zip_pages": 24,
+ "slices": 85,
+ "slices_active": 83,
+ "clean_ms": {
+  "auto_inpaint": 559922,
+  "auto_inpaint.lama_model_ms": 433778,
+  "auto_inpaint.ort_global_lock_wait_ms": 0,
+  "auto_inpaint.session_lock_wait_ms": 0,
+  "detect": 243215,
+  "manual_inpaint": 0,
+  "manual_inpaint.lama_model_ms": 0,
+  "manual_inpaint.ort_global_lock_wait_ms": 0,
+  "manual_inpaint.session_lock_wait_ms": 0,
+  "read": 5199,
+  "screen": 0,
+  "total": 814612,
+  "write": 6194
+ },
+ "pairs": 83,
+ "lines": [
+  {
+   "slice": 2,
+   "id": "text_be94bd45f0da43be",
+   "source": "SO...",
+   "translation": "Vậy...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 120,
+   "font_px_at_800": 106.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Vậy..."
+   ],
+   "box_w": 318,
+   "box_h": 186,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 66,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_b1a7e7211ebf4ef2",
+   "source": "YOU WOKE UP HERE FOUR DAYS AGO?",
+   "translation": "Cậu tỉnh dậy ở đây\nbốn ngày trước à?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 76,
+   "font_px_at_800": 67.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Cậu tỉnh dậy ở",
+    "đây",
+    "bốn ngày trước à?"
+   ],
+   "box_w": 569,
+   "box_h": 339,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 3,
+   "id": "text_57e6d799534b4390",
+   "source": "AWOO!",
+   "translation": "Awoo!",
+   "role": "sfx",
+   "container": "bubble",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 94,
+   "font_px_at_800": 83.6,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Awoo!"
+   ],
+   "box_w": 345,
+   "box_h": 170,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 53,
+   "split_word": false
+  },
+  {
+   "slice": 4,
+   "id": "text_d3a6a3ebcaa647db",
+   "source": "AND THEN THE SYSTEM SUDDENLY DECLARED YOU A LORD?",
+   "translation": "Và rồi Hệ thống đột nhiên\ntuyên bố chị là Lãnh chúa sao?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Và rồi Hệ thống đột",
+    "nhiên",
+    "tuyên bố chị là Lãnh",
+    "chúa sao?"
+   ],
+   "box_w": 582,
+   "box_h": 338,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_4a96d8e496094914",
+   "source": "AND THE ORCS LOCKED YOU UP HERE BECAUSE THEY REFUSED TO RECOGNIZE YOU AS THEIR LORD?",
+   "translation": "Và bọn Orc nhốt cô ở đây\nvì chúng không chịu\ncông nhận cô là Lãnh chúa?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Và bọn Orc nhốt cô ở đây",
+    "vì chúng không chịu",
+    "công nhận cô là Lãnh chúa?"
+   ],
+   "box_w": 719,
+   "box_h": 439,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 32,
+   "split_word": false
+  },
+  {
+   "slice": 5,
+   "id": "text_14e4e693d92b4780",
+   "source": "YES...",
+   "translation": "Đúng...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 95,
+   "font_px_at_800": 84.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Đúng..."
+   ],
+   "box_w": 296,
+   "box_h": 168,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 52,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_ff0755cdcc724d5f",
+   "source": "SO THEY SAID THEY'D WAIT UNTIL I EVENTUALLY GAVE UP ON MY OWN.",
+   "translation": "nên chúng nói sẽ chờ đến khi\ntôi tự bỏ cuộc.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "nên chúng nói sẽ chờ",
+    "đến khi",
+    "tôi tự bỏ cuộc."
+   ],
+   "box_w": 589,
+   "box_h": 348,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 6,
+   "id": "text_3e4f096983d34870",
+   "source": "THE ORCS COULDN'T HARM ME DIRECTLY,",
+   "translation": "Orc không thể trực tiếp\nlàm hại tôi,",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 72,
+   "font_px_at_800": 64.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Orc không thể",
+    "trực tiếp",
+    "làm hại tôi,"
+   ],
+   "box_w": 575,
+   "box_h": 326,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 40,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_1e801cdab7de4ac7",
+   "source": "THAT SOUNDS A LOT LIKE THE KOREAN WAY...",
+   "translation": "Nghe cứ như kiểu\nHàn Quốc...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Nghe cứ như kiểu",
+    "Hàn Quốc..."
+   ],
+   "box_w": 449,
+   "box_h": 267,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 7,
+   "id": "text_7c8d3dc0048b4d51",
+   "source": "OF PRESSURING SOMEONE INTO RESIGNING, DOESN'T IT?",
+   "translation": "Ép người ta từ chức,\nđúng không?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 36,
+   "font_px_at_800": 32.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ép người ta từ chức,",
+    "đúng không?"
+   ],
+   "box_w": 466,
+   "box_h": 207,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 20,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_0de3ff3474634fce",
+   "source": "OF COURSE, YOU COULD ACTUALLY DIE IN THIS CASE, SO IT'S INCOMPARABLY WORSE...",
+   "translation": "Tất nhiên, trong trường hợp này\nanh có thể chết thật, nên nó\ntệ hơn không thể so sánh được...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 6,
+   "wrapped": [
+    "Tất nhiên, trong trường",
+    "hợp này",
+    "anh có thể chết thật, nên",
+    "nó",
+    "tệ hơn không thể so sánh",
+    "được..."
+   ],
+   "box_w": 708,
+   "box_h": 452,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 8,
+   "id": "text_026fc83d4f9c48cf",
+   "source": "I THOUGHT THE SAME THING.",
+   "translation": "Tôi cũng nghĩ vậy.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Tôi cũng nghĩ vậy."
+   ],
+   "box_w": 481,
+   "box_h": 211,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 9,
+   "id": "text_0f1b4c0a4a564a9d",
+   "source": "UM, WHAT HAPPENED TO THE ORCS, THOUGH?",
+   "translation": "Ừm, thế còn bọn Orc\nthì sao?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ừm, thế còn bọn Orc",
+    "thì sao?"
+   ],
+   "box_w": 519,
+   "box_h": 278,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 32,
+   "split_word": false
+  },
+  {
+   "slice": 10,
+   "id": "text_b26ecbfad0f14562",
+   "source": "OH.",
+   "translation": "Ồ.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 109,
+   "font_px_at_800": 96.9,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Ồ."
+   ],
+   "box_w": 331,
+   "box_h": 273,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 60,
+   "split_word": false
+  },
+  {
+   "slice": 11,
+   "id": "text_9ad6e94d37044256",
+   "source": "THEY'RE ALL DEAD? EVERY LAST ONE?",
+   "translation": "Họ chết cả rồi sao?\nKhông sót một ai ư?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Họ chết cả rồi sao?",
+    "Không sót một ai ư?"
+   ],
+   "box_w": 529,
+   "box_h": 212,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 32,
+   "split_word": false
+  },
+  {
+   "slice": 11,
+   "id": "text_20194d8510f54038",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 11,
+   "id": "text_ea9e73a8ca6a41bf",
+   "source": "THEY'RE DEAD.",
+   "translation": "Họ chết cả rồi.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 80,
+   "font_px_at_800": 71.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Họ chết cả rồi."
+   ],
+   "box_w": 553,
+   "box_h": 171,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 12,
+   "id": "text_d6f61d41a9654717",
+   "source": "ALL THE ORCS ARE DEAD.",
+   "translation": "Bọn Orc chết hết rồi.",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 49,
+   "font_px_at_800": 43.6,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Bọn Orc chết hết rồi."
+   ],
+   "box_w": 436,
+   "box_h": 207,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 32,
+   "split_word": false
+  },
+  {
+   "slice": 12,
+   "id": "text_849054636fae4a68",
+   "source": "YES.",
+   "translation": "Đúng vậy.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 104,
+   "font_px_at_800": 92.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Đúng",
+    "vậy."
+   ],
+   "box_w": 307,
+   "box_h": 243,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 66,
+   "split_word": false
+  },
+  {
+   "slice": 13,
+   "id": "text_1997802c4eef470f",
+   "source": "BUT...",
+   "translation": "Nhưng...",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 102,
+   "font_px_at_800": 90.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Nhưng..."
+   ],
+   "box_w": 348,
+   "box_h": 189,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 67,
+   "split_word": false
+  },
+  {
+   "slice": 14,
+   "id": "text_8ed8dd9372474d71",
+   "source": "THE TERRITORY WAR STILL ISN'T OVER.",
+   "translation": "Chiến tranh lãnh địa\nvẫn chưa kết thúc.",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 47,
+   "font_px_at_800": 41.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chiến tranh lãnh địa",
+    "vẫn chưa kết thúc."
+   ],
+   "box_w": 579,
+   "box_h": 206,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 14,
+   "id": "text_6388749e8dee4a6b",
+   "source": "[TERRITORY WAR IN PROGRESS]",
+   "translation": "[Chiến tranh lãnh địa\nđang diễn ra]",
+   "role": "system_ui",
+   "container": "screen",
+   "font": "skill.exo-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 45,
+   "font_px_at_800": 40.0,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "[Chiến tranh lãnh địa",
+    "đang diễn ra]"
+   ],
+   "box_w": 660,
+   "box_h": 151,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 15,
+   "id": "text_4b34abc395c94749",
+   "source": "A TERRITORY WAR DOESN'T END UNTIL A LORD DIES...",
+   "translation": "Chiến tranh lãnh địa không kết thúc\ncho đến khi một Lãnh chúa chết...",
+   "role": "thought",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Chiến tranh lãnh địa",
+    "không kết thúc",
+    "cho đến khi một Lãnh",
+    "chúa chết..."
+   ],
+   "box_w": 639,
+   "box_h": 308,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 15,
+   "id": "text_38b7795a1be94afb",
+   "source": "WHAT DO I DO...?",
+   "translation": "Tôi phải làm gì đây...?",
+   "role": "thought",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 77,
+   "font_px_at_800": 68.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Tôi phải làm",
+    "gì đây...?"
+   ],
+   "box_w": 402,
+   "box_h": 252,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 15,
+   "id": "text_dd092cf52b074362",
+   "source": "...",
+   "translation": "...",
+   "role": "thought",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 54,
+   "font_px_at_800": 48.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "..."
+   ],
+   "box_w": 145,
+   "box_h": 157,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 15,
+   "id": "text_a9050600ed04409b",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 16,
+   "id": "text_ced49dcc98bd4837",
+   "source": "Should we finish her off, boss?",
+   "translation": "Dứt điểm cô ta\nkhông, sếp?",
+   "role": "dialogue",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 48,
+   "font_px_at_800": 42.7,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Dứt điểm cô ta",
+    "không, sếp?"
+   ],
+   "box_w": 300,
+   "box_h": 177,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 17,
+   "id": "text_f416d5f00df14a26",
+   "source": "YOU'RE A HUMAN, NOT AN ORC!",
+   "translation": "Cậu là người,\nkhông phải Orc!",
+   "role": "thought",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Cậu là người,",
+    "không phải Orc!"
+   ],
+   "box_w": 517,
+   "box_h": 315,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 17,
+   "id": "text_19ced4f832d94f2e",
+   "source": "NO! WHAT ARE YOU THINKING, OH HYUNMIN?!",
+   "translation": "Không! Cậu đang nghĩ gì vậy,\nOH HYUNMIN?!",
+   "role": "thought",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 51,
+   "font_px_at_800": 45.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Không! Cậu đang nghĩ gì vậy,",
+    "OH HYUNMIN?!"
+   ],
+   "box_w": 542,
+   "box_h": 290,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 18,
+   "id": "text_4508a3f7d5fc43bb",
+   "source": "THEN I'LL SURRENDER.",
+   "translation": "Vậy tôi xin đầu hàng.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 95,
+   "font_px_at_800": 84.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Vậy tôi xin",
+    "đầu hàng."
+   ],
+   "box_w": 444,
+   "box_h": 303,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 52,
+   "split_word": false
+  },
+  {
+   "slice": 19,
+   "id": "text_2bbe69e135394a53",
+   "source": "THE OPPOSING LORD HAS SURRENDERED.",
+   "translation": "Lãnh chúa đối địch\nđã đầu hàng.",
+   "role": "system_ui",
+   "container": "screen",
+   "font": "skill.exo-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 74,
+   "font_px_at_800": 65.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Lãnh chúa đối địch",
+    "đã đầu hàng."
+   ],
+   "box_w": 630,
+   "box_h": 258,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 48,
+   "split_word": false
+  },
+  {
+   "slice": 19,
+   "id": "text_25afaf0719dc4244",
+   "source": "WHAT?",
+   "translation": "Gì cơ?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 86,
+   "font_px_at_800": 76.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Gì cơ?"
+   ],
+   "box_w": 293,
+   "box_h": 157,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 47,
+   "split_word": false
+  },
+  {
+   "slice": 19,
+   "id": "text_4370481a4b8c4b83",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 20,
+   "id": "text_98bcd2c7140645c8",
+   "source": "YOU HAVE WON THE TERRITORY WAR.",
+   "translation": "Bạn đã thắng Chiến tranh lãnh địa.",
+   "role": "system_ui",
+   "container": "screen",
+   "font": "skill.exo-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 76,
+   "font_px_at_800": 67.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Bạn đã thắng Chiến",
+    "tranh lãnh địa."
+   ],
+   "box_w": 679,
+   "box_h": 314,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 59,
+   "split_word": false
+  },
+  {
+   "slice": 20,
+   "id": "text_cc8f863d0e7b4818",
+   "source": "HUH?",
+   "translation": "Hả?",
+   "role": "dialogue",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 200,
+   "font_px_at_800": 177.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hả?"
+   ],
+   "box_w": 465,
+   "box_h": 356,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 161,
+   "split_word": false
+  },
+  {
+   "slice": 20,
+   "id": "text_a33edb244800413a",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 20,
+   "id": "text_3bd5f30ec5874d5b",
+   "source": "THAT WORKS?",
+   "translation": "Vậy cũng được à?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Vậy cũng",
+    "được à?"
+   ],
+   "box_w": 457,
+   "box_h": 187,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 64,
+   "split_word": false
+  },
+  {
+   "slice": 21,
+   "id": "text_05dbf0378a4547d4",
+   "source": "HUH? WAS THERE ANOTHER WAY?",
+   "translation": "Hả? Còn cách nào khác nữa à?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Hả? Còn cách nào",
+    "khác nữa à?"
+   ],
+   "box_w": 544,
+   "box_h": 308,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 21,
+   "id": "text_2455b5c9d52e4f55",
+   "source": "WAIT, THERE WAS A SOLUTION THIS EASY...?",
+   "translation": "Khoan đã, hóa ra\ncó cách đơn giản vậy...?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Khoan đã, hóa ra",
+    "có cách đơn giản",
+    "vậy...?"
+   ],
+   "box_w": 491,
+   "box_h": 276,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 32,
+   "split_word": false
+  },
+  {
+   "slice": 22,
+   "id": "text_50d7c537fffc4938",
+   "source": "ANYWAY, NOW IT'S ALL OV—",
+   "translation": "Dù sao thì,\ngiờ mọi chuyện xong—",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 80,
+   "font_px_at_800": 71.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Dù sao thì,",
+    "giờ mọi chuyện",
+    "xong-"
+   ],
+   "box_w": 548,
+   "box_h": 350,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 22,
+   "id": "text_0620e1449b7a4d8c",
+   "source": "THE OPPOSING LORD HAS REQUESTED TO DEFECT TO YOUR SIDE.",
+   "translation": "Lãnh chúa đối địch đã xin\nvề phe của bạn.",
+   "role": "system_ui",
+   "container": "screen",
+   "font": "skill.exo-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 61,
+   "font_px_at_800": 54.2,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Lãnh chúa đối địch đã xin",
+    "về phe của bạn."
+   ],
+   "box_w": 707,
+   "box_h": 228,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 22,
+   "id": "text_e8fea98783ad414c",
+   "source": "OH, N-NO. NOT AT ALL.",
+   "translation": "Ô, k-không.\nKhông hề.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 77,
+   "font_px_at_800": 68.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ô, k-không.",
+    "Không hề."
+   ],
+   "box_w": 453,
+   "box_h": 243,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 23,
+   "id": "text_2c8599d40d7e40cc",
+   "source": "WILL YOU ACCEPT? Y/N",
+   "translation": "Bạn có chấp nhận?\nCó/Không",
+   "role": "system_ui",
+   "container": "screen",
+   "font": "skill.exo-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 70,
+   "font_px_at_800": 62.2,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Bạn có chấp nhận?",
+    "Có/Không"
+   ],
+   "box_w": 610,
+   "box_h": 289,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 58,
+   "split_word": false
+  },
+  {
+   "slice": 24,
+   "id": "text_4eca453d4d9c4a51",
+   "source": "WILL YOU ACCEPT? Y/N",
+   "translation": "Bạn có chấp nhận?\nCó/Không",
+   "role": "system_ui",
+   "container": "screen",
+   "font": "skill.exo-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 79,
+   "font_px_at_800": 70.2,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Bạn có chấp nhận?",
+    "Có/Không"
+   ],
+   "box_w": 678,
+   "box_h": 314,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 66,
+   "split_word": false
+  },
+  {
+   "slice": 24,
+   "id": "text_52a0994b3e464657",
+   "source": "WELL, OF COURSE...",
+   "translation": "Chà, đương nhiên rồi...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chà, đương nhiên",
+    "rồi..."
+   ],
+   "box_w": 483,
+   "box_h": 234,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 25,
+   "id": "text_f698b63ed9384124",
+   "source": "I DON'T KNOW ANYTHING ABOUT MINA...",
+   "translation": "Tôi chẳng biết gì về Mina cả...",
+   "role": "thought",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Tôi chẳng biết gì về",
+    "Mina cả..."
+   ],
+   "box_w": 633,
+   "box_h": 354,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 25,
+   "id": "text_f1315afe46e44fc1",
+   "source": "WAIT, COME TO THINK OF IT...",
+   "translation": "Khoan đã, nghĩ lại thì...",
+   "role": "thought",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Khoan đã, nghĩ lại",
+    "thì..."
+   ],
+   "box_w": 483,
+   "box_h": 206,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_98f8f1ff275c4e5e",
+   "source": "IT WOULD BE IRRESPONSIBLE TO MAKE A HIRING DECISION THIS CASUALLY.",
+   "translation": "Tuyển người mà qua loa thế này\nthì thật là vô trách nhiệm.",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 46,
+   "font_px_at_800": 40.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Tuyển người mà qua loa thế này",
+    "thì thật là vô trách nhiệm."
+   ],
+   "box_w": 666,
+   "box_h": 338,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_d67341f6dd8046d5",
+   "source": "AHEM!",
+   "translation": "Khụ!",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 156,
+   "font_px_at_800": 138.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Khụ!"
+   ],
+   "box_w": 382,
+   "box_h": 355,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 186,
+   "split_word": false
+  },
+  {
+   "slice": 26,
+   "id": "text_6d8fc994f541435c",
+   "source": "MINA.",
+   "translation": "MINA.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 142,
+   "font_px_at_800": 126.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "MINA."
+   ],
+   "box_w": 380,
+   "box_h": 207,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 78,
+   "split_word": false
+  },
+  {
+   "slice": 27,
+   "id": "text_8428438d1c8d43f6",
+   "source": "WHAT KIND OF WORK DID YOU DO IN KOREA?",
+   "translation": "Hồi ở Hàn Quốc\nsếp làm nghề gì ạ?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Hồi ở Hàn Quốc",
+    "sếp làm nghề gì ạ?"
+   ],
+   "box_w": 566,
+   "box_h": 296,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 27,
+   "id": "text_a838baa5217d45a4",
+   "source": "IN KOREA?",
+   "translation": "Hàn Quốc?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 86,
+   "font_px_at_800": 76.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hàn Quốc?"
+   ],
+   "box_w": 429,
+   "box_h": 159,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 47,
+   "split_word": false
+  },
+  {
+   "slice": 28,
+   "id": "text_2df8f888e9fe4d43",
+   "source": "I WAS A SENIOR RESEARCHER AT THE AGENCY FOR DEFENSE DEVELOPMENT.",
+   "translation": "Tôi từng là nghiên cứu viên cao cấp ở Cơ quan Phát triển Quốc phòng.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 50,
+   "font_px_at_800": 44.4,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tôi từng là nghiên cứu viên",
+    "cao cấp ở Cơ quan Phát",
+    "triển Quốc phòng."
+   ],
+   "box_w": 584,
+   "box_h": 325,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 28,
+   "split_word": false
+  },
+  {
+   "slice": 28,
+   "id": "text_69503b60d9fb403c",
+   "source": "KIM MINA / SENIOR RESEARCHER / WEAPONS SYSTEMS RESEARCH CENTER / ADD",
+   "translation": "KIM MINA\nNGHIÊN CỨU VIÊN CAO CẤP\nTRUNG TÂM NGHIÊN CỨU HỆ THỐNG VŨ KHÍ\nADD",
+   "role": "free_text",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 32,
+   "font_px_at_800": 28.4,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "KIM MINA",
+    "NGHIÊN CỨU VIÊN CAO CẤP",
+    "TRUNG TÂM NGHIÊN CỨU HỆ THỐNG VŨ KHÍ",
+    "ADD"
+   ],
+   "box_w": 536,
+   "box_h": 369,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 24,
+   "split_word": false
+  },
+  {
+   "slice": 28,
+   "id": "text_40acde451fb846f3",
+   "source": "AGENCY FOR DEFENSE DEVELOPMENT",
+   "translation": "CƠ QUAN PHÁT TRIỂN QUỐC PHÒNG",
+   "role": "title",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 32,
+   "font_px_at_800": 28.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "CƠ QUAN PHÁT TRIỂN QUỐC PHÒNG"
+   ],
+   "box_w": 446,
+   "box_h": 272,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 24,
+   "split_word": false
+  },
+  {
+   "slice": 28,
+   "id": "text_cbf193dfc5374f62",
+   "source": "WHAT SORT OF RESEARCH...?",
+   "translation": "Nghiên cứu về những gì...?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Nghiên cứu về những",
+    "gì...?"
+   ],
+   "box_w": 461,
+   "box_h": 205,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 29,
+   "id": "text_9bb2ccd801954003",
+   "source": "IN SIMPLE TERMS, THINGS YOU LAUNCH OVER LONG DISTANCES.",
+   "translation": "Nói đơn giản, đó là thứ\nanh phóng đi thật xa.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Nói đơn giản, đó là thứ",
+    "anh phóng đi thật xa."
+   ],
+   "box_w": 577,
+   "box_h": 349,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 29,
+   "id": "text_f799ab1396e444c8",
+   "source": "I MAINLY WORKED ON WEAPONS WITH PROPULSION SYSTEMS.",
+   "translation": "Chủ yếu tôi làm về vũ khí\ncó hệ thống đẩy.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chủ yếu tôi làm về vũ khí",
+    "có hệ thống đẩy."
+   ],
+   "box_w": 596,
+   "box_h": 276,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 29,
+   "id": "text_6b7ee8f43a7143f7",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 31,
+   "id": "text_25e7ab573bd94bec",
+   "source": "THINGS YOU LAUNCH... OVER LONG DISTANCES?",
+   "translation": "Những thứ có thể phóng... đi xa được?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Những thứ có thể phóng...",
+    "đi xa được?"
+   ],
+   "box_w": 603,
+   "box_h": 276,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 31,
+   "id": "text_8bae078b07e54636",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 31,
+   "id": "text_49ace231694f4b29",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 32,
+   "id": "text_e97e7262c1e94cff",
+   "source": "YOU SHOULD'VE SAID SO SOONER!",
+   "translation": "Cô phải nói\nsớm hơn chứ!",
+   "role": "dialogue",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 70,
+   "font_px_at_800": 62.2,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Cô phải nói",
+    "sớm hơn chứ!"
+   ],
+   "box_w": 694,
+   "box_h": 504,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 46,
+   "split_word": false
+  },
+  {
+   "slice": 32,
+   "id": "text_b865361eb3c04671",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 33,
+   "id": "text_2eb559d313554f14",
+   "source": "I LOOK FORWARD TO WORKING WITH YOU,",
+   "translation": "Tôi rất mong được\nhợp tác với cô,",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 77,
+   "font_px_at_800": 68.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Tôi rất mong được",
+    "hợp tác với cô,"
+   ],
+   "box_w": 592,
+   "box_h": 326,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 42,
+   "split_word": false
+  },
+  {
+   "slice": 33,
+   "id": "text_abfc5e4289cf471f",
+   "source": "YOU HAVE ACCEPTED THE DEFECTION REQUEST.",
+   "translation": "Bạn đã chấp nhận\nyêu cầu đào tẩu.",
+   "role": "system_ui",
+   "container": "screen",
+   "font": "skill.exo-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Bạn đã chấp nhận",
+    "yêu cầu đào tẩu."
+   ],
+   "box_w": 642,
+   "box_h": 260,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 49,
+   "split_word": false
+  },
+  {
+   "slice": 34,
+   "id": "text_b7ba4a55f0f24de4",
+   "source": "A TERRITORY RESIDENT HAS BEEN ADDED. -KIM MINA-",
+   "translation": "Đã thêm một cư dân lãnh địa.\n-KIM MINA-",
+   "role": "system_ui",
+   "container": "screen",
+   "font": "skill.exo-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 83,
+   "font_px_at_800": 73.8,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Đã thêm một cư dân",
+    "lãnh địa.",
+    "-KIM MINA-"
+   ],
+   "box_w": 775,
+   "box_h": 379,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 52,
+   "split_word": false
+  },
+  {
+   "slice": 34,
+   "id": "text_d260a28bbb0b4473",
+   "source": "RESEARCH DIRECTOR!",
+   "translation": "Giám đốc nghiên cứu!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Giám đốc nghiên",
+    "cứu!"
+   ],
+   "box_w": 550,
+   "box_h": 162,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 46,
+   "split_word": false
+  },
+  {
+   "slice": 34,
+   "id": "text_8a14d57f02e04b6c",
+   "source": "Huh?",
+   "translation": "Hả?",
+   "role": "dialogue",
+   "container": "free",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 54,
+   "font_px_at_800": 48.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hả?"
+   ],
+   "box_w": 228,
+   "box_h": 170,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": null,
+   "split_word": false
+  },
+  {
+   "slice": 35,
+   "id": "text_c2ee989b1f634e3c",
+   "source": "HIRED: KIM MINA, A FELLOW COUNTRYWOMAN.",
+   "translation": "Đã tuyển: KIM MINA,\nmột người đồng hương.",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 54,
+   "font_px_at_800": 48.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Đã tuyển: KIM MINA,",
+    "một người đồng",
+    "hương."
+   ],
+   "box_w": 483,
+   "box_h": 195,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 36,
+   "id": "text_fb838d1a9fa54824",
+   "source": "POSITION: WEAPONS RESEARCH DIRECTOR",
+   "translation": "Chức vụ:\nGiám đốc Nghiên cứu Vũ khí",
+   "role": "system_ui",
+   "container": "box",
+   "font": "skill.exo-2",
+   "review": false,
+   "page_width": 900,
+   "font_px": 48,
+   "font_px_at_800": 42.7,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Chức vụ:",
+    "Giám đốc Nghiên cứu",
+    "Vũ khí"
+   ],
+   "box_w": 480,
+   "box_h": 228,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 38,
+   "split_word": false
+  },
+  {
+   "slice": 37,
+   "id": "text_e3240bcf3532452c",
+   "source": "SEVERAL DAYS LATER...",
+   "translation": "Vài ngày sau...",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Vài ngày sau..."
+   ],
+   "box_w": 366,
+   "box_h": 222,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 37,
+   "split_word": false
+  },
+  {
+   "slice": 37,
+   "id": "text_ac4a7ea100934929",
+   "source": "Heave-ho!",
+   "translation": "Hò dô ta!",
+   "role": "shout",
+   "container": "free",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 32,
+   "font_px_at_800": 28.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hò dô ta!"
+   ],
+   "box_w": 260,
+   "box_h": 153,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 16,
+   "split_word": false
+  },
+  {
+   "slice": 38,
+   "id": "text_da9c40a26fcd45ef",
+   "source": "Heave-ho!",
+   "translation": "Hò dô!",
+   "role": "shout",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 127,
+   "font_px_at_800": 112.9,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hò dô!"
+   ],
+   "box_w": 315,
+   "box_h": 254,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 112,
+   "split_word": false
+  },
+  {
+   "slice": 38,
+   "id": "text_f9b78f41368b4ec8",
+   "source": "Heave-ho!",
+   "translation": "Hò dô!",
+   "role": "shout",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 131,
+   "font_px_at_800": 116.4,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hò dô!"
+   ],
+   "box_w": 325,
+   "box_h": 205,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 103,
+   "split_word": false
+  },
+  {
+   "slice": 38,
+   "id": "text_c46dba75fdbf4d1f",
+   "source": "ONE...!",
+   "translation": "Một...!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 111,
+   "font_px_at_800": 98.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Một...!"
+   ],
+   "box_w": 442,
+   "box_h": 300,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 73,
+   "split_word": false
+  },
+  {
+   "slice": 38,
+   "id": "text_ec1eebc2c81c4755",
+   "source": "TWO!",
+   "translation": "Hai!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 127,
+   "font_px_at_800": 112.9,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hai!"
+   ],
+   "box_w": 316,
+   "box_h": 216,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 83,
+   "split_word": false
+  },
+  {
+   "slice": 39,
+   "id": "text_020519c7efb24f41",
+   "source": "WE CAUGHT A TON!!",
+   "translation": "Bắt được\ncả tấn rồi!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Bắt được",
+    "cả tấn rồi!!"
+   ],
+   "box_w": 518,
+   "box_h": 265,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 51,
+   "split_word": false
+  },
+  {
+   "slice": 40,
+   "id": "text_7fb9fe3b4b83439f",
+   "source": "IT'S A BUMPER HARVEST!!",
+   "translation": "Một mùa bội thu!!",
+   "role": "shout",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 96,
+   "font_px_at_800": 85.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Một mùa bội",
+    "thu!!"
+   ],
+   "box_w": 550,
+   "box_h": 273,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 53,
+   "split_word": false
+  },
+  {
+   "slice": 40,
+   "id": "text_a4b6a279401b4111",
+   "source": "",
+   "translation": "Bắt được\ncả tấn rồi!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Bắt được",
+    "cả tấn rồi!!"
+   ],
+   "box_w": 518,
+   "box_h": 265,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 51,
+   "split_word": false
+  },
+  {
+   "slice": 40,
+   "id": "text_c834c1bd214f4426",
+   "source": "MEAT IS THE BEST!",
+   "translation": "Thịt là ngon nhất!",
+   "role": "shout",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 103,
+   "font_px_at_800": 91.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Thịt là",
+    "ngon nhất!"
+   ],
+   "box_w": 474,
+   "box_h": 285,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 57,
+   "split_word": false
+  },
+  {
+   "slice": 42,
+   "id": "text_504b7fe595754e05",
+   "source": "I TOLD YOU, THE THREADS ON BOTH SIDES OF THE NET NEED TO BE BALANCED, REMEMBER?",
+   "translation": "Tôi đã nói rồi, các sợi dây hai bên lưới phải cân nhau, nhớ chưa?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tôi đã nói rồi, các sợi dây hai",
+    "bên lưới phải cân nhau, nhớ",
+    "chưa?"
+   ],
+   "box_w": 709,
+   "box_h": 429,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 32,
+   "split_word": false
+  },
+  {
+   "slice": 42,
+   "id": "text_dd258c2295b14b2f",
+   "source": "YOU CAN CLEARLY SEE THAT THE THREAD ON THE LEFT IS LONGER.",
+   "translation": "Rõ ràng là sợi dây bên trái dài hơn mà.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 52,
+   "font_px_at_800": 46.2,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Rõ ràng là sợi dây bên trái",
+    "dài hơn mà."
+   ],
+   "box_w": 587,
+   "box_h": 330,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 29,
+   "split_word": false
+  },
+  {
+   "slice": 43,
+   "id": "text_cbf5237c5d56474e",
+   "source": "NO NEED TO APOLOGIZE. JUST GIVE IT A QUICK CHECK, PLEASE.",
+   "translation": "Không cần xin lỗi đâu.\nCác cậu cứ kiểm tra nhanh\ncho tôi là được.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 58,
+   "font_px_at_800": 51.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Không cần xin lỗi đâu.",
+    "Các cậu cứ kiểm tra nhanh",
+    "cho tôi là được."
+   ],
+   "box_w": 651,
+   "box_h": 348,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 32,
+   "split_word": false
+  },
+  {
+   "slice": 43,
+   "id": "text_1ebd9b10f89d4c0f",
+   "source": "I-I'M SORRY...",
+   "translation": "Em... em xin lỗi...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 105,
+   "font_px_at_800": 93.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Em... em",
+    "xin lỗi..."
+   ],
+   "box_w": 443,
+   "box_h": 302,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 58,
+   "split_word": false
+  },
+  {
+   "slice": 43,
+   "id": "text_6578ce39019f4d53",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 44,
+   "id": "text_323b20c6d0324150",
+   "source": "ATTENTION, EVERYONE!!",
+   "translation": "Mọi người\nchú ý!!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 110,
+   "font_px_at_800": 97.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Mọi người",
+    "chú ý!!"
+   ],
+   "box_w": 575,
+   "box_h": 317,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 72,
+   "split_word": false
+  },
+  {
+   "slice": 44,
+   "id": "text_2a4b76b0ace349dd",
+   "source": "YES, I'LL CORRECT IT.",
+   "translation": "Vâng, em sẽ sửa lại.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 86,
+   "font_px_at_800": 76.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Vâng, em sẽ sửa",
+    "lại."
+   ],
+   "box_w": 524,
+   "box_h": 270,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 47,
+   "split_word": false
+  },
+  {
+   "slice": 46,
+   "id": "text_a96221cf889f41ad",
+   "source": "EVERYONE, STOP WHAT YOU'RE DOING AND GATHER IN THE CENTER FOR A MOMENT!",
+   "translation": "Mọi người, tạm dừng việc\nđang làm và tập trung\nlại giữa sân một lát!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 54,
+   "font_px_at_800": 48.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Mọi người, tạm dừng việc",
+    "đang làm và tập trung",
+    "lại giữa sân một lát!"
+   ],
+   "box_w": 625,
+   "box_h": 396,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 46,
+   "id": "text_52555151c391440c",
+   "source": "I HAVE SOMETHING TO TELL YOU ALL!",
+   "translation": "Tôi có chuyện\nmuốn nói với mọi người!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 83,
+   "font_px_at_800": 73.8,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tôi có chuyện",
+    "muốn nói với mọi",
+    "người!"
+   ],
+   "box_w": 606,
+   "box_h": 378,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 55,
+   "split_word": false
+  },
+  {
+   "slice": 47,
+   "id": "text_43241b1ce46e4cc1",
+   "source": "YES, MINA! I HAVE A SPECIAL FAVOR TO ASK YOU, SO PLEASE HURRY OVER!",
+   "translation": "Đúng rồi, MINA! Tôi có một việc\nmuốn nhờ cô, nên cô mau qua đây nhé!",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Đúng rồi, MINA! Tôi có một",
+    "việc",
+    "muốn nhờ cô, nên cô mau",
+    "qua đây nhé!"
+   ],
+   "box_w": 630,
+   "box_h": 363,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 47,
+   "id": "text_64855552cf5c4c20",
+   "source": "ME TOO?",
+   "translation": "Tôi cũng vậy?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 63,
+   "font_px_at_800": 56.0,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Tôi cũng vậy?"
+   ],
+   "box_w": 357,
+   "box_h": 153,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 48,
+   "id": "text_fe28cb5b576342ab",
+   "source": "A FAVOR? WHAT COULD IT BE?",
+   "translation": "Một ân huệ ư?\nKhông biết là chuyện gì đây?",
+   "role": "thought",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 74,
+   "font_px_at_800": 65.8,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Một ân huệ ư?",
+    "Không biết là",
+    "chuyện gì đây?"
+   ],
+   "box_w": 522,
+   "box_h": 336,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 51,
+   "id": "text_9812cb5f3e5d4b55",
+   "source": "UM, HYUNMIN... WHAT'S THIS...?",
+   "translation": "Ơ, Hyunmin...\nCái này là gì thế...?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Ơ, Hyunmin...",
+    "Cái này là gì",
+    "thế...?"
+   ],
+   "box_w": 499,
+   "box_h": 237,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 41,
+   "split_word": false
+  },
+  {
+   "slice": 51,
+   "id": "text_e09deb3f87ed4f7f",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 51,
+   "id": "text_7b8c0d6b7593405a",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 51,
+   "id": "text_43bdef2f0d774808",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 51,
+   "id": "text_6fc596bac69745c6",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 52,
+   "id": "text_042379cf55b446c5",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 52,
+   "id": "text_b44971fe70b04f35",
+   "source": "YOU KNOW WHAT IT IS, RIGHT?",
+   "translation": "Các cậu biết đó là gì\nrồi, phải không?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 61,
+   "font_px_at_800": 54.2,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Các cậu biết đó là gì",
+    "rồi, phải không?"
+   ],
+   "box_w": 527,
+   "box_h": 168,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 53,
+   "id": "text_1d008279f293475c",
+   "source": "IF A THUMBS-UP EXPLAINED EVERYTHING, WOULD I HAVE ASKED?",
+   "translation": "Nếu chỉ giơ ngón cái\nlà giải thích được mọi thứ\nthì tôi hỏi các cậu làm gì?",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 44,
+   "font_px_at_800": 39.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nếu chỉ giơ ngón cái",
+    "là giải thích được mọi thứ",
+    "thì tôi hỏi các cậu làm gì?"
+   ],
+   "box_w": 613,
+   "box_h": 338,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 29,
+   "split_word": false
+  },
+  {
+   "slice": 53,
+   "id": "text_86df1208598f4227",
+   "source": "NO? NOT A CLUE?",
+   "translation": "Không?\nKhông có manh mối nào?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Không?",
+    "Không có manh",
+    "mối nào?"
+   ],
+   "box_w": 472,
+   "box_h": 308,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 54,
+   "id": "text_0e70b2edd35140c2",
+   "source": "TROOPS.",
+   "translation": "Binh lính.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 109,
+   "font_px_at_800": 96.9,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Binh lính."
+   ],
+   "box_w": 441,
+   "box_h": 183,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 60,
+   "split_word": false
+  },
+  {
+   "slice": 55,
+   "id": "text_b3fceb2536604fed",
+   "source": "FROM NOW ON, I'LL CALL YOU EMPLOYEES.",
+   "translation": "Từ giờ trở đi,\ntôi sẽ gọi các cậu\nlà nhân viên.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Từ giờ trở đi,",
+    "tôi sẽ gọi các cậu",
+    "là nhân viên."
+   ],
+   "box_w": 709,
+   "box_h": 344,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 43,
+   "split_word": false
+  },
+  {
+   "slice": 55,
+   "id": "text_1edca7d5fc88426a",
+   "source": "NO.",
+   "translation": "Không.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 106,
+   "font_px_at_800": 94.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Không."
+   ],
+   "box_w": 296,
+   "box_h": 201,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 73,
+   "split_word": false
+  },
+  {
+   "slice": 56,
+   "id": "text_ea6da5a84a3d474f",
+   "source": "MY GOBLIN EMPLOYEES!",
+   "translation": "Các nhân viên goblin\ncủa tôi!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Các nhân viên",
+    "goblin",
+    "của tôi!"
+   ],
+   "box_w": 506,
+   "box_h": 283,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 56,
+   "split_word": false
+  },
+  {
+   "slice": 56,
+   "id": "text_ed060878ea8648cd",
+   "source": "RIGHT HERE, RIGHT NOW!",
+   "translation": "Ngay tại đây,\nngay bây giờ!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ngay tại đây,",
+    "ngay bây giờ!"
+   ],
+   "box_w": 485,
+   "box_h": 240,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 57,
+   "id": "text_69f919ac2cf54163",
+   "source": "I HEREBY LAUNCH GOBLIN INCORPORATED!",
+   "translation": "Tôi xin tuyên bố\nthành lập Công Ty Goblin!",
+   "role": "shout",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 96,
+   "font_px_at_800": 85.3,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tôi xin tuyên bố",
+    "thành lập Công Ty",
+    "Goblin!"
+   ],
+   "box_w": 723,
+   "box_h": 393,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 53,
+   "split_word": false
+  },
+  {
+   "slice": 57,
+   "id": "text_eede345284ca4dce",
+   "source": "",
+   "translation": "Ngay tại đây,\nngay bây giờ!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 67,
+   "font_px_at_800": 59.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Ngay tại đây,",
+    "ngay bây giờ!"
+   ],
+   "box_w": 485,
+   "box_h": 240,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 58,
+   "id": "text_7c360519df404a4b",
+   "source": "IN... CORPORATED...?",
+   "translation": "CÔNG... TY...?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "CÔNG... TY...?"
+   ],
+   "box_w": 455,
+   "box_h": 205,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 58,
+   "id": "text_3cde5b76e62e425a",
+   "source": "GOBLIN...",
+   "translation": "GOBLIN...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 89,
+   "font_px_at_800": 79.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "GOBLIN..."
+   ],
+   "box_w": 402,
+   "box_h": 163,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 49,
+   "split_word": false
+  },
+  {
+   "slice": 59,
+   "id": "text_604466e53a6548e3",
+   "source": "BUT THIS BLADE ISN'T EVEN SHARP—",
+   "translation": "Nhưng lưỡi dao này\ncó sắc đâu—",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 80,
+   "font_px_at_800": 71.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nhưng lưỡi dao",
+    "này",
+    "có sắc đâu-"
+   ],
+   "box_w": 514,
+   "box_h": 342,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 59,
+   "id": "text_382d203503924d71",
+   "source": "MINA! NOW! GO FOR IT!",
+   "translation": "Mina! Mau lên!\nXông đi!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 83,
+   "font_px_at_800": 73.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Mina! Mau lên!",
+    "Xông đi!"
+   ],
+   "box_w": 509,
+   "box_h": 273,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 55,
+   "split_word": false
+  },
+  {
+   "slice": 59,
+   "id": "text_ca4cbac179014d97",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 59,
+   "id": "text_e0e4301337ba42ff",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 60,
+   "id": "text_a7405cf3212d4402",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 61,
+   "id": "text_4d787152d5354e30",
+   "source": "AWOO!",
+   "translation": "Húuu!",
+   "role": "sfx",
+   "container": "spiky",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 116,
+   "font_px_at_800": 103.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Húuu!"
+   ],
+   "box_w": 371,
+   "box_h": 210,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 78,
+   "split_word": false
+  },
+  {
+   "slice": 61,
+   "id": "text_fafab9ca53be41e9",
+   "source": "Hoorayyy!",
+   "translation": "Hoan hô!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 74,
+   "font_px_at_800": 65.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Hoan hô!"
+   ],
+   "box_w": 407,
+   "box_h": 176,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 49,
+   "split_word": false
+  },
+  {
+   "slice": 61,
+   "id": "text_0ff94c4bd2bd453d",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 61,
+   "id": "text_364fa400033c462d",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 62,
+   "id": "text_0613cb2b5f364fb0",
+   "source": "IS IT SOMETHING YOU EAT?",
+   "translation": "Là thứ để ăn à?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Là thứ để ăn",
+    "à?"
+   ],
+   "box_w": 463,
+   "box_h": 330,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 62,
+   "id": "text_08f473e9afae4990",
+   "source": "WHAT'S A COMPANY?",
+   "translation": "Công ty là gì?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 80,
+   "font_px_at_800": 71.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Công ty là gì?"
+   ],
+   "box_w": 503,
+   "box_h": 259,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 62,
+   "id": "text_b9f472725dfb4fbc",
+   "source": "OR THE NAME OF A WEAPON?",
+   "translation": "Hay là tên một loại vũ khí?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 59,
+   "font_px_at_800": 52.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Hay là tên một loại",
+    "vũ khí?"
+   ],
+   "box_w": 470,
+   "box_h": 222,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 33,
+   "split_word": false
+  },
+  {
+   "slice": 63,
+   "id": "text_7ca5c5e8c0034933",
+   "source": "A COMPANY.",
+   "translation": "Một công ty.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 65,
+   "font_px_at_800": 57.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Một công ty."
+   ],
+   "box_w": 372,
+   "box_h": 146,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 36,
+   "split_word": false
+  },
+  {
+   "slice": 63,
+   "id": "text_c2e5e7b260fe43b4",
+   "source": "HAOI",
+   "translation": "Khà",
+   "role": "sfx",
+   "container": "free",
+   "font": "sfx.black-ops-one",
+   "review": false,
+   "page_width": 900,
+   "font_px": 109,
+   "font_px_at_800": 96.9,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Khà"
+   ],
+   "box_w": 363,
+   "box_h": 348,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 62,
+   "split_word": false
+  },
+  {
+   "slice": 64,
+   "id": "text_73fb6fea8c434efd",
+   "source": "IT'S AN ORGANIZATION WHERE PEOPLE COME TOGETHER TO GENERATE PROFIT...",
+   "translation": "Đó là một tổ chức\nnơi mọi người cùng nhau\ntạo ra lợi nhuận...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 43,
+   "font_px_at_800": 38.2,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Đó là một tổ chức",
+    "nơi mọi người cùng nhau",
+    "tạo ra lợi nhuận..."
+   ],
+   "box_w": 562,
+   "box_h": 291,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 24,
+   "split_word": false
+  },
+  {
+   "slice": 65,
+   "id": "text_cc5323aa6ced47bb",
+   "source": "",
+   "translation": "Và để quản lý hiệu quả\nmột tổ chức lớn cỡ này—",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 62,
+   "font_px_at_800": 55.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Và để quản lý hiệu quả",
+    "một tổ chức lớn cỡ này-"
+   ],
+   "box_w": 650,
+   "box_h": 289,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 65,
+   "id": "text_eb69958791cf47fe",
+   "source": "...AND THEN SHARE THAT PROFIT AMONG ITS MEMBERS.",
+   "translation": "...rồi chia lợi nhuận đó\ncho các thành viên.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "...rồi chia lợi nhuận đó",
+    "cho các thành viên."
+   ],
+   "box_w": 568,
+   "box_h": 278,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 65,
+   "id": "text_870e279e2da140f7",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 66,
+   "id": "text_b91aff89cec74d36",
+   "source": "DEPARTMENT HEAD / DEPUTY DEPARTMENT HEAD / MANAGER / ASSISTANT MANAGER / EMPLOYEE / INTERN",
+   "translation": "Trưởng phòng\nPhó trưởng phòng\nQuản lý\nPhó quản lý\nNhân viên\nThực tập sinh",
+   "role": "title",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": true,
+   "page_width": 900,
+   "font_px": 54,
+   "font_px_at_800": 48.0,
+   "size_source": "fit",
+   "lines": 6,
+   "wrapped": [
+    "Trưởng phòng",
+    "Phó trưởng phòng",
+    "Quản lý",
+    "Phó quản lý",
+    "Nhân viên",
+    "Thực tập sinh"
+   ],
+   "box_w": 729,
+   "box_h": 570,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 319,
+   "split_word": false
+  },
+  {
+   "slice": 66,
+   "id": "text_e83556533e0b46c0",
+   "source": "AND TO MANAGE AN ORGANIZATION THIS LARGE EFFICIENTLY—",
+   "translation": "Và để quản lý hiệu quả\nmột tổ chức lớn cỡ này—",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 62,
+   "font_px_at_800": 55.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Và để quản lý hiệu quả",
+    "một tổ chức lớn cỡ này-"
+   ],
+   "box_w": 650,
+   "box_h": 289,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 67,
+   "id": "text_ccd80803698f4b57",
+   "source": "WE HAVE RANKS.",
+   "translation": "Chúng ta có cấp bậc.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 104,
+   "font_px_at_800": 92.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Chúng ta",
+    "có cấp bậc."
+   ],
+   "box_w": 492,
+   "box_h": 312,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 59,
+   "split_word": false
+  },
+  {
+   "slice": 68,
+   "id": "text_b1c06cf8c42c4990",
+   "source": "THAT'S RIGHT. STARTING TODAY, I'LL AWARD POINTS TO GOBLINS WHO MAKE VALUABLE CONTRIBUTIONS.",
+   "translation": "Đúng vậy.\nTừ hôm nay, tôi sẽ trao điểm\ncho những goblin có đóng góp giá trị.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 50,
+   "font_px_at_800": 44.4,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Đúng vậy.",
+    "Từ hôm nay, tôi sẽ trao điểm",
+    "cho những goblin có đóng góp giá",
+    "trị."
+   ],
+   "box_w": 688,
+   "box_h": 390,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 28,
+   "split_word": false
+  },
+  {
+   "slice": 68,
+   "id": "text_22b27ce04694482b",
+   "source": "RANKS?",
+   "translation": "Cấp bậc?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 89,
+   "font_px_at_800": 79.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Cấp bậc?"
+   ],
+   "box_w": 352,
+   "box_h": 163,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 49,
+   "split_word": false
+  },
+  {
+   "slice": 69,
+   "id": "text_753979ac9f864e5e",
+   "source": "CATCH FISH, AND YOU EARN POINTS.",
+   "translation": "Câu cá, và bạn nhận được điểm.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 52,
+   "font_px_at_800": 46.2,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Câu cá, và bạn nhận",
+    "được điểm."
+   ],
+   "box_w": 444,
+   "box_h": 195,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 29,
+   "split_word": false
+  },
+  {
+   "slice": 70,
+   "id": "text_41c7c93068ae47c4",
+   "source": "ONCE YOU'VE ACCUMULATED ENOUGH POINTS, YOU'LL GET PROMOTED.",
+   "translation": "Tích đủ điểm,\ncác cậu sẽ được\nthăng chức.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tích đủ điểm,",
+    "các cậu sẽ được",
+    "thăng chức."
+   ],
+   "box_w": 623,
+   "box_h": 323,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 70,
+   "id": "text_ec9b584b3cdf4a16",
+   "source": "FIGHT WELL IN BATTLE, AND YOU EARN POINTS.",
+   "translation": "Đánh giỏi trong trận,\ncác cậu được điểm.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 56,
+   "font_px_at_800": 49.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Đánh giỏi trong trận,",
+    "các cậu được điểm."
+   ],
+   "box_w": 535,
+   "box_h": 278,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 31,
+   "split_word": false
+  },
+  {
+   "slice": 70,
+   "id": "text_63c650e5191e40b5",
+   "source": "REPAIR STAKES, AND YOU EARN POINTS.",
+   "translation": "Sửa cọc rào,\ncác cậu được điểm.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Sửa cọc rào,",
+    "các cậu được điểm."
+   ],
+   "box_w": 474,
+   "box_h": 271,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 71,
+   "id": "text_34dbc3974035417d",
+   "source": "YOU'LL MOVE UP ONE RANK AT A TIME.",
+   "translation": "Mỗi lần sẽ thăng một cấp.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Mỗi lần sẽ thăng một",
+    "cấp."
+   ],
+   "box_w": 688,
+   "box_h": 321,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 71,
+   "id": "text_25239e29fd3d4852",
+   "source": "EMPLOYEE / INTERN",
+   "translation": "Nhân viên\nThực tập sinh",
+   "role": "free_text",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 46,
+   "font_px_at_800": 40.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Nhân viên",
+    "Thực tập sinh"
+   ],
+   "box_w": 770,
+   "box_h": 228,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 71,
+   "id": "text_f23e7bd1ff1241ef",
+   "source": "MANAGER / ASSISTANT MANAGER",
+   "translation": "Quản lý\nPhó quản lý",
+   "role": "free_text",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 47,
+   "font_px_at_800": 41.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Quản lý",
+    "Phó quản lý"
+   ],
+   "box_w": 495,
+   "box_h": 237,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 71,
+   "id": "text_f639ebe5b1504f1d",
+   "source": "MANAGER / ASSISTANT MANAGER",
+   "translation": "Quản lý\nPhó quản lý",
+   "role": "free_text",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 32,
+   "font_px_at_800": 28.4,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Quản lý",
+    "Phó quản lý"
+   ],
+   "box_w": 358,
+   "box_h": 241,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 22,
+   "split_word": false
+  },
+  {
+   "slice": 71,
+   "id": "text_ab9c4101eb994d9f",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 71,
+   "id": "text_ef4d5ea21fe84fac",
+   "source": "DEPARTMENT HEAD — DEPUTY DEPARTMENT HEAD",
+   "translation": "Trưởng phòng\nPhó trưởng phòng",
+   "role": "free_text",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 51,
+   "font_px_at_800": 45.3,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Trưởng phòng",
+    "Phó trưởng phòng"
+   ],
+   "box_w": 510,
+   "box_h": 264,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 72,
+   "id": "text_21c9484b011247c9",
+   "source": "SO WHAT'S THE BENEFIT OF GETTING PROMOTED?",
+   "translation": "Vậy thăng chức\nthì được lợi gì?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Vậy thăng chức",
+    "thì được lợi gì?"
+   ],
+   "box_w": 551,
+   "box_h": 266,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 72,
+   "id": "text_0e32be45f8604eba",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 72,
+   "id": "text_b9754a9354864da0",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 73,
+   "id": "text_08542a9fb8d441a6",
+   "source": "MEAT.",
+   "translation": "Thịt.",
+   "role": "shout",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 133,
+   "font_px_at_800": 118.2,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Thịt."
+   ],
+   "box_w": 382,
+   "box_h": 205,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 73,
+   "split_word": false
+  },
+  {
+   "slice": 74,
+   "id": "text_3f274029cee74b0b",
+   "source": "THAT'S RIGHT. GET PROMOTED, AND YOU'LL GET YOUR MEAT FIRST—AND YOU'LL GET MORE OF IT, TOO.",
+   "translation": "Đúng vậy. Thăng chức là các cậu được chia thịt trước—và còn được nhiều hơn nữa.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 50,
+   "font_px_at_800": 44.4,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Đúng vậy. Thăng chức là",
+    "các cậu được chia thịt",
+    "trước-và còn được nhiều",
+    "hơn nữa."
+   ],
+   "box_w": 594,
+   "box_h": 381,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 28,
+   "split_word": false
+  },
+  {
+   "slice": 74,
+   "id": "text_f2b3d1c1cd9849c7",
+   "source": "MEAT?!",
+   "translation": "Thịt?!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 128,
+   "font_px_at_800": 113.8,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Thịt?!"
+   ],
+   "box_w": 517,
+   "box_h": 327,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 84,
+   "split_word": false
+  },
+  {
+   "slice": 75,
+   "id": "text_265b27d7e8354817",
+   "source": "YOU GET TO EAT MORE MEAT THAN EVERYONE ELSE.",
+   "translation": "Các cậu sẽ được ăn nhiều thịt\nhơn tất cả những kẻ khác.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 64,
+   "font_px_at_800": 56.9,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Các cậu sẽ được ăn",
+    "nhiều thịt",
+    "hơn tất cả những kẻ",
+    "khác."
+   ],
+   "box_w": 567,
+   "box_h": 306,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 35,
+   "split_word": false
+  },
+  {
+   "slice": 75,
+   "id": "text_a08507151a7441e1",
+   "source": "DEPARTMENT HEAD / DEPUTY DEPARTMENT HEAD / MANAGER / ASSISTANT MANAGER / EMPLOYEE / INTERN",
+   "translation": "Trưởng phòng / Phó trưởng phòng / Quản lý / Phó quản lý / Nhân viên / Thực tập sinh",
+   "role": "narration",
+   "container": "free",
+   "font": "emphasis.anton",
+   "review": true,
+   "page_width": 900,
+   "font_px": 54,
+   "font_px_at_800": 48.0,
+   "size_source": "fit",
+   "lines": 4,
+   "wrapped": [
+    "Trưởng phòng / Phó",
+    "trưởng phòng / Quản lý /",
+    "Phó quản lý / Nhân viên /",
+    "Thực tập sinh"
+   ],
+   "box_w": 447,
+   "box_h": 363,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 234,
+   "split_word": false
+  },
+  {
+   "slice": 75,
+   "id": "text_b735de2006c44eb0",
+   "source": "IF YOU WORK HARDER THAN EVERYONE ELSE,",
+   "translation": "Nếu các cậu chăm chỉ hơn\nmọi kẻ khác,",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 55,
+   "font_px_at_800": 48.9,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Nếu các cậu chăm chỉ",
+    "hơn",
+    "mọi kẻ khác,"
+   ],
+   "box_w": 543,
+   "box_h": 273,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 30,
+   "split_word": false
+  },
+  {
+   "slice": 75,
+   "id": "text_dcf6e16e40ce40c7",
+   "source": "AND ONE MORE THING.",
+   "translation": "Và còn một chuyện nữa.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 83,
+   "font_px_at_800": 73.8,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Và còn một",
+    "chuyện nữa."
+   ],
+   "box_w": 550,
+   "box_h": 264,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 46,
+   "split_word": false
+  },
+  {
+   "slice": 75,
+   "id": "text_7fb67d84fe734800",
+   "source": "OOOH...",
+   "translation": "Ồồ...",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 62,
+   "font_px_at_800": 55.1,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Ồồ..."
+   ],
+   "box_w": 272,
+   "box_h": 140,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 34,
+   "split_word": false
+  },
+  {
+   "slice": 76,
+   "id": "text_f042000d034048e7",
+   "source": "I'LL PERSONALLY GIVE EACH OF YOU A NAME.",
+   "translation": "Tôi sẽ đích thân\nđặt tên cho từng người.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 81,
+   "font_px_at_800": 72.0,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Tôi sẽ đích thân",
+    "đặt tên cho từng",
+    "người."
+   ],
+   "box_w": 657,
+   "box_h": 462,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 45,
+   "split_word": false
+  },
+  {
+   "slice": 78,
+   "id": "text_5ab9e639f6524b41",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 78,
+   "id": "text_29c54b4470e247f6",
+   "source": "YOU'LL GIVE US NAMES...?",
+   "translation": "Sếp sẽ đặt tên cho bọn em...?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 85,
+   "font_px_at_800": 75.6,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Sếp sẽ đặt tên",
+    "cho bọn em...?"
+   ],
+   "box_w": 510,
+   "box_h": 273,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 49,
+   "split_word": false
+  },
+  {
+   "slice": 78,
+   "id": "text_7994ca6490ed4cbb",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 78,
+   "id": "text_0670be14ce3e4088",
+   "source": "",
+   "translation": "",
+   "role": null,
+   "container": null,
+   "font": "default",
+   "review": false,
+   "page_width": 900
+  },
+  {
+   "slice": 78,
+   "id": "text_26f13722115e4120",
+   "source": "LIKE KIM PRO?",
+   "translation": "Như KIM PRO ạ?",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 78,
+   "font_px_at_800": 69.3,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Như KIM PRO ạ?"
+   ],
+   "box_w": 474,
+   "box_h": 162,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 44,
+   "split_word": false
+  },
+  {
+   "slice": 79,
+   "id": "text_c018514bad604d06",
+   "source": "THAT'S RIGHT. LIKE KIM PRO AND GAEBUL.",
+   "translation": "Đúng rồi.\nNhư KIM PRO\nvà GAEBUL.",
+   "role": "dialogue",
+   "container": "bubble",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 71,
+   "font_px_at_800": 63.1,
+   "size_source": "fit",
+   "lines": 3,
+   "wrapped": [
+    "Đúng rồi.",
+    "Như KIM PRO",
+    "và GAEBUL."
+   ],
+   "box_w": 614,
+   "box_h": 325,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 39,
+   "split_word": false
+  },
+  {
+   "slice": 80,
+   "id": "text_638e3789f8784665",
+   "source": "OUT OF THE WAY!",
+   "translation": "Tránh ra!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 102,
+   "font_px_at_800": 90.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "Tránh ra!"
+   ],
+   "box_w": 468,
+   "box_h": 308,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 67,
+   "split_word": false
+  },
+  {
+   "slice": 83,
+   "id": "text_8bc292cb8e384d3f",
+   "source": "OVERTIME! OVERTIME!",
+   "translation": "Tăng ca!\nTăng ca!",
+   "role": "shout",
+   "container": "spiky",
+   "font": "emphasis.bangers",
+   "review": false,
+   "page_width": 900,
+   "font_px": 93,
+   "font_px_at_800": 82.7,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Tăng ca!",
+    "Tăng ca!"
+   ],
+   "box_w": 480,
+   "box_h": 291,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 61,
+   "split_word": false
+  },
+  {
+   "slice": 83,
+   "id": "text_9e3b4ce5b8f041c3",
+   "source": "TSN: AVERAGE CORPORATE LIFE",
+   "translation": "TSN: Cuộc sống công sở",
+   "role": "title",
+   "container": "box",
+   "font": "emphasis.anton",
+   "review": false,
+   "page_width": 900,
+   "font_px": 39,
+   "font_px_at_800": 34.7,
+   "size_source": "fit",
+   "lines": 1,
+   "wrapped": [
+    "TSN: Cuộc sống công sở"
+   ],
+   "box_w": 482,
+   "box_h": 123,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 29,
+   "split_word": false
+  },
+  {
+   "slice": 84,
+   "id": "text_e3ad08ce7fde4ff7",
+   "source": "IT'S TIME FOR SOME FUN-FILLED OVERTIME!!!!!!",
+   "translation": "Đến giờ tăng ca\nvui vẻ rồi!!!!!!",
+   "role": "narration",
+   "container": "box",
+   "font": "dialogue.mac-dinh-3",
+   "review": false,
+   "page_width": 900,
+   "font_px": 89,
+   "font_px_at_800": 79.1,
+   "size_source": "fit",
+   "lines": 2,
+   "wrapped": [
+    "Đến giờ tăng ca",
+    "vui vẻ rồi!!!!!!"
+   ],
+   "box_w": 613,
+   "box_h": 349,
+   "fits": true,
+   "missing_glyphs": false,
+   "source_cap_px": 49,
+   "split_word": false
+  }
+ ],
+ "readability": {
+  "rendered": 140,
+  "font_px_at_800": {
+   "min": 28.4,
+   "p10": 42.7,
+   "median": 59.6,
+   "max": 177.8
+  },
+  "under_16px": 0,
+  "under_20px": 0,
+  "split_word": 0,
+  "does_not_fit": 0,
+  "missing_glyphs": 0,
+  "size_from_ocr": 0,
+  "by_role": {
+   "dialogue": [
+    32.0,
+    38.2,
+    40.9,
+    41.8,
+    42.7,
+    43.6,
+    44.4,
+    44.4,
+    44.4,
+    46.2,
+    46.2,
+    48.0,
+    48.9,
+    48.9,
+    48.9,
+    48.9,
+    48.9,
+    48.9,
+    49.8,
+    49.8,
+    49.8,
+    49.8,
+    49.8,
+    49.8,
+    49.8,
+    49.8,
+    51.6,
+    51.6,
+    51.6,
+    51.6,
+    51.6,
+    51.6,
+    52.4,
+    52.4,
+    52.4,
+    54.2,
+    55.1,
+    55.1,
+    55.1,
+    56.0,
+    56.9,
+    56.9,
+    56.9,
+    57.8,
+    59.6,
+    59.6,
+    59.6,
+    59.6,
+    62.2,
+    63.1,
+    63.1,
+    63.1,
+    63.1,
+    64.0,
+    67.6,
+    68.4,
+    68.4,
+    69.3,
+    69.3,
+    69.3,
+    71.1,
+    71.1,
+    71.1,
+    72.0,
+    73.8,
+    75.6,
+    76.4,
+    76.4,
+    76.4,
+    79.1,
+    79.1,
+    84.4,
+    84.4,
+    90.7,
+    92.4,
+    92.4,
+    93.3,
+    94.2,
+    96.9,
+    96.9,
+    106.7,
+    126.2,
+    177.8
+   ],
+   "free_text": [
+    28.4,
+    28.4,
+    40.9,
+    41.8,
+    45.3
+   ],
+   "narration": [
+    48.0,
+    48.0,
+    59.6,
+    71.1,
+    79.1
+   ],
+   "sfx": [
+    83.6,
+    96.9,
+    103.1,
+    138.7
+   ],
+   "shout": [
+    28.4,
+    39.1,
+    48.0,
+    59.6,
+    59.6,
+    59.6,
+    65.8,
+    69.3,
+    69.3,
+    73.8,
+    73.8,
+    82.7,
+    85.3,
+    85.3,
+    90.7,
+    91.6,
+    97.8,
+    98.7,
+    112.9,
+    112.9,
+    113.8,
+    116.4,
+    118.2
+   ],
+   "system_ui": [
+    40.0,
+    42.7,
+    54.2,
+    62.2,
+    65.8,
+    67.6,
+    69.3,
+    70.2,
+    73.8
+   ],
+   "thought": [
+    45.3,
+    48.0,
+    49.8,
+    51.6,
+    57.8,
+    65.8,
+    68.4,
+    69.3
+   ],
+   "title": [
+    28.4,
+    34.7,
+    48.0
+   ]
+  }
+ },
+ "per_chapter": {
+  "prompt_tokens": 491129,
+  "completion_tokens": 108125,
+  "cost_usd": 0.05457
+ },
+ "per_slice": {
+  "prompt_tokens": 5917,
+  "completion_tokens": 1303
+ },
+ "scorecard": {
+  "clean": {
+   "slices": 83,
+   "text_left": 2,
+   "ghosts": 0,
+   "items": [
+    {
+     "slice": 52,
+     "kind": "text",
+     "box": [
+      441,
+      1214,
+      512,
+      1293
+     ],
+     "px": 106,
+     "share": 0.226
+    },
+    {
+     "slice": 53,
+     "kind": "text",
+     "box": [
+      359,
+      27,
+      494,
+      324
+     ],
+     "px": 68,
+     "share": 0.039
+    }
+   ]
+  },
+  "text": {
+   "objects": 144,
+   "translated": 140,
+   "untranslated": 4,
+   "needs_review": 2,
+   "kept_original": 0
+  },
+  "spend": {
+   "cost_usd": 0.05457,
+   "requests": 240,
+   "prompt_tokens": 491129,
+   "images": 176,
+   "wall_s": 846.0,
+   "by_stage": {
+    "scan": {
+     "requests": 43,
+     "images": 85,
+     "prompt_tokens": 81505,
+     "completion_tokens": 32951
+    },
+    "glossary": {
+     "requests": 3,
+     "images": 0,
+     "prompt_tokens": 3724,
+     "completion_tokens": 6814
+    },
+    "review": {
+     "requests": 14,
+     "images": 14,
+     "prompt_tokens": 54716,
+     "completion_tokens": 8626
+    },
+    "translate": {
+     "requests": 77,
+     "images": 77,
+     "prompt_tokens": 318767,
+     "completion_tokens": 58984
+    },
+    "judge": {
+     "requests": 102,
+     "images": 0,
+     "prompt_tokens": 30363,
+     "completion_tokens": 0
+    },
+    "polish": {
+     "requests": 1,
+     "images": 0,
+     "prompt_tokens": 2054,
+     "completion_tokens": 750
+    }
+   },
+   "stage_s": {
+    "download": 5.1,
+    "scan": 106.2,
+    "clean": 218.2,
+    "review": 55.9,
+    "translate": 229.0,
+    "polish": 213.8,
+    "render": 14.9,
+    "finish": 0.2
+   }
+  },
+  "polish": {
+   "judged": 100,
+   "flagged": 2,
+   "rewritten": 2,
+   "still_flagged": 0
+  },
+  "fit": {
+   "does_not_fit": 0,
+   "under_20px": 0,
+   "split_word": 0,
+   "missing_glyphs": 0
+  }
+ }
+}
