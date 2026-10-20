@@ -1,0 +1,125 @@
+{
+    "id": "db47bd1a-7a5e-4ac0-b1b5-a3c381280847",
+    "task_name": "terminal-bench/extract-moves-from-video",
+    "trial_name": "extract-moves-from-video__ZrWihpK",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-20__14-43-31/extract-moves-from-video__ZrWihpK",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/extract-moves-from-video"
+    },
+    "source": "tasks",
+    "task_checksum": "4c757630f9e3183386e6bb1feae31561748e33675554a7eb9db3e4b6a5b2295c",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/extract-moves-from-video",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "extract-moves-from-video__ZrWihpK",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-20__14-43-31",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "manga_agent:MangaAgent",
+            "model_name": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "621c6fcb-7879-4a37-8586-2f52ca3c6763",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "chaos",
+        "version": "1a48435dbb80d7a29cb9e16e0005b05e1e594b3f",
+        "model_info": {
+            "name": "DeepSeek-V4.1-Flash-1017",
+            "provider": "deepseek-ai"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 437592,
+        "n_cache_tokens": 332032,
+        "n_output_tokens": 14056,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": "done",
+            "stats": {
+                "model_s": 164.71127462387085,
+                "tool_s": 1447.0261619091034
+            }
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-20T14:48:42.873745Z",
+    "finished_at": "2026-10-20T15:18:13.201614Z",
+    "environment_setup": {
+        "started_at": "2026-10-20T14:48:42.885295Z",
+        "finished_at": "2026-10-20T14:48:46.042869Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-20T14:48:46.042891Z",
+        "finished_at": "2026-10-20T14:48:49.554285Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-20T14:48:49.554369Z",
+        "finished_at": "2026-10-20T15:15:46.800470Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-20T15:15:48.880910Z",
+        "finished_at": "2026-10-20T15:17:55.322724Z"
+    },
+    "step_results": null
+}
