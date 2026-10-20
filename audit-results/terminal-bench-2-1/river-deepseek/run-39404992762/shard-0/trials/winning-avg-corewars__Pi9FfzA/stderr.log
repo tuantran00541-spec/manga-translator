@@ -1,0 +1,40 @@
+2026-10-20 11:43:19 | INFO     | app.agent.client:349 - bench answered 429 (1 so far, waiting 6 s): {"error":{"message":"Account request rate limit exceeded for this model","type":"rate_limit_error","code":"account_rate"}}
+2026-10-20 12:32:50 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 2s
+2026-10-20 12:32:53 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 3s
+2026-10-20 12:32:57 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 7s
+2026-10-20 12:33:06 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 15s
+2026-10-20 12:33:22 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 31s
+2026-10-20 12:33:54 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 58s
+2026-10-20 12:34:53 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 80s
+2026-10-20 12:36:15 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 75s
+2026-10-20 12:37:31 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 68s
+2026-10-20 12:38:40 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 80s
+2026-10-20 12:40:02 | WARNING  | app.agent.session:4011 - Agent session 1b9d4f8636fd48fa failed
+Traceback (most recent call last):
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1032, in _bootstrap
+    self._bootstrap_inner()
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/root/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+> File "/opt/mg/src/app/agent/session.py", line 4007, in _loop
+    (custom or AgentSession._steps)(self, max_steps)
+  File "/opt/mg/src/app/agent/session.py", line 3917, in _steps
+    turn = self._turn()
+  File "/opt/mg/src/app/agent/session.py", line 3425, in _turn
+    return self._turn_once()
+  File "/opt/mg/src/app/agent/session.py", line 3442, in _turn_once
+    turn = self._call_model(client.render(self.history, system, self.text_tools, specs, reasoning=self.echo_reasoning),
+  File "/opt/mg/src/app/agent/session.py", line 3394, in _call_model
+    return self._call_model_once(messages, tools, streams, started)
+  File "/opt/mg/src/app/agent/session.py", line 3413, in _call_model_once
+    return self.complete(self.provider, self.api_key, request["model"], messages, tools=tools, **extra)
+  File "/opt/mg/src/app/agent/session.py", line 595, in __call__
+    return self.session._complete_keyed(*args, **kwargs)
+  File "/opt/mg/src/app/agent/session.py", line 1290, in _complete_keyed
+    return self._raw_complete(provider, key, *args, **kwargs)
+  File "/opt/mg/src/app/agent/client.py", line 531, in complete
+    return _complete_once(provider, api_key, model, messages, tools=tools, on_delta=on_delta, max_tokens=max_tokens)
+  File "/opt/mg/src/app/agent/client.py", line 587, in _complete_once
+    raise error(f"{provider.label} HTTP {response.status_code}: {detail}")
+app.agent.client.TransientError: bench HTTP 503: No ready deployment
