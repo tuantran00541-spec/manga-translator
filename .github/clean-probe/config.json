@@ -1,4 +1,0 @@
-{"minutes": 200 , "runs": [
-  {"model": "reflection/beam:free", "effort": "max", "echo_reasoning": "all", "label": "beam-max"},
-  {"model": "minimax/minimax-m3.1-flash:free", "effort": "xhigh", "label": "minimax-xhigh"}
-]}
