@@ -174,12 +174,16 @@ class Relay(BaseHTTPRequestHandler):
             if isinstance(usage, dict):
                 prompt = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
                 completion = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+                details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
+                cached = min(prompt, int(details.get("cached_tokens") or usage.get("prompt_cache_hit_tokens") or usage.get("cache_read_input_tokens") or 0))
                 with lock:
                     stats["prompt_tokens"] += prompt
+                    stats["cached_tokens"] = stats.get("cached_tokens", 0) + cached
                     stats["completion_tokens"] += completion
                     recent.append((time.time(), prompt + completion))
-                    # Every prompt token is priced as uncached, so the dollar count is an upper bound.
-                    stats["usd"] += prompt * float(PRICE.get("input") or 0) + completion * float(PRICE.get("output") or 0)
+                    # Prompt tokens the provider reports as cached are priced at the cached rate when one is given.
+                    stats["usd"] += ((prompt - cached) * float(PRICE.get("input") or 0) + cached * float(PRICE.get("cached_input", PRICE.get("input")) or 0)
+                                     + completion * float(PRICE.get("output") or 0))
         with lock:
             stats["usd"] += float(PRICE.get("request") or 0)
             if LIMITS.get("max_usd") and stats["usd"] >= float(LIMITS["max_usd"]) and not stats["stopped"]:
