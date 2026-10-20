@@ -1,0 +1,101 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 9,
+            "passed": 9,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792512006.1118474,
+            "stop": 1792512031.0254676
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_python_file_exists",
+                "status": "passed",
+                "duration": 0.0006381000002875226,
+                "start": 1792512007.5332198,
+                "stop": 1792512007.5341163,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_run_script",
+                "status": "passed",
+                "duration": 23.41043862799961,
+                "start": 1792512007.5343363,
+                "stop": 1792512030.9450593,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_csv_output_exists",
+                "status": "passed",
+                "duration": 0.0005053730001236545,
+                "start": 1792512030.945334,
+                "stop": 1792512030.9460123,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_csv_shape_cols",
+                "status": "passed",
+                "duration": 0.004010870998172322,
+                "start": 1792512030.9461997,
+                "stop": 1792512030.9503665,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_masks_are_no_longer_rect",
+                "status": "passed",
+                "duration": 0.00856481399932818,
+                "start": 1792512030.9505513,
+                "stop": 1792512030.9592884,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_mask_alignment",
+                "status": "passed",
+                "duration": 0.04051701399839658,
+                "start": 1792512030.959477,
+                "stop": 1792512031.0002284,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_no_polyline_overlaps",
+                "status": "passed",
+                "duration": 0.010146023001652793,
+                "start": 1792512031.0005493,
+                "stop": 1792512031.0109136,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_single_contiguous_mask_per_cell",
+                "status": "passed",
+                "duration": 0.009225918000083766,
+                "start": 1792512031.0111742,
+                "stop": 1792512031.020608,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_coords_are_flat_lists",
+                "status": "passed",
+                "duration": 0.0042708649998530746,
+                "start": 1792512031.0208302,
+                "stop": 1792512031.0252779,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

@@ -1,0 +1,83 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 7,
+            "passed": 7,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792505805.7291896,
+            "stop": 1792505807.8480184
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_directories_created",
+                "status": "passed",
+                "duration": 0.0007808570003362547,
+                "start": 1792505807.81448,
+                "stop": 1792505807.8155832,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_invoices_moved_correctly",
+                "status": "passed",
+                "duration": 0.009143516999756685,
+                "start": 1792505807.8158393,
+                "stop": 1792505807.8251853,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_other_documents_moved_correctly",
+                "status": "passed",
+                "duration": 0.004990514000382973,
+                "start": 1792505807.8253987,
+                "stop": 1792505807.8305445,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_summary_csv_exists",
+                "status": "passed",
+                "duration": 0.0004709989993898489,
+                "start": 1792505807.8307319,
+                "stop": 1792505807.8313446,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_summary_csv_structure",
+                "status": "passed",
+                "duration": 0.0005661359996338433,
+                "start": 1792505807.8315172,
+                "stop": 1792505807.8322282,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_summary_csv_content",
+                "status": "passed",
+                "duration": 0.011354465000295022,
+                "start": 1792505807.832402,
+                "stop": 1792505807.8439264,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_original_documents_dir_empty",
+                "status": "passed",
+                "duration": 0.0005227950005064486,
+                "start": 1792505807.844154,
+                "stop": 1792505807.8448126,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
