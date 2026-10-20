@@ -3,7 +3,7 @@ import numpy as np
 from PIL import Image
 
 from app.render.font_catalog import resolve_font_id
-from app.render.source_size import char_budget, matching_font_px, source_cap_px
+from app.render.source_size import char_budget, matching_font_px, source_cap_px, source_ink_hex
 from app.render.text_renderer import render_text_in_box
 
 
@@ -108,3 +108,17 @@ def test_specks_in_the_box_do_not_shrink_the_source_size():
     cv2.putText(image, "WORTH IT", (60, 260), cv2.FONT_HERSHEY_DUPLEX, 4.0, (20, 20, 20), 14)
     cap = source_cap_px(image, (0, 0, 1200, 400))
     assert cap is not None and cap >= 80, cap
+
+
+def test_source_colour_comes_from_the_letters_not_the_art_in_the_box():
+    image = _lettered(30)
+    image[220:300, :] = (64, 78, 92)  # brown art the box also holds, reaching its edge
+    assert source_ink_hex(image, (0, 0, 600, 300)) == "#000000"
+
+
+def test_a_lone_exclamation_mark_has_a_source_size():
+    image = np.full((224, 157, 3), 255, np.uint8)
+    cv2.rectangle(image, (70, 40), (86, 150), (0, 0, 0), -1)
+    cv2.circle(image, (78, 180), 10, (0, 0, 0), -1)
+    assert source_cap_px(image, (0, 0, 157, 224)) is None
+    assert 100 < source_cap_px(image, (0, 0, 157, 224), min_pieces=1) < 120
