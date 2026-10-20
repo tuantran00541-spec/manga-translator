@@ -1,0 +1,51 @@
+name: AIME
+
+on:
+  push:
+    paths:
+      - ".github/aime/config.json"
+
+permissions:
+  contents: write
+
+jobs:
+  config:
+    runs-on: ubuntu-22.04
+    outputs:
+      models: ${{ steps.c.outputs.models }}
+      label: ${{ steps.c.outputs.label }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: c
+        run: python3 -c 'import json; c=json.load(open(".github/aime/config.json")); print("models=" + json.dumps(c["models"])); print("label=" + c["label"])' >> "$GITHUB_OUTPUT"
+
+  aime:
+    needs: config
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        model: ${{ fromJSON(needs.config.outputs.models) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -q requests datasets
+      - id: out
+        env:
+          MODEL: ${{ matrix.model }}
+        run: echo "dir=audit-results/aime/${{ needs.config.outputs.label }}/$(echo "$MODEL" | tr '/:' '__')" >> "$GITHUB_OUTPUT"
+      - env:
+          COMMANDCODE: ${{ secrets.COMMANDCODE }}
+          MODEL: ${{ matrix.model }}
+          OUT: ${{ steps.out.outputs.dir }}
+        run: |
+          read -r SAMPLES EFFORT <<< "$(python3 -c 'import json; c=json.load(open(".github/aime/config.json")); print(c["samples"], c["effort"])')"
+          timeout 340m python .github/aime/aime.py "$MODEL" "$OUT" "$SAMPLES" "$EFFORT"
+      - if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: ${{ steps.out.outputs.dir }}
+          message: "audit: AIME ${{ matrix.model }} (run ${{ github.run_id }})"
