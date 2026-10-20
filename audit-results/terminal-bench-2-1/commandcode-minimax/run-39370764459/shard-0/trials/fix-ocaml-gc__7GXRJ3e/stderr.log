@@ -1,0 +1,8 @@
+Exception ignored in atexit callback: <bound method AgentSessionManager.close_all of <app.agent.session.AgentSessionManager object at 0x7f2119fab9b0>>
+Traceback (most recent call last):
+  File "/opt/mg/src/app/agent/session.py", line 3997, in close_all
+    session.close()
+  File "/opt/mg/src/app/agent/session.py", line 1337, in close
+    if job.alive:
+       ^^^^^^^^^
+AttributeError: 'Run' object has no attribute 'alive'

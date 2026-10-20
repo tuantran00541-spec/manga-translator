@@ -1,0 +1,307 @@
+{
+ "passed": 19,
+ "trials": 30,
+ "rate": 0.633,
+ "rows": [
+  {
+   "trial": "adaptive-rejection-sampler__77cF4Js",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "build-cython-ext__ryXRZbR",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1349918,
+    1174368,
+    22209
+   ]
+  },
+  {
+   "trial": "caffe-cifar-10__bYHXhKk",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2377758,
+    1921986,
+    195913
+   ]
+  },
+  {
+   "trial": "circuit-fibsqrt__cMSV6sN",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    34064,
+    30595,
+    113622
+   ]
+  },
+  {
+   "trial": "compile-compcert__t9LhHfX",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2128031,
+    1912620,
+    91774
+   ]
+  },
+  {
+   "trial": "count-dataset-tokens__mZ7nbrt",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    493274,
+    430801,
+    30345
+   ]
+  },
+  {
+   "trial": "db-wal-recovery__ZwjuHKn",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    119255,
+    98590,
+    26465
+   ]
+  },
+  {
+   "trial": "dna-insert__rMaMJE2",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    316950,
+    268986,
+    81355
+   ]
+  },
+  {
+   "trial": "feal-differential-cryptanalysis__upQQnU5",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    92363,
+    52922,
+    210891
+   ]
+  },
+  {
+   "trial": "financial-document-processor__sW76unD",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    554937,
+    437821,
+    38371
+   ]
+  },
+  {
+   "trial": "fix-ocaml-gc__7GXRJ3e",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2082030,
+    1747072,
+    87804
+   ]
+  },
+  {
+   "trial": "git-multibranch__6zRVsfc",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    185278,
+    137984,
+    68509
+   ]
+  },
+  {
+   "trial": "hf-model-inference__zDYokcJ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    154364,
+    130309,
+    10152
+   ]
+  },
+  {
+   "trial": "large-scale-text-editing__mjGUpDP",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    188509,
+    171264,
+    79082
+   ]
+  },
+  {
+   "trial": "log-summary-date-ranges__dfUn7Pr",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    68324,
+    55493,
+    4347
+   ]
+  },
+  {
+   "trial": "make-mips-interpreter__fAnXZcP",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1480101,
+    1210274,
+    102867
+   ]
+  },
+  {
+   "trial": "model-extraction-relu-logits__bWbQRy3",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "mteb-retrieve__Ai6RkNx",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    554692,
+    480020,
+    30762
+   ]
+  },
+  {
+   "trial": "openssl-selfsigned-cert__fA72CzF",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    140917,
+    117358,
+    17469
+   ]
+  },
+  {
+   "trial": "path-tracing__iejPhhT",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    855015,
+    695597,
+    231767
+   ]
+  },
+  {
+   "trial": "polyglot-rust-c__Mz4jQ6S",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "trial": "prove-plus-comm__knCbAMK",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    107611,
+    88576,
+    9295
+   ]
+  },
+  {
+   "trial": "pytorch-model-recovery__32vFjVv",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    253356,
+    230943,
+    43853
+   ]
+  },
+  {
+   "trial": "query-optimize__6prpn24",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    88581,
+    78900,
+    20914
+   ]
+  },
+  {
+   "trial": "regex-log__eANxA99",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    87988,
+    67809,
+    56327
+   ]
+  },
+  {
+   "trial": "sam-cell-seg__JhZqsWq",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    5697434,
+    4939520,
+    429852
+   ]
+  },
+  {
+   "trial": "sparql-university__vcFQFMS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    330245,
+    288046,
+    35938
+   ]
+  },
+  {
+   "trial": "torch-pipeline-parallelism__4dtXx3T",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    197016,
+    167808,
+    48391
+   ]
+  },
+  {
+   "trial": "tune-mjcf__JpJwdhc",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    551809,
+    465768,
+    51774
+   ]
+  },
+  {
+   "trial": "winning-avg-corewars__FyRsuSZ",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1234992,
+    1054965,
+    288943
+   ]
+  }
+ ]
+}
