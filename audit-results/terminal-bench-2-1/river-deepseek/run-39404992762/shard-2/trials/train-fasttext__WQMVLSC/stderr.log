@@ -1,0 +1,9 @@
+2026-10-20 11:35:26 | INFO     | app.agent.client:349 - bench answered 429 (1 so far, waiting 6 s): {"error":{"message":"Account request rate limit exceeded for this model","type":"rate_limit_error","code":"account_rate"}}
+2026-10-20 12:27:28 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 2s
+2026-10-20 12:27:31 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 4s
+2026-10-20 12:27:35 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 6s
+2026-10-20 12:27:42 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 14s
+2026-10-20 12:27:58 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 24s
+2026-10-20 12:28:23 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 63s
+2026-10-20 12:29:27 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 68s
+2026-10-20 12:30:36 | WARNING  | app.agent.client:536 - bench HTTP 503: No ready deployment (bench); asking again in 80s
