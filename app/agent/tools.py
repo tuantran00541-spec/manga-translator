@@ -73,8 +73,9 @@ SPECS = [
          "path": {"type": "string"}, "to": {"type": "string"}, "overwrite": {"type": "boolean"}}}},
     {"name": "delete_file", "description": "Delete a file.",
      "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "run_command", "description": "Run a shell command in the workspace sandbox; returns its output and exit code. In it, `agent-tool <name> key=value ...` "
-                                            "calls any other harness tool (skills, helper agents, web, MCP, created tools) and prints the result.",
+    {"name": "run_command", "description": "Run a shell command in the workspace sandbox; returns its output and exit code. In it every other harness tool "
+                                            "(skills, helper agents, web, MCP, created tools, branch and adopt) is a command of its own name, "
+                                            "`<name> key=value ...`, that prints the result; `agent-tool --help` lists them.",
      "parameters": {"type": "object", "required": ["command"], "properties": {
          "command": {"type": "string"}, "timeout": {"type": "integer", "description": "Seconds, at most 1800."},
          "background": {"type": "boolean", "description": "Start it and return a job id at once; read it with job_output, stop it with job_stop."},

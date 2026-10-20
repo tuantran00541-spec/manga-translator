@@ -288,6 +288,12 @@ if __name__ == "__main__":
             print(f"  {{_row['name']}}: {{_row['description']}}")
         _sys.exit(0)
     _rest = _sys.argv[2:]
+    if _sys.argv[1] == "branch" and _rest and _rest[0].lstrip()[:1] != "{{":
+        # From the shell each attempt and the check are shell commands, run in that attempt's copy of the workspace.
+        _cmd = lambda c: f"print(tools.run_command(command={{c!r}}))"
+        _pairs = dict(a.split("=", 1) for a in _rest if "=" in a)
+        _check = _pairs.pop("check", "")
+        _rest = [_json.dumps({{"branches": {{k: _cmd(v) for k, v in _pairs.items()}}, "check": _cmd(_check) if _check else ""}})]
 
     def _value(text):
         try:
@@ -305,6 +311,8 @@ if __name__ == "__main__":
         _sys.exit(1)
     print(_out if isinstance(_out, str) else _json.dumps(_out, ensure_ascii=False, default=str))
 """
+SHIM_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,63}")
+SHIM_MARK = "agent-tool shim"  # marks the per-tool commands, so stale ones can be told from anything else in bin
 PARALLEL_CALLS = frozenset({"list_dir", "read_file", "search", "glob", "symbols", "web_fetch", "web_search", "task"})
 DOOM_LOOP = 3
 POST_SUMMARY_WINDOW = 30
@@ -382,10 +390,13 @@ LEAN_CREATE = ("How your tools fit together:\n"
                "- What the shell cannot do is in the tool library: helper agents (task, fan_out, tools.agent(prompt)), a second look from "
                "another model (tools.think(question)), skills, web search and fetch, view_image, ask_user, memory, todo_write, checkpoint "
                "(diffs and going back), schedules, plugins and MCP tools. tools.search(words) finds one, tools.describe(name) shows its parameters.\n"
-               "- run_command reaches all of it{script}, under the same rules and approvals: from the shell, `agent-tool <name> key=value ...` "
-               "(or one JSON object) prints a tool's result, e.g. agent-tool skill name=pdf or agent-tool web_search query='...'; from Python "
-               "run by the command, `from agent_tools import tools` makes them plain functions, tools.<name>(...). create keeps such Python as "
-               "a tool of its own. "
+               "- run_command reaches all of it{script}, under the same rules and approvals. In the shell every tool is a command of its own "
+               "name that prints its result: web_search query='...', skill pdf, think 'is this plan sound?', todo_write items='[...]', "
+               "checkpoint, view_image path=a.png, and the tools you create. Arguments are key=value or one JSON object, a bare value fills the "
+               "first parameter, `agent-tool --help` lists every command and `agent-tool <name> ...` reaches one whose name a system command "
+               "already takes. `branch a='<command>' b='<command>' check='<command>'` runs each command in its own copy of the workspace and "
+               "the check in each copy, and `adopt a` keeps one. From Python run by the command, `from agent_tools import tools` makes them "
+               "plain functions, tools.<name>(...). create keeps such Python as a tool of its own. "
                + MADE_TOOLS + "\n"
                "- tools.branch({{'a': code_a, 'b': code_b}}, check=check_code), called inside create, runs two or three attempts at the same time, "
                "each on its own copy of the workspace, then the check on each copy, and returns per attempt its diff, output and check result. "
@@ -1915,6 +1926,26 @@ class AgentSession:
             tool = state / "bin" / "agent-tool"
             tool.write_text(f'#!/bin/sh\nPYTHONPATH={shlex.quote(str(lib))}${{PYTHONPATH:+:$PYTHONPATH}} exec {shlex.quote(sys.executable)} -m agent_tools "$@"\n', encoding="utf-8")
             tool.chmod(0o755)
+        self._write_shims(state / "bin")
+
+    def _write_shims(self, bin_dir: Path) -> None:
+        """Make each reachable tool a shell command of its own name; a plugin, MCP or created tool gives way to a real command of that name."""
+        own = {s["name"] for s in self.specs() + self.specs(self.library_specs())} | {"agent", "think", "vote", "models", "skill", "branch", "adopt"}
+        names = {n for n in self._chain_targets() | set(self._root().created) | {"branch", "adopt"} if SHIM_NAME.fullmatch(n)} - {"run_command"}
+        names = {n for n in names if n in own or not shutil.which(n)}
+        if getattr(self, "_shims", None) == (bin_dir, names):
+            return
+        for old in bin_dir.iterdir():
+            if old.stem not in names and old.stem != "agent-tool" and SHIM_MARK in old.read_text(encoding="utf-8", errors="replace")[:200]:
+                old.unlink()
+        for name in names:
+            if os.name == "nt":
+                (bin_dir / f"{name}.cmd").write_text(f'@rem {SHIM_MARK}\r\n@"{bin_dir / "agent-tool.cmd"}" {name} %*\r\n', encoding="utf-8")
+            else:
+                shim = bin_dir / name
+                shim.write_text(f'#!/bin/sh\n# {SHIM_MARK}\nexec {shlex.quote(str(bin_dir / "agent-tool"))} {name} "$@"\n', encoding="utf-8")
+                shim.chmod(0o755)
+        self._shims = (bin_dir, names)
 
     def _command_job(self, command: str, policy: "sandbox.Policy", tty: bool = False) -> "sandbox.Job":
         """Start a run_command job that reaches the library as created tools do: agent-tool from the shell, agent_tools from Python."""
@@ -2142,8 +2173,8 @@ class AgentSession:
         self._branches = {name: (copy, base) for name, copy, base, *_ in rows if base is not None}
         table = "\n\n".join(f"== branch {name} ==\n[changes]\n{diff or '(none)'}\n[output]\n{clip(out, 3000)}\n[check]\n{clip(verdict, 3000)}"
                             for name, _, _, out, verdict, diff in rows)
-        return (table + "\n\nNothing was applied. Compare the branches against every requirement, then tools.adopt('<name>') the one to keep "
-                "or write new attempts, and run the check again on the real workspace before you finish."), True
+        return (table + "\n\nNothing was applied. Compare the branches against every requirement, then tools.adopt('<name>') (adopt <name> in the shell) "
+                "the one to keep or write new attempts, and run the check again on the real workspace before you finish."), True
 
     def _branch_run(self, ws: Workspace, code: str) -> str:
         """One piece of branch code as a sandboxed script whose workspace tools act on the branch's copy."""
