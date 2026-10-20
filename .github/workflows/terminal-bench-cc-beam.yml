@@ -28,6 +28,7 @@ jobs:
       shards: ${{ steps.cfg.outputs.shards }}
       shard_total: ${{ steps.cfg.outputs.shard_total }}
       echo_reasoning: ${{ steps.cfg.outputs.echo_reasoning }}
+      profile: ${{ steps.cfg.outputs.profile }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,6 +58,7 @@ jobs:
           print(f"shards={json.dumps(list(range(total)))}")
           print(f"shard_total={total}")
           print(f"echo_reasoning={cfg.get('echo_reasoning') or ''}")
+          print(f"profile={json.dumps(cfg.get('profile') or {})}")
           PY
 
   check:
@@ -191,6 +193,7 @@ jobs:
           MANGA_AGENT_REQUEST: ${{ needs.config.outputs.request }}
           MANGA_AGENT_SHA: ${{ github.sha }}
           MANGA_AGENT_ECHO_REASONING: ${{ needs.config.outputs.echo_reasoning }}
+          MANGA_AGENT_PROFILE: ${{ needs.config.outputs.profile }}
         run: |
           export MANGA_AGENT_BASE="http://$(cat /tmp/docker-gateway):$PORT/v1"
           [ -n "${SEARCH_RELAY:-}" ] && export MANGA_AGENT_SEARCH="http://$(cat /tmp/docker-gateway):$SEARCH_RELAY"

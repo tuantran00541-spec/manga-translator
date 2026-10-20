@@ -1833,6 +1833,15 @@ def test_the_number_of_goal_nudges_comes_from_the_profile(ws, home):
     assert sum("Chưa đạt mục tiêu" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
 
 
+def test_shell_only_offers_the_shell_alone_and_says_so(ws, home):
+    (home / ".manga-agent").mkdir()
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"shell_only": True}))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("Done.")))
+    assert [s["name"] for s in session.specs()] == ["run_command"]
+    prompt = session.system_prompt()
+    assert "Your one tool is run_command" in prompt and "create name=" not in prompt
+
+
 def test_timeouts_dropped_connections_and_server_errors_are_asked_again_with_a_pause(monkeypatch):
     waits, calls = [], []
     monkeypatch.setattr(client.time, "sleep", lambda s: waits.append(s))
