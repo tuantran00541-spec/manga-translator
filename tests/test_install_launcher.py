@@ -104,6 +104,25 @@ class _Response:
         return False
 
 
+def test_the_prebuilt_ctd_model_is_used_and_a_failed_download_builds_it(tmp_path, monkeypatch):
+    fetched, ran = [], []
+
+    def fetch(url, path, expected):
+        fetched.append(url)
+        if url == install.CTD_SEG_URL and len(fetched) > 1:
+            raise SystemExit("mạng lỗi")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+
+    monkeypatch.setattr(install, "download", fetch)
+    monkeypatch.setattr(install, "run", lambda *args, **kw: ran.append(args))
+    install.build_ctd(tmp_path / "a", "uv")
+    assert fetched == [install.CTD_SEG_URL] and ran == []
+    (tmp_path / "b").mkdir()
+    install.build_ctd(tmp_path / "b", "uv")
+    assert fetched[1:] == [install.CTD_SEG_URL, install.CTD_URL] and any("export_ctd_onnx.py" in str(a[-1]) for a in ran)
+
+
 def test_steps_are_numbered_and_timed(monkeypatch, capsys):
     clock = iter([0, 0, 5, 5, 70, 70])
     monkeypatch.setattr(install.time, "monotonic", lambda: next(clock))

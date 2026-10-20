@@ -21,6 +21,9 @@ LAMA_URL = "https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/l
 LAMA_SHA256 = "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9"
 CTD_URL = "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx"
 CTD_SHA256 = "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f"
+# The same export, built once in CI (publish-ctd-model), so an install needs no torch.
+CTD_SEG_URL = "https://github.com/tuantran00541-spec/manga-translator/releases/download/models-v1/ctd_seg.onnx"
+CTD_SEG_SHA256 = "8a0820470be7a118713083de61b8ec966c106e7f53024490a01c68d889915e60"
 # Kept across updates: the environment, models, chapters and logs of the user.
 KEEP = frozenset({".venv", "models", "data", "logs", ".cache"})
 MARKER = ".manga-install.json"
@@ -261,10 +264,15 @@ def remove_old_caches() -> None:
 
 
 def build_ctd(target: Path, uv: str | None) -> None:
-    """Export models/ctd_seg.onnx in a throwaway environment, as CI does."""
+    """Fetch the prebuilt models/ctd_seg.onnx, or export it in a throwaway environment when that fails."""
     model = target / "models" / "ctd_seg.onnx"
     if model.is_file():
         return
+    try:
+        download(CTD_SEG_URL, model, CTD_SEG_SHA256)
+        return
+    except SystemExit as exc:
+        note(f"{exc}; tự dựng model này (cần tải torch, lâu hơn)")
     cache = target / ".cache"
     cache.mkdir(exist_ok=True)
     raw = cache / "comictextdetector.pt.onnx"
