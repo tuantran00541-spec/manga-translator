@@ -1,0 +1,53 @@
+{
+ "area": "translate",
+ "model": "reflection/beam:free",
+ "effort": "max",
+ "status": 200,
+ "seconds": 103,
+ "files": [
+  "app/ai_mode/__init__.py",
+  "app/ai_mode/checkpoints.py",
+  "app/ai_mode/decider.py",
+  "app/ai_mode/glossary.py",
+  "app/ai_mode/job.py",
+  "app/ai_mode/page_scan.py",
+  "app/ai_mode/polish.py",
+  "app/ai_mode/seams.py",
+  "app/ai_mode/vision_json.py",
+  "app/editorial_gate.py",
+  "app/manifest_utils.py",
+  "app/render/__init__.py",
+  "app/render/font_catalog.py",
+  "app/render/font_guide.py",
+  "app/render/font_selection.py",
+  "app/render/identity.py",
+  "app/render/page_renderer.py",
+  "app/render/source_size.py",
+  "app/render/text_renderer.py",
+  "app/routers/export.py",
+  "app/routers/render_commit.py",
+  "app/routers/translation.py",
+  "app/series_memory.py",
+  "app/translation/__init__.py",
+  "app/translation/context.py",
+  "app/translation/cost.py",
+  "app/translation/vision.py"
+ ],
+ "prompt_chars": 353081,
+ "usage": {
+  "prompt_tokens": 83644,
+  "completion_tokens": 43521,
+  "total_tokens": 127165,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "audio_tokens": 0,
+   "video_tokens": 0
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 40978,
+   "image_tokens": 0
+  },
+  "cache_creation_input_tokens": 0
+ },
+ "error": ""
+}
