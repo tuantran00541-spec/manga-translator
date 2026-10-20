@@ -1136,7 +1136,7 @@ class AgentSession:
         if name == "effort":
             if args:
                 self.set_effort(args)
-            return {"message": f"Mức suy nghĩ: {self.effort or 'mặc định'}"}
+            return {"message": f"Mức suy luận: {self.effort or 'mặc định'}"}
         if name == "mode" and args in MODES:
             self.mode = args
             return {"message": f"Quyền: {args}"}
@@ -1173,7 +1173,7 @@ class AgentSession:
                 return {"message": "Không có gì để hoàn tác (chỉ hoàn tác file do công cụ sửa file đã đổi, không gồm lệnh shell)."}
             self.history.append({"role": "user", "content": "[The user undid your last turn's file changes: " + ", ".join(done) + "]"})
             self.history.append({"role": "assistant", "content": "Understood; those files are back as they were.", "calls": []})
-            self.emit("notice", text="Undone: " + ", ".join(done))
+            self.emit("notice", text="Đã hoàn tác: " + ", ".join(done))
             return {"message": "Đã hoàn tác " + ", ".join(done)}
         if name == "memory":
             return {"message": self._memory_command(args)}
@@ -1346,10 +1346,10 @@ class AgentSession:
                     self._lock.wait(timeout=1.0)
                 choice, self.key_prompt = self._key_choice, None
             if choice != "next":
-                self.emit("notice", text=f"Đã dừng: key {index + 1}/{len(self.api_keys)} của {self.provider.label} đang bị giới hạn.")
+                self.emit("notice", text=f"Đã dừng: key {index + 1}/{len(self.api_keys)} ({self.provider.label}) bị giới hạn.")
                 return False
             self.api_key = self.api_keys[following]
-            self.emit("notice", text=f"Đã đổi sang key {following + 1}/{len(self.api_keys)} của {self.provider.label}.")
+            self.emit("notice", text=f"Đã đổi sang key {following + 1}/{len(self.api_keys)} ({self.provider.label}).")
             return True
 
     def choose_key(self, choice: str) -> None:
@@ -1480,7 +1480,7 @@ class AgentSession:
             with self._mcp_lock:
                 self._offer_mcp_tools(name, self.mcp_status.get(name, {}).get("scope", "workspace"))
             self.mcp_status.get(name, {})["tools"] = len(server.tools)
-            self.emit("notice", text=f"MCP server {name} changed its tools; it now offers {len(server.tools)}.")
+            self.emit("notice", text=f"MCP {name} cập nhật: {len(server.tools)} công cụ.")
 
     def _stop_mcp(self, name: str) -> None:
         with self._mcp_lock:
@@ -1735,7 +1735,7 @@ class AgentSession:
             logger.warning("Agent session {} could not save a rule: {}", self.id, exc)
             return
         self.rules = rules.load(self.workspace.root, home_path)
-        self.emit("notice", text=f"Rule saved: always allow {category} {pattern}")
+        self.emit("notice", text=f"Đã lưu luật: luôn cho phép {category} {pattern}")
 
     def _wait_for_decision(self, call: dict) -> dict:
         if self.parent is not None:
@@ -2034,7 +2034,7 @@ class AgentSession:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
         root._answers = []
-        root.emit("notice", text="Wrote how I picture this request (/intent to read it).")
+        root.emit("notice", text="Đã ghi cách hiểu yêu cầu (/intent để xem).")
         return text
 
     def _chain_targets(self) -> set[str]:
@@ -2340,7 +2340,7 @@ class AgentSession:
         if row["runs"] < 2 or name in self._root().created:
             return ""
         self._create({k: tool[k] for k in ("name", "description", "parameters", "code")})
-        self.emit("notice", text=f"The one-off chain {name} worked twice, so it is now a kept tool.")
+        self.emit("notice", text=f"Đã giữ {name} làm công cụ (chạy tốt 2 lần).")
         return f"\n[this one-off ran cleanly twice, so it is now kept as the tool {name}]"
 
     def _spend_chain(self, kind: str) -> tuple[str, bool]:
@@ -2538,7 +2538,7 @@ class AgentSession:
         except SyntaxError as exc:
             return f"the repair did not compile: {exc}", False
         self._create({"name": name, "code": code, "description": tool["description"], "parameters": tool["parameters"]})
-        self.emit("notice", text=f"Repaired the tool {name} while a chain was running.")
+        self.emit("notice", text=f"Đã sửa công cụ {name}.")
         return code, True
 
     def _with_callees(self, code: str) -> str:
@@ -2625,11 +2625,11 @@ class AgentSession:
             self.plan_mode = False
             if decision["decision"] == "allow_all":
                 self.mode = "edits"
-            self.emit("notice", text="Plan approved; starting work.")
+            self.emit("notice", text="Đã duyệt kế hoạch.")
             return "The user approved the plan. Implement it now."
         if call["name"] == "goal_done":
             self.goal = None
-            self.emit("notice", text="Goal done.")
+            self.emit("notice", text="Đã đạt mục tiêu.")
             return "Goal marked done."
         if call["name"] == "memory":
             return self._memory_tool(args)
@@ -2995,7 +2995,7 @@ class AgentSession:
             note += (f" {len(conflicts)} changed on both sides and were NOT merged: {', '.join(conflicts[:12])}. Its versions are in "
                      f"{isolate.CONFLICTS}/{child.nick}/; merge them by hand, then delete that folder.")
         child.merge_note = note + "]"
-        self.emit("notice", text=f"Merged {child.nick}'s work: {len(applied)} file(s)" + (f", {len(conflicts)} conflict(s)" if conflicts else ""))
+        self.emit("notice", text=f"Đã gộp từ {child.nick}: {len(applied)} file" + (f", {len(conflicts)} xung đột" if conflicts else ""))
 
     def _spawn(self, message: str, agent_name: str, dedupe: bool = True, role: str = "") -> str:
         with self._spawn_lock:
@@ -3206,7 +3206,7 @@ class AgentSession:
         polling = call["name"] == "job_output" and isinstance(call["args"], dict) and getattr(self.jobs.get(str(call["args"].get("id"))), "alive", False)
         if not coded and len(self._recent) == DOOM_LOOP and len(set(self._recent)) == 1 and call["name"] != "wait_agent" and not polling:
             self._recent = []
-            self.emit("notice", text=f"{call['name']} called {DOOM_LOOP} times with the same arguments; blocked.")
+            self.emit("notice", text=f"Đã chặn {call['name']}: lặp {DOOM_LOOP} lần cùng tham số.")
             return (f"Blocked: you made this exact {call['name']} call {DOOM_LOOP} times in a row. "
                     "Change your approach or ask the user."), False
         verdict = rules.check(self.rules, call["name"], call["args"], self._rel) if isinstance(call["args"], dict) else None
@@ -3431,8 +3431,8 @@ class AgentSession:
                 # The provider throttled this request; say so, with its own words, instead of only taking longer.
                 self.rate_limited["count"] += now["count"] - limited["count"]
                 self.rate_limited["waited_s"] += now["waited_s"] - limited["waited_s"]
-                self.emit("notice", text=f"{self.provider.label} rate-limited this request {now['count'] - limited['count']} time(s), "
-                          f"waited {now['waited_s'] - limited['waited_s']:.0f} s: {now.get('detail', '')[:160]}")
+                self.emit("notice", text=f"{self.provider.label} giới hạn tốc độ {now['count'] - limited['count']} lần, "
+                          f"đã chờ {now['waited_s'] - limited['waited_s']:.0f} giây: {now.get('detail', '')[:160]}")
 
     def _call_model_once(self, messages: list[dict], tools: list[dict] | None, streams: bool, started: float) -> dict:
         try:
@@ -3449,7 +3449,7 @@ class AgentSession:
                     if self._fallback_at + 1 >= len(chain):
                         raise
                     self._fallback_at += 1
-                    self.emit("notice", text=f"Model {chain[self._fallback_at - 1]} did not answer ({exc}); switching to {chain[self._fallback_at]}.")
+                    self.emit("notice", text=f"{chain[self._fallback_at - 1]} không phản hồi ({exc}), chuyển sang {chain[self._fallback_at]}.")
         finally:
             self.stats["model_s"] += time.time() - started
 
@@ -3461,7 +3461,7 @@ class AgentSession:
             if not client.is_overflow(str(exc)):
                 raise
             self._learn_window(str(exc))
-            self.emit("notice", text="Context window exceeded; compacting the older part and retrying.")
+            self.emit("notice", text="Vượt ngữ cảnh: đang tóm gọn và thử lại.")
             if not self.compact(keep=KEEP_RECENT_CHARS // 3):
                 raise
             return self._turn_once()
@@ -3476,7 +3476,7 @@ class AgentSession:
                                     None if self.text_tools else specs)
         except client.ToolsUnsupported as exc:
             self.text_tools = True
-            self.emit("notice", text=f"The model does not take native tool calls; switching to tool calls written as text ({exc}).")
+            self.emit("notice", text=f"Model không hỗ trợ gọi công cụ, chuyển sang dạng văn bản ({exc}).")
             turn = self._call_model(client.render(self.history, system, True, specs, reasoning=self.echo_reasoning), None)
         self._fire("after_model", {k: turn.get(k) for k in ("text", "calls", "usage")})
         return turn
@@ -3486,7 +3486,7 @@ class AgentSession:
         window = client.context_window(message)
         if self.compact_at and 4_000 <= window <= 10_000_000 and int(window * WINDOW_SHARE) < self.compact_at:
             self.compact_at = int(window * WINDOW_SHARE)
-            self.emit("notice", text=f"The model's context window is {window:,} tokens; auto-compacting from {self.compact_at:,} tokens.")
+            self.emit("notice", text=f"Ngữ cảnh {window:,} token, tự tóm gọn từ {self.compact_at:,} token.")
 
     def set_deadline(self, seconds: float) -> None:
         """A run with a clock (the CLI's --timeout-min): the agent is warned, then asked for its report before the clock stops it (omp's forced final report)."""
@@ -3538,7 +3538,7 @@ class AgentSession:
         self.history = [{"role": "user", "content": opening}] + ack + tail
         self._pinned = None
         self.cache_log["context rollovers"] += 1
-        self.emit("notice", text="Started a fresh context from the agent's notes.")
+        self.emit("notice", text="Đã mở ngữ cảnh mới từ ghi chú.")
 
     def _cut_point(self, keep: int | None) -> int:
         """Where the kept recent part starts: about `keep` characters from the end, at a user or assistant message, never inside a call's results."""
@@ -3600,7 +3600,7 @@ class AgentSession:
         self.history = marker + ack + tail
         self._pinned = None
         self.cache_log["compactions"] += 1
-        self.emit("notice", text=f"Compacted {len(head)} older conversation items.")
+        self.emit("notice", text=f"Đã tóm gọn {len(head)} mục cũ.")
         return True
 
     def _compact_auto(self, rest: list[str]) -> str:
@@ -3624,9 +3624,9 @@ class AgentSession:
     def _compact_job(self, focus: str) -> None:
         try:
             if not self.compact(focus):
-                self.emit("notice", text="Nothing to compact yet.")
+                self.emit("notice", text="Chưa có gì để tóm gọn.")
         except Exception as exc:
-            self.emit("error", text=f"Could not compact: {exc}"[:1000])
+            self.emit("error", text=f"Không tóm gọn được: {exc}"[:1000])
         finally:
             with self._lock:
                 self.status = "idle"
@@ -3703,7 +3703,7 @@ class AgentSession:
         if self._edited and self._plan_nudged:
             self._prewalk = False
             self.history.append({"role": "user", "content": PREWALK_CHECKLIST})
-            self.emit("notice", text=f"Prewalk: {self.profile['prewalk_model']} made the plan; {self.model} takes over from the first edit.")
+            self.emit("notice", text=f"{self.profile['prewalk_model']} lập kế hoạch, {self.model} thực hiện.")
         elif not self._plan_nudged:
             self._plan_nudged = True
             self.history.append({"role": "user", "content": PREWALK_PLAN})
@@ -3826,7 +3826,7 @@ class AgentSession:
             used = self._spent() - self._turn_usage
             self.history.append({"role": "user", "content": GOAL_NUDGE.format(text=self.goal["text"], used=used,
                                                                               budget=f" of a {budget:,} budget ({max(0, budget - used):,} left)" if budget < 10 ** 11 else "")})
-            self.emit("notice", text=f"Goal not done yet; continuing ({self.goal['turns']}/{self.profile['goal_turns']}).")
+            self.emit("notice", text=f"Chưa đạt mục tiêu, làm tiếp ({self.goal['turns']}/{self.profile['goal_turns']}).")
             return True
         return False
 
@@ -3941,19 +3941,19 @@ class AgentSession:
         broken = empties = cuts = 0
         for _ in range(max_steps):
             if self._stop:
-                self.emit("notice", text="Stopped.")
+                self.emit("notice", text="Đã dừng.")
                 break
             self._drain()
             if self._deadline and not self.depth:
                 if time.time() >= self._deadline:
-                    self.emit("notice", text="Out of time; the agent is writing its final report.")
+                    self.emit("notice", text="Hết giờ: đang viết báo cáo.")
                     self._wrap_up("time limit")
                     break
                 if self._notice_at and time.time() >= self._notice_at:
                     self.history.append({"role": "user", "content": TIME_NOTICE.format(minutes=max(1, round((self._deadline - time.time()) / 60)))})
                     self._notice_at = 0.0
             if self._spent() - self._turn_usage > self.profile["token_budget"]:
-                self.emit("error", text=f"Used more than {self.profile['token_budget']:,} tokens this turn; stopping. Send a message to continue.")
+                self.emit("error", text=f"Đã dừng: vượt {self.profile['token_budget']:,} token. Nhắn để làm tiếp.")
                 self._wrap_up()
                 break
             size_before = self._make_room()
@@ -3968,7 +3968,7 @@ class AgentSession:
                 self._fired[rule["name"]] = self._fired.get(rule["name"], 0) + 1
                 note = rule["message"] if rule["message"].startswith("[") else f"[Reminder] {rule['message']}"
                 self.history.append({"role": "user", "content": note})
-                self.emit("notice", text=f"Stream rule '{rule['name']}': dropped the reply in progress and reminded the model.")
+                self.emit("notice", text=f"Luật {rule['name']}: đã hủy câu trả lời và nhắc model.")
                 continue
             calls = turn["calls"]
             if not turn["text"] and not calls:
@@ -3978,18 +3978,18 @@ class AgentSession:
                 # A reasoning model that spends the whole reply budget thinking writes nothing; it gets a larger budget, not the same one again.
                 if debug.get("finish") == "length" and self._max_out < self._out_ceiling():
                     self._max_out = min(self._max_out * 2, self._out_ceiling())
-                    self.emit("notice", text=f"The model spent all {used} tokens reasoning and wrote nothing; raising the reply limit to {self._max_out:,} tokens.")
+                    self.emit("notice", text=f"Model dùng hết {used} token để suy luận, nâng giới hạn lên {self._max_out:,}.")
                     empties -= 1
                     continue
                 if empties > EMPTY_RETRIES:
-                    self.emit("error", text=f"The model replied empty {empties} times in a row ({debug}); stopping.")
+                    self.emit("error", text=f"Đã dừng: model trả về rỗng {empties} lần ({debug}).")
                     break
                 # The model wrote tool calls the server's stream parser lost; a reply without streaming carries them whole.
                 if debug.get("finish") == "tool_calls" and not self._plain and self._base_complete is client.complete:
                     self._plain = True
-                    self.emit("notice", text=f"The server lost the tool calls while streaming ({used} tokens); turning streaming off for this session.")
+                    self.emit("notice", text=f"Mất lệnh gọi công cụ khi stream ({used} token), tắt stream.")
                 else:
-                    self.emit("notice", text=f"Empty reply ({used} tokens, {debug}); retrying {empties}/{EMPTY_RETRIES}.")
+                    self.emit("notice", text=f"Trả về rỗng ({used} token, {debug}), thử lại {empties}/{EMPTY_RETRIES}.")
                     if empties == 2:
                         self.history.append({"role": "user", "content": EMPTY_NUDGE})
                 continue
@@ -4004,19 +4004,19 @@ class AgentSession:
                     cuts += 1
                     self._max_out = min(self._max_out * 2, self._out_ceiling())
                     self.history.append({"role": "user", "content": CUT_NUDGE})
-                    self.emit("notice", text=f"The reply was cut off at the limit; asking the model to go on ({self._max_out:,} tokens).")
+                    self.emit("notice", text=f"Câu trả lời bị cắt, nhắc model viết tiếp ({self._max_out:,} token).")
                     continue
                 if self._more_work():
                     continue
                 if self._handed_off(turn["text"]):
                     self._handoff_nudged = True
                     self.history.append({"role": "user", "content": HANDOFF_NUDGE})
-                    self.emit("notice", text="The model left steps for the reader; asking it once to do them itself.")
+                    self.emit("notice", text="Model để lại việc cho người đọc, nhắc tự làm.")
                     continue
                 if nudge := self._unchecked():
                     self._check_nudged = True
                     self.history.append({"role": "user", "content": nudge})
-                    self.emit("notice", text="The model finished without a passing check; asking it once to run one.")
+                    self.emit("notice", text="Chưa kiểm tra, nhắc model chạy kiểm tra.")
                     continue
                 break
             cuts = 0
@@ -4027,11 +4027,11 @@ class AgentSession:
                 self._roll_over()
             broken = broken + 1 if all(c.get("error") or not c["name"] for c in calls) else 0
             if broken >= UNREADABLE_TURNS:
-                self.emit("error", text=f"The model wrote unreadable tool calls {broken} turns in a row; stopping to save tokens.")
+                self.emit("error", text=f"Đã dừng: lệnh gọi công cụ lỗi {broken} lượt liền.")
                 break
             self.save()
         else:
-            self.emit("notice", text=f"Stopped after {max_steps} steps; send a message to continue.")
+            self.emit("notice", text=f"Đã dừng sau {max_steps} bước. Nhắn để làm tiếp.")
             if not self._stop:
                 self._wrap_up("step limit")
 
@@ -4043,9 +4043,9 @@ class AgentSession:
         left = [item["content"][:60] for item in self.todos if item["status"] != "completed"]
         if not changed and not left:
             return
-        done = f"changed {', '.join(changed[:12])}" if changed else "no files changed"
-        rest = f"; {len(left)} todo item(s) left: {'; '.join(left[:5])}" if left else ""
-        self.emit("notice", text=f"This turn stopped on an error: {done}{rest}. Send a message to continue from here.")
+        done = f"đã sửa {', '.join(changed[:12])}" if changed else "chưa sửa file nào"
+        rest = f"; còn {len(left)} việc: {'; '.join(left[:5])}" if left else ""
+        self.emit("notice", text=f"Dừng do lỗi: {done}{rest}. Nhắn để làm tiếp.")
 
     def _loop(self, max_steps: int | None = None) -> None:
         max_steps = max_steps or self.max_steps
@@ -4059,7 +4059,7 @@ class AgentSession:
                 self._fire("session_start")
             custom = self.registry.loops.get(self.profile["loop"])
             if self.profile["loop"] != "default" and custom is None:
-                self.emit("notice", text=f"No loop named {self.profile['loop']!r}; using the default loop.")
+                self.emit("notice", text=f"Không có vòng lặp {self.profile['loop']!r}, dùng mặc định.")
             (custom or AgentSession._steps)(self, max_steps)
             last = next((m for m in reversed(self.history[start:]) if m.get("role") == "assistant"), {})
             self._fire("turn_end", str(last.get("content") or ""))

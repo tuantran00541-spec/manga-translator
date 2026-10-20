@@ -3,30 +3,30 @@
   const POLL_MS = 700;
   const HEAD = { "X-Manga-Agent": "1" };
   const VERBS = {
-    "": "Unreadable call",
-    list_dir: "List", read_file: "Read", search: "Search", glob: "Find files", write_file: "Write", edit_file: "Edit",
-    run_command: "Run", web_fetch: "Fetch", skill: "Skill", todo_write: "Plan",
-    plugin_write: "Write plugin", task: "Helper", spawn_agent: "Spawn agent", wait_agent: "Wait for agents", send_input: "Message agent", close_agent: "Close agent", memory: "Memory", ask_user: "Ask you", exit_plan_mode: "Plan", goal_done: "Goal done",
-    symbols: "Symbols", web_search: "Web search", web_download: "Download", view_image: "View image", tool_search: "Find tools", run_script: "Script", fan_out: "Fan out",
-    job_output: "Job output", job_input: "Type into job", job_stop: "Stop job", context_notes: "Notes", new_context: "New context",
-    schedule_create: "Schedule", schedule_list: "Schedules", schedule_delete: "Cancel schedule",
-    use_model: "Use the paid model",
+    "": "Lệnh lỗi",
+    list_dir: "Xem thư mục", read_file: "Đọc", search: "Tìm", glob: "Tìm file", write_file: "Ghi", edit_file: "Sửa",
+    run_command: "Chạy", web_fetch: "Tải trang", skill: "Skill", todo_write: "Kế hoạch",
+    plugin_write: "Ghi plugin", task: "Agent con", spawn_agent: "Tạo agent con", wait_agent: "Chờ agent con", send_input: "Nhắn agent con", close_agent: "Đóng agent con", memory: "Ghi nhớ", ask_user: "Hỏi bạn", exit_plan_mode: "Kế hoạch", goal_done: "Xong mục tiêu",
+    symbols: "Tìm ký hiệu", web_search: "Tìm web", web_download: "Tải về", view_image: "Xem ảnh", tool_search: "Tìm công cụ", run_script: "Chạy script", fan_out: "Chạy song song",
+    job_output: "Đọc tác vụ", job_input: "Nhập vào tác vụ", job_stop: "Dừng tác vụ", context_notes: "Ghi chú", new_context: "Ngữ cảnh mới",
+    schedule_create: "Hẹn giờ", schedule_list: "Lịch hẹn", schedule_delete: "Hủy hẹn",
+    use_model: "Dùng model trả phí",
   };
-  // How each kind of call is counted in a group's one-line summary: verb, one, many.
+  // How each kind of call is counted in a group's one-line summary: verb, noun.
   const TALLY = {
-    run_command: ["ran", "command", "commands"], read_file: ["read", "file", "files"], edit_file: ["edited", "file", "files"], write_file: ["edited", "file", "files"],
-    spawn_agent: ["started", "helper", "helpers"], wait_agent: ["waited on", "helper", "helpers"],
-    send_input: ["messaged", "helper", "helpers"], close_agent: ["closed", "helper", "helpers"], memory: ["saved", "memory", "memories"],
-    list_dir: ["listed", "folder", "folders"], search: ["searched", "time", "times"], glob: ["searched", "time", "times"], symbols: ["searched", "time", "times"],
-    web_fetch: ["fetched", "page", "pages"], skill: ["opened", "skill", "skills"], task: ["ran", "helper", "helpers"], mcp: ["called", "MCP tool", "MCP tools"],
-    run_script: ["ran", "script", "scripts"], fan_out: ["fanned out", "batch", "batches"], job_input: ["typed into", "job", "jobs"], job_output: ["read", "job", "jobs"], job_stop: ["stopped", "job", "jobs"],
-    schedule_create: ["scheduled", "run", "runs"], web_search: ["searched the web", "time", "times"],
+    run_command: ["chạy", "lệnh"], read_file: ["đọc", "file"], edit_file: ["sửa", "file"], write_file: ["sửa", "file"],
+    spawn_agent: ["tạo", "agent con"], wait_agent: ["chờ", "agent con"],
+    send_input: ["nhắn", "agent con"], close_agent: ["đóng", "agent con"], memory: ["ghi nhớ", "mục"],
+    list_dir: ["xem", "thư mục"], search: ["tìm", "lần"], glob: ["tìm", "lần"], symbols: ["tìm", "lần"],
+    web_fetch: ["tải", "trang"], skill: ["mở", "skill"], task: ["chạy", "agent con"], mcp: ["gọi", "công cụ MCP"],
+    run_script: ["chạy", "script"], fan_out: ["chạy", "lô song song"], job_input: ["nhập vào", "tác vụ"], job_output: ["đọc", "tác vụ"], job_stop: ["dừng", "tác vụ"],
+    schedule_create: ["hẹn", "lượt"], web_search: ["tìm web", "lần"],
   };
   const SANDBOX_TEXT = {
-    landlock: "Lệnh chạy trong sandbox Landlock của Linux.", seatbelt: "Lệnh chạy trong sandbox Seatbelt của macOS.",
-    docker: "Lệnh chạy trong container Docker: chỉ thấy thư mục làm việc (ở /workspace).",
-    "low-integrity": "Lệnh chạy ở mức integrity thấp của Windows: chỉ ghi được trong thư mục làm việc, nhưng vẫn đọc được file và dùng mạng, nên vẫn chờ bạn duyệt.",
-    none: "Máy này không có sandbox cho lệnh, nên lệnh luôn chờ bạn duyệt (trừ khi chọn Tự làm hết).",
+    landlock: "Sandbox Landlock (Linux).", seatbelt: "Sandbox Seatbelt (macOS).",
+    docker: "Container Docker, chỉ thấy /workspace.",
+    "low-integrity": "Windows integrity thấp: chỉ ghi trong thư mục làm việc, vẫn đọc file và dùng mạng nên cần duyệt.",
+    none: "Không có sandbox: mọi lệnh cần duyệt, trừ chế độ Tự động.",
   };
   const $ = (id) => document.getElementById(id);
   let session = null;
@@ -137,31 +137,31 @@
 
   function target(c) {
     const a = c.args || {};
-    if (c.name === "run_command") return `${a.command || ""}${a.outside_sandbox ? "  (outside the sandbox)" : ""}`;
+    if (c.name === "run_command") return `${a.command || ""}${a.outside_sandbox ? "  (ngoài sandbox)" : ""}`;
     if (c.name === "search" || c.name === "glob") return `${a.pattern || ""}${a.path && a.path !== "." ? `  (${a.path})` : ""}`;
-    if (c.name === "use_model") return `${a.model || ""}  ($${a.per_million_in ?? "?"} in / $${a.per_million_out ?? "?"} out per 1M tokens)`;
+    if (c.name === "use_model") return `${a.model || ""}  ($${a.per_million_in ?? "?"} vào / $${a.per_million_out ?? "?"} ra mỗi 1M token)`;
     if (c.name === "web_fetch") return a.url || "";
     if (c.name === "web_search") return a.query || "";
-    if (c.name === "web_download") return `${a.url || ""} to ${a.path || ""}`;
+    if (c.name === "web_download") return `${a.url || ""} vào ${a.path || ""}`;
     if (c.name === "symbols") return a.name || a.path || ".";
     if (c.name === "view_image") return a.path || "";
     if (c.name === "tool_search") return a.query || "";
     if (c.name === "task") return a.description || "";
     if (c.name === "spawn_agent") return `${a.agent || "explore"}: ${String(a.message || "").slice(0, 80)}`;
-    if (c.name === "wait_agent") return (a.ids || []).join(", ") || "all";
+    if (c.name === "wait_agent") return (a.ids || []).join(", ") || "tất cả";
     if (c.name === "send_input") return `${a.id || ""}: ${String(a.message || "").slice(0, 60)}`;
     if (c.name === "close_agent") return a.id || "";
     if (c.name === "plugin_write") return `${a.scope === "workspace" ? ".agents/plugins" : "~/.manga-agent/plugins"}/${a.name || ""}.py${a.remove ? " (xóa)" : ""}`;
     if (c.name === "skill") return a.name || "";
-    if (c.name === "todo_write") return `${(a.items || []).length} items`;
+    if (c.name === "todo_write") return `${(a.items || []).length} mục`;
     if (c.name === "ask_user") return a.question || "";
     if (c.name === "memory") return `${a.action || ""} ${a.text || ""}`.trim();
     if (c.name === "goal_done") return a.summary || "";
     if (c.name === "run_script") return String(a.code || "").split("\n").find((l) => l.trim()) || "";
-    if (c.name === "fan_out") return `${(a.jobs || []).length} jobs${a.schema ? " with a schema" : ""}`;
+    if (c.name === "fan_out") return `${(a.jobs || []).length} tác vụ${a.schema ? " có schema" : ""}`;
     if (c.name === "job_input") return `${a.id || ""}: ${JSON.stringify(String(a.chars || "")).slice(0, 60)}`;
     if (c.name === "job_output" || c.name === "job_stop" || c.name === "schedule_delete") return a.id || "";
-    if (c.name === "schedule_create") return `in ${a.in_minutes || "?"} min${a.every_minutes ? `, every ${a.every_minutes} min` : ""}: ${String(a.prompt || "").slice(0, 50)}`;
+    if (c.name === "schedule_create") return `sau ${a.in_minutes || "?"} phút${a.every_minutes ? `, mỗi ${a.every_minutes} phút` : ""}: ${String(a.prompt || "").slice(0, 50)}`;
     if (isMcp(c.name)) return c.name.replace(/^mcp__/, "").replace("__", ": ");
     return a.path || ".";
   }
@@ -201,17 +201,17 @@
     // Tools that read the same way (search, glob, symbols) add up into one phrase.
     const merged = new Map();
     Object.entries(group.tally).forEach(([key, n]) => {
-      const words = TALLY[key] || ["used", key, key];
+      const words = TALLY[key] || ["dùng", key];
       const id = words.join("|");
       merged.set(id, { words, n: (merged.get(id)?.n || 0) + n });
     });
-    const parts = [...merged.values()].map(({ words: [verb, one, many], n }) => `${verb} ${n} ${n === 1 ? one : many}`);
-    const text = parts.join(", ") || "Updated the plan";
+    const parts = [...merged.values()].map(({ words: [verb, noun], n }) => `${verb} ${n} ${noun}`);
+    const text = parts.join(", ") || "Cập nhật kế hoạch";
     group.label.textContent = text.charAt(0).toUpperCase() + text.slice(1);
     group.summary.querySelector(".agent-stats")?.remove();
     group.summary.querySelector(".agent-fail")?.remove();
     if (group.added || group.removed) group.summary.append(stats(group.added, group.removed));
-    if (group.failed) group.summary.append(el("span", "agent-fail", `${group.failed} failed`));
+    if (group.failed) group.summary.append(el("span", "agent-fail", `${group.failed} lỗi`));
   }
 
   function addRow(c) {
@@ -251,12 +251,12 @@
       group = null;
       const bubble = el("div", "agent-user", event.text);
       if (event.refs?.length) bubble.append(el("span", "agent-refs", `Đính kèm: ${event.refs.join(", ")}`));
-      if (event.queued) bubble.append(el("span", "agent-refs", "Đã xếp hàng, agent sẽ đọc ở bước kế tiếp"));
+      if (event.queued) bubble.append(el("span", "agent-refs", "Đã xếp hàng, đọc ở bước sau"));
       log.append(bubble);
     } else if (event.type === "assistant") {
       if (event.reasoning) {
         const think = el("details", "agent-think");
-        think.append(el("summary", "", "Thinking"), el("pre", "agent-pre", event.reasoning));
+        think.append(el("summary", "", "Suy luận"), el("pre", "agent-pre", event.reasoning));
         log.append(think);
       }
       if (event.text) {
@@ -283,7 +283,7 @@
       }
       log.append(approvalCard(event.call));
     } else if (event.type === "subagent" && event.state === "done") {
-      log.append(el("p", "agent-note", `Helper ${event.agent || ""} done: ${event.description} · ${event.tools} tool calls`));
+      log.append(el("p", "agent-note", `Agent con ${event.agent || ""} xong: ${event.description} · ${event.tools} lệnh gọi`));
     } else if (event.type === "notice" || event.type === "error") {
       log.append(el("p", event.type === "error" ? "agent-note agent-error" : "agent-note", event.text));
     }
@@ -326,12 +326,12 @@
   function planCard(c) {
     const card = el("div", "agent-approval");
     const note = el("input", "agent-approval-note");
-    note.placeholder = "Cần sửa gì trong kế hoạch?";
+    note.placeholder = "Cần sửa gì?";
     const actions = el("div", "agent-approval-actions");
-    actions.append(button("Duyệt và làm", "agent-btn agent-btn-primary", () => decide(card, "allow", "", "")),
-      button("Duyệt, tự làm hết", "agent-btn", () => decide(card, "allow_all", "", "")),
-      button("Sửa lại", "agent-btn", () => decide(card, "deny", note.value, "Đã yêu cầu sửa kế hoạch.")), note);
-    card.append(el("p", "agent-approval-title", "Kế hoạch chờ bạn duyệt"), prose(c.args.plan), actions);
+    actions.append(button("Duyệt", "agent-btn agent-btn-primary", () => decide(card, "allow", "", "")),
+      button("Duyệt, tự động", "agent-btn", () => decide(card, "allow_all", "", "")),
+      button("Sửa lại", "agent-btn", () => decide(card, "deny", note.value, "Đã yêu cầu sửa.")), note);
+    card.append(el("p", "agent-approval-title", "Kế hoạch chờ duyệt"), prose(c.args.plan), actions);
     return card;
   }
 
@@ -340,7 +340,7 @@
     if (c.name === "exit_plan_mode") return planCard(c);
     const card = el("div", "agent-approval");
     const title = el("p", "agent-approval-title");
-    title.append(document.createTextNode(c.agent ? `Agent phụ ${c.agent} muốn ` : "Cho phép "), el("strong", "", (isMcp(c.name) ? "gọi MCP" : VERBS[c.name] || c.name).toLowerCase()),
+    title.append(document.createTextNode(c.agent ? `Agent con ${c.agent} muốn ` : "Cho phép "), el("strong", "", (isMcp(c.name) ? "gọi MCP" : VERBS[c.name] || c.name).toLowerCase()),
       document.createTextNode(" "), el("code", "", target(c)), document.createTextNode("?"));
     const note = el("input", "agent-approval-note");
     note.placeholder = "Lý do từ chối (tùy chọn)";
@@ -348,17 +348,17 @@
     const choices = [["allow", "Cho phép", "agent-btn agent-btn-primary", "Đã cho phép."]];
     if (c.remember) choices.push(["allow_always", `Luôn cho phép ${c.remember}`, "agent-btn", `Đã lưu luật: ${c.remember}`]);
     // A plugin asks every time, so "do it all" would promise something it cannot keep.
-    if (c.name !== "plugin_write") choices.push(["allow_all", "Tự làm hết", "agent-btn", "Đã cho phép, từ giờ tự sửa và chạy."]);
+    if (c.name !== "plugin_write") choices.push(["allow_all", "Tự động", "agent-btn", "Đã chuyển sang tự sửa và chạy."]);
     choices.push(["deny", "Từ chối", "agent-btn", "Đã từ chối."]);
     choices.forEach(([decision, label, cls, done]) => {
       actions.append(button(label, cls, () => decide(card, decision, note.value, done)));
     });
     actions.append(note);
-    if (c.why === "untrusted") card.append(el("p", "agent-muted", "Agent vừa đọc nội dung từ web hoặc MCP, có thể chứa lệnh giả, nên hỏi lại trước khi hành động."));
+    if (c.why === "untrusted") card.append(el("p", "agent-muted", "Vừa đọc nội dung từ web hoặc MCP, có thể chứa lệnh giả."));
     card.append(title);
     if (c.name === "plugin_write" && !c.args?.remove) {
       // A plugin runs inside the harness with its full rights, so its whole code is shown before it is allowed.
-      card.append(el("p", "agent-muted", "Plugin chạy ngay trong harness với toàn quyền của nó (không qua sandbox). Đọc kỹ code trước khi cho phép."),
+      card.append(el("p", "agent-muted", "Plugin chạy với toàn quyền, không qua sandbox. Đọc kỹ code trước khi cho phép."),
         el("pre", "agent-pre agent-plugin-code", String(c.args?.code || "")));
     }
     card.append(actions);
@@ -386,12 +386,12 @@
     const box = el("div", "agent-info");
     const sb = snap.sandbox || {};
     $("agent-sandbox-info").textContent = sb.mode === "full-access"
-      ? "Sandbox tắt: lệnh có toàn quyền trên máy."
+      ? "Sandbox tắt: lệnh có toàn quyền."
       : `${SANDBOX_TEXT[sb.backend] || ""} Mạng ${sb.network ? "bật" : "tắt"}.`;
     const named = snap.agents || [];
-    if (named.length) box.append(el("p", "agent-muted", `Agent phụ: ${named.map((a) => a.name).join(", ")}. Gõ /rules, /memory, /undo, /plan, /goal.`));
+    if (named.length) box.append(el("p", "agent-muted", `Agent con: ${named.map((a) => a.name).join(", ")}. Lệnh: /rules, /memory, /undo, /plan, /goal.`));
     const skills = snap.skills || [];
-    box.append(el("p", "agent-muted", skills.length ? `Skill: ${skills.map((s) => s.name).join(", ")}` : "Chưa có skill (.agents/skills, .claude/skills, .codex/skills)."));
+    box.append(el("p", "agent-muted", skills.length ? `Skill: ${skills.map((s) => s.name).join(", ")}` : "Chưa có skill."));
     (snap.mcp || []).forEach((server) => {
       const state = { running: `${server.tools} công cụ`, untrusted: "chưa cho phép", failed: `lỗi: ${server.error}`, disabled: "tắt", stopped: "đã dừng" }[server.state] || server.state;
       const row = el("p", "agent-muted agent-info-row", `MCP ${server.name} · ${state}`);
@@ -407,16 +407,16 @@
       box.append(line);
     });
     const made = snap.created || [];
-    if (made.length) box.append(el("p", "agent-muted", `Tool đã tạo: ${made.map((t) => `${t.name}${t.kind === "read" ? " (chỉ đọc)" : ""}${t.scope === "workspace" ? " · dự án" : ""}`).join(", ")}. Gõ /tools.`));
+    if (made.length) box.append(el("p", "agent-muted", `Công cụ đã tạo: ${made.map((t) => `${t.name}${t.kind === "read" ? " (chỉ đọc)" : ""}${t.scope === "workspace" ? " · dự án" : ""}`).join(", ")}. Xem: /tools.`));
     if ((snap.untrusted_tools || []).length) {
-      const line = el("p", "agent-muted agent-info-row", `Tool của dự án chưa cho phép: ${snap.untrusted_tools.join(", ")}`);
+      const line = el("p", "agent-muted agent-info-row", `Công cụ dự án chưa cho phép: ${snap.untrusted_tools.join(", ")}`);
       line.append(button("Cho phép", "agent-btn", () => trust("tools")));
       box.append(line);
     }
     if (snap.disabled?.length) box.append(el("p", "agent-muted", `Đã tắt: ${snap.disabled.join(", ")}`));
     const hooks = snap.hooks || {};
     if (hooks.user || hooks.workspace) {
-      const row = el("p", "agent-muted agent-info-row", `Hook · ${hooks.user} của bạn, ${hooks.workspace} của dự án${hooks.workspace && !hooks.workspace_trusted ? " (chưa cho phép)" : ""}`);
+      const row = el("p", "agent-muted agent-info-row", `Hook: ${hooks.user} của bạn, ${hooks.workspace} của dự án${hooks.workspace && !hooks.workspace_trusted ? " (chưa cho phép)" : ""}`);
       if (hooks.workspace && !hooks.workspace_trusted) row.append(button("Cho phép", "agent-btn", () => trust("hooks")));
       box.append(row);
     }
@@ -429,15 +429,15 @@
     $("agent-stop").hidden = !busy;
     $("agent-send").hidden = false;
     const usage = snap.usage || {};
-    const state = { running: "Working", waiting: "Waiting for you" }[snap.status];
-    const parts = [snap.title || "New session", `${usage.prompt_tokens || 0} in, ${usage.completion_tokens || 0} out`];
+    const state = { running: "Đang làm", waiting: "Chờ bạn" }[snap.status];
+    const parts = [snap.title || "Phiên mới", `${usage.prompt_tokens || 0} token vào, ${usage.completion_tokens || 0} ra`];
     const stats = snap.stats || {};
     if (usage.prompt_tokens) parts.push(`cache ${stats.cache_pct || 0}%`);
     if (stats.cost != null) parts.push(`$${stats.cost}`);
-    if (stats.model_seconds || stats.tool_seconds) parts.push(`model ${stats.model_seconds}s, tools ${stats.tool_seconds}s`);
-    if (snap.text_tools) parts.push("text tool calls");
-    if (snap.plan_mode) parts.push("planning");
-    if (snap.goal) parts.push(`goal: ${snap.goal}`);
+    if (stats.model_seconds || stats.tool_seconds) parts.push(`model ${stats.model_seconds}s, công cụ ${stats.tool_seconds}s`);
+    if (snap.text_tools) parts.push("gọi công cụ dạng văn bản");
+    if (snap.plan_mode) parts.push("lập kế hoạch");
+    if (snap.goal) parts.push(`mục tiêu: ${snap.goal}`);
     $("agent-status").textContent = parts.join(" · ");
     // A /effort typed in the chat moves the picker too.
     if (typeof snap.effort === "string" && $("agent-effort").value !== snap.effort) {
@@ -449,7 +449,7 @@
     log.querySelector(".agent-live")?.remove();
     const live = snap.live;
     if (live && (live.text || live.tools.length)) {
-      const tools = live.tools.length ? `\nCalling: ${live.tools.join(", ")}` : "";
+      const tools = live.tools.length ? `\nĐang gọi: ${live.tools.join(", ")}` : "";
       log.append(el("pre", "agent-live", live.text + tools));
     }
     if (state) log.append(el("p", "agent-working", `${state}…`));
@@ -460,9 +460,9 @@
   }
 
   // The composer's two menus name what is picked inside them.
-  const MODE_SHORT = { ask: "Hỏi mọi thứ", edits: "Tự sửa và chạy", bypass: "Không duyệt" };
-  const SANDBOX_SHORT = { "read-only": "chỉ đọc", "workspace-write": "ghi trong thư mục", "full-access": "không sandbox" };
-  const EFFORT_SHORT = { low: "nghĩ ít", medium: "nghĩ vừa", high: "nghĩ kỹ", xhigh: "nghĩ rất kỹ" };
+  const MODE_SHORT = { ask: "Hỏi trước", edits: "Tự sửa", bypass: "Tự động" };
+  const SANDBOX_SHORT = { "read-only": "chỉ đọc", "workspace-write": "ghi thư mục", "full-access": "không sandbox" };
+  const EFFORT_SHORT = { low: "suy luận thấp", medium: "suy luận vừa", high: "suy luận cao", xhigh: "suy luận tối đa" };
   function showPicks() {
     const network = $("agent-network").checked ? " · mạng" : "";
     $("agent-perm-label").textContent = `${MODE_SHORT[$("agent-mode").value] || ""} · ${SANDBOX_SHORT[$("agent-sandbox").value] || ""}${network}`;
@@ -513,15 +513,15 @@
     const next = el("button", "agent-btn agent-btn-primary", `Đổi sang key ${prompt.next}`);
     next.type = "button";
     next.addEventListener("click", () => answer("next"));
-    const stop = el("button", "agent-btn", "Dừng lại");
+    const stop = el("button", "agent-btn", "Dừng");
     stop.type = "button";
     stop.addEventListener("click", () => answer("stop"));
     const actions = el("div", "agent-approval-actions");
     actions.append(stop, next);
     keyDialog.replaceChildren(
-      el("p", "agent-key-title", `Key ${prompt.index}/${prompt.count} của ${prompt.provider} đang bị giới hạn`),
-      el("p", "agent-key-detail", prompt.detail || "Nhà cung cấp không cho biết phải chờ bao lâu."),
-      el("p", "agent-key-ask", `Đổi sang key ${prompt.next}/${prompt.count} và chạy tiếp yêu cầu vừa rồi?`),
+      el("p", "agent-key-title", `Key ${prompt.index}/${prompt.count} (${prompt.provider}) bị giới hạn`),
+      el("p", "agent-key-detail", prompt.detail || "Không rõ thời gian chờ."),
+      el("p", "agent-key-ask", `Đổi sang key ${prompt.next}/${prompt.count} và chạy tiếp?`),
       actions,
     );
     if (!keyDialog.open) keyDialog.showModal();
@@ -565,7 +565,7 @@
     const ready = Object.values(data.providers || {}).filter((p) => p.configured && p.id !== "manga-cloud");
     $("agent-provider").replaceChildren(...ready.map((p) => new Option(p.label || p.id, p.id)));
     if (!ready.length) {
-      $("agent-status").textContent = "Chưa có dịch vụ nào có API key: mở Cài đặt, mục Dịch vụ AI để thêm (mọi API chuẩn OpenAI đều dùng được).";
+      $("agent-status").textContent = "Chưa có API key. Thêm trong Cài đặt, mục Dịch vụ AI.";
       return;
     }
     const saved = store("get", "manga_agent_provider");
@@ -584,7 +584,7 @@
           resume(row.id);
         });
         open.title = `${row.model} · ${row.workspace}`;
-        const remove = button("Xoá", "agent-session-del", async () => {
+        const remove = button("Xóa", "agent-session-del", async () => {
           await call(`/api/agent/sessions/${row.id}`, { method: "DELETE" }).catch(() => {});
           if (row.id === session?.id) resetLog();
           loadSessions();
@@ -738,7 +738,7 @@
       return;
     }
     if (!$("agent-provider").value || !$("agent-model").value.trim()) {
-      window.showToast?.("Chọn dịch vụ và model trước.", "error");
+      window.showToast?.("Chọn dịch vụ và model.", "error");
       $("agent-model-menu").open = true;
       $("agent-model").focus();
       return;
@@ -786,12 +786,12 @@
   function showFolder() {
     const folder = $("agent-workspace").value.trim();
     const name = folder.split(/[\\/]/).filter(Boolean).pop() || folder;
-    $("agent-input").placeholder = name ? `Giao việc cho agent trong ${name}… (/ để xem lệnh)` : "Giao việc cho agent… (/ để xem lệnh)";
+    $("agent-input").placeholder = name ? `Việc cần làm trong ${name}… (/ xem lệnh)` : "Việc cần làm… (/ xem lệnh)";
     $("agent-input").title = folder;
   }
 
   // The MCP panel: every server the agent would start here, and adding, testing, switching and removing your own.
-  const MCP_STATE = { running: "đang chạy", untrusted: "chờ bạn cho phép trong phiên", failed: "lỗi", disabled: "đã tắt", stopped: "đã dừng", waiting: "chờ" };
+  const MCP_STATE = { running: "đang chạy", untrusted: "chờ cho phép", failed: "lỗi", disabled: "đã tắt", stopped: "đã dừng", waiting: "chờ" };
   const mcpQuery = () => `?workspace=${encodeURIComponent($("agent-workspace").value.trim())}`;
 
   function mcpKind() {
@@ -816,7 +816,7 @@
   }
 
   function showMcp(data) {
-    $("agent-mcp-file").textContent = data.file ? `Lưu ở ${data.file} (chỉ bạn đọc được; lệnh của agent không đọc được file này).` : "";
+    $("agent-mcp-file").textContent = data.file ? `Lưu ở ${data.file} (agent không đọc được).` : "";
     const rows = (data.servers || []).map((server) => {
       const item = el("li");
       const title = el("span");
@@ -842,7 +842,7 @@
   function mcpTools(server) {
     const box = el("details", "agent-mcp-tools");
     const on = server.tool_list.filter((t) => t.on).length;
-    box.append(el("summary", "agent-muted", `Công cụ: ${on}/${server.tool_list.length} đang bật`));
+    box.append(el("summary", "agent-muted", `Công cụ bật: ${on}/${server.tool_list.length}`));
     server.tool_list.forEach((tool) => {
       const row = el("label", "agent-mcp-tool");
       const box_ = document.createElement("input");
@@ -878,7 +878,7 @@
     label.className = "agent-mcp-state";
     try {
       const data = await post(`/api/agent/mcp/${encodeURIComponent(name)}/test${mcpQuery()}`);
-      label.textContent = data.ok ? `kết nối được, ${data.tools.length} công cụ: ${data.tools.slice(0, 8).join(", ")}${data.tools.length > 8 ? "…" : ""}` : `không kết nối được: ${data.error}`;
+      label.textContent = data.ok ? `Đã kết nối, ${data.tools.length} công cụ: ${data.tools.slice(0, 8).join(", ")}${data.tools.length > 8 ? "…" : ""}` : `Lỗi kết nối: ${data.error}`;
       label.className = `agent-mcp-state ${data.ok ? "ok" : "bad"}`;
       return data.ok;
     } catch (error) {
@@ -905,7 +905,7 @@
       for (const added of data.added || []) {
         const row = [...$("agent-mcp-list").children].find((item) => item.querySelector("b")?.textContent === added);
         const label = row?.querySelector(".agent-mcp-state");
-        if (label) window.showToast?.(await testMcp(added, label) ? `Đã thêm ${added}; agent dùng được từ lượt tới.` : `Đã lưu ${added} nhưng chưa kết nối được; xem lỗi trong danh sách.`, "info");
+        if (label) window.showToast?.(await testMcp(added, label) ? `Đã thêm ${added}, dùng từ lượt sau.` : `Đã lưu ${added}, chưa kết nối được.`, "info");
       }
     } catch (error) {
       window.showToast?.(error.message, "error");
@@ -973,7 +973,7 @@
   function installSkills() {
     const source = $("agent-skill-source").value.trim();
     if (!source) return;
-    skillsChanged(post("/api/agent/skills/install", { source }), (names) => `Đã cài ${names.join(", ")}. Đọc SKILL.md của chúng trước khi tin.`)
+    skillsChanged(post("/api/agent/skills/install", { source }), (names) => `Đã cài ${names.join(", ")}. Nên đọc SKILL.md trước khi dùng.`)
       .then((ok) => { if (ok) $("agent-skill-source").value = ""; });
   }
 
@@ -1011,7 +1011,7 @@
   function saveSkill() {
     const name = $("agent-skill-name").value.trim();
     const body = { name, description: $("agent-skill-desc").value.trim(), body: $("agent-skill-body").value.trim(), replace: editingSkill === name };
-    skillsChanged(post("/api/agent/skills", body), () => `Đã lưu skill ${name}; agent dùng được ngay.`).then((ok) => {
+    skillsChanged(post("/api/agent/skills", body), () => `Đã lưu skill ${name}.`).then((ok) => {
       if (!ok) return;
       editingSkill = "";
       $("agent-skill-name").value = $("agent-skill-desc").value = "";
@@ -1097,7 +1097,7 @@
     const saveEngine = async () => {
       try {
         const engine = await post("/api/agent/sandbox/engine", { engine: $("agent-engine").value, image: $("agent-engine-image").value.trim() });
-        if (engine.engine === "docker" && !engine.docker) window.showToast?.("Chưa thấy Docker chạy container Linux; lệnh vẫn dùng sandbox của hệ điều hành.", "error");
+        if (engine.engine === "docker" && !engine.docker) window.showToast?.("Không thấy Docker, dùng sandbox hệ điều hành.", "error");
         showEngine(engine);
         $("agent-sandbox-info").textContent = SANDBOX_TEXT[engine.backend] || "";
       } catch (error) {

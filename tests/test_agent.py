@@ -1717,12 +1717,12 @@ def test_an_empty_model_reply_is_retried_with_a_nudge_instead_of_ending_the_turn
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     run_to_idle(session)
     assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Now I answer."]
-    assert sum("Empty reply" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
+    assert sum("Trả về rỗng" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
     assert any(m["role"] == "user" and "reply was empty" in m["content"] for m in session.history)
     gives_up = scripted(*[turn("")] * 5)
     other = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", session_id="empty", complete=gives_up)
     run_to_idle(other)
-    assert any(e["type"] == "error" and "replied empty" in e["text"] for e in other.events)
+    assert any(e["type"] == "error" and "trả về rỗng" in e["text"] for e in other.events)
 
 
 def test_a_stream_that_puts_its_reply_in_an_unknown_field_is_not_lost():
@@ -1748,7 +1748,7 @@ def test_a_reply_whose_tool_calls_the_stream_lost_is_asked_again_without_streami
     run_to_idle(session)
     assert modes == [True, False] and session._plain
     assert [e["text"] for e in session.events if e["type"] == "assistant"] == ["Recovered."]
-    assert any("turning streaming off" in e.get("text", "") for e in session.events if e["type"] == "notice")
+    assert any("tắt stream" in e.get("text", "") for e in session.events if e["type"] == "notice")
 
 
 def test_tool_calls_with_broken_json_are_recovered_using_the_tools_parameter_names():
@@ -1830,7 +1830,7 @@ def test_the_number_of_goal_nudges_comes_from_the_profile(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.command("/goal finish everything")
     wait_for(session, "idle")
-    assert sum("Goal not done yet" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
+    assert sum("Chưa đạt mục tiêu" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
 
 
 def test_timeouts_dropped_connections_and_server_errors_are_asked_again_with_a_pause(monkeypatch):
@@ -1913,7 +1913,7 @@ def test_a_context_length_error_is_recovered_by_summarising_and_asking_again(ws,
     session.history = long_history(80)
     run_to_idle(session, "continue")
     assert [e["text"] for e in session.events if e["type"] == "assistant"][-1] == "Carried on."
-    assert any("Context window exceeded" in e.get("text", "") for e in session.events if e["type"] == "notice")
+    assert any("Vượt ngữ cảnh" in e.get("text", "") for e in session.events if e["type"] == "notice")
 
 
 def test_fan_out_runs_many_jobs_and_returns_every_report_in_one_call(ws, home):
@@ -2241,7 +2241,7 @@ def test_a_model_that_keeps_failing_hands_the_turn_to_the_next_configured_model(
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     run_to_idle(session)
     assert used == ["m", "backup-1", "backup-2"] and session.history[-1]["content"] == "answered by backup-2"
-    assert sum(e["type"] == "notice" and "switching to" in e["text"] for e in session.events) == 2
+    assert sum(e["type"] == "notice" and "chuyển sang" in e["text"] for e in session.events) == 2
     run_to_idle(session, "again")
     assert used[3] == "m", "the next request tries the first model again"
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=lambda *a, **k: (_ for _ in ()).throw(client.TransientError("down")))
@@ -2583,7 +2583,7 @@ def test_a_reply_that_spent_its_whole_budget_on_reasoning_is_asked_again_with_a_
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=client.complete)
     run_to_idle(session, "go")
     assert sizes == [8192, 16384, 32768] and session.history[-1]["content"] == "Done."
-    assert sum("raising the reply limit" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
+    assert sum("nâng giới hạn" in e.get("text", "") for e in session.events if e["type"] == "notice") == 2
 
 
 def test_a_reply_cut_off_at_the_limit_goes_on_with_a_larger_budget_instead_of_ending(ws, home, monkeypatch):
@@ -2629,7 +2629,7 @@ def test_a_turn_that_dies_after_changing_files_says_what_it_changed_and_what_is_
 
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     run_to_idle(session, "make a.txt and test it")
-    note = next(e["text"] for e in session.events if e["type"] == "notice" and "stopped on an error" in e.get("text", ""))
+    note = next(e["text"] for e in session.events if e["type"] == "notice" and "Dừng do lỗi" in e.get("text", ""))
     assert "a.txt" in note and "test it" in note
 
 
@@ -2740,7 +2740,7 @@ def test_a_session_reports_each_rate_limit_its_provider_answered(ws, home, tmp_p
     session.send("hi")
     wait_for(session, "idle")
     notes = [e["text"] for e in session.events if e["type"] == "notice"]
-    assert any("rate-limited this request 2 time(s), waited 18 s: free tier: 10 requests per minute" in n for n in notes), notes
+    assert any("giới hạn tốc độ 2 lần, đã chờ 18 giây: free tier: 10 requests per minute" in n for n in notes), notes
     assert session.rate_limited == {"count": 2, "waited_s": 18.0} and session.snapshot()["rate_limited"]["count"] == 2
 
 
@@ -3679,9 +3679,9 @@ def test_the_picked_effort_is_sent_beats_the_profile_and_yields_to_late_request(
                                                                                      "late_request": {"reasoning_effort": "low"}}}}))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
     assert session._request_fields()["reasoning_effort"] == "xhigh", "no pick leaves the profile's field"
-    assert session.command("/effort vừa")["message"] == "Mức suy nghĩ: medium"
+    assert session.command("/effort vừa")["message"] == "Mức suy luận: medium"
     assert session._request_fields() == {"reasoning_effort": "medium", "top_p": 0.9} and session.snapshot()["effort"] == "medium"
-    assert session.command("/effort mặc định")["message"] == "Mức suy nghĩ: mặc định" and session._request_fields()["reasoning_effort"] == "xhigh"
+    assert session.command("/effort mặc định")["message"] == "Mức suy luận: mặc định" and session._request_fields()["reasoning_effort"] == "xhigh"
     with pytest.raises(ValueError):
         session.set_effort("max")
     session.set_effort("high")
