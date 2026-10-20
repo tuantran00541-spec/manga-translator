@@ -1,0 +1,47 @@
+Exception in thread Thread-198:
+Traceback (most recent call last):
+  File "/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/home/probe/src/app/agent/sandbox.py", line 340, in run
+    chunk = self.stream.read1(65536) if hasattr(self.stream, "read1") else self.stream.read(65536)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: I/O operation on closed file
+2026-10-20 12:42:30 | INFO     | app.agent.client:349 - bench answered 429 (1 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+Exception in thread Thread-261:
+Traceback (most recent call last):
+  File "/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/home/probe/src/app/agent/sandbox.py", line 340, in run
+    chunk = self.stream.read1(65536) if hasattr(self.stream, "read1") else self.stream.read(65536)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: I/O operation on closed file
+2026-10-20 13:17:54 | INFO     | app.agent.client:349 - bench answered 429 (2 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 13:20:18 | INFO     | app.agent.client:349 - bench answered 429 (3 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+Exception in thread Thread-307:
+Traceback (most recent call last):
+  File "/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/home/probe/src/app/agent/sandbox.py", line 340, in run
+    chunk = self.stream.read1(65536) if hasattr(self.stream, "read1") else self.stream.read(65536)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: I/O operation on closed file
+Exception in thread Thread-323:
+Traceback (most recent call last):
+  File "/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/home/probe/src/app/agent/sandbox.py", line 340, in run
+    chunk = self.stream.read1(65536) if hasattr(self.stream, "read1") else self.stream.read(65536)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: I/O operation on closed file
+2026-10-20 13:38:22 | INFO     | app.agent.client:349 - bench answered 429 (4 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 13:38:42 | INFO     | app.agent.client:349 - bench answered 429 (5 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+2026-10-20 13:47:16 | INFO     | app.agent.client:349 - bench answered 429 (6 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}
+Exception in thread Thread-357:
+Traceback (most recent call last):
+  File "/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/home/probe/src/app/agent/sandbox.py", line 340, in run
+    chunk = self.stream.read1(65536) if hasattr(self.stream, "read1") else self.stream.read(65536)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: I/O operation on closed file
+2026-10-20 14:06:38 | INFO     | app.agent.client:349 - bench answered 429 (7 so far, waiting 6 s): {"error":{"message":"Upstream model provider is temporarily unavailable. Please try again in a moment.","type":"rate_limit_error"}}

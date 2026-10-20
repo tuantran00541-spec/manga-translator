@@ -1,0 +1,581 @@
+{
+ "totals": {
+  "slices": 81,
+  "missing": 10,
+  "blocks": 175,
+  "text_left": 108,
+  "ghosts": 7,
+  "damaged_slices": 66,
+  "clean_share": 0.343,
+  "damage_mean": 0.01537
+ },
+ "slices": [
+  {
+   "slice": "academy-000.png",
+   "blocks": 6,
+   "text": 4,
+   "ghost": 0,
+   "damage": 0.02838
+  },
+  {
+   "slice": "academy-001.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.03055
+  },
+  {
+   "slice": "academy-006.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.01674
+  },
+  {
+   "slice": "academy-007.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.02715
+  },
+  {
+   "slice": "academy-010.png",
+   "blocks": 2,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.01766
+  },
+  {
+   "slice": "academy-014.png",
+   "blocks": 3,
+   "text": 3,
+   "ghost": 0,
+   "damage": 0.01705
+  },
+  {
+   "slice": "academy-017.png",
+   "blocks": 12,
+   "text": 3,
+   "ghost": 2,
+   "damage": 0.00351
+  },
+  {
+   "slice": "academy-021.png",
+   "blocks": 4,
+   "text": 3,
+   "ghost": 0,
+   "damage": 0.01474
+  },
+  {
+   "slice": "academy-024.png",
+   "blocks": 3,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.00975
+  },
+  {
+   "slice": "academy-028.png",
+   "blocks": 3,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.00028
+  },
+  {
+   "slice": "academy-031.png",
+   "blocks": 1,
+   "text": 0,
+   "ghost": 1,
+   "damage": 0.02349
+  },
+  {
+   "slice": "academy-035.png",
+   "blocks": 2,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.00662
+  },
+  {
+   "slice": "academy-039.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.01924
+  },
+  {
+   "slice": "academy-043.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "academy-044.png",
+   "blocks": 3,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.0088
+  },
+  {
+   "slice": "academy-047.png",
+   "blocks": 3,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.01577
+  },
+  {
+   "slice": "academy-051.png",
+   "blocks": 3,
+   "text": 0,
+   "ghost": 1,
+   "damage": 0.01423
+  },
+  {
+   "slice": "academy-054.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.01264
+  },
+  {
+   "slice": "academy-058.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.02757
+  },
+  {
+   "slice": "academy-061.png",
+   "blocks": 2,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.01309
+  },
+  {
+   "slice": "academy-065.png",
+   "blocks": 1,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.0068
+  },
+  {
+   "slice": "academy-068.png",
+   "blocks": 3,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.02066
+  },
+  {
+   "slice": "academy-072.png",
+   "blocks": 3,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.01395
+  },
+  {
+   "slice": "academy-075.png",
+   "blocks": 2,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.01472
+  },
+  {
+   "slice": "academy-079.png",
+   "blocks": 3,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.01938
+  },
+  {
+   "slice": "academy-082.png",
+   "blocks": 3,
+   "text": 3,
+   "ghost": 0,
+   "damage": 0.01527
+  },
+  {
+   "slice": "academy-086.png",
+   "blocks": 9,
+   "text": 6,
+   "ghost": 1,
+   "damage": 0.0195
+  },
+  {
+   "slice": "hero-000.png",
+   "blocks": 6,
+   "text": 5,
+   "ghost": 0,
+   "damage": 0.02929
+  },
+  {
+   "slice": "hero-004.png",
+   "blocks": 2,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.01466
+  },
+  {
+   "slice": "hero-006.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.02346
+  },
+  {
+   "slice": "hero-011.png",
+   "blocks": 1,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.02118
+  },
+  {
+   "slice": "hero-016.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.02194
+  },
+  {
+   "slice": "hero-021.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.0384
+  },
+  {
+   "slice": "hero-033.png",
+   "blocks": 3,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.01521
+  },
+  {
+   "slice": "hero-044.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.01981
+  },
+  {
+   "slice": "hero-058.png",
+   "blocks": 1,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.00597
+  },
+  {
+   "slice": "hero-062.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.01795
+  },
+  {
+   "slice": "hero-067.png",
+   "blocks": 1,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.01277
+  },
+  {
+   "slice": "hero-072.png",
+   "blocks": 3,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.02511
+  },
+  {
+   "slice": "hero-076.png",
+   "blocks": 2,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.01359
+  },
+  {
+   "slice": "hero-081.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.02097
+  },
+  {
+   "slice": "hero-085.png",
+   "blocks": 2,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.02645
+  },
+  {
+   "slice": "hero-090.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.02336
+  },
+  {
+   "slice": "hero-094.png",
+   "blocks": 2,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.02573
+  },
+  {
+   "slice": "hero-099.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.01204
+  },
+  {
+   "slice": "hero-103.png",
+   "blocks": 3,
+   "text": 3,
+   "ghost": 0,
+   "damage": 0.02437
+  },
+  {
+   "slice": "hero-107.png",
+   "blocks": 3,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.02174
+  },
+  {
+   "slice": "hero-112.png",
+   "blocks": 3,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.02031
+  },
+  {
+   "slice": "hero-116.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.02291
+  },
+  {
+   "slice": "hero-121.png",
+   "blocks": 3,
+   "text": 3,
+   "ghost": 0,
+   "damage": 0.02704
+  },
+  {
+   "slice": "hero-125.png",
+   "blocks": 2,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.01358
+  },
+  {
+   "slice": "hero-128.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.02154
+  },
+  {
+   "slice": "hero-133.png",
+   "blocks": 2,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.03255
+  },
+  {
+   "slice": "hero-137.png",
+   "blocks": 6,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.0016
+  },
+  {
+   "slice": "solo-000.png",
+   "blocks": 7,
+   "text": 5,
+   "ghost": 0,
+   "damage": 0.02425
+  },
+  {
+   "slice": "solo-005.png",
+   "blocks": 2,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.02231
+  },
+  {
+   "slice": "solo-009.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.0198
+  },
+  {
+   "slice": "solo-014.png",
+   "blocks": 3,
+   "text": 3,
+   "ghost": 0,
+   "damage": 0.02263
+  },
+  {
+   "slice": "solo-015.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.00135
+  },
+  {
+   "slice": "solo-022.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.01009
+  },
+  {
+   "slice": "solo-028.png",
+   "blocks": 1,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.03339
+  },
+  {
+   "slice": "solo-033.png",
+   "blocks": 2,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.01803
+  },
+  {
+   "slice": "solo-040.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.01497
+  },
+  {
+   "slice": "solo-046.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "solo-052.png",
+   "blocks": 3,
+   "text": 1,
+   "ghost": 2,
+   "damage": 0.00333
+  },
+  {
+   "slice": "solo-059.png",
+   "blocks": 1,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.0159
+  },
+  {
+   "slice": "solo-065.png",
+   "blocks": 2,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.0158
+  },
+  {
+   "slice": "solo-071.png",
+   "blocks": 3,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.00581
+  },
+  {
+   "slice": "solo-076.png",
+   "blocks": 2,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.02724
+  },
+  {
+   "slice": "solo-077.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.00652
+  },
+  {
+   "slice": "solo-085.png",
+   "blocks": 1,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.03248
+  },
+  {
+   "slice": "solo-090.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "solo-095.png",
+   "blocks": 2,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "solo-100.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "solo-105.png",
+   "blocks": 2,
+   "text": 2,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "solo-110.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "solo-117.png",
+   "blocks": 1,
+   "text": 1,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "solo-127.png",
+   "blocks": 3,
+   "text": 3,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "solo-132.png",
+   "blocks": 3,
+   "text": 3,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "solo-138.png",
+   "blocks": 0,
+   "text": 0,
+   "ghost": 0,
+   "damage": 0.0
+  },
+  {
+   "slice": "solo-139.png",
+   "blocks": 6,
+   "text": 6,
+   "ghost": 0,
+   "damage": 0.0
+  }
+ ]
+}
