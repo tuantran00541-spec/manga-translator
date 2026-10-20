@@ -94,7 +94,12 @@ jobs:
           python - "$D" <<'PY'
           import collections, json, re, sys
           d = sys.argv[1]
-          events = [json.loads(line) for line in open("out/events.jsonl", encoding="utf-8") if line.startswith("{")]
+          def parsed(line):
+              try:
+                  return json.loads(line)
+              except ValueError:
+                  return None  # a line cut off when the agent was stopped
+          events = [e for e in map(parsed, open("out/events.jsonl", encoding="utf-8", errors="replace")) if isinstance(e, dict)]
           calls = [c for e in events if e.get("type") == "assistant" for c in e.get("calls") or []]
           names = collections.Counter(c["name"] for c in calls)
           text = lambda c: json.dumps(c.get("args") or {}, ensure_ascii=False)
