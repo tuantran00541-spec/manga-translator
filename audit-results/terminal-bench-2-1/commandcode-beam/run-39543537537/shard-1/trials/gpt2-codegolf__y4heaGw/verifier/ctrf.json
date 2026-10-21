@@ -1,0 +1,29 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 1,
+            "passed": 1,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792557611.9037693,
+            "stop": 1792557618.6193354
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_gpt2_implementation",
+                "status": "passed",
+                "duration": 6.638608151000199,
+                "start": 1792557611.980221,
+                "stop": 1792557618.6191504,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

@@ -1,0 +1,56 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 4,
+            "passed": 4,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792556977.4969556,
+            "stop": 1792556977.800889
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_distribution_file_exists",
+                "status": "passed",
+                "duration": 0.0012186140000949308,
+                "start": 1792556977.7950609,
+                "stop": 1792556977.7965956,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_distribution_shape",
+                "status": "passed",
+                "duration": 0.0008547260001705581,
+                "start": 1792556977.7967935,
+                "stop": 1792556977.7978408,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_distribution_validity",
+                "status": "passed",
+                "duration": 0.0005998469999894951,
+                "start": 1792556977.7980285,
+                "stop": 1792556977.7988029,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_kl_divergences",
+                "status": "passed",
+                "duration": 0.001646436999976686,
+                "start": 1792556977.798966,
+                "stop": 1792556977.8008022,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

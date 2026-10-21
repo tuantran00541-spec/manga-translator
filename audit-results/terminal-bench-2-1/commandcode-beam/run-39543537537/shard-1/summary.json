@@ -1,0 +1,356 @@
+{
+ "passed": 22,
+ "clean_passed": 21,
+ "trials": 30,
+ "rate": 0.733,
+ "contaminated": [
+  "gpt2-codegolf__y4heaGw"
+ ],
+ "rows": [
+  {
+   "trial": "bn-fit-modify__FHuVJ9L",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    290618,
+    246144,
+    15042
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-pmars__BdA75Jy",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    594004,
+    512960,
+    6882
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "cancel-async-tasks__iVrq4Di",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    509830,
+    460608,
+    19903
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "cobol-modernization__n2zHADM",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1841308,
+    1702592,
+    38237
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "configure-git-webserver__tNBjAGn",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    336731,
+    311680,
+    8575
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "crack-7z-hash__vQrfvsD",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    544068,
+    505088,
+    5747
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "distribution-search__Zb3esWT",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    189319,
+    166272,
+    13267
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "extract-elf__LWZHjNW",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    727302,
+    651712,
+    24384
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "feal-linear-cryptanalysis__aZDqXAV",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    325288,
+    287040,
+    14077
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-code-vulnerability__aDaHdFv",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    447992,
+    390080,
+    6188
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "gcode-to-text__su48sDo",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1155257,
+    906560,
+    31361
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "gpt2-codegolf__y4heaGw",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3159178,
+    2965632,
+    32510
+   ],
+   "contaminated": [
+    "harbor-framework/terminal-bench-2/contents",
+    "harbor-framework/terminal-bench-2/contents/gpt2-codegolf",
+    "harbor-framework/terminal-bench-2/contents/gpt2-codegolf/environment",
+    "harbor-framework/terminal-bench-2/contents/gpt2-codegolf/solution",
+    "harbor-framework/terminal-bench-2/contents/gpt2-codegolf/tests",
+    "harbor-framework/terminal-bench-2/main/gpt2-codegolf/dockerfile",
+    "harbor-framework/terminal-bench-2/main/gpt2-codegolf/environment/dockerfile",
+    "harbor-framework/terminal-bench-2/main/gpt2-codegolf/instruction.md",
+    "harbor-framework/terminal-bench-2/main/gpt2-codegolf/readme.md",
+    "harbor-framework/terminal-bench-2/main/gpt2-codegolf/solution/solve.sh",
+    "harbor-framework/terminal-bench-2/main/gpt2-codegolf/task.toml",
+    "harbor-framework/terminal-bench-2/main/gpt2-codegolf/task.yaml",
+    "harbor-framework/terminal-bench-2/main/gpt2-codegolf/tests/test.sh",
+    "harbor-framework/terminal-bench-2/main/gpt2-codegolf/tests/test_outputs.py"
+   ]
+  },
+  {
+   "trial": "install-windows-3.11__z36DxQe",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "largest-eigenval__qL437Uu",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    4812620,
+    4567168,
+    49952
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mailman__352QhXH",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mcmc-sampling-stan__zkkXogJ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    774033,
+    698432,
+    10391
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "modernize-scientific-stack__LR9adLb",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    52313,
+    47552,
+    2053
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "multi-source-data-merger__Pb5dgxy",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    63081,
+    55104,
+    5932
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "overfull-hbox__ahpqZN9",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    575059,
+    525888,
+    13040
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "path-tracing-reverse__eSRFnQQ",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    4718180,
+    4033856,
+    72257
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "portfolio-optimization__zh8jKEz",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    287898,
+    260416,
+    7813
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "pypi-server__tgtJZqL",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    137864,
+    121664,
+    3712
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "qemu-alpine-ssh__VXDgLMk",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    317415,
+    277824,
+    7012
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "raman-fitting__rMLjPxE",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2311280,
+    2020032,
+    49877
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "reshard-c4-data__gmGks4o",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    653945,
+    607488,
+    16548
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sanitize-git-repo__T8wcYWb",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    911824,
+    851264,
+    9830
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sqlite-db-truncate__zGGY66p",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    309131,
+    276800,
+    10034
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "torch-tensor-parallelism__qSiWGuC",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    917395,
+    831360,
+    24623
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "video-processing__bUYzfzb",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1417776,
+    1263488,
+    32124
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "write-compressor__JczRxJa",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    587156,
+    549312,
+    32981
+   ],
+   "contaminated": []
+  }
+ ]
+}
