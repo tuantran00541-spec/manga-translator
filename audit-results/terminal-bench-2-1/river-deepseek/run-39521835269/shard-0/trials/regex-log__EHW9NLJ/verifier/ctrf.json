@@ -1,0 +1,29 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 1,
+            "passed": 1,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792548237.3489184,
+            "stop": 1792548237.440972
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_regex_matches_dates",
+                "status": "passed",
+                "duration": 0.0021967289994790917,
+                "start": 1792548237.4382207,
+                "stop": 1792548237.4407184,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
