@@ -121,8 +121,23 @@ def save_settings(engine: str, image: str = "") -> dict:
         raise ValueError("image must be a plain image name such as python:3.12-slim")
     path = Path.home() / ".manga-agent" / "sandbox.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"engine": engine, "image": image or DOCKER_IMAGE}), encoding="utf-8")
-    return settings()
+    text = json.dumps({"engine": "docker" if engine == "docker" else "auto", "image": image or DOCKER_IMAGE})
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with open(tmp, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    # Windows will not replace a read-only file, and sync or antivirus tools
+    # hold files briefly, so clear the flag and retry before giving up.
+    for pause in (0.0, 0.2, 0.5, 1.0):
+        if pause:
+            time.sleep(pause)
+        try:
+            os.replace(tmp, path)
+            return settings()
+        except PermissionError:
+            if path.exists():
+                path.chmod(0o666)
+    tmp.unlink(missing_ok=True)
+    raise PermissionError(f"cannot write {path}")
 
 
 def docker_ready() -> bool:

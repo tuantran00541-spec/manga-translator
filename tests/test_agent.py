@@ -1088,6 +1088,32 @@ def test_manual_skills_run_as_slash_commands(ws, home):
     assert "handoff document" in sent and sent.endswith("User input: for the next session")
 
 
+def test_a_skill_turned_on_by_its_slash_command_stays_in_the_system_prompt(ws, home):
+    fake = scripted(turn("hi"), turn("noted"), turn("ok"))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
+    assert any(c["name"] == "systematic-debugging" for c in session.snapshot()["commands"])
+    session.send("hello")
+    wait_for(session, "idle")
+    session.command("/systematic-debugging the test is red")
+    wait_for(session, "idle")
+    sent = session.history[2]["content"]
+    assert session.active_skills == ["systematic-debugging"] and "turned on skill systematic-debugging" in sent and "Phase 1" in sent
+    assert "Skills the user turned on" not in session.system_prompt()
+    session._pinned = None
+    assert "Skills the user turned on" in session.system_prompt() and "Systematic" in session.system_prompt()
+    assert "(đang bật)" in session.command("/skills")["message"]
+    session.command("/skills off systematic-debugging")
+    session._pinned = None
+    assert session.active_skills == [] and "Skills the user turned on" not in session.system_prompt()
+
+
+def test_skills_on_in_the_profile_are_on_from_the_first_turn(ws, home):
+    (home / ".manga-agent").mkdir(parents=True, exist_ok=True)
+    (home / ".manga-agent" / "profile.json").write_text(json.dumps({"skills_on": ["writing-plans", "no-such-skill"]}))
+    session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("ok")))
+    assert session.active_skills == ["writing-plans"] and "Skill writing-plans at" in session.system_prompt()
+
+
 def fake_repo_zip(files):
     import io
     import zipfile

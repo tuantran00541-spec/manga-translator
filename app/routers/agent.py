@@ -162,6 +162,8 @@ def set_engine(req: EngineChoice) -> dict:
         sandbox.save_settings(req.engine, req.image.strip())
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(500, f"cannot save the sandbox settings: {exc}") from exc
     return _engine()
 
 

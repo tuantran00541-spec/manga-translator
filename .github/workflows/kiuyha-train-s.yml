@@ -1,0 +1,118 @@
+name: Kiuyha train S
+
+# Fine-tune the Kiuyha yolo26s (small) detector with the same recipe as the
+# yolo26n rounds: same data set, same hard cases, same hyper-parameters.
+# Round 1 starts from the base yolo26s weights; later rounds continue from the
+# previous round's kiuyha-tuned-s artifact (set START_RUN below).
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/kiuyha-train-s.yml"
+      - ".github/kiuyha/**"
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  OUT: audit-results/kiuyha-train-s/run-${{ github.run_id }}
+  PYTHONPATH: "."
+  PYTHONUNBUFFERED: "1"
+  # The run whose kiuyha-data artifact is reused.
+  DATA_RUN: "38535523379"
+  # Empty = start from the base yolo26s weights; a run id = continue from that
+  # run's kiuyha-tuned-s artifact.
+  START_RUN: ""
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: [all]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: kiuyha-data
+          path: .
+          run-id: ${{ env.DATA_RUN }}
+          github-token: ${{ github.token }}
+      - name: Fetch the base yolo26s weights
+        run: curl --proto '=https' --tlsv1.2 -sSfL -o yolo26s.pt https://huggingface.co/Kiuyha/Manga-Bubble-YOLO/resolve/main/weights/yolo26s.pt
+      # Later rounds continue from the previous tuned-s weights, not the base.
+      - name: Fetch the previous tuned-s weights
+        if: env.START_RUN != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: kiuyha-tuned-s
+          path: start
+          run-id: ${{ env.START_RUN }}
+          github-token: ${{ github.token }}
+      - name: Pick the starting weights
+        run: |
+          if [ -n "$START_RUN" ]; then cp start/kiuyha-tuned-s.pt start.pt; else cp yolo26s.pt start.pt; fi
+          ls -la start.pt
+      - name: Install Ultralytics on CPU torch
+        run: |
+          python -m pip install --only-binary :all: torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --only-binary :all: ultralytics==8.4.164 onnx==1.23.2 onnxslim==0.1.98
+      - name: Add hard-case data (Total-Text hard + webtoon + AnimeText hard)
+        run: python .github/kiuyha/fetch_hard.py kiuyha-data
+      - name: Tune
+        run: |
+          sed -i "s#^path: .*#path: $PWD/kiuyha-data#" kiuyha-data/data.yaml
+          yolo detect train model=start.pt data=kiuyha-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
+            time=5.0 epochs=40 patience=100 freeze=0 optimizer=AdamW lr0=0.0005 cos_lr=True \
+            degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
+      # Ultralytics may write elsewhere than asked, so the weights are found wherever they landed and kept before anything else runs.
+      - name: Keep the weights
+        if: always()
+        run: |
+          best=$(find "$PWD/runs" / -path '*/tune/weights/best.pt' 2>/dev/null | head -1)
+          [ -n "$best" ] || best=$(find "$PWD/runs" / -path '*/tune/weights/last.pt' 2>/dev/null | head -1)
+          cp "$best" kiuyha-tuned-s.pt && cp "$(dirname "$(dirname "$best")")/results.csv" . 2>/dev/null || true
+          ls -la kiuyha-tuned-s.pt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kiuyha-tuned-s
+          path: |
+            kiuyha-tuned-s.pt
+            results.csv
+          retention-days: 30
+      - name: Export to ONNX at the app's size
+        run: |
+          yolo export model=kiuyha-tuned-s.pt format=onnx imgsz=1280 opset=17
+          ls -la kiuyha-tuned-s.onnx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kiuyha-tuned-s-onnx
+          path: kiuyha-tuned-s.onnx
+          retention-days: 30
+      - name: Score base against tuned on the held-out checks
+        run: python .github/kiuyha/evaluate.py kiuyha-data "$OUT/${{ matrix.arm }}" yolo26s.pt kiuyha-tuned-s.pt
+      - name: Keep the logs
+        if: always()
+        run: |
+          mkdir -p "$OUT/${{ matrix.arm }}"
+          cp train.log results.csv kiuyha-data/stats.json "$OUT/${{ matrix.arm }}/" 2>/dev/null || true
+      - name: Give git access only now
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+      - uses: ./.github/actions/save-evidence
+        if: always()
+        with:
+          paths: ${{ env.OUT }}/${{ matrix.arm }}
+          message: "audit: Kiuyha tuned S (${{ matrix.arm }}, run ${{ github.run_id }})"

@@ -77,3 +77,23 @@ def test_m4_full_access_describe_unchanged(monkeypatch):
     monkeypatch.setattr(sandbox, "backend", lambda: "none")
     desc = sandbox.Policy("full-access", False).describe(Path("/tmp"))
     assert "without a sandbox" in desc
+
+
+def test_save_settings_retries_past_a_locked_file(tmp_path, monkeypatch):
+    """A target Windows refuses to replace at first (read-only flag, a sync
+    tool holding it) must not fail the save: the replace is retried."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    real_replace, attempts = sandbox.os.replace, []
+
+    def flaky(src, dst):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise PermissionError("held by another process")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(sandbox.os, "replace", flaky)
+    out = sandbox.save_settings("docker", "python:3.12-slim")
+    assert out["engine"] == "docker"
+    assert (tmp_path / ".manga-agent" / "sandbox.json").exists()
+    assert len(attempts) == 3
