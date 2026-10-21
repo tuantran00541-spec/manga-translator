@@ -1,0 +1,273 @@
+{
+ "passed": 5,
+ "clean_passed": 5,
+ "trials": 24,
+ "rate": 0.208,
+ "contaminated": [],
+ "rows": [
+  {
+   "trial": "adaptive-rejection-sampler__SQDzxDV",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    89249,
+    17175,
+    79058
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-cython-ext__axBJNK6",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1547715,
+    646892,
+    75139
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "caffe-cifar-10__iQYgsf9",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    3173042,
+    1733298,
+    314885
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "circuit-fibsqrt__tw3oTge",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    265925,
+    182017,
+    289211
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "compile-compcert__gDF4z98",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2230521,
+    1336363,
+    94912
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "count-dataset-tokens__Fdg9gBu",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    555848,
+    332892,
+    61781
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "db-wal-recovery__KrFbvRK",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    894527,
+    398752,
+    56214
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "dna-insert__DmYpERU",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "feal-differential-cryptanalysis__CdzkEoA",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    75141,
+    38408,
+    32662
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "financial-document-processor__NLGRUKj",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-ocaml-gc__JxSA9rB",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    360261,
+    151869,
+    13010
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "git-multibranch__XeRkMMQ",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "hf-model-inference__aDeyWUf",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "large-scale-text-editing__jUZnHMJ",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "log-summary-date-ranges__wCVpZGP",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "make-mips-interpreter__qzbpw3P",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "model-extraction-relu-logits__DwfPtRs",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mteb-retrieve__4MmxLsf",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "openssl-selfsigned-cert__3rE3z3W",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "path-tracing__HQakPuf",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "polyglot-rust-c__jXtQmRX",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "prove-plus-comm__D6Nu7Tx",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "pytorch-model-recovery__SUqTnGC",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "regex-log__gG4gkdw",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  }
+ ]
+}
