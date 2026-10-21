@@ -1316,7 +1316,6 @@ def test_at_most_three_skills_are_loaded_per_task(ws, home):
 
 
 def test_helpers_that_edit_files_run_one_after_the_other_when_copies_are_off(ws, home):
-    import threading
     order = []
 
     def child(messages, tools):
@@ -2644,7 +2643,7 @@ def test_changed_toml_and_yaml_files_are_checked_for_syntax_errors(ws):
     (ws.root / "good.toml").write_text("[a]\nb = 1\n")
     rows = ws.diagnose([ws.root / "pyproject.toml", ws.root / "good.toml"])
     assert rows.startswith("pyproject.toml: Invalid value") and "good.toml" not in rows
-    yaml = pytest.importorskip("yaml")
+    pytest.importorskip("yaml")
     (ws.root / "ci.yml").write_text("jobs: [a, b\n")
     assert "ci.yml: while parsing" in ws.diagnose([ws.root / "ci.yml"])
 

@@ -199,14 +199,6 @@ def plugin_files(workspace: Path, home: Path) -> list[tuple[str, Path]]:
     return found
 
 
-def workspace_digest(files: list[tuple[str, Path]]) -> str:
-    h = hashlib.sha256()
-    for scope, path in files:
-        if scope == "workspace":
-            h.update(path.name.encode() + b"\0" + path.read_bytes())
-    return h.hexdigest()
-
-
 def plugin_sources(workspace: Path, home: Path) -> list[tuple[str, Path, bytes | None]]:
     """Every plugin file's bytes, read exactly once.
 
@@ -224,11 +216,7 @@ def plugin_sources(workspace: Path, home: Path) -> list[tuple[str, Path, bytes |
 
 
 def sources_digest(sources: list[tuple[str, Path, bytes | None]]) -> str:
-    """Digest of the exact bytes load_plugins is about to execute (single-read).
-
-    Uses the same construction as workspace_digest, so a digest pinned via
-    trust_plugins() matches the one checked at load time.
-    """
+    """Digest of the exact workspace plugin bytes load_plugins is about to execute."""
     h = hashlib.sha256()
     for scope, path, data in sources:
         if scope == "workspace" and data is not None:

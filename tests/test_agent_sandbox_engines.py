@@ -93,7 +93,7 @@ def test_windows_exit_codes_pass_through_and_a_timeout_kills_the_whole_command(t
     root.mkdir()
     assert _run("exit /b 7", root)[0] == 7
     started = time.time()
-    code, _ = _run(f'python -c "import time; open(\'alive.txt\', \'w\').close(); time.sleep(30); open(\'late.txt\', \'w\').close()"', root, timeout=5)
+    code, _ = _run('python -c "import time; open(\'alive.txt\', \'w\').close(); time.sleep(30); open(\'late.txt\', \'w\').close()"', root, timeout=5)
     assert code is None and time.time() - started < 20
     time.sleep(1)
     assert (root / "alive.txt").exists() and not (root / "late.txt").exists()
