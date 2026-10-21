@@ -1,0 +1,74 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 6,
+            "passed": 6,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792548682.5280411,
+            "stop": 1792548682.617963
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_r_rstan_not_installed",
+                "status": "passed",
+                "duration": 0.0015568689996143803,
+                "start": 1792548682.6123586,
+                "stop": 1792548682.6142156,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_output_files_exist",
+                "status": "passed",
+                "duration": 0.0004539180008578114,
+                "start": 1792548682.6144211,
+                "stop": 1792548682.6150138,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_alpha_estimation_accuracy",
+                "status": "passed",
+                "duration": 0.00043355999969207915,
+                "start": 1792548682.615175,
+                "stop": 1792548682.6157222,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_sigma_estimation_accuracy",
+                "status": "passed",
+                "duration": 0.0004107169997951132,
+                "start": 1792548682.6158803,
+                "stop": 1792548682.6164072,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_rho_estimation_accuracy",
+                "status": "passed",
+                "duration": 0.00045387800037133275,
+                "start": 1792548682.6165538,
+                "stop": 1792548682.6171277,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_beta_estimation_accuracy",
+                "status": "passed",
+                "duration": 0.0004415849998622434,
+                "start": 1792548682.6172717,
+                "stop": 1792548682.6178188,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
