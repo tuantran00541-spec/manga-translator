@@ -377,6 +377,8 @@ Your tools are read_file, edit_file, run_command (the shell) and create. How the
 
 """ + RHYTHM + "\n" + VOICE
 # The harness tools as shell commands, one line each.
+# The system prompt part holding the skills the user turned on.
+ACTIVE_SKILLS = "Active skills"
 SHELL_COMMANDS = ("Harness commands in the shell. Each prints its result; arguments are key=value pairs, one JSON object, or a bare value "
                   "for the first parameter.\n"
                   "- web_search query='...' and web_fetch url=...: search and read the web.\n"
@@ -3399,7 +3401,7 @@ class AgentSession:
         if self.quirks.get("prompt_extra"):
             parts.append(str(self.quirks["prompt_extra"]))
         parts.append(self._pinned.get("Skills", ""))
-        parts.append(self._pinned.get("Active skills", ""))
+        parts.append(self._pinned.get(ACTIVE_SKILLS, ""))
         return "\n\n".join(p for p in parts if p)
 
     def _volatile(self) -> dict[str, str]:
@@ -3407,7 +3409,7 @@ class AgentSession:
         home = self.home if self.home is not None else Path.home()
         rows = {"Skills": skills.catalog(self.skills, paths=not self.depth)}
         if not self.depth:
-            rows["Active skills"] = skills.active(self.skills, self.active_skills)
+            rows[ACTIVE_SKILLS] = skills.active(self.skills, self.active_skills)
             rows["Project instructions"] = context.instructions(self.workspace.root, self.home)
             rows["Memory"] = memory.prompt(home, self.workspace.root)
         return rows
@@ -3420,7 +3422,7 @@ class AgentSession:
         for name, text in fresh.items():
             old = self._pinned.get(name, "")
             # A skill turned on mid-session was already sent in full; the system prompt takes it at the next context window.
-            if text == old or name == "Active skills":
+            if text == old or name == ACTIVE_SKILLS:
                 continue
             delta = [line for line in difflib.ndiff(old.splitlines(), text.splitlines()) if line[:2] in ("+ ", "- ")]
             blocks.append(f"{name}:\n" + "\n".join(delta[:40]) + (f"\n… {len(delta) - 40} more lines" if len(delta) > 40 else ""))
