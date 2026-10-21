@@ -1,0 +1,5 @@
+2026-10-21 00:52:27 | INFO     | app.agent.client:349 - bench answered 429 (1 so far, waiting 6 s): {"error":{"message":"Account request rate limit exceeded for this model","type":"rate_limit_error","code":"account_rate"}}
+2026-10-21 00:53:30 | INFO     | app.agent.client:349 - bench answered 429 (2 so far, waiting 6 s): {"error":{"message":"Account request rate limit exceeded for this model","type":"rate_limit_error","code":"account_rate"}}
+2026-10-21 00:54:49 | INFO     | app.agent.client:349 - bench answered 429 (3 so far, waiting 6 s): {"error":{"message":"Account request rate limit exceeded for this model","type":"rate_limit_error","code":"account_rate"}}
+2026-10-21 00:58:42 | INFO     | app.agent.client:349 - bench answered 429 (4 so far, waiting 6 s): {"error":{"message":"Account request rate limit exceeded for this model","type":"rate_limit_error","code":"account_rate"}}
+2026-10-21 01:01:18 | INFO     | app.agent.client:349 - bench answered 429 (5 so far, waiting 6 s): {"error":{"message":"Account request rate limit exceeded for this model","type":"rate_limit_error","code":"account_rate"}}
