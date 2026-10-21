@@ -21,14 +21,14 @@ def test_the_command_folder_goes_in_front_of_path_once():
 
 def test_the_unix_launcher_runs_the_private_python_with_the_open_flag():
     text = install.launcher_text(Path("/opt/mt/.venv/bin/python"), Path("/opt/mt/run.py"), windows=False)
-    assert text == '#!/bin/sh\nexec "/opt/mt/.venv/bin/python" "/opt/mt/run.py" --open "$@"\n'
+    assert text == '#!/bin/sh\nexec "/opt/mt/.venv/bin/python" "/opt/mt/run.py" --link "$@"\n'
 
 
 def test_the_windows_launcher_never_writes_an_accented_user_name():
     local = "C:\\Users\\Nguyễn\\AppData\\Local"
     text = install.launcher_text(Path(local + r"\manga-translator\app\.venv\Scripts\python.exe"),
                                  Path(local + r"\manga-translator\app\run.py"), windows=True, local_appdata=local)
-    assert text.isascii() and "%LOCALAPPDATA%\\manga-translator\\app\\run.py" in text and text.endswith("--open %*\r\n")
+    assert text.isascii() and "%LOCALAPPDATA%\\manga-translator\\app\\run.py" in text and text.endswith("--link %*\r\n")
 
 
 def test_an_accented_clone_path_switches_cmd_to_utf8_and_back():
@@ -454,3 +454,11 @@ def test_without_a_window_toolkit_the_app_falls_back_to_the_browser(monkeypatch)
     assert run._show_window("http://127.0.0.1:8000") is False
     monkeypatch.setitem(sys.modules, "webview", None)  # not installed at all
     assert run._show_window("http://127.0.0.1:8000") is False
+
+
+def test_manga_prints_the_link_of_the_running_app_and_opens_nothing(monkeypatch, capsys):
+    monkeypatch.setattr(run, "_is_ours", lambda url: url.endswith(f":{run.PORT}"))
+    monkeypatch.setattr(run.webbrowser, "open", lambda url: pytest.fail("a browser was opened"))
+    monkeypatch.setattr(run, "_serve", lambda *a, **k: pytest.fail("a second server was started"))
+    run.main(["--link"])
+    assert run._url(run.PORT) in capsys.readouterr().out
