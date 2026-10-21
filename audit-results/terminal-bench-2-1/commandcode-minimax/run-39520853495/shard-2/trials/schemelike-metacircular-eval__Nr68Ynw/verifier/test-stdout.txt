@@ -1,0 +1,678 @@
+ile "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+8
+13
+26
+36
+15
+120
+
+Through eval.scm:
+
+
+Testing: /tests/test/05-simple-io.scm
+----------------------------------------
+takes 0.028827905654907227
+takes 0.02888798713684082
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Testing simple I/O...
+String: Hello, World!
+Number: 42
+Boolean true: True
+Boolean false: False
+List: (1 2 3 4 5)
+Character output: A B C
+Progn with side effects: First Second Third
+Conditional display: 5 is greater than 3
+Simple I/O tests completed!
+
+Through eval.scm:
+
+
+Testing: /tests/test/06-interactive-io.scm
+----------------------------------------
+takes 0.028810739517211914
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Interactive calculator
+Enter two numbers and an operation (+, -, *, /)
+First number: Second number: Operation (+, -, *, /): Result: 123
+Mini expression evaluator (type 'quit to exit)
+
+Through eval.scm:
+
+
+Testing: /tests/test/08-progn-sequencing.scm
+----------------------------------------
+takes 0.029208898544311523
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Testing progn sequencing:
+First... Second... Third... Result: 30
+Counting: 1 2 3
+For loop 1-5: 1 2 3 4 5 
+x = 10, y = 20, x + y = 30
+
+Through eval.scm:
+
+
+Testing: /tests/test/09-mutual-recursion.scm
+----------------------------------------
+takes 0.0303347110748291
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Testing even? and odd?:
+0 is even
+1 is odd
+10 is even
+15 is odd
+100 is even
+Alternate elements of (1 2 3 4 5 6 7 8):
+Even positions: (1 3 5 7)
+Odd positions: (2 4 6 8)
+
+Through eval.scm:
+
+
+Testing: /tests/test/10-advanced-features.scm
+----------------------------------------
+takes 0.02941274642944336
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Factorial using Y combinator:
+5! = 120
+Person data:
+Name: ('.' "John")
+Age: ('.' 30)
+Counter object:
+After 2 increments: 2
+After reset: 0
+File handling with callback:
+File written successfully
+
+Through eval.scm:
+
+
+Testing: /tests/test/accumulator_patterns.scm
+----------------------------------------
+takes 0.028679609298706055
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Factorial of 6: 720
+Reverse of (1 2 3 4 5): (5 4 3 2 1)
+Sum of (10 20 30 40): 100
+Length of (a b c d e f): 6
+Sum and product of (2 3 4): (9 . 24)
+
+Through eval.scm:
+
+
+Testing: /tests/test/binary_tree.scm
+----------------------------------------
+takes 0.02952861785888672
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Tree in-order traversal: (1 3 5 7 9)
+
+Through eval.scm:
+
+
+Testing: /tests/test/calculator.scm
+----------------------------------------
+takes 0.02967071533203125
+takes 0.029285669326782227
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Reading
+123
+Done
+
+Through eval.scm:
+
+
+Testing: /tests/test/church_numerals.scm
+----------------------------------------
+takes 0.028365373611450195
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+zero as int: 0
+one as int: 1
+two as int: 2
+three (succ two) as int: 3
+2 + 3 = 5
+2 * 3 = 6
+
+Through eval.scm:
+
+
+Testing: /tests/test/closures.scm
+----------------------------------------
+takes 0.028431415557861328
+takes 0.028499364852905273
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Counter1 first call: 1
+Counter1 second call: 2
+Counter2 first call: 1
+Counter1 third call: 3
+add5 to 3: 8
+add10 to 3: 13
+times3 of 4: 12
+
+Through eval.scm:
+
+
+Testing: /tests/test/continuation_passing.scm
+----------------------------------------
+takes 0.029276609420776367
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Normal factorial of 5: 120
+CPS factorial of 5: 120
+CPS fibonacci of 6: 8
+CPS sum of (1 2 3 4 5): 15
+
+Through eval.scm:
+
+
+Testing: /tests/test/currying.scm
+----------------------------------------
+takes 0.02884650230407715
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Curried add 5 to 3: 8
+add5 to 10: 15
+mult3 by 7: 21
+Curried combine 2 * 3 + 4: 10
+Partially applied combine2-3 + 5: 11
+Flipped subtraction 10 - 3: -7
+(2 + 4) * 3 = 18
+
+Through eval.scm:
+
+
+Testing: /tests/test/filter_operations.scm
+----------------------------------------
+takes 0.02966594696044922
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+All numbers: (1 2 3 4 5 6 7 8 9 10)
+Even numbers: (2 4 6 8 10)
+Odd numbers: (1 3 5 7 9)
+Mixed numbers: (-3 -2 -1 0 1 2 3)
+Positive numbers: (1 2 3)
+
+Through eval.scm:
+
+
+Testing: /tests/test/fold_operations.scm
+----------------------------------------
+takes 0.02891707420349121
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Sum using fold-left: 15
+Product using fold-left: 120
+Original: (1 2 3 4 5)
+Reversed: (5 4 3 2 1)
+Copy list using fold-right: (1 2 3 4 5)
+
+Through eval.scm:
+
+
+Testing: /tests/test/function_composition.scm
+----------------------------------------
+takes 0.03038954734802246
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+square then add1 of 3: 10
+add1 then square of 3: 16
+add2 (twice add1) of 5: 7
+quad (twice double) of 3: 12
+double, add1, then square of 2: 25
+Pipeline (double, add1, square) of 3: 49
+
+Through eval.scm:
+
+
+Testing: /tests/test/lazy_evaluation.scm
+----------------------------------------
+takes 0.02897930145263672
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+First 10 natural numbers: (1 2 3 4 5 6 7 8 9 10)
+First 8 squares: (1 4 9 16 25 36 49 64)
+First 10 Fibonacci numbers: (0 1 1 2 3 5 8 13 21 34)
+
+Through eval.scm:
+
+
+Testing: /tests/test/list_operations.scm
+----------------------------------------
+takes 0.03034830093383789
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Zip (1 2 3) with (a b c): ((1 . 'a') (2 . 'b') (3 . 'c'))
+Flatten ((1 2) (3 (4 5)) 6): (1 2 3 4 5 6)
+Partition evens from (1 2 3 4 5 6): ((2 4 6) 1 3 5)
+Remove duplicates from (1 2 3 2 4 3 5): (1 2 4 3 5)
+
+Through eval.scm:
+
+
+Testing: /tests/test/map_operations.scm
+----------------------------------------
+takes 0.02967071533203125
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Original list: (1 2 3 4 5)
+Squared: (1 4 9 16 25)
+Doubled: (2 4 6 8 10)
+Add 1: (2 3 4 5 6)
+Double then double again: (4 8 12 16 20)
+
+Through eval.scm:
+
+
+Testing: /tests/test/memoization.scm
+----------------------------------------
+takes 0.030135631561279297
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Memoized fib(10): 55
+Memoized fib(10) again (from cache): 55
+First call: Computing square of 5...
+25
+Second call (cached): 25
+
+Through eval.scm:
+
+
+Testing: /tests/test/mutual_recursion.scm
+----------------------------------------
+takes 0.029508352279663086
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Is 4 even? True
+Is 7 even? False
+Is 7 odd? True
+First 10 Female sequence values: 1 1 2 2 3 3 4 5 5 6 
+First 10 Male sequence values: 0 0 1 2 2 3 4 4 5 6 
+Nodes in tree: 6
+Parse expression: ('a' 'b' 'c' 'd' 'e' 'f')
+
+Through eval.scm:
+
+
+Testing: /tests/test/nested_defines.scm
+----------------------------------------
+takes 0.028487205505371094
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Nested defines result: 20289
+4 is even
+7 is odd
+Nested define: 25
+
+Through eval.scm:
+
+
+Testing: /tests/test/oeis_sequences.scm
+----------------------------------------
+takes 0.029819250106811523
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+First 10 Fibonacci numbers (A000045): (0 1 1 2 3 5 8 13 21 34)
+First 10 Jacobsthal numbers (A001045): (0 1 1 3 5 11 21 43 85 171)
+First 8 Partition numbers (A000041): (1 1 2 3 5 7 11 15)
+First 8 Factorial numbers (A000142): (1 1 2 6 24 120 720 5040)
+First 6 Bell numbers (A000110): (1 1 2 5 15 52)
+
+Through eval.scm:
+
+
+Testing: /tests/test/oeis_sequences2.scm
+----------------------------------------
+takes 0.029750585556030273
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+First 8 Catalan numbers (A000108): (1 1 2 5 14 42 132 429)
+First 8 Prime numbers (A000040): (2 2 3 5 7 11 13 17)
+First 5 Twin primes (A001097): (1 3 5 11 17)
+First 10 Triangular numbers (A000217): (0 1 3 6 10 15 21 28 36 45)
+First 10 Square numbers (A000290): (0 1 4 9 16 25 36 49 64 81)
+
+Through eval.scm:
+
+
+Testing: /tests/test/oeis_sequences3.scm
+----------------------------------------
+takes 0.02991175651550293
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Collatz steps for 1-10 (A006577): (0 1 7 2 5 8 16 3 19 6)
+First 10 Pell numbers (A000129): (0 1 2 5 12 29 70 169 408 985)
+First 6 Primorial numbers (A002110): (2 4 12 60 420 4620)
+First 6 Central binomial coefficients (A000984): (1 2 6 20 70 252)
+First 8 Derangements (A000166): (1 0 1 2 9 44 265 1854)
+
+Through eval.scm:
+
+
+Testing: /tests/test/recursive_structures.scm
+----------------------------------------
+takes 0.02896738052368164
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Stack operations: Top: 3, After pop: 2
+Queue operations: Front: 1, After dequeue: 2
+Dictionary operations: Get 'b': 2, Get 'x': False
+Tree map (double all values): Root: 2, First child: 4
+
+Through eval.scm:
+
+
+Testing: /tests/test/test_read.scm
+----------------------------------------
+takes 0.028484821319580078
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Reading
+hello
+Done
+
+Through eval.scm:
+
+
+Testing: /tests/test/variadic_functions.scm
+----------------------------------------
+takes 0.029222488403320312
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Sum of (1 2 3 4 5): 15
+Product of (2 3 4): 24
+Max of (3 1 4 1 5 9 2 6): 9
+Min of (3 1 4 1 5 9 2 6): 1
+Concatenate ((1 2) (3 4) (5 6)): (1 2 3 4 5 6)
+Square all (1 2 3 4): (1 4 9 16)
+((x + 1) * 2)^2 of 3: 64
+
+Through eval.scm:
+
+
+Testing: /tests/test/y_combinator.scm
+----------------------------------------
+takes 0.029314279556274414
+Eval.scm error: Traceback (most recent call last):
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 567, in <module>
+    run_file(sys.argv[1])
+    ~~~~~~~~^^^^^^^^^^^^^
+  File "/tmp/tmpiz0wrnil/eval/interp.py", line 485, in run_file
+    with open(filename, "r") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/app/eval.scm'
+
+FAILED: OUTPUT MISMATCH:
+Direct:
+Factorial of 5 using Y combinator: 120
+First 8 Fibonacci numbers: 0 1 1 2 3 5 8 13
+
+Through eval.scm:
+
+
+==================================================
+Summary: 0 passed, 63 failed out of 63 tests
+=========================== short test summary info ============================
+FAILED ../tests/test_outputs.py::test_interp - assert 63 == 0
+============================== 1 failed in 3.31s ===============================
