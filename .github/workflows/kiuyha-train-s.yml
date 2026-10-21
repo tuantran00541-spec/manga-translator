@@ -26,7 +26,44 @@ env:
   START_RUN: "39549737747"
 
 jobs:
+  data:
+    # Builds a fresh kiuyha-data set; runs only while REBUILD_DATA below is on.
+    if: true
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the downloader and Ultralytics on CPU torch
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 \
+            beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 pyarrow
+          python -m playwright install --with-deps chromium
+          python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "ultralytics==8.4.164"
+          python -m pip uninstall -y opencv-python opencv-python-headless || true
+          python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
+      - name: Fetch the current Kiuyha weights
+        run: curl -sSfL -o yolo26n.pt https://huggingface.co/Kiuyha/Manga-Bubble-YOLO/resolve/main/weights/yolo26n.pt
+      - name: Build the set
+        run: python .github/kiuyha/build.py yolo26n.pt kiuyha-data .github/kiuyha/plan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kiuyha-data
+          path: |
+            kiuyha-data
+            yolo26n.pt
+          retention-days: 30
+
   tune:
+    # Off while the data set is rebuilt (the old artifact expired).
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 345
     strategy:
