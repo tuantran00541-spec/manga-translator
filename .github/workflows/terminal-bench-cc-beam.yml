@@ -29,7 +29,6 @@ jobs:
       shard_total: ${{ steps.cfg.outputs.shard_total }}
       echo_reasoning: ${{ steps.cfg.outputs.echo_reasoning }}
       profile: ${{ steps.cfg.outputs.profile }}
-      skills: ${{ steps.cfg.outputs.skills }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,12 +58,7 @@ jobs:
           print(f"shards={json.dumps(list(range(total)))}")
           print(f"shard_total={total}")
           print(f"echo_reasoning={cfg.get('echo_reasoning') or ''}")
-          # Listed skills are turned on, as if the user had typed /<skill>.
-          profile = dict(cfg.get("profile") or {})
-          if cfg.get("skills"):
-              profile["skills_on"] = [re.sub(r"[^a-z0-9-]", "", n) for n in cfg["skills"]]
-          print(f"profile={json.dumps(profile)}")
-          print(f"skills={' '.join(re.sub(r'[^a-z0-9-]', '', n) for n in cfg.get('skills') or [])}")
+          print(f"profile={json.dumps(cfg.get('profile') or {})}")
           PY
 
   check:
@@ -167,8 +161,6 @@ jobs:
           echo "SEARCH_RELAY=18082" >> "$GITHUB_ENV"
 
       - name: Package the harness
-        env:
-          SKILLS: ${{ needs.config.outputs.skills }}
         run: |
           python -m pip install -q -r requirements-test.txt
           python - <<'PY'
@@ -186,11 +178,6 @@ jobs:
               for f in sorted(files):
                   tar.add(f)
               tar.add(".github/terminal-bench/run_agent.py", arcname="run_agent.py")
-              # Listed skills kept here go to the agent's home skills folder; the rest are the app's built-in ones.
-              for skill in os.environ.get("SKILLS", "").split():
-                  if os.path.isdir(f".github/terminal-bench/skills/{skill}"):
-                      tar.add(f".github/terminal-bench/skills/{skill}", arcname=f"skills/{skill}")
-                  print("skill", skill)
           print(len(files) + 1, "files")
           PY
           ip -4 -o addr show docker0 | awk '{print $4}' | cut -d/ -f1 | tee /tmp/docker-gateway

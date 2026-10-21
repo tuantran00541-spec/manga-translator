@@ -18,6 +18,7 @@
 
 A/B trên Beam (2 lượt mỗi nhánh): đủ công cụ 64/61 và 64/63; chỉ shell 60/60 và 67/67; shell kèm danh sách lệnh 64/61 và 65/61. Chênh lệch nằm trong nhiễu nên tùy chọn `shell_only` đã bị xóa.
 Thêm 3 skill bên ngoài (karpathy-guidelines, systematic-debugging, verification-before-completion): 63/59 và 63/61, nhưng agent không đọc SKILL.md nào trong cả 2 lượt, nên danh sách skill trong prompt không đổi gì.
+Bật hẳn 3 skill đó vào system prompt (như người dùng gõ /skill): 66/63 và 62/60, tốn thêm khoảng 20% token đầu vào, tức không hơn nhánh gốc.
 
 Kết quả nằm ở `audit-results/terminal-bench-2-1/` trên nhánh `audit-evidence`. Mỗi trial có `events.jsonl.gz`, `result.json` và `verifier/`.
 
