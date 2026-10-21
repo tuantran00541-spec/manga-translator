@@ -1,0 +1,59 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 4,
+            "passed": 3,
+            "failed": 1,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792547159.6936064,
+            "stop": 1792547170.2709005
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_network_status",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 0.014399241000319307,
+                "start": 1792547159.7750328,
+                "stop": 1792547159.8146377,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "netstat_output = 'Active Internet connections (only servers)\\nProto Recv-Q Send-Q Local Address           Foreign Address         State...              \\ntcp6       0      0 :::5901                 :::*                    LISTEN      1357/qemu-system-i3 \\n'\n\n    def test_network_status(netstat_output):\n        \"\"\"Test network status and VNC services\"\"\"\n        # Check VNC connections (port 5901)\n        # Check if VNC port 5901 is listening\n        assert \":5901\" in netstat_output, \"VNC service not listening on port 5901\"\n    \n        # Check if web interface port 80 is listening (for nginx)\n>       assert \":80\" in netstat_output, (\n            \"Web interface (nginx) not listening on port 80\"\n        )\nE       AssertionError: Web interface (nginx) not listening on port 80\nE       assert ':80' in 'Active Internet connections (only servers)\\nProto Recv-Q Send-Q Local Address           Foreign Address         State...              \\ntcp6       0      0 :::5901                 :::*                    LISTEN      1357/qemu-system-i3 \\n'\n\n/tests/test_outputs.py:87: AssertionError",
+                "message": "The test failed in the call phase due to an assertion error"
+            },
+            {
+                "name": "test_outputs.py::test_qemu_running_with_correct_params",
+                "status": "passed",
+                "duration": 0.31967254800019873,
+                "start": 1792547159.8148437,
+                "stop": 1792547160.134746,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_windows_311_core_files_verification",
+                "status": "passed",
+                "duration": 7.688305206998848,
+                "start": 1792547160.1350212,
+                "stop": 1792547167.8235373,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_windows_keys_with_visual_feedback",
+                "status": "passed",
+                "duration": 2.446720174000802,
+                "start": 1792547167.8237474,
+                "stop": 1792547170.2706807,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
