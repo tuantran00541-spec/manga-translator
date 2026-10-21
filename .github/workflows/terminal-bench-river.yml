@@ -60,7 +60,11 @@ jobs:
           print(f"shard_total={total}")
           print(f"echo_reasoning={cfg.get('echo_reasoning') or ''}")
           print(f"profile={json.dumps(cfg.get('profile') or {})}")
-          print(f"limits={json.dumps(cfg.get('relay_limits') or {})}")
+          limits = dict(cfg.get("relay_limits") or {})
+          # Each shard runs its own relay, so the run's dollar cap is split between them.
+          if limits.get("max_usd"):
+              limits["max_usd"] = round(float(limits["max_usd"]) / total, 4)
+          print(f"limits={json.dumps(limits)}")
           PY
 
   check:
