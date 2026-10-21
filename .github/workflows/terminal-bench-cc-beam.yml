@@ -59,7 +59,11 @@ jobs:
           print(f"shards={json.dumps(list(range(total)))}")
           print(f"shard_total={total}")
           print(f"echo_reasoning={cfg.get('echo_reasoning') or ''}")
-          print(f"profile={json.dumps(cfg.get('profile') or {})}")
+          # Listed skills are turned on, as if the user had typed /<skill>.
+          profile = dict(cfg.get("profile") or {})
+          if cfg.get("skills"):
+              profile["skills_on"] = [re.sub(r"[^a-z0-9-]", "", n) for n in cfg["skills"]]
+          print(f"profile={json.dumps(profile)}")
           print(f"skills={' '.join(re.sub(r'[^a-z0-9-]', '', n) for n in cfg.get('skills') or [])}")
           PY
 
@@ -182,9 +186,10 @@ jobs:
               for f in sorted(files):
                   tar.add(f)
               tar.add(".github/terminal-bench/run_agent.py", arcname="run_agent.py")
-              # Skills the run config lists go to the agent's home skills folder.
+              # Listed skills kept here go to the agent's home skills folder; the rest are the app's built-in ones.
               for skill in os.environ.get("SKILLS", "").split():
-                  tar.add(f".github/terminal-bench/skills/{skill}", arcname=f"skills/{skill}")
+                  if os.path.isdir(f".github/terminal-bench/skills/{skill}"):
+                      tar.add(f".github/terminal-bench/skills/{skill}", arcname=f"skills/{skill}")
                   print("skill", skill)
           print(len(files) + 1, "files")
           PY

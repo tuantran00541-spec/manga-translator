@@ -41,7 +41,7 @@ def load_profile(workspace: Path, home: Path) -> dict:
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
                      "timeout_to_background": True, "compact_at_tokens": 900_000, "context_window": 0, "fallback_models": [], "prewalk_model": "",
-                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "plugins": {}, "adapters": {}}
+                     "replace": {}, "roles": {}, "model_roles": {}, "model_sources": {}, "plugins": {}, "adapters": {}, "skills_on": []}
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in PROFILE_FILES[scope]:
             try:
@@ -97,6 +97,8 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["untrusted_guard"] = data["untrusted_guard"]
                 if isinstance(data.get("intent"), bool):
                     profile["intent"] = data["intent"]
+                if isinstance(data.get("skills_on"), list):
+                    profile["skills_on"] = [n for n in data["skills_on"][:20] if isinstance(n, str)]
                 # Any built-in tool can be served by an MCP tool instead, and an MCP tool can be given a role.
                 if isinstance(data.get("replace"), dict):
                     profile["replace"].update({k: v for k, v in data["replace"].items()

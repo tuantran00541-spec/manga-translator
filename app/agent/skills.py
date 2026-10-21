@@ -100,6 +100,12 @@ def _short(text: str, limit: int = 160) -> str:
     return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "…"
 
 
+def active(found: dict[str, Skill], names: list[str]) -> str:
+    """The full instructions of the skills the user turned on."""
+    shown = [load(found[n]) for n in names if n in found]
+    return "Skills the user turned on (follow them for this whole session):\n\n" + "\n\n---\n\n".join(shown) if shown else ""
+
+
 def load(skill: Skill) -> str:
     """The skill's instructions with the files it ships, for the model to read next."""
     _, body = frontmatter(skill.file.read_text(encoding="utf-8", errors="replace"))

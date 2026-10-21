@@ -699,6 +699,7 @@ class AgentSession:
         self.plan_mode = False
         self.effort = ""
         self.goal: dict | None = None
+        self.active_skills: list[str] = []
         self._recent: list[str] = []
         self._approval_lock = threading.RLock()
         self._spawn_lock = threading.Lock()
@@ -732,6 +733,8 @@ class AgentSession:
             self.registry = self._build_registry(home_path)
         self.checkpoints = parent.checkpoints if depth else Checkpoints()
         self.skills = skills.discover(workspace.root, home)
+        # Skills the user turned on stay in the system prompt for the whole session.
+        self.active_skills = [n for n in self.profile["skills_on"] if n in self.skills] if not depth else []
         self._set_read_roots()
         self.commands = context.commands(workspace.root, home) if not depth else {}
         self.hooks = context.hooks(workspace.root, home) if not depth else parent.hooks
@@ -899,7 +902,8 @@ class AgentSession:
                 "untrusted_tools": list(getattr(self._root(), "untrusted_tools", [])),
                 "commands": [{"name": k, "description": v} for k, v in self._builtin_commands().items()]
                 + [{"name": k, "description": d} for k, (d, _) in self.registry.commands.items()]
-                + [{"name": s.name, "description": s.description[:120]} for s in self.skills.values() if s.manual]
+                + [{"name": s.name, "description": ("" if s.manual else "Đang bật: " if s.name in self.active_skills else "Bật skill: ") + s.description[:120]}
+                   for s in self.skills.values()]
                 + [{"name": c["name"], "description": c["description"]} for c in self.commands.values()]
                 + [{"name": k, "description": str(p.get("description") or p["name"])[:120]} for k, (_, p) in self._mcp_prompts().items()]}
 
@@ -944,7 +948,7 @@ class AgentSession:
         data = {"id": self.id, "provider": self.provider.id, "model": self.model, "mode": self.mode, "title": self.title,
                 "workspace": str(self.workspace.root), "sandbox": [self.workspace.policy.mode, self.workspace.policy.network],
                 "created_at": self.created_at, "updated_at": self.updated_at, "usage": self.usage, "todos": self.todos, "notes": self.notes,
-                "text_tools": self.text_tools, "plan_mode": self.plan_mode, "effort": self.effort, "goal": self.goal, "schedules": self.schedules, "compact_at": self.compact_at,
+                "text_tools": self.text_tools, "plan_mode": self.plan_mode, "effort": self.effort, "goal": self.goal, "active_skills": self.active_skills, "schedules": self.schedules, "compact_at": self.compact_at,
                 "history": [{k: v for k, v in h.items() if k != "images"} for h in self.history], "events": self.events,
                 "tainted": self.tainted, "tainted_files": sorted(self._tainted_files), "taint_latch": self._taint_latch}
         # One ".tmp" name shared by two writers tears the file; each writer gets its own.
@@ -981,6 +985,8 @@ class AgentSession:
         self.usage.update(data.get("usage") or {})
         self.text_tools = bool(data.get("text_tools"))
         self.plan_mode = bool(data.get("plan_mode"))
+        if isinstance(data.get("active_skills"), list):
+            self.active_skills = [n for n in data["active_skills"] if isinstance(n, str) and n in self.skills]
         goal = data.get("goal")
         self.goal = {"text": str(goal.get("text", "")), "turns": int(goal.get("turns", 0))} if isinstance(goal, dict) else None
         self.created_at = float(data.get("created_at") or self.created_at)
@@ -1120,7 +1126,10 @@ class AgentSession:
         if name == "skills":
             if args.split()[:1] == ["add"]:
                 return {"message": self._install_skills(args[3:].strip())}
-            rows = [f"{'/' if s.manual else ''}{s.name}{' (có sẵn)' if s.builtin else ''}: {s.description[:150]}" for s in self.skills.values()]
+            if args.split()[:1] == ["off"]:
+                return {"message": self._deactivate_skill(args[3:].strip())}
+            rows = [f"/{s.name}{' (đang bật)' if s.name in self.active_skills else ''}{' (có sẵn)' if s.builtin else ''}: {s.description[:150]}"
+                    for s in self.skills.values()]
             return {"message": "\n".join(rows) or "Không có skill nào."}
         if name == "models":
             return {"message": self._models_command(args)}
@@ -1199,8 +1208,11 @@ class AgentSession:
             self.send(INIT_PROMPT)
             return {"sent": True}
         if name in self.skills and self.skills[name].manual:
+            # A manual skill is a one-off job, so it runs once instead of staying on.
             self.send(skills.load(self.skills[name]) + (f"\n\nUser input: {args}" if args else ""))
             return {"sent": True}
+        if name in self.skills:
+            return self._activate_skill(name, args)
         if name in self.commands:
             self.send(context.expand_command(self.commands[name]["body"], args))
             return {"sent": True}
@@ -1247,6 +1259,27 @@ class AgentSession:
         """Pick up skills added, written or removed since the session started; the model sees the change on its next turn."""
         self.skills = skills.discover(self.workspace.root, self.home)
         self._set_read_roots()
+
+    def _activate_skill(self, name: str, args: str) -> dict:
+        """Turn a skill on: its instructions go to the model now and into the system prompt from the next context window on."""
+        if name in self.active_skills:
+            if args:
+                self.send(args)
+                return {"sent": True}
+            return {"message": f"Skill {name} đang bật."}
+        self.active_skills.append(name)
+        self.save()
+        # Before the first turn the system prompt carries it; later the message does, until the next context window.
+        body = f"\n\n{skills.load(self.skills[name])}" if self._pinned is not None else ""
+        self.send(f"The user turned on skill {name}; follow it for the rest of this session.{body}" + (f"\n\nUser input: {args}" if args else ""))
+        return {"sent": True}
+
+    def _deactivate_skill(self, name: str) -> str:
+        if name not in self.active_skills:
+            return f"Skill {name or '?'} không bật."
+        self.active_skills.remove(name)
+        self.save()
+        return f"Đã tắt skill {name}; nó rời khỏi ngữ cảnh khi phiên tóm gọn hoặc mở lại."
 
     def _install_skills(self, spec: str) -> str:
         home = self.home if self.home is not None else Path.home()
@@ -3366,6 +3399,7 @@ class AgentSession:
         if self.quirks.get("prompt_extra"):
             parts.append(str(self.quirks["prompt_extra"]))
         parts.append(self._pinned.get("Skills", ""))
+        parts.append(self._pinned.get("Active skills", ""))
         return "\n\n".join(p for p in parts if p)
 
     def _volatile(self) -> dict[str, str]:
@@ -3373,6 +3407,7 @@ class AgentSession:
         home = self.home if self.home is not None else Path.home()
         rows = {"Skills": skills.catalog(self.skills, paths=not self.depth)}
         if not self.depth:
+            rows["Active skills"] = skills.active(self.skills, self.active_skills)
             rows["Project instructions"] = context.instructions(self.workspace.root, self.home)
             rows["Memory"] = memory.prompt(home, self.workspace.root)
         return rows
@@ -3384,7 +3419,8 @@ class AgentSession:
         fresh, blocks = self._volatile(), []
         for name, text in fresh.items():
             old = self._pinned.get(name, "")
-            if text == old:
+            # A skill turned on mid-session was already sent in full; the system prompt takes it at the next context window.
+            if text == old or name == "Active skills":
                 continue
             delta = [line for line in difflib.ndiff(old.splitlines(), text.splitlines()) if line[:2] in ("+ ", "- ")]
             blocks.append(f"{name}:\n" + "\n".join(delta[:40]) + (f"\n… {len(delta) - 40} more lines" if len(delta) > 40 else ""))
