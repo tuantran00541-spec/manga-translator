@@ -1,0 +1,47 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 3,
+            "passed": 3,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792565009.8540685,
+            "stop": 1792565019.5189302
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_illum1_render_and_verify",
+                "status": "passed",
+                "duration": 8.614097703000027,
+                "start": 1792565010.9009175,
+                "stop": 1792565019.5154233,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_povray_version",
+                "status": "passed",
+                "duration": 0.001758843999994042,
+                "start": 1792565019.5156922,
+                "stop": 1792565019.5175943,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_povray_built_from_correct_source",
+                "status": "passed",
+                "duration": 0.0008932030000323721,
+                "start": 1792565019.5177593,
+                "stop": 1792565019.518772,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
