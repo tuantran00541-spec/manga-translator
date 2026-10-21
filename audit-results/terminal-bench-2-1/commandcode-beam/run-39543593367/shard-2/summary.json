@@ -1,0 +1,334 @@
+{
+ "passed": 21,
+ "clean_passed": 20,
+ "trials": 29,
+ "rate": 0.724,
+ "contaminated": [
+  "headless-terminal__ZtgKFhT"
+ ],
+ "rows": [
+  {
+   "trial": "break-filter-js-from-html__zHB2MU3",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    182697,
+    161216,
+    6168
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-pov-ray__jm4pT66",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    786176,
+    688128,
+    9240
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "chess-best-move__AVFq8ei",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    801926,
+    697920,
+    25352
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "code-from-image__k3QCj3T",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    536558,
+    408512,
+    18476
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "constraints-scheduling__AW3mCAd",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    100609,
+    83392,
+    6935
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "custom-memory-heap-crash__UnrvujJ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    341781,
+    324608,
+    7195
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "dna-assembly__35HwrRn",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1560871,
+    1496768,
+    47471
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "extract-moves-from-video__u5boFA3",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2211507,
+    2036096,
+    29703
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "filter-js-from-html__NzHWroa",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    612433,
+    576384,
+    19714
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-git__uw29gCS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    573481,
+    488128,
+    14776
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "git-leak-recovery__AcCbqof",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    162896,
+    141120,
+    4228
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "headless-terminal__ZtgKFhT",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    673302,
+    615168,
+    13668
+   ],
+   "contaminated": [
+    "harbor-framework/terminal-bench-2/contents/headless-terminal",
+    "harbor-framework/terminal-bench-2/contents/headless-terminal/tests",
+    "hub.harborframework.com"
+   ]
+  },
+  {
+   "trial": "kv-store-grpc__G6u7aRp",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    142196,
+    124352,
+    6275
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__axPSVMN",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2013439,
+    1882624,
+    46448
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "make-doom-for-mips__s6MLnid",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    6523956,
+    5867200,
+    60404
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__cq5EJzw",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    262813,
+    242176,
+    9470
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mteb-leaderboard__td9GUr9",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3634062,
+    3223552,
+    24396
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "nginx-request-logging__7Xbpiwk",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    63122,
+    54464,
+    2567
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "password-recovery__6qRPrP4",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    430674,
+    397376,
+    8020
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "polyglot-c-py__j6E5BW5",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    206650,
+    187136,
+    17675
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "protein-assembly__m6gd2g8",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1223076,
+    1112640,
+    23921
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "pytorch-model-cli__AafkfQJ",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    342580,
+    323520,
+    11169
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "qemu-startup__uCbq884",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    795977,
+    688064,
+    13292
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "regex-chess__2CEBCVK",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    6379096,
+    5902784,
+    88739
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "rstan-to-pystan__UbgbgLr",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1120594,
+    959616,
+    14799
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "schemelike-metacircular-eval__aQvHVYL",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    11608645,
+    10988608,
+    94637
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sqlite-with-gcov__R7PV5yE",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    451876,
+    405888,
+    5045
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "train-fasttext__C7TSgMJ",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2053400,
+    1856704,
+    14775
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "vulnerable-secret__Bp2WAPc",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    111183,
+    95296,
+    3023
+   ],
+   "contaminated": []
+  }
+ ]
+}
