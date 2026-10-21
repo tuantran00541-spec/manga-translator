@@ -105,6 +105,7 @@ class MangaAgent(BaseInstalledAgent):
         await self.exec_as_agent(
             environment,
             command=(f"mkdir -p {HOME}/home/.manga-agent {EnvironmentPaths.agent_dir} && printf '%s' {shlex.quote(profile)} > {HOME}/home/.manga-agent/profile.json; "
+                     f"if [ -d {HOME}/src/skills ]; then cp -r {HOME}/src/skills {HOME}/home/.manga-agent/; fi; "
                      f'INSTR="${var}"; unset {var}; '
                      f'printf "%s" "$INSTR" | {HOME}/venv/bin/python {HOME}/src/run_agent.py - --base {shlex.quote(base)} --model {shlex.quote(model)} '
                      f'--workspace "$PWD" --minutes {minutes} > {OUTPUT} 2> {STDERR}'),
