@@ -376,10 +376,6 @@ LEAN_PROMPT = IDENTITY + """
 Your tools are read_file, edit_file, run_command (the shell) and create. How they combine is described below.
 
 """ + RHYTHM + "\n" + VOICE
-SHELL_PROMPT = IDENTITY + """
-Your only tool is run_command (the shell). Use it to read, write, search, build and test.
-
-""" + RHYTHM + "\n" + VOICE
 # The harness tools as shell commands, one line each.
 SHELL_COMMANDS = ("Harness commands in the shell. Each prints its result; arguments are key=value pairs, one JSON object, or a bare value "
                   "for the first parameter.\n"
@@ -1592,11 +1588,6 @@ class AgentSession:
         """The model's own tools: read, edit, run, create and skill, plus the tools the model made, and whatever a running job or a mode needs."""
         # A plan only looks: read_file, and create, whose code runs read-only then.
         rows = [s for s in SPECS if s["name"] in (("read_file",) if self.plan_mode else LEAN_TOOLS)]
-        if self.profile["shell_only"] and not self.plan_mode:
-            # The A/B setting: the shell alone, plus what a running job or a goal needs.
-            rows = [s for s in rows if s["name"] == "run_command"]
-            rows += [SESSION_SPECS[n] for n in ("job_output", "job_input", "job_stop") if self.jobs]
-            return rows + ([SESSION_SPECS["goal_done"]] if self.goal else [])
         if self.workspace.policy.mode != "read-only":
             rows.append(SESSION_SPECS["create"])
             rows += [{k: tool[k] for k in ("name", "description", "parameters")} for tool in self.created.values()]
@@ -3350,7 +3341,7 @@ class AgentSession:
     # The model turn and the loop.
 
     def system_prompt(self) -> str:
-        base = SYSTEM_PROMPT if self.depth else SHELL_PROMPT if self.profile["shell_only"] else LEAN_PROMPT
+        base = SYSTEM_PROMPT if self.depth else LEAN_PROMPT
         parts = [base.format(root=self.workspace.root, system=platform.system(),
                                       sandbox=self.workspace.policy.describe(self.workspace.root))]
         if self._pinned is None:
@@ -3366,7 +3357,7 @@ class AgentSession:
         else:
             parts.append(self.agent.prompt if self.agent else agents.BUILTIN["explore"].prompt)
             parts.append("Keep working until the job is done, then end with one complete report: your final reply is all the parent sees.")
-        if not self.depth and self.workspace.policy.mode != "read-only" and not self.profile["shell_only"]:
+        if not self.depth and self.workspace.policy.mode != "read-only":
             parts.append(LEAN_CREATE.format(script="" if self._bridged(self.workspace.policy) else " (only through create in this Docker sandbox)"))
         if not self.depth and (self.profile["model_roles"] or self._sources()):
             table = self.profile["model_roles"]
@@ -3374,10 +3365,7 @@ class AgentSession:
             parts.append(ROLES_PROMPT.format(rows=f" and the named roles ({rows})" if rows else "", pick=" or a role name" if table else ""))
         if self.quirks.get("prompt_extra"):
             parts.append(str(self.quirks["prompt_extra"]))
-        if self.profile["shell_only"] == "commands" and not self.depth:
-            parts.append(SHELL_COMMANDS)
-        if not self.profile["shell_only"]:
-            parts.append(self._pinned.get("Skills", ""))
+        parts.append(self._pinned.get("Skills", ""))
         return "\n\n".join(p for p in parts if p)
 
     def _volatile(self) -> dict[str, str]:
