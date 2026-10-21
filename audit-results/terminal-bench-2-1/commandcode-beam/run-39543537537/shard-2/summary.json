@@ -1,0 +1,350 @@
+{
+ "passed": 18,
+ "clean_passed": 16,
+ "trials": 29,
+ "rate": 0.621,
+ "contaminated": [
+  "build-pov-ray__CKzNHt4",
+  "headless-terminal__FQgiDPc",
+  "mteb-leaderboard__6GQnRX5"
+ ],
+ "rows": [
+  {
+   "trial": "break-filter-js-from-html__3PkV9X8",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    477036,
+    425856,
+    12748
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-pov-ray__CKzNHt4",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    841014,
+    728704,
+    9169
+   ],
+   "contaminated": [
+    "harbor-framework",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/build-pov-ray",
+    "harbor-framework/terminal-bench-2/contents/tasks/build-pov-ray",
+    "harbor-framework/terminal-bench-2/main/tasks/build-pov-ray/readme.md",
+    "harbor-framework/terminal-bench-2/main/tasks/build-pov-ray/task.toml"
+   ]
+  },
+  {
+   "trial": "chess-best-move__uUXXJ3j",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3607601,
+    3220608,
+    54245
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "code-from-image__RZqQShu",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    5845288,
+    5405824,
+    72576
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "constraints-scheduling__UeRg7TW",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    93488,
+    79232,
+    9512
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "custom-memory-heap-crash__nZpXSyV",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    447090,
+    407232,
+    9558
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "dna-assembly__XL5sQ37",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    661586,
+    607936,
+    31608
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "extract-moves-from-video__dhH3RsZ",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2808951,
+    2536960,
+    40401
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "filter-js-from-html__WzPMNpP",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1376283,
+    1328896,
+    26457
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-git__6hKEFeN",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    370429,
+    329280,
+    12554
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "git-leak-recovery__QjEuZZx",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    78097,
+    71424,
+    2191
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "headless-terminal__FQgiDPc",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    967638,
+    863680,
+    13432
+   ],
+   "contaminated": [
+    "/logs/verifier",
+    "/tests/test_outputs.py",
+    "harbor-framework/repos",
+    "harbor-framework/terminal-bench-1/git/trees/main?recursive=1",
+    "harbor-framework/terminal-bench-2/git/trees/main?recursive=1",
+    "harbor-framework/terminal-bench-2/main/headless-terminal",
+    "harbor-framework/terminal-bench-2/main/headless-terminal/tests/test_outputs.py",
+    "harbor-framework/terminal-bench-2/main/headless-terminal\\",
+    "hub.harborframework.com"
+   ]
+  },
+  {
+   "trial": "kv-store-grpc__hDqJczg",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    51388,
+    40064,
+    2719
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__Yh853HV",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1428258,
+    1372224,
+    40422
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "make-doom-for-mips__RsLWMjy",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    7380392,
+    6731136,
+    53463
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__EsZJufs",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    149220,
+    133120,
+    10526
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mteb-leaderboard__6GQnRX5",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1836980,
+    1505472,
+    12384
+   ],
+   "contaminated": [
+    "hub.harborframework.com"
+   ]
+  },
+  {
+   "trial": "nginx-request-logging__xdGgf7R",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    80502,
+    72768,
+    4208
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "password-recovery__Ard9qCL",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    470167,
+    445184,
+    12842
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "polyglot-c-py__JG2UmqX",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    578387,
+    538368,
+    18205
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "protein-assembly__LHZkgop",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1484863,
+    1339840,
+    30277
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "pytorch-model-cli__5PpqeJ3",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    594105,
+    539520,
+    14302
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "qemu-startup__C8iBQto",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1577487,
+    1430656,
+    29715
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "regex-chess__gVpsuDR",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    4443900,
+    4231168,
+    109899
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "rstan-to-pystan__kqUsJ6z",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    776950,
+    610880,
+    13460
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "schemelike-metacircular-eval__fRA6yf3",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3225971,
+    3061312,
+    42467
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sqlite-with-gcov__WnhqwUg",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    209895,
+    184768,
+    3593
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "train-fasttext__zMY7Ctv",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2777460,
+    2452992,
+    13832
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "vulnerable-secret__dwE5pLq",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    79267,
+    65152,
+    3298
+   ],
+   "contaminated": []
+  }
+ ]
+}
