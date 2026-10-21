@@ -20,7 +20,7 @@ env:
   PYTHONPATH: "."
   PYTHONUNBUFFERED: "1"
   # The run whose kiuyha-data artifact is reused.
-  DATA_RUN: "38535523379"
+  DATA_RUN: "39618262063"
   # Empty = start from the base yolo26s weights; a run id = continue from that
   # run's kiuyha-tuned-s artifact.
   START_RUN: "39549737747"
@@ -28,7 +28,7 @@ env:
 jobs:
   data:
     # Builds a fresh kiuyha-data set; runs only while REBUILD_DATA below is on.
-    if: true
+    if: false
     runs-on: ubuntu-22.04
     timeout-minutes: 150
     steps:
@@ -62,8 +62,6 @@ jobs:
           retention-days: 30
 
   tune:
-    # Off while the data set is rebuilt (the old artifact expired).
-    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 345
     strategy:
