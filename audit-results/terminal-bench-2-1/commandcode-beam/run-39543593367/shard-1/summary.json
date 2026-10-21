@@ -1,0 +1,360 @@
+{
+ "passed": 19,
+ "clean_passed": 18,
+ "trials": 30,
+ "rate": 0.633,
+ "contaminated": [
+  "extract-elf__PKhrGb9"
+ ],
+ "rows": [
+  {
+   "trial": "bn-fit-modify__Wf8FWnQ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    493565,
+    425152,
+    6821
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-pmars__c2vnYZW",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    409115,
+    371328,
+    6379
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "cancel-async-tasks__omXThzr",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    481318,
+    456512,
+    20033
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "cobol-modernization__fGKZ2fk",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    650704,
+    617472,
+    21074
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "configure-git-webserver__schxAW9",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    283060,
+    254592,
+    10547
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "crack-7z-hash__FuEwQ4g",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    362184,
+    330624,
+    4441
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "distribution-search__q5Fwio3",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    218648,
+    181120,
+    12524
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "extract-elf__PKhrGb9",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    933239,
+    814848,
+    8441
+   ],
+   "contaminated": [
+    "harbor-framework/terminal-bench-2.0?...",
+    "harbor-framework/terminal-bench-2/contents/tasks?per_page=100",
+    "harbor-framework/terminal-bench-2/main/$p\\",
+    "harbor-framework/terminal-bench-2/main/tasks/extract-elf/task.yaml",
+    "harbor-framework/terminal-bench-2/tree/main/tasks/extract-elf",
+    "harbor-framework/terminal-bench/contents/tasks?per_page=100",
+    "harbor-framework/terminal-bench/contents/tasks?per_page=100&page=$p\\",
+    "harbor-framework/terminal-bench/contents/tasks?per_page=100&page=2",
+    "harborframework",
+    "harborframework/terminal-bench-2.0/resolve/main/extract-elf/$f?download=true\\",
+    "harborframework/terminal-bench-2.0/resolve/main/extract-elf/instruction.md?download=true",
+    "harborframework/terminal-bench-2.0/resolve/main/extract-elf/solution/solve.sh?download=true",
+    "harborframework/terminal-bench-2.0/resolve/main/extract-elf/task.toml?download=true",
+    "harborframework/terminal-bench-2.0/resolve/main/extract-elf/tests/test_outputs.py?download=true",
+    "harborframework/terminal-bench-2.0/tree/main/",
+    "harborframework/terminal-bench-2.0/tree/main/extract-elf",
+    "harborframework/terminal-bench-2.0/tree/main/extract-elf/tests",
+    "hub.harborframework.com"
+   ]
+  },
+  {
+   "trial": "feal-linear-cryptanalysis__T2Qh7RF",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    3188214,
+    2985216,
+    73527
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-code-vulnerability__Q6j2RCT",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    446921,
+    393280,
+    5238
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "gcode-to-text__TQSpQpY",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1634975,
+    1381440,
+    29837
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "gpt2-codegolf__sfcGj6Q",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1215580,
+    986368,
+    44695
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "install-windows-3.11__4CiBw9T",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "largest-eigenval__uypFbMP",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    407350,
+    374208,
+    10414
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mailman__Yb7BiQr",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mcmc-sampling-stan__8X9jg56",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    491305,
+    452096,
+    11223
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "modernize-scientific-stack__uuc7Nqt",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    39784,
+    31296,
+    2270
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "multi-source-data-merger__Hu5cSXU",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    91314,
+    72448,
+    7845
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "overfull-hbox__nFfpzUE",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    260560,
+    236928,
+    9008
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "path-tracing-reverse__PXx5Vmt",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    9952692,
+    9211968,
+    118366
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "portfolio-optimization__g4t3b4s",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    244506,
+    230784,
+    6474
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "pypi-server__rS7PSjM",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    146252,
+    130496,
+    3896
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "qemu-alpine-ssh__GPTn8tu",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    491470,
+    429568,
+    11727
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "raman-fitting__Pa8uCsi",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1116687,
+    1018560,
+    25127
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "reshard-c4-data__XgPSFnt",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1638983,
+    1568128,
+    28462
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sanitize-git-repo__V4UPtB3",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2876359,
+    2579840,
+    14094
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sqlite-db-truncate__v2XcxdB",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    153248,
+    131456,
+    6468
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "torch-tensor-parallelism__ieszfio",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    201144,
+    177024,
+    16856
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "video-processing__TxeZPLT",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1140979,
+    1009600,
+    24168
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "write-compressor__wpSiC6F",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    413691,
+    373696,
+    37314
+   ],
+   "contaminated": []
+  }
+ ]
+}
