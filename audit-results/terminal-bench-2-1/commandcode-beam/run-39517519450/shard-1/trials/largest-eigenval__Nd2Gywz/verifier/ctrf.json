@@ -1,0 +1,56 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 3,
+            "passed": 3,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792541688.478939,
+            "stop": 1792541689.0759103
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_eigen_pair",
+                "status": "passed",
+                "duration": 0.0011207159998321004,
+                "start": 1792541688.8689184,
+                "stop": 1792541688.8702736,
+                "retries": 8,
+                "file_path": "test_outputs.py",
+                "tags": [
+                    "parametrize::size::[2, 3, 4, 5, 6, 7, 8, 9, 10]"
+                ]
+            },
+            {
+                "name": "test_outputs.py::test_dominance_eigenvalue",
+                "status": "passed",
+                "duration": 0.0006227189999208349,
+                "start": 1792541688.8771029,
+                "stop": 1792541688.877837,
+                "retries": 8,
+                "file_path": "test_outputs.py",
+                "tags": [
+                    "parametrize::size::[2, 3, 4, 5, 6, 7, 8, 9, 10]"
+                ]
+            },
+            {
+                "name": "test_outputs.py::test_speedup",
+                "status": "passed",
+                "duration": 0.03146693500002584,
+                "start": 1792541688.8842669,
+                "stop": 1792541688.9160943,
+                "retries": 8,
+                "file_path": "test_outputs.py",
+                "tags": [
+                    "parametrize::size::[2, 3, 4, 5, 6, 7, 8, 9, 10]"
+                ]
+            }
+        ]
+    }
+}
