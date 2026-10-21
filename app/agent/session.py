@@ -366,16 +366,28 @@ INTENT_PROMPT = ("You write down how a coding agent pictures the user's request,
 PRICE_CAP = (1.0, 1.0)
 INTENT_CHECK = ("[intent.md check: say in one line what this request has done so far. If it has drifted from what the user asked, or you "
                 "cannot tell, stop and ask the user (end your reply with the question); if it fits but is not done, go on.]")
-MADE_TOOLS = ("The code is a function def name(...) or just its body (a top-level return works and args holds the arguments). With keep: false "
-              "it runs once; otherwise it stays as a tool you call by name from your next reply on, and in later sessions. You see only what "
-              "the code prints or returns. A failing tools.<name>(...) raises an exception that carries the tool's error.")
+MADE_TOOLS = ("The code is a function def name(...) or a bare body, where args holds the arguments and a top-level return is allowed. "
+              "With keep: false it runs once; otherwise it becomes a tool callable by name from the next reply on, and in later sessions. "
+              "Only what the code prints or returns is shown. A failing tools.<name>(...) raises an exception with the tool's error.")
 LEAN_TOOLS = frozenset({"read_file", "edit_file", "run_command"})
 TOOL_ALIASES = {"bash": "run_command", "shell": "run_command", "execute": "run_command",
                 "create_file": "write_file"}  # names other harnesses use for the same tool and arguments
 LEAN_PROMPT = IDENTITY + """
-Your tools are read_file, edit_file, run_command (the shell: list, search, build, test) and create; how they fit together is below.
+Your tools are read_file, edit_file, run_command (the shell) and create. How they combine is described below.
 
 """ + RHYTHM + "\n" + VOICE
+# The harness tools as shell commands, one line each.
+SHELL_COMMANDS = ("Harness commands in the shell. Each prints its result; arguments are key=value pairs, one JSON object, or a bare value "
+                  "for the first parameter.\n"
+                  "- web_search query='...' and web_fetch url=...: search and read the web.\n"
+                  "- think '<question>': a second opinion from another model.\n"
+                  "- branch a='<command>' b='<command>' check='<command>': run each command in its own copy of the workspace, run the check "
+                  "in each copy, and print each diff and result. Nothing is applied until adopt a.\n"
+                  "- checkpoint: show what changed, save a state, or restore one.\n"
+                  "- agent-tool --help lists every command, including skills, helper agents, todo_write, view_image and MCP tools; "
+                  "agent-tool <name> ... calls one whose name a system command shadows.\n"
+                  "- In Python, from agent_tools import tools exposes the same commands as functions: tools.<name>(...).")
+
 # One request worked end to end with create; a test runs these very pieces of code.
 EXAMPLE_CHECK = '''def check():
     """PASS when the text tests pass, else the end of the failure."""
@@ -393,31 +405,24 @@ tools.edit_file(path="app/text.py", old_text='return text.lower().replace(" ", "
 return tools.branch({"regex": regex, "strip": strip}, check="print(tools.check())")"""
 EXAMPLE_ADOPT = '''tools.adopt("regex")
 return tools.check()'''
-LEAN_CREATE = ("How your tools fit together:\n"
-               "- run_command is the shell and does most of the work; chain steps there as usual, with && or a script. read_file and "
-               "edit_file read and change one file.\n"
-               "- What the shell cannot do is in the tool library: helper agents (task, fan_out, tools.agent(prompt)), a second look from "
-               "another model (tools.think(question)), skills, web search and fetch, view_image, ask_user, memory, todo_write, checkpoint "
-               "(diffs and going back), schedules, plugins and MCP tools. tools.search(words) finds one, tools.describe(name) shows its parameters.\n"
-               "- run_command reaches all of it{script}, under the same rules and approvals. In the shell every tool is a command of its own "
-               "name that prints its result: web_search query='...', skill pdf, think 'is this plan sound?', todo_write items='[...]', "
-               "checkpoint, view_image path=a.png, and the tools you create. Arguments are key=value or one JSON object, a bare value fills the "
-               "first parameter, `agent-tool --help` lists every command and `agent-tool <name> ...` reaches one whose name a system command "
-               "already takes. `branch a='<command>' b='<command>' check='<command>'` runs each command in its own copy of the workspace and "
-               "the check in each copy, and `adopt a` keeps one. From Python run by the command, `from agent_tools import tools` makes them "
-               "plain functions, tools.<name>(...). create keeps such Python as a tool of its own. "
-               + MADE_TOOLS + "\n"
-               "- tools.branch({{'a': code_a, 'b': code_b}}, check=check_code), called inside create, runs two or three attempts at the same time, "
-               "each on its own copy of the workspace, then the check on each copy, and returns per attempt its diff, output and check result. "
-               "Nothing reaches the real workspace until tools.adopt(name) keeps one. An attempt cannot branch again.\n\n"
-               "Example: slugify in app/text.py turns 'Hello, World!' into 'hello,-world!' instead of 'hello-world', and two fixes look plausible.\n"
-               "1. Keep the check as a tool and see it fail (args runs it right away):\n"
+LEAN_CREATE = ("How the tools combine:\n"
+               "- run_command does most of the work; chain steps with && or a script. read_file and edit_file read and edit one file.\n"
+               "- Everything else is in the tool library: helper agents, a second model, skills, web, view_image, ask_user, memory, "
+               "todo_write, checkpoint, schedules, plugins and MCP tools. tools.search(words) finds a tool; tools.describe(name) shows its "
+               "parameters. run_command reaches the library{script}, under the same rules and approvals.\n\n"
+               + SHELL_COMMANDS.replace("{", "{{").replace("}", "}}") + "\n\n"
+               "- create saves Python that calls tools.<name>(...) as a tool of its own. " + MADE_TOOLS + "\n"
+               "- tools.branch({{'a': code_a, 'b': code_b}}, check=check_code), inside create, runs two or three attempts in parallel, each "
+               "on its own copy of the workspace, runs the check on each, and returns each attempt's diff, output and check result. "
+               "tools.adopt(name) applies one; until then the workspace is unchanged. Attempts cannot branch.\n\n"
+               "Example: slugify in app/text.py returns 'hello,-world!' for 'Hello, World!' instead of 'hello-world', and two fixes are plausible.\n"
+               "1. Save the check as a tool and confirm it fails (args runs it at once):\n"
                "create name=\"check\", args={{}}, code=\n" + EXAMPLE_CHECK.replace("{", "{{").replace("}", "}}") + "\n"
-               "2. Try both fixes on copies and let the check pick (keep=false runs code once; a top-level return ends it):\n"
+               "2. Try both fixes on copies and let the check decide (keep=false runs the code once):\n"
                "create name=\"try_both\", keep=false, code=\n" + EXAMPLE_BRANCH.replace("{", "{{").replace("}", "}}") + "\n"
-               "3. Keep the winner and check the real workspace:\n"
+               "3. Apply the winner and rerun the check on the workspace:\n"
                "create name=\"keep_it\", keep=false, code=\n" + EXAMPLE_ADOPT.replace("{", "{{").replace("}", "}}") + "\n"
-               "Finish only once this returns PASS.")
+               "Finish only when this returns PASS.")
 OBJ = {"type": "object", "properties": {}}
 ID = {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}
 SESSION_SPECS = {

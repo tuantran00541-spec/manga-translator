@@ -90,6 +90,8 @@ class MangaAgent(BaseInstalledAgent):
         # Services the task asks for must still run when the verifier checks them.
         profile = {"token_budget": 10 ** 15, "max_steps": 100_000, "max_output_tokens": max_output, "keep_jobs": True,
                    "models": {".": {"request": request, "max_output": max_output, "prompt_extra": BENCH_RULE}}}
+        # Extra profile settings from the run config, for an A/B run.
+        profile |= json.loads(os.environ.get("MANGA_AGENT_PROFILE") or "{}")
         echo = os.environ.get("MANGA_AGENT_ECHO_REASONING", "")
         if echo:
             profile["echo_reasoning"] = echo if echo == "all" else echo == "true"

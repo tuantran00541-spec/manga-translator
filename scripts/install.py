@@ -232,7 +232,7 @@ def ensure_venv(target: Path, uv: str | None) -> Path:
     if version and (3, 10) <= version <= (3, 12):
         return python
     if uv:
-        run(uv, "venv", "--clear", "--python", "3.12", venv)
+        run(uv, "venv", "-q", "--clear", "--python", "3.12", venv)
     else:
         if not (3, 10) <= sys.version_info[:2] <= (3, 12):
             raise SystemExit("Cần Python 3.10–3.12; hãy dùng lệnh cài một dòng trong README để tự có Python 3.12.")
@@ -246,7 +246,7 @@ def install_packages(python: Path, target: Path, uv: str | None, exact: bool) ->
     requirements = target / "requirements.txt"
     if uv:
         # An app install drops what older versions needed (torch, manga-ocr); a developer clone keeps its extras.
-        run(uv, "pip", "install", "--python", python, "-r", requirements, *(["--exact"] if exact else []))
+        run(uv, "pip", "install", "-q", "--python", python, "-r", requirements, *(["--exact"] if exact else []))
     else:
         run(python, "-m", "pip", "install", "-q", "--upgrade", "pip")
         run(python, "-m", "pip", "install", "-q", "-r", requirements)
@@ -305,13 +305,13 @@ def with_dir(path_value: str, folder: str) -> str:
 def launcher_text(python: Path, entry: Path, windows: bool = WINDOWS, local_appdata: str | None = None) -> str:
     """The `manga` shim: runs the app's Python on run.py; on Windows it copes with paths that have accents."""
     if not windows:
-        return f'#!/bin/sh\nexec "{python}" "{entry}" --open "$@"\n'
+        return f'#!/bin/sh\nexec "{python}" "{entry}" --link "$@"\n'
     python_s, entry_s = str(python), str(entry)
     if local_appdata and python_s.lower().startswith(local_appdata.lower() + "\\"):
         # cmd expands the variable itself, so the user name never has to be written in a code page.
         python_s = "%LOCALAPPDATA%" + python_s[len(local_appdata):]
         entry_s = "%LOCALAPPDATA%" + entry_s[len(local_appdata):] if entry_s.lower().startswith(local_appdata.lower()) else entry_s
-    line = f'"{python_s}" "{entry_s}" --open %*'
+    line = f'"{python_s}" "{entry_s}" --link %*'
     if line.isascii():
         return f"@echo off\r\n{line}\r\n"
     # cmd reads a batch file in the console code page; switch to UTF-8 for the path, then switch back.
@@ -456,7 +456,8 @@ def main(argv: list[str] | None = None) -> None:
     write_marker(target, home, uv, done=True)
     elapsed = steps.elapsed()
     print(f"\n{paint(f'{TICK} Đã cài Manga Translator {app_version(target)} sau {elapsed}', '1;32')}")
-    opening = "bấm đúp biểu tượng Manga Translator trên desktop" if WINDOWS else "mở một terminal MỚI rồi gõ  manga"
+    opening = ("bấm đúp biểu tượng Manga Translator trên desktop, hoặc gõ  manga  trong terminal mới" if WINDOWS
+               else "mở một terminal MỚI rồi gõ  manga")
     for label, text in (("Mở app", opening), ("Cập nhật", "manga update"), ("Thư mục", str(target))):
         print(f"  {paint(f'{label:<9}', '2')} {text}")
 

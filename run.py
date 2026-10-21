@@ -32,7 +32,7 @@ if os.name == "nt" and not str(Path.home()).isascii() and "PADDLE_PDX_CACHE_HOME
 
 # Only pure-Python modules load here: Windows locks loaded .pyd files, and `manga update` may replace them.
 from app.config import HOST, PORT, RELOAD, WORKERS, check_models, ensure_directories  # noqa: E402
-from app.logging_config import logger  # noqa: E402
+from app.logging_config import CONSOLE, logger  # noqa: E402
 
 VERSION = "0.3.1"
 
@@ -102,12 +102,25 @@ def _page(url: str) -> str:
     return f"{url}/?workspace={urllib.parse.quote(str(folder))}" if folder else url
 
 
-def _open_when_up(url: str) -> None:
+def _open_when_up(url: str, show=webbrowser.open) -> None:
     for _ in range(240):
         if _is_ours(url):
-            webbrowser.open(_page(url))
+            show(_page(url))
             return
         time.sleep(0.5)
+
+
+def _print_link(url: str) -> None:
+    print(f"Manga Translator: {url}\nCtrl+C để tắt.", flush=True)
+
+
+def _quiet_console() -> None:
+    """Only warnings and errors reach the console; everything still goes to logs/app.log."""
+    logger.remove(CONSOLE)
+    logger.add(sys.stderr, level="WARNING", format="{message}", diagnose=False)
+    os.environ["PYTHONWARNINGS"] = "ignore"
+    import warnings
+    warnings.simplefilter("ignore")
 
 
 def _install_info() -> dict:
@@ -217,15 +230,19 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("command", nargs="?", choices=["update"], help="update: get the latest version")
     parser.add_argument("--open", action="store_true", help="open the app in the browser once it is up")
     parser.add_argument("--window", action="store_true", help="show the app in its own window instead of the browser")
+    parser.add_argument("--link", action="store_true", help="print only the app link, without opening a browser")
     parser.add_argument("--version", action="version", version=f"Manga Translator {VERSION} ({BASE_DIR})")
     args = parser.parse_args(argv)
     if args.command == "update":
         _update()
         return
 
-    port = _pick_port() if args.open or args.window else PORT
+    port = _pick_port() if args.open or args.window or args.link else PORT
     if port is None:
         url = _url(_running_port() or PORT)
+        if args.link:
+            _print_link(_page(url))
+            return
         logger.info(f"Manga Translator is already running at {url}")
         if not (args.window and _show_window(_page(url))):
             webbrowser.open(_page(url))
@@ -235,7 +252,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.window:
         _serve_in_window(port)
         return
-    _serve(port, args.open)
+    _serve(port, args.open, quiet=args.link)
 
 
 def _check_vc_runtime() -> None:
@@ -326,9 +343,12 @@ def _prepare() -> None:
         logger.info("All required ONNX models found in models/")
 
 
-def _serve(port: int, open_browser: bool) -> None:
+def _serve(port: int, open_browser: bool, quiet: bool = False) -> None:
     import uvicorn
 
+    if quiet:
+        _quiet_console()
+        print("Manga Translator đang khởi động…", flush=True)
     _prepare()
     logger.info(f"Starting Manga Translator on http://{HOST}:{port}")
     if HOST == "0.0.0.0":
@@ -336,8 +356,8 @@ def _serve(port: int, open_browser: bool) -> None:
             "Bound to 0.0.0.0 — accessible from network. "
             "Use firewall + auth if public."
         )
-    if open_browser:
-        threading.Thread(target=_open_when_up, args=(_url(port),), daemon=True).start()
+    if open_browser or quiet:
+        threading.Thread(target=_open_when_up, args=(_url(port), _print_link if quiet else webbrowser.open), daemon=True).start()
 
     uvicorn.run(
         "app.main:app",
@@ -345,7 +365,8 @@ def _serve(port: int, open_browser: bool) -> None:
         port=port,
         reload=RELOAD,
         workers=1 if RELOAD else max(1, WORKERS),
-        log_level="info",
+        log_level="warning" if quiet else "info",
+        access_log=not quiet,
     )
 
 

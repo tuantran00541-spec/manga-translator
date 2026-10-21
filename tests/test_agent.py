@@ -3425,7 +3425,7 @@ def test_the_model_sees_four_tools_and_chains_reach_them_and_the_library(ws, hom
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {}, "keep": True}})
     assert out.splitlines()[1].strip() == "1" and "[changed: pkg/a.py]" in out, out
     assert [s["name"] for s in session.specs()] == ["read_file", "edit_file", "run_command", "create", "go", "skill"], "a kept tool joins them"
-    assert "What the shell cannot do is in the tool library" in prompt
+    assert "Everything else is in the tool library" in prompt
 
 
 @pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="bash and stand-ins are for POSIX shells")
