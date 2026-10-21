@@ -1,0 +1,351 @@
+{
+ "passed": 20,
+ "clean_passed": 18,
+ "trials": 30,
+ "rate": 0.667,
+ "contaminated": [
+  "gpt2-codegolf__kYACpfE",
+  "modernize-scientific-stack__Ht366Yy"
+ ],
+ "rows": [
+  {
+   "trial": "bn-fit-modify__Bnw6M68",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    251527,
+    219840,
+    8195
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-pmars__A2wtmUF",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    503380,
+    474176,
+    5369
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "cancel-async-tasks__yFhRxAF",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    396188,
+    378112,
+    12220
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "cobol-modernization__afMd7Q6",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1380102,
+    1296640,
+    33075
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "configure-git-webserver__2yij2ef",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    260446,
+    244736,
+    9100
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "crack-7z-hash__ybG2ZRQ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    767345,
+    691776,
+    5793
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "distribution-search__Vyksede",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    128311,
+    107840,
+    8599
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "extract-elf__5WerL6v",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    432440,
+    407936,
+    9328
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "feal-linear-cryptanalysis__cajfCrN",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1952709,
+    1880576,
+    49881
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-code-vulnerability__Y34Rp6n",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    897437,
+    796352,
+    9869
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "gcode-to-text__2AQebZw",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1418137,
+    1247104,
+    25424
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "gpt2-codegolf__kYACpfE",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    331847,
+    302080,
+    3808
+   ],
+   "contaminated": [
+    "harbor-framework",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/gpt2-codegolf",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/gpt2-codegolf/solution",
+    "harbor-framework/terminal-bench-2-1/main/tasks/gpt2-codegolf/solution/solve.sh",
+    "harbor-framework/terminal-bench-2-1/main/tasks/gpt2-codegolf/tests/test_outputs.py",
+    "hub.harborframework.com"
+   ]
+  },
+  {
+   "trial": "install-windows-3.11__H6sBJup",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "largest-eigenval__4NE8oZ7",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2457120,
+    2235776,
+    26845
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mailman__vwnR7ZT",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    0,
+    0,
+    0
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mcmc-sampling-stan__B9FRcY2",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    628396,
+    561472,
+    12183
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "modernize-scientific-stack__Ht366Yy",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    102745,
+    91264,
+    3156
+   ],
+   "contaminated": [
+    "/logs/verifier"
+   ]
+  },
+  {
+   "trial": "multi-source-data-merger__VNPeCFH",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    99011,
+    87168,
+    8396
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "overfull-hbox__xdKtbkR",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    469894,
+    396864,
+    12754
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "path-tracing-reverse__HKP7hMd",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    14870766,
+    13619392,
+    140463
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "portfolio-optimization__EKwuU7j",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    162191,
+    151296,
+    5739
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "pypi-server__yLncWHK",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    130175,
+    116544,
+    3948
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "qemu-alpine-ssh__ekxqCAM",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    985278,
+    902720,
+    12566
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "raman-fitting__D5qWpLd",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2253314,
+    1884480,
+    51474
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "reshard-c4-data__idrckPX",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    346023,
+    328000,
+    13487
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sanitize-git-repo__EQbpBnX",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1140010,
+    994304,
+    8725
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sqlite-db-truncate__PpuPseh",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    221481,
+    201984,
+    5668
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "torch-tensor-parallelism__reiaKWf",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    719389,
+    665152,
+    20878
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "video-processing__gAAAJYY",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1104119,
+    1035776,
+    23158
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "write-compressor__Lo8K2FN",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2652473,
+    2498112,
+    92710
+   ],
+   "contaminated": []
+  }
+ ]
+}
