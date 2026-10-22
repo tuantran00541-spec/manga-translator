@@ -1,0 +1,685 @@
+ils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.19.0.2:57936 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:41:06 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=6848b9ec-7b1b-48b5-afed-7ae28ac40950 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.19.0.2:57936 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+INFO:     172.21.0.2:47452 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+12:41:09 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=7fa9c87d-211a-4ebf-8835-047efed87fc4 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:47452 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:41:10 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=aad3f96c-682e-4ef0-b626-6db83940bde2 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:47452 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:41:11 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=467faff5-d7df-46fd-835e-fa942acfdee4 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:47452 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:41:12 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=76c38122-92d4-4e27-ab0d-8006ad82a546 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:47452 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+INFO:     172.21.0.2:55564 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:57222 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+12:42:47 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=f93bc55c-a755-4ff1-9bd8-9f5ddde09d80 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:57222 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:42:47 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=398c8e3f-236b-4b14-89a3-8d6f390d2490 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:57222 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:42:48 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=c4303496-7f70-435c-a16e-a207714e0da9 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:57222 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:42:49 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=2faa4dfe-5e84-4a12-af15-eb995783f39b - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:57222 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+INFO:     172.19.0.2:56652 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.19.0.2:33894 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+12:43:06 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=bc4aa0df-668e-4da7-982c-520cb3bebcb8 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.19.0.2:33894 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:43:07 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=5b60c846-cd40-4e26-9b5e-cc2623304223 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.19.0.2:33894 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:43:08 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=9f59395d-86d0-4e58-b120-22ce86094098 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.19.0.2:33894 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:43:09 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=5bdfa94c-ff7a-4038-ab89-548e196a9d95 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.19.0.2:33894 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+INFO:     172.21.0.2:51170 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:44332 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+12:44:14 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=06e3173c-4fe9-4994-b19a-b3a1d14d5c4c - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:44332 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:44:14 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=40c1963d-5030-4dcf-a91c-924423d989de - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:44332 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:44:15 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=ed8089b1-368a-4ada-a319-d60bd215cab6 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:44332 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+12:44:17 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=3cf70f1c-0374-489f-9dd5-779fe18322e6 - litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2912, in async_response_api_handler
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/responses'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 796, in aresponses
+    response = await init_response
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 2955, in async_response_api_handler
+    raise self._handle_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 6343, in _handle_error
+    provider_error: Final = provider_config.get_error_class(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/responses/transformation.py", line 249, in get_error_class
+    raise BaseLLMException(
+litellm.llms.base_llm.chat.transformation.BaseLLMException: {"error":{"message":"{\"error\":{\"message\":\"Missing required param... (litellm_truncated skipped 6130 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../bridge/venv/lib/python3.10/site-packages/litellm/responses/main.py", line 816, in aresponses
+    raise litellm.exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2492, in exception_type
+    _map_openai_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 375, in _map_openai_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - {"error":{"message":"{\"error\":{\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\",\"isRetryable\":fa…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.21.0.2:44332 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request

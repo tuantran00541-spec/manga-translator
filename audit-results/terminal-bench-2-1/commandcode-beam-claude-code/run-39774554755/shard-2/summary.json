@@ -1,0 +1,328 @@
+{
+ "passed": 1,
+ "clean_passed": 1,
+ "trials": 29,
+ "rate": 0.034,
+ "contaminated": [],
+ "rows": [
+  {
+   "trial": "break-filter-js-from-html__wG8pDdF",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7603,
+    64,
+    57
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-pov-ray__miWixTn",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7629,
+    0,
+    121
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "chess-best-move__Bfwvbes",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7556,
+    7552,
+    73
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "code-from-image__UDFeAhx",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7558,
+    7552,
+    61
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "constraints-scheduling__Y4jyZmR",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    8088,
+    0,
+    89
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "custom-memory-heap-crash__KLm6Enw",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7751,
+    7744,
+    85
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "dna-assembly__e6yuenG",
+   "reward": null,
+   "exception": "AgentSetupTimeoutError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "extract-moves-from-video__D2rYGpW",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7546,
+    7488,
+    172
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "filter-js-from-html__ryuPdhm",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7618,
+    7616,
+    94
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-git__ZXziRki",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7716,
+    64,
+    135
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "git-leak-recovery__EsAtM6G",
+   "reward": null,
+   "exception": "AgentSetupTimeoutError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "headless-terminal__PWmyU5i",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7639,
+    7616,
+    115
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "kv-store-grpc__wGNEHTf",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7765,
+    7744,
+    138
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__PaY4UPr",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    8683,
+    8640,
+    128
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "make-doom-for-mips__VEBzwwC",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7603,
+    7552,
+    86
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__8agvAkR",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7827,
+    64,
+    81
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mteb-leaderboard__qZ7uJwT",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7582,
+    7552,
+    163
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "nginx-request-logging__LaKy3ZP",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7923,
+    7872,
+    343
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "password-recovery__HnuojCy",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7623,
+    7616,
+    168
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "polyglot-c-py__hj5TXVu",
+   "reward": 1.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7617,
+    7616,
+    5280
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "protein-assembly__JfxfndN",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    8114,
+    8064,
+    82
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "pytorch-model-cli__of9g4cD",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7600,
+    64,
+    40
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "qemu-startup__ErNyH7c",
+   "reward": null,
+   "exception": "NonZeroAgentExitCodeError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "regex-chess__yygd7Zg",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    8008,
+    8000,
+    116
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "rstan-to-pystan__pvc3mjN",
+   "reward": null,
+   "exception": "AgentSetupTimeoutError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "schemelike-metacircular-eval__EogDBN3",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7769,
+    7744,
+    63
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sqlite-with-gcov__S8b432H",
+   "reward": null,
+   "exception": "AgentSetupTimeoutError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "train-fasttext__GLBFK6a",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7553,
+    7552,
+    97
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "vulnerable-secret__xeLCdJe",
+   "reward": 0.0,
+   "exception": "UnknownApiError",
+   "tokens": [
+    7574,
+    7552,
+    64
+   ],
+   "contaminated": []
+  }
+ ]
+}
