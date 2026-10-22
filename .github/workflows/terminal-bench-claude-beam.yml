@@ -143,11 +143,16 @@ jobs:
         env:
           API_KEY: ${{ secrets[needs.config.outputs.secret] }}
         run: |
-          python3 -m pip install -q 'litellm[proxy]' httpx2
-          LITELLM="$(command -v litellm)"
-          [ -n "$LITELLM" ] || { echo "::error::litellm did not install"; exit 1; }
-          sudo install -d -o nobody -m 711 /opt/bridge
+          # A venv under /opt/bridge: a pip user install lands in the runner's home,
+          # which the bridge's nobody user cannot execute (the first run died on that).
+          PY="$(command -v python3)"
+          sudo install -d -m 755 /opt/bridge
+          sudo "$PY" -m venv /opt/bridge/venv
+          sudo /opt/bridge/venv/bin/pip install -q 'litellm[proxy]' httpx2
+          LITELLM=/opt/bridge/venv/bin/litellm
+          [ -x "$LITELLM" ] || { echo "::error::litellm did not install"; exit 1; }
           sudo install -m 644 .github/terminal-bench/litellm-beam.yaml /opt/bridge/config.yaml
+          sudo chown nobody /opt/bridge
           printf '%s' "$API_KEY" | sudo tee /opt/bridge/key > /dev/null
           sudo chmod 600 /opt/bridge/key
           sudo chown nobody /opt/bridge/key
