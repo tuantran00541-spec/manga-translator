@@ -1,0 +1,104 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 9,
+            "passed": 8,
+            "failed": 1,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792676954.295934,
+            "stop": 1792677025.7106273
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_ars_function_exists",
+                "status": "passed",
+                "duration": 0.0014808710001261716,
+                "start": 1792676954.6725526,
+                "stop": 1792676954.6747966,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_can_generate_standard_distribution_samples",
+                "status": "passed",
+                "duration": 10.220429450999973,
+                "start": 1792676954.6751566,
+                "stop": 1792676964.8968863,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_has_test_function",
+                "status": "passed",
+                "duration": 0.0008204089999708231,
+                "start": 1792676964.8971906,
+                "stop": 1792676964.898181,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_formal_testing_with_known_truth",
+                "status": "failed",
+                "raw_status": "call_failed",
+                "duration": 60.02634615099987,
+                "start": 1792676964.8983626,
+                "stop": 1792677024.9775772,
+                "retries": 0,
+                "file_path": "test_outputs.py",
+                "trace": "def test_formal_testing_with_known_truth():\n        \"\"\"Test that formal testing outputs correct format as specified.\"\"\"\n        app_dir = Path(\"/app\")\n    \n        # Run the test function and check output format\n        test_code = \"\"\"\n    source(\"ars.R\")\n    # Run the test function if it exists\n    if (exists(\"test\")) {\n        test()\n    } else {\n        cat(\"ERROR: test function not found\\n\")\n    }\n    \"\"\"\n    \n        test_file = app_dir / \"run_test.R\"\n        test_file.write_text(test_code)\n        try:\n>           result = subprocess.run(\n                [\"Rscript\", str(test_file)],\n                capture_output=True,\n                text=True,\n                cwd=str(app_dir),\n                timeout=60,\n            )\n\n/tests/test_outputs.py:131: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n/root/.local/share/uv/python/cpython-3.13.9-linux-x86_64-gnu/lib/python3.13/subprocess.py:556: in run\n    stdout, stderr = process.communicate(input, timeout=timeout)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/root/.local/share/uv/python/cpython-3.13.9-linux-x86_64-gnu/lib/python3.13/subprocess.py:1222: in communicate\n    stdout, stderr = self._communicate(input, endtime, timeout)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/root/.local/share/uv/python/cpython-3.13.9-linux-x86_64-gnu/lib/python3.13/subprocess.py:2129: in _communicate\n    self._check_timeout(endtime, orig_timeout, stdout, stderr)\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <Popen: returncode: -9 args: ['Rscript', '/app/run_test.R']>\nendtime = 933.110975909, orig_timeout = 60\nstdout_seq = [b'NORMAL_MEAN_SD: mean=-0.0201 sd=0.9987 (truth mean=0 sd=1)\\nNORMAL_TEST: PASS\\n']\nstderr_seq = [], skip_check_and_raise = False\n\n    def _check_timeout(self, endtime, orig_timeout, stdout_seq, stderr_seq,\n                       skip_check_and_raise=False):\n        \"\"\"Convenience for checking if a timeout has expired.\"\"\"\n        if endtime is None:\n            return\n        if skip_check_and_raise or _time() > endtime:\n>           raise TimeoutExpired(\n                    self.args, orig_timeout,\n                    output=b''.join(stdout_seq) if stdout_seq else None,\n                    stderr=b''.join(stderr_seq) if stderr_seq else None)\nE           subprocess.TimeoutExpired: Command '['Rscript', '/app/run_test.R']' timed out after 60 seconds\n\n/root/.local/share/uv/python/cpython-3.13.9-linux-x86_64-gnu/lib/python3.13/subprocess.py:1269: TimeoutExpired",
+                "message": "The test failed in the call phase"
+            },
+            {
+                "name": "test_outputs.py::test_sample_files_generated",
+                "status": "passed",
+                "duration": 0.0055032290000553985,
+                "start": 1792677024.9809191,
+                "stop": 1792677024.986629,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_implementation_is_modular",
+                "status": "passed",
+                "duration": 0.00048224699992260867,
+                "start": 1792677024.9868314,
+                "stop": 1792677024.9874337,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_implementation_handles_errors",
+                "status": "passed",
+                "duration": 0.00029820299994298693,
+                "start": 1792677024.9875753,
+                "stop": 1792677024.9879634,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_input_validation_functionality",
+                "status": "passed",
+                "duration": 0.2860881959999233,
+                "start": 1792677024.9880772,
+                "stop": 1792677025.2748086,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            },
+            {
+                "name": "test_outputs.py::test_log_concavity_functionality",
+                "status": "passed",
+                "duration": 0.4344165499999235,
+                "start": 1792677025.2755451,
+                "stop": 1792677025.7103722,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}

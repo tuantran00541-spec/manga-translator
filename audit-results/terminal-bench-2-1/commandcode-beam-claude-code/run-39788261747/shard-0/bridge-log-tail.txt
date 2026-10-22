@@ -1,0 +1,1183 @@
+on
+    raise APIConnectionError(
+litellm.exceptions.APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Response payload is not completed: <TransferEncodingError: 400, message='Not enough data to satisfy transfer length header.'>. ConnectionResetError(104, 'Connection reset by peer')
+INFO:     172.18.0.2:38218 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44644 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53772 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53772 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53772 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53772 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53772 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:38218 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59642 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56714 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:50936 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:50936 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:50936 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:50936 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:50936 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41204 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41204 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41204 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41204 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:48896 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:48896 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49140 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49140 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49140 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49140 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49140 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49140 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49140 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49140 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44250 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44250 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44250 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44250 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44250 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34376 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34376 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34376 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34620 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59566 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:44628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59566 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59566 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59566 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59566 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59566 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59566 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59566 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59566 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59566 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:50050 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.19.0.2:48136 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46440 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:49680 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49680 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49680 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37558 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37558 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37558 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37558 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37558 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37558 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37558 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37558 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37558 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51112 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36724 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36724 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:41398 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:41398 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:41398 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:41398 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:41398 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42594 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:53726 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:53726 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:33542 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55562 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:56092 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:39818 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:39818 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40684 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49874 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49874 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49874 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49874 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49874 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45342 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46496 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:60698 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40572 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:48010 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:48010 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:35200 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:34118 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40134 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:60714 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:60714 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:51060 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46818 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46818 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46818 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46818 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:55054 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:55054 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:44498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:44498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47050 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:40292 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33662 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40292 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33662 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33662 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages/count_tokens?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:33672 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:39268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:39268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:57724 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60498 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40528 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51142 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:37274 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37274 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43312 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43312 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37274 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43312 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43312 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37274 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+14:04:55 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=442046f3-7b78-4511-8fbf-3c54d5f4e11b - litellm.BadRequestError: OpenrouterException - {"error":{"message":"{\"error\":{\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"isRetryable\":false,\"type\":\"AI_APICallError\"}},\"providerMetadata\":{\"gateway\":{\"routing\":{\"originalModelId\":\"reflection/beam-free\",\"resolvedProvider\":\"reflection\",\"fallbacksAvailable\":[],\"canonicalSlug\":\"reflection/beam\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"reflection/beam\",\"success\":false,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"reflection\",\"credentialType\":…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 528, in _make_common_async_call
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/main.py", line 687, in acompletion
+    response = await _resolve_dispatched_chat_response(init_response)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/main.py", line 752, in _resolve_dispatched_chat_response
+    return await pending
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 1054, in acompletion_stream_function
+    completion_stream, _response_headers = await self.make_async_call_stream_helper(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 1114, in make_async_call_stream_helper
+    response: Final = await self._make_common_async_call(
+  File "/opt/bridge/venv/lib/python3.10/site-packa... (litellm_truncated skipped 6666 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../litellm/main.py", line 740, in acompletion
+    raise exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2666, in exception_type
+    _map_openrouter_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2155, in _map_openrouter_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenrouterException - {"error":{"message":"{\"error\":{\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"isRetryable\":false,\"type\":\"AI_APICallError\"}},\"providerMetadata\":{\"gateway\":{\"routing\":{\"originalModelId\":\"reflection/beam-free\",\"resolvedProvider\":\"reflection\",\"fallbacksAvailable\":[],\"canonicalSlug\":\"reflection/beam\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"reflection/beam\",\"success\":false,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"reflection\",\"credentialType\":…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.20.0.2:43312 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+14:04:55 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=c0906cba-5cd2-4d75-8ed9-77e88c0d64d0 - litellm.BadRequestError: OpenrouterException - {"error":{"message":"{\"error\":{\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"isRetryable\":false,\"type\":\"AI_APICallError\"}},\"providerMetadata\":{\"gateway\":{\"routing\":{\"originalModelId\":\"reflection/beam-free\",\"resolvedProvider\":\"reflection\",\"fallbacksAvailable\":[],\"canonicalSlug\":\"reflection/beam\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"reflection/beam\",\"success\":false,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"reflection\",\"credentialType\":…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 528, in _make_common_async_call
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/main.py", line 687, in acompletion
+    response = await _resolve_dispatched_chat_response(init_response)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/main.py", line 752, in _resolve_dispatched_chat_response
+    return await pending
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 1054, in acompletion_stream_function
+    completion_stream, _response_headers = await self.make_async_call_stream_helper(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 1114, in make_async_call_stream_helper
+    response: Final = await self._make_common_async_call(
+  File "/opt/bridge/venv/lib/python3.10/site-packa... (litellm_truncated skipped 6666 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../litellm/main.py", line 740, in acompletion
+    raise exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2666, in exception_type
+    _map_openrouter_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2155, in _map_openrouter_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenrouterException - {"error":{"message":"{\"error\":{\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"isRetryable\":false,\"type\":\"AI_APICallError\"}},\"providerMetadata\":{\"gateway\":{\"routing\":{\"originalModelId\":\"reflection/beam-free\",\"resolvedProvider\":\"reflection\",\"fallbacksAvailable\":[],\"canonicalSlug\":\"reflection/beam\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"reflection/beam\",\"success\":false,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"reflection\",\"credentialType\":…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.20.0.2:43312 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+INFO:     172.18.0.2:37274 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+14:04:56 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=4d1f75f2-618d-4109-a083-add5e5da041c - litellm.BadRequestError: OpenrouterException - {"error":{"message":"{\"error\":{\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"isRetryable\":false,\"type\":\"AI_APICallError\"}},\"providerMetadata\":{\"gateway\":{\"routing\":{\"originalModelId\":\"reflection/beam-free\",\"resolvedProvider\":\"reflection\",\"fallbacksAvailable\":[],\"canonicalSlug\":\"reflection/beam\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"reflection/beam\",\"success\":false,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"reflection\",\"credentialType\":…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 528, in _make_common_async_call
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/main.py", line 687, in acompletion
+    response = await _resolve_dispatched_chat_response(init_response)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/main.py", line 752, in _resolve_dispatched_chat_response
+    return await pending
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 1054, in acompletion_stream_function
+    completion_stream, _response_headers = await self.make_async_call_stream_helper(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 1114, in make_async_call_stream_helper
+    response: Final = await self._make_common_async_call(
+  File "/opt/bridge/venv/lib/python3.10/site-packa... (litellm_truncated skipped 6666 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../litellm/main.py", line 740, in acompletion
+    raise exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2666, in exception_type
+    _map_openrouter_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2155, in _map_openrouter_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenrouterException - {"error":{"message":"{\"error\":{\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"isRetryable\":false,\"type\":\"AI_APICallError\"}},\"providerMetadata\":{\"gateway\":{\"routing\":{\"originalModelId\":\"reflection/beam-free\",\"resolvedProvider\":\"reflection\",\"fallbacksAvailable\":[],\"canonicalSlug\":\"reflection/beam\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"reflection/beam\",\"success\":false,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"reflection\",\"credentialType\":…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.20.0.2:43312 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+14:04:56 - LiteLLM Proxy:ERROR: common_request_processing.py:1687 - litellm.proxy.proxy_server._handle_llm_api_exception(): Exception occured - litellm_call_id=38f06d92-ef9c-4ed5-ae29-8dcbeefea027 - litellm.BadRequestError: OpenrouterException - {"error":{"message":"{\"error\":{\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"isRetryable\":false,\"type\":\"AI_APICallError\"}},\"providerMetadata\":{\"gateway\":{\"routing\":{\"originalModelId\":\"reflection/beam-free\",\"resolvedProvider\":\"reflection\",\"fallbacksAvailable\":[],\"canonicalSlug\":\"reflection/beam\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"reflection/beam\",\"success\":false,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"reflection\",\"credentialType\":…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 528, in _make_common_async_call
+    response = await async_httpx_client.post(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/logging_utils.py", line 344, in async_wrapper
+    result: Final = await func(*args, **kwargs)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 883, in post
+    await _raise_masked_async_error(e, stream)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/http_handler.py", line 557, in _raise_masked_async_error
+    raise MaskedHTTPStatusError(e, message=_body, text=_body) from None
+litellm.llms.custom_httpx.http_handler.MaskedHTTPStatusError: Client error '400 Bad Request' for url 'https://api.commandcode.ai/provider/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/main.py", line 687, in acompletion
+    response = await _resolve_dispatched_chat_response(init_response)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/main.py", line 752, in _resolve_dispatched_chat_response
+    return await pending
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 1054, in acompletion_stream_function
+    completion_stream, _response_headers = await self.make_async_call_stream_helper(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/llm_http_handler.py", line 1114, in make_async_call_stream_helper
+    response: Final = await self._make_common_async_call(
+  File "/opt/bridge/venv/lib/python3.10/site-packa... (litellm_truncated skipped 6666 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) .../litellm/main.py", line 740, in acompletion
+    raise exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2666, in exception_type
+    _map_openrouter_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2155, in _map_openrouter_exception
+    raise BadRequestError(
+litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenrouterException - {"error":{"message":"{\"error\":{\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"Invalid value for 'messages[11].content': The contents of the message, either a string or a non-empty array of text parts, or null on an assistant message only.\",\"isRetryable\":false,\"type\":\"AI_APICallError\"}},\"providerMetadata\":{\"gateway\":{\"routing\":{\"originalModelId\":\"reflection/beam-free\",\"resolvedProvider\":\"reflection\",\"fallbacksAvailable\":[],\"canonicalSlug\":\"reflection/beam\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"reflection/beam\",\"success\":false,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"reflection\",\"credentialType\":…(truncated)","type":"invalid_request_error"}}
+
+LiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.
+INFO:     172.20.0.2:43312 - "POST /v1/messages?beta=true HTTP/1.1" 400 Bad Request
+INFO:     172.18.0.2:37274 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:32974 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:32974 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:32974 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38106 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:39938 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:37044 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:37044 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:37044 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57114 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57114 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57114 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57114 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57114 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34744 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34744 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34744 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34744 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:48318 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:38642 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:53452 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:42170 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:42170 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:42170 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57944 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57944 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57944 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57944 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57944 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57944 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57944 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57944 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57944 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:57944 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:49524 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:49524 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36780 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36780 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:39488 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:58022 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:51594 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:40298 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:58756 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:58756 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37180 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:44390 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:44390 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:44390 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46842 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:44390 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:44390 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:44390 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:44390 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:52360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40934 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:53676 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:53676 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:55890 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:53676 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:50570 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:50570 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:55242 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:55242 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44652 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44652 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44652 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44652 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44652 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44652 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:58720 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44652 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44652 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:60314 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:42384 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42078 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:41916 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:47228 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34414 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:47240 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:47240 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:47240 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:57636 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49658 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49668 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49668 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49668 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49668 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49668 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49668 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49668 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49668 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:36734 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:36734 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:54314 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:54314 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49196 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49196 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49196 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56516 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56516 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:35906 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:52728 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:52728 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40748 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:46088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:36096 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:36096 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43178 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59426 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.20.0.2:38612 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38612 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38612 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38612 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38612 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38612 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38612 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38612 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45196 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45196 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45196 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45196 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45196 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37452 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37452 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37452 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37452 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37452 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37452 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:32840 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:32840 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34892 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:32840 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34892 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:32840 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:32840 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:59286 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:51296 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55968 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55968 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55968 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55968 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55968 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55968 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55968 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34784 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:41088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36148 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:41088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:41088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:41088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:41088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:41088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:41088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:41088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:41088 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45326 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45326 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45326 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45326 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45326 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45326 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:58206 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:58206 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:58206 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:58206 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45148 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38736 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38736 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38736 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38736 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38736 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38736 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38736 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:55508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38736 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38736 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43030 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43030 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43030 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43030 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50486 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43030 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43030 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43030 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43030 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43030 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43030 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50980 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50980 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50980 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50980 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:50980 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45596 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34826 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34826 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34826 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34826 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34826 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34826 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34826 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34826 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34826 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42620 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42620 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42620 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42620 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42620 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42620 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42620 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:59112 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.20.0.2:42050 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42050 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42050 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42050 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42050 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:57354 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:40910 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:40910 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:40910 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:40910 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:40910 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42538 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:48920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:48920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55702 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:48920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:48920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:48920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:48920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:48920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:48920 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:56978 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:56978 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:56978 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:56978 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:56978 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:56978 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:50220 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46100 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:54532 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:54532 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:54532 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:54532 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:54532 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:54532 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:45088 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60450 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60450 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:40036 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:37076 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:43090 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:37076 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:52824 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:39730 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:39730 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:39730 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46110 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46110 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41736 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:38778 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55160 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:55160 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34986 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34986 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34986 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34986 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34986 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34986 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51568 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:54768 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39722 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51098 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:37440 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48334 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48334 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:44198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42806 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42806 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:42806 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38636 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34162 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34162 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34162 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:34162 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:54260 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:50384 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:50384 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60704 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59092 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59092 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36846 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36846 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:44108 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:44108 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:54374 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:45606 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:45606 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:44356 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:44356 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:44356 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:51222 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:35816 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59314 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:40340 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36862 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48650 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48650 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48650 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60906 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60906 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:43014 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:43014 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:43014 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:32962 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53426 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56062 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38214 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:35904 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:42284 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:49138 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48182 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:42578 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:50214 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
