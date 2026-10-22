@@ -1,0 +1,122 @@
+{
+    "id": "e9a747a4-44d8-46db-be41-a57608c0aacf",
+    "task_name": "terminal-bench/sqlite-db-truncate",
+    "trial_name": "sqlite-db-truncate__CsfrwaT",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-22__12-56-31/sqlite-db-truncate__CsfrwaT",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/sqlite-db-truncate"
+    },
+    "source": "tasks",
+    "task_checksum": "149c8061043d593a987eea4a61d9d24a772957a7ddee70414574b70dafbe4b30",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/sqlite-db-truncate",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "sqlite-db-truncate__CsfrwaT",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-22__12-56-31",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "dsh_agent:DshAgent",
+            "model_name": "reflection/beam:free",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "5a4dc0dd-21c9-4a5e-8b74-8fad87dfa7d8",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "dsh",
+        "version": "0.2.1-rc.2",
+        "model_info": {
+            "name": "beam:free",
+            "provider": "reflection"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": "finished",
+            "final_text": "Recovered 10 rows from the truncated SQLite leaf page and wrote them to `/app/recover.json` in the requested format."
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-22T13:52:03.877093Z",
+    "finished_at": "2026-10-22T13:54:30.095066Z",
+    "environment_setup": {
+        "started_at": "2026-10-22T13:52:03.877794Z",
+        "finished_at": "2026-10-22T13:52:05.804581Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-22T13:52:05.804609Z",
+        "finished_at": "2026-10-22T13:53:25.031779Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-22T13:53:25.031868Z",
+        "finished_at": "2026-10-22T13:54:05.033239Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-22T13:54:05.295180Z",
+        "finished_at": "2026-10-22T13:54:08.380029Z"
+    },
+    "step_results": null
+}
