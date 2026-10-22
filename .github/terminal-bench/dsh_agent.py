@@ -73,6 +73,8 @@ class DshAgent(BaseInstalledAgent):
                 "(apt-get update && apt-get install -y curl ca-certificates) >/dev/null 2>&1 || apk add --no-cache curl ca-certificates >/dev/null 2>&1 || yum install -y curl >/dev/null 2>&1; fi; "
                 "arch=$(uname -m); case \"$arch\" in x86_64) na=x64;; aarch64|arm64) na=arm64;; *) echo \"unsupported arch: $arch\" >&2; exit 1;; esac; "
                 f"curl -fsSL https://nodejs.org/dist/{NODE_VERSION}/node-{NODE_VERSION}-linux-$na.tar.gz | tar xz -C {HOME} --strip-components=1; "
+                # npm and dsh are env-node scripts: without the tarball's bin on PATH they die with exit 127.
+                f"export PATH={HOME}/bin:$PATH; "
                 f"{HOME}/bin/npm install -g --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs @deepseek-ai/dsh >/dev/null 2>&1; "
                 f"{HOME}/bin/dsh --version; "
                 f"chmod -R a+rX {HOME}; chmod 777 {HOME}/home; "
