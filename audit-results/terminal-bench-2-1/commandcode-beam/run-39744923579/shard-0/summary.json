@@ -1,0 +1,270 @@
+{
+ "passed": 18,
+ "clean_passed": 17,
+ "trials": 23,
+ "rate": 0.783,
+ "contaminated": [
+  "count-dataset-tokens__adLjF9B",
+  "db-wal-recovery__KjJHMMd"
+ ],
+ "rows": [
+  {
+   "trial": "adaptive-rejection-sampler__ivbFUkB",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    392041,
+    353536,
+    43900
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-cython-ext__NMVXsyu",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2166340,
+    1959872,
+    16034
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "caffe-cifar-10__jqx3ohM",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    4472927,
+    4248000,
+    15869
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "circuit-fibsqrt__FM7BcoE",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1090378,
+    986816,
+    56418
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "compile-compcert__hVERDGS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    934347,
+    812864,
+    10237
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "count-dataset-tokens__adLjF9B",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    240506,
+    199936,
+    4093
+   ],
+   "contaminated": [
+    "harbor-framework/terminal-bench-2/blob/main/count-dataset-tokens/readme.md",
+    "hub.harborframework.com"
+   ]
+  },
+  {
+   "trial": "db-wal-recovery__KjJHMMd",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1877027,
+    1646464,
+    28885
+   ],
+   "contaminated": [
+    "/logs/verifier"
+   ]
+  },
+  {
+   "trial": "dna-insert__ArY56ov",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    430366,
+    373504,
+    21725
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "feal-differential-cryptanalysis__nrcEJGg",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    154799,
+    139264,
+    9766
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "financial-document-processor__bLxPab5",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1076296,
+    822656,
+    7521
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-ocaml-gc__5id9PMX",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3374945,
+    2970944,
+    21891
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "git-multibranch__gsbKgBS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    339288,
+    284672,
+    11775
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "hf-model-inference__LkhZK8G",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    48246,
+    40704,
+    1755
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "large-scale-text-editing__uqGBoY6",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    458157,
+    407808,
+    15479
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "log-summary-date-ranges__LMHVooW",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    52309,
+    44288,
+    2087
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "make-mips-interpreter__QPeeFbP",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    16535381,
+    14953344,
+    116163
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "model-extraction-relu-logits__V9UVdzD",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    504086,
+    391552,
+    16741
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mteb-retrieve__rBKnQec",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    259108,
+    236224,
+    8540
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "openssl-selfsigned-cert__SdRG2Mo",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    89582,
+    77952,
+    3691
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "polyglot-rust-c__v5E6wPZ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    454781,
+    403072,
+    22749
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "prove-plus-comm__55UukyS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    75134,
+    62464,
+    3310
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "pytorch-model-recovery__sBKWPnJ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    230145,
+    205376,
+    12197
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "regex-log__g9hEfSi",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    179110,
+    73984,
+    13736
+   ],
+   "contaminated": []
+  }
+ ]
+}

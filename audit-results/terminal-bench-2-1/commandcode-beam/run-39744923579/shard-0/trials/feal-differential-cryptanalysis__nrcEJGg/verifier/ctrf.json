@@ -1,0 +1,29 @@
+{
+    "results": {
+        "tool": {
+            "name": "pytest",
+            "version": "8.4.1"
+        },
+        "summary": {
+            "tests": 1,
+            "passed": 1,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "other": 0,
+            "start": 1792657478.1433158,
+            "stop": 1792657479.6153092
+        },
+        "tests": [
+            {
+                "name": "test_outputs.py::test_feal_differential_cryptanalysis_attack",
+                "status": "passed",
+                "duration": 1.4346281279999857,
+                "start": 1792657478.1796048,
+                "stop": 1792657479.615054,
+                "retries": 0,
+                "file_path": "test_outputs.py"
+            }
+        ]
+    }
+}
