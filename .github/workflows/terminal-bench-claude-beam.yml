@@ -61,7 +61,7 @@ jobs:
 
   check:
     # The whole chain is tried first: key -> bridge -> Messages API -> a tool call,
-    # before any task runs.
+    # then a three-turn replay with thinking on, before any task runs.
     needs: config
     runs-on: ubuntu-22.04
     timeout-minutes: 25
@@ -104,6 +104,33 @@ jobs:
           print("  blocks:", [b.get("type") for b in blocks])
           if not any(b.get("type") == "tool_use" for b in blocks):
               sys.exit("::error::no tool_use block came back through the bridge")
+          # A single turn is not enough: beam requires the reasoning of every earlier
+          # assistant turn sent back, and a bridge that drops it passes one turn and
+          # fails the rest (the first full run died exactly there). Replay three turns
+          # with thinking on, the way Claude Code drives the conversation.
+          msgs = [{"role": "user", "content": "What is the weather in Paris? You must call the get_weather tool."}]
+          for turn in (1, 2, 3):
+              body = {"model": model, "max_tokens": 64000,
+                      "thinking": {"type": "enabled", "budget_tokens": 32768},
+                      "tools": [{"name": "get_weather", "description": "Get the current weather for a city",
+                                 "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}],
+                      "messages": msgs}
+              r = requests.post("http://127.0.0.1:18080/v1/messages", headers=head, json=body, timeout=600)
+              print(f"multi-turn {turn}: HTTP {r.status_code}")
+              if r.status_code != 200:
+                  print("  ", r.text[:500])
+                  sys.exit("::error::the bridge loses the conversation after the first turn")
+              blocks = r.json().get("content") or []
+              if turn == 1 and not any(b.get("type") == "thinking" for b in blocks):
+                  sys.exit("::error::no thinking block came back through the bridge")
+              msgs.append({"role": "assistant", "content": blocks})
+              tid = next((b["id"] for b in blocks if b.get("type") == "tool_use"), None)
+              if not tid:
+                  sys.exit("::error::no tool_use block in the multi-turn replay")
+              msgs.append({"role": "user", "content": [
+                  {"type": "tool_result", "tool_use_id": tid, "content": "sunny, 24C"},
+                  {"type": "text", "text": "Now check another city the same way."}]})
+          print("multi-turn replay passed")
           PY
 
   bench:

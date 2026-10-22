@@ -2,10 +2,14 @@
 # beam model is only served on CommandCode's OpenAI endpoint, so this proxy translates
 # /v1/messages to /chat/completions. The API key arrives through the process environment
 # (COMMANDCODE_KEY), never in this file, and reasoning is forced to max for every request.
+# The provider is "openrouter", not "openai": with the openai provider LiteLLM reroutes
+# every thinking request to the Responses API, which drops the reasoning content beam
+# requires back on later turns (every multi-turn request then fails with a 400); the
+# openrouter provider's translation stays on chat completions, where it round-trips.
 model_list:
   - model_name: "reflection/beam:free"
     litellm_params:
-      model: "openai/reflection/beam:free"
+      model: "openrouter/reflection/beam:free"
       api_base: "https://api.commandcode.ai/provider/v1"
       api_key: os.environ/COMMANDCODE_KEY
       reasoning_effort: "max"
