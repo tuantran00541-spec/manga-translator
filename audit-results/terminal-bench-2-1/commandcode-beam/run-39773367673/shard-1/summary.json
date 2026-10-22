@@ -1,0 +1,119 @@
+{
+ "passed": 8,
+ "clean_passed": 8,
+ "trials": 10,
+ "rate": 0.8,
+ "contaminated": [],
+ "rows": [
+  {
+   "trial": "bn-fit-modify__HjiftmA",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    423585,
+    368192,
+    9140
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-pmars__HNiXVkr",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    584674,
+    500992,
+    9802
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "cancel-async-tasks__9oKekoG",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    184044,
+    171968,
+    8962
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "cobol-modernization__xfLPfPz",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    364062,
+    309952,
+    18762
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "configure-git-webserver__Tj8iB2V",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    245853,
+    219008,
+    8260
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "distribution-search__4ww8s3A",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    311281,
+    289024,
+    14350
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "extract-elf__2NPhCEG",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    283525,
+    224256,
+    10997
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "feal-linear-cryptanalysis__mo32AyJ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    441700,
+    403264,
+    28519
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-code-vulnerability__CpCiWWg",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    222012,
+    206336,
+    4160
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "gcode-to-text__REB49Yd",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    1969984,
+    1702720,
+    164554
+   ],
+   "contaminated": []
+  }
+ ]
+}
