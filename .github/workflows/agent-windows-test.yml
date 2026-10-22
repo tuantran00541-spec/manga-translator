@@ -1,0 +1,47 @@
+name: Agent Windows probe
+
+# Does agent mode work on Windows at all? Installs the app on a real Windows
+# runner and drives one agent session that must call tools to answer.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/agent-windows-test.yml"
+      - ".github/scripts/agent_probe.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the app
+        shell: pwsh
+        run: python scripts/install.py
+
+      - name: Probe agent tool calls
+        shell: pwsh
+        run: |
+          .\.venv\Scripts\python.exe .github\scripts\agent_probe.py
+          exit $LASTEXITCODE
+
+      - name: Upload probe results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-probe-windows
+          path: |
+            agent-probe-events.json
+            agent-probe-summary.txt
+          if-no-files-found: warn
