@@ -1,0 +1,78 @@
+{
+ "synth": {
+  "about": "held-out series with drawn text",
+  "old": {
+   "images": 207,
+   "boxes": 679,
+   "recall_iou50": 0.5596,
+   "precision_iou50": 0.8871,
+   "covered_recall": 0.5847,
+   "ms_per_image": 345.3
+  },
+  "tuned": {
+   "images": 207,
+   "boxes": 679,
+   "recall_iou50": 0.9308,
+   "precision_iou50": 0.8547,
+   "covered_recall": 0.9485,
+   "ms_per_image": 346.8
+  }
+ },
+ "real": {
+  "about": "held-out series as is (labels: old model, so recall = kept)",
+  "old": {
+   "images": 207,
+   "boxes": 172,
+   "recall_iou50": 0.8488,
+   "precision_iou50": 0.875,
+   "covered_recall": 0.8605,
+   "ms_per_image": 346.4
+  },
+  "tuned": {
+   "images": 207,
+   "boxes": 172,
+   "recall_iou50": 0.8953,
+   "precision_iou50": 0.7248,
+   "covered_recall": 0.9477,
+   "ms_per_image": 351.4
+  }
+ },
+ "webval": {
+  "about": "colour webtoon words",
+  "old": {
+   "images": 300,
+   "boxes": 554,
+   "recall_iou50": 0.3285,
+   "precision_iou50": 0.7011,
+   "covered_recall": 0.3448,
+   "ms_per_image": 259.0
+  },
+  "tuned": {
+   "images": 300,
+   "boxes": 554,
+   "recall_iou50": 0.8682,
+   "precision_iou50": 0.6793,
+   "covered_recall": 0.9061,
+   "ms_per_image": 266.9
+  }
+ },
+ "art": {
+  "about": "Total-Text curved and artistic words (per-word boxes)",
+  "old": {
+   "images": 300,
+   "boxes": 2189,
+   "recall_iou50": 0.0429,
+   "precision_iou50": 0.3035,
+   "covered_recall": 0.2494,
+   "ms_per_image": 226.6
+  },
+  "tuned": {
+   "images": 300,
+   "boxes": 2189,
+   "recall_iou50": 0.7232,
+   "precision_iou50": 0.6199,
+   "covered_recall": 0.8081,
+   "ms_per_image": 227.4
+  }
+ }
+}

@@ -1,0 +1,70 @@
+Creating new Ultralytics Settings v0.0.8 file ✅ 
+View Ultralytics Settings with 'yolo settings' or at '/home/runner/.config/Ultralytics/settings.json'
+Update Settings with 'yolo settings key=value', i.e. 'yolo settings runs_dir=path/to/dir'. For help see https://docs.ultralytics.com/usage/settings.
+New https://pypi.org/project/ultralytics/8.4.183 available 😃 Update with 'pip install -U ultralytics'
+Ultralytics 8.4.164 🚀 Python-3.12.15 torch-2.14.1+cpu CPU (AMD EPYC 9V45 96-Core Processor)
+[34m[1mengine/trainer: [0magnostic_nms=False, amp=True, angle=1.0, augment=False, auto_augment=randaugment, batch=8, bgr=0.0, box=7.5, cache=False, cfg=None, channels_last=None, classes=None, close_mosaic=10, cls=0.5, cls_pw=0.0, cls_remap=True, compile=False, conf=None, copy_paste=0.0, copy_paste_mode=flip, cos_lr=True, cutmix=0.0, data=kiuyha-data/data.yaml, degrees=5, deterministic=True, device=cpu, dfl=1.5, dgrad=0.5, dis=6.0, distill_model=None, dlam=1.0, dlog=1.0, dnn=False, dropout=0.0, dynamic=False, embed=None, epochs=40, erasing=0.4, exist_ok=True, fliplr=0.0, flipud=0.0, format=torchscript, fraction=1.0, freeze=0, hsv_h=0.015, hsv_s=0.7, hsv_v=0.4, imgsz=1024, iou=0.7, kobj=1.0, line_width=None, lr0=0.0005, lrf=0.01, mask_ratio=4, max_det=300, mixup=0.0, mode=train, model=start.pt, momentum=0.937, mosaic=1.0, multi_scale=0.0, name=tune, nbs=64, nms=None, opset=None, optimize=False, optimizer=AdamW, overlap_mask=True, patience=100, perspective=0.0, plots=False, pose=12.0, pretrained=True, profile=False, project=/home/runner/work/manga-translator/manga-translator/runs, quantize=None, rect=False, resume=False, retina_masks=False, rle=1.0, save=True, save_conf=False, save_crop=False, save_dir=/home/runner/work/manga-translator/manga-translator/runs/tune, save_frames=False, save_json=False, save_period=-1, save_txt=False, scale=0.5, seed=0, shear=0.0, show=False, show_boxes=True, show_conf=True, show_labels=True, simplify=True, single_cls=False, source=None, split=val, stream_buffer=False, task=detect, time=5.0, tracker=tracktrack.yaml, translate=0.1, val=True, verbose=True, vid_stride=1, visualize=False, warmup_bias_lr=0.1, warmup_epochs=3.0, warmup_momentum=0.8, weight_decay=0.0005, workers=3, workspace=None
+Downloading https://ultralytics.com/assets/Arial.ttf to '/home/runner/.config/Ultralytics/Arial.ttf': 100% ━━━━━━━━━━━━ 755.1KB 19.9MB/s 0.0s
+
+                   from  n    params  module                                       arguments                     
+  0                  -1  1       928  ultralytics.nn.modules.conv.Conv             [3, 32, 3, 2]                 
+  1                  -1  1     18560  ultralytics.nn.modules.conv.Conv             [32, 64, 3, 2]                
+  2                  -1  1     26080  ultralytics.nn.modules.block.C3k2            [64, 128, 1, False, 0.25]     
+  3                  -1  1    147712  ultralytics.nn.modules.conv.Conv             [128, 128, 3, 2]              
+  4                  -1  1    103360  ultralytics.nn.modules.block.C3k2            [128, 256, 1, False, 0.25]    
+  5                  -1  1    590336  ultralytics.nn.modules.conv.Conv             [256, 256, 3, 2]              
+  6                  -1  1    346112  ultralytics.nn.modules.block.C3k2            [256, 256, 1, True]           
+  7                  -1  1   1180672  ultralytics.nn.modules.conv.Conv             [256, 512, 3, 2]              
+  8                  -1  1   1380352  ultralytics.nn.modules.block.C3k2            [512, 512, 1, True]           
+  9                  -1  1    656896  ultralytics.nn.modules.block.SPPF            [512, 512, 5, 3, True]        
+ 10                  -1  1    990976  ultralytics.nn.modules.block.C2PSA           [512, 512, 1]                 
+ 11                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          
+ 12             [-1, 6]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 13                  -1  1    477184  ultralytics.nn.modules.block.C3k2            [768, 256, 1, True]           
+ 14                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          
+ 15             [-1, 4]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 16                  -1  1    136192  ultralytics.nn.modules.block.C3k2            [512, 128, 1, True]           
+ 17                  -1  1    147712  ultralytics.nn.modules.conv.Conv             [128, 128, 3, 2]              
+ 18            [-1, 13]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 19                  -1  1    378880  ultralytics.nn.modules.block.C3k2            [384, 256, 1, True]           
+ 20                  -1  1    590336  ultralytics.nn.modules.conv.Conv             [256, 256, 3, 2]              
+ 21            [-1, 10]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 22                  -1  1   1843712  ultralytics.nn.modules.block.C3k2            [768, 512, 1, True, 0.5, True]
+ 23        [16, 19, 22]  1    932638  ultralytics.nn.modules.head.Detect           [1, 1, True, [128, 256, 512]] 
+YOLO26s summary: 260 layers, 9,948,638 parameters, 9,948,638 gradients, 22.7 GFLOPs
+
+Transferred 708/708 items from pretrained weights
+[34m[1mtrain: [0mFast image access ✅ (ping: 0.0±0.0 ms, read: 4493.9±3143.3 MB/s, size: 134.1 KB)
+[34m[1mtrain: [0mScanning /home/runner/work/manga-translator/manga-translator/kiuyha-data/labels/train... 12897 images, 1985 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 12897/12897 4.1Kit/s 3.1s
+[34m[1mtrain: [0mNew cache created: /home/runner/work/manga-translator/manga-translator/kiuyha-data/labels/train.cache
+[34m[1mval: [0mFast image access ✅ (ping: 0.0±0.0 ms, read: 4526.7±1580.1 MB/s, size: 124.0 KB)
+[34m[1mval: [0mScanning /home/runner/work/manga-translator/manga-translator/kiuyha-data/labels/synth... 207 images, 0 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 207/207 3.9Kit/s 0.1s
+[34m[1mval: [0mNew cache created: /home/runner/work/manga-translator/manga-translator/kiuyha-data/labels/synth.cache
+[34m[1moptimizer:[0m AdamW(lr=0.0005, momentum=0.937) with parameter groups 114 weight(decay=0.0), 126 weight(decay=0.0005), 126 bias(decay=0.0)
+Using 12897 train, 207 val images for fraction=1.0 at imgsz=1024
+Using 0 dataloader workers
+Logging results to [1m/home/runner/work/manga-translator/manga-translator/runs/tune[0m
+Starting training for 5.0 hours...
+
+      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
+       1/40         0G      1.196      1.018   0.007226          0       1024: 100% ━━━━━━━━━━━━ 1613/1613 7.5s/it 3:22:11
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 13/13 4.2s/it 55.1s
+                   all        207        679      0.926      0.843      0.933       0.72
+Closing dataloader mosaic
+
+      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
+        2/2         0G      1.039     0.8437   0.008137         20       1024: 45% ━━━━━─────── 736/1613 26.4s/it 1:37:01<6:25:22
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 13/13 4.6s/it 59.2s
+                   all        207        679      0.926      0.907      0.956      0.751
+
+2 epochs completed in 5.019 hours.
+Optimizer stripped from /home/runner/work/manga-translator/manga-translator/runs/tune/weights/last.pt, 20.4MB
+Optimizer stripped from /home/runner/work/manga-translator/manga-translator/runs/tune/weights/best.pt, 20.4MB
+
+Validating /home/runner/work/manga-translator/manga-translator/runs/tune/weights/best.pt...
+Ultralytics 8.4.164 🚀 Python-3.12.15 torch-2.14.1+cpu CPU (AMD EPYC 9V45 96-Core Processor)
+YOLO26s summary (fused): 120 layers, 9,465,567 parameters, 0 gradients, 20.8 GFLOPs
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 13/13 2.8s/it 36.6s
+                   all        207        679      0.927       0.91      0.956      0.752
+Speed: 0.9ms preprocess, 172.2ms inference, 0.0ms loss, 0.2ms postprocess per image
+💡 Learn more at https://docs.ultralytics.com/modes/train
