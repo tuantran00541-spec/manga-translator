@@ -1,0 +1,64 @@
+{
+ "passed": 5,
+ "clean_passed": 5,
+ "trials": 5,
+ "rate": 1.0,
+ "contaminated": [],
+ "rows": [
+  {
+   "trial": "adaptive-rejection-sampler__YUcLX6X",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2376195,
+    2262528,
+    65507
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-cython-ext__M7tdzMh",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3042480,
+    2765632,
+    21086
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "circuit-fibsqrt__5pgjNE2",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1167739,
+    1069312,
+    57024
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "count-dataset-tokens__pHT8BNm",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    830035,
+    723520,
+    15299
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "dna-insert__6suKhrz",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    661047,
+    582400,
+    19727
+   ],
+   "contaminated": []
+  }
+ ]
+}
