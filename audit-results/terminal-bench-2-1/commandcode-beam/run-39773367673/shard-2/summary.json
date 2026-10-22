@@ -1,0 +1,141 @@
+{
+ "passed": 9,
+ "clean_passed": 9,
+ "trials": 12,
+ "rate": 0.75,
+ "contaminated": [],
+ "rows": [
+  {
+   "trial": "break-filter-js-from-html__EsYpdAw",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    621344,
+    555776,
+    16667
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-pov-ray__gMNswfn",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    664251,
+    604480,
+    6275
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "chess-best-move__U55du3v",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    846179,
+    730560,
+    28397
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "code-from-image__vcMeWak",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1894835,
+    1594880,
+    39335
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "constraints-scheduling__cgRbypT",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    105982,
+    90432,
+    8249
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "custom-memory-heap-crash__YxYSasn",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    371264,
+    321984,
+    8246
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "dna-assembly__BxGmSBH",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    884893,
+    821312,
+    38483
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "filter-js-from-html__jj3AuKE",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    2304717,
+    2200320,
+    46057
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-git__oVkRiY2",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    203540,
+    175040,
+    4423
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "git-leak-recovery__NQFkewN",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    64793,
+    56192,
+    1775
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "headless-terminal__SJrTchg",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    626963,
+    563520,
+    17207
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "kv-store-grpc__v2bk3Vw",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    126307,
+    113984,
+    5269
+   ],
+   "contaminated": []
+  }
+ ]
+}
