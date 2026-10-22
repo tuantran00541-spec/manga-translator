@@ -1,0 +1,122 @@
+{
+    "id": "3d45e3fb-14e9-45b4-934a-9ab697aa6e39",
+    "task_name": "terminal-bench/custom-memory-heap-crash",
+    "trial_name": "custom-memory-heap-crash__PVcJAWZ",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-22__12-56-37/custom-memory-heap-crash__PVcJAWZ",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/custom-memory-heap-crash"
+    },
+    "source": "tasks",
+    "task_checksum": "949f44d01f9411e5858fdfd0861e2c35e9622cbfe91542b761039a7a16286381",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/custom-memory-heap-crash",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "custom-memory-heap-crash__PVcJAWZ",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-22__12-56-37",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "dsh_agent:DshAgent",
+            "model_name": "reflection/beam:free",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "acff428a-a47d-4908-8459-5fcabb905870",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "dsh",
+        "version": "0.2.1-rc.2",
+        "model_info": {
+            "name": "beam:free",
+            "provider": "reflection"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": "finished",
+            "final_text": "The release-mode crash was caused by MSVC-style locale facets being registered (and allocated) only after the custom heap became active, so their cleanup ran after that heap was destroyed. Forcing fac"
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-22T13:03:40.155693Z",
+    "finished_at": "2026-10-22T13:10:07.468998Z",
+    "environment_setup": {
+        "started_at": "2026-10-22T13:03:40.156462Z",
+        "finished_at": "2026-10-22T13:04:31.569393Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-22T13:04:31.569417Z",
+        "finished_at": "2026-10-22T13:06:05.240607Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-22T13:06:05.240687Z",
+        "finished_at": "2026-10-22T13:09:40.298039Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-22T13:09:40.596230Z",
+        "finished_at": "2026-10-22T13:09:48.479329Z"
+    },
+    "step_results": null
+}

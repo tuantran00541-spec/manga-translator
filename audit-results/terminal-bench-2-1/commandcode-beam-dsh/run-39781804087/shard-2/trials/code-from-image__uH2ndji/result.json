@@ -1,0 +1,122 @@
+{
+    "id": "db70b162-60ac-4231-9d09-a8edf232cb33",
+    "task_name": "terminal-bench/code-from-image",
+    "trial_name": "code-from-image__uH2ndji",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-22__12-56-37/code-from-image__uH2ndji",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/code-from-image"
+    },
+    "source": "tasks",
+    "task_checksum": "d5a058eb72d67f9ddfcecefcca86d47abf6e0f6cc27615c484c21cc6df1e2147",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/code-from-image",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "code-from-image__uH2ndji",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-22__12-56-37",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "dsh_agent:DshAgent",
+            "model_name": "reflection/beam:free",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {},
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "acff428a-a47d-4908-8459-5fcabb905870",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "dsh",
+        "version": "0.2.1-rc.2",
+        "model_info": {
+            "name": "beam:free",
+            "provider": "reflection"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "model_usage": null,
+        "rollout_details": null,
+        "metadata": {
+            "status": "finished",
+            "final_text": "The image’s pseudocode hashes `/app/code.png` and combines the digest with its first 10 bytes and the salt. The resulting value is:\n\n`bee26a133f103b9ecda444c70ec22cafef6e31a3de7af6d047974dc90ce3defe`\n"
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 1.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-22T12:56:38.486748Z",
+    "finished_at": "2026-10-22T13:03:12.083587Z",
+    "environment_setup": {
+        "started_at": "2026-10-22T12:56:38.584614Z",
+        "finished_at": "2026-10-22T12:56:50.970568Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-22T12:56:50.970602Z",
+        "finished_at": "2026-10-22T12:58:17.527976Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-22T12:58:17.528116Z",
+        "finished_at": "2026-10-22T13:02:48.370978Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-22T13:02:48.595808Z",
+        "finished_at": "2026-10-22T13:02:51.223754Z"
+    },
+    "step_results": null
+}

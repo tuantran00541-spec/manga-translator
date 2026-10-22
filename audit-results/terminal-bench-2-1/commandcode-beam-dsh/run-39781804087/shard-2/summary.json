@@ -1,0 +1,398 @@
+{
+ "passed": 20,
+ "clean_passed": 17,
+ "trials": 29,
+ "rate": 0.69,
+ "contaminated": [
+  "build-pov-ray__YR3J5kc",
+  "git-leak-recovery__QaUDz6e",
+  "headless-terminal__qVnLTcZ",
+  "mteb-leaderboard__efmvKiY",
+  "nginx-request-logging__qFAQyrZ",
+  "rstan-to-pystan__DYtY5st"
+ ],
+ "rows": [
+  {
+   "trial": "break-filter-js-from-html__95nGQuL",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-pov-ray__YR3J5kc",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": [
+    "/logs/verifier"
+   ]
+  },
+  {
+   "trial": "chess-best-move__i3YKots",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "code-from-image__uH2ndji",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "constraints-scheduling__ssV7bLK",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "custom-memory-heap-crash__PVcJAWZ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "dna-assembly__rXLNWV4",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "extract-moves-from-video__sfniuD9",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "filter-js-from-html__UXo2E4u",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-git__6XvsesS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "git-leak-recovery__QaUDz6e",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": [
+    "/tests/test_outputs.py"
+   ]
+  },
+  {
+   "trial": "headless-terminal__qVnLTcZ",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": [
+    "/logs/verifier",
+    "/tests/test_outputs.py",
+    "harbor-framework/terminal-bench-2/blob/main/headless-terminal/instruction.md\\ncall",
+    "harbor-framework/terminal-bench-2/contents/headless-terminal/solution\\",
+    "harbor-framework/terminal-bench-2/contents/headless-terminal/tests\\",
+    "harbor-framework/terminal-bench-2/contents/headless-terminal\\",
+    "harbor-framework/terminal-bench-2/main/headless-terminal/instruction.md\\",
+    "harbor-framework/terminal-bench-2/main/headless-terminal/solution/headless_terminal.py\\",
+    "harbor-framework/terminal-bench-2/main/headless-terminal/solution/solve.sh\\",
+    "harbor-framework/terminal-bench-2/main/headless-terminal/task.toml\\",
+    "harbor-framework/terminal-bench-2/main/headless-terminal/tests/test.sh\\",
+    "harbor-framework/terminal-bench-2/main/headless-terminal/tests/test_outputs.py\\"
+   ]
+  },
+  {
+   "trial": "kv-store-grpc__RFYLrmh",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__GFtPAg5",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "make-doom-for-mips__6Fv33kx",
+   "reward": 0.0,
+   "exception": "NonZeroAgentExitCodeError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__kmn9tvt",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mteb-leaderboard__efmvKiY",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": [
+    "harbor-framework/terminal-bench-2-1/blob/main/tasks/mteb-leaderboard/.gitignore\\",
+    "harbor-framework/terminal-bench-2-1/blob/main/tasks/mteb-leaderboard/instruction.md\\",
+    "harbor-framework/terminal-bench-2-1/blob/main/tasks/mteb-leaderboard/readme.md\\",
+    "harbor-framework/terminal-bench-2-1/blob/main/tasks/mteb-leaderboard/readme.md](//duckduckgo.com/l/?uddg=https%3a%2f%2fgithub.com%2fharbor%2dframework%2fterminal%2dbench%2d2%2d1%2fblob%2fmain%2ftasks%2fmteb%2dleaderboard%2freadme.md&rut=27279ca84133a8368811e204861e57a344628be8040d8e4e1480e23f2f5ccbac)\\n\\n[this",
+    "harbor-framework/terminal-bench-2-1/blob/main/tasks/mteb-leaderboard/task.toml\\",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/mteb-leaderboard",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/mteb-leaderboard/.gitignore?ref=main\\",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/mteb-leaderboard/environment?ref=main\\",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/mteb-leaderboard/instruction.md?ref=main\\",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/mteb-leaderboard/readme.md?ref=main\\",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/mteb-leaderboard/solution?ref=main\\",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/mteb-leaderboard/solution\\",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/mteb-leaderboard/task.toml?ref=main\\",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/mteb-leaderboard/tests?ref=main\\",
+    "harbor-framework/terminal-bench-2-1/contents/tasks/mteb-leaderboard/tests\\",
+    "harbor-framework/terminal-bench-2-1/git/blobs/24c2b2c82573b2d84a0934ca073a72be935a0a19\\",
+    "harbor-framework/terminal-bench-2-1/git/blobs/4385969230c6a5dc150c9a9f924ce7c934212b94\\",
+    "harbor-framework/terminal-bench-2-1/git/blobs/5b219e50fe1845ca9fba0f03cc9e3e74a5cc239e\\",
+    "harbor-framework/terminal-bench-2-1/git/blobs/ecd089e8ac7767b9bdb6f3ac247c8d033f7565ab\\",
+    "harbor-framework/terminal-bench-2-1/git/trees/00a29de78e133ad1648c23384fe937f0df473523\\",
+    "harbor-framework/terminal-bench-2-1/git/trees/1749dd40b6633331db265393fe1d89e7ad92e27b\\",
+    "harbor-framework/terminal-bench-2-1/git/trees/9c4f42241b7a08138eace810ec66dd7cb02d0504\\",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/.gitignore\\",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/instruction.md\\",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/readme.md",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/readme.md\\",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/solution.sh",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/solution/solve.sh",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/solution/solve.sh\\n---tests---\\ntest.sh",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/task.toml\\",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/tests/test.sh\\ntest_outputs.py",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/tests/test_outputs.py",
+    "harbor-framework/terminal-bench-2-1/main/tasks/mteb-leaderboard/tests/test_outputs.py\\n[stderr]\\nlandlock-run:",
+    "harbor-framework/terminal-bench-2-1/tree/main/tasks/mteb-leaderboard/environment\\",
+    "harbor-framework/terminal-bench-2-1/tree/main/tasks/mteb-leaderboard/solution\\",
+    "harbor-framework/terminal-bench-2-1/tree/main/tasks/mteb-leaderboard/tests\\",
+    "harbor-framework/terminal-bench-2/blob/main/mteb-leaderboard/readme.md](//duckduckgo.com/l/?uddg=https%3a%2f%2fgithub.com%2fharbor%2dframework%2fterminal%2dbench%2d2%2fblob%2fmain%2fmteb%2dleaderboard%2freadme.md&rut=b1b145ffa2da42241ad4eb4b55dc3def61dbbcf848c8f00a26f8a6f53143b134)\\n\\n[the",
+    "harbor-framework/terminal-bench/blob/main/archive/mteb-leaderboard/readme.md](//duckduckgo.com/l/?uddg=https%3a%2f%2fgithub.com%2fharbor%2dframework%2fterminal%2dbench%2fblob%2fmain%2farchive%2fmteb%2dleaderboard%2freadme.md&rut=6fbaefcf39a6203895ac76b19b6219e73a77b791ee3a1ce17af7795a8f937dcc)\\n\\n[the",
+    "harborframework.com%2ftasks%2fterminal%2dbench%2fmteb%2dleaderboard&rut=c19547859a45c97d2dada426b15125d9fafd4db607d3696187e91a2bfd580877)\\n\\n",
+    "harborframework.com%2ftasks%2fterminal%2dbench%2fmteb%2dleaderboard&rut=c19547859a45c97d2dada426b15125d9fafd4db607d3696187e91a2bfd580877)\\n\\n##",
+    "harborframework.com.ico)](//duckduckgo.com/l/?uddg=https%3a%2f%2fregistry.harborframework.com%2ftasks%2fterminal%2dbench%2fmteb%2dleaderboard&rut=c19547859a45c97d2dada426b15125d9fafd4db607d3696187e91a2bfd580877)[registry.harborframework.com/tasks/terminal-bench/mteb-leaderboard](//duckduckgo.com/l/?uddg=https%3a%2f%2fregistry.harborframework.com%2ftasks%2fterminal%2dbench%2fmteb%2dleaderboard&rut=c19547859a45c97d2dada426b15125d9fafd4db607d3696187e91a2bfd580877)\\n\\n[solution"
+   ]
+  },
+  {
+   "trial": "nginx-request-logging__qFAQyrZ",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": [
+    "/logs/verifier"
+   ]
+  },
+  {
+   "trial": "password-recovery__u6AiBzg",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "polyglot-c-py__Ns8R6cY",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "protein-assembly__hopLT5S",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "pytorch-model-cli__8eLgXge",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "qemu-startup__nN7LMum",
+   "reward": null,
+   "exception": "NonZeroAgentExitCodeError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "regex-chess__PUz75YK",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "rstan-to-pystan__DYtY5st",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": [
+    "/logs/verifier"
+   ]
+  },
+  {
+   "trial": "schemelike-metacircular-eval__4geGBRD",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sqlite-with-gcov__nJkT4Yz",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "train-fasttext__Zbku7S7",
+   "reward": 0.0,
+   "exception": "NonZeroAgentExitCodeError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "vulnerable-secret__j3xbnDi",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  }
+ ]
+}

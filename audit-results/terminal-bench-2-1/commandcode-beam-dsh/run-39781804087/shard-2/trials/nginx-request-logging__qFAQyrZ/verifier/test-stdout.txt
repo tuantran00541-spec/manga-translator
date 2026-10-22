@@ -1,0 +1,352 @@
+Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+Get:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]
+Get:5 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [355 kB]
+Fetched 9387 kB in 1s (11.6 MB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following additional packages will be installed:
+  libcurl4
+The following packages will be upgraded:
+  curl libcurl4
+2 upgraded, 0 newly installed, 0 to remove and 39 not upgraded.
+Need to get 708 kB of archives.
+After this operation, 0 B of additional disk space will be used.
+Get:1 http://deb.debian.org/debian bookworm/main amd64 curl amd64 7.88.1-10+deb12u15 [316 kB]
+Get:2 http://deb.debian.org/debian bookworm/main amd64 libcurl4 amd64 7.88.1-10+deb12u15 [392 kB]
+debconf: delaying package configuration, since apt-utils is not installed
+Fetched 708 kB in 0s (14.3 MB/s)
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 6799 files and directories currently installed.)
+Preparing to unpack .../curl_7.88.1-10+deb12u15_amd64.deb ...
+Unpacking curl (7.88.1-10+deb12u15) over (7.88.1-10+deb12u12) ...
+Preparing to unpack .../libcurl4_7.88.1-10+deb12u15_amd64.deb ...
+Unpacking libcurl4:amd64 (7.88.1-10+deb12u15) over (7.88.1-10+deb12u12) ...
+Setting up libcurl4:amd64 (7.88.1-10+deb12u15) ...
+Setting up curl (7.88.1-10+deb12u15) ...
+Processing triggers for libc-bin (2.36-9+deb12u10) ...
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading pygments (1.2MiB)
+ Downloading pygments
+Installed 11 packages in 9ms
+============================= test session starts ==============================
+platform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.7.0 -- /root/.cache/uv/archive-v0/9U0LO0IE5ZPjbNnWEU8e-/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collecting ... collected 8 items
+
+../tests/test_outputs.py::test_nginx_installed FAILED                    [ 12%]
+../tests/test_outputs.py::test_nginx_running PASSED                      [ 25%]
+../tests/test_outputs.py::test_index_page_content PASSED                 [ 37%]
+../tests/test_outputs.py::test_custom_404_page PASSED                    [ 50%]
+../tests/test_outputs.py::test_nginx_config_syntax FAILED                [ 62%]
+../tests/test_outputs.py::test_nginx_config_settings FAILED              [ 75%]
+../tests/test_outputs.py::test_log_file_creation FAILED                  [ 87%]
+../tests/test_outputs.py::test_log_file_format FAILED                    [100%]
+
+=================================== FAILURES ===================================
+_____________________________ test_nginx_installed _____________________________
+
+    def test_nginx_installed():
+        """Test that Nginx is installed."""
+        result = subprocess.run(["which", "nginx"], capture_output=True, text=True)
+>       assert result.returncode == 0, "Nginx is not installed"
+E       AssertionError: Nginx is not installed
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['which', 'nginx'], returncode=1, stdout='', stderr='').returncode
+
+/tests/test_outputs.py:14: AssertionError
+___________________________ test_nginx_config_syntax ___________________________
+
+    def test_nginx_config_syntax():
+        """Test that the Nginx configuration is syntactically correct."""
+>       result = subprocess.run(["nginx", "-t"], capture_output=True, text=True)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/tests/test_outputs.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/lib/python3.13/subprocess.py:554: in run
+    with Popen(*popenargs, **kwargs) as process:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.13/subprocess.py:1039: in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <Popen: returncode: 255 args: ['nginx', '-t']>, args = ['nginx', '-t']
+executable = b'nginx', preexec_fn = None, close_fds = True, pass_fds = ()
+cwd = None, env = None, startupinfo = None, creationflags = 0, shell = False
+p2cread = -1, p2cwrite = -1, c2pread = 11, c2pwrite = 12, errread = 13
+errwrite = 14, restore_signals = True, gid = None, gids = None, uid = None
+umask = -1, start_new_session = False, process_group = -1
+
+    def _execute_child(self, args, executable, preexec_fn, close_fds,
+                       pass_fds, cwd, env,
+                       startupinfo, creationflags, shell,
+                       p2cread, p2cwrite,
+                       c2pread, c2pwrite,
+                       errread, errwrite,
+                       restore_signals,
+                       gid, gids, uid, umask,
+                       start_new_session, process_group):
+        """Execute program (POSIX version)"""
+    
+        if isinstance(args, (str, bytes)):
+            args = [args]
+        elif isinstance(args, os.PathLike):
+            if shell:
+                raise TypeError('path-like args is not allowed when '
+                                'shell is true')
+            args = [args]
+        else:
+            args = list(args)
+    
+        if shell:
+            # On Android the default shell is at '/system/bin/sh'.
+            unix_shell = ('/system/bin/sh' if
+                      hasattr(sys, 'getandroidapilevel') else '/bin/sh')
+            args = [unix_shell, "-c"] + args
+            if executable:
+                args[0] = executable
+    
+        if executable is None:
+            executable = args[0]
+    
+        sys.audit("subprocess.Popen", executable, args, cwd, env)
+    
+        if (_USE_POSIX_SPAWN
+                and os.path.dirname(executable)
+                and preexec_fn is None
+                and (not close_fds or _HAVE_POSIX_SPAWN_CLOSEFROM)
+                and not pass_fds
+                and cwd is None
+                and (p2cread == -1 or p2cread > 2)
+                and (c2pwrite == -1 or c2pwrite > 2)
+                and (errwrite == -1 or errwrite > 2)
+                and not start_new_session
+                and process_group == -1
+                and gid is None
+                and gids is None
+                and uid is None
+                and umask < 0):
+            self._posix_spawn(args, executable, env, restore_signals, close_fds,
+                              p2cread, p2cwrite,
+                              c2pread, c2pwrite,
+                              errread, errwrite)
+            return
+    
+        orig_executable = executable
+    
+        # For transferring possible exec failure from child to parent.
+        # Data format: "exception name:hex errno:description"
+        # Pickle is not used; it is complex and involves memory allocation.
+        errpipe_read, errpipe_write = os.pipe()
+        # errpipe_write must not be in the standard io 0, 1, or 2 fd range.
+        low_fds_to_close = []
+        while errpipe_write < 3:
+            low_fds_to_close.append(errpipe_write)
+            errpipe_write = os.dup(errpipe_write)
+        for low_fd in low_fds_to_close:
+            os.close(low_fd)
+        try:
+            try:
+                # We must avoid complex work that could involve
+                # malloc or free in the child process to avoid
+                # potential deadlocks, thus we do all this here.
+                # and pass it to fork_exec()
+    
+                if env is not None:
+                    env_list = []
+                    for k, v in env.items():
+                        k = os.fsencode(k)
+                        if b'=' in k:
+                            raise ValueError("illegal environment variable name")
+                        env_list.append(k + b'=' + os.fsencode(v))
+                else:
+                    env_list = None  # Use execv instead of execve.
+                executable = os.fsencode(executable)
+                if os.path.dirname(executable):
+                    executable_list = (executable,)
+                else:
+                    # This matches the behavior of os._execvpe().
+                    executable_list = tuple(
+                        os.path.join(os.fsencode(dir), executable)
+                        for dir in os.get_exec_path(env))
+                fds_to_keep = set(pass_fds)
+                fds_to_keep.add(errpipe_write)
+                self.pid = _fork_exec(
+                        args, executable_list,
+                        close_fds, tuple(sorted(map(int, fds_to_keep))),
+                        cwd, env_list,
+                        p2cread, p2cwrite, c2pread, c2pwrite,
+                        errread, errwrite,
+                        errpipe_read, errpipe_write,
+                        restore_signals, start_new_session,
+                        process_group, gid, gids, uid, umask,
+                        preexec_fn, _USE_VFORK)
+                self._child_created = True
+            finally:
+                # be sure the FD is closed no matter what
+                os.close(errpipe_write)
+    
+            self._close_pipe_fds(p2cread, p2cwrite,
+                                 c2pread, c2pwrite,
+                                 errread, errwrite)
+    
+            # Wait for exec to fail or succeed; possibly raising an
+            # exception (limited in size)
+            errpipe_data = bytearray()
+            while True:
+                part = os.read(errpipe_read, 50000)
+                errpipe_data += part
+                if not part or len(errpipe_data) > 50000:
+                    break
+        finally:
+            # be sure the FD is closed no matter what
+            os.close(errpipe_read)
+    
+        if errpipe_data:
+            try:
+                pid, sts = os.waitpid(self.pid, 0)
+                if pid == self.pid:
+                    self._handle_exitstatus(sts)
+                else:
+                    self.returncode = sys.maxsize
+            except ChildProcessError:
+                pass
+    
+            try:
+                exception_name, hex_errno, err_msg = (
+                        errpipe_data.split(b':', 2))
+                # The encoding here should match the encoding
+                # written in by the subprocess implementations
+                # like _posixsubprocess
+                err_msg = err_msg.decode()
+            except ValueError:
+                exception_name = b'SubprocessError'
+                hex_errno = b'0'
+                err_msg = 'Bad exception data from child: {!r}'.format(
+                              bytes(errpipe_data))
+            child_exception_type = getattr(
+                    builtins, exception_name.decode('ascii'),
+                    SubprocessError)
+            if issubclass(child_exception_type, OSError) and hex_errno:
+                errno_num = int(hex_errno, 16)
+                if err_msg == "noexec:chdir":
+                    err_msg = ""
+                    # The error must be from chdir(cwd).
+                    err_filename = cwd
+                elif err_msg == "noexec":
+                    err_msg = ""
+                    err_filename = None
+                else:
+                    err_filename = orig_executable
+                if errno_num != 0:
+                    err_msg = os.strerror(errno_num)
+                if err_filename is not None:
+>                   raise child_exception_type(errno_num, err_msg, err_filename)
+E                   FileNotFoundError: [Errno 2] No such file or directory: 'nginx'
+
+/usr/local/lib/python3.13/subprocess.py:1972: FileNotFoundError
+__________________________ test_nginx_config_settings __________________________
+
+    def test_nginx_config_settings():
+        """Test that the Nginx configuration has the required settings."""
+        # Check if the configuration file exists
+        config_files = [
+            "/etc/nginx/conf.d/benchmark-site.conf",
+        ]
+    
+        config_found = False
+        config_content = ""
+    
+        for config_file in config_files:
+            if Path(config_file).exists():
+                config_found = True
+                config_content = Path(config_file).read_text()
+                break
+    
+>       assert config_found, "Could not find Nginx configuration file"
+E       AssertionError: Could not find Nginx configuration file
+E       assert False
+
+/tests/test_outputs.py:83: AssertionError
+____________________________ test_log_file_creation ____________________________
+
+    def test_log_file_creation():
+        """Test that the custom log files are created."""
+        # Make a request to generate log entries
+        requests.get("http://localhost:8080")
+    
+        # Check for the log file with a short delay to allow for file creation
+        time.sleep(1)
+    
+        log_files = [
+            "/var/log/nginx/benchmark-access.log",
+        ]
+    
+        log_found = False
+        for log_file in log_files:
+            if Path(log_file).exists():
+                log_found = True
+                break
+    
+>       assert log_found, "Nginx access log file was not created"
+E       AssertionError: Nginx access log file was not created
+E       assert False
+
+/tests/test_outputs.py:141: AssertionError
+_____________________________ test_log_file_format _____________________________
+
+    def test_log_file_format():
+        """Test that the log files have the correct format with all required fields."""
+        # Make a unique request to identify in logs
+        unique_path = f"/test-{int(time.time())}"
+        requests.get(f"http://localhost:8080{unique_path}")
+    
+        # Wait a moment for logs to be written
+        time.sleep(1)
+    
+        log_files = [
+            "/var/log/nginx/benchmark-access.log",
+        ]
+    
+        log_content = ""
+        for log_file in log_files:
+            if Path(log_file).exists():
+                log_content = Path(log_file).read_text()
+                if unique_path in log_content:
+                    break
+    
+        # Check for timestamp format [DD/MMM/YYYY:HH:MM:SS +ZZZZ]
+        timestamp_pattern = r"\d{2}/\w{3}/\d{4}:\d{2}:\d{2}:\d{2}\s[+-]\d{4}"
+>       assert re.search(timestamp_pattern, log_content), "Timestamp format missing in logs"
+E       AssertionError: Timestamp format missing in logs
+E       assert None
+E        +  where None = <function search at 0x7fc343839800>('\\d{2}/\\w{3}/\\d{4}:\\d{2}:\\d{2}:\\d{2}\\s[+-]\\d{4}', '')
+E        +    where <function search at 0x7fc343839800> = re.search
+
+/tests/test_outputs.py:166: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../tests/test_outputs.py::test_nginx_running
+PASSED ../tests/test_outputs.py::test_index_page_content
+PASSED ../tests/test_outputs.py::test_custom_404_page
+FAILED ../tests/test_outputs.py::test_nginx_installed - AssertionError: Nginx...
+FAILED ../tests/test_outputs.py::test_nginx_config_syntax - FileNotFoundError...
+FAILED ../tests/test_outputs.py::test_nginx_config_settings - AssertionError:...
+FAILED ../tests/test_outputs.py::test_log_file_creation - AssertionError: Ngi...
+FAILED ../tests/test_outputs.py::test_log_file_format - AssertionError: Times...
+========================= 5 failed, 3 passed in 2.47s ==========================
