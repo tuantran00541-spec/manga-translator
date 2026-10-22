@@ -1,0 +1,337 @@
+{
+ "passed": 16,
+ "clean_passed": 14,
+ "trials": 29,
+ "rate": 0.552,
+ "contaminated": [
+  "build-pov-ray__VsrjZ6F",
+  "password-recovery__ho94f4j"
+ ],
+ "rows": [
+  {
+   "trial": "break-filter-js-from-html__TbNEMvP",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    5834076,
+    5675392,
+    38748
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "build-pov-ray__VsrjZ6F",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    3095809,
+    2923008,
+    11617
+   ],
+   "contaminated": [
+    "harbor-framework/terminal-bench-2/blob/main/build-pov-ray/readme.md\\n",
+    "harbor-framework/terminal-bench-2/main/build-pov-ray/readme.md\\",
+    "harbor-framework/terminal-bench-2/main/build-pov-ray/readme.md\\\\\\"
+   ]
+  },
+  {
+   "trial": "chess-best-move__GCJWiTH",
+   "reward": null,
+   "exception": "AgentSetupTimeoutError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "code-from-image__YLW87hr",
+   "reward": 0.0,
+   "exception": "NonZeroAgentExitCodeError",
+   "tokens": [
+    7428,
+    7424,
+    76
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "constraints-scheduling__6RQLxZS",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    53208,
+    42496,
+    7848
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "custom-memory-heap-crash__F2j3jsf",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    1333814,
+    1293504,
+    13164
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "dna-assembly__VrEwd8P",
+   "reward": null,
+   "exception": "AgentSetupTimeoutError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "extract-moves-from-video__cxGzX2F",
+   "reward": null,
+   "exception": "AgentSetupTimeoutError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "filter-js-from-html__K4Kzp5p",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    650719,
+    608896,
+    16928
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "fix-git__iS9eySb",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    205740,
+    186560,
+    2650
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "git-leak-recovery__56LdpjV",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    189984,
+    180800,
+    5065
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "headless-terminal__UFgpSFW",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    397430,
+    366272,
+    14159
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "kv-store-grpc__GgjDECt",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    264475,
+    248960,
+    6968
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "llm-inference-batching-scheduler__v5Fxe6C",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    483262,
+    435904,
+    18993
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "make-doom-for-mips__u6SGUyB",
+   "reward": 0.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    22504285,
+    22227136,
+    65194
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "merge-diff-arc-agi-task__nLnMQtB",
+   "reward": null,
+   "exception": "AgentSetupTimeoutError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "mteb-leaderboard__8KLL9Uv",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2994674,
+    2916160,
+    13839
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "nginx-request-logging__WbCiGyR",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    119578,
+    109632,
+    4731
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "password-recovery__ho94f4j",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    685426,
+    649280,
+    12490
+   ],
+   "contaminated": [
+    "/logs/verifier"
+   ]
+  },
+  {
+   "trial": "polyglot-c-py__FUtqnk7",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    366258,
+    350464,
+    13469
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "protein-assembly__AAq8nPe",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    4638437,
+    4508352,
+    47082
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "pytorch-model-cli__fLVfH9A",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    529201,
+    485568,
+    10710
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "qemu-startup__TiuEd9k",
+   "reward": null,
+   "exception": "NonZeroAgentExitCodeError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "regex-chess__Sc436Tu",
+   "reward": 0.0,
+   "exception": "NonZeroAgentExitCodeError",
+   "tokens": [
+    17095,
+    15744,
+    32898
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "rstan-to-pystan__YXYVCqg",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    2105256,
+    2013568,
+    9811
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "schemelike-metacircular-eval__fue2Ria",
+   "reward": 0.0,
+   "exception": null,
+   "tokens": [
+    33742476,
+    33172224,
+    162407
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "sqlite-with-gcov__dP7LnUq",
+   "reward": null,
+   "exception": "AgentSetupTimeoutError",
+   "tokens": [
+    null,
+    null,
+    null
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "train-fasttext__FtYZpiJ",
+   "reward": 1.0,
+   "exception": "AgentTimeoutError",
+   "tokens": [
+    16656407,
+    16407808,
+    23320
+   ],
+   "contaminated": []
+  },
+  {
+   "trial": "vulnerable-secret__NVpPu7m",
+   "reward": 1.0,
+   "exception": null,
+   "tokens": [
+    138206,
+    122176,
+    3589
+   ],
+   "contaminated": []
+  }
+ ]
+}
