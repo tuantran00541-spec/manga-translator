@@ -1,0 +1,224 @@
+/opt/venv/lib/python3.12/site-packages/httpstan/schemas.py:106:    init_radius = fields.Number()
+/opt/venv/lib/python3.12/site-packages/httpstan/stan_services.cpp:268:                                  int chain, double init_radius, int num_warmup, int num_samples, int num_thin,
+/opt/venv/lib/python3.12/site-packages/httpstan/stan_services.cpp:286:        model, init_var_context, random_seed, chain, init_radius, num_warmup, num_samples, num_thin, save_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/stan_services.cpp:309:                        double init_radius, int num_samples, int num_thin, int refresh) {
+/opt/venv/lib/python3.12/site-packages/httpstan/stan_services.cpp:323:    return_code = stan::services::sample::fixed_param(model, init_var_context, random_seed, chain, init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/stan_services.cpp:368:        py::arg("init"), py::arg("random_seed"), py::arg("chain"), py::arg("init_radius"), py::arg("num_warmup"),
+/opt/venv/lib/python3.12/site-packages/httpstan/stan_services.cpp:374:        py::arg("random_seed"), py::arg("chain"), py::arg("init_radius"), py::arg("num_samples"), py::arg("num_thin"),
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/io/random_var_context.hpp:36:   * @param[in] init_radius the unconstrained variables are uniform draws
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/io/random_var_context.hpp:37:   *   from -init_radius to init_radius.
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/io/random_var_context.hpp:39:   *   should be initialized at 0. When init_zero is false, init_radius
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/io/random_var_context.hpp:43:  random_var_context(Model& model, RNG& rng, double init_radius, bool init_zero)
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/io/random_var_context.hpp:53:      boost::random::uniform_real_distribution<double> unif(-init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/io/random_var_context.hpp:54:                                                            init_radius);
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/diagnose/diagnose.hpp:30: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/diagnose/diagnose.hpp:42:             unsigned int random_seed, unsigned int chain, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/diagnose/diagnose.hpp:50:      model, init, rng, init_radius, false, logger, init_writer);
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e_adapt.hpp:34: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e_adapt.hpp:61:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e_adapt.hpp:75:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e_adapt.hpp:123: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e_adapt.hpp:149:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e_adapt.hpp:160:      model, init, default_metric, random_seed, chain, init_radius, num_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_unit_e.hpp:29: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_unit_e.hpp:48:                      double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_unit_e.hpp:61:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_unit_e_adapt.hpp:31: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_unit_e_adapt.hpp:54:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_unit_e_adapt.hpp:66:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:31: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:55:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:68:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:106: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:129:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:137:      model, init, random_seed, chain, init_radius, num_warmup, num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:163: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:191:    unsigned int random_seed, unsigned int init_chain_id, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:202:        model, *init[0], random_seed, init_chain_id, init_radius, num_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:218:          model, *init[i], rngs[i], init_radius, true, logger, init_writer[i]));
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:278: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:304:    unsigned int random_seed, unsigned int init_chain_id, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:316:        model, *init[0], random_seed, init_chain_id, init_radius, num_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e_adapt.hpp:322:      model, num_chains, init, random_seed, init_chain_id, init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/optimize/newton.hpp:30: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/optimize/newton.hpp:42:           unsigned int random_seed, unsigned int chain, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/optimize/newton.hpp:53:    cont_vector = util::initialize<false>(model, init, rng, init_radius, false,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/experimental/advi/fullrank.hpp:29: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/experimental/advi/fullrank.hpp:52:             unsigned int random_seed, unsigned int chain, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/experimental/advi/fullrank.hpp:68:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/experimental/advi/meanfield.hpp:29: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/experimental/advi/meanfield.hpp:52:              unsigned int random_seed, unsigned int chain, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/experimental/advi/meanfield.hpp:68:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/crc.hpp:274:    explicit  crc_optimal( value_type init_rem = initial_remainder );
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/crc.hpp:1919:    \param[in] init_rem  The (unaugmented) initial state of the polynomial
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/crc.hpp:1928:    \post  <code><var>init_rem</var> == this-&gt;get_interim_remainder()</code>
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/crc.hpp:1929:    \post  <code>(#reflect_remainder ? REFLECT(<var>init_rem</var>) :
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/crc.hpp:1930:      <var>init_rem</var>) ^ #final_xor_value == this-&gt;checksum()</code>
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/crc.hpp:1938:    value_type  init_rem  // = initial_remainder
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/crc.hpp:1940:    : rem_( reflect_i_type::reflect_q(init_rem) )
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:32: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:52:                     double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:66:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:104: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:124:                     double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:134:                          init_radius, num_warmup, num_samples, num_thin,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:165: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:189:                     double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:199:        init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:214:          model, *init[i], rngs[i], init_radius, true, logger, init_writer[i]));
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:271: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:294:                     double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:303:                            init_radius, num_warmup, num_samples, num_thin,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e.hpp:315:                          init_chain_id, init_radius, num_warmup, num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e_adapt.hpp:33: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e_adapt.hpp:60:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e_adapt.hpp:73:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e_adapt.hpp:122: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e_adapt.hpp:148:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e_adapt.hpp:159:      model, init, default_metric, random_seed, chain, init_radius, num_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e.hpp:32: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e.hpp:52:                      double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e.hpp:66:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e.hpp:102: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e.hpp:121:                      double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_diag_e.hpp:132:                           init_radius, num_warmup, num_samples, num_thin,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/optimize/bfgs.hpp:31: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/optimize/bfgs.hpp:54:         unsigned int random_seed, unsigned int chain, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/optimize/bfgs.hpp:65:    cont_vector = util::initialize<false>(model, init, rng, init_radius, false,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/asio/detail/impl/io_uring_service.ipp:53:  init_ring();
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/asio/detail/impl/io_uring_service.ipp:178:      init_ring();
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/asio/detail/impl/io_uring_service.ipp:524:void io_uring_service::init_ring()
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/pathfinder/multi.hpp:42: * @param[in] init_radius A non-negative value to initialize variables uniformly
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/pathfinder/multi.hpp:43: * in (-init_radius, init_radius) if not defined in the initialization var
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/pathfinder/multi.hpp:97:    unsigned int stride_id, double init_radius, int history_size,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/pathfinder/multi.hpp:127:                    init_radius, history_size, init_alpha, tol_obj, tol_rel_obj,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:33: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:61:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:75:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:125: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:152:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:161:      model, init, init_inv_metric, random_seed, chain, init_radius, num_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:178: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:205:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:216:      model, init, default_metric, random_seed, chain, init_radius, num_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:232: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:258:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:269:      model, init, default_metric, random_seed, chain, init_radius, num_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:302: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:334:    unsigned int random_seed, unsigned int init_chain_id, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:347:        init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:363:          model, *init[i], rngs[i], init_radius, true, logger, init_writer[i]));
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:433: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:463:    unsigned int random_seed, unsigned int init_chain_id, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:477:        init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:484:      init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:512: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:543:    unsigned int random_seed, unsigned int init_chain_id, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:562:        init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:569:      init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:595: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:624:    unsigned int random_seed, unsigned int init_chain_id, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:644:        init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_dense_e_adapt.hpp:651:      init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e.hpp:29: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e.hpp:48:                    double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e.hpp:61:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e.hpp:103: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e.hpp:126:                    double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e.hpp:135:                           init_radius, num_warmup, num_samples, num_thin,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_unit_e.hpp:151:          model, *init[i], rngs[i], init_radius, true, logger, init_writer[i]));
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/optimize/lbfgs.hpp:31: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/optimize/lbfgs.hpp:55:          unsigned int random_seed, unsigned int chain, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/optimize/lbfgs.hpp:68:    cont_vector = util::initialize<false>(model, init, rng, init_radius, false,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/util/initialize.hpp:24: * For identical inputs (model, init, rng, init_radius), this
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/util/initialize.hpp:29: * random uniform values from -init_radius to +init_radius for missing
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/util/initialize.hpp:33: * the init_radius is 0, this function will only evaluate the
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/util/initialize.hpp:54: * @param[in] init_radius the radius for generating random values.
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/util/initialize.hpp:71:                               double init_radius, bool print_timing,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/util/initialize.hpp:86:  bool is_initialized_with_zero = init_radius == 0.0;
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/util/initialize.hpp:94:      stan::io::random_var_context random_context(model, rng, init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/util/initialize.hpp:217:    msg << "Initialization between (-" << init_radius << ", " << init_radius
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/pathfinder/single.hpp:556: * @param[in] init_radius A non-negative value to initialize variables uniformly
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/pathfinder/single.hpp:557: * in (-init_radius, init_radius) if not defined in the initialization var
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/pathfinder/single.hpp:602:    unsigned int stride_id, double init_radius, int max_history_size,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/pathfinder/single.hpp:615:    cont_vector = util::initialize<false>(model, init, rng, init_radius, false,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:33: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:61:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:75:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:125: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:152:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:161:      model, init, init_inv_metric, random_seed, chain, init_radius, num_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:178: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:205:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:216:      model, init, default_metric, random_seed, chain, init_radius, num_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:232: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:258:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:269:      model, init, default_metric, random_seed, chain, init_radius, num_warmup,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:302: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:334:    unsigned int random_seed, unsigned int init_chain_id, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:347:        init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:363:          model, *init[i], rngs[i], init_radius, true, logger, init_writer[i]));
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:433: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:463:    unsigned int random_seed, unsigned int init_chain_id, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:477:        init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:484:      init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:512: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:543:    unsigned int random_seed, unsigned int init_chain_id, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:562:        init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:569:      init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:595: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:624:    unsigned int random_seed, unsigned int init_chain_id, double init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:644:        init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e_adapt.hpp:651:      init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/fixed_param.hpp:33: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/fixed_param.hpp:47:                double init_radius, int num_samples, int num_thin, int refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/fixed_param.hpp:58:    cont_vector = util::initialize(model, init, rng, init_radius, false, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/fixed_param.hpp:113: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/fixed_param.hpp:131:                double init_radius, int num_samples, int num_thin, int refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/fixed_param.hpp:137:    return fixed_param(model, *init[0], random_seed, chain, init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/fixed_param.hpp:153:    auto cont_vector = util::initialize(model, *init[i], rngs[i], init_radius,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:32: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:52:                    double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:65:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:102: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:121:                    double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:131:                         init_radius, num_warmup, num_samples, num_thin,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:161: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:185:                    double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:195:        init_radius, num_warmup, num_samples, num_thin, save_warmup, refresh,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:210:          model, *init[i], rngs[i], init_radius, true, logger, init_writer[i]));
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:261: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:284:                    double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:293:                           init_radius, num_warmup, num_samples, num_thin,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_nuts_diag_e.hpp:305:                         init_chain_id, init_radius, num_warmup, num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e.hpp:31: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e.hpp:51:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e.hpp:63:    cont_vector = util::initialize(model, init, rng, init_radius, true, logger,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e.hpp:100: * @param[in] init_radius radius to initialize
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e.hpp:119:    unsigned int chain, double init_radius, int num_warmup, int num_samples,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/stan/services/sample/hmc_static_dense_e.hpp:127:                            init_radius, num_warmup, num_samples, num_thin,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/asio/detail/io_uring_service.hpp:204:  BOOST_ASIO_DECL void init_ring();
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/local_function/aux_/macro/name.hpp:29:    BOOST_LOCAL_FUNCTION_AUX_SYMBOL( (init_recursion) )
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/local_function/aux_/macro/name.hpp:55:        /* run-time: the `init_recursion()` function cannot be called */ \
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/local_function/aux_/macro/name.hpp:74:    /* because init_recursion uses the local_functor so the local_functor */ \
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/geometry/algorithms/detail/buffer/buffered_piece_collection.hpp:684:    inline void init_rescale_piece(piece& pc)
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/geometry/algorithms/detail/buffer/buffered_piece_collection.hpp:735:        init_rescale_piece(pc);
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/geometry/algorithms/detail/buffer/buffered_piece_collection.hpp:743:        init_rescale_piece(pc);
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/geometry/algorithms/detail/buffer/buffered_piece_collection.hpp:760:        init_rescale_piece(pc);
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/wave/grammars/cpp_grammar.hpp:243:            self.map_rule_id_to_name.init_rule_id_to_name_map(self);
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/wave/grammars/cpp_grammar.hpp:636:        void init_rule_id_to_name_map(cpp_grammar const &self)
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/wave/grammars/cpp_grammar.hpp:642:            init_ruleid_name_map[] = {
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/wave/grammars/cpp_grammar.hpp:672:            for (int i = 0; 0 != init_ruleid_name_map[i].parser_id; ++i)
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/wave/grammars/cpp_grammar.hpp:674:                    boost::spirit::classic::parser_id(init_ruleid_name_map[i].parser_id),
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/wave/grammars/cpp_grammar.hpp:675:                    std::string(init_ruleid_name_map[i].rule_name))
+/opt/venv/lib/python3.12/site-packages/httpstan/include/Eigen/src/OrderingMethods/Eigen_Colamd.h:187:    IndexType p ;   /* used as a row pointer in init_rows_cols () */
+/opt/venv/lib/python3.12/site-packages/httpstan/include/Eigen/src/OrderingMethods/Eigen_Colamd.h:231:static IndexType init_rows_cols (IndexType n_row, IndexType n_col, RowStructure<IndexType> Row [], ColStructure<IndexType> col [], IndexType A [], IndexType p [], IndexType stats[NStats] );
+/opt/venv/lib/python3.12/site-packages/httpstan/include/Eigen/src/OrderingMethods/Eigen_Colamd.h:452:  if (!Colamd::init_rows_cols (n_row, n_col, Row, Col, A, p, stats))
+/opt/venv/lib/python3.12/site-packages/httpstan/include/Eigen/src/OrderingMethods/Eigen_Colamd.h:489:/* === init_rows_cols ======================================================= */
+/opt/venv/lib/python3.12/site-packages/httpstan/include/Eigen/src/OrderingMethods/Eigen_Colamd.h:501:static IndexType init_rows_cols  /* returns true if OK, or false otherwise */
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/geometry/policies/robustness/get_rescale_policy.hpp:102:static inline void init_rescale_policy(Geometry const& geometry,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/geometry/policies/robustness/get_rescale_policy.hpp:129:static inline void init_rescale_policy(Geometry1 const& geometry1,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/geometry/policies/robustness/get_rescale_policy.hpp:220:        init_rescale_policy(geometry, min_point, min_robust_point,
+/opt/venv/lib/python3.12/site-packages/httpstan/include/boost/geometry/policies/robustness/get_rescale_policy.hpp:244:        init_rescale_policy(geometry1, geometry2, min_point, min_robust_point,
+/opt/venv/lib/python3.12/site-packages/httpstan/services/arguments.py:61:    # special handling for init_radius. There is an interaction with 'init'.
+/opt/venv/lib/python3.12/site-packages/httpstan/services/arguments.py:62:    if arg == "init_radius":

@@ -1,0 +1,1266 @@
+itellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2666, in exception_type
+    _map_openrouter_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2228, in _map_openrouter_exception
+    raise APIConnectionError(
+litellm.exceptions.APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46728 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:35980 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:56270 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:56270 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:56270 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:56270 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:56270 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:53544 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34798 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:60546 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:60546 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38378 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:59344 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37194 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:47330 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+13:52:02 - LiteLLM:ERROR: streaming_iterator.py:1051 - Anthropic Adapter - mid-stream error: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 120, in __aiter__
+    async for chunk in self._aiohttp_response.content.iter_chunked(self.CHUNK_SIZE):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 46, in __anext__
+    rv = await self.read_func()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 459, in read
+    await self._wait("read")
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 350, in _wait
+    raise RuntimeError("Connection closed.")
+RuntimeError: Connection closed.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2021, in __anext__
+    async for chunk in self.completion_stream:  # pyright: ignore[reportOptionalIterable]  # is_async_iterable guard proves __aiter__
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/base_model_iterator.py", line 180, in __anext__
+    chunk = await self.async_response_iterator.__anext__()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1031, in aiter_lines
+    async for text in self.aiter_text():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1018, in aiter_text
+    async for byte_content in self.aiter_bytes():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 997, in aiter_bytes
+    async for raw_bytes in self.aiter_raw():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1055, in aiter_raw
+    async for raw_stream_bytes in self.stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_client.py", line 176, in __aiter__
+    async for chunk in self._stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 125, in __aiter__
+    raise httpx.ReadError(str(e)) from e
+httpx.ReadError: Connection closed.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1043, in async_anthropic_sse_wrapper
+    async for chunk in self:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 824, in __anext__
+    async for chunk in self.completion_stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 294, in __anext__
+    chunk: Final = await self._async_iter.__anext__()  # propagates StopAsyncIteration
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2131, in __anext__
+    self._log_stream_failure_and_raise(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2258, in _log_stream_failure_and_raise
+    self._handle_stream_fallback_error(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2380, in _handle_stream_fallback_error
+    raise MidStreamFallbackError(
+litellm.exceptions.MidStreamFallbackError: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:47886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:47886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42636 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42636 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:35848 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42076 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+13:54:19 - LiteLLM:ERROR: streaming_iterator.py:1051 - Anthropic Adapter - mid-stream error: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 120, in __aiter__
+    async for chunk in self._aiohttp_response.content.iter_chunked(self.CHUNK_SIZE):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 46, in __anext__
+    rv = await self.read_func()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 459, in read
+    await self._wait("read")
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 350, in _wait
+    raise RuntimeError("Connection closed.")
+RuntimeError: Connection closed.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2021, in __anext__
+    async for chunk in self.completion_stream:  # pyright: ignore[reportOptionalIterable]  # is_async_iterable guard proves __aiter__
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/base_model_iterator.py", line 180, in __anext__
+    chunk = await self.async_response_iterator.__anext__()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1031, in aiter_lines
+    async for text in self.aiter_text():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1018, in aiter_text
+    async for byte_content in self.aiter_bytes():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 997, in aiter_bytes
+    async for raw_bytes in self.aiter_raw():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1055, in aiter_raw
+    async for raw_stream_bytes in self.stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_client.py", line 176, in __aiter__
+    async for chunk in self._stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 125, in __aiter__
+    raise httpx.ReadError(str(e)) from e
+httpx.ReadError: Connection closed.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1043, in async_anthropic_sse_wrapper
+    async for chunk in self:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 824, in __anext__
+    async for chunk in self.completion_stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 294, in __anext__
+    chunk: Final = await self._async_iter.__anext__()  # propagates StopAsyncIteration
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2131, in __anext__
+    self._log_stream_failure_and_raise(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2258, in _log_stream_failure_and_raise
+    self._handle_stream_fallback_error(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2380, in _handle_stream_fallback_error
+    raise MidStreamFallbackError(
+litellm.exceptions.MidStreamFallbackError: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+13:54:20 - LiteLLM:ERROR: streaming_iterator.py:1051 - Anthropic Adapter - mid-stream error: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Response payload is not completed: <TransferEncodingError: 400, message='Not enough data to satisfy transfer length header.'>. ConnectionResetError(104, 'Connection reset by peer') Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Response payload is not completed: <TransferEncodingError: 400, message='Not enough data to satisfy transfer length header.'>. ConnectionResetError(104, 'Connection reset by peer')
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/client_proto.py", line 145, in connection_lost
+    uncompleted = self._parser.feed_eof()
+  File "aiohttp/_http_parser.pyx", line 620, in aiohttp._http_parser.HttpParser.feed_eof
+aiohttp.http_exceptions.TransferEncodingError: 400, message:
+  Not enough data to satisfy transfer length header.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 90, in map_aiohttp_exceptions
+    yield
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 120, in __aiter__
+    async for chunk in self._aiohttp_response.content.iter_chunked(self.CHUNK_SIZE):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 46, in __anext__
+    rv = await self.read_func()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 459, in read
+    await self._wait("read")
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 365, in _wait
+    await waiter
+aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed: <TransferEncodingError: 400, message='Not enough data to satisfy transfer length header.'>. ConnectionResetError(104, 'Connection reset by peer')
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2021, in __anext__
+    async for chunk in self.completion_stream:  # pyright: ignore[reportOptionalIterable]  # is_async_iterable guard proves __aiter__
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/base_model_iterator.py", li... (litellm_truncated skipped 1401 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) ...04, 'Connection reset by peer')
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1043, in async_anthropic_sse_wrapper
+    async for chunk in self:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 824, in __anext__
+    async for chunk in self.completion_stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 294, in __anext__
+    chunk: Final = await self._async_iter.__anext__()  # propagates StopAsyncIteration
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2131, in __anext__
+    self._log_stream_failure_and_raise(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2258, in _log_stream_failure_and_raise
+    self._handle_stream_fallback_error(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2380, in _handle_stream_fallback_error
+    raise MidStreamFallbackError(
+litellm.exceptions.MidStreamFallbackError: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Response payload is not completed: <TransferEncodingError: 400, message='Not enough data to satisfy transfer length header.'>. ConnectionResetError(104, 'Connection reset by peer') Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Response payload is not completed: <TransferEncodingError: 400, message='Not enough data to satisfy transfer length header.'>. ConnectionResetError(104, 'Connection reset by peer')
+13:54:20 - LiteLLM Proxy:ERROR: common_request_processing.py:4049 - litellm.proxy.proxy_server.async_data_generator(): Exception occured - litellm.APIConnectionError: APIConnectionError: OpenrouterException - Response payload is not completed: <TransferEncodingError: 400, message='Not enough data to satisfy transfer length header.'>. ConnectionResetError(104, 'Connection reset by peer')
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/client_proto.py", line 145, in connection_lost
+    uncompleted = self._parser.feed_eof()
+  File "aiohttp/_http_parser.pyx", line 620, in aiohttp._http_parser.HttpParser.feed_eof
+aiohttp.http_exceptions.TransferEncodingError: 400, message:
+  Not enough data to satisfy transfer length header.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 90, in map_aiohttp_exceptions
+    yield
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 120, in __aiter__
+    async for chunk in self._aiohttp_response.content.iter_chunked(self.CHUNK_SIZE):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 46, in __anext__
+    rv = await self.read_func()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 459, in read
+    await self._wait("read")
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 365, in _wait
+    await waiter
+aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed: <TransferEncodingError: 400, message='Not enough data to satisfy transfer length header.'>. ConnectionResetError(104, 'Connection reset by peer')
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2021, in __anext__
+    async for chunk in self.completion_stream:  # pyright: ignore[reportOptionalIterable]  # is_async_iterable guard proves __aiter__
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/base_model_iterator.py", li... (litellm_truncated skipped 5172 chars. Truncation is a stdout logging safeguard. Full, untruncated data is logged to logging callbacks (OTEL, Datadog, etc.) and at DEBUG level. To increase the truncation limit, set `MAX_STRING_LENGTH_STDOUT_LOG` in your env.) ... await self._async_generator.__anext__()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/router.py", line 5749, in stream_with_fallbacks
+    async for item in self._aanthropic_messages_recover_stream_error(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/router.py", line 5794, in _aanthropic_messages_recover_stream_error
+    raise stream_error
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/router.py", line 5698, in stream_with_fallbacks
+    async for chunk in source_iterator:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1256, in __anext__
+    return await self._byte_stream.__anext__()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1057, in async_anthropic_sse_wrapper
+    raise provider_error from e
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2339, in _handle_stream_fallback_error
+    mapped_exception = exception_type(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2745, in exception_type
+    raise e  # it's already mapped
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2666, in exception_type
+    _map_openrouter_exception(
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/exception_mapping_utils.py", line 2228, in _map_openrouter_exception
+    raise APIConnectionError(
+litellm.exceptions.APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Response payload is not completed: <TransferEncodingError: 400, message='Not enough data to satisfy transfer length header.'>. ConnectionResetError(104, 'Connection reset by peer')
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:53584 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:39650 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:57810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:57810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:57810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:57810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:57810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:57810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:57810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:57810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:57810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42466 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40402 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40402 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56946 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41730 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.19.0.2:50240 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60450 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60450 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60450 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:44850 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:55842 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:56360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:33188 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:33188 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:50134 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:50134 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:50134 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:50134 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:50134 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:50134 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36474 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36474 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36474 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36474 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36474 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36474 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36474 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+14:01:58 - LiteLLM:ERROR: streaming_iterator.py:1051 - Anthropic Adapter - mid-stream error: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 120, in __aiter__
+    async for chunk in self._aiohttp_response.content.iter_chunked(self.CHUNK_SIZE):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 46, in __anext__
+    rv = await self.read_func()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 459, in read
+    await self._wait("read")
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 350, in _wait
+    raise RuntimeError("Connection closed.")
+RuntimeError: Connection closed.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2021, in __anext__
+    async for chunk in self.completion_stream:  # pyright: ignore[reportOptionalIterable]  # is_async_iterable guard proves __aiter__
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/base_model_iterator.py", line 180, in __anext__
+    chunk = await self.async_response_iterator.__anext__()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1031, in aiter_lines
+    async for text in self.aiter_text():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1018, in aiter_text
+    async for byte_content in self.aiter_bytes():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 997, in aiter_bytes
+    async for raw_bytes in self.aiter_raw():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1055, in aiter_raw
+    async for raw_stream_bytes in self.stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_client.py", line 176, in __aiter__
+    async for chunk in self._stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 125, in __aiter__
+    raise httpx.ReadError(str(e)) from e
+httpx.ReadError: Connection closed.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1043, in async_anthropic_sse_wrapper
+    async for chunk in self:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 824, in __anext__
+    async for chunk in self.completion_stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 294, in __anext__
+    chunk: Final = await self._async_iter.__anext__()  # propagates StopAsyncIteration
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2131, in __anext__
+    self._log_stream_failure_and_raise(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2258, in _log_stream_failure_and_raise
+    self._handle_stream_fallback_error(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2380, in _handle_stream_fallback_error
+    raise MidStreamFallbackError(
+litellm.exceptions.MidStreamFallbackError: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+INFO:     172.21.0.2:36474 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36474 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36474 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37386 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37386 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37386 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37386 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:37386 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:53990 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:32872 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:51184 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43976 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43976 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:45442 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:45442 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:45442 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:41966 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42760 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42760 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42760 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42760 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:42760 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:47670 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53036 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53036 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39930 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39930 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34330 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.19.0.2:60074 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53786 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53786 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53786 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53786 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53786 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53786 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:53786 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44068 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:46518 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:43814 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:59810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:59810 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36580 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:46562 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:35532 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:43422 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:33352 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:53542 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:36156 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42658 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:47844 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:37884 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:37884 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:38060 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38218 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:37884 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:37884 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:56050 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:56050 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:56050 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:36574 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42738 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:42738 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57628 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:58360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40380 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:57166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:57166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:57166 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:52026 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:53672 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:36198 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:54934 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:35984 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:35984 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:35984 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:35984 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45216 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:54478 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:54478 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:55238 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:35924 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:33268 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:54564 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.20.0.2:54564 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:37872 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:40026 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40026 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40026 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40026 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40026 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40026 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40026 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40026 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40026 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:40026 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:49818 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.21.0.2:34956 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34956 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34956 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:52918 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:52918 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34956 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:52918 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34956 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:52918 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34956 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:52918 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34956 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:52918 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:34956 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:49284 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:57756 - "HEAD /api/hello HTTP/1.1" 404 Not Found
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38476 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38476 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38476 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38476 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38476 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.18.0.2:39168 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60158 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38476 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60158 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60158 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60158 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60158 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36834 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36834 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38300 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38300 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38300 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38300 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38300 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38300 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38300 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38300 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:38300 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48548 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34414 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:34414 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:39248 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:37656 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:37656 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:37656 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:37656 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60686 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48330 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:32886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:32886 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+14:32:06 - LiteLLM:ERROR: streaming_iterator.py:1051 - Anthropic Adapter - mid-stream error: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 120, in __aiter__
+    async for chunk in self._aiohttp_response.content.iter_chunked(self.CHUNK_SIZE):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 46, in __anext__
+    rv = await self.read_func()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 459, in read
+    await self._wait("read")
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 350, in _wait
+    raise RuntimeError("Connection closed.")
+RuntimeError: Connection closed.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2021, in __anext__
+    async for chunk in self.completion_stream:  # pyright: ignore[reportOptionalIterable]  # is_async_iterable guard proves __aiter__
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/base_model_iterator.py", line 180, in __anext__
+    chunk = await self.async_response_iterator.__anext__()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1031, in aiter_lines
+    async for text in self.aiter_text():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1018, in aiter_text
+    async for byte_content in self.aiter_bytes():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 997, in aiter_bytes
+    async for raw_bytes in self.aiter_raw():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1055, in aiter_raw
+    async for raw_stream_bytes in self.stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_client.py", line 176, in __aiter__
+    async for chunk in self._stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 125, in __aiter__
+    raise httpx.ReadError(str(e)) from e
+httpx.ReadError: Connection closed.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1043, in async_anthropic_sse_wrapper
+    async for chunk in self:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 824, in __anext__
+    async for chunk in self.completion_stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 294, in __anext__
+    chunk: Final = await self._async_iter.__anext__()  # propagates StopAsyncIteration
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2131, in __anext__
+    self._log_stream_failure_and_raise(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2258, in _log_stream_failure_and_raise
+    self._handle_stream_fallback_error(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2380, in _handle_stream_fallback_error
+    raise MidStreamFallbackError(
+litellm.exceptions.MidStreamFallbackError: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+INFO:     172.21.0.2:49406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:49406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:49406 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43796 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43796 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43796 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:43796 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+14:34:14 - LiteLLM:ERROR: streaming_iterator.py:1051 - Anthropic Adapter - mid-stream error: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 120, in __aiter__
+    async for chunk in self._aiohttp_response.content.iter_chunked(self.CHUNK_SIZE):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 46, in __anext__
+    rv = await self.read_func()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 459, in read
+    await self._wait("read")
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 350, in _wait
+    raise RuntimeError("Connection closed.")
+RuntimeError: Connection closed.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2021, in __anext__
+    async for chunk in self.completion_stream:  # pyright: ignore[reportOptionalIterable]  # is_async_iterable guard proves __aiter__
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/base_model_iterator.py", line 180, in __anext__
+    chunk = await self.async_response_iterator.__anext__()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1031, in aiter_lines
+    async for text in self.aiter_text():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1018, in aiter_text
+    async for byte_content in self.aiter_bytes():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 997, in aiter_bytes
+    async for raw_bytes in self.aiter_raw():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1055, in aiter_raw
+    async for raw_stream_bytes in self.stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_client.py", line 176, in __aiter__
+    async for chunk in self._stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 125, in __aiter__
+    raise httpx.ReadError(str(e)) from e
+httpx.ReadError: Connection closed.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1043, in async_anthropic_sse_wrapper
+    async for chunk in self:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 824, in __anext__
+    async for chunk in self.completion_stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 294, in __anext__
+    chunk: Final = await self._async_iter.__anext__()  # propagates StopAsyncIteration
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2131, in __anext__
+    self._log_stream_failure_and_raise(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2258, in _log_stream_failure_and_raise
+    self._handle_stream_fallback_error(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2380, in _handle_stream_fallback_error
+    raise MidStreamFallbackError(
+litellm.exceptions.MidStreamFallbackError: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+INFO:     172.21.0.2:60062 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60062 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60062 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60062 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:60062 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:48592 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:48592 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36404 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36404 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36404 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36404 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47210 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:58360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:58360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:58360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:58360 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47664 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:47664 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:51070 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:51070 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:51070 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48750 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:48750 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+14:38:58 - LiteLLM:ERROR: streaming_iterator.py:1051 - Anthropic Adapter - mid-stream error: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 120, in __aiter__
+    async for chunk in self._aiohttp_response.content.iter_chunked(self.CHUNK_SIZE):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 46, in __anext__
+    rv = await self.read_func()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 459, in read
+    await self._wait("read")
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 350, in _wait
+    raise RuntimeError("Connection closed.")
+RuntimeError: Connection closed.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2021, in __anext__
+    async for chunk in self.completion_stream:  # pyright: ignore[reportOptionalIterable]  # is_async_iterable guard proves __aiter__
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/base_model_iterator.py", line 180, in __anext__
+    chunk = await self.async_response_iterator.__anext__()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1031, in aiter_lines
+    async for text in self.aiter_text():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1018, in aiter_text
+    async for byte_content in self.aiter_bytes():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 997, in aiter_bytes
+    async for raw_bytes in self.aiter_raw():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1055, in aiter_raw
+    async for raw_stream_bytes in self.stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_client.py", line 176, in __aiter__
+    async for chunk in self._stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 125, in __aiter__
+    raise httpx.ReadError(str(e)) from e
+httpx.ReadError: Connection closed.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1043, in async_anthropic_sse_wrapper
+    async for chunk in self:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 824, in __anext__
+    async for chunk in self.completion_stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 294, in __anext__
+    chunk: Final = await self._async_iter.__anext__()  # propagates StopAsyncIteration
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2131, in __anext__
+    self._log_stream_failure_and_raise(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2258, in _log_stream_failure_and_raise
+    self._handle_stream_fallback_error(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2380, in _handle_stream_fallback_error
+    raise MidStreamFallbackError(
+litellm.exceptions.MidStreamFallbackError: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+INFO:     172.19.0.2:38144 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38144 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:38144 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59150 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59150 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59150 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+14:41:05 - LiteLLM:ERROR: streaming_iterator.py:1051 - Anthropic Adapter - mid-stream error: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 120, in __aiter__
+    async for chunk in self._aiohttp_response.content.iter_chunked(self.CHUNK_SIZE):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 46, in __anext__
+    rv = await self.read_func()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 459, in read
+    await self._wait("read")
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 350, in _wait
+    raise RuntimeError("Connection closed.")
+RuntimeError: Connection closed.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2021, in __anext__
+    async for chunk in self.completion_stream:  # pyright: ignore[reportOptionalIterable]  # is_async_iterable guard proves __aiter__
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/base_model_iterator.py", line 180, in __anext__
+    chunk = await self.async_response_iterator.__anext__()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1031, in aiter_lines
+    async for text in self.aiter_text():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1018, in aiter_text
+    async for byte_content in self.aiter_bytes():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 997, in aiter_bytes
+    async for raw_bytes in self.aiter_raw():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1055, in aiter_raw
+    async for raw_stream_bytes in self.stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_client.py", line 176, in __aiter__
+    async for chunk in self._stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 125, in __aiter__
+    raise httpx.ReadError(str(e)) from e
+httpx.ReadError: Connection closed.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1043, in async_anthropic_sse_wrapper
+    async for chunk in self:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 824, in __anext__
+    async for chunk in self.completion_stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 294, in __anext__
+    chunk: Final = await self._async_iter.__anext__()  # propagates StopAsyncIteration
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2131, in __anext__
+    self._log_stream_failure_and_raise(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2258, in _log_stream_failure_and_raise
+    self._handle_stream_fallback_error(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2380, in _handle_stream_fallback_error
+    raise MidStreamFallbackError(
+litellm.exceptions.MidStreamFallbackError: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+INFO:     172.19.0.2:50202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:50202 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36708 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:36708 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59986 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59986 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:59986 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:33882 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:33882 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:46890 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+14:43:32 - LiteLLM:ERROR: streaming_iterator.py:1051 - Anthropic Adapter - mid-stream error: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 120, in __aiter__
+    async for chunk in self._aiohttp_response.content.iter_chunked(self.CHUNK_SIZE):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 46, in __anext__
+    rv = await self.read_func()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 459, in read
+    await self._wait("read")
+  File "/opt/bridge/venv/lib/python3.10/site-packages/aiohttp/streams.py", line 350, in _wait
+    raise RuntimeError("Connection closed.")
+RuntimeError: Connection closed.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2021, in __anext__
+    async for chunk in self.completion_stream:  # pyright: ignore[reportOptionalIterable]  # is_async_iterable guard proves __aiter__
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/base_llm/base_model_iterator.py", line 180, in __anext__
+    chunk = await self.async_response_iterator.__anext__()
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1031, in aiter_lines
+    async for text in self.aiter_text():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1018, in aiter_text
+    async for byte_content in self.aiter_bytes():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 997, in aiter_bytes
+    async for raw_bytes in self.aiter_raw():
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_models.py", line 1055, in aiter_raw
+    async for raw_stream_bytes in self.stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/httpx/_client.py", line 176, in __aiter__
+    async for chunk in self._stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/custom_httpx/aiohttp_transport.py", line 125, in __aiter__
+    raise httpx.ReadError(str(e)) from e
+httpx.ReadError: Connection closed.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 1043, in async_anthropic_sse_wrapper
+    async for chunk in self:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 824, in __anext__
+    async for chunk in self.completion_stream:
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/llms/anthropic/pass_through/adapters/streaming_iterator.py", line 294, in __anext__
+    chunk: Final = await self._async_iter.__anext__()  # propagates StopAsyncIteration
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2131, in __anext__
+    self._log_stream_failure_and_raise(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2258, in _log_stream_failure_and_raise
+    self._handle_stream_fallback_error(e)
+  File "/opt/bridge/venv/lib/python3.10/site-packages/litellm/litellm_core_utils/streaming_handler.py", line 2380, in _handle_stream_fallback_error
+    raise MidStreamFallbackError(
+litellm.exceptions.MidStreamFallbackError: litellm.MidStreamFallbackError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed. Original exception: APIConnectionError: litellm.APIConnectionError: APIConnectionError: OpenrouterException - Connection closed.
+INFO:     172.21.0.2:54508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:54508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.21.0.2:54508 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:51764 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:51764 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:51764 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:36948 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:36948 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:36948 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45306 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45306 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:45306 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:33014 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:33014 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:33014 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:55530 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:55530 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:47848 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:58388 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:58388 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59534 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:59534 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:52770 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:52770 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:52754 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:52754 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:48000 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:48000 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:48000 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:55004 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:55004 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:56912 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:39554 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:39554 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:39554 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49930 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49930 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:49930 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44454 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44454 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:44454 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:52136 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:52136 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:52136 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:32954 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:32954 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:32954 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60598 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60598 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:60598 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:33790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
+INFO:     172.19.0.2:33790 - "POST /v1/messages?beta=true HTTP/1.1" 200 OK
