@@ -16,12 +16,24 @@ from pathlib import Path
 APP = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(APP))
 
+# A stock Windows console is cp1252: printing Vietnamese would crash the probe
+# before the session even starts, so force UTF-8 with replacement.
+for stream in (sys.stdout, sys.stderr):
+    try:
+        stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 summary = []
 
 
 def note(line):
-    print(line, flush=True)
     summary.append(line)
+    (APP / "agent-probe-summary.txt").write_text("\n".join(summary), encoding="utf-8")
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass
 
 
 note(f"platform: {platform.platform()} | python {sys.version.split()[0]} | os.name={os.name}")
@@ -102,6 +114,7 @@ for q in QUESTIONS:
     note(f"=== USER: {q}")
     session.send(q)
     seen = drain(seen)
+    (APP / "agent-probe-events.json").write_text(json.dumps(all_events, ensure_ascii=False, indent=1), encoding="utf-8")
 
 session.wait_learning()
 usage = session.snapshot(seen).get("usage")
