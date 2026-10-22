@@ -1,0 +1,133 @@
+{
+    "id": "7c827b9f-e75b-4f00-9f3b-6b31be566629",
+    "task_name": "terminal-bench/db-wal-recovery",
+    "trial_name": "db-wal-recovery__jybn73q",
+    "trial_uri": "file:///home/runner/work/manga-translator/manga-translator/jobs/2026-10-22__11-26-45/db-wal-recovery__jybn73q",
+    "task_id": {
+        "path": "/tmp/tb21/tasks/db-wal-recovery"
+    },
+    "source": "tasks",
+    "task_checksum": "571ef768d874f0016bfb31a071aea4cd1b0b71b88af2a76337f452487055e9ae",
+    "config": {
+        "task": {
+            "path": "/tmp/tb21/tasks/db-wal-recovery",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": "tasks"
+        },
+        "trial_name": "db-wal-recovery__jybn73q",
+        "trials_dir": "/home/runner/work/manga-translator/manga-translator/jobs/2026-10-22__11-26-45",
+        "install_only": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "codex",
+            "import_path": null,
+            "model_name": "reflection/beam:free",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "extra_allowed_hosts": [],
+            "kwargs": {
+                "reasoning_effort": "max",
+                "disable_web_search": true
+            },
+            "env": {
+                "OPENAI_BASE_URL": "http://172.17.0.1:18080/v1",
+                "OPENAI_API_KEY": "****"
+            },
+            "mcp_servers": []
+        },
+        "user_agent": null,
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "stream": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": null,
+            "extra_docker_compose": [],
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "3be6fbb4-e22d-40e6-8fd6-a9cc6ecddb17",
+        "source_trial": null
+    },
+    "agent_info": {
+        "name": "codex",
+        "version": "0.163.0",
+        "model_info": {
+            "name": "beam:free",
+            "provider": "openai"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 901630,
+        "n_cache_tokens": 865600,
+        "n_output_tokens": 18430,
+        "cost_usd": null,
+        "model_usage": {
+            "reflection/beam:free": {
+                "n_input_tokens": 901630,
+                "n_cache_tokens": 865600,
+                "n_output_tokens": 18430,
+                "cost_usd": null
+            }
+        },
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "verifier_environment_mode": "shared",
+    "exception_info": null,
+    "started_at": "2026-10-22T11:45:43.596149Z",
+    "finished_at": "2026-10-22T11:49:50.661489Z",
+    "environment_setup": {
+        "started_at": "2026-10-22T11:45:43.597337Z",
+        "finished_at": "2026-10-22T11:45:44.705348Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-10-22T11:45:44.705369Z",
+        "finished_at": "2026-10-22T11:47:09.112533Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-10-22T11:47:09.112666Z",
+        "finished_at": "2026-10-22T11:49:23.799776Z"
+    },
+    "verifier": {
+        "started_at": "2026-10-22T11:49:24.350007Z",
+        "finished_at": "2026-10-22T11:49:34.091166Z"
+    },
+    "step_results": null
+}

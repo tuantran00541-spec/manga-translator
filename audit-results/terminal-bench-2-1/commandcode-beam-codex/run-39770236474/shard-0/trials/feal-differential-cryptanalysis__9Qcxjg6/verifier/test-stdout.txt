@@ -1,0 +1,51 @@
+Hit:1 http://deb.debian.org/debian bookworm InRelease
+Hit:2 http://deb.debian.org/debian bookworm-updates InRelease
+Hit:3 http://deb.debian.org/debian-security bookworm-security InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.88.1-10+deb12u15).
+gcc is already the newest version (4:12.2.0-3).
+gcc set to manually installed.
+0 upgraded, 0 newly installed, 0 to remove and 24 not upgraded.
+downloading uv 0.9.5 x86_64-unknown-linux-gnu
+no checksums to verify
+installing to /root/.local/bin
+  uv
+  uvx
+everything's installed!
+
+To add $HOME/.local/bin to your PATH, either restart your shell or run:
+
+    source $HOME/.local/bin/env (sh, bash, zsh)
+    source $HOME/.local/bin/env.fish (fish)
+Downloading pygments (1.2MiB)
+Downloading setuptools (1.1MiB)
+ Downloading pygments
+ Downloading setuptools
+Installed 7 packages in 71ms
+============================= test session starts ==============================
+platform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.7.0 -- /root/.cache/uv/archive-v0/1fH9YyCLneUU_Lsd9RQ1R/bin/python
+cachedir: .pytest_cache
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collecting ... collected 1 item
+
+../tests/test_outputs.py::test_feal_differential_cryptanalysis_attack PASSED [100%]
+
+==================================== PASSES ====================================
+_________________ test_feal_differential_cryptanalysis_attack __________________
+----------------------------- Captured stdout call -----------------------------
+running build_ext
+building 'feal_in_c' extension
+creating build/temp.linux-x86_64-cpython-313
+gcc -fno-strict-overflow -Wsign-compare -DNDEBUG -g -O3 -Wall -fPIC -I. -I/root/.cache/uv/archive-v0/1fH9YyCLneUU_Lsd9RQ1R/include -I/usr/local/include/python3.13 -c feal.c -o build/temp.linux-x86_64-cpython-313/feal.o
+gcc -fno-strict-overflow -Wsign-compare -DNDEBUG -g -O3 -Wall -fPIC -I. -I/root/.cache/uv/archive-v0/1fH9YyCLneUU_Lsd9RQ1R/include -I/usr/local/include/python3.13 -c feal_module.c -o build/temp.linux-x86_64-cpython-313/feal_module.o
+creating build/lib.linux-x86_64-cpython-313
+gcc -shared build/temp.linux-x86_64-cpython-313/feal.o build/temp.linux-x86_64-cpython-313/feal_module.o -L/usr/local/lib -o build/lib.linux-x86_64-cpython-313/feal_in_c.cpython-313-x86_64-linux-gnu.so
+copying build/lib.linux-x86_64-cpython-313/feal_in_c.cpython-313-x86_64-linux-gnu.so -> 
+
+=========================== short test summary info ============================
+PASSED ../tests/test_outputs.py::test_feal_differential_cryptanalysis_attack
+============================== 1 passed in 1.42s ===============================
