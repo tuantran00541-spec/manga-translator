@@ -76,7 +76,7 @@ jobs:
           MAX_OUTPUT: ${{ needs.config.outputs.max_output }}
         run: |
           [ -n "$API_KEY" ] || { echo "::error::secret ${{ needs.config.outputs.secret }} is not set"; exit 1; }
-          npm install -g @deepseek-ai/dsh 2>&1 | tail -1
+          npm install -g --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs @deepseek-ai/dsh 2>&1 | tail -1
           dsh --version
           python3 - <<'PY'
           import json, os
@@ -84,8 +84,7 @@ jobs:
               {"id": "llm-pi-ai", "config": {"providers": {"commandcode": {
                   "apiKeyEnv": "COMMANDCODE_KEY", "api": "openai-completions",
                   "baseURL": os.environ["BASE"], "reasoning": "max",
-                  "headers": {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-                              "x-cmd-zdr": "1"},
+                  "headers": {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"},
                   "models": [{"id": os.environ["MODEL"], "maxTokens": int(os.environ["MAX_OUTPUT"]),
                                "reasoningEfforts": {"off": None, "max": "max"},
                                "compat": {"supportsReasoningEffort": True}}]}}}},

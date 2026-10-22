@@ -34,8 +34,8 @@ def _overlay(base: str, model: str, max_output: int) -> list:
             "api": "openai-completions",
             "baseURL": base,
             "reasoning": "max",
-            "headers": {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-                        "x-cmd-zdr": "1"},
+            # No x-cmd-zdr header: beam has no zero-retention upstream and the provider rejects the run with a 422.
+            "headers": {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"},
             "models": [{"id": model, "maxTokens": max_output,
                          "reasoningEfforts": {"off": None, "max": "max"},
                          "compat": {"supportsReasoningEffort": True}}]}}}},
@@ -73,7 +73,7 @@ class DshAgent(BaseInstalledAgent):
                 "(apt-get update && apt-get install -y curl ca-certificates) >/dev/null 2>&1 || apk add --no-cache curl ca-certificates >/dev/null 2>&1 || yum install -y curl >/dev/null 2>&1; fi; "
                 "arch=$(uname -m); case \"$arch\" in x86_64) na=x64;; aarch64|arm64) na=arm64;; *) echo \"unsupported arch: $arch\" >&2; exit 1;; esac; "
                 f"curl -fsSL https://nodejs.org/dist/{NODE_VERSION}/node-{NODE_VERSION}-linux-$na.tar.gz | tar xz -C {HOME} --strip-components=1; "
-                f"{HOME}/bin/npm install -g @deepseek-ai/dsh >/dev/null 2>&1; "
+                f"{HOME}/bin/npm install -g --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs @deepseek-ai/dsh >/dev/null 2>&1; "
                 f"{HOME}/bin/dsh --version; "
                 f"chmod -R a+rX {HOME}; chmod 777 {HOME}/home; "
                 # Hosts that only serve this benchmark's tasks and tests are unreachable from the task.
