@@ -116,7 +116,6 @@ for q in QUESTIONS:
     seen = drain(seen)
     (APP / "agent-probe-events.json").write_text(json.dumps(all_events, ensure_ascii=False, indent=1), encoding="utf-8")
 
-session.wait_learning()
 usage = session.snapshot(seen).get("usage")
 manager.close_all()
 
