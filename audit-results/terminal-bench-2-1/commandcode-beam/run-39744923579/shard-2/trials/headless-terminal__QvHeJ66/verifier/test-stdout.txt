@@ -1,0 +1,163 @@
+Hit:1 http://deb.debian.org/debian bookworm InRelease
+Hit:2 http://deb.debian.org/debian bookworm-updates InRelease
+Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+Get:4 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [355 kB]
+Fetched 390 kB in 0s (1511 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+vim is already the newest version (2:9.0.1378-2+deb12u2).
+0 upgraded, 0 newly installed, 0 to remove and 33 not upgraded.
+Requirement already satisfied: pytest==8.4.1 in /usr/local/lib/python3.13/site-packages (8.4.1)
+Requirement already satisfied: requests==2.32.5 in /usr/local/lib/python3.13/site-packages (2.32.5)
+Requirement already satisfied: pytest-json-ctrf==0.3.5 in /usr/local/lib/python3.13/site-packages (0.3.5)
+Requirement already satisfied: iniconfig>=1 in /usr/local/lib/python3.13/site-packages (from pytest==8.4.1) (2.3.1)
+Requirement already satisfied: packaging>=20 in /usr/local/lib/python3.13/site-packages (from pytest==8.4.1) (26.3)
+Requirement already satisfied: pluggy<2,>=1.5 in /usr/local/lib/python3.13/site-packages (from pytest==8.4.1) (1.7.0)
+Requirement already satisfied: pygments>=2.7.2 in /usr/local/lib/python3.13/site-packages (from pytest==8.4.1) (2.21.0)
+Requirement already satisfied: charset_normalizer<4,>=2 in /usr/local/lib/python3.13/site-packages (from requests==2.32.5) (3.5.2)
+Requirement already satisfied: idna<4,>=2.5 in /usr/local/lib/python3.13/site-packages (from requests==2.32.5) (3.20)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /usr/local/lib/python3.13/site-packages (from requests==2.32.5) (2.8.0)
+Requirement already satisfied: certifi>=2017.4.17 in /usr/local/lib/python3.13/site-packages (from requests==2.32.5) (2026.10.19)
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+
+[notice] A new release of pip is available: 25.2 -> 26.2.2
+[notice] To update, run: pip install --upgrade pip
+============================= test session starts ==============================
+platform linux -- Python 3.13.7, pytest-8.4.1, pluggy-1.7.0
+rootdir: /tests
+plugins: json-ctrf-0.3.5
+collected 7 items
+
+../tests/test_outputs.py ..F...F                                         [100%]
+
+=================================== FAILURES ===================================
+________________________ test_send_interactive_command _________________________
+
+    def test_send_interactive_command():
+        """Test that the headless terminal can interact with interactive programs."""
+        from headless_terminal import HeadlessTerminal
+    
+        terminal = HeadlessTerminal()
+    
+        terminal.send_keystrokes("vim /app/vim.txt")
+        terminal.send_keystrokes("\n", wait_sec=2)
+    
+        terminal.send_keystrokes("i", wait_sec=0.5)
+        terminal.send_keystrokes("\n", wait_sec=0.5)
+    
+        terminal.send_keystrokes("Hello, world!\n", wait_sec=0.5)
+    
+        terminal.send_keystrokes("\x1b", wait_sec=0.5)
+    
+        terminal.send_keystrokes(":wq")
+        terminal.send_keystrokes("\n", wait_sec=0.5)
+    
+        path = Path("/app/vim.txt")
+    
+        assert path.exists()
+>       assert path.read_text().strip() == "Hello, world!"
+E       AssertionError: assert 'Hello, world...Hello, world!' == 'Hello, world!'
+E         
+E         + Hello, world!
+E         + 
+E           Hello, world!
+
+/tests/test_outputs.py:52: AssertionError
+___________________________ test_background_commands ___________________________
+
+    def test_background_commands():
+        """Test that the headless terminal can run background commands."""
+>       subprocess.run(["mkdir", "/server"], check=True)
+
+/tests/test_outputs.py:117: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = False, timeout = None, check = True
+popenargs = (['mkdir', '/server'],), kwargs = {}
+process = <Popen: returncode: 1 args: ['mkdir', '/server']>, stdout = None
+stderr = None, retcode = 1
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout (seconds) is given and the process takes too long,
+         a TimeoutExpired exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['mkdir', '/server']' returned non-zero exit status 1.
+
+/usr/local/lib/python3.13/subprocess.py:577: CalledProcessError
+----------------------------- Captured stderr call -----------------------------
+mkdir: cannot create directory ‘/server’: File exists
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED ../tests/test_outputs.py::test_import
+PASSED ../tests/test_outputs.py::test_send_non_interactive_command
+PASSED ../tests/test_outputs.py::test_cancel_command
+PASSED ../tests/test_outputs.py::test_startup_files
+PASSED ../tests/test_outputs.py::test_shell_state_persists_between_commands
+FAILED ../tests/test_outputs.py::test_send_interactive_command - AssertionErr...
+FAILED ../tests/test_outputs.py::test_background_commands - subprocess.Called...
+========================= 2 failed, 5 passed in 8.26s ==========================
