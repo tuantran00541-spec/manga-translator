@@ -1,0 +1,15 @@
+# Bridge for the Claude Code run: Claude Code speaks the Anthropic Messages API, but the
+# beam model is only served on CommandCode's OpenAI endpoint, so this proxy translates
+# /v1/messages to /chat/completions. The API key arrives through the process environment
+# (COMMANDCODE_KEY), never in this file, and reasoning is forced to max for every request.
+model_list:
+  - model_name: "reflection/beam:free"
+    litellm_params:
+      model: "openai/reflection/beam:free"
+      api_base: "https://api.commandcode.ai/provider/v1"
+      api_key: os.environ/COMMANDCODE_KEY
+      reasoning_effort: "max"
+      extra_headers:
+        User-Agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+litellm_settings:
+  drop_params: true
