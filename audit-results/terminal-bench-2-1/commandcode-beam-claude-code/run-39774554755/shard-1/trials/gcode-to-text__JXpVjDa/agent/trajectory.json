@@ -1,0 +1,187 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "0abc66cd-f6e1-49de-8b51-f2bf775de8b6",
+  "agent": {
+    "name": "claude-code",
+    "version": "2.1.308",
+    "model_name": "reflection/beam:free",
+    "extra": {
+      "cwds": [
+        "/app"
+      ],
+      "git_branches": [
+        "HEAD"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-22T12:16:34.213Z",
+      "source": "user",
+      "message": "I have provided a file called text.gcode. This is a gcode file for a Prusa MK4s. I'm trying to print some text onto an existing object. When I run the print, what will the text show? Write the output to /app/out.txt\n",
+      "extra": {
+        "is_sidechain": false
+      }
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-22T12:16:37.996Z",
+      "source": "agent",
+      "model_name": "reflection/beam:free",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call-9d9fe9d4-33f0-42e6-86b9-cab5754f514b",
+          "function_name": "Bash",
+          "arguments": {
+            "command": "ls -la /app/text.gcode && wc -l /app/text.gcode"
+          },
+          "extra": {
+            "raw_arguments": {
+              "command": "ls -la /app/text.gcode && wc -l /app/text.gcode"
+            },
+            "tool_use_name": "Bash"
+          }
+        },
+        {
+          "tool_call_id": "call-913bfe58-a321-4777-a02a-901e069f2792",
+          "function_name": "Read",
+          "arguments": {
+            "file_path": "/app/text.gcode"
+          },
+          "extra": {
+            "raw_arguments": {
+              "file_path": "/app/text.gcode"
+            },
+            "tool_use_name": "Read"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call-9d9fe9d4-33f0-42e6-86b9-cab5754f514b",
+            "content": "-rw-r--r-- 1 root root 1661422 Oct 26  2025 /app/text.gcode\n98850 /app/text.gcode\n\n[stdout]\n-rw-r--r-- 1 root root 1661422 Oct 26  2025 /app/text.gcode\n98850 /app/text.gcode\n[metadata] {\"noOutputExpected\": false}",
+            "extra": {
+              "tool_result_metadata": {
+                "tool_use_result": {
+                  "stdout": "-rw-r--r-- 1 root root 1661422 Oct 26  2025 /app/text.gcode\n98850 /app/text.gcode",
+                  "stderr": "",
+                  "interrupted": false,
+                  "isImage": false,
+                  "noOutputExpected": false
+                },
+                "raw_tool_result": {
+                  "tool_use_id": "call-9d9fe9d4-33f0-42e6-86b9-cab5754f514b",
+                  "type": "tool_result",
+                  "content": "-rw-r--r-- 1 root root 1661422 Oct 26  2025 /app/text.gcode\n98850 /app/text.gcode",
+                  "is_error": false
+                }
+              },
+              "tool_result_is_error": false
+            }
+          },
+          {
+            "source_call_id": "call-913bfe58-a321-4777-a02a-901e069f2792",
+            "content": "File content (1.6MB) exceeds maximum allowed size (256KB). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file. Even with allow_large, this is more than fits in the context you have left this turn (other large reads in the same turn share that room).\n\n[error] tool reported failure",
+            "extra": {
+              "tool_result_metadata": {
+                "is_error": true,
+                "raw_tool_result": {
+                  "type": "tool_result",
+                  "content": "File content (1.6MB) exceeds maximum allowed size (256KB). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file. Even with allow_large, this is more than fits in the context you have left this turn (other large reads in the same turn share that room).",
+                  "is_error": true,
+                  "tool_use_id": "call-913bfe58-a321-4777-a02a-901e069f2792"
+                }
+              },
+              "tool_result_is_error": true
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 7544,
+        "completion_tokens": 84,
+        "cached_tokens": 7488,
+        "extra": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 7488,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "",
+          "iterations": [],
+          "speed": "standard",
+          "fallback_credit": null
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "stop_reason": "tool_use",
+        "is_sidechain": false,
+        "cwd": "/app"
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-10-22T12:16:42.255Z",
+      "source": "agent",
+      "model_name": "<synthetic>",
+      "message": "API Error: 400 litellm.BadRequestError: OpenAIException - {\"error\":{\"message\":\"{\\\"error\\\":{\\\"message\\\":\\\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\\\",\\\"type\\\":\\\"AI_APICallError\\\",\\\"param\\\":{\\\"error\\\":\\\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\\\",\\\"statusCode\\\":400,\\\"name\\\":\\\"AI_APICallError\\\",\\\"message\\\":\\\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\\\",\\\"isRetryable\\\":fa…(truncated)\",\"type\":\"invalid_request_error\"}}\n\nLiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.",
+      "metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "cached_tokens": 0,
+        "extra": {
+          "output_tokens_details": null,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": null,
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": null,
+          "iterations": null,
+          "speed": null,
+          "fallback_credit": null
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "stop_reason": "stop_sequence",
+        "stop_sequence": "",
+        "is_sidechain": false,
+        "cwd": "/app"
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 7544,
+    "total_completion_tokens": 84,
+    "total_cached_tokens": 7488,
+    "total_cost_usd": 0.006123999999999999,
+    "total_steps": 3,
+    "extra": {
+      "service_tiers": [
+        "standard"
+      ],
+      "total_cache_creation_input_tokens": 0,
+      "total_cache_read_input_tokens": 7488
+    }
+  }
+}

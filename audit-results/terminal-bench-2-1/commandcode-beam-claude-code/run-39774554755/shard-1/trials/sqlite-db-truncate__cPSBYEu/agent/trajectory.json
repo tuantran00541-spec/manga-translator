@@ -1,0 +1,187 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "f6c80132-39a5-4523-8fb3-479644110754",
+  "agent": {
+    "name": "claude-code",
+    "version": "2.1.308",
+    "model_name": "reflection/beam:free",
+    "extra": {
+      "cwds": [
+        "/app"
+      ],
+      "git_branches": [
+        "HEAD"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-22T12:36:12.072Z",
+      "source": "user",
+      "message": "I have a sqlite database in /app/trunc.db that was corrupted through binary truncation. Recover as many of the rows as possible, and create a JSON file in /app/recover.json. The output should have the format [{\"word\": \"testwordXY\", \"value\": M}, {\"word\": \"testwordZZ\",\"value\": N}, ...]\n",
+      "extra": {
+        "is_sidechain": false
+      }
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-22T12:36:15.783Z",
+      "source": "agent",
+      "model_name": "reflection/beam:free",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call-fd81f7bf-cb2f-438d-885a-c008963894af",
+          "function_name": "Bash",
+          "arguments": {
+            "command": "ls -l /app && file /app/trunc.db && which sqlite3 python3 hexdump xxd 2>/dev/null"
+          },
+          "extra": {
+            "raw_arguments": {
+              "command": "ls -l /app && file /app/trunc.db && which sqlite3 python3 hexdump xxd 2>/dev/null"
+            },
+            "tool_use_name": "Bash"
+          }
+        },
+        {
+          "tool_call_id": "call-7dfb7668-3619-4193-8a52-1d8a8de9f7b6",
+          "function_name": "Bash",
+          "arguments": {
+            "command": "python3 -c \"import sqlite3; print(sqlite3.sqlite_version)\""
+          },
+          "extra": {
+            "raw_arguments": {
+              "command": "python3 -c \"import sqlite3; print(sqlite3.sqlite_version)\""
+            },
+            "tool_use_name": "Bash"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call-fd81f7bf-cb2f-438d-885a-c008963894af",
+            "content": "Exit code 127\ntotal 4\n-rw-r--r-- 1 root root 4096 Aug 11  2025 trunc.db\n/bin/bash: line 1: file: command not found\n\n[error] tool reported failure",
+            "extra": {
+              "tool_result_metadata": {
+                "is_error": true,
+                "raw_tool_result": {
+                  "type": "tool_result",
+                  "content": "Exit code 127\ntotal 4\n-rw-r--r-- 1 root root 4096 Aug 11  2025 trunc.db\n/bin/bash: line 1: file: command not found",
+                  "is_error": true,
+                  "tool_use_id": "call-fd81f7bf-cb2f-438d-885a-c008963894af"
+                }
+              },
+              "tool_result_is_error": true
+            }
+          },
+          {
+            "source_call_id": "call-7dfb7668-3619-4193-8a52-1d8a8de9f7b6",
+            "content": "3.40.1\n\n[stdout]\n3.40.1\n[metadata] {\"noOutputExpected\": false}",
+            "extra": {
+              "tool_result_metadata": {
+                "tool_use_result": {
+                  "stdout": "3.40.1",
+                  "stderr": "",
+                  "interrupted": false,
+                  "isImage": false,
+                  "noOutputExpected": false
+                },
+                "raw_tool_result": {
+                  "tool_use_id": "call-7dfb7668-3619-4193-8a52-1d8a8de9f7b6",
+                  "type": "tool_result",
+                  "content": "3.40.1",
+                  "is_error": false
+                }
+              },
+              "tool_result_is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 7559,
+        "completion_tokens": 114,
+        "cached_tokens": 7552,
+        "extra": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 7552,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "",
+          "iterations": [],
+          "speed": "standard",
+          "fallback_credit": null
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "stop_reason": "tool_use",
+        "is_sidechain": false,
+        "cwd": "/app"
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-10-22T12:36:20.653Z",
+      "source": "agent",
+      "model_name": "<synthetic>",
+      "message": "API Error: 400 litellm.BadRequestError: OpenAIException - {\"error\":{\"message\":\"{\\\"error\\\":{\\\"message\\\":\\\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\\\",\\\"type\\\":\\\"AI_APICallError\\\",\\\"param\\\":{\\\"error\\\":\\\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\\\",\\\"statusCode\\\":400,\\\"name\\\":\\\"AI_APICallError\\\",\\\"message\\\":\\\"Missing required parameter: 'messages[3].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message. If 'reasoning_content' is not available, consider starting a new session or conversation history.\\\",\\\"isRetryable\\\":fa…(truncated)\",\"type\":\"invalid_request_error\"}}\n\nLiteLLM: model group 'reflection/beam:free' failed with the error above. No fallback was attempted.",
+      "metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "cached_tokens": 0,
+        "extra": {
+          "output_tokens_details": null,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": null,
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": null,
+          "iterations": null,
+          "speed": null,
+          "fallback_credit": null
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "stop_reason": "stop_sequence",
+        "stop_sequence": "",
+        "is_sidechain": false,
+        "cwd": "/app"
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 7559,
+    "total_completion_tokens": 114,
+    "total_cached_tokens": 7552,
+    "total_cost_usd": 0.006661,
+    "total_steps": 3,
+    "extra": {
+      "service_tiers": [
+        "standard"
+      ],
+      "total_cache_creation_input_tokens": 0,
+      "total_cache_read_input_tokens": 7552
+    }
+  }
+}
