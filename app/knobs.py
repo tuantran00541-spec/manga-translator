@@ -26,6 +26,7 @@ _ALL = (
     Knob("detect.edge_touch", 3, 0, 12, "a box this close to an inner band edge was cut by it"),
     Knob("detect.union_share", 0.3, 0.1, 0.9, "boxes sharing this much of the smaller one are one text"),
     Knob("detect.same_line", 0.7, 0.4, 0.95, "overlapping boxes sharing this much of the shorter height are one line"),
+    Knob("detect.same_line_x", 0.1, 0.02, 0.5, "and sharing this much of the narrower width, so an edge sliver is a neighbour, not a fragment"),
     Knob("detect.block_gap", 1.5, 0.8, 3.0, "empty band, in line heights, that separates two texts"),
     Knob("detect.block_offset", 0.15, 0.05, 0.4, "centres this far apart, as a share of the wider text, are two texts"),
     Knob("detect.block_spacing", 3.0, 1.5, 6.0, "a gap this many times the widest inner line gap parts two texts"),

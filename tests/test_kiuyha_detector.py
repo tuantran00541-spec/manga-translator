@@ -288,3 +288,35 @@ def test_two_touching_lines_are_never_cut_through():
     letters[311:312, 300:340] = True  # a speck under it
     box = _text_box(0, 338, 700, 758, 0.9, letters.copy(), "kiuyha", letters)
     assert len(_split_blocks(box)) == 1
+
+
+def test_two_bubbles_side_by_side_are_not_joined():
+    from app.detector.kiuyha_detector import _union_overlapping
+
+    pair = [(0, 0, 300, 200, 0.9), (285, 10, 585, 210, 0.9)]
+    assert len(_union_overlapping(pair)) == 2, "an edge sliver is a neighbour bubble, not a fragment"
+
+
+def test_two_texts_side_by_side_split_into_their_own_boxes():
+    from app.detector.kiuyha_detector import _split_sideways
+
+    letters = np.zeros((140, 700), bool)
+    for top in (10, 40, 70):
+        letters[top:top + 20, 20:300] = True
+        letters[top:top + 20, 420:680] = True
+    box = _text_box(0, 0, 700, 140, 0.9, letters.copy(), "kiuyha", letters)
+    pieces = _split_sideways(box)
+    assert len(pieces) == 2
+    pieces.sort(key=lambda b: b.x1)
+    assert pieces[0].x2 <= 420 and pieces[1].x1 >= 300, "each text keeps to its own side of the gutter"
+
+
+def test_one_wide_text_with_word_gaps_stays_whole():
+    from app.detector.kiuyha_detector import _split_sideways
+
+    letters = np.zeros((140, 700), bool)
+    for top in (10, 40, 70):
+        letters[top:top + 20, 20:330] = True
+        letters[top:top + 20, 345:680] = True
+    box = _text_box(0, 0, 700, 140, 0.9, letters.copy(), "kiuyha", letters)
+    assert len(_split_sideways(box)) == 1, "a word gap is not a gutter between texts"

@@ -26,6 +26,7 @@ PAGE_CONFIDENCE = 0.45  # page-scale score a box needs; drawn sound effects scor
 EDGE_TOUCH = knob("detect.edge_touch")
 UNION_SHARE = knob("detect.union_share")
 SAME_LINE = knob("detect.same_line")
+SAME_LINE_X = knob("detect.same_line_x")
 
 
 def _text_box(x1, y1, x2, y2, score, mask, source_model, letters=None) -> BubbleBox:
@@ -67,7 +68,10 @@ def _union_overlapping(boxes: list[tuple[int, int, int, int, float]]) -> list[tu
                 ix = min(a[2], b[2]) - max(a[0], b[0])
                 iy = min(a[3], b[3]) - max(a[1], b[1])
                 smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
-                same_line = iy >= SAME_LINE * min(a[3] - a[1], b[3] - b[1])
+                # One line's fragments share a real slice of the width too; two bubbles side by
+                # side only brush at the edge, and joining them centres the text between them.
+                same_line = (iy >= SAME_LINE * min(a[3] - a[1], b[3] - b[1])
+                             and ix >= SAME_LINE_X * min(a[2] - a[0], b[2] - b[0]))
                 if ix > 0 and iy > 0 and (same_line or ix * iy >= UNION_SHARE * max(1, smaller)):
                     merged[i] = [min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]), max(a[4], b[4])]
                     del merged[j]
@@ -167,6 +171,55 @@ def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
         pieces.append(_text_box(box.x1 + x1, box.y1 + y1, box.x1 + x2, box.y1 + y2, box.confidence,
                                 np.ascontiguousarray(box.mask[y1:y2, x1:x2]), box.source_model, letters[y1:y2, x1:x2]))
     return pieces
+
+
+def _line_runs(profile: np.ndarray) -> list[tuple[int, int]]:
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], profile.astype(np.int8), [0]))))
+    return [(int(start), int(end)) for start, end in zip(edges[::2], edges[1::2])]
+
+
+def _split_sideways(box: BubbleBox) -> list[BubbleBox]:
+    """A box holding two texts side by side (two bubbles the passes joined) becomes one box per text."""
+    letters = getattr(box, "letters", None)
+    if letters is None or box.mask is None or not letters.any():
+        return [box]
+    lines = _line_runs(letters.any(axis=1))
+    if len(lines) < 2:
+        return [box]
+    height = float(np.median([end - start for start, end in lines]))
+    lines = [(start, end) for start, end in lines if end - start <= BLOCK_LINE_SPREAD * height]
+    if len(lines) < 2:
+        return [box]
+    runs = _line_runs(letters.any(axis=0))
+    if len(runs) < 2:
+        return [box]
+    # The widest empty gutter decides: word gaps inside one text are far narrower than a line height.
+    width, left_end, right_start = max((nxt[0] - run[1], run[1], nxt[0]) for run, nxt in zip(runs, runs[1:]))
+    if width < BLOCK_GAP * height:
+        return [box]
+    cut = (left_end + right_start) // 2
+    sides = []
+    for offset, part in ((0, letters[:, :cut]), (cut, letters[:, cut:])):
+        part_lines = [(s, e) for s, e in _line_runs(part.any(axis=1)) if e - s <= BLOCK_LINE_SPREAD * height]
+        part_cols = np.flatnonzero(part.any(axis=0))
+        sides.append((part_lines, offset + int(part_cols[0]), offset + int(part_cols[-1]) + 1))
+    (left_lines, lx1, lx2), (right_lines, rx1, rx2) = sides
+    # Only two real texts part: each of two lines or more, neither a sliver beside the other.
+    if len(left_lines) < 2 or len(right_lines) < 2:
+        return [box]
+    if min(lx2 - lx1, rx2 - rx1) < BLOCK_MIN_WIDTH * max(lx2 - lx1, rx2 - rx1):
+        return [box]
+    reach = int(height)
+    pieces = []
+    for part_lines, sx1, sx2, band_left, band_right in (
+        (left_lines, lx1, lx2, 0, cut), (right_lines, rx1, rx2, cut, letters.shape[1]),
+    ):
+        top, bottom = part_lines[0][0], part_lines[-1][1]
+        x1, x2 = max(int(band_left), int(sx1) - reach), min(int(band_right), int(sx2) + reach)
+        y1, y2 = max(0, int(top) - reach), min(letters.shape[0], int(bottom) + reach)
+        pieces.append(_text_box(box.x1 + x1, box.y1 + y1, box.x1 + x2, box.y1 + y2, box.confidence,
+                                np.ascontiguousarray(box.mask[y1:y2, x1:x2]), box.source_model, letters[y1:y2, x1:x2]))
+    return [part for piece in pieces for part in _split_sideways(piece)]
 
 
 def _rows(output: np.ndarray, conf_threshold: float) -> np.ndarray:
@@ -322,7 +375,7 @@ class KiuyhaTextDetector:
             (x1, y1, x2, y2), mask, letters = letter_mask(image, (x1, y1, x2, y2), with_letters=True)
             if mask.any():
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters))
-        return [piece for box in _join_grown(boxes) for piece in _split_blocks(box)]
+        return [part for box in _join_grown(boxes) for piece in _split_blocks(box) for part in _split_sideways(piece)]
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
         """First-pass boxes the letter model still reads after inpainting, masked by what is left of their strokes."""
