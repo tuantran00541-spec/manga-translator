@@ -195,8 +195,24 @@ def _latest_release() -> str | None:
                  and re.match(r"[Vv]?\d+\.\d+", str(r.get("tag_name", "")))), None)
 
 
+def _ensure_temp_dir() -> None:
+    """Fall back to a folder inside the install when the system offers no usable temp dir,
+    so a deleted or unwritable Windows Temp folder cannot block an update."""
+    try:
+        tempfile.gettempdir()
+        return
+    except FileNotFoundError:
+        pass
+    fallback = BASE_DIR / "tmp"
+    fallback.mkdir(parents=True, exist_ok=True)
+    tempfile.tempdir = str(fallback)
+    for name in ("TMP", "TEMP", "TMPDIR"):
+        os.environ[name] = str(fallback)
+
+
 def _update() -> None:
     """Get the latest code and rerun the installer, which keeps models, chapters and the environment."""
+    _ensure_temp_dir()
     if _running_port() is not None:
         raise SystemExit("Manga Translator đang chạy; tắt cửa sổ đang chạy nó rồi gõ lại `manga update`.")
     info = _install_info()
