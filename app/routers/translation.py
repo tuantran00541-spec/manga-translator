@@ -283,7 +283,7 @@ async def translate_page_in_context(
     except RuntimeError as exc:
         raise HTTPException(502, str(exc)) from exc
 
-    committed = stale = unreadable = review = over_budget = 0
+    committed = stale = unreadable = review = 0
     blank_ids: list[str] = []
     art_regions: list[dict] = []  # sound effects left as art get their original pixels back
     with get_manifest_lock(req.chapter_id):
@@ -327,8 +327,6 @@ async def translate_page_in_context(
                         art_regions.append(dict(obj["region"]))
                 continue
             obj["translation"] = value
-            if candidate.get("max_chars") and len(value) > candidate["max_chars"]:
-                over_budget += 1  # the fit budget was advice; count where the model outgrew it
             obj["translation_source"] = provider.id
             if candidate.get("source_cap_px"):
                 obj["source_cap_px"] = candidate["source_cap_px"]
@@ -383,7 +381,6 @@ async def translate_page_in_context(
     result = urlify_manifest(current)
     result["translation_run"] = {
         "translated": committed, "unreadable": unreadable, "stale": stale, "review": review,
-        "over_budget": over_budget,
         "model": translated.model, "usage": translated.usage,
         "estimated_cost_usd": (
             round(translated.estimated_cost_usd, 6)

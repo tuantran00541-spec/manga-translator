@@ -363,7 +363,7 @@ class VisionPageTranslator:
             raise RuntimeError(f"{self.provider.label} returned no translation text ({exc}; finish_reason={reason})") from exc
         translations, font_choices, data = _parse_vision_payload(answer, ids)
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
-        cost = usage_cost_usd(usage, self.provider.id) if self.provider.tracks_cost else None
+        cost = usage_cost_usd(usage) if self.provider.tracks_cost else None
         return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
 
     def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens):
