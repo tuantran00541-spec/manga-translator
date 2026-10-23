@@ -2,6 +2,7 @@ data/
 logs/
 models/*.onnx
 !models/kiuyha-tuned-1023.onnx
+!models/kiuyha-tuned-s-1023.onnx
 models/*.pt
 models/*.pth
 
