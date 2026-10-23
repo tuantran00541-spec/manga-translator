@@ -203,7 +203,8 @@ def _ensure_temp_dir() -> None:
         return
     except FileNotFoundError:
         pass
-    fallback = BASE_DIR / "tmp"
+    # Beside the install, not inside it: the installer purges unknown folders in the target.
+    fallback = BASE_DIR.parent / "tmp"
     fallback.mkdir(parents=True, exist_ok=True)
     tempfile.tempdir = str(fallback)
     for name in ("TMP", "TEMP", "TMPDIR"):

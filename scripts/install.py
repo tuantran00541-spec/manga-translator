@@ -154,8 +154,12 @@ def sync_code(source: Path, target: Path) -> None:
     if target.exists() and any(target.iterdir()) and not (target / MARKER).is_file():
         raise SystemExit(f"{target} đã có dữ liệu không phải của bộ cài; chọn thư mục khác bằng MANGA_HOME.")
     target.mkdir(parents=True, exist_ok=True)
+    source_root = source.resolve()
     for entry in target.iterdir():
         if entry.name in KEEP or entry.name == MARKER:
+            continue
+        # Never purge the tree the new code is being copied from.
+        if entry.resolve() == source_root or entry.resolve() in source_root.parents:
             continue
         if entry.is_dir() and not entry.is_symlink():
             shutil.rmtree(entry)
