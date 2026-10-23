@@ -49,7 +49,7 @@ def main() -> int:
     pt_model = YOLO(str(pt_path))
     models = Path("models")
     models.mkdir(exist_ok=True)
-    targets = {"kiuyha_text_1280.onnx": {"dynamic": False}}
+    targets = {"kiuyha-tuned-1023.onnx": {"dynamic": False}}
     report = {"source": str(pt_path.name), "exports": {}}
     for name, options in targets.items():
         exported = YOLO(str(pt_path)).export(format="onnx", imgsz=1280, opset=17, **options)
@@ -65,7 +65,7 @@ def main() -> int:
     manifest = build_processing_pipeline().download_chapter(args.url, "c1ea0004", workers=2)
     pages = manifest["pages"][1:1 + args.slices]
     detectors = {name: KiuyhaTextDetector(models / name) for name in targets}
-    totals = {"pt_1280": 0.0, "kiuyha_text_1280.onnx": 0.0}
+    totals = {"pt_1280": 0.0, "kiuyha-tuned-1023.onnx": 0.0}
     counts = {"pt_1280": 0, "static_matched": 0, "static_onnx": 0}
     for page in pages:
         full = read_image(Path(page["original"]))
@@ -82,8 +82,8 @@ def main() -> int:
             runs[name] = [b[:4] for b in detector.raw_boxes(image)]
             totals[name] += time.perf_counter() - started
         counts["pt_1280"] += len(runs["pt_1280"])
-        counts["static_onnx"] += len(runs["kiuyha_text_1280.onnx"])
-        counts["static_matched"] += matched(runs["pt_1280"], runs["kiuyha_text_1280.onnx"])
+        counts["static_onnx"] += len(runs["kiuyha-tuned-1023.onnx"])
+        counts["static_matched"] += matched(runs["pt_1280"], runs["kiuyha-tuned-1023.onnx"])
     report["parity"] = counts
     report["seconds"] = {k: round(v, 2) for k, v in totals.items()}
     report["slices"] = len(pages)

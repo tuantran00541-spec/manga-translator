@@ -75,7 +75,7 @@ Across five chapters of five series, A.I mode cost about **$0.07** of model call
 
 ### Detection
 
-The Kiuyha ONNX text detector (`models/kiuyha_text_1280.onnx`) finds the text blocks of a slice. Each block gets an erase mask:
+The Kiuyha ONNX text detector (`models/kiuyha-tuned-1023.onnx`) finds the text blocks of a slice. Each block gets an erase mask:
 
 - letters read by the mask head of comic-text-detector (`models/ctd_seg.onnx`), at full and half size
 - a thin outline round every letter, even one the same colour as the background

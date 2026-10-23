@@ -113,7 +113,7 @@ jobs:
           key: processing-profile-models-b224548-v1
 
       - name: Use the committed Kiuyha, not the cached one
-        run: git checkout -- models/kiuyha_text_1280.onnx && md5sum models/kiuyha_text_1280.onnx
+        run: git checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx
 
       - name: Download LaMa when the cache has expired
         run: |

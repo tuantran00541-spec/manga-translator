@@ -67,7 +67,7 @@ Place these files in `models/`:
 
 | File | Purpose |
 | --- | --- |
-| `kiuyha_text_1280.onnx` | Text detection: Kiuyha/Manga-Bubble-YOLO boxes (in the repository) |
+| `kiuyha-tuned-1023.onnx` | Text detection: Kiuyha/Manga-Bubble-YOLO boxes (in the repository) |
 | `ctd_seg.onnx` | Letter masks: comic-text-detector, exported fast and mask-only |
 | `lama-manga-dynamic.onnx` | Preferred inpainting backend |
 | `lama.onnx` | Fixed-resolution fallback |

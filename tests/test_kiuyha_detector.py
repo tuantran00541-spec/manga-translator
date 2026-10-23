@@ -154,9 +154,9 @@ def test_leftover_mask_is_folded_into_the_saved_first_pass_box():
 
 
 def test_pipeline_detect_names_the_model_and_reports_timing():
-    detector = KiuyhaTextDetector("models/kiuyha_text_1280.onnx", session=_BlobSession())
+    detector = KiuyhaTextDetector("models/kiuyha-tuned-1023.onnx", session=_BlobSession())
     boxes = detector.detect(_text_slice())
-    assert boxes and all(b.source_model == "kiuyha_text_1280.onnx" for b in boxes)
+    assert boxes and all(b.source_model == "kiuyha-tuned-1023.onnx" for b in boxes)
     assert detector.last_metrics()["result_boxes"] == len(boxes)
 
 

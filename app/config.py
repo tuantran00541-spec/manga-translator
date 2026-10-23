@@ -9,7 +9,7 @@ OUTPUT_DIR = BASE_DIR / "data" / "output"
 MODELS_DIR = BASE_DIR / "models"
 LOGS_DIR = BASE_DIR / "logs"
 
-KIUYHA_TEXT_MODEL = MODELS_DIR / "kiuyha_text_1280.onnx"
+KIUYHA_TEXT_MODEL = MODELS_DIR / "kiuyha-tuned-1023.onnx"
 LAMA_MODEL = MODELS_DIR / "lama.onnx"
 LAMA_DYNAMIC_MODEL = MODELS_DIR / "lama-manga-dynamic.onnx"
 CTD_MODEL = MODELS_DIR / "ctd_seg.onnx"

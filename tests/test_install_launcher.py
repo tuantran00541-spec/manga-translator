@@ -43,7 +43,7 @@ def test_an_update_replaces_the_code_but_keeps_models_chapters_and_the_environme
     (source / "app").mkdir(parents=True)
     (source / "app" / "main.py").write_text("new")
     (source / "models").mkdir()
-    (source / "models" / "kiuyha_text_1280.onnx").write_text("shipped v2")
+    (source / "models" / "kiuyha-tuned-1023.onnx").write_text("shipped v2")
     (source / "run.py").write_text("run")
     for folder in ("app", "models", "data", ".venv"):
         (target / folder).mkdir(parents=True)
@@ -51,7 +51,7 @@ def test_an_update_replaces_the_code_but_keeps_models_chapters_and_the_environme
     (target / "app" / "old_module.py").write_text("stale")
     (target / "gone.py").write_text("stale")
     (target / "models" / "lama-manga-dynamic.onnx").write_text("user download")
-    (target / "models" / "kiuyha_text_1280.onnx").write_text("shipped v1")
+    (target / "models" / "kiuyha-tuned-1023.onnx").write_text("shipped v1")
     (target / "data" / "chapter.json").write_text("mine")
     (target / ".venv" / "pyvenv.cfg").write_text("env")
 
@@ -60,7 +60,7 @@ def test_an_update_replaces_the_code_but_keeps_models_chapters_and_the_environme
     assert (target / "app" / "main.py").read_text() == "new" and not (target / "app" / "old_module.py").exists()
     assert not (target / "gone.py").exists() and (target / "run.py").is_file()
     assert (target / "models" / "lama-manga-dynamic.onnx").read_text() == "user download"
-    assert (target / "models" / "kiuyha_text_1280.onnx").read_text() == "shipped v2"
+    assert (target / "models" / "kiuyha-tuned-1023.onnx").read_text() == "shipped v2"
     assert (target / "data" / "chapter.json").read_text() == "mine" and (target / ".venv" / "pyvenv.cfg").is_file()
 
 

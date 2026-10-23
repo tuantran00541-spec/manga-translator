@@ -21,7 +21,7 @@ def test_padded_free_text_mask_is_not_a_rectangle_fallback():
     box = BubbleBox(
         20, 15, 49, 36, 0.9, local_mask,
         source_role="text_segmenter",
-        source_model="kiuyha_text_1280.onnx",
+        source_model="kiuyha-tuned-1023.onnx",
         semantic_type="free_text",
         safe_to_inpaint=True,
     )
@@ -38,7 +38,7 @@ def test_validation_max_dilation_covers_both_runtime_dilation_branches():
     box = BubbleBox(
         20, 15, 49, 36, 0.9, local_mask,
         source_role="text_segmenter",
-        source_model="kiuyha_text_1280.onnx",
+        source_model="kiuyha-tuned-1023.onnx",
         semantic_type="free_text",
         safe_to_inpaint=True,
     )
@@ -108,7 +108,7 @@ class _PipelineInpainter:
 def _process(tmp_path, leftover, text=True, stubborn=False, preserve=None):
     source = BubbleBox(
         10, 10, 40, 30, 0.9, np.full((20, 30), 255, np.uint8),
-        source_role="text_segmenter", source_model="kiuyha_text_1280.onnx",
+        source_role="text_segmenter", source_model="kiuyha-tuned-1023.onnx",
         semantic_type="free_text", safe_to_inpaint=True,
     ) if text else None
     pipeline = ChapterPipeline.__new__(ChapterPipeline)
