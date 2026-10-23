@@ -162,7 +162,8 @@ def sync_code(source: Path, target: Path) -> None:
         else:
             entry.unlink()
     for entry in source.iterdir():
-        if entry.name == MARKER:
+        # An install carrying .git makes the updater treat it as a developer clone.
+        if entry.name in (MARKER, ".git"):
             continue
         destination = target / entry.name
         if entry.is_dir():
