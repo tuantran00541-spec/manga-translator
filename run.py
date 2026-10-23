@@ -34,7 +34,7 @@ if os.name == "nt" and not str(Path.home()).isascii() and "PADDLE_PDX_CACHE_HOME
 from app.config import HOST, PORT, RELOAD, WORKERS, check_models, ensure_directories  # noqa: E402
 from app.logging_config import CONSOLE, logger  # noqa: E402
 
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 
 
 def _url(port: int) -> str:
