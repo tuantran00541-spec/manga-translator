@@ -177,6 +177,24 @@ STACK_TUCK = 0.5  # deepest two lines' boxes may overlap, as a share of the shor
 STACK_OVERLAP = 0.5  # share of the narrower line two stacked lines must share across
 # Lines of one block are centred on each other; two bubbles stacked in one balloon sit off to the sides.
 STACK_CENTRE = 0.15
+STACK_LETTER_GAP = 0.75  # widest empty band between two fragments' lettering, as a share of the shorter lettering
+
+
+def _letters_continue(upper: dict, lower: dict) -> bool:
+    """One block's lettering flows on; a second bubble restarts after the band holding both outlines.
+
+    Box geometry alone cannot tell the two apart when the bubbles are the same width and
+    centred, so the letter extents decide where they are known.
+    """
+    a, b = upper.get("letter_bounds"), lower.get("letter_bounds")
+    if not (isinstance(a, dict) and isinstance(b, dict)):
+        return True
+    try:
+        gap = int(b["y1"]) - int(a["y2"])
+        shorter = min(int(a["y2"]) - int(a["y1"]), int(b["y2"]) - int(b["y1"]))
+    except (KeyError, TypeError, ValueError):
+        return True
+    return shorter <= 0 or gap <= STACK_LETTER_GAP * shorter
 
 
 def _stacked(upper, lower) -> bool:
@@ -218,7 +236,8 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
         for i, upper in enumerate(lines):
             for j in range(i + 1, len(lines)):
                 a, b = _rect(upper, 0), _rect(lines[j], 0)
-                if _stacked(*sorted((a, b), key=lambda r: r[1])):
+                pair = sorted(((a, upper), (b, lines[j])), key=lambda item: item[0][1])
+                if _stacked(pair[0][0], pair[1][0]) and _letters_continue(pair[0][1], pair[1][1]):
                     group[root(j)] = root(i)
         blocks: dict[int, list[dict]] = {}
         for i, obj in enumerate(lines):

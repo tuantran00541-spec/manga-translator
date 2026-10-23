@@ -187,6 +187,32 @@ def test_two_bubbles_of_one_balloon_stay_two_texts():
     assert join_stacked_lines(manifest, [0, 1, 2]) == 0
 
 
+def test_two_centred_bubbles_with_a_wide_letter_band_stay_two_texts():
+    from app.ai_mode.seams import join_stacked_lines
+
+    # Absolute Regression 124, slice 30: two bubbles of one width, centred, 45px apart.
+    # The box tests all pass, but the lettering restarts after a 256px band holding both outlines.
+    manifest = {"pages": [{"text_objects": [
+        {"id": "upper", "region": {"x1": 0, "y1": 1902, "x2": 766, "y2": 2433}, "translation": "",
+         "letter_bounds": {"x1": 120, "y1": 2018, "x2": 750, "y2": 2326}},
+        {"id": "lower", "region": {"x1": 154, "y1": 2478, "x2": 834, "y2": 2955}, "translation": "",
+         "letter_bounds": {"x1": 260, "y1": 2582, "x2": 761, "y2": 2855}},
+    ]}]}
+    assert join_stacked_lines(manifest, [0]) == 0
+
+
+def test_fragments_of_one_block_with_a_narrow_letter_band_still_join():
+    from app.ai_mode.seams import join_stacked_lines
+
+    manifest = {"pages": [{"text_objects": [
+        {"id": "upper", "region": {"x1": 0, "y1": 1902, "x2": 766, "y2": 2433}, "translation": "",
+         "letter_bounds": {"x1": 120, "y1": 2018, "x2": 750, "y2": 2400}},
+        {"id": "lower", "region": {"x1": 154, "y1": 2478, "x2": 834, "y2": 2955}, "translation": "",
+         "letter_bounds": {"x1": 260, "y1": 2500, "x2": 761, "y2": 2855}},
+    ]}]}
+    assert join_stacked_lines(manifest, [0]) == 1
+
+
 def test_a_sentence_split_by_a_slice_cut_is_lettered_once():
     from app.ai_mode.seams import join_stacked_lines, seam_mirror_ids, sync_seam_mirrors
 
