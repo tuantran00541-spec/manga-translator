@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image
 
-from app.render.page_renderer import letter_box, _render_in_region
+from app.render.page_renderer import fit_attempts, letter_box, _render_in_region
 
 STYLE = dict(fill="#202020", font_size=40)
 
@@ -18,8 +18,28 @@ def test_a_text_crossing_the_slice_edge_is_laid_out_as_on_the_slice_that_holds_i
 def test_lettering_goes_where_the_source_lettering_was_inside_its_region():
     obj = {"letter_bounds": {"x1": 337, "y1": 900, "x2": 1366, "y2": 1380}}
     box = letter_box(obj, (165, 827, 1336, 1441))
-    assert box == (265, 828, 1336, 1441), "72 px of room round the source, cut to the region"
+    assert box == (378, 828, 1325, 1441), "room above and below the source, pulled in at the sides"
     assert letter_box({}, (0, 0, 10, 10)) is None
+
+
+def test_a_bubbles_lettering_box_pulls_in_from_the_source_width():
+    # Absolute Regression 124, slice 35: sideways room is what pushed the lettering over the outline.
+    obj = {"container": "bubble", "letter_bounds": {"x1": 108, "y1": 875, "x2": 787, "y2": 1584}}
+    box = letter_box(obj, (0, 781, 833, 1687))
+    assert box[0] == 108 + 27 and box[2] == 787 - 27, "pulled in 4% of the lettering width on each side"
+    assert box[1] < 875 and box[3] > 1584, "vertical room is still given"
+
+
+def test_a_bubbles_wider_fallbacks_keep_the_pull_in():
+    # Absolute Regression 124, slice 39: long lettering only fits near the source size in a wide
+    # box, and the bare region fallback is what lettered it flush with the round outline.
+    obj = {"container": "bubble", "letter_bounds": {"x1": 100, "y1": 200, "x2": 800, "y2": 700}}
+    attempts = fit_attempts(obj, (40, 100, 860, 800))
+    assert attempts[0][0] == 128, "the lettering box itself is pulled in"
+    assert attempts[-1] == (68, 100, 832, 800), "the region fallback keeps the same pull-in"
+    mislabelled = fit_attempts({"container": "box", "letter_bounds": obj["letter_bounds"]}, (40, 100, 860, 800))
+    assert mislabelled[-1] == (68, 100, 832, 800), "a round bubble the model calls a box is pulled in too"
+    assert fit_attempts({}, (40, 100, 860, 800)) == [(40, 100, 860, 800)], "no lettering, no pull-in"
 
 
 def test_a_box_that_shrinks_a_short_caption_well_below_the_source_size_gives_way():

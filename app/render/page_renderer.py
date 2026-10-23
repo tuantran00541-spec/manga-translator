@@ -58,6 +58,7 @@ def _render_region_for_text_object(obj: dict) -> dict:
 
 
 LETTER_MARGIN = 0.15  # room round the source lettering, as a share of its shorter side
+FIT_INSET = 0.04  # of the lettering width, pulled in on each side
 # A box that letters the translation below this share of the source size gives way to a roomier one.
 SOURCE_SIZE_SHARE = 0.85
 
@@ -69,9 +70,38 @@ def letter_box(obj: dict, region: tuple[int, int, int, int]) -> tuple[int, int, 
         return None
     x1, y1, x2, y2 = (int(bounds[k]) for k in ("x1", "y1", "x2", "y2"))
     margin = max(8, int(LETTER_MARGIN * min(x2 - x1, y2 - y1)))
-    box = (max(region[0], x1 - margin), max(region[1], y1 - margin),
-           min(region[2], x2 + margin), min(region[3], y2 + margin))
+    # The container label is a vision guess ("box" and "spiky" have outlines too), so the fit
+    # never trusts it: a container narrows somewhere, the translation's widest line can land on a
+    # short chord, and this font's Đ bar overshoots its advance. Pull the fit in, always.
+    grow_x = -max(6, int(FIT_INSET * (x2 - x1)))
+    box = (max(region[0], x1 - grow_x), max(region[1], y1 - margin),
+           min(region[2], x2 + grow_x), min(region[3], y2 + margin))
     return box if box[0] < box[2] and box[1] < box[3] and box != tuple(region) else None
+
+
+def fit_attempts(obj: dict, coords: tuple[int, int, int, int]) -> list:
+    """Boxes tried in order for an object's lettering: the source lettering's spot, then roomier.
+
+    The wider fallbacks keep the lettering box's pull-in: the first box holding the text near
+    the source size wins, so a bare fallback letters flush with the outline when the text is long.
+    """
+    tight = letter_box(obj, coords)
+    if not tight:
+        return [coords]
+    half = tuple((a + b) // 2 for a, b in zip(tight, coords))
+    attempts = [tight, half, coords] if half != tight else [tight, coords]
+    if obj.get("container") == "bubble":
+        # A bubble gives room downward before it gives any sideways.
+        tall = (tight[0], coords[1], tight[2], coords[3])
+        if tall not in attempts:
+            attempts.insert(1, tall)
+    bounds = obj.get("letter_bounds") or {}
+    pull = (max(6, int(FIT_INSET * (int(bounds["x2"]) - int(bounds["x1"]))))
+            if isinstance(bounds, dict) and bounds.get("x2") else 0)
+    if pull:
+        attempts = [box if box[0] == tight[0] or box[2] - box[0] <= 2 * pull
+                    else (box[0] + pull, box[1], box[2] - pull, box[3]) for box in attempts]
+    return attempts
 
 
 def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, int], **style) -> Image.Image:
@@ -358,11 +388,7 @@ def render_text_objects(
         )
         # The lettering goes where the source lettering was, then halfway to the region, then the region,
         # taking the first that holds it near the source size.
-        tight = letter_box(obj, coords)
-        attempts = [coords]
-        if tight:
-            half = tuple((a + b) // 2 for a, b in zip(tight, coords))
-            attempts = [tight, half, coords] if half != tight else [tight, coords]
+        attempts = fit_attempts(obj, coords)
         try:
             for attempt, box in enumerate(attempts):
                 share = SOURCE_SIZE_SHARE if attempt < len(attempts) - 1 else 0.0
@@ -378,6 +404,8 @@ def render_text_objects(
                 "Chapter {} page {} object {} operation 'render_text_in_box' failed: {}",
                 req.chapter_id, req.page_index, oid, e,
             )
-            raise HTTPException(500, f"Chèn chữ thất bại (vùng {oid})") from e
+            error = HTTPException(500, f"Chèn chữ thất bại (vùng {oid})")
+            error.object_id = oid  # callers restore this object; the message is for humans
+            raise error from e
 
     return rendered_count

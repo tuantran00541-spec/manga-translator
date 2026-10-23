@@ -31,7 +31,10 @@ def language_name(code: str) -> str:
     return names.get((code or "").lower(), code or "auto-detected")
 
 
-def usage_cost_usd(usage: dict) -> float:
+def usage_cost_usd(usage: dict, provider_id: str = "deepseek") -> float | None:
+    """The call's cost at DeepSeek prices; None for another provider, whose prices are not DeepSeek's."""
+    if provider_id != "deepseek":
+        return None
     prompt = max(0, int(usage.get("prompt_tokens") or 0))
     hit = max(0, int(usage.get("prompt_cache_hit_tokens") or 0))
     miss_raw = usage.get("prompt_cache_miss_tokens")

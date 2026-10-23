@@ -451,7 +451,7 @@ def test_the_character_budget_is_where_the_source_letters_were():
                               "letter_bounds": {"x1": 300, "y1": 300, "x2": 700, "y2": 400}},
                              {"id": "u", "region": {"x1": 0, "y1": 900, "x2": 100, "y2": 950}}]}
     fit = {candidate["id"]: candidate["fit_region"] for candidate in translation_router._vision_candidates(page, force=False)}
-    assert fit == {"t": [285, 285, 715, 415], "u": [0, 900, 100, 950]}
+    assert fit == {"t": [316, 285, 684, 415], "u": [0, 900, 100, 950]}
 
 
 def test_glossary_vote_drops_a_misread_name_and_fixes_one_form_of_address():

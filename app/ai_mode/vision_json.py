@@ -124,7 +124,7 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
     except (TypeError, KeyError, ValueError) as exc:
         raise RuntimeError(f"{provider.label} returned no text") from exc
     usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
-    cost = usage_cost_usd(usage) if provider.tracks_cost else None
+    cost = usage_cost_usd(usage, provider.id) if provider.tracks_cost else None
     return VisionJSONResult(parse_json_object(answer), usage, cost)
 
 

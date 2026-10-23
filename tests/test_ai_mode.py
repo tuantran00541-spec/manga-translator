@@ -185,6 +185,18 @@ def _scan_stage(monkeypatch, scans, pages=8, provider=None):
     return runner, skipped, preserved
 
 
+def test_an_uncosted_call_does_not_blind_the_budget():
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER,
+                           stage="scan", stages={"scan": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["deepseek"], "key")
+    runner._add_cost(0.10)
+    runner._add_cost(None)
+    runner._add_cost(0.05)
+    assert abs(job.cost_usd - 0.15) < 1e-9, "known costs keep adding up across an uncosted call"
+    assert runner.report["cost_partial"] is True
+    assert abs(runner._remaining_budget() - (SETTINGS.budget_usd - 0.15)) < 1e-9
+
+
 def test_scan_stage_skips_credit_slices_and_preserves_logos(monkeypatch):
     runner, skipped, preserved = _scan_stage(monkeypatch, [
         SliceScan(0, False, 0.0, ((10, 10, 60, 40),)),
@@ -689,6 +701,57 @@ def test_a_line_the_translator_sees_outside_every_box_is_boxed_erased_and_transl
     asyncio.run(runner._add_unboxed(0, [[105, 105, 195, 155], [20, 300, 180, 360], [0, 0, 3, 3]], "en"))
     assert added == [[(14, 294, 186, 366)]], "a box over existing text and a speck are dropped; the line gets a margin"
     assert retried == [(0, {"new"})] and runner.report["missed_added"] == 1
+
+
+def test_a_reread_with_a_word_changed_is_still_rejected(monkeypatch):
+    import contextlib
+
+    from app.ai_mode import job as ai_job
+    from app.dependencies import pipeline
+
+    # Absolute Regression 124, slice 4, second coming: the report only clips the bubble's top edge
+    # (share 0.085, under the gate) and the retry's wording drops a word the bubble's copy has.
+    old = {"id": "old", "region": {"x1": 0, "y1": 978, "x2": 822, "y2": 1584},
+           "translation": "Đúng như Nhị công tử đã nói, suốt hơn mười ngày đường đến đây "
+                          "không hề có ai theo dõi hay bám đuôi."}
+    bubble_box = {"x1": 0, "y1": 978, "x2": 822, "y2": 1584}
+    manifest = {"pages": [{"width": 900, "height": 2131, "boxes": [bubble_box], "text_objects": [old]}]}
+    restored = []
+    monkeypatch.setattr(pipeline, "apply_review_fixes",
+                        lambda chapter, index, boxes=(), skip_covered=False: manifest["pages"][0]["text_objects"].append(
+                            {"id": "new", "region": {"x1": 0, "y1": 0, "x2": 702, "y2": 1038}}), raising=False)
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
+                        lambda chapter, index, regions: restored.append(list(regions)), raising=False)
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: manifest)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, data: None)
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda chapter_id: contextlib.nullcontext())
+    runner = _runner(monkeypatch, "translate", manifest)
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+
+    async def retry(page_index, source_lang, only):
+        manifest["pages"][0]["text_objects"][1]["translation"] = (
+            "Đúng như Nhị công tử nói, suốt hơn mười ngày đường đến đây không hề bị theo dõi hay bám đuôi.")
+
+    monkeypatch.setattr(runner, "_retry_untranslated", retry)
+    asyncio.run(runner._add_unboxed(0, [[7, 3, 773, 484]], "en"))
+    new = manifest["pages"][0]["text_objects"][1]
+    assert new["translation"] == "" and new["source_missing"], "the re-read is neutralised"
+    assert restored and runner.report["unboxed_rejected"] == 1 and runner.report["missed_added"] == 0
+
+
+def test_a_missed_line_report_reaching_into_a_box_is_a_reread(monkeypatch):
+    from app.dependencies import pipeline
+
+    existing = {"x1": 100, "y1": 100, "x2": 200, "y2": 160}
+    manifest = {"pages": [{"width": 400, "height": 600, "boxes": [existing], "text_objects": [{"id": "old"}]}]}
+    added = []
+    monkeypatch.setattr(pipeline, "apply_review_fixes",
+                        lambda chapter, index, boxes=(), skip_covered=False: added.append(list(boxes)), raising=False)
+    runner = _runner(monkeypatch, "translate", manifest)
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+    # A quarter of the report lies over the boxed line: under the old cover share it was boxed again.
+    asyncio.run(runner._add_unboxed(0, [[175, 100, 275, 160]], "en"))
+    assert added == [] and runner.report["missed_added"] == 0
 
 
 def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
