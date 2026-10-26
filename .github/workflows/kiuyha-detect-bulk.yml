@@ -1,9 +1,11 @@
 name: Kiuyha detect bulk
 
-# 100 chapters x 2 models: the committed yolo26s soup (R8+R6) vs the run-8
-# single. Per chapter: download once, rejoin strips, slice, detect every
-# slice with both models. Detection only; raw/strip/slice files are deleted
-# per chapter. The soup model is committed in this directory — no in-job
+# R9 stage: yolo26s run-9 single (committed in .github/detect-bulk/) vs
+# the run-8 single as same-run control. Same 100 chapters as the 100x2
+# phase (chapters100.jsonl), same runner (run.py, detection only,
+# imgsz=1280, conf=0.25). In run.py's stats, the "soup" slot holds R9
+# boxes and the "r8" slot holds R8 boxes. Top-2 soup is unchanged
+# (R8+R6), so no soup rebuild or re-test in this stage. No in-job
 # mixing, no md5 gate (YOLO save bytes are not reproducible across saves).
 on:
   push:
@@ -44,18 +46,18 @@ jobs:
           python -m pip install --only-binary :all: ultralytics==8.4.164
           python -m pip uninstall -y opencv-python opencv-python-headless || true
           python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
-      - name: Detect shard (soup + run-8 single)
+      - name: Detect shard (R9 single + R8 control)
         run: |
           python .github/detect-bulk/run.py --chapters .github/detect-bulk/chapters100.jsonl \
             --shard ${{ matrix.shard }} --shards 4 \
-            --model-soup .github/detect-bulk/soup-s-top2-r8-r6.pt \
+            --model-soup .github/detect-bulk/yolo26s-r9.pt \
             --model-r8 .github/detect-bulk/yolo26s-r8.pt \
             --out stats.jsonl --samples samples
       - name: Upload shard stats
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kiuyha-detect-100-shard-${{ matrix.shard }}
+          name: kiuyha-detect-r9-shard-${{ matrix.shard }}
           path: |
             stats.jsonl
             samples
