@@ -59,7 +59,7 @@ jobs:
       - name: Mix the R8+R6 soup and verify it
         run: |
           python .github/detect-bulk/make_soup.py start-r8/kiuyha-tuned-s.pt start-r6/kiuyha-tuned-s.pt soup.pt 0.5
-          echo "2e9e5b18818ebdbf9d5c9dafac9f7f18  soup.pt" | md5sum -c -
+          python .github/detect-bulk/verify_soup.py start-r8/kiuyha-tuned-s.pt start-r6/kiuyha-tuned-s.pt soup.pt
       - name: Detect shard
         run: |
           python .github/detect-bulk/run.py --chapters .github/detect-bulk/chapters.jsonl \

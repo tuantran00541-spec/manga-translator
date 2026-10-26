@@ -73,7 +73,7 @@ jobs:
         run: |
           if [ "${{ steps.stage.outputs.stage }}" = "D" ]; then
             python .github/detect-bulk/make_soup.py start-a/kiuyha-tuned-s.pt start-b/kiuyha-tuned-s.pt model.pt 0.5
-            echo "${{ steps.stage.outputs.md5 }}  model.pt" | md5sum -c -
+            python .github/detect-bulk/verify_soup.py start-a/kiuyha-tuned-s.pt start-b/kiuyha-tuned-s.pt model.pt
           else
             cp start-a/kiuyha-tuned-s.pt model.pt
           fi
