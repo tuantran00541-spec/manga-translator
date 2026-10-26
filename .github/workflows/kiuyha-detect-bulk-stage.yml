@@ -1,0 +1,94 @@
+name: Kiuyha detect bulk stage
+
+# Sequential bulk-detection stages B–D over the same 696 chapters as stage A.
+# The stage is selected by .github/detect-bulk-stage/stage.txt (see
+# read_stage.py for the format). Each stage starts with a commit that only
+# changes stage.txt. Stage A is untouched: this file's trigger paths are
+# disjoint from the stage-A workflow, so pushing here never retriggers it.
+# Stage order is enforced by when stage.txt is pushed, not by the workflow:
+# B only after stage A completes, C only after B completes AND run 9 succeeds,
+# D only after C completes (its soup is mixed locally first, then verified
+# here by md5 before detection).
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/kiuyha-detect-bulk-stage.yml"
+      - ".github/detect-bulk-stage/stage.txt"
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  PYTHONPATH: "."
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Read stage
+        id: stage
+        run: python .github/detect-bulk-stage/read_stage.py
+      - name: Install Ultralytics on CPU torch + app downloader deps
+        if: steps.stage.outputs.stage != 'HOLD'
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 pydantic==2.9.2
+          python -m playwright install --with-deps chromium
+          python -m pip install --only-binary :all: torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --only-binary :all: ultralytics==8.4.164
+          python -m pip uninstall -y opencv-python opencv-python-headless || true
+          python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
+      - name: Fetch first model artifact
+        if: steps.stage.outputs.stage != 'HOLD'
+        uses: actions/download-artifact@v4
+        with:
+          name: kiuyha-tuned-s
+          path: start-a
+          run-id: ${{ steps.stage.outputs.run1 }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fetch second model artifact (soup stages only)
+        if: steps.stage.outputs.stage == 'D'
+        uses: actions/download-artifact@v4
+        with:
+          name: kiuyha-tuned-s
+          path: start-b
+          run-id: ${{ steps.stage.outputs.run2 }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare model
+        if: steps.stage.outputs.stage != 'HOLD'
+        run: |
+          if [ "${{ steps.stage.outputs.stage }}" = "D" ]; then
+            python .github/detect-bulk/make_soup.py start-a/kiuyha-tuned-s.pt start-b/kiuyha-tuned-s.pt model.pt 0.5
+            echo "${{ steps.stage.outputs.md5 }}  model.pt" | md5sum -c -
+          else
+            cp start-a/kiuyha-tuned-s.pt model.pt
+          fi
+      - name: Detect shard
+        if: steps.stage.outputs.stage != 'HOLD'
+        run: |
+          python .github/detect-bulk/run.py --chapters .github/detect-bulk/chapters.jsonl \
+            --shard ${{ matrix.shard }} --shards 16 --model model.pt \
+            --out stats.jsonl --samples samples
+      - name: Upload shard stats
+        if: always() && steps.stage.outputs.stage != '' && steps.stage.outputs.stage != 'HOLD'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kiuyha-detect-bulk-stage-${{ steps.stage.outputs.stage }}-shard-${{ matrix.shard }}
+          path: |
+            stats.jsonl
+            samples
+          retention-days: 30
