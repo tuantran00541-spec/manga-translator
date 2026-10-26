@@ -1,14 +1,16 @@
 name: Kiuyha detect bulk
 
-# Bulk text detection over 696 Asura chapters with the yolo26s soup weights
-# (50/50 average of round 8 + round 6). Runs ONCE on push of this file.
-# Per-chapter work is detection only: download, rejoin strips, slice, detect.
-# No translate, clean, or render; raw/strip/slice files are deleted per chapter.
+# 100 chapters x 2 models: the committed yolo26s soup (R8+R6) vs the run-8
+# single. Per chapter: download once, rejoin strips, slice, detect every
+# slice with both models. Detection only; raw/strip/slice files are deleted
+# per chapter. The soup model is committed in this directory — no in-job
+# mixing, no md5 gate (YOLO save bytes are not reproducible across saves).
 on:
   push:
     branches-ignore: [main]
     paths:
       - ".github/workflows/kiuyha-detect-bulk.yml"
+      - ".github/detect-bulk/**"
 
 permissions:
   contents: write
@@ -24,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,34 +44,25 @@ jobs:
           python -m pip install --only-binary :all: ultralytics==8.4.164
           python -m pip uninstall -y opencv-python opencv-python-headless || true
           python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
-      - name: Fetch round 8 tuned-s weights
+      - name: Fetch run 8 tuned-s weights
         uses: actions/download-artifact@v4
         with:
           name: kiuyha-tuned-s
           path: start-r8
           run-id: "40249343243"
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Fetch round 6 tuned-s weights
-        uses: actions/download-artifact@v4
-        with:
-          name: kiuyha-tuned-s
-          path: start-r6
-          run-id: "39796906443"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Mix the R8+R6 soup and verify it
+      - name: Detect shard (soup + run-8 single)
         run: |
-          python .github/detect-bulk/make_soup.py start-r8/kiuyha-tuned-s.pt start-r6/kiuyha-tuned-s.pt soup.pt 0.5
-          python .github/detect-bulk/verify_soup.py start-r8/kiuyha-tuned-s.pt start-r6/kiuyha-tuned-s.pt soup.pt
-      - name: Detect shard
-        run: |
-          python .github/detect-bulk/run.py --chapters .github/detect-bulk/chapters.jsonl \
-            --shard ${{ matrix.shard }} --shards 16 --model soup.pt \
+          python .github/detect-bulk/run.py --chapters .github/detect-bulk/chapters100.jsonl \
+            --shard ${{ matrix.shard }} --shards 4 \
+            --model-soup .github/detect-bulk/soup-s-top2-r8-r6.pt \
+            --model-r8 start-r8/kiuyha-tuned-s.pt \
             --out stats.jsonl --samples samples
       - name: Upload shard stats
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kiuyha-detect-bulk-shard-${{ matrix.shard }}
+          name: kiuyha-detect-100-shard-${{ matrix.shard }}
           path: |
             stats.jsonl
             samples

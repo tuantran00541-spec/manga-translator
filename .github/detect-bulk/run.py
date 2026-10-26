@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Bulk text detection over Asura chapter URLs with the yolo26s soup weights.
+"""Bulk text detection: the committed yolo26s soup vs the run-8 single.
 
-Per chapter: download with the app's own downloader, rejoin site-cut strips,
-slice with the app's slicer, detect every slice with the soup .pt through
-ultralytics (imgsz=1280, conf=0.25). Detection only — no translate, clean,
-or render. Raw, strip, and slice files are deleted per chapter so disk stays
-bounded; only the stats JSONL and a few boxed sample crops survive.
+Per chapter: download once with the app's own downloader, rejoin site-cut
+strips, slice with the app's slicer, then detect every slice with BOTH
+models (soup .pt committed in this directory, run-8 single from its run
+artifact) through ultralytics (imgsz=1280, conf=0.25). Detection only — no
+translate, clean, or render. Raw, strip, and slice files are deleted per
+chapter so disk stays bounded; only the stats JSONL and a few sample crops
+(with soup boxes in red, run-8 boxes in blue) survive.
 
 Downloads are guarded for datacenter-runner IPs: chapters run strictly one
 after another with a pause between them, a failed chapter is retried a few
@@ -45,19 +47,27 @@ def safe_name(series):
     return "".join(c if c.isalnum() else "_" for c in series)
 
 
-def save_sample(slice_path, boxes, out_path):
+def save_sample(slice_path, boxes_soup, boxes_r8, out_path):
     img = cv2.imread(str(slice_path))
     if img is None:
         return False
-    for x1, y1, x2, y2 in boxes:
+    for x1, y1, x2, y2 in boxes_soup:
         cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 3)
+    for x1, y1, x2, y2 in boxes_r8:
+        cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 3)
     h, w = img.shape[:2]
     if w > 900:
         img = cv2.resize(img, (900, int(h * 900 / w)))
     return bool(cv2.imwrite(str(out_path), img, [cv2.IMWRITE_JPEG_QUALITY, 85]))
 
 
-def run_chapter(model, ch, work, samples_dir, sample_budget):
+def predict_boxes(model, path):
+    res = model.predict(str(path), imgsz=1280, conf=0.25, verbose=False)[0]
+    return res.boxes.xyxy.tolist() if res.boxes is not None else []
+
+
+def run_chapter(models, ch, work, samples_dir, sample_budget):
+    model_soup, model_r8 = models
     row = {
         "series": ch["series"],
         "chapter": ch["chapter"],
@@ -65,10 +75,12 @@ def run_chapter(model, ch, work, samples_dir, sample_budget):
         "n_frags": 0,
         "n_strips": 0,
         "n_slices": 0,
-        "n_boxes": 0,
+        "n_boxes_soup": 0,
+        "n_boxes_r8": 0,
         "ms_download": 0.0,
         "download_attempts": 0,
-        "ms_detect": 0.0,
+        "ms_detect_soup": 0.0,
+        "ms_detect_r8": 0.0,
         "ms_total": 0.0,
         "error": None,
     }
@@ -115,14 +127,17 @@ def run_chapter(model, ch, work, samples_dir, sample_budget):
                 if not p.name.startswith(f"{si:02d}_") or not p.exists():
                     continue
                 t0 = time.perf_counter()
-                res = model.predict(str(p), imgsz=1280, conf=0.25, verbose=False)[0]
-                row["ms_detect"] += (time.perf_counter() - t0) * 1000.0
-                boxes = res.boxes.xyxy.tolist() if res.boxes is not None else []
+                boxes_soup = predict_boxes(model_soup, p)
+                row["ms_detect_soup"] += (time.perf_counter() - t0) * 1000.0
+                t0 = time.perf_counter()
+                boxes_r8 = predict_boxes(model_r8, p)
+                row["ms_detect_r8"] += (time.perf_counter() - t0) * 1000.0
                 row["n_slices"] += 1
-                row["n_boxes"] += len(boxes)
-                if boxes and samples_left > 0:
+                row["n_boxes_soup"] += len(boxes_soup)
+                row["n_boxes_r8"] += len(boxes_r8)
+                if (boxes_soup or boxes_r8) and samples_left > 0:
                     out = samples_dir / f"{safe_name(ch['series'])}_{ch['chapter']}_s{si:02d}_{k:02d}.jpg"
-                    if save_sample(p, boxes, out):
+                    if save_sample(p, boxes_soup, boxes_r8, out):
                         samples_left -= 1
         sample_budget[0] = samples_left
     except Exception as exc:  # one bad chapter must not kill the shard
@@ -138,7 +153,8 @@ def main():
     ap.add_argument("--chapters", required=True)
     ap.add_argument("--shard", type=int, required=True)
     ap.add_argument("--shards", type=int, required=True)
-    ap.add_argument("--model", required=True)
+    ap.add_argument("--model-soup", required=True)
+    ap.add_argument("--model-r8", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--samples", required=True)
     ap.add_argument("--work", default="bulk-work")
@@ -153,7 +169,7 @@ def main():
 
     from ultralytics import YOLO
 
-    model = YOLO(args.model)
+    models = (YOLO(args.model_soup), YOLO(args.model_r8))
     samples_dir = Path(args.samples)
     samples_dir.mkdir(parents=True, exist_ok=True)
     work = Path(args.work)
@@ -167,12 +183,12 @@ def main():
     n_ok = 0
     with open(args.out, "a", encoding="utf-8") as fh:
         for i, ch in enumerate(mine):
-            row = run_chapter(model, ch, work, samples_dir, sample_budget)
+            row = run_chapter(models, ch, work, samples_dir, sample_budget)
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
             fh.flush()
             print(
                 f"[{i + 1}/{len(mine)}] {ch['series']} ch{ch['chapter']}: "
-                f"{row['n_slices']} slices {row['n_boxes']} boxes "
+                f"{row['n_slices']} slices soup={row['n_boxes_soup']} r8={row['n_boxes_r8']} "
                 f"{row['ms_total']:.0f}ms" + (f" ERROR {row['error']}" if row["error"] else ""),
                 flush=True,
             )
