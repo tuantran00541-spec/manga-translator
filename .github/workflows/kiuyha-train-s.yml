@@ -23,7 +23,7 @@ env:
   DATA_RUN: "39618262063"
   # Empty = start from the base yolo26s weights; a run id = continue from that
   # run's kiuyha-tuned-s artifact.
-  START_RUN: "39796906443"
+  START_RUN: "39856030593"
 
 jobs:
   data:
