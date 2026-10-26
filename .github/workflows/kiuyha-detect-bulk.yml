@@ -44,19 +44,12 @@ jobs:
           python -m pip install --only-binary :all: ultralytics==8.4.164
           python -m pip uninstall -y opencv-python opencv-python-headless || true
           python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
-      - name: Fetch run 8 tuned-s weights
-        uses: actions/download-artifact@v4
-        with:
-          name: kiuyha-tuned-s
-          path: start-r8
-          run-id: "40249343243"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Detect shard (soup + run-8 single)
         run: |
           python .github/detect-bulk/run.py --chapters .github/detect-bulk/chapters100.jsonl \
             --shard ${{ matrix.shard }} --shards 4 \
             --model-soup .github/detect-bulk/soup-s-top2-r8-r6.pt \
-            --model-r8 start-r8/kiuyha-tuned-s.pt \
+            --model-r8 .github/detect-bulk/yolo26s-r8.pt \
             --out stats.jsonl --samples samples
       - name: Upload shard stats
         if: always()
