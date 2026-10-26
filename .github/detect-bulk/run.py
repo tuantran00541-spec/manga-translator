@@ -6,6 +6,12 @@ slice with the app's slicer, detect every slice with the soup .pt through
 ultralytics (imgsz=1280, conf=0.25). Detection only — no translate, clean,
 or render. Raw, strip, and slice files are deleted per chapter so disk stays
 bounded; only the stats JSONL and a few boxed sample crops survive.
+
+Downloads are guarded for datacenter-runner IPs: chapters run strictly one
+after another with a pause between them, a failed chapter is retried a few
+times with growing backoff, and a run of consecutive failures stops the
+shard instead of hammering a site that already said no. The app's own
+downloader already sends a browser User-Agent and retries single images.
 """
 import argparse
 import json
@@ -22,6 +28,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app.downloader.registry import download_chapter  # noqa: E402
 from app.downloader.slicer import slice_image  # noqa: E402
 from join import group_fragments, join_fragments  # noqa: E402
+
+CHAPTER_DELAY_SECONDS = 1.5
+CHAPTER_MAX_ATTEMPTS = 3
+CHAPTER_RETRY_BACKOFF_BASE = 5.0
+MAX_CONSECUTIVE_FAILURES = 10
 
 
 def shard_bounds(n, shard, shards):
@@ -56,6 +67,7 @@ def run_chapter(model, ch, work, samples_dir, sample_budget):
         "n_slices": 0,
         "n_boxes": 0,
         "ms_download": 0.0,
+        "download_attempts": 0,
         "ms_detect": 0.0,
         "ms_total": 0.0,
         "error": None,
@@ -66,9 +78,23 @@ def run_chapter(model, ch, work, samples_dir, sample_budget):
         raw_dir = cdir / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
         t_dl = time.perf_counter()
-        frags = download_chapter(ch["url"], raw_dir)
+        frags = None
+        last_error = None
+        for attempt in range(1, CHAPTER_MAX_ATTEMPTS + 1):
+            try:
+                frags = download_chapter(ch["url"], raw_dir)
+                if frags:
+                    break
+                last_error = "no fragments downloaded"
+            except Exception as exc:  # network / 429 / 5xx / page fetch failures
+                last_error = f"{type(exc).__name__}: {exc}"
+            if attempt < CHAPTER_MAX_ATTEMPTS:
+                time.sleep(CHAPTER_RETRY_BACKOFF_BASE * attempt)
+        row["download_attempts"] = attempt
         row["ms_download"] = (time.perf_counter() - t_dl) * 1000.0
         if not frags:
+            if last_error and last_error != "no fragments downloaded":
+                raise ValueError(last_error)
             frags = sorted(p for p in raw_dir.iterdir() if p.is_file())
         if not frags:
             raise ValueError("no fragments downloaded")
@@ -135,6 +161,10 @@ def main():
     sample_budget = [args.sample_budget]
 
     print(f"shard {args.shard}/{args.shards}: chapters {start}..{stop - 1} ({len(mine)} chapters)", flush=True)
+    consecutive_failures = 0
+    failed = []
+    stopped_early = None
+    n_ok = 0
     with open(args.out, "a", encoding="utf-8") as fh:
         for i, ch in enumerate(mine):
             row = run_chapter(model, ch, work, samples_dir, sample_budget)
@@ -146,7 +176,37 @@ def main():
                 f"{row['ms_total']:.0f}ms" + (f" ERROR {row['error']}" if row["error"] else ""),
                 flush=True,
             )
-    print(f"shard {args.shard} done: {len(mine)} chapters", flush=True)
+            if row["error"]:
+                consecutive_failures += 1
+                failed.append({
+                    "series": row["series"],
+                    "chapter": row["chapter"],
+                    "url": row["url"],
+                    "error": str(row["error"])[:300],
+                })
+                if consecutive_failures > MAX_CONSECUTIVE_FAILURES:
+                    stopped_early = (
+                        f"suspected block: {consecutive_failures} consecutive chapter failures"
+                    )
+                    print(f"STOPPING SHARD EARLY: {stopped_early}", flush=True)
+                    break
+            else:
+                consecutive_failures = 0
+                n_ok += 1
+            if i + 1 < len(mine):
+                time.sleep(CHAPTER_DELAY_SECONDS)
+        fh.write(json.dumps({
+            "summary": True,
+            "shard": args.shard,
+            "n_attempted": i + 1,
+            "n_ok": n_ok,
+            "n_failed": len(failed),
+            "failed_chapters": failed,
+            "stopped_early": stopped_early,
+        }, ensure_ascii=False) + "\n")
+        fh.flush()
+    print(f"shard {args.shard} done: {n_ok} ok, {len(failed)} failed"
+          + (f", STOPPED EARLY: {stopped_early}" if stopped_early else ""), flush=True)
 
 
 if __name__ == "__main__":
