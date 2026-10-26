@@ -1,0 +1,76 @@
+name: Kiuyha detect bulk
+
+# Bulk text detection over 696 Asura chapters with the yolo26s soup weights
+# (50/50 average of round 8 + round 6). Runs ONCE on push of this file.
+# Per-chapter work is detection only: download, rejoin strips, slice, detect.
+# No translate, clean, or render; raw/strip/slice files are deleted per chapter.
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/kiuyha-detect-bulk.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  PYTHONPATH: "."
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Ultralytics on CPU torch + app downloader deps
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 pydantic==2.9.2
+          python -m playwright install --with-deps chromium
+          python -m pip install --only-binary :all: torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --only-binary :all: ultralytics==8.4.164
+          python -m pip uninstall -y opencv-python opencv-python-headless || true
+          python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
+      - name: Fetch round 8 tuned-s weights
+        uses: actions/download-artifact@v4
+        with:
+          name: kiuyha-tuned-s
+          path: start-r8
+          run-id: "40249343243"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fetch round 6 tuned-s weights
+        uses: actions/download-artifact@v4
+        with:
+          name: kiuyha-tuned-s
+          path: start-r6
+          run-id: "39796906443"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Mix the R8+R6 soup and verify it
+        run: |
+          python .github/detect-bulk/make_soup.py start-r8/kiuyha-tuned-s.pt start-r6/kiuyha-tuned-s.pt soup.pt 0.5
+          echo "2e9e5b18818ebdbf9d5c9dafac9f7f18  soup.pt" | md5sum -c -
+      - name: Detect shard
+        run: |
+          python .github/detect-bulk/run.py --chapters .github/detect-bulk/chapters.jsonl \
+            --shard ${{ matrix.shard }} --shards 16 --model soup.pt \
+            --out stats.jsonl --samples samples
+      - name: Upload shard stats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kiuyha-detect-bulk-shard-${{ matrix.shard }}
+          path: |
+            stats.jsonl
+            samples
+          retention-days: 30
