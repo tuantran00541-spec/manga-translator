@@ -1,7 +1,7 @@
 {
  "clean": {
   "slices": 120,
-  "text_left": 2,
+  "text_left": 1,
   "ghosts": 0,
   "items": [
    {
@@ -15,69 +15,57 @@
     ],
     "px": 271,
     "share": 0.02
-   },
-   {
-    "slice": 135,
-    "kind": "text",
-    "box": [
-     441,
-     2984,
-     1092,
-     3235
-    ],
-    "px": 677,
-    "share": 0.021
    }
   ]
  },
  "text": {
-  "objects": 155,
-  "translated": 139,
-  "untranslated": 16,
-  "needs_review": 4,
+  "objects": 158,
+  "translated": 144,
+  "untranslated": 14,
+  "needs_review": 2,
   "kept_original": 0
  },
  "spend": {
-  "cost_usd": 0.09283,
-  "requests": 180,
-  "prompt_tokens": 801284,
-  "images": 244,
-  "wall_s": 845.8,
+  "cost_usd": 0.09152,
+  "requests": 181,
+  "prompt_tokens": 769385,
+  "images": 245,
+  "wall_s": 1422.3,
   "by_stage": {
    "scan": {
     "requests": 68,
     "images": 135,
     "prompt_tokens": 185431,
-    "completion_tokens": 20208
+    "completion_tokens": 20133
    },
    "glossary": {
     "requests": 3,
     "images": 0,
-    "prompt_tokens": 4116,
-    "completion_tokens": 2593
+    "prompt_tokens": 4142,
+    "completion_tokens": 2448
    },
    "review": {
     "requests": 12,
     "images": 12,
     "prompt_tokens": 50591,
-    "completion_tokens": 4770
+    "completion_tokens": 5460
    },
    "translate": {
-    "requests": 97,
-    "images": 97,
-    "prompt_tokens": 561146,
-    "completion_tokens": 30988
+    "requests": 98,
+    "images": 98,
+    "prompt_tokens": 529221,
+    "completion_tokens": 29228
    }
   },
   "stage_s": {
-   "download": 8.8,
-   "scan": 115.4,
-   "clean": 373.5,
-   "review": 51.1,
-   "translate": 257.0,
+   "download": 13.6,
+   "scan": 127.0,
+   "clean": 913.0,
+   "review": 111.2,
+   "translate": 213.9,
    "polish": 0.0,
-   "render": 37.0,
-   "finish": 0.1
+   "render": 40.3,
+   "finish": 0.2
   }
  },
  "polish": {
@@ -87,8 +75,8 @@
   "still_flagged": 0
  },
  "fit": {
-  "does_not_fit": 2,
-  "under_20px": 4,
+  "does_not_fit": 0,
+  "under_20px": 3,
   "split_word": 0,
   "missing_glyphs": 0
  }
