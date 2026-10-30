@@ -1,0 +1,92 @@
+name: Kiuyha stable eval
+
+# Evaluation ONLY: old stable checkpoints (S R4, S R3, N N2) + run-9 baseline,
+# raw detection on EXACTLY ONE chapter (Wimp ch.27, 89 slices) on GitHub runners.
+# No deploy, no training, no translate/render, no River cost.
+# Triggered by pushing this file (workflow_dispatch on a branch-only workflow
+# 404s via the API, so push is the reliable trigger — same lesson as the
+# bubble-harvest and cpu-detector-probe workflows).
+# This workflow's only trigger path is its own file, so pushing it cannot
+# retrigger kiuyha-train.yml / kiuyha-train-s.yml / kiuyha-train-ns.yml,
+# and it never touches .github/kiuyha/**.
+# Slices come from release cpu-probe-slices-v1 (wimp30-slices.zip), verified
+# byte-for-byte (89 files + full sha256 of the 5 key slices) before any
+# detection runs; a mismatch fails the run hard.
+# Detection uses the app's OWN KiuyhaTextDetector.detect_slice, conf 0.25 —
+# the same raw-detect method as the N+S evaluation. Note: detect_slice is
+# identical between this branch and the local uncommitted tree (the local
+# detector diff touches only the text_boxes path), so runner numbers are
+# directly comparable to the recorded raw references (run-9 255, NS-N 270,
+# NS-S 262, soup 245).
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/kiuyha-stable-eval.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install light deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install onnxruntime numpy opencv-python-headless Pillow pyclipper shapely
+
+      - name: Record runner specs
+        run: |
+          mkdir -p stable-eval-results
+          {
+            echo "runner: ubuntu-latest (GitHub-hosted)"
+            echo "nproc: $(nproc)"
+            grep -m1 "model name" /proc/cpuinfo
+            free -h
+            python --version
+            pip show onnxruntime numpy opencv-python-headless Pillow 2>/dev/null | grep -E "Name|Version"
+          } | tee stable-eval-results/specs.txt
+
+      - name: Download checkpoint ONNX artifacts
+        run: |
+          mkdir -p ckpt
+          GH_TOKEN=${{ github.token }} gh run download 39716413022 -n kiuyha-tuned-s-onnx -D ckpt/s-r4 || echo "S_R4_DOWNLOAD_FAILED" > stable-eval-results/s-r4_DOWNLOAD_FAILED.txt
+          GH_TOKEN=${{ github.token }} gh run download 39677810289 -n kiuyha-tuned-s-onnx -D ckpt/s-r3 || echo "S_R3_DOWNLOAD_FAILED" > stable-eval-results/s-r3_DOWNLOAD_FAILED.txt
+          GH_TOKEN=${{ github.token }} gh run download 38672322338 -n kiuyha-tuned-all-onnx -D ckpt/n-n2 || echo "N_N2_DOWNLOAD_FAILED" > stable-eval-results/n-n2_DOWNLOAD_FAILED.txt
+          GH_TOKEN=${{ github.token }} gh run download 40340455331 -n kiuyha-tuned-s-onnx -D ckpt/run9 || echo "RUN9_DOWNLOAD_FAILED" > stable-eval-results/run9_DOWNLOAD_FAILED.txt
+          find ckpt -name "*.onnx" 2>/dev/null
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Download Wimp ch.27 slices (release asset, verified in script)
+        run: |
+          gh release download cpu-probe-slices-v1 -p wimp30-slices.zip
+          mkdir -p slices && python -c "import zipfile; zipfile.ZipFile('wimp30-slices.zip').extractall('slices')"
+          ls slices | wc -l
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Run detection (script embedded as base64, push contains only this file)
+        run: |
+          echo 'IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJLaXV5aGEgc3RhYmxlLWV2YWwgcnVubmVyIGRldGVjdGlvbiAoR2l0SHViIEFjdGlvbnMgdmVyc2lvbikuCgpSdW5zIHRoZSBhcHAncyBPV04gS2l1eWhhVGV4dERldGVjdG9yLmRldGVjdF9zbGljZSAoY29uZiAwLjI1KSDigJQgdGhlIHNhbWUKcmF3LWRldGVjdCBtZXRob2QgYXMga2l1eWhhLW5zLWV2YWwvZGV0ZWN0LnB5IGFuZCBraXV5aGEtcnVuOS9jb21wYXJlXzMwYzY0ZTI3Lmpzb24g4oCUCm9uIFdpbXAgY2guMjcncyA4OSBzbGljZXMgZm9yIDMgb2xkIHN0YWJsZSBjaGVja3BvaW50cyArIHRoZSBydW4tOSBiYXNlbGluZQpyZS1tZWFzdXJlZCBvbiBpZGVudGljYWwgY29kZS4gVmVyaWZpZXMgdGhlIHNsaWNlcyBieXRlLWZvci1ieXRlIGFnYWluc3QgdGhlCmxvY2FsIGNvcGllcyAoODkgZmlsZXMgKyBmdWxsIHNoYTI1NiBvZiB0aGUgNSBrZXkgc2xpY2VzKSBhbmQgRkFJTFMgSEFSRCBvbgphbnkgbWlzbWF0Y2gsIHNvIGEgd3JvbmcgY2hhcHRlciBjYW4gbmV2ZXIgc2lsZW50bHkgcGFzcyBhcyBhIHJlc3VsdC4KQSBtaXNzaW5nIGNoZWNrcG9pbnQgbW9kZWwgaXMgcmVjb3JkZWQgVU5BVkFJTEFCTEUgYW5kIHRoZSByZXN0IGNvbnRpbnVlLgoiIiIKaW1wb3J0IGhhc2hsaWIKaW1wb3J0IGpzb24KaW1wb3J0IHN5cwppbXBvcnQgdGltZQppbXBvcnQgdHJhY2ViYWNrCmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKaW1wb3J0IG51bXB5IGFzIG5wCmZyb20gUElMIGltcG9ydCBJbWFnZSwgSW1hZ2VEcmF3CgpTTElDRVMgPSBQYXRoKCJzbGljZXMiKQpPVVQgPSBQYXRoKCJzdGFibGUtZXZhbC1yZXN1bHRzIikKT1VULm1rZGlyKGV4aXN0X29rPVRydWUpCgpLRVlfSEFTSEVTID0gewogICAgIjAwMl8wMS5wbmciOiAiNTllOTY1NDYxMDczZDYwYTkxOTY3YWZiZWQ1NjdlOGJmYjU3YTk3ZWQ3YzVlMzViYWY0NjAwMGU1YjhjZWI0OSIsCiAgICAiMDE2XzAyLnBuZyI6ICJkNGQ5NDE4MzhmYmQ2ODYxNDk4ZWEwM2M2MjNkNDMyNTJlM2RmZjQ1MzAwNGRjYTkwZDczYzljNDcxYTY0ZjIyIiwKICAgICIwMTdfMDIucG5nIjogImFlZWY1MTY3NjM2YWRmMjAzODYxZGI3YzQ3ZWY2ZmEwNmVmYzkzYWZiNGEyMGExY2YyYTI2OTZkMjc1ZGMzYjkiLAogICAgIjAwNV8wMy5wbmciOiAiOGQ0OGFlNTAyODY1ZGFkN2M4NjM5NmZhNzQ2NTY5Y2QzZWFjZjNjN2VjYzhiMGNhZDcwMjk1M2ZjOTIxNDEyOCIsCiAgICAiMDE4XzAyLnBuZyI6ICJiZWE2YTYxMGIxZjM4YzA4NmVkZGY0YTVkOTJmMmMzNWQ4ZGE2YmUyZGYzMTE5NWJiMmQ1YjBiYzI2ZTNiZGUzIiwKfQpLRVlfU1RFTVMgPSBbIjAwMl8wMSIsICIwMTZfMDIiLCAiMDE3XzAyIiwgIjAwNV8wMyIsICIwMThfMDIiXQoKTU9ERUxTID0gWwogICAgKCJzLXI0IiwgImNrcHQvcy1yNCIsIDM5NzE2NDEzMDIyLCAia2l1eWhhLXR1bmVkLXMtb25ueCIpLAogICAgKCJzLXIzIiwgImNrcHQvcy1yMyIsIDM5Njc3ODEwMjg5LCAia2l1eWhhLXR1bmVkLXMtb25ueCIpLAogICAgKCJuLW4yIiwgImNrcHQvbi1uMiIsIDM4NjcyMzIyMzM4LCAia2l1eWhhLXR1bmVkLWFsbC1vbm54IiksCiAgICAoInJ1bjkiLCAiY2twdC9ydW45IiwgNDAzNDA0NTUzMzEsICJraXV5aGEtdHVuZWQtcy1vbm54IiksCl0KCgpkZWYgdmVyaWZ5X3NsaWNlcygpOgogICAgZmlsZXMgPSBzb3J0ZWQoU0xJQ0VTLmdsb2IoIioucG5nIikpCiAgICBhc3NlcnQgbGVuKGZpbGVzKSA9PSA4OSwgZiJleHBlY3RlZCA4OSBzbGljZXMsIGdvdCB7bGVuKGZpbGVzKX0iCiAgICBmb3IgbmFtZSwgZXhwIGluIEtFWV9IQVNIRVMuaXRlbXMoKToKICAgICAgICBnb3QgPSBoYXNobGliLnNoYTI1NigoU0xJQ0VTIC8gbmFtZSkucmVhZF9ieXRlcygpKS5oZXhkaWdlc3QoKQogICAgICAgIGFzc2VydCBnb3QgPT0gZXhwLCBmInNsaWNlIHtuYW1lfSBoYXNoIG1pc21hdGNoOiBnb3Qge2dvdH0sIHdhbnQge2V4cH0iCiAgICBwcmludChmInNsaWNlcyB2ZXJpZmllZDogODkgZmlsZXMsIHtsZW4oS0VZX0hBU0hFUyl9IGtleSBoYXNoZXMgbWF0Y2giLCBmbHVzaD1UcnVlKQogICAgcmV0dXJuIGZpbGVzCgoKZGVmIG1haW4oKToKICAgIGZpbGVzID0gdmVyaWZ5X3NsaWNlcygpCiAgICBzeXMucGF0aC5pbnNlcnQoMCwgIi4iKQogICAgZnJvbSBhcHAuZGV0ZWN0b3Iua2l1eWhhX2RldGVjdG9yIGltcG9ydCBLaXV5aGFUZXh0RGV0ZWN0b3IKCiAgICBzdW1tYXJ5ID0ge30KICAgIGZvciBuYW1lLCBtZGlyLCBydW5faWQsIGFydGlmYWN0IGluIE1PREVMUzoKICAgICAgICBvbm54ID0gc29ydGVkKFBhdGgobWRpcikucmdsb2IoIioub25ueCIpKQogICAgICAgIGlmIG5vdCBvbm54OgogICAgICAgICAgICAoT1VUIC8gZiJib3hlc197bmFtZX1fVU5BVkFJTEFCTEUudHh0Iikud3JpdGVfdGV4dCgKICAgICAgICAgICAgICAgIGYibW9kZWwge25hbWV9IChydW4ge3J1bl9pZH0sIGFydGlmYWN0IHthcnRpZmFjdH0pOiBPTk5YIG5vdCBkb3dubG9hZGVkXG4iKQogICAgICAgICAgICBwcmludChmIlt7bmFtZX1dIFVOQVZBSUxBQkxFIChydW4ge3J1bl9pZH0sIGFydGlmYWN0IHthcnRpZmFjdH0pIiwgZmx1c2g9VHJ1ZSkKICAgICAgICAgICAgc3VtbWFyeVtuYW1lXSA9IE5vbmUKICAgICAgICAgICAgY29udGludWUKICAgICAgICB0cnk6CiAgICAgICAgICAgIGRldCA9IEtpdXloYVRleHREZXRlY3RvcihzdHIob25ueFswXSksIGNvbmZfdGhyZXNob2xkPTAuMjUpCiAgICAgICAgICAgIHdhcm0gPSBucC5hc2FycmF5KEltYWdlLm9wZW4oZmlsZXNbMF0pLmNvbnZlcnQoIlJHQiIpKQogICAgICAgICAgICBkZXQuZGV0ZWN0X3NsaWNlKHdhcm0pICAjIHdhcm11cCwgZXhjbHVkZWQgZnJvbSB0aW1pbmdzCiAgICAgICAgICAgIHBlcl9zbGljZSwgdGltaW5ncyA9IHt9LCB7fQogICAgICAgICAgICBmb3IgZiBpbiBmaWxlczoKICAgICAgICAgICAgICAgIGltZyA9IG5wLmFzYXJyYXkoSW1hZ2Uub3BlbihmKS5jb252ZXJ0KCJSR0IiKSkKICAgICAgICAgICAgICAgIHQxID0gdGltZS5wZXJmX2NvdW50ZXIoKQogICAgICAgICAgICAgICAgYm94ZXMgPSBkZXQuZGV0ZWN0X3NsaWNlKGltZykKICAgICAgICAgICAgICAgIHRpbWluZ3NbZi5uYW1lXSA9IHRpbWUucGVyZl9jb3VudGVyKCkgLSB0MQogICAgICAgICAgICAgICAgcGVyX3NsaWNlW2YubmFtZV0gPSBbCiAgICAgICAgICAgICAgICAgICAgeyJ4MSI6IGludCh4MSksICJ5MSI6IGludCh5MSksICJ4MiI6IGludCh4MiksICJ5MiI6IGludCh5MiksCiAgICAgICAgICAgICAgICAgICAgICJjb25maWRlbmNlIjogZmxvYXQoYyl9IGZvciB4MSwgeTEsIHgyLCB5MiwgYyBpbiBib3hlcwogICAgICAgICAgICAgICAgXQogICAgICAgICAgICAgICAgaWYgZi5zdGVtIGluIEtFWV9TVEVNUzoKICAgICAgICAgICAgICAgICAgICBpbSA9IEltYWdlLmZyb21hcnJheShpbWcpCiAgICAgICAgICAgICAgICAgICAgZCA9IEltYWdlRHJhdy5EcmF3KGltKQogICAgICAgICAgICAgICAgICAgIGZvciBiIGluIHBlcl9zbGljZVtmLm5hbWVdOgogICAgICAgICAgICAgICAgICAgICAgICBkLnJlY3RhbmdsZShbYlsieDEiXSwgYlsieTEiXSwgYlsieDIiXSwgYlsieTIiXV0sCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIG91dGxpbmU9InJlZCIsIHdpZHRoPTMpCiAgICAgICAgICAgICAgICAgICAgaW0uc2F2ZShPVVQgLyBmIm92ZXJsYXlfe25hbWV9X3tmLnN0ZW19LnBuZyIpCiAgICAgICAgICAgIGFsbGIgPSBbYiBmb3IgdiBpbiBwZXJfc2xpY2UudmFsdWVzKCkgZm9yIGIgaW4gdl0KICAgICAgICAgICAgYXJlYXMgPSBbKGJbIngyIl0gLSBiWyJ4MSJdKSAqIChiWyJ5MiJdIC0gYlsieTEiXSkgZm9yIGIgaW4gYWxsYl0KICAgICAgICAgICAgY29uZnMgPSBbYlsiY29uZmlkZW5jZSJdIGZvciBiIGluIGFsbGJdCiAgICAgICAgICAgIHJlYyA9IHsibW9kZWwiOiBuYW1lLCAicnVuX2lkIjogcnVuX2lkLCAiYXJ0aWZhY3QiOiBhcnRpZmFjdCwKICAgICAgICAgICAgICAgICAgICJvbm54Ijogc3RyKG9ubnhbMF0pLCAiY29uZiI6IDAuMjUsICJzbGljZXMiOiBsZW4ocGVyX3NsaWNlKSwKICAgICAgICAgICAgICAgICAgICJ0b3RhbCI6IGxlbihhbGxiKSwKICAgICAgICAgICAgICAgICAgICJtZWFuX2FyZWEiOiBmbG9hdChucC5tZWFuKGFyZWFzKSkgaWYgYXJlYXMgZWxzZSAwLjAsCiAgICAgICAgICAgICAgICAgICAibWVhbl9jb25mIjogZmxvYXQobnAubWVhbihjb25mcykpIGlmIGNvbmZzIGVsc2UgMC4wLAogICAgICAgICAgICAgICAgICAgIm1lYW5fc19wZXJfc2xpY2UiOiBmbG9hdChucC5tZWFuKGxpc3QodGltaW5ncy52YWx1ZXMoKSkpKSwKICAgICAgICAgICAgICAgICAgICJ0b3RhbF9zIjogZmxvYXQoc3VtKHRpbWluZ3MudmFsdWVzKCkpKSwKICAgICAgICAgICAgICAgICAgICJwZXJfc2xpY2VfY291bnRzIjoge2s6IGxlbih2KSBmb3IgaywgdiBpbiBwZXJfc2xpY2UuaXRlbXMoKX0sCiAgICAgICAgICAgICAgICAgICAidGltaW5nc19zIjogdGltaW5ncywgImJveGVzIjogcGVyX3NsaWNlfQogICAgICAgICAgICAoT1VUIC8gZiJib3hlc197bmFtZX0uanNvbiIpLndyaXRlX3RleHQoanNvbi5kdW1wcyhyZWMsIGluZGVudD0xKSkKICAgICAgICAgICAgcHJpbnQoZiJbe25hbWV9XSB7bGVuKGFsbGIpfSBib3hlcyAvIHtsZW4ocGVyX3NsaWNlKX0gc2xpY2VzLCAiCiAgICAgICAgICAgICAgICAgIGYibWVhbl9hcmVhIHtyZWNbJ21lYW5fYXJlYSddOi4wZn0sIG1lYW5fY29uZiB7cmVjWydtZWFuX2NvbmYnXTouNGZ9LCAiCiAgICAgICAgICAgICAgICAgIGYie3JlY1snbWVhbl9zX3Blcl9zbGljZSddOi4yZn1zL3NsaWNlIiwgZmx1c2g9VHJ1ZSkKICAgICAgICAgICAgc3VtbWFyeVtuYW1lXSA9IHtrOiByZWNba10gZm9yIGsgaW4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAoInRvdGFsIiwgIm1lYW5fYXJlYSIsICJtZWFuX2NvbmYiLCAibWVhbl9zX3Blcl9zbGljZSIpfQogICAgICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgICAgIChPVVQgLyBmImJveGVzX3tuYW1lfV9GQUlMRUQudHh0Iikud3JpdGVfdGV4dCh0cmFjZWJhY2suZm9ybWF0X2V4YygpKQogICAgICAgICAgICBwcmludChmIlt7bmFtZX1dIEZBSUxFRCIsIGZsdXNoPVRydWUpCiAgICAgICAgICAgIHN1bW1hcnlbbmFtZV0gPSBOb25lCiAgICAoT1VUIC8gInN1bW1hcnkuanNvbiIpLndyaXRlX3RleHQoanNvbi5kdW1wcyhzdW1tYXJ5LCBpbmRlbnQ9MSkpCiAgICBwcmludCgiRE9ORSIsIGZsdXNoPVRydWUpCgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIG1haW4oKQo=' | base64 -d > detect_runner.py
+          python detect_runner.py
+        env:
+          PYTHONUNBUFFERED: "1"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: stable-eval-detection
+          path: stable-eval-results/
+          if-no-files-found: error
