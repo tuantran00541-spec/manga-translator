@@ -1,0 +1,411 @@
+name: Kiuyha broad clean eval
+
+# Clean-only evaluation of 3 detector checkpoints on 30 Asura series x ch1-3
+# (90 chapters, 270 chapter-cleans). Clean uses ONLY local models (detector +
+# CTD + LaMa): no translation, no render, no paid provider API, no native job.
+# This run is explicitly permitted by the user (2026-10-30 23:22 order).
+#
+# Triggered by pushing THIS file only (workflow_dispatch on a branch-only
+# workflow 404s via the API, so push is the reliable trigger). This file's
+# own push path is its only trigger path, so pushing it cannot retrigger
+# kiuyha-train.yml / kiuyha-train-s.yml / kiuyha-train-ns.yml or anything
+# under .github/kiuyha/ (those trigger only on their own files).
+#
+# Models (user's correction: S R4 is REPLACED by S R9, the current default):
+#   n2: N N2, run 38672322338, artifact kiuyha-tuned-all-onnx
+#   r3: S R3, run 39677810289, artifact kiuyha-tuned-s-onnx
+#   r9: S R9 = current default, run 40340455331, artifact kiuyha-tuned-s-onnx
+# Runner clean code = this branch's committed app code (NOT the local
+# uncommitted tree: detector dedup/merge + LaMa tall-strip tiling differ).
+# Model comparison is internally valid (same code for all 3); R9-on-runner
+# is the control, not the local run-9 chapter.
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/kiuyha-broad-eval.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONPATH: "."
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: matrix
+        run: |
+          python - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json
+          SERIES = [{'slug': 'nano-machine', 'url': 'https://asurascans.com/comics/nano-machine-3ebcc5a9'}, {'slug': 'surviving-the-game-as-a-barbarian', 'url': 'https://asurascans.com/comics/surviving-the-game-as-a-barbarian-3ebcc5a9'}, {'slug': 'kidnapped-dragons', 'url': 'https://asurascans.com/comics/kidnapped-dragons-3ebcc5a9'}, {'slug': 'war-of-extinction', 'url': 'https://asurascans.com/comics/war-of-extinction-3ebcc5a9'}, {'slug': 'hellogin', 'url': 'https://asurascans.com/comics/hellogin-3ebcc5a9'}, {'slug': 'regressor-instruction-manual', 'url': 'https://asurascans.com/comics/regressor-instruction-manual-3ebcc5a9'}, {'slug': 'return-of-the-disaster-class-hero', 'url': 'https://asurascans.com/comics/return-of-the-disaster-class-hero-3ebcc5a9'}, {'slug': 'murim-psychopath', 'url': 'https://asurascans.com/comics/murim-psychopath-3ebcc5a9'}, {'slug': 'pick-me-up-infinite-gacha', 'url': 'https://asurascans.com/comics/pick-me-up-infinite-gacha-3ebcc5a9'}, {'slug': 'star-embracing-swordmaster', 'url': 'https://asurascans.com/comics/star-embracing-swordmaster-3ebcc5a9'}, {'slug': 'return-of-the-mount-hua-sect', 'url': 'https://asurascans.com/comics/return-of-the-mount-hua-sect-3ebcc5a9'}, {'slug': 'villain-to-kill', 'url': 'https://asurascans.com/comics/villain-to-kill-3ebcc5a9'}, {'slug': 'my-dragon-girlfriends-return', 'url': 'https://asurascans.com/comics/my-dragon-girlfriends-return-3ebcc5a9'}, {'slug': 'the-forgotten-field', 'url': 'https://asurascans.com/comics/the-forgotten-field-3ebcc5a9'}, {'slug': 'roleplayer', 'url': 'https://asurascans.com/comics/is-it-bad-that-the-main-character-s-a-roleplayer-3ebcc5a9'}, {'slug': 'echoes-of-the-reverse-planet', 'url': 'https://asurascans.com/comics/echoes-of-the-reverse-planet-3ebcc5a9'}, {'slug': 'a-regressors-tale-of-cultivation', 'url': 'https://asurascans.com/comics/a-regressors-tale-of-cultivation-3ebcc5a9'}, {'slug': 'my-slain-dragon-bride', 'url': 'https://asurascans.com/comics/my-slain-dragon-bride-3ebcc5a9'}, {'slug': 'sss-class-suicide-hunter', 'url': 'https://asurascans.com/comics/sss-class-suicide-hunter-3ebcc5a9'}, {'slug': 'a-villains-will-to-survive', 'url': 'https://asurascans.com/comics/a-villains-will-to-survive-3ebcc5a9'}, {'slug': 'return-of-the-sss-class-ranker', 'url': 'https://asurascans.com/comics/return-of-the-sss-class-ranker-3ebcc5a9'}, {'slug': 'the-heavenly-demon-cant-live-a-normal-life', 'url': 'https://asurascans.com/comics/the-heavenly-demon-cant-live-a-normal-life-3ebcc5a9'}, {'slug': 'solo-leveling', 'url': 'https://asurascans.com/comics/solo-leveling-3ebcc5a9'}, {'slug': 'damn-reincarnation', 'url': 'https://asurascans.com/comics/damn-reincarnation-3ebcc5a9'}, {'slug': 'murim-login', 'url': 'https://asurascans.com/comics/murim-login-3ebcc5a9'}, {'slug': 'life-of-a-magic-academy-mage', 'url': 'https://asurascans.com/comics/life-of-a-magic-academy-mage-3ebcc5a9'}, {'slug': 'absolute-necromancer', 'url': 'https://asurascans.com/comics/absolute-necromancer-3ebcc5a9'}, {'slug': 'shadow-slave', 'url': 'https://asurascans.com/comics/shadow-slave-05c7df14'}, {'slug': 'demon-king', 'url': 'https://asurascans.com/comics/demon-king-7f873ca6'}, {'slug': 'regressing-with-the-kings-power', 'url': 'https://asurascans.com/comics/regressing-with-the-kings-power-46f09241'}]
+          models = [
+              {"key": "n2", "run": "38672322338", "artifact": "kiuyha-tuned-all-onnx",
+               "file": "kiuyha-tuned.onnx",
+               "sha": "6e4fae52858da1f5b6ad8d911b4e23e95893666722c03241f8330333d01ca017"},
+              {"key": "r3", "run": "39677810289", "artifact": "kiuyha-tuned-s-onnx",
+               "file": "kiuyha-tuned-s.onnx",
+               "sha": "8e73c928f08607cc3ff0c2a2c9341d732ae3934034ba97148757d678767e8363"},
+              {"key": "r9", "run": "40340455331", "artifact": "kiuyha-tuned-s-onnx",
+               "file": "kiuyha-tuned-s.onnx",
+               "sha": "21ab05cfaabb8bc710d04526c8ac78090891af3881e79002ec46c14f6a603f5f"},
+          ]
+          matrix = [{"slug": s["slug"], "url": s["url"], **m} for s in SERIES for m in models]
+          print("matrix=" + json.dumps(matrix))
+          EOF
+
+  broad:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        job: ${{ fromJson(needs.setup.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch the checkpoint ONNX (artifact of its own train run)
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.job.artifact }}
+          path: model
+          run-id: ${{ matrix.job.run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the model is the right checkpoint, not anything else
+        run: |
+          ls -la model/
+          echo "${{ matrix.job.sha }}  model/${{ matrix.job.file }}" | sha256sum -c -
+      - name: Install app downloader + detector + clean deps (harvest recipe)
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 pydantic==2.9.2 onnxruntime
+          python -m playwright install --with-deps chromium
+          python -m pip uninstall -y opencv-python opencv-python-headless || true
+          python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
+      - name: Download LaMa when missing
+        run: |
+          mkdir -p models
+          test -f models/lama-manga-dynamic.onnx || curl -fsSL -o models/lama-manga-dynamic.onnx \
+            https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/lama-manga-dynamic.onnx
+          echo "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9  models/lama-manga-dynamic.onnx" | sha256sum -c -
+      - name: Build the CTD mask model
+        uses: ./.github/actions/build-ctd
+      - name: Record runner specs
+        run: |
+          mkdir -p broad-out
+          { echo "nproc: $(nproc)"; grep -m1 "model name" /proc/cpuinfo; free -h | head -2; } > broad-out/runner_specs.txt
+          cat broad-out/runner_specs.txt
+      - name: Write the broad-clean driver
+        run: |
+          mkdir -p scripts
+          cat > scripts/broad_clean.py <<'PYEOF'
+          #!/usr/bin/env python3
+          """Broad clean-only eval: one Asura series x one detector model.
+
+          Download ch1-3 with the app's own downloader (plus the harvest fallback for
+          restored-path chapters), slice with the app's slicer, then clean every slice
+          with the app's own ChapterPipeline._process_page and a swapped detector
+          ONNX. Clean-only: no translation, no render, no paid API. Outputs per-chapter
+          boxes.json (raw detect_slice boxes + pipeline boxes), cleaned slices as JPG,
+          and raw-sample JPGs for eye-checking, plus summary.json.
+
+          Usage:
+            PYTHONPATH=. python scripts/broad_clean.py \
+              --series-url https://asurascans.com/comics/nano-machine-3ebcc5a9 \
+              --slug nano-machine --chapters 1,2,3 \
+              --model model/kiuyha-tuned-s.onnx --model-key r9 \
+              --model-sha256 21ab05cf... --out broad-out --workers 4
+          """
+          from __future__ import annotations
+
+          import argparse
+          import hashlib
+          import json
+          import re
+          import shutil
+          import sys
+          import time
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          import numpy as np
+          from PIL import Image
+
+          _PAGE_ALT_RE = re.compile(r"^\s*Page\s+(\d+)\b", re.IGNORECASE)
+          _ASSET_PREFIXES = ("/asura-images/chapters/", "/asura-images/chapters-restored/")
+          _RAW_SAMPLE_EVERY = 8
+          _CONF = 0.25
+
+
+          def model_sha(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open("rb") as f:
+                  for chunk in iter(lambda: f.read(1 << 20), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+
+          def _image_width(path: Path) -> int:
+              with Image.open(path) as image:
+                  return image.width
+
+
+          def fallback_download(chapter_url: str, raw_dir: Path) -> tuple[list[Path], str]:
+              """Static extraction accepting both chapter-asset prefixes (harvest pattern)."""
+              from bs4 import BeautifulSoup
+
+              from app.downloader.asura import AsuraScansStaticAdapter
+              from app.downloader.http import read_response_limited, safe_get
+              from app.downloader.image_urls import best_srcset_candidate, resolve_image_candidate
+              from app.downloader.registry import STATIC_ADAPTER
+              from app.parameters import DOWNLOAD_JS_MIN_IMAGE_WIDTH, REMOTE_CONNECT_TIMEOUT_SECONDS
+              from app.security import MAX_REMOTE_DOCUMENT_BYTES
+
+              adapter = AsuraScansStaticAdapter()
+              response = safe_get(
+                  chapter_url,
+                  headers=adapter.headers,
+                  timeout=REMOTE_CONNECT_TIMEOUT_SECONDS,
+                  stream=True,
+              )
+              try:
+                  body = read_response_limited(response, limit_bytes=MAX_REMOTE_DOCUMENT_BYTES)
+              finally:
+                  response.close()
+              soup = BeautifulSoup(body, "lxml")
+              by_page: dict[int, str] = {}
+              for img in soup.select("img[alt]"):
+                  match = _PAGE_ALT_RE.match(str(img.get("alt") or ""))
+                  if not match:
+                      continue
+                  url = resolve_image_candidate(
+                      chapter_url,
+                      best_srcset_candidate(img.get("data-srcset") or img.get("srcset")),
+                      img.get("data-src"),
+                      img.get("data-original"),
+                      img.get("data-lazy"),
+                      img.get("src"),
+                  )
+                  if not url:
+                      continue
+                  if not any(urlparse(url).path.startswith(p) for p in _ASSET_PREFIXES):
+                      continue
+                  by_page.setdefault(int(match.group(1)), url)
+              ordered: list[str] = []
+              page_number = 1
+              while page_number in by_page:
+                  ordered.append(by_page[page_number])
+                  page_number += 1
+              if not ordered:
+                  return [], ""
+              prefix_used = next(
+                  (p for p in _ASSET_PREFIXES if urlparse(ordered[0]).path.startswith(p)), ""
+              )
+              paths = STATIC_ADAPTER.download_urls(ordered, raw_dir, referer=chapter_url)
+              pages = [p for p in paths if _image_width(p) >= DOWNLOAD_JS_MIN_IMAGE_WIDTH]
+              if not pages:
+                  return paths, prefix_used
+              for p in set(paths) - set(pages):
+                  p.unlink(missing_ok=True)
+              return pages, prefix_used
+
+
+          def main() -> int:
+              ap = argparse.ArgumentParser()
+              ap.add_argument("--series-url", required=True)
+              ap.add_argument("--slug", required=True)
+              ap.add_argument("--chapters", required=True, help="comma-separated, e.g. 1,2,3")
+              ap.add_argument("--model", required=True)
+              ap.add_argument("--model-key", required=True)
+              ap.add_argument("--model-sha256", required=True)
+              ap.add_argument("--out", required=True)
+              ap.add_argument("--workers", type=int, default=4)
+              args = ap.parse_args()
+
+              from app.detector.kiuyha_detector import KiuyhaTextDetector
+              from app.downloader.registry import download_chapter
+              from app.downloader.slicer import slice_image
+              from app.pipeline import ChapterPipeline
+
+              out = Path(args.out)
+              out.mkdir(parents=True, exist_ok=True)
+              model_path = Path(args.model)
+              sha = model_sha(model_path)
+              if sha != args.model_sha256:
+                  print(f"MODEL SHA MISMATCH: got {sha}, want {args.model_sha256}", flush=True)
+                  return 2
+              det = KiuyhaTextDetector(str(model_path), conf_threshold=_CONF)
+              pipe = ChapterPipeline()
+              pipe._detector = KiuyhaTextDetector(str(model_path), conf_threshold=_CONF)
+              _ = pipe.inpainter  # fail fast if LaMa/CTD models are missing
+
+              summary: dict = {
+                  "slug": args.slug,
+                  "series_url": args.series_url,
+                  "model_key": args.model_key,
+                  "model": model_path.name,
+                  "model_sha256": sha,
+                  "conf": _CONF,
+                  "chapters": {},
+              }
+              any_ok = False
+              for ch in [int(c) for c in args.chapters.split(",") if c.strip()]:
+                  t0 = time.time()
+                  ch_url = f"{args.series_url}/chapter/{ch}"
+                  ch_dir = out / f"chapter_{ch}"
+                  raw_dir = ch_dir / "raw"
+                  slice_dir = ch_dir / "sliced"
+                  clean_dir = ch_dir / "clean"
+                  sample_dir = ch_dir / "raw_sample"
+                  work_dir = ch_dir / "work"
+                  for d in (raw_dir, slice_dir, clean_dir, sample_dir, work_dir):
+                      d.mkdir(parents=True, exist_ok=True)
+                  download_path = "app"
+                  try:
+                      pages = download_chapter(ch_url, raw_dir)
+                      if not pages:
+                          raise ValueError("app downloader returned no pages")
+                  except Exception as exc:
+                      print(f"[{args.slug} ch{ch}] app path failed ({exc}); trying fallback", flush=True)
+                      try:
+                          pages, _prefix = fallback_download(ch_url, raw_dir)
+                          download_path = "fallback"
+                      except Exception as exc2:
+                          summary["chapters"][ch] = {"chapter_url": ch_url, "error": str(exc2)[:500]}
+                          print(f"[{args.slug} ch{ch}] DOWNLOAD FAILED: {exc2}", flush=True)
+                          continue
+                      if not pages:
+                          summary["chapters"][ch] = {
+                              "chapter_url": ch_url,
+                              "error": "app path and fallback both yielded no pages",
+                          }
+                          print(f"[{args.slug} ch{ch}] DOWNLOAD FAILED: no pages", flush=True)
+                          continue
+                  slices: list[Path] = []
+                  for i, page in enumerate(pages):
+                      slices.extend(slice_image(page, slice_dir, f"{i:03d}"))
+                  slice_files = sorted(slice_dir.glob("*.png"))
+                  # raw detection (detect_slice) for the detection table
+                  slice_records = []
+                  raw_total = 0
+                  for s in slice_files:
+                      img = np.array(Image.open(s).convert("RGB"))
+                      boxes = det.detect_slice(img)
+                      box_list = [[int(x1), int(y1), int(x2), int(y2), float(c)]
+                                  for x1, y1, x2, y2, c in boxes]
+                      raw_total += len(box_list)
+                      areas = [(x2 - x1) * (y2 - y1) for x1, y1, x2, y2, _c in box_list]
+                      confs = [c for _x1, _y1, _x2, _y2, c in box_list]
+                      slice_records.append({
+                          "slice": s.name,
+                          "raw_boxes": len(box_list),
+                          "raw_mean_area": round(sum(areas) / len(areas), 1) if areas else None,
+                          "raw_mean_conf": round(sum(confs) / len(confs), 4) if confs else None,
+                          "boxes": box_list,
+                      })
+                  # clean every slice (4 workers, same pattern as the N/S full cleans)
+                  def _clean_one(s: Path):
+                      try:
+                          res = pipe._process_page(s, work_dir, screen=None)
+                          tmp = Path(res["tmp_clean"])
+                          dst = clean_dir / f"{s.stem}.jpg"
+                          Image.open(tmp).convert("RGB").save(dst, quality=88)
+                          pboxes = res["boxes"]
+                          return s.name, len(pboxes), None
+                      except Exception as exc:  # noqa: BLE001 - record and continue
+                          return s.name, 0, str(exc)[:300]
+
+                  clean_total = 0
+                  clean_errors: dict[str, str] = {}
+                  pipe_boxes: dict[str, int] = {}
+                  with ThreadPoolExecutor(max_workers=args.workers) as pool:
+                      futs = {pool.submit(_clean_one, s): s for s in slice_files}
+                      for fut in as_completed(futs):
+                          name, n, err = fut.result()
+                          if err:
+                              clean_errors[name] = err
+                          else:
+                              clean_total += n
+                          pipe_boxes[name] = n
+                  for rec in slice_records:
+                      rec["pipeline_boxes"] = pipe_boxes.get(rec["slice"], 0)
+                  # raw samples for eye-checking (every 8th slice, JPG)
+                  for i, s in enumerate(slice_files):
+                      if i % _RAW_SAMPLE_EVERY == 0:
+                          sample = Image.open(s).convert("RGB")
+                          sample.thumbnail((900, 9000))
+                          sample.save(sample_dir / f"{s.stem}.jpg", quality=85)
+                  (ch_dir / "boxes.json").write_text(json.dumps({
+                      "slug": args.slug,
+                      "chapter": ch,
+                      "chapter_url": ch_url,
+                      "download_path": download_path,
+                      "model_key": args.model_key,
+                      "model": model_path.name,
+                      "model_sha256": sha,
+                      "pages": len(pages),
+                      "slices": slice_records,
+                  }, indent=1))
+                  summary["chapters"][ch] = {
+                      "chapter_url": ch_url,
+                      "download_path": download_path,
+                      "pages": len(pages),
+                      "slices": len(slice_files),
+                      "raw_boxes": raw_total,
+                      "pipeline_boxes": clean_total,
+                      "clean_errors": clean_errors,
+                      "seconds": round(time.time() - t0, 1),
+                  }
+                  any_ok = True
+                  print(f"[{args.slug} ch{ch}] via={download_path} pages={len(pages)} "
+                        f"slices={len(slice_files)} raw_boxes={raw_total} "
+                        f"pipeline_boxes={clean_total} errors={len(clean_errors)} "
+                        f"{time.time() - t0:.0f}s", flush=True)
+              (out / "summary.json").write_text(json.dumps(summary, indent=1))
+              return 0 if any_ok else 1
+
+
+          if __name__ == "__main__":
+              sys.exit(main())
+
+          PYEOF
+          python -c "import ast; ast.parse(open('scripts/broad_clean.py').read()); print('driver parses OK')"
+      - name: Clean one series x one model (ch1-3, clean-only)
+        run: |
+          python scripts/broad_clean.py \
+            --series-url "${{ matrix.job.url }}" \
+            --slug "${{ matrix.job.slug }}" \
+            --chapters 1,2,3 \
+            --model "model/${{ matrix.job.file }}" \
+            --model-key "${{ matrix.job.key }}" \
+            --model-sha256 "${{ matrix.job.sha }}" \
+            --out broad-out --workers 4
+      - name: Upload cleans + boxes (raws/slices/work excluded by path list)
+        uses: actions/upload-artifact@v4
+        with:
+          name: broad-${{ matrix.job.slug }}-${{ matrix.job.key }}
+          path: |
+            broad-out/summary.json
+            broad-out/runner_specs.txt
+            broad-out/chapter_*/boxes.json
+            broad-out/chapter_*/clean/**
+            broad-out/chapter_*/raw_sample/**
+          retention-days: 90
+          if-no-files-found: error
