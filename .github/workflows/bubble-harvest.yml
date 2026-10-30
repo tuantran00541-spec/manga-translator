@@ -1,0 +1,111 @@
+name: Bubble harvest
+
+# Inference-only harvest of REAL bubble/text detection data from Asura
+# Scans, to fix the thin-class problem in the bubble-border dataset.
+# Detection only: downloads chapters with the app's downloader, slices
+# with the app's slicer, detects with the run-9 ONNX via detect_slice.
+# No training, no model changes, no app changes.
+#
+# Triggered by pushing this workflow file, the manifest, or the harvest
+# script (workflow_dispatch on a branch-only workflow 404s via the API,
+# so push is the reliable trigger). This workflow touches NONE of the
+# Kiuyha training trigger paths (.github/workflows/kiuyha-train-s.yml,
+# .github/kiuyha/**), so it cannot retrigger the training chain.
+# The run-9 ONNX comes from train-S round 9's artifact (run 40340455331),
+# never from the soup model and never from base weights.
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/bubble-harvest.yml"
+      - "bubble-harvest-manifest.json"
+      - "scripts/bubble_harvest.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONPATH: "."
+  PYTHONUNBUFFERED: "1"
+  # Train-S round 9 (2026-10-26), artifact kiuyha-tuned-s-onnx, 30-day retention.
+  MODEL_RUN: "40340455331"
+  MODEL_SHA256: "21ab05cfaabb8bc710d04526c8ac78090891af3881e79002ec46c14f6a603f5f"
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: matrix
+        run: |
+          python - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json
+          manifest = json.load(open("bubble-harvest-manifest.json"))
+          matrix = [
+              {
+                  "slug": e["slug"],
+                  "url": e["series_url"],
+                  "chapters": ",".join(str(c) for c in e["chapters"]),
+              }
+              for e in manifest
+          ]
+          print("matrix=" + json.dumps(matrix))
+          EOF
+
+  harvest:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        series: ${{ fromJson(needs.setup.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch the run-9 ONNX (train-S round 9 artifact, never soup/base)
+        uses: actions/download-artifact@v4
+        with:
+          name: kiuyha-tuned-s-onnx
+          path: model
+          run-id: ${{ env.MODEL_RUN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the model is run 9, not anything else
+        run: |
+          ls -la model/
+          echo "$MODEL_SHA256  model/kiuyha-tuned-s.onnx" | sha256sum -c -
+      - name: Install app downloader + detector deps (same recipe as detect-bulk)
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 pydantic==2.9.2 onnxruntime
+          python -m playwright install --with-deps chromium
+          python -m pip uninstall -y opencv-python opencv-python-headless || true
+          python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
+      - name: Harvest series
+        run: |
+          python scripts/bubble_harvest.py \
+            --series-url "${{ matrix.series.url }}" \
+            --slug "${{ matrix.series.slug }}" \
+            --chapters "${{ matrix.series.chapters }}" \
+            --model model/kiuyha-tuned-s.onnx \
+            --out harvest-out
+      - name: Upload series harvest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harvest-${{ matrix.series.slug }}
+          path: harvest-out
+          retention-days: 30
