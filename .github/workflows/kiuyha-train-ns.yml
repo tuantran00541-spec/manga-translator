@@ -1,0 +1,158 @@
+name: Kiuyha train NS
+
+# Parallel fine-tune of BOTH Kiuyha detectors from their tuned weights
+# (never from base): N from the pre-soup nano tuned weights, S from
+# train-S round 9. Defect-aggregated data (kiuyha-defects-v1 release)
+# plus the kiuyha-hard-v1 release. No training-chain files are touched:
+# this workflow's only trigger path is its own file, so pushing it
+# cannot retrigger kiuyha-train.yml / kiuyha-train-s.yml, and it never
+# writes under .github/kiuyha/.
+#
+# Triggered by pushing this file (workflow_dispatch on a branch-only
+# workflow 404s via the API, so push is the reliable trigger — same
+# lesson as the bubble-harvest workflow).
+#
+# NOTE on base data: the proven recipe reused the kiuyha-data artifact
+# from run 38535523379, but that run was CANCELLED and its artifacts
+# are gone. This workflow therefore trains on defects-v1 + hard data
+# only. Forgetting risk is real — evaluate on the held-out Heavenly
+# chapter + Wimp ch.27 pages before any deploy; never judge by
+# train/synthetic scores alone.
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - ".github/workflows/kiuyha-train-ns.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONPATH: "."
+  PYTHONUNBUFFERED: "1"
+  DEFECTS_TAG: "kiuyha-defects-v1"
+  # Train-S round 9 (2026-10-26), artifact kiuyha-tuned-s (.pt).
+  S_RUN: "40340455331"
+  S_SHA256: "8707ebeef8d3f6e82dc9cf95eeeb368a05ca383ce008485b331ad4ed3879e7a9"
+  # Pre-soup nano hard-case fine-tune (run behind commit 7e40d1248),
+  # artifact kiuyha-tuned-all (.pt, extracted name kiuyha-tuned.pt).
+  N_RUN: "38715287486"
+  N_SHA256: "a127517ff670216f95900fc8e7cbbe3ee76f9eed2c4e5022f101009423c3fad4"
+
+jobs:
+  tune:
+    name: Kiuyha train NS (${{ matrix.model }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        model: [n, s]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Ultralytics on CPU torch
+        run: |
+          python -m pip install --only-binary :all: torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --only-binary :all: ultralytics==8.4.164 onnx==1.23.2 onnxslim==0.1.98
+      - name: Fetch the tuned starting weights (never base)
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.model == 's' && 'kiuyha-tuned-s' || 'kiuyha-tuned-all' }}
+          path: start
+          run-id: ${{ matrix.model == 's' && env.S_RUN || env.N_RUN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the starting weights load as a YOLO text detector
+        run: |
+          if [ "${{ matrix.model }}" = "s" ]; then
+            echo "$S_SHA256  start/kiuyha-tuned-s.pt" | sha256sum -c -
+            cp start/kiuyha-tuned-s.pt start.pt
+          else
+            echo "$N_SHA256  start/kiuyha-tuned.pt" | sha256sum -c -
+            cp start/kiuyha-tuned.pt start.pt
+          fi
+          python - <<'EOF'
+          from ultralytics import YOLO
+          m = YOLO('start.pt')
+          n = sum(p.numel() for p in m.model.parameters())
+          assert m.task == 'detect' and m.names == {0: 'text'}, (m.task, m.names)
+          print(f'start weights OK: task={m.task} names={m.names} params={n}')
+          EOF
+          ls -la start.pt
+      - name: Build the training set (hard data + defects-v1)
+        run: |
+          mkdir -p train-data
+          python .github/kiuyha/fetch_hard.py train-data
+          curl --proto '=https' --tlsv1.2 -sSfL -o defects.zip \
+            "https://github.com/tuantran00541-spec/manga-translator/releases/download/$DEFECTS_TAG/kiuyha-defects-v1.zip"
+          python -m zipfile -e defects.zip train-data
+          sed -i "s#^path: .*#path: $PWD/train-data#" train-data/data.yaml
+          python - <<'EOF'
+          from pathlib import Path
+          import sys
+          root = Path('train-data')
+          for split in ('train', 'val'):
+              imgs = sorted((root / 'images' / split).glob('*.jpg'))
+              assert imgs, f'no {split} images'
+              missing = [p for p in imgs if not (root / 'labels' / split / (p.stem + '.txt')).exists()]
+              assert not missing, f'images without labels: {missing[:5]}'
+              nbox = sum(len((root / 'labels' / split / (p.stem + '.txt')).read_text().splitlines()) for p in imgs)
+              print(f'{split}: {len(imgs)} images, {nbox} boxes')
+          EOF
+      - name: Tune
+        run: |
+          yolo detect train model=start.pt data=train-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
+            time=5.0 epochs=40 patience=100 freeze=0 optimizer=AdamW lr0=0.0005 cos_lr=True \
+            degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
+      - name: Keep the weights
+        if: always()
+        run: |
+          best=$(find "$PWD/runs" / -path '*/tune/weights/best.pt' 2>/dev/null | head -1)
+          [ -n "$best" ] || best=$(find "$PWD/runs" / -path '*/tune/weights/last.pt' 2>/dev/null | head -1)
+          cp "$best" "kiuyha-tuned-${{ matrix.model }}.pt" && cp "$(dirname "$(dirname "$best")")/results.csv" . 2>/dev/null || true
+          ls -la "kiuyha-tuned-${{ matrix.model }}.pt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kiuyha-tuned-${{ matrix.model }}
+          path: |
+            kiuyha-tuned-${{ matrix.model }}.pt
+            results.csv
+          retention-days: 30
+      - name: Export to ONNX at the app's size
+        run: |
+          yolo export model="kiuyha-tuned-${{ matrix.model }}.pt" format=onnx imgsz=1280 opset=17
+          ls -la "kiuyha-tuned-${{ matrix.model }}.onnx"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kiuyha-tuned-${{ matrix.model }}-onnx
+          path: kiuyha-tuned-${{ matrix.model }}.onnx
+          retention-days: 30
+      - name: Smoke-check the tuned model on the defects val split
+        run: |
+          python - <<'EOF'
+          from pathlib import Path
+          from ultralytics import YOLO
+          import glob
+          m = YOLO('kiuyha-tuned-${{ matrix.model }}.pt')
+          imgs = sorted(glob.glob('train-data/images/val/*.jpg'))
+          tot = 0
+          for p in imgs:
+              tot += len(m.predict(p, imgsz=1280, conf=0.25, verbose=False)[0].boxes)
+          print(f'smoke val: {len(imgs)} images, {tot} predicted boxes')
+          EOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kiuyha-train-ns-${{ matrix.model }}-log
+          path: train.log
+          retention-days: 30
