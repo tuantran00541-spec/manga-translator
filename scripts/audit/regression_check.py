@@ -66,3 +66,22 @@ def test_empty_render_translation_does_not_reuse_stored_text():
     req = RenderRequest(chapter_id="audit-test", page_index=0, translations={"obj": ""})
     assert render_text_objects(page, req, [obj], *({} for _ in range(10))) == 0
     assert np.asarray(page).min() == 255
+
+
+def test_ai_polish_does_not_overwrite_a_newer_user_edit():
+    from contextlib import nullcontext
+    from unittest.mock import patch
+    from app.ai_mode.job import AIModeJob, AIModeRunner, AIModeSettings
+    from app.ai_mode.polish import Line
+    from app.ai_providers import PROVIDERS
+    manifest = {"pages": [{"text_objects": [{"id": "obj", "translation": "Edited by user"}]}]}
+    job = AIModeJob(job_id="audit", settings=AIModeSettings(url="https://example.com", provider="openai", model="test"),
+                    chapter_id="audit-test")
+    runner = AIModeRunner(job, PROVIDERS["openai"], "unused")
+    # The model started with "Machine draft" but returned after the user edited it.
+    line = Line(page_index=0, id="obj", source="Hello", text="AI rewrite")
+    with patch("app.ai_mode.job.get_manifest_lock", lambda *_: nullcontext()), \
+         patch("app.ai_mode.job.load_manifest_raw", lambda *_: manifest), \
+         patch("app.ai_mode.job.save_manifest_raw", lambda *_: None):
+        runner._save_polished([line])
+    assert manifest["pages"][0]["text_objects"][0]["translation"] == "Edited by user"
