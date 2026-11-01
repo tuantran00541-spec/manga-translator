@@ -15,7 +15,7 @@ def main():
     key = os.environ.get("MINIROUTER_API_KEY", "")
     if not key:
         raise RuntimeError("The MINIROUTER_API_KEY Actions secret is not configured")
-    model = "openai/gpt-6-luna"
+    model = "deepseek/deepseek-v4.1-flash-1017"
     provider = resolve_provider("minirouter", label="MiniRouter", protocol="openai",
                                 api_base="https://api.minirouter.sh/v1")
     image = np.full((360, 640, 3), 255, dtype=np.uint8)
