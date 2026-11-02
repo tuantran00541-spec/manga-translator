@@ -157,7 +157,7 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
             text = " ".join(str(obj["translation"]).casefold().split()).strip(" .,!?:;…")
             duplicates = [other for other in overlaps if (other_text := " ".join(
                 str(other["translation"]).casefold().split()).strip(" .,!?:;…"))
-                and text and (text in other_text or other_text in text)]
+                and text and text == other_text]
             if duplicates and len(duplicates) == len(overlaps):
                 obj["translation"] = ""
                 obj["overlap_dropped"] = True

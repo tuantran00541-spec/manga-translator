@@ -48,10 +48,10 @@ def test_a_bubble_only_one_slice_has_is_translated_there():
     assert seam_mirror_ids(manifest, 0) == set()
 
 
-def test_of_two_letterings_on_the_same_text_only_the_larger_stays():
+def test_of_two_identical_letterings_only_the_larger_stays():
     from app.ai_mode.seams import drop_overlapping_letters
 
-    manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, "Có khi cậu phải giết chúng"),
+    manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, "Có khi cậu phải giết chúng đấy, nhóc."),
                                             _obj("big", 100, 300, "Có khi cậu phải giết chúng đấy, nhóc."),
                                             _obj("other", 400, 500, "Ừm.")]}]}
     assert drop_overlapping_letters(manifest) == [(0, "small")]
@@ -82,6 +82,17 @@ def test_conflicting_overlapping_dialogue_blocks_export_until_separated():
     assert editorial_preflight(manifest)["status"] != "PASS"
     second["region"] = {"x1": 100, "y1": 400, "x2": 500, "y2": 500}
     assert editorial_preflight(manifest)["status"] == "PASS"
+
+
+def test_overlapping_dialogue_with_a_common_prefix_is_not_assumed_duplicate():
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    first = _obj("first", 100, 300, "Không.")
+    second = _obj("second", 150, 250, "Không được!")
+    manifest = {"pages": [{"text_objects": [first, second]}]}
+    assert drop_overlapping_letters(manifest) == []
+    assert first["translation"] == "Không."
+    assert second["translation"] == "Không được!"
 
 
 def test_a_core_box_cut_by_the_slice_edge_gives_way_to_the_whole_seam_box():
