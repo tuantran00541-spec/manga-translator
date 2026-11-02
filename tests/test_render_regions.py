@@ -7,6 +7,20 @@ from app.render.page_renderer import letter_box, _render_in_region
 STYLE = dict(fill="#202020", font_size=40)
 
 
+@pytest.mark.parametrize("horizontal,vertical", [("left", "top"), ("right", "bottom"), ("center", "middle")])
+def test_thick_stroke_stays_inside_region(horizontal, vertical):
+    from app.render.text_renderer import render_text_in_box
+
+    image = Image.new("RGB", (400, 300), "white")
+    render_text_in_box(image, "Hello", (100, 100, 300, 200), font_size=20, padding=0,
+                       fill="#000000", stroke_color="#000000", stroke_width=8,
+                       horizontal_align=horizontal, vertical_align=vertical)
+    ink = np.asarray(image)[:, :, 0] < 255
+    assert ink.any()
+    ink[100:200, 100:300] = False
+    assert not ink.any()
+
+
 def test_edge_render_mutates_the_input_image():
     image = Image.new("RGB", (400, 400), "white")
     result = _render_in_region(image, "Edge text", (50, 350, 350, 430), **STYLE)

@@ -311,7 +311,7 @@ def render_text_in_box(
         if size_is_hint and min_source_share and actual_size < min_source_share * target_size:
             raise ValueError("Translation fits only well below the OCR font size")
         font = get_font_object(font_path_str, actual_size)
-        lines = _wrap_text(draw, text, font, box_w, balance=True)
+        lines = _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w), balance=True)
     else:
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
         actual_size, lines, fits_readably, (x1, y1, x2, y2) = auto_fit(
@@ -331,7 +331,7 @@ def render_text_in_box(
                 raise ValueError("Translation fits only well below the source letter size")
         font = get_font_object(font_path_str, actual_size)
         # The same number of lines, evened out so no word is left alone.
-        lines = _wrap_text(draw, text, font, box_w, balance=True)
+        lines = _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w), balance=True)
 
     shape = str(shape or "").lower()
     if shape not in ("rectangle", "ellipse"):
@@ -346,25 +346,30 @@ def render_text_in_box(
             draw.rounded_rectangle(bg_bbox, radius=r, fill=box_bg_c)
 
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
-    total_h = line_height * len(lines)
+    bounds = [draw.textbbox((0, 0), line, font=font, stroke_width=stroke_w) for line in lines]
+    bold_extra = 1 if is_bold else 0
+    top = min(i * line_height + bbox[1] for i, bbox in enumerate(bounds))
+    bottom = max(i * line_height + bbox[3] for i, bbox in enumerate(bounds)) + bold_extra
+    total_h = bottom - top
 
     if v_align == "top":
-        start_y = y1 + pad
+        start_y = y1 + pad - top
     elif v_align == "bottom":
-        start_y = y1 + pad + max(0, box_h - total_h)
+        start_y = y1 + pad + max(0, box_h - total_h) - top
     else:
-        start_y = y1 + pad + max(0, (box_h - total_h) // 2)
+        start_y = y1 + pad + max(0, (box_h - total_h) // 2) - top
 
     offsets = [(0, 0), (1, 0), (0, 1), (1, 1)] if is_bold else [(0, 0)]
 
     for i, line in enumerate(lines):
-        line_w = draw.textbbox((0, 0), line, font=font)[2]
+        left, _, right, _ = bounds[i]
+        line_w = right - left + bold_extra
         if h_align == "left":
-            start_x = x1 + pad
+            start_x = x1 + pad - left
         elif h_align == "right":
-            start_x = x1 + pad + max(0, box_w - line_w)
+            start_x = x1 + pad + max(0, box_w - line_w) - left
         else:
-            start_x = x1 + pad + max(0, (box_w - line_w) // 2)
+            start_x = x1 + pad + max(0, (box_w - line_w) // 2) - left
         cur_y = start_y + i * line_height
         for dx, dy in offsets:
             draw.text(
@@ -442,12 +447,13 @@ SOURCE_MATCH_MAX_FONT_SIZE = 200  # large source lettering may be matched past M
 
 def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int) -> tuple[bool, list[str]]:
     font = get_font_object(font_path_str, size)
-    lines = _wrap_text(draw, text, font, box_w)
+    lines = _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w))
     if not lines:
         return False, []
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     total_h = line_height * len(lines)
-    max_line_w = max(draw.textbbox((0, 0), line, font=font)[2] for line in lines)
+    bounds = [draw.textbbox((0, 0), line, font=font, stroke_width=stroke_w) for line in lines]
+    max_line_w = max(right - left for left, _, right, _ in bounds)
     # A word broken across lines ("Khôn/g...") does not fit; a smaller size is tried first.
     whole = [word for line in lines for word in line.split()] == text.split()
     return whole and total_h <= box_h and max_line_w <= box_w, lines
