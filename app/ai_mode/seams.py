@@ -144,7 +144,7 @@ OVERLAP_KEEP = 0.5  # two lettered objects sharing this much of the smaller one 
 
 
 def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
-    """Of two translated objects on one slice that mostly overlap, keep the larger; returns what was dropped."""
+    """Drop overlapping matching text; keep conflicting translations for review."""
     dropped = []
     for page_index, page in enumerate(manifest.get("pages") or []):
         objects = [obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)
@@ -153,11 +153,18 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
         kept: list[dict] = []
         for obj in objects:
             rect = _rect(obj, 0)
-            if any(_shared(rect, _rect(other, 0)) >= OVERLAP_KEEP for other in kept):
+            overlaps = [other for other in kept if _shared(rect, _rect(other, 0)) >= OVERLAP_KEEP]
+            text = " ".join(str(obj["translation"]).casefold().split()).strip(" .,!?:;…")
+            duplicates = [other for other in overlaps if (other_text := " ".join(
+                str(other["translation"]).casefold().split()).strip(" .,!?:;…"))
+                and text and (text in other_text or other_text in text)]
+            if duplicates and len(duplicates) == len(overlaps):
                 obj["translation"] = ""
                 obj["overlap_dropped"] = True
                 dropped.append((page_index, str(obj.get("id"))))
             else:
+                for other in overlaps:
+                    obj["needs_review"] = other["needs_review"] = True
                 kept.append(obj)
     return dropped
 

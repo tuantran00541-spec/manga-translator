@@ -59,6 +59,18 @@ def test_of_two_letterings_on_the_same_text_only_the_larger_stays():
     assert texts == {"small": "", "big": "Có khi cậu phải giết chúng đấy, nhóc.", "other": "Ừm."}
 
 
+def test_overlapping_different_dialogue_is_not_silently_discarded():
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    first = _obj("first", 100, 300, "Tôi sẽ đi trước.")
+    second = _obj("second", 150, 250, "Hãy cẩn thận!")
+    manifest = {"pages": [{"text_objects": [first, second]}]}
+    assert drop_overlapping_letters(manifest) == []
+    assert first["translation"] == "Tôi sẽ đi trước."
+    assert second["translation"] == "Hãy cẩn thận!"
+    assert first.get("needs_review") and second.get("needs_review")
+
+
 def test_a_core_box_cut_by_the_slice_edge_gives_way_to_the_whole_seam_box():
     from app.detector.boxes import BubbleBox
     from app.page_processing import _contained
