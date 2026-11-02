@@ -835,10 +835,19 @@ class AIModeRunner:
 
         with get_manifest_lock(self.job.chapter_id):
             manifest = load_manifest_raw(self.job.chapter_id)
+            joined = 0
             for page_index in indices:
-                ensure_page_text_objects(manifest["pages"][page_index])
-                set_letter_bounds(manifest["pages"][page_index])
-            self.report["lines_joined"] = join_stacked_lines(manifest, indices)
+                page = manifest["pages"][page_index]
+                ensure_page_text_objects(page)
+                set_letter_bounds(page)
+                image = None
+                if page.get("original"):
+                    try:
+                        image = read_image(validate_managed_path(page["original"], RAW_DIR / self.job.chapter_id))
+                    except (ValueError, OSError, HTTPException):
+                        pass  # retain the existing geometry policy if the original is unavailable
+                joined += join_stacked_lines(manifest, [page_index], images={page_index: image})
+            self.report["lines_joined"] = joined
             save_manifest_raw(self.job.chapter_id, manifest)
 
     def _ensure_objects(self, page_index: int) -> None:

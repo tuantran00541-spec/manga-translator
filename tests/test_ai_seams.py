@@ -1,3 +1,5 @@
+import pytest
+
 from app.ai_mode.seams import seam_mirror_ids, sync_seam_mirrors
 
 
@@ -232,6 +234,64 @@ def test_blade_chapter_two_slice_nine_lobes_are_not_joined():
         {"id": str(i), "region": dict(zip(("x1", "y1", "x2", "y2"), rect)), "translation": ""}
         for i, rect in enumerate(pair)]} for pair in pairs]}
     assert join_stacked_lines(manifest, [0, 1]) == 0
+
+
+@pytest.mark.parametrize("background,balloon", [(0, 255), (255, 0), (10, 155), (225, 80)])
+def test_visible_double_balloon_neck_prevents_join_even_when_letter_bounds_overlap(background, balloon):
+    import cv2
+    import numpy as np
+    from app.ai_mode.seams import join_stacked_lines
+
+    image = np.full((900, 900, 3), background, np.uint8)
+    cv2.ellipse(image, (450, 300), (250, 220), 0, 0, 360, (balloon,) * 3, -1)
+    cv2.ellipse(image, (450, 580), (250, 220), 0, 0, 360, (balloon,) * 3, -1)
+    upper = {"id": "upper", "region": {"x1": 200, "y1": 130, "x2": 700, "y2": 410},
+             "letter_bounds": {"x1": 280, "y1": 180, "x2": 620, "y2": 380}, "translation": ""}
+    lower = {"id": "lower", "region": {"x1": 200, "y1": 420, "x2": 700, "y2": 700},
+             "letter_bounds": {"x1": 280, "y1": 430, "x2": 620, "y2": 630}, "translation": ""}
+    manifest = {"pages": [{"text_objects": [upper, lower]}]}
+    assert join_stacked_lines(manifest, [0], images={0: image}) == 0
+    assert "joined_into" not in lower
+
+
+def test_single_balloon_still_joins_two_fragments_with_a_nearby_letter_gap():
+    import cv2
+    import numpy as np
+    from app.ai_mode.seams import join_stacked_lines
+
+    image = np.zeros((900, 900, 3), np.uint8)
+    cv2.ellipse(image, (450, 440), (250, 380), 0, 0, 360, (255, 255, 255), -1)
+    upper = {"id": "upper", "region": {"x1": 200, "y1": 130, "x2": 700, "y2": 410},
+             "letter_bounds": {"x1": 280, "y1": 180, "x2": 620, "y2": 380}, "translation": ""}
+    lower = {"id": "lower", "region": {"x1": 200, "y1": 420, "x2": 700, "y2": 700},
+             "letter_bounds": {"x1": 280, "y1": 430, "x2": 620, "y2": 630}, "translation": ""}
+    manifest = {"pages": [{"text_objects": [upper, lower]}]}
+    assert join_stacked_lines(manifest, [0], images={0: image}) == 1
+    assert lower["joined_into"] == "upper"
+
+
+@pytest.mark.parametrize("height", [900, 680])
+def test_offset_double_balloon_neck_is_detected_even_when_cut_by_slice(height):
+    import cv2
+    import numpy as np
+    from app.ai_mode.seams import _balloon_neck
+
+    image = np.zeros((height, 1000, 3), np.uint8)
+    cv2.ellipse(image, (350, 300), (250, 220), 0, 0, 360, (255, 255, 255), -1)
+    cv2.ellipse(image, (550, 580), (250, 220), 0, 0, 360, (255, 255, 255), -1)
+    assert _balloon_neck(image, (100, 130, 600, 410), (300, 420, 800, 700))
+
+
+def test_one_outlined_balloon_on_white_background_is_not_split():
+    import cv2
+    import numpy as np
+    from app.ai_mode.seams import _balloon_neck
+
+    image = np.full((900, 900, 3), 255, np.uint8)
+    cv2.ellipse(image, (450, 440), (250, 380), 0, 0, 360, (0, 0, 0), 3)
+    cv2.putText(image, "HELLO", (300, 270), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
+    cv2.putText(image, "WORLD", (300, 560), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
+    assert not _balloon_neck(image, (200, 130, 700, 410), (200, 420, 700, 700))
 
 
 def test_two_centred_bubbles_with_a_wide_letter_band_stay_two_texts():

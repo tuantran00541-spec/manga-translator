@@ -109,6 +109,8 @@ def _objects(pages: list) -> list[dict]:
         "objects": [{"id": obj.get("id"), "region": obj.get("region"), "source_boxes": obj.get("source_boxes"),
                      "translation": obj.get("translation"), "role": obj.get("typography_role"),
                      "container": obj.get("container"), "font": obj.get("font_ai_id"),
+                     "letter_bounds": obj.get("letter_bounds"), "joined_into": obj.get("joined_into"),
+                     "joined_lines": obj.get("joined_lines"),
                      "seam_owner": obj.get("seam_owner"), "overlap_dropped": obj.get("overlap_dropped"),
                      "source_missing": obj.get("source_missing")}
                     for obj in page.get("text_objects") or [] if isinstance(obj, dict)],

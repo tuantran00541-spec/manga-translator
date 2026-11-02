@@ -222,7 +222,85 @@ def _stacked(upper, lower) -> bool:
             and across >= STACK_OVERLAP * min(upper[2] - upper[0], lower[2] - lower[0]))
 
 
-def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
+def _balloon_neck(image, upper, lower) -> bool:
+    """Find a constriction in a closed balloon enclosing both text regions."""
+    import cv2
+    import numpy as np
+
+    if image is None or image.ndim not in (2, 3):
+        return False
+    h, w = image.shape[:2]
+    margin = int(max(upper[2] - upper[0], lower[2] - lower[0],
+                     upper[3] - upper[1], lower[3] - lower[1]) * 0.35)
+    x1, y1 = max(0, min(upper[0], lower[0]) - margin), max(0, upper[1] - margin)
+    x2, y2 = min(w, max(upper[2], lower[2]) + margin), min(h, lower[3] + margin)
+    crop = image[y1:y2, x1:x2]
+    if not crop.size:
+        return False
+    scale = min(1.0, 600 / max(crop.shape[:2]))
+    if scale < 1:
+        crop = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    def centre(rect):
+        return (int(((rect[0] + rect[2]) / 2 - x1) * scale),
+                int(((rect[1] + rect[3]) / 2 - y1) * scale))
+
+    def candidate(labels, rect):
+        x, y = centre(rect)
+        if not (0 <= x < labels.shape[1] and 0 <= y < labels.shape[0]):
+            return 0
+        rx = max(2, int((rect[2] - rect[0]) * scale * 0.1))
+        ry = max(2, int((rect[3] - rect[1]) * scale * 0.1))
+        patch = labels[max(0, y - ry):min(labels.shape[0], y + ry + 1),
+                       max(0, x - rx):min(labels.shape[1], x + rx + 1)]
+        ids, counts = np.unique(patch[patch > 0], return_counts=True)
+        return int(ids[counts.argmax()]) if len(ids) else 0
+
+    def has_neck(mask):
+        _, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+        label = candidate(labels, upper)
+        if not label or label != candidate(labels, lower):
+            return False
+        x, y, width, height, _ = (int(v) for v in stats[label])
+        if (x == 0 or y == 0 or x + width >= labels.shape[1]
+                or (y + height >= labels.shape[0] and y2 < h)):
+            return False  # open background, not a reliably bounded balloon
+        top, bottom = centre(upper)[1], centre(lower)[1]
+        if bottom - top < 10:
+            return False
+
+        def edges(row):
+            xs = np.flatnonzero(labels[row] == label)
+            return (int(xs[0]), int(xs[-1])) if xs.size else None
+
+        first, last = edges(top), edges(bottom)
+        if first is None or last is None:
+            return False
+        top_width, bottom_width = first[1] - first[0] + 1, last[1] - last[0] + 1
+        start, end = top + (bottom - top) // 5, bottom - (bottom - top) // 5
+        boundaries = [(row, edge) for row in range(start, end + 1) if (edge := edges(row)) is not None]
+        if not boundaries:
+            return False
+        widths = [right - left + 1 for _, (left, right) in boundaries]
+        inset = 0.04 * min(top_width, bottom_width)
+        # Offset lobes may retain their full width at the neck. One outline still turns
+        # inward past the chord between its endpoints; a convex single balloon does not.
+        left_inset, right_inset = [], []
+        for row, (left, right) in boundaries:
+            share = (row - top) / (bottom - top)
+            left_inset.append(left - (first[0] * (1 - share) + last[0] * share))
+            right_inset.append(first[1] * (1 - share) + last[1] * share - right)
+        inward_left = np.percentile(left_inset, 90) > inset
+        inward_right = np.percentile(right_inset, 90) > inset
+        return bool(np.percentile(widths, 10) < 0.92 * min(top_width, bottom_width) or inward_left or inward_right)
+
+    threshold, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return any(has_neck(mask) for mask in ((gray > threshold).astype(np.uint8),
+                                            (gray <= threshold).astype(np.uint8),
+                                            (gray > 210).astype(np.uint8)))
+
+
+def join_stacked_lines(manifest: dict, page_indices: list[int], *, images: dict | None = None) -> int:
     """Lines the detector split from one block become one object before translation, so no word is dropped.
 
     Lines in the overlap with a neighbour join too: both slices then hold the same block and one of them owns it.
@@ -257,7 +335,9 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
                 uncertain = not have_letters and offset > STACK_CENTRE_WITHOUT_LETTERS * wider
                 if uncertain and _stacked(upper_rect, lower_rect):
                     upper_obj["needs_review"] = lower_obj["needs_review"] = True
-                if not uncertain and _stacked(upper_rect, lower_rect) and _letters_continue(upper_obj, lower_obj):
+                stacked = _stacked(upper_rect, lower_rect)
+                can_join = not uncertain and stacked and _letters_continue(upper_obj, lower_obj)
+                if can_join and not _balloon_neck((images or {}).get(page_index), upper_rect, lower_rect):
                     group[root(j)] = root(i)
         blocks: dict[int, list[dict]] = {}
         for i, obj in enumerate(lines):

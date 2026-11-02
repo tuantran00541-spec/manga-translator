@@ -356,6 +356,33 @@ def test_glossary_transcript_lists_who_says_what_slice_by_slice():
         "SLICE 2\n[unknown] Hm?\n[boy] Run!\nSLICE 5\n[narration] Long ago")
 
 
+def test_join_stage_uses_original_image_to_keep_double_balloon_lobes_apart(monkeypatch):
+    import contextlib
+    import cv2
+    import app.ai_mode.seams as seams
+    import app.manifest_utils as manifests
+
+    image = np.zeros((900, 900, 3), np.uint8)
+    cv2.ellipse(image, (450, 300), (250, 220), 0, 0, 360, (255, 255, 255), -1)
+    cv2.ellipse(image, (450, 580), (250, 220), 0, 0, 360, (255, 255, 255), -1)
+    upper = {"id": "upper", "region": {"x1": 200, "y1": 130, "x2": 700, "y2": 410},
+             "letter_bounds": {"x1": 280, "y1": 180, "x2": 620, "y2": 380}, "translation": ""}
+    lower = {"id": "lower", "region": {"x1": 200, "y1": 420, "x2": 700, "y2": 700},
+             "letter_bounds": {"x1": 280, "y1": 430, "x2": 620, "y2": 630}, "translation": ""}
+    manifest = {"pages": [{"original": "page.png", "text_objects": [upper, lower]}]}
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda *_: contextlib.nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda *_: manifest)
+    monkeypatch.setattr(ai_job, "validate_managed_path", lambda path, root: path)
+    monkeypatch.setattr(ai_job, "read_image", lambda path: image)
+    monkeypatch.setattr(seams, "set_letter_bounds", lambda page: None)
+    monkeypatch.setattr(manifests, "save_manifest_raw", lambda *_: None)
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER)
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    runner._join_stacked_lines([0])
+    assert runner.report["lines_joined"] == 0
+    assert "joined_into" not in lower
+
+
 def test_review_reports_sheet_skipped_for_budget(monkeypatch):
     runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [{"x1": 10, "y1": 10, "x2": 90, "y2": 90}]}]})
     monkeypatch.setattr(runner, "_active_pages", lambda: [0])
