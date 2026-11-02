@@ -785,8 +785,8 @@ class AIModeRunner:
                 changed = sorted(set(sync_seam_mirrors(manifest)) | {page_index for page_index, _ in dropped})
                 for page_index in changed:
                     invalidate_page_render(manifest, page_index)
-                if changed:
-                    save_manifest_raw(self.job.chapter_id, manifest)
+                # Conflict review metadata may change even when no lettering is dropped or copied.
+                save_manifest_raw(self.job.chapter_id, manifest)
                 return changed
 
         changed = await asyncio.to_thread(sync)

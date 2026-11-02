@@ -147,6 +147,26 @@ def test_manager_cancel_before_first_stage():
     assert snapshot["status"] == "cancelled"
 
 
+def test_sync_seams_persists_conflicting_dialogue_without_a_drop(monkeypatch):
+    import copy
+    import contextlib
+    import app.manifest_utils as manifests
+
+    stored = {"pages": [{"text_objects": [
+        {"id": "a", "region": {"x1": 0, "y1": 0, "x2": 100, "y2": 100}, "translation": "Đi đi"},
+        {"id": "b", "region": {"x1": 10, "y1": 10, "x2": 90, "y2": 90}, "translation": "Đợi đã"},
+    ]}]}
+    saved = []
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda *_: contextlib.nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda *_: copy.deepcopy(stored))
+    monkeypatch.setattr(manifests, "save_manifest_raw", lambda _, data: saved.append(copy.deepcopy(data)))
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER)
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    asyncio.run(runner._sync_seams())
+    assert saved
+    assert saved[0]["pages"][0]["text_objects"][0]["overlap_review_ids"] == ["b"]
+
+
 def test_manager_allows_one_active_job():
     manager = AIModeJobManager(runner_factory=RecordingRunner)
 
