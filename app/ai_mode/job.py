@@ -127,7 +127,7 @@ def pipeline_fix(chapter_id: str, page_index: int, rects: list) -> None:
     """Erase residue again in one re-inpaint of the slice."""
     from app.dependencies import pipeline
 
-    pipeline.apply_review_fixes(chapter_id, page_index, repaint=list(rects))
+    pipeline.apply_review_fixes(chapter_id, page_index, repaint=list(rects), require_repaint_strokes=True)
 
 
 class AIModeRunner:

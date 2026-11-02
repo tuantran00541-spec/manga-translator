@@ -68,7 +68,8 @@ def _normalize_region(region: dict, w: int, h: int) -> tuple[int, int, int, int]
     return x1, y1, x2, y2
 
 
-def _paint_residue(mask: np.ndarray, clean: np.ndarray | None, rect: tuple[int, int, int, int]) -> None:
+def _paint_residue(mask: np.ndarray, clean: np.ndarray | None, rect: tuple[int, int, int, int],
+                   *, allow_rectangle: bool = True) -> None:
     """Mark the leftover strokes in ``rect`` of the cleaned slice; the whole rectangle only when none stand out."""
     from app.detector.kiuyha_detector import letter_mask
 
@@ -78,6 +79,8 @@ def _paint_residue(mask: np.ndarray, clean: np.ndarray | None, rect: tuple[int, 
             view = mask[y1:y2, x1:x2]
             view[strokes] = 255
             return
+    if not allow_rectangle:
+        raise ValueError(f"Cannot repaint automatically: no detected strokes in {rect}; manual review required")
     mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
 
 
@@ -348,6 +351,7 @@ class PipelineEditingMixin:
         boxes: list[tuple[int, int, int, int]] = (),
         repaint: list[tuple[int, int, int, int]] = (),
         skip_covered: bool = False,
+        require_repaint_strokes: bool = False,
     ) -> dict:
         """Add preserve regions, manual boxes and repaint areas with one re-inpaint of the page."""
         processed_dir = PROCESSED_DIR / chapter_id
@@ -391,7 +395,7 @@ class PipelineEditingMixin:
             for rect in repaint_rects:
                 if mask is None:
                     mask = np.zeros((h, w), dtype=np.uint8)
-                _paint_residue(mask, clean, rect)
+                _paint_residue(mask, clean, rect, allow_rectangle=not require_repaint_strokes)
             if mask is not None:
                 existing = self._read_manual_mask(
                     Path(manual_mask_posix) if manual_mask_posix else final_mask_path, (h, w))

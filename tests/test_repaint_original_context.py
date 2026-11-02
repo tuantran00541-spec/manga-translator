@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from app.image_io import read_image, write_image
 from app.optimized_pipeline import OptimizedChapterPipeline
@@ -233,6 +234,36 @@ def test_add_manual_boxes_adds_every_box_with_one_reinpaint(tmp_path: Path, monk
     assert [(b["x1"], b["y1"], b["x2"], b["y2"]) for b in page["boxes"]] == [(5, 5, 35, 25), (45, 30, 75, 55)]
     assert calls == [2], "one re-inpaint with both boxes; the empty one is dropped"
     assert page["clean_revision"] == 2
+
+
+def test_automatic_residue_repaint_refuses_a_rectangle_without_detected_strokes(tmp_path: Path, monkeypatch):
+    import app.ai_mode.job as job
+    import app.config as config
+    import app.dependencies as deps
+    import app.manifest_utils as manifests
+    import app.pipeline_editing as editing
+
+    chapter = "abcd1234"
+    raw, processed = tmp_path / "raw", tmp_path / "processed"
+    for root in (raw, processed):
+        (root / chapter).mkdir(parents=True)
+    original = raw / chapter / "page.png"
+    clean = processed / chapter / "clean_page.png"
+    pixels = np.full((80, 100, 3), 100, dtype=np.uint8)
+    write_image(original, pixels)
+    write_image(clean, pixels)
+    for module in (config, manifests, editing):
+        monkeypatch.setattr(module, "PROCESSED_DIR", processed, raising=False)
+    manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
+        "original": original.as_posix(), "clean": clean.as_posix(), "boxes": [],
+    }]})
+    pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
+    pipeline._inpainter = _FakeInpainter()
+    monkeypatch.setattr(deps, "pipeline", pipeline)
+
+    with pytest.raises(ValueError, match="stroke"):
+        job.pipeline_fix(chapter, 0, [(10, 10, 90, 70)])
+    assert np.array_equal(read_image(clean), pixels)
 
 
 def test_review_fixes_apply_preserve_boxes_and_repaint_in_one_reinpaint(tmp_path: Path, monkeypatch):
