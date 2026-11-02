@@ -142,12 +142,13 @@ async def cancel_ai_mode_job(job_id: str) -> dict:
 
 class SeriesMemoryRequest(BaseModel):
     url: str = Field(max_length=MAX_REMOTE_URL_LENGTH)
+    target_lang: str = Field(default="vi", max_length=32)
     text: str | None = Field(default=None, max_length=60000)
     notes: str | None = Field(default=None, max_length=1500)
 
 
-def _series_key(url: str) -> str:
-    key = series_memory.series_key(url)
+def _series_key(url: str, target_lang: str = "vi") -> str:
+    key = series_memory.language_series_key(url, target_lang)
     if not key:
         raise HTTPException(400, "This URL does not name a series")
     return key
@@ -161,14 +162,14 @@ def list_series_memory() -> list[dict]:
 @router.post("/series/read")
 def read_series_memory(req: SeriesMemoryRequest) -> dict:
     """What the series behind a chapter URL has settled, as the lines the user edits."""
-    key = _series_key(req.url)
+    key = _series_key(req.url, req.target_lang)
     data = series_memory.load(key)
     return {"key": key, "text": series_memory.to_text(data), "notes": data["notes"], "chapters": len(data["chapters"])}
 
 
 @router.post("/series/save")
 def save_series_memory(req: SeriesMemoryRequest) -> dict:
-    key = _series_key(req.url)
+    key = _series_key(req.url, req.target_lang)
     current = series_memory.load(key)
     data = series_memory.from_text(req.text if req.text is not None else series_memory.to_text(current), current)
     if req.notes is not None:

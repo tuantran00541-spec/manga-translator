@@ -190,6 +190,21 @@ def test_h15_install_zip_new_skill_still_works(home):
     assert (skill_install.user_dir(home) / "new-skill" / "SKILL.md").is_file()
 
 
+def test_oversized_skill_header_is_rejected_before_extraction(home):
+    data = _zip({"new-skill/SKILL.md": _SKILL.format(name="new-skill") + "x" * skill_install.MAX_FILE_BYTES})
+    with pytest.raises(ValueError):
+        skill_install.install_zip(data, home)
+    assert not (skill_install.user_dir(home) / "new-skill").exists()
+
+
+def test_skill_zip_rejects_excess_total_uncompressed_bytes(home, monkeypatch):
+    monkeypatch.setattr(skill_install, "MAX_EXTRACTED_BYTES", 120, raising=False)
+    data = _zip({"new-skill/SKILL.md": _SKILL.format(name="new-skill"), "new-skill/a.txt": "x" * 100})
+    with pytest.raises(ValueError):
+        skill_install.install_zip(data, home)
+    assert not (skill_install.user_dir(home) / "new-skill").exists()
+
+
 def test_h15_install_zip_partial_clash_writes_nothing(home):
     """A clash in one skill of a multi-skill zip fails before anything is written."""
     evil = _zip({

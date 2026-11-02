@@ -14,7 +14,7 @@ from fastapi import FastAPI, Header
 from gateway.app import Route, Upstream, _routes_from_env, create_app
 from gateway.billing import BillingConfig, lemonsqueezy_signature, payos_data_signature, payos_request_signature
 from gateway.mailer import Mailer
-from gateway.store import QuotaExceeded, Store
+from gateway.store import InvalidToken, QuotaExceeded, Store
 
 ADMIN = "admin-secret"
 CHECKSUM = "test-checksum-key"
@@ -357,6 +357,43 @@ def test_requests_in_flight_together_cannot_pass_the_cost_cap_or_the_balance(tmp
     store.begin_request(first, 0.6)
     with pytest.raises(QuotaExceeded, match="balance"):
         store.begin_request(second, 0.6)  # two chapters at once share one balance
+
+
+def test_late_request_is_charged_once_and_appears_in_ledger(tmp_path):
+    store = Store(tmp_path / "gw.sqlite", fee_rate=0)
+    account, _ = store.create_account("late@example.com")
+    store.adjust(account, 1, "test")
+    job, _, _ = store.reserve_job(account, 0.1)
+    request = store.begin_request(job, 0.1)
+    store.finish_job(job, "completed")
+    store.add_cost(job, 0.05, released_usd=0.1, request_id=request)
+    store.add_cost(job, 0.05, released_usd=0.1, request_id=request)
+    assert store.account(account)["balance_usd"] == pytest.approx(0.95)
+    assert sum(line["amount_usd"] for line in store.ledger(account)) == pytest.approx(0.95)
+
+
+def test_new_store_does_not_release_another_workers_hold(tmp_path):
+    path = tmp_path / "gw.sqlite"
+    first = Store(path, fee_rate=0)
+    account, _ = first.create_account("worker@example.com")
+    first.adjust(account, 1, "test")
+    job, _, _ = first.reserve_job(account, 0.1)
+    request = first.begin_request(job, 0.4)
+    second = Store(path, fee_rate=0)
+    assert second.account(account)["available_usd"] == pytest.approx(0.6)
+    second.add_cost(job, 0.1, released_usd=0.4, request_id=request)
+    assert first.account(account)["available_usd"] == pytest.approx(0.9)
+
+
+def test_request_racing_job_close_is_rejected_cleanly(world, monkeypatch):
+    client, store, _, _ = world
+    job = _job(client)
+    def closed(*args, **kwargs):
+        raise InvalidToken()
+    monkeypatch.setattr(store, "begin_request", closed)
+    response = client.post("/v1/chat/completions", headers=job,
+                           json={"messages": [{"role": "user", "content": "x"}]})
+    assert response.status_code == 401
 
 
 def test_a_chapter_is_charged_at_cost_plus_the_fee_in_one_ledger_line(tmp_path):

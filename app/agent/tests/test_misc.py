@@ -350,13 +350,13 @@ class TestCExportGate:
         assert b1["editorial_disposition"] == "untranslated"
         assert b1.get("editorial_reviewed") is not True
 
-    def test_attempted_blank_stays_non_story(self, runner):
-        """Legitimate behavior: translator-deliberate blanks still settle reviewed."""
+    def test_attempted_blank_remains_untranslated_and_unreviewed(self, runner):
+        """A model's empty response is not a human editorial decision."""
         r, manifest, _ = runner
         r._settle_blanks()
         b2 = self._objs(manifest)["b2"]
-        assert b2["editorial_disposition"] == "non_story"
-        assert b2["editorial_reviewed"] is True
+        assert b2["editorial_disposition"] == "untranslated"
+        assert b2.get("editorial_reviewed") is not True
 
     def test_translated_object_untouched(self, runner):
         r, manifest, _ = runner

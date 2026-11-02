@@ -49,13 +49,16 @@ def _contained(box: BubbleBox, seam: BubbleBox) -> bool:
 def _fold_nested(boxes: list[BubbleBox]) -> list[BubbleBox]:
     """A box mostly inside a larger one is the same text, so its mask joins the larger box."""
     groups: list[list[BubbleBox]] = []
+    uncertain = [b for b in boxes if b.needs_review and not b.safe_to_inpaint and not b.verified_mask]
     for box in sorted(boxes, key=lambda b: (b.x2 - b.x1) * (b.y2 - b.y1), reverse=True):
+        if box.needs_review and not box.safe_to_inpaint and not box.verified_mask:
+            continue
         home = next((group for group in groups if _contained(box, group[0])), None)
         if home is None:
             groups.append([box])
         else:
             home.append(box)
-    return [group[0] if len(group) == 1 else _merge_mask_evidence(group) for group in groups]
+    return [group[0] if len(group) == 1 else _merge_mask_evidence(group) for group in groups] + uncertain
 
 
 class PageProcessingMixin:

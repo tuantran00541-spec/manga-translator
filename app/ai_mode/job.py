@@ -51,7 +51,7 @@ CREDIT_MAX_ABSOLUTE = 3
 # More than this share of textless slices means the scan misread the chapter.
 TEXTLESS_MAX_SHARE = 0.5
 REVIEW_CONCURRENCY = 8  # review (checkpoint 3) has no reading-order dependency
-TRANSLATE_CONCURRENCY = 3
+TRANSLATE_CONCURRENCY = 1
 # Objects per retry request, and retry batches without progress before restoring the original.
 RETRY_BATCH = 4
 RETRY_ROUNDS = 3
@@ -316,7 +316,7 @@ class AIModeRunner:
             self._scan_logos[scan.page_index] = list(scan.logos)
             logos += len(scan.logos)
         self.report["logo_regions"] = logos
-        self._transcripts = {scan.page_index: scan.lines for scan in scans if scan.page_index not in credits}
+        self._transcripts = {scan.page_index: scan.lines for scan in scans if scan.page_index not in credits and scan.answered}
         self._progress(len(active), len(active),
                        f"{len(credits)} lát credit, {len(textless)} lát không chữ, {logos} logo")
 
@@ -570,7 +570,7 @@ class AIModeRunner:
             _append(self.report["translate_errors"], f"Bảng thuật ngữ: {_detail(exc)[:150]}")
             glossary = {}
         # What earlier chapters of this series settled wins over this chapter's own reading.
-        key = series_memory.series_key(self.settings.url)
+        key = series_memory.language_series_key(self.settings.url, self.settings.target_lang)
         series = self._series = series_memory.load(key)
         glossary = series_memory.settled_glossary(series, glossary or {})
         memory = self._memory = ChapterMemory(self.settings.story_notes or series["notes"], glossary)
@@ -604,6 +604,11 @@ class AIModeRunner:
                     _append(self.report["translate_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
                     run = None
                 if run is not None:
+                    if run.get("coverage_unchecked"):
+                        _append(self.report["review_list"], {
+                            "page": page_index + 1,
+                            "reason": "Không có vùng cần dịch; chưa kiểm tra chữ sót ngoài vùng",
+                        })
                     await self._keep_art(page_index, run)
                     self.report["translated"] += int(run.get("translated") or 0)
                     self.report["unreadable"] += int(run.get("unreadable") or 0)
@@ -622,7 +627,8 @@ class AIModeRunner:
 
         await asyncio.to_thread(self._join_stacked_lines, indices)
         self._progress(0, len(indices))
-        await asyncio.gather(*(translate_one(page_index) for page_index in indices))
+        for page_index in indices:
+            await translate_one(page_index)
         self._check_cancel()
         if out_of_budget:
             _append(self.report["translate_errors"], "Hết ngân sách, các lát còn lại chưa dịch")
@@ -896,7 +902,7 @@ class AIModeRunner:
             })
 
     def _settle_blanks(self) -> int:
-        """Split blanks by evidence, not guesswork: attempted blanks are reviewed non-story text, never-attempted ones block export."""
+        """Mark unresolved blanks for review without inventing an editorial decision."""
         from app.editorial_gate import UNTRANSLATED_DISPOSITION
         from app.region_policy import text_object_in_preserve_region
 
@@ -912,12 +918,9 @@ class AIModeRunner:
                             or obj.get("overlap_dropped") or obj.get("editorial_reviewed")
                             or str(obj.get("translation") or "").strip() or text_object_in_preserve_region(page, obj)):
                         continue
-                    if obj.get("translation_attempted"):
-                        obj["editorial_disposition"], obj["editorial_reviewed"] = "non_story", True
-                    else:
-                        # Left unreviewed on purpose: the gate blocks export on this disposition.
+                    if obj.get("editorial_disposition") != UNTRANSLATED_DISPOSITION:
                         obj["editorial_disposition"] = UNTRANSLATED_DISPOSITION
-                    settled += 1
+                        settled += 1
             if settled:
                 save_manifest_raw(chapter_id, manifest)
         return settled
@@ -993,7 +996,7 @@ class AIModeRunner:
             {"kind": item.get("kind"), "page": int(item.get("page_index", 0)) + 1, "reason": item.get("reason")}
             for item in (preflight.get("blockers") or [])[:10]
         ]
-        key = series_memory.series_key(self.settings.url)
+        key = series_memory.language_series_key(self.settings.url, self.settings.target_lang)
         if key and self._memory is not None:
             # The next chapter of this series starts from what this one settled.
             snapshot = self._memory.snapshot(settled=False)

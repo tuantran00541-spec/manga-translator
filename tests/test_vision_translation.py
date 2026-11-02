@@ -197,6 +197,70 @@ def test_vision_page_rejects_stale_region_without_overwriting(saved_chapter, mon
     assert page["text_objects"][0]["region"]["x1"] == 45
 
 
+def test_explicit_blank_attempt_is_saved_without_an_automatic_review(saved_chapter, monkeypatch):
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *args, **kwargs: VisionTranslationResult({"obj_1": ""}, self.model, {}, None),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
+    )
+    result = asyncio.run(translation_router.translate_page_in_context(request))
+    obj = manifests.load_manifest_raw(CHAPTER)["pages"][0]["text_objects"][0]
+    assert result["translation_run"]["blank_ids"] == ["obj_1"]
+    assert obj["translation_attempted"] is True
+    assert not obj.get("editorial_reviewed")
+
+
+def test_successful_retry_clears_untranslated_disposition(saved_chapter, monkeypatch):
+    manifest = manifests.load_manifest_raw(CHAPTER)
+    manifest["pages"][0]["text_objects"][0]["editorial_disposition"] = "untranslated"
+    manifests.save_manifest_raw(CHAPTER, manifest)
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *args, **kwargs: VisionTranslationResult({"obj_1": "Xin chào"}, self.model, {}, None),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
+    )
+    asyncio.run(translation_router.translate_page_in_context(request))
+    obj = manifests.load_manifest_raw(CHAPTER)["pages"][0]["text_objects"][0]
+    assert obj["translation"] == "Xin chào"
+    assert obj.get("editorial_disposition") != "untranslated"
+
+
+def test_omitted_id_is_not_recorded_as_explicit_blank(saved_chapter, monkeypatch):
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *args, **kwargs: VisionTranslationResult(
+            {"obj_1": ""}, self.model, {}, None, missing_ids=frozenset({"obj_1"})
+        ),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
+    )
+    result = asyncio.run(translation_router.translate_page_in_context(request))
+    obj = manifests.load_manifest_raw(CHAPTER)["pages"][0]["text_objects"][0]
+    assert result["translation_run"]["missing_ids"] == ["obj_1"]
+    assert result["translation_run"]["blank_ids"] == []
+    assert not obj.get("translation_attempted")
+
+
+def test_page_without_detections_reports_unchecked_coverage(saved_chapter, monkeypatch):
+    manifest = manifests.load_manifest_raw(CHAPTER)
+    manifest["pages"][0]["text_objects"] = []
+    manifests.save_manifest_raw(CHAPTER, manifest)
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
+    )
+    run = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert run["coverage_unchecked"] is True
+
+
 def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_slice(tmp_path, monkeypatch):
     from app.translation.context import ChapterMemory
 

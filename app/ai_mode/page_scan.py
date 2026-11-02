@@ -99,6 +99,7 @@ class SliceScan:
     reason: str = ""
     no_text: bool = False
     lines: tuple[tuple[str, str], ...] = ()
+    answered: bool = True
 
 
 def _confidence(value) -> float:
@@ -175,6 +176,7 @@ def parse_scan(data: dict, sizes: dict[int, tuple[int, int]]) -> list[SliceScan]
             reason=str(entry.get("reason") or "")[:200],
             no_text=no_text and not logos,
             lines=_lines(entry.get("lines")),
+            answered=index in answers and isinstance(entry.get("lines"), list),
         ))
     return scans
 

@@ -1,9 +1,66 @@
 import numpy as np
+import pytest
 from PIL import Image
 
 from app.render.page_renderer import letter_box, _render_in_region
 
 STYLE = dict(fill="#202020", font_size=40)
+
+
+def test_edge_render_mutates_the_input_image():
+    image = Image.new("RGB", (400, 400), "white")
+    result = _render_in_region(image, "Edge text", (50, 350, 350, 430), **STYLE)
+    assert result is image
+    assert np.any(np.asarray(image) != 255)
+
+
+def test_explicit_font_size_does_not_draw_outside_a_region():
+    from app.render.text_renderer import render_text_in_box
+
+    image = Image.new("RGB", (400, 400), "white")
+    with pytest.raises(ValueError, match="fit"):
+        render_text_in_box(image, "A long sentence that cannot fit", (100, 100, 220, 170), font_size=80)
+    assert np.all(np.asarray(image) == 255)
+
+
+def test_ocr_font_size_is_reduced_if_the_translation_would_overflow():
+    from app.render.page_renderer import render_text_objects
+    from app.schemas import RenderRequest
+
+    region = {"x1": 100, "y1": 100, "x2": 300, "y2": 180}
+    obj = {"id": "bubble", "region": region, "auto_geometry": region,
+           "auto_generated": True, "ocr_text_region": region, "ocr_font_size": 36,
+           "translation": "This is a longer translation with several words",
+           "style": {"fontSize": "auto", "color": "#000000", "strokeWidth": 0}}
+    image = Image.new("RGB", (500, 400), "white")
+    req = RenderRequest(chapter_id="a1b2c3d4", page_index=0, translations={})
+    assert render_text_objects(image, req, [obj], *({} for _ in range(10))) == 1
+    ink = np.asarray(image)[:, :, 0] < 128
+    assert ink.any()
+    ink[100:180, 100:300] = False
+    assert not ink.any()
+
+
+def test_ocr_hint_tries_roomier_region_before_shrinking_too_far(monkeypatch):
+    import app.render.page_renderer as renderer
+    from app.schemas import RenderRequest
+
+    attempts = []
+    original = renderer._render_in_region
+
+    def record(image, text, box, **style):
+        attempts.append(box)
+        return original(image, text, box, **style)
+
+    monkeypatch.setattr(renderer, "_render_in_region", record)
+    obj = {"id": "bubble", "region": {"x1": 100, "y1": 100, "x2": 400, "y2": 300},
+           "letter_bounds": {"x1": 150, "y1": 150, "x2": 300, "y2": 220},
+           "ocr_font_size": 30, "translation": "She said the whole thing was a trick of the light, and walked on into the dark.",
+           "style": {"fontSize": "auto", "color": "#000000", "strokeWidth": 0}}
+    image = Image.new("RGB", (500, 400), "white")
+    req = RenderRequest(chapter_id="a1b2c3d4", page_index=0, translations={})
+    assert renderer.render_text_objects(image, req, [obj], *({} for _ in range(10))) == 1
+    assert len(attempts) > 1
 
 
 def test_a_text_crossing_the_slice_edge_is_laid_out_as_on_the_slice_that_holds_it_whole():

@@ -528,7 +528,9 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS)) + extra
         held = max(_held_usd(route, forwarded, forwarded["max_tokens"]) for route in chain)
         try:
-            store.begin_request(row["id"], held)
+            request_id = store.begin_request(row["id"], held)
+        except InvalidToken:
+            return _error(401, "invalid_job", "Job is closed or expired")
         except QuotaExceeded as exc:
             if str(exc) == "requests":
                 return _error(402, "request_cap", "This chapter reached its A.I request cap")
@@ -542,7 +544,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         except requests.RequestException:
             status, body = 0, {}
         except BaseException:
-            store.add_cost(row["id"], 0.0, released_usd=held)
+            store.add_cost(row["id"], 0.0, released_usd=held, request_id=request_id)
             raise
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
         if trace_path:
@@ -564,6 +566,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         total = store.add_cost(
             row["id"], upstream.cost(usage, trace.get("model")),
             int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0), released_usd=held,
+            request_id=request_id,
         )
         if status == 0:
             return _error(502, "upstream_unreachable", "A.I upstream is unreachable")
@@ -588,7 +591,9 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         forwarded = {"model": upstream.judge_model, "state": state, "questions": questions}
         held = len(json.dumps(forwarded)) / 4 * upstream.judge_usd_per_m / 1_000_000
         try:
-            store.begin_request(row["id"], held)
+            request_id = store.begin_request(row["id"], held)
+        except InvalidToken:
+            return _error(401, "invalid_job", "Job is closed or expired")
         except QuotaExceeded:
             return _error(402, "cost_cap", "This chapter reached its A.I cost cap")
         started = time.perf_counter()
@@ -597,13 +602,14 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         except requests.RequestException:
             status, body = 0, {}
         except BaseException:
-            store.add_cost(row["id"], 0.0, released_usd=held)
+            store.add_cost(row["id"], 0.0, released_usd=held, request_id=request_id)
             raise
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
         # Routers name the input count differently; a missing count is estimated from the request size.
         tokens = next((int(usage[key]) for key in ("inputTokens", "input_tokens", "prompt_tokens")
                        if isinstance(usage.get(key), (int, float))), round(len(json.dumps(forwarded)) / 4))
-        total = store.add_cost(row["id"], tokens * upstream.judge_usd_per_m / 1_000_000, tokens, 0, released_usd=held)
+        total = store.add_cost(row["id"], tokens * upstream.judge_usd_per_m / 1_000_000, tokens, 0,
+                               released_usd=held, request_id=request_id)
         if trace_path:
             _trace_line(trace_path, {"t": round(time.time(), 3), "ms": round((time.perf_counter() - started) * 1000),
                                      "status": status, "stage": "judge", "model": upstream.judge_model,

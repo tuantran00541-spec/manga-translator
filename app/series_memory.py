@@ -41,6 +41,18 @@ def series_key(url: str) -> str | None:
     return key[:100] or None
 
 
+def language_series_key(url: str, target_lang: str = "vi") -> str | None:
+    """Keep legacy Vietnamese memory while separating other target languages."""
+    key = series_key(url)
+    if not key:
+        return None
+    language = _KEY.sub("-", str(target_lang or "vi").lower()).strip("-")
+    if language in {"vi", "vie", "vietnamese"}:
+        return key
+    suffix = "-lang-" + (language[:32] or "unknown")
+    return key[:100 - len(suffix)].rstrip("-") + suffix
+
+
 def _path(key: str) -> Path:
     if not re.fullmatch(r"[a-z0-9-]{1,100}", key or ""):
         raise ValueError("invalid series key")

@@ -298,7 +298,10 @@ class KiuyhaTextDetector:
     def detect_slice(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
         """Padded text boxes for a slice: coarse and page-scale passes, pieces of one text merged."""
         h, w = image.shape[:2]
-        found = _union_overlapping(self._coarse_boxes(image) + self.page_boxes(image))
+        found = self._coarse_boxes(image)
+        if self.fixed is not None:
+            found += self.page_boxes(image)
+        found = _union_overlapping(found)
         return [(max(0, x1 - BOX_PAD), max(0, y1 - BOX_PAD), min(w, x2 + BOX_PAD), min(h, y2 + BOX_PAD), score)
                 for x1, y1, x2, y2, score in found]
 
@@ -371,11 +374,18 @@ class KiuyhaTextDetector:
     def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
         """Detected text blocks with letter masks, ready for inpainting and OCR."""
         boxes = []
+        uncertain = []
         for x1, y1, x2, y2, score in self.detect_slice(image):
             (x1, y1, x2, y2), mask, letters = letter_mask(image, (x1, y1, x2, y2), with_letters=True)
             if mask.any():
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters))
-        return [part for box in _join_grown(boxes) for piece in _split_blocks(box) for part in _split_sideways(piece)]
+            else:
+                candidate = BubbleBox(x1, y1, x2, y2, score, source_model=self.source_model,
+                                      class_name="text", semantic_type="free_text", ocr_eligible=True,
+                                      needs_review=True, source_role="text_segmenter")
+                candidate.allow_rectangle_fallback = False
+                uncertain.append(candidate)
+        return [part for box in _join_grown(boxes) for piece in _split_blocks(box) for part in _split_sideways(piece)] + uncertain
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
         """First-pass boxes the letter model still reads after inpainting, masked by what is left of their strokes."""

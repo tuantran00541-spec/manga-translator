@@ -92,7 +92,11 @@ def _nms_group(members: list[BubbleBox], iou_threshold: float) -> list[BubbleBox
 def apply_final_nms(boxes: list[BubbleBox], iou_threshold: float = DETECTOR_FINAL_NMS_IOU) -> list[BubbleBox]:
     """Drop duplicate boxes per model and type, keeping the masks of the ones folded in."""
     groups: dict[tuple[str, str], list[BubbleBox]] = {}
+    uncertain = []
     for b in boxes:
+        if b.needs_review and not b.safe_to_inpaint and not b.verified_mask:
+            uncertain.append(b)
+            continue
         groups.setdefault((b.source_model, b.semantic_type), []).append(b)
     result = [kept for members in groups.values() for kept in _nms_group(members, iou_threshold)]
-    return sorted(result, key=lambda b: b.confidence, reverse=True)
+    return sorted(result + uncertain, key=lambda b: b.confidence, reverse=True)

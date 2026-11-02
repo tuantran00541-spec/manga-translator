@@ -14,6 +14,7 @@ from app.downloader.http import read_response_limited, safe_get
 SPEC_RE = re.compile(r"^([\w.-]+)/([\w.-]+)(?:@([\w.-]+))?(?:/([\w./-]+))?$")
 MAX_ZIP_BYTES = 40_000_000
 MAX_FILE_BYTES = 2_000_000
+MAX_EXTRACTED_BYTES = 40_000_000
 MAX_FILES = 400
 MAX_SKILLS = 40
 
@@ -114,6 +115,8 @@ def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str
                    replace: bool = False) -> list[str]:
     """Copy the skill folders of an archive; GitHub zips wrap everything in one top folder."""
     entries = [i for i in archive.infolist() if not i.is_dir()]
+    if sum(info.file_size for info in entries) > MAX_EXTRACTED_BYTES:
+        raise ValueError("nội dung giải nén quá lớn")
     root = entries[0].filename.split("/", 1)[0] if entries and wrapped else ""
     prefix = "/".join(p for p in (root, sub) if p) + "/" if root or sub else ""
     found = {i.filename.rsplit("/", 1)[0] if "/" in i.filename else "" for i in entries
@@ -126,7 +129,12 @@ def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str
     planned = []
     for folder in folders[:MAX_SKILLS]:
         lead = folder + "/" if folder else ""
-        head, _ = frontmatter(archive.read(f"{lead}SKILL.md")[:20_000].decode("utf-8", errors="replace"))
+        info = archive.getinfo(f"{lead}SKILL.md")
+        if info.file_size > MAX_SKILL_BYTES:
+            raise ValueError("SKILL.md quá dài (tối đa 200 KB)")
+        with archive.open(info) as stream:
+            header = stream.read(20_000)
+        head, _ = frontmatter(header.decode("utf-8", errors="replace"))
         name = head.get("name") or folder.rsplit("/", 1)[-1]
         if not NAME_RE.match(name):
             continue

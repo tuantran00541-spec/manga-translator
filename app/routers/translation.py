@@ -263,6 +263,7 @@ async def translate_page_in_context(
         result["translation_run"] = {
             "translated": 0, "unreadable": 0, "stale": 0, "model": model,
             "rendered_pages": [], "estimated_cost_usd": 0.0 if provider.tracks_cost else None,
+            "coverage_unchecked": True,
         }
         return result
     if not original_path.is_file() or not clean_path.is_file():
@@ -317,8 +318,10 @@ async def translate_page_in_context(
                 unreadable += 1
                 if candidate["id"] not in getattr(translated, "missing_ids", ()):
                     blank_ids.append(candidate["id"])
-                    # Attempted and left blank on purpose; distinguishes blank-by-choice from blank-by-budget.
-                    obj["translation_attempted"] = True
+                    # An explicit blank is an attempt, not an editorial decision.
+                    if obj.get("translation_attempted") is not True:
+                        obj["translation_attempted"] = True
+                        changed = True
                     # Only a sound effect the artist drew is art; a watermark or a review box around missed text stays erased.
                     manual = {str(box.get("id")) for box in page.get("boxes") or []
                               if isinstance(box, dict) and box.get("manual")}
@@ -327,6 +330,8 @@ async def translate_page_in_context(
                         art_regions.append(dict(obj["region"]))
                 continue
             obj["translation"] = value
+            if obj.get("editorial_disposition") == "untranslated":
+                obj.pop("editorial_disposition", None)
             obj["translation_source"] = provider.id
             if candidate.get("source_cap_px"):
                 obj["source_cap_px"] = candidate["source_cap_px"]

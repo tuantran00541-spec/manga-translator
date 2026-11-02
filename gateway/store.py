@@ -77,6 +77,13 @@ CREATE TABLE IF NOT EXISTS jobs (
     expires_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS jobs_account ON jobs(account_id, created_at);
+CREATE TABLE IF NOT EXISTS job_requests (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL REFERENCES jobs(id),
+    reserved_usd REAL NOT NULL,
+    held_micros INTEGER NOT NULL,
+    settled INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS ledger (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     account_id TEXT NOT NULL REFERENCES accounts(id),
@@ -146,9 +153,6 @@ class Store:
             if "plan" in columns:
                 raise RuntimeError(f"{self._path} is from the monthly-plan gateway; start the wallet on a new database")
             db.executescript(_SCHEMA)
-            # Nothing is in flight when the gateway starts.
-            db.execute("UPDATE jobs SET reserved_usd = 0 WHERE reserved_usd != 0")
-            db.execute("UPDATE accounts SET held_micros = 0 WHERE held_micros != 0")
 
     def now(self) -> float:
         return float(self._clock())
@@ -417,13 +421,15 @@ class Store:
             raise InvalidToken()
         return row
 
-    def begin_request(self, job_id: str, reserve_usd: float = 0.0) -> None:
+    def begin_request(self, job_id: str, reserve_usd: float = 0.0) -> str:
         """Hold what a request may cost on the job and the balance, so requests in flight together cannot overspend."""
         reserve_usd = max(0.0, reserve_usd)
         hold = self.price_micros(reserve_usd)
         with self._write() as db:
-            row = db.execute("SELECT account_id, cost_usd, reserved_usd, cost_cap_usd, requests FROM jobs WHERE id = ?",
+            row = db.execute("SELECT account_id, cost_usd, reserved_usd, cost_cap_usd, requests, status, expires_at FROM jobs WHERE id = ?",
                              (job_id,)).fetchone()
+            if row is None or row["status"] != "active" or row["expires_at"] < self.now():
+                raise InvalidToken()
             if row["cost_usd"] + row["reserved_usd"] + reserve_usd > row["cost_cap_usd"]:
                 raise QuotaExceeded("cost_cap")
             if row["requests"] >= JOB_MAX_REQUESTS:
@@ -435,14 +441,27 @@ class Store:
             db.execute("UPDATE jobs SET requests = requests + 1, reserved_usd = reserved_usd + ? WHERE id = ?",
                        (reserve_usd, job_id))
             db.execute("UPDATE accounts SET held_micros = held_micros + ? WHERE id = ?", (hold, row["account_id"]))
+            request_id = uuid.uuid4().hex
+            db.execute("INSERT INTO job_requests (id, job_id, reserved_usd, held_micros) VALUES (?, ?, ?, ?)",
+                       (request_id, job_id, reserve_usd, hold))
+            return request_id
 
     def add_cost(self, job_id: str, cost: float, prompt_tokens: int = 0, completion_tokens: int = 0,
-                 released_usd: float = 0.0) -> float:
+                 released_usd: float = 0.0, request_id: str | None = None) -> float:
         """Charge a finished request at cost plus the fee and free what it held; returns the job's A.I cost."""
         charge = self.price_micros(cost)
         release = self.price_micros(released_usd)
         with self._write() as db:
-            account_id = db.execute("SELECT account_id FROM jobs WHERE id = ?", (job_id,)).fetchone()["account_id"]
+            job = db.execute("SELECT account_id, status, cost_usd FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            account_id = job["account_id"]
+            if request_id is not None:
+                request = db.execute("SELECT * FROM job_requests WHERE id = ? AND job_id = ?", (request_id, job_id)).fetchone()
+                if request is None:
+                    raise ValueError("Unknown job request")
+                if request["settled"]:
+                    return float(job["cost_usd"])
+                released_usd, release = float(request["reserved_usd"]), int(request["held_micros"])
+                db.execute("UPDATE job_requests SET settled = 1 WHERE id = ?", (request_id,))
             db.execute(
                 "UPDATE jobs SET cost_usd = cost_usd + ?, prompt_tokens = prompt_tokens + ?, "
                 "completion_tokens = completion_tokens + ?, reserved_usd = MAX(0, reserved_usd - ?), "
@@ -451,6 +470,10 @@ class Store:
             )
             db.execute("UPDATE accounts SET balance_micros = balance_micros - ?, "
                        "held_micros = MAX(0, held_micros - ?) WHERE id = ?", (charge, release, account_id))
+            if job["status"] != "active" and charge:
+                balance = int(db.execute("SELECT balance_micros FROM accounts WHERE id = ?", (account_id,)).fetchone()[0])
+                db.execute("INSERT INTO ledger (account_id, kind, delta_micros, balance_micros, ref, created_at) "
+                           "VALUES (?, 'chapter', ?, ?, ?, ?)", (account_id, -charge, balance, job_id, self.now()))
             return float(db.execute("SELECT cost_usd FROM jobs WHERE id = ?", (job_id,)).fetchone()[0])
 
     def _close_job(self, db, row, status: str) -> None:

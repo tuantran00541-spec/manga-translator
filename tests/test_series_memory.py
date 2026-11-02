@@ -74,3 +74,22 @@ def test_the_user_reads_and_edits_a_series_memory_by_its_chapter_url():
     assert read_series_memory(SeriesMemoryRequest(url=url.replace("/1", "/2")))["text"] == saved["text"]
     with pytest.raises(HTTPException):
         read_series_memory(SeriesMemoryRequest(url="https://mangadex.org/chapter/0f3a"))
+
+
+def test_series_memory_is_separate_by_target_language():
+    from app.routers.ai_mode import SeriesMemoryRequest, read_series_memory, save_series_memory
+
+    url = "https://example.com/manga/language-test/chapter-1"
+    save_series_memory(SeriesMemoryRequest(url=url, text="term: Dragon = Rồng"))
+    assert read_series_memory(SeriesMemoryRequest(url=url, target_lang="en"))["text"] == ""
+    save_series_memory(SeriesMemoryRequest(url=url, target_lang="en", text="term: Dragon = Dragon"))
+    assert "Rồng" in read_series_memory(SeriesMemoryRequest(url=url, target_lang="vi"))["text"]
+    assert "Dragon = Dragon" in read_series_memory(SeriesMemoryRequest(url=url, target_lang="en"))["text"]
+
+
+def test_series_editor_uses_current_target_language():
+    from pathlib import Path
+
+    source = (Path(__file__).parents[1] / "app/static/js/ai-mode.js").read_text(encoding="utf-8")
+    assert source.count('target_lang: $("ai-mode-target").value') >= 3
+    assert '$("ai-mode-target")?.addEventListener("change"' in source

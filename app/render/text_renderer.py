@@ -233,6 +233,7 @@ def render_text_in_box(
     source_cap_px: int | None = None,
     enlarge: bool = False,
     min_source_share: float = 0.0,
+    size_is_hint: bool = False,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -300,6 +301,15 @@ def render_text_in_box(
 
     if target_size is not None:
         actual_size = target_size
+        fits, _ = _fits(draw, text, box_w, box_h, font_path_str, actual_size, stroke_w)
+        if not fits and size_is_hint:
+            readable = int(RENDER_MIN_READABLE_FONT_SIZE * max(1.0, image.width / REFERENCE_PAGE_WIDTH))
+            actual_size, _, fits = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
+                                              minimum_size=readable, maximum_size=target_size)
+        if not fits:
+            raise ValueError("Translation does not fit at the requested font size")
+        if size_is_hint and min_source_share and actual_size < min_source_share * target_size:
+            raise ValueError("Translation fits only well below the OCR font size")
         font = get_font_object(font_path_str, actual_size)
         lines = _wrap_text(draw, text, font, box_w, balance=True)
     else:

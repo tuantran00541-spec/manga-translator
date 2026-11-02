@@ -420,7 +420,7 @@
     if (!url || !box) return;
     try {
       const data = await requestJson("/api/ai_mode/series/read", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, target_lang: $("ai-mode-target").value }),
       });
       box.value = data.text;
       box.placeholder = data.chapters ? "" : "Bộ truyện này chưa có chương nào chạy A.I mode; có thể nhập trước tên và xưng hô.";
@@ -436,7 +436,7 @@
     try {
       const data = await requestJson("/api/ai_mode/series/save", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, text: $("ai-mode-series-text").value }),
+        body: JSON.stringify({ url, target_lang: $("ai-mode-target").value, text: $("ai-mode-series-text").value }),
       });
       $("ai-mode-series-text").value = data.text;
       window.showToast?.("Đã lưu bộ nhớ bộ truyện.", "success");
@@ -469,6 +469,7 @@
     });
     $("ai-mode-series")?.addEventListener("toggle", (event) => { if (event.target.open) loadSeries(); });
     $("ai-mode-url")?.addEventListener("change", () => { if ($("ai-mode-series")?.open) loadSeries(); });
+    $("ai-mode-target")?.addEventListener("change", () => { if ($("ai-mode-series")?.open) loadSeries(); });
     $("ai-mode-series-save")?.addEventListener("click", saveSeries);
     $("ai-mode-login-form").addEventListener("submit", submitLogin);
     $("ai-mode-signout").addEventListener("click", signOut);

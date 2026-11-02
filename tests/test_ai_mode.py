@@ -43,7 +43,7 @@ def test_scan_marks_only_confident_credit_slices_and_maps_logo_boxes():
     assert scans[0].logos == ((192, 192, 608, 408),)
     assert not scans[1].is_credit, "a credit guess below the confidence floor is ignored"
     assert scans[2].is_credit and scans[2].logos == (), "a skipped slice needs no logo regions"
-    assert scans[3] == SliceScan(3, False, 0.0, ())
+    assert scans[3] == SliceScan(3, False, 0.0, (), answered=False)
 
 
 def test_scan_rejects_low_confidence_huge_and_malformed_logo_boxes():
@@ -503,7 +503,7 @@ def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypat
     assert runner.report["review_list"][0]["id"] == "text_long"
 
 
-def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monkeypatch):
+def test_translate_stage_preserves_slice_order_and_reports_failures(monkeypatch):
     import app.routers.ocr as ocr_router
 
     active = {"now": 0, "peak": 0}
@@ -555,7 +555,7 @@ def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monke
     assert len(memories) == 1 and None not in memories, "one chapter memory shared by every slice"
     assert runner.report["characters"] == [] and runner.report["address"] == []
 
-    assert 1 < active["peak"] <= ai_job.TRANSLATE_CONCURRENCY
+    assert active["peak"] == 1, "later slices must wait for earlier context"
     assert runner.report["translated"] == 18
     assert runner.report["translate_errors"] == ["Lát 4: provider down"]
     assert job.stages["translate"]["done"] == 10
@@ -691,7 +691,7 @@ def test_a_line_the_translator_sees_outside_every_box_is_boxed_erased_and_transl
     assert retried == [(0, {"new"})] and runner.report["missed_added"] == 1
 
 
-def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
+def test_blank_objects_require_review_regardless_of_attempt(monkeypatch):
     region = {"x1": 0, "y1": 0, "x2": 50, "y2": 20}
     manifest = {"pages": [
         {"text_objects": [{"id": "said", "translation": "Chào", "region": region},
@@ -706,7 +706,6 @@ def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
     runner = _runner(monkeypatch, "render", manifest)
     assert runner._settle_blanks() == 2 and saved == [CHAPTER]
     objects = manifest["pages"][0]["text_objects"]
-    assert objects[1]["editorial_disposition"] == "non_story" and objects[1]["editorial_reviewed"] is True
-    # A blank the translator never tried stays unreviewed, so export blocks on it.
+    assert objects[1]["editorial_disposition"] == "untranslated" and not objects[1].get("editorial_reviewed")
     assert objects[3]["editorial_disposition"] == "untranslated" and not objects[3].get("editorial_reviewed")
     assert "editorial_disposition" not in objects[0] and "editorial_disposition" not in objects[2]

@@ -164,6 +164,12 @@ def test_active_story_source_without_translation_blocks_final_export_preflight()
     assert "untranslated_story_object" in _kinds(preflight)
 
 
+def test_manual_translation_resolves_untranslated_marker():
+    box = _root_box(safe_to_inpaint=True, needs_review=False, deferred_reason=None)
+    obj = _object(translation="Xin chào", editorial_disposition="untranslated")
+    assert editorial_preflight(_manifest(box, [obj]))["status"] == "PASS"
+
+
 def test_preserve_region_is_an_explicit_resolution_surface():
     manifest = _manifest()
     manifest["pages"][0]["preserve_regions"] = [

@@ -89,7 +89,8 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
     pad = ((top, bottom), (0, 0)) + (((0, 0),) if pixels.ndim == 3 else ())
     canvas = Image.fromarray(np.pad(pixels, pad, mode="edge"), mode=image.mode)
     canvas = render_text_in_box(canvas, text, (x1, box[1] + top, x2, box[3] + top), **style)
-    return canvas.crop((0, top, width, top + height))
+    image.paste(canvas.crop((0, top, width, top + height)))
+    return image
 
 
 def cleanup_tmp(path: Path) -> None:
@@ -303,12 +304,15 @@ def render_text_objects(
         box_font = style_get(fonts_dict, oid)
         if box_font is None:
             box_font = obj_style.get("font", "default")
+        requested_size = style_get(font_sizes_dict, oid)
+        stored_size = obj_style.get("fontSize", "auto")
         box_size = _resolve_ocr_style(
-            style_get(font_sizes_dict, oid),
-            obj_style.get("fontSize", "auto"),
+            requested_size,
+            stored_size,
             obj.get("ocr_font_size"),
             "auto",
         )
+        size_is_hint = _is_auto_style(requested_size if requested_size is not None else stored_size) and bool(obj.get("ocr_font_size"))
         bold_val = style_get(bolds_dict, oid)
         if bold_val is None:
             bold_val = obj_style.get("bold", False)
@@ -344,6 +348,7 @@ def render_text_objects(
         style = dict(
             fill=box_color,
             font_size=box_size,
+            size_is_hint=size_is_hint,
             is_bold=box_bold,
             font_name=box_font,
             stroke_width=stroke_w,

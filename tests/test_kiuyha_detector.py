@@ -67,6 +67,53 @@ def test_dynamic_model_runs_at_the_slice_size():
     assert boxes[0][:4] == (200, 1000, 600, 1100)
 
 
+def test_dynamic_detector_runs_only_one_pass_on_the_same_slice():
+    session = _Session([1, 3, "height", "width"])
+    boxes = KiuyhaTextDetector("unused", session=session).detect_slice(_image())
+    assert boxes
+    assert len(session.blobs) == 1
+
+
+def test_empty_letter_mask_keeps_a_non_destructive_candidate(monkeypatch):
+    from app.detector import kiuyha_detector
+    from app.detector.mask_builder import build_mask
+
+    detector = KiuyhaTextDetector("unused", session=_Session([1, 3, "height", "width"]))
+    monkeypatch.setattr(detector, "detect_slice", lambda _image: [(20, 20, 100, 60, 0.99)])
+    monkeypatch.setattr(kiuyha_detector, "letter_mask", lambda *_args, **_kwargs: (
+        (20, 20, 100, 60), np.zeros((40, 80), bool), np.zeros((40, 80), bool)))
+    boxes = detector.text_boxes(np.full((120, 120, 3), 255, np.uint8))
+    assert len(boxes) == 1
+    assert boxes[0].ocr_eligible and boxes[0].needs_review
+    assert not boxes[0].safe_to_inpaint
+    assert not build_mask((120, 120), boxes).any()
+
+
+def test_empty_mask_candidate_stays_separate_from_overlapping_mask(monkeypatch):
+    from app.detector import kiuyha_detector
+    from app.detector.boxes import apply_final_nms
+    from app.page_processing import _fold_nested
+
+    detector = KiuyhaTextDetector("unused", session=_Session([1, 3, "height", "width"]))
+    monkeypatch.setattr(detector, "detect_slice", lambda _image: [
+        (20, 20, 100, 60, 0.99), (30, 25, 110, 65, 0.98)])
+
+    def masks(_image, rect, **_kwargs):
+        mask = np.zeros((40, 80), bool)
+        if rect[0] == 30:
+            mask[10:20, 10:30] = True
+        return rect, mask, mask.copy()
+
+    monkeypatch.setattr(kiuyha_detector, "letter_mask", masks)
+    boxes = detector.text_boxes(np.full((120, 120, 3), 255, np.uint8))
+    assert len(boxes) == 2
+    assert sum(box.needs_review and not box.safe_to_inpaint for box in boxes) == 1
+    assert sum(box.safe_to_inpaint and box.verified_mask for box in boxes) == 1
+    downstream = _fold_nested(apply_final_nms(boxes))
+    assert len(downstream) == 2
+    assert sum(box.needs_review and not box.safe_to_inpaint for box in downstream) == 1
+
+
 def test_raw_head_is_decoded_and_deduplicated():
     session = _Session([1, 3, 1280, 1280], raw=True)
     boxes = KiuyhaTextDetector("unused", session=session).raw_boxes(_image())

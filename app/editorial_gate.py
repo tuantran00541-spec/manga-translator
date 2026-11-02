@@ -468,7 +468,8 @@ def editorial_preflight(
             if oid:
                 checked_objects.add(oid)
 
-            if _norm(obj.get("editorial_disposition")) == UNTRANSLATED_DISPOSITION:
+            if (_norm(obj.get("editorial_disposition")) == UNTRANSLATED_DISPOSITION
+                    and not str(obj.get("translation") or "").strip()):
                 # Fail closed: block export until the text is translated or a human reviews it.
                 _append_blocker(
                     blockers,

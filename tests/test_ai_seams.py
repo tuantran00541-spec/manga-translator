@@ -187,6 +187,17 @@ def test_two_bubbles_of_one_balloon_stay_two_texts():
     assert join_stacked_lines(manifest, [0, 1, 2]) == 0
 
 
+def test_blade_chapter_two_slice_nine_lobes_are_not_joined():
+    from app.ai_mode.seams import join_stacked_lines
+
+    pairs = [((73, 84, 699, 451), (206, 479, 693, 779)),
+             ((82, 2287, 544, 2571), (31, 2458, 820, 3016))]
+    manifest = {"pages": [{"text_objects": [
+        {"id": str(i), "region": dict(zip(("x1", "y1", "x2", "y2"), rect)), "translation": ""}
+        for i, rect in enumerate(pair)]} for pair in pairs]}
+    assert join_stacked_lines(manifest, [0, 1]) == 0
+
+
 def test_two_centred_bubbles_with_a_wide_letter_band_stay_two_texts():
     from app.ai_mode.seams import join_stacked_lines
 

@@ -177,6 +177,7 @@ STACK_TUCK = 0.5  # deepest two lines' boxes may overlap, as a share of the shor
 STACK_OVERLAP = 0.5  # share of the narrower line two stacked lines must share across
 # Lines of one block are centred on each other; two bubbles stacked in one balloon sit off to the sides.
 STACK_CENTRE = 0.15
+STACK_CENTRE_WITHOUT_LETTERS = 0.10
 STACK_LETTER_GAP = 0.75  # widest empty band between two fragments' lettering, as a share of the shorter lettering
 
 
@@ -237,7 +238,15 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
             for j in range(i + 1, len(lines)):
                 a, b = _rect(upper, 0), _rect(lines[j], 0)
                 pair = sorted(((a, upper), (b, lines[j])), key=lambda item: item[0][1])
-                if _stacked(pair[0][0], pair[1][0]) and _letters_continue(pair[0][1], pair[1][1]):
+                upper_rect, upper_obj = pair[0]
+                lower_rect, lower_obj = pair[1]
+                have_letters = isinstance(upper_obj.get("letter_bounds"), dict) and isinstance(lower_obj.get("letter_bounds"), dict)
+                wider = max(upper_rect[2] - upper_rect[0], lower_rect[2] - lower_rect[0])
+                offset = abs((upper_rect[0] + upper_rect[2]) - (lower_rect[0] + lower_rect[2])) / 2
+                uncertain = not have_letters and offset > STACK_CENTRE_WITHOUT_LETTERS * wider
+                if uncertain and _stacked(upper_rect, lower_rect):
+                    upper_obj["needs_review"] = lower_obj["needs_review"] = True
+                if not uncertain and _stacked(upper_rect, lower_rect) and _letters_continue(upper_obj, lower_obj):
                     group[root(j)] = root(i)
         blocks: dict[int, list[dict]] = {}
         for i, obj in enumerate(lines):
