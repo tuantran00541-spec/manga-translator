@@ -292,6 +292,11 @@
       const pages = [...new Set((r.review_list || []).map((item) => item.page))].slice(0, 8);
       lines.push(`${r.restored_regions} vùng AI không dịch được, đã giữ ảnh gốc${pages.length ? ` (lát ${pages.join(", ")})` : ""}`);
     }
+    const coverage = (r.review_list || []).filter((item) => String(item.reason || "").includes("chưa kiểm tra chữ sót"));
+    if (coverage.length) {
+      const pages = [...new Set(coverage.map((item) => item.page))].slice(0, 8);
+      lines.push(`${coverage.length} lát chưa kiểm tra chữ sót ngoài vùng (lát ${pages.join(", ")})`);
+    }
     if (r.repainted_regions) lines.push(`Repaint ${r.repainted_regions} vùng AI thấy còn sót ở ${r.repaint_pages?.length || 0} lát`);
     if (r.residue_left?.length) {
       const pages = [...new Set(r.residue_left.map((item) => item.page))].slice(0, 8);

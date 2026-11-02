@@ -491,8 +491,9 @@ class Store:
             row = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
             if row["status"] == "active":
                 self._close_job(db, row, outcome)
+                row = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         return {
-            "job_id": job_id, "status": outcome, "cost_usd": round(float(row["cost_usd"]), 6),
+            "job_id": job_id, "status": row["status"], "cost_usd": round(float(row["cost_usd"]), 6),
             "charged_usd": usd(row["charged_micros"]), "requests": int(row["requests"]),
             "prompt_tokens": int(row["prompt_tokens"]), "completion_tokens": int(row["completion_tokens"]),
         }

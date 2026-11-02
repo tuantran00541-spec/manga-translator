@@ -53,7 +53,7 @@ def _confidence(value) -> float:
 
 
 def script_review_fingerprint(obj: dict) -> str:
-    source = str(obj.get("ocr_text") or "")
+    source = str(obj.get("ocr_text") or obj.get("source_read") or "")
     translation = str(obj.get("translation") or "")
     payload = f"{source}\0{translation}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
@@ -496,7 +496,7 @@ def editorial_preflight(
                 )
                 continue
 
-            source_text = str(obj.get("ocr_text") or "").strip()
+            source_text = str(obj.get("ocr_text") or obj.get("source_read") or "").strip()
             translation = str(obj.get("translation") or "").strip()
             disposition = _reviewed_disposition({}, [obj])
             # A reviewed credit, duplicate, noise or kept-as-drawn object is not lettered, so it needs no translation.

@@ -287,3 +287,16 @@ def test_a_blank_the_reviewer_marked_non_story_does_not_block_export():
     assert "story_object_missing_ocr" not in _kinds(editorial_preflight(_manifest(box, [blank])))
     unreviewed = _object(ocr_text="", translation="")
     assert "story_object_missing_ocr" in _kinds(editorial_preflight(_manifest(box, [unreviewed])))
+def test_vision_source_also_requires_script_review():
+    from app.editorial_gate import editorial_preflight
+
+    manifest = {"script_review_required": True, "pages": [{"text_objects": [{
+        "id": "vision", "semantic_type": "speech_bubble", "region": {"x1": 0, "y1": 0, "x2": 100, "y2": 100},
+        "source_read": "Hello", "translation": "Xin chào", "needs_review": True,
+    }]}]}
+    assert editorial_preflight(manifest)["status"] != "PASS"
+    page = manifest["pages"][0]
+    apply_script_review(page, "vision", reviewed=True)
+    assert editorial_preflight(manifest)["status"] == "PASS"
+    page["text_objects"][0]["source_read"] = "Goodbye"
+    assert editorial_preflight(manifest)["status"] != "PASS"

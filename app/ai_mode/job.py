@@ -474,7 +474,11 @@ class AIModeRunner:
         async def check(sheet, placed) -> list:
             async with gate:
                 remaining = self._remaining_budget()
-                if self.job.cancel_requested or (remaining is not None and remaining < 0.001):
+                if self.job.cancel_requested:
+                    _append(self.report["qc_errors"], "Bỏ qua tờ kiểm tra clean do tác vụ bị hủy")
+                    return []
+                if remaining is not None and remaining < 0.001:
+                    _append(self.report["qc_errors"], "Bỏ qua tờ kiểm tra clean do hết ngân sách")
                     return []
                 try:
                     found, cost = await _ai_call(checkpoints.review_sheet, self.provider, self.settings.model,
@@ -483,10 +487,11 @@ class AIModeRunner:
                     _append(self.report["qc_errors"], f"Tờ crop: {_detail(exc)[:200]}")
                     return []
                 self._add_cost(cost)
+                self.report["review_sheets"] = self.report.get("review_sheets", 0) + 1
                 return found
 
         flagged = [crop for found in await asyncio.gather(*(check(s, p) for s, p in sheets)) for crop in found]
-        self.report["review_sheets"] = len(sheets)
+        self.report["review_sheets"] = self.report.get("review_sheets", 0)
         self.report["review_crops"] = len(crops)
         by_page: dict[int, list] = {}
         for crop in flagged:

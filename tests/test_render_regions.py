@@ -7,6 +7,26 @@ from app.render.page_renderer import letter_box, _render_in_region
 STYLE = dict(fill="#202020", font_size=40)
 
 
+@pytest.mark.parametrize("field,value", [
+    ("ocr_font_size", 40), ("ocr_text_color", "#123456"),
+    ("lettering_color", "#123456"), ("letter_bounds", {"x1": 1, "y1": 2, "x2": 30, "y2": 40}),
+    ("source_cap_px", 40), ("enlarge", True), ("font_ai_id", "dialogue.mac-dinh-3"),
+    ("font_selection_mode", "user"), ("auto_generated", True),
+    ("ocr_text_region", {"x1": 1, "y1": 2, "x2": 30, "y2": 40}),
+    ("auto_geometry", {"x1": 1, "y1": 2, "x2": 30, "y2": 40}),
+])
+def test_render_signature_changes_with_lettering_inputs(tmp_path, field, value):
+    from app.render.identity import render_input_signature
+
+    base = tmp_path / "page.png"
+    Image.new("RGB", (100, 100), "white").save(base)
+    obj = {"id": "a", "region": {"x1": 1, "y1": 1, "x2": 90, "y2": 90}, "translation": "Hi"}
+    manifest = {"pages": [{"original": str(base), "text_objects": [obj]}]}
+    before = render_input_signature(manifest, 0)
+    obj[field] = value
+    assert render_input_signature(manifest, 0) != before
+
+
 @pytest.mark.parametrize("horizontal,vertical", [("left", "top"), ("right", "bottom"), ("center", "middle")])
 def test_thick_stroke_stays_inside_region(horizontal, vertical):
     from app.render.text_renderer import render_text_in_box
@@ -19,6 +39,18 @@ def test_thick_stroke_stays_inside_region(horizontal, vertical):
     assert ink.any()
     ink[100:200, 100:300] = False
     assert not ink.any()
+
+
+def test_translated_object_outside_image_does_not_silently_render_zero():
+    from fastapi import HTTPException
+    from app.render.page_renderer import render_text_objects
+    from app.schemas import RenderRequest
+
+    image = Image.new("RGB", (400, 300), "white")
+    obj = {"id": "outside", "region": {"x1": 500, "y1": 20, "x2": 600, "y2": 150}, "translation": "Hello"}
+    req = RenderRequest(chapter_id="a1b2c3d4", page_index=0, translations={})
+    with pytest.raises(HTTPException):
+        render_text_objects(image, req, [obj], *({} for _ in range(10)))
 
 
 def test_edge_render_mutates_the_input_image():

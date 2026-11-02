@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-RENDER_IDENTITY_VERSION = "phase45-v2"
+RENDER_IDENTITY_VERSION = "phase45-v3"
 
 
 def file_revision(path: Path) -> tuple[int, int, int]:
@@ -37,6 +37,10 @@ def _normalized_text_object(obj: dict) -> dict:
         "translation": str(obj.get("translation") or ""),
         "style": obj.get("style") or {},
         "source_missing": bool(obj.get("source_missing", False)),
+        **{key: obj.get(key) for key in (
+            "ocr_font_size", "ocr_text_color", "lettering_color", "letter_bounds", "source_cap_px",
+            "enlarge", "font_ai_id", "font_selection_mode", "auto_generated", "ocr_text_region", "auto_geometry",
+        )},
     }
 
 

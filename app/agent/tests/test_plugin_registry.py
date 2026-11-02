@@ -24,6 +24,16 @@ class _Prov:
     label = "stub"
 
 
+def test_zip_with_duplicate_skill_names_does_not_install_anything(tmp_path):
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("first/SKILL.md", "---\nname: same-name\ndescription: first\n---\nFIRST")
+        z.writestr("second/SKILL.md", "---\nname: same-name\ndescription: second\n---\nSECOND")
+    with pytest.raises(ValueError):
+        skill_install.install_zip(archive.getvalue(), tmp_path, replace=False)
+    assert not (skill_install.user_dir(tmp_path) / "same-name").exists()
+
+
 def _make_session(home: Path, wsroot: Path, trust=None, session_id="aa01bb02cc03dd04"):
     mgr = AgentSessionManager(home / ".manga-agent", home=home,
                               trust=trust if trust is not None else context.TrustStore(None))

@@ -30,6 +30,19 @@ SDK_WEBHOOK_DATA = {
 }
 
 
+def test_finishing_an_expired_job_reports_its_persisted_status(tmp_path):
+    from gateway.store import JOB_TTL_SECONDS
+
+    clock = [1793600000.0]
+    store = Store(tmp_path / "gateway.sqlite", clock=lambda: clock[0], fee_rate=0)
+    account, _ = store.create_account("audit@example.com")
+    store.adjust(account, 1, "test")
+    job, _, _ = store.reserve_job(account, 0.1)
+    clock[0] += JOB_TTL_SECONDS + 1
+    store.purge()
+    assert store.finish_job(job, "completed")["status"] == "expired"
+
+
 def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))

@@ -147,6 +147,23 @@ def test_manager_cancel_before_first_stage():
     assert snapshot["status"] == "cancelled"
 
 
+def test_ai_report_displays_coverage_review_without_restored_regions():
+    import shutil
+    import subprocess
+
+    if not shutil.which("node"):
+        pytest.skip("node is unavailable")
+    script = r'''const fs = require("fs");
+const s = fs.readFileSync("app/static/js/ai-mode.js", "utf8");
+const start = s.indexOf("  function reportLines(job) {");
+const end = s.indexOf("  function render(job) {", start);
+const report = new Function(s.slice(start, end) + "; return reportLines;")();
+const lines = report({report: {review_list: [{page: 82, reason: "chưa kiểm tra chữ sót ngoài vùng"}]}});
+if (!lines.some(line => line.includes("82") && line.includes("chưa kiểm tra"))) process.exit(1);
+'''
+    assert subprocess.run(["node", "-e", script], check=False).returncode == 0
+
+
 def test_sync_seams_persists_conflicting_dialogue_without_a_drop(monkeypatch):
     import copy
     import contextlib
@@ -337,6 +354,16 @@ def test_glossary_transcript_lists_who_says_what_slice_by_slice():
 
     assert transcript({4: (("narration", "Long ago"),), 2: (), 1: (("", "Hm?"), ("boy", "Run!"))}) == (
         "SLICE 2\n[unknown] Hm?\n[boy] Run!\nSLICE 5\n[narration] Long ago")
+
+
+def test_review_reports_sheet_skipped_for_budget(monkeypatch):
+    runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [{"x1": 10, "y1": 10, "x2": 90, "y2": 90}]}]})
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0])
+    monkeypatch.setattr(runner, "_images", lambda *args: (np.full((200, 200, 3), 255, np.uint8),) * 2)
+    monkeypatch.setattr(runner, "_remaining_budget", lambda: 0.0)
+    asyncio.run(runner.review())
+    assert runner.report["qc_errors"], "unreviewed sheets must not appear to have passed"
+    assert runner.report["review_sheets"] == 0
 
 
 def test_review_sends_crops_on_sheets_and_erases_the_flagged_ones_again(monkeypatch):

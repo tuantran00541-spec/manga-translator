@@ -275,10 +275,10 @@ def render_text_objects(
             )
         except (KeyError, TypeError, ValueError):
             logger.warning(
-                "Chapter {} page {} object {} has malformed region, skipping",
+                "Chapter {} page {} object {} has malformed region",
                 req.chapter_id, req.page_index, oid,
             )
-            continue
+            raise HTTPException(422, f"Vùng chữ không hợp lệ ({oid})")
 
         x1 = max(0, min(img_w, coords_raw[0]))
         y1 = max(0, min(img_h, coords_raw[1]))
@@ -286,11 +286,11 @@ def render_text_objects(
         y2 = max(0, min(img_h, coords_raw[3]))
         if x2 <= x1 or y2 <= y1:
             logger.warning(
-                "Chapter {} page {} object {} invalid coordinates ({},{},{},{}) for image size ({},{}), skipping",
+                "Chapter {} page {} object {} invalid coordinates ({},{},{},{}) for image size ({},{})",
                 req.chapter_id, req.page_index, oid,
                 x1, y1, x2, y2, img_w, img_h,
             )
-            continue
+            raise HTTPException(422, f"Vùng chữ nằm ngoài ảnh ({oid})")
         # The layout uses the whole region even past the slice edge; only drawing is clipped.
         coords = (x1, coords_raw[1], x2, coords_raw[3])
 

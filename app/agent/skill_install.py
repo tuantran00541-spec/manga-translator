@@ -141,6 +141,9 @@ def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str
         planned.append((folder, lead, name))
     if not planned:
         raise ValueError("các skill tìm thấy có tên không hợp lệ")
+    names = [name.casefold() for _folder, _lead, name in planned]
+    if len(set(names)) != len(names):
+        raise ValueError("archive chứa nhiều skill trùng tên")
     if not replace:
         for _folder, _lead, name in planned:
             if (target / name).exists():
