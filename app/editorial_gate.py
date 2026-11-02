@@ -455,6 +455,7 @@ def editorial_preflight(
 
         checked_objects: set[str] = set()
         live_ids = {str(obj.get("id")) for obj in objects if not obj.get("source_missing")}
+        objects_by_id = {str(obj.get("id")): obj for obj in objects if obj.get("id")}
         for obj in objects:
             if obj.get("source_missing") or text_object_in_preserve_region(page, obj):
                 continue
@@ -467,6 +468,18 @@ def editorial_preflight(
                 continue
             if oid:
                 checked_objects.add(oid)
+
+            for other_id in obj.get("overlap_review_ids") or []:
+                other = objects_by_id.get(str(other_id))
+                if (other and not other.get("source_missing") and not other.get("joined_into")
+                        and str(obj.get("translation") or "").strip()
+                        and str(other.get("translation") or "").strip()
+                        and overlap_share(obj.get("region"), other.get("region")) >= 0.5):
+                    _append_blocker(blockers, blocker_keys, _blocker(
+                        "overlapping_dialogue", page_index, obj=obj,
+                        reason="translated objects overlap; separate them or remove the duplicate translation before export",
+                    ))
+                    break
 
             if (_norm(obj.get("editorial_disposition")) == UNTRANSLATED_DISPOSITION
                     and not str(obj.get("translation") or "").strip()):

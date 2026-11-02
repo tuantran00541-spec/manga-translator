@@ -165,6 +165,10 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
             else:
                 for other in overlaps:
                     obj["needs_review"] = other["needs_review"] = True
+                    for left, right in ((obj, other), (other, obj)):
+                        conflicts = left.setdefault("overlap_review_ids", [])
+                        if str(right.get("id")) not in conflicts:
+                            conflicts.append(str(right.get("id")))
                 kept.append(obj)
     return dropped
 

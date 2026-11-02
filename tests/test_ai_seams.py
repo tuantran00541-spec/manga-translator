@@ -71,6 +71,19 @@ def test_overlapping_different_dialogue_is_not_silently_discarded():
     assert first.get("needs_review") and second.get("needs_review")
 
 
+def test_conflicting_overlapping_dialogue_blocks_export_until_separated():
+    from app.ai_mode.seams import drop_overlapping_letters
+    from app.editorial_gate import editorial_preflight
+
+    first = _obj("first", 100, 300, "Tôi sẽ đi trước.", semantic_type="speech_bubble")
+    second = _obj("second", 150, 250, "Hãy cẩn thận!", semantic_type="speech_bubble")
+    manifest = {"pages": [{"text_objects": [first, second]}]}
+    drop_overlapping_letters(manifest)
+    assert editorial_preflight(manifest)["status"] != "PASS"
+    second["region"] = {"x1": 100, "y1": 400, "x2": 500, "y2": 500}
+    assert editorial_preflight(manifest)["status"] == "PASS"
+
+
 def test_a_core_box_cut_by_the_slice_edge_gives_way_to_the_whole_seam_box():
     from app.detector.boxes import BubbleBox
     from app.page_processing import _contained
