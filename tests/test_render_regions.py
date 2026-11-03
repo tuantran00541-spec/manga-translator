@@ -243,3 +243,42 @@ def test_tapered_lines_stay_inside_the_ellipse():
     plain = Image.new("RGB", (300, 300), "white")
     render_text_in_box(plain, text, box, fill="#000000")
     assert max(outside_ellipse(plain)) > 1.0, "without the taper a pole line leaves the ellipse"
+
+
+def test_double_balloon_lines_follow_each_lobe():
+    from PIL import ImageDraw
+
+    from app.render.text_renderer import render_text_in_box
+
+    # Two overlapping ovals, diagonal like the Academy figure-8: the upper lobe
+    # sits left, the lower lobe right, and one object spans both.
+    canvas = Image.new("RGB", (620, 700), (128, 128, 128))
+    mask = Image.new("L", (620, 700), 0)
+    draw, mdraw = ImageDraw.Draw(canvas), ImageDraw.Draw(mask)
+    for cx, cy, rx, ry in ((220, 260, 170, 150), (380, 430, 180, 150)):
+        draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill="white", outline="black", width=3)
+        mdraw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=255)
+    before = np.asarray(canvas)[:, :, 0] < 160
+    render_text_in_box(canvas, "Em chỉ làm theo những gì được dạy thôi à? Vậy mà cũng khoe khoang sao?",
+                       (50, 110, 560, 580), fill="#000000", taper=True)
+    after = np.asarray(canvas)[:, :, 0] < 160
+    new_ink = after & ~before & (np.asarray(mask) == 0)
+    assert not new_ink.any(), "tapered lines stay inside the two lobes"
+    assert (after & ~before).any(), "the text still renders"
+
+
+def test_dark_balloon_falls_back_to_the_ellipse():
+    from PIL import ImageDraw
+
+    from app.render.text_renderer import render_text_in_box
+
+    canvas = Image.new("RGB", (300, 300), "white")
+    ImageDraw.Draw(canvas).ellipse((50, 50, 250, 250), fill=(20, 20, 30), outline=(128, 128, 128), width=3)
+    before = np.asarray(canvas)[:, :, 0]
+    render_text_in_box(canvas, "alpha beta gamma delta epsilon zeta eta theta",
+                       (50, 50, 250, 250), fill="#FFFFFF", taper=True)
+    after = np.asarray(canvas)[:, :, 0]
+    new_ink = (after > 200) & (before <= 200)
+    ys, xs = np.where(new_ink)
+    assert len(xs) > 0, "the dark balloon still letters"
+    assert max(((x - 150) / 100) ** 2 + ((y - 150) / 100) ** 2 for x, y in zip(xs, ys)) <= 1.0

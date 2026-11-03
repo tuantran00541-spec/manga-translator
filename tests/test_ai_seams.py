@@ -444,3 +444,37 @@ def test_a_found_box_grown_over_most_of_the_slice_keeps_its_own_rectangle(monkey
                         lambda image, rect: ((0, 0, 600, 400), np.ones((400, 600), bool)))
     box = _stroke_box(np.zeros((400, 600, 3), np.uint8), (150, 150, 450, 260))
     assert (box["x1"], box["y1"], box["x2"], box["y2"]) == (150, 150, 450, 260) and box["mask"] is None
+
+
+def _stacked_pair(upper_rect, lower_rect):
+    return {"pages": [{"text_objects": [
+        {"id": "upper", "region": dict(zip(("x1", "y1", "x2", "y2"), upper_rect)), "translation": ""},
+        {"id": "lower", "region": dict(zip(("x1", "y1", "x2", "y2"), lower_rect)), "translation": ""},
+    ]}]}
+
+
+def test_balloon_text_does_not_join_the_caption_underneath_it():
+    import cv2
+    import numpy as np
+    from app.ai_mode.seams import join_stacked_lines
+
+    # The Academy 069 shape: a balloon above, free text below it on the art,
+    # centred alike so the stacking and letter rules alone would join them.
+    image = np.zeros((900, 900, 3), np.uint8)
+    cv2.ellipse(image, (450, 300), (150, 120), 0, 0, 360, (255, 255, 255), -1)
+    manifest = _stacked_pair((350, 210, 550, 390), (300, 400, 650, 500))
+    assert join_stacked_lines(manifest, [0], images={0: image}) == 0
+    assert "joined_into" not in manifest["pages"][0]["text_objects"][1]
+
+
+def test_two_separate_stacked_balloons_do_not_join():
+    import cv2
+    import numpy as np
+    from app.ai_mode.seams import join_stacked_lines
+
+    image = np.zeros((900, 900, 3), np.uint8)
+    cv2.ellipse(image, (450, 300), (150, 120), 0, 0, 360, (255, 255, 255), -1)
+    cv2.ellipse(image, (450, 560), (150, 120), 0, 0, 360, (255, 255, 255), -1)
+    manifest = _stacked_pair((300, 210, 600, 390), (300, 410, 600, 590))
+    assert join_stacked_lines(manifest, [0], images={0: image}) == 0
+    assert "joined_into" not in manifest["pages"][0]["text_objects"][1]

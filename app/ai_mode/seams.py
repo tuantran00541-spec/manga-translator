@@ -323,6 +323,86 @@ def _balloon_neck(image, upper, lower) -> bool:
                                             (gray > 210).astype(np.uint8)))
 
 
+BOUNDARY_OVERLAP = 0.5  # a fragment inside a balloon overlaps its box this much; one outside it does not
+
+
+def _balloon_boundary(image, upper, lower) -> bool:
+    """True when one fragment sits in its own closed balloon and the other sits outside it.
+
+    The neck test only vetoes fragments sharing one balloon; it stays silent when
+    the second fragment is outside any balloon, so balloon text would join the
+    caption underneath it and render centred across both.
+    """
+    import cv2
+    import numpy as np
+
+    if image is None or image.ndim not in (2, 3):
+        return False
+    h, w = image.shape[:2]
+    margin = int(max(upper[2] - upper[0], lower[2] - lower[0],
+                     upper[3] - upper[1], lower[3] - lower[1]) * 0.35)
+    x1, y1 = max(0, min(upper[0], lower[0]) - margin), max(0, upper[1] - margin)
+    x2, y2 = min(w, max(upper[2], lower[2]) + margin), min(h, lower[3] + margin)
+    crop = image[y1:y2, x1:x2]
+    if not crop.size:
+        return False
+    scale = min(1.0, 600 / max(crop.shape[:2]))
+    if scale < 1:
+        crop = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+
+    def in_crop(rect):
+        return (max(0, int((rect[0] - x1) * scale)), max(0, int((rect[1] - y1) * scale)),
+                min(gray.shape[1], int((rect[2] - x1) * scale)),
+                min(gray.shape[0], int((rect[3] - y1) * scale)))
+
+    def home(labels, stats, rect):
+        """The one component holding the fragment, or None when it holds no such thing.
+
+        A balloon interior dominates its fragment's pixels and spans the fragment;
+        letter blobs and art patches do neither, and open background touches the crop edge.
+        """
+        rx1, ry1, rx2, ry2 = in_crop(rect)
+        if rx2 <= rx1 or ry2 <= ry1:
+            return None
+        sub = labels[ry1:ry2, rx1:rx2]
+        ids, counts = np.unique(sub[sub > 0], return_counts=True)
+        if not len(ids):
+            return None
+        label = int(ids[counts.argmax()])
+        if int(counts.max()) < 0.5 * int((sub > 0).sum()):
+            return None
+        bx, by, bw, bh, _ = (int(v) for v in stats[label])
+        if bw * bh < 0.5 * (rx2 - rx1) * (ry2 - ry1):
+            return None
+        if ((bx == 0 and x1 > 0) or (by == 0 and y1 > 0)
+                or (bx + bw >= labels.shape[1] and x2 < w) or (by + bh >= labels.shape[0] and y2 < h)):
+            return None
+        return label, (bx, by, bx + bw, by + bh)
+
+    def overlaps(rect, box):
+        rx1, ry1, rx2, ry2 = in_crop(rect)
+        ix = max(0, min(rx2, box[2]) - max(rx1, box[0]))
+        iy = max(0, min(ry2, box[3]) - max(ry1, box[1]))
+        return ix * iy >= BOUNDARY_OVERLAP * (rx2 - rx1) * (ry2 - ry1)
+
+    threshold, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    for mask in ((gray > threshold).astype(np.uint8),
+                 (gray <= threshold).astype(np.uint8),
+                 (gray > 210).astype(np.uint8)):
+        _, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+        hu, hl = home(labels, stats, upper), home(labels, stats, lower)
+        if hu and hl and hu[0] != hl[0]:
+            return True
+        if hu and hl and (not overlaps(upper, hu[1]) or not overlaps(lower, hl[1])):
+            return True
+        if hu and not hl and not overlaps(lower, hu[1]):
+            return True
+        if hl and not hu and not overlaps(upper, hl[1]):
+            return True
+    return False
+
+
 def join_stacked_lines(manifest: dict, page_indices: list[int], *, images: dict | None = None) -> int:
     """Lines the detector split from one block become one object before translation, so no word is dropped.
 
@@ -360,7 +440,9 @@ def join_stacked_lines(manifest: dict, page_indices: list[int], *, images: dict 
                     upper_obj["needs_review"] = lower_obj["needs_review"] = True
                 stacked = _stacked(upper_rect, lower_rect)
                 can_join = not uncertain and stacked and _letters_continue(upper_obj, lower_obj)
-                if can_join and not _balloon_neck((images or {}).get(page_index), upper_rect, lower_rect):
+                image = (images or {}).get(page_index)
+                if (can_join and not _balloon_neck(image, upper_rect, lower_rect)
+                        and not _balloon_boundary(image, upper_rect, lower_rect)):
                     group[root(j)] = root(i)
         blocks: dict[int, list[dict]] = {}
         for i, obj in enumerate(lines):

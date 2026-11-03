@@ -293,6 +293,10 @@ def render_text_in_box(
 
     draw = ImageDraw.Draw(image)
 
+    # Tapered lines follow the interior at their own height; without a bright
+    # interior the ellipse stays in charge.
+    run_at = _interior_run_at(image, (x1, y1, x2, y2)) if taper else None
+
     target_size = None
     if isinstance(font_size, (int, float)) and font_size > 0:
         target_size = int(font_size)
@@ -303,7 +307,10 @@ def render_text_in_box(
 
     if target_size is not None:
         actual_size = target_size
-        fits, fit_lines = _fits(draw, text, box_w, box_h, font_path_str, actual_size, stroke_w, taper=taper)
+        widths_for = (lambda count, lh: _run_widths(run_at, y1 + pad, box_w, box_h, lh, count)) \
+            if run_at else None
+        fits, fit_lines = _fits(draw, text, box_w, box_h, font_path_str, actual_size, stroke_w, taper=taper,
+                                widths_for=widths_for)
         if not fits and size_is_hint:
             readable = int(RENDER_MIN_READABLE_FONT_SIZE * max(1.0, image.width / REFERENCE_PAGE_WIDTH))
             actual_size, fit_lines, fits = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
@@ -319,7 +326,8 @@ def render_text_in_box(
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
         actual_size, lines, fits_readably, (x1, y1, x2, y2) = auto_fit(
             draw, text, (x1, y1, x2, y2), image.size, font_path_str, padding=padding, stroke_w=stroke_w,
-            source_cap_px=source_cap_px, enlarge=enlarge, opaque_caption=opaque_caption, taper=taper)
+            source_cap_px=source_cap_px, enlarge=enlarge, opaque_caption=opaque_caption, taper=taper,
+            run_at=run_at)
         raw_w, raw_h = x2 - x1, y2 - y1
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
@@ -369,13 +377,20 @@ def render_text_in_box(
     for i, line in enumerate(lines):
         left, _, right, _ = bounds[i]
         line_w = right - left + bold_extra
+        cur_y = start_y + i * line_height
         if h_align == "left":
             start_x = x1 + pad - left
         elif h_align == "right":
             start_x = x1 + pad + max(0, box_w - line_w) - left
         else:
             start_x = x1 + pad + max(0, (box_w - line_w) // 2) - left
-        cur_y = start_y + i * line_height
+            if run_at:
+                # A line sits on the interior run at its own height, not the box
+                # centre: a double balloon's lobes sit off-centre, and the box
+                # centre would push their lines across the outline.
+                run = run_at(int(round(cur_y + (bounds[i][1] + bounds[i][3]) / 2)))
+                if run and line_w <= run[1] - run[0] + 1:
+                    start_x = (run[0] + run[1]) // 2 - line_w // 2 - left
         for dx, dy in offsets:
             draw.text(
                 (start_x + dx, cur_y + dy),
@@ -391,12 +406,16 @@ def render_text_in_box(
 
 def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: int = RENDER_DEFAULT_PADDING,
              stroke_w: int = RENDER_AUTO_STROKE_WIDTH, source_cap_px: int | None = None, enlarge: bool = False,
-             opaque_caption: bool = False, taper: bool = False):
+             opaque_caption: bool = False, taper: bool = False, run_at=None):
     """The auto font size, wrapped lines, whether it fits readably and the box it was fitted in, as the renderer letters it."""
     x1, y1, x2, y2 = (int(v) for v in box)
     raw_w, raw_h = x2 - x1, y2 - y1
     pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
     box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+    # Line widths follow the interior at each line's height when the image offers
+    # one; the widths are rebuilt whenever the box grows below.
+    widths_for = (lambda bw, bh, oy: (lambda count, lh: _run_widths(run_at, oy, bw, bh, lh, count))) \
+        if run_at else None
     # Size limits are set for an 800 px wide page and grow with wider pages.
     scale = max(1.0, image_size[0] / REFERENCE_PAGE_WIDTH)
     readable, maximum_size = int(RENDER_MIN_READABLE_FONT_SIZE * scale), int(MAX_FONT_SIZE * scale)
@@ -415,17 +434,20 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         from app.render.source_size import SIZE_SLACK, matching_font_px
         # A misread source size must not shrink the text far below what the box holds.
         box_fit = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-                            minimum_size=readable, maximum_size=maximum_size, taper=taper)[0]
+                            minimum_size=readable, maximum_size=maximum_size, taper=taper,
+                            widths_for=widths_for(box_w, box_h, y1 + pad) if widths_for else None)[0]
         maximum_size = max(readable, int(SOURCE_FLOOR_RATIO * box_fit),
                            int(matching_font_px(font_path_str, int(source_cap_px)) * SIZE_SLACK))
     actual_size, lines, fits_readably = _fit_text(
         draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
         minimum_size=enlarged_min if enlarge else readable, maximum_size=maximum_size, taper=taper,
+        widths_for=widths_for(box_w, box_h, y1 + pad) if widths_for else None,
     )
     if enlarge and not fits_readably:
         actual_size, lines, fits_readably = _fit_text(
             draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
             minimum_size=readable, maximum_size=maximum_size, taper=taper,
+            widths_for=widths_for(box_w, box_h, y1 + pad) if widths_for else None,
         )
     if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
         grow_x = int(round(raw_w * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
@@ -439,6 +461,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         actual_size, lines, fits_readably = _fit_text(
             draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
             minimum_size=readable, maximum_size=maximum_size, taper=taper,
+            widths_for=widths_for(box_w, box_h, y1 + pad) if widths_for else None,
         )
     return actual_size, lines, fits_readably, (x1, y1, x2, y2)
 
@@ -453,25 +476,95 @@ SOURCE_MATCH_MAX_FONT_SIZE = 200  # large source lettering may be matched past M
 TAPER_SAFETY = 0.95  # a curved outline's chord is measured, then kept this far inside it
 
 
+def _ellipse_chord(box_w: int, box_h: int, line_height: int, count: int, i: int) -> int:
+    """Line ``i``'s width on an ellipse inscribed in the box; lines near the poles get narrower."""
+    if count <= 0 or box_h <= 0:
+        return 1
+    total_h = line_height * count
+    top = (box_h - total_h) / 2
+    center = top + (i + 0.5) * line_height
+    t = max(-1.0, min(1.0, (center - box_h / 2) / (box_h / 2)))
+    return max(1, int(box_w * TAPER_SAFETY * math.sqrt(max(0.0, 1 - t * t))))
+
+
 def _chord_widths(count: int, box_w: int, box_h: int, line_height: int) -> list[int]:
     """Each line's width on an ellipse inscribed in the box; lines near the poles get narrower."""
-    if count <= 0 or box_h <= 0:
+    return [_ellipse_chord(box_w, box_h, line_height, count, i) for i in range(count)]
+
+
+def _interior_run_at(image, box):
+    """Bright interior run at a row, for tapered text, or None when the box holds no bright balloon.
+
+    The run holding the box centre, else the widest bounded run in the box: a
+    double balloon's lobes sit off-centre, so a line belongs to the run at its
+    own height, not to the box centre. A run counts only when an outline bounds
+    it on both sides; page background runs to the image edge and is ignored, and
+    a box whose centre column is mostly dark is a dark balloon, not a bright one.
+    """
+    import numpy as np
+
+    x1, y1, x2, y2 = (int(v) for v in box)
+    w, _h = image.size
+    cx = (x1 + x2) // 2
+    top = max(0, y1)
+    try:
+        gray = np.asarray(image.crop((0, top, w, y2)).convert("L"))
+    except Exception:
+        return None
+    if gray.shape[0] == 0 or not (0 <= cx < w):
+        return None
+    if float((gray[:, cx] > 210).mean()) < 0.5:
+        return None
+
+    def run_at(y):
+        row_i = y - top
+        if row_i < 0 or row_i >= gray.shape[0]:
+            return None
+        row = gray[row_i] > 210
+        runs, start, last = [], None, None
+        for x, on in enumerate(row):
+            if on:
+                if start is None:
+                    start = x
+                last = x
+            elif start is not None and x - last > 3:
+                runs.append((start, last))
+                start = None
+        if start is not None:
+            runs.append((start, last))
+        bounded = [(a, b) for a, b in runs if a > 0 and b < len(row) - 1]
+        for a, b in bounded:
+            if a <= cx <= b:
+                return (a, b)
+        inside = [(a, b) for a, b in bounded if b >= x1 and a <= x2]
+        return max(inside, key=lambda r: r[1] - r[0]) if inside else None
+
+    return run_at
+
+
+def _run_widths(run_at, origin_y, box_w, box_h, line_height, count):
+    """Each line's width from the interior run at its height, else the ellipse chord."""
+    if count <= 0:
         return []
     total_h = line_height * count
     top = (box_h - total_h) / 2
     widths = []
     for i in range(count):
-        center = top + (i + 0.5) * line_height
-        t = max(-1.0, min(1.0, (center - box_h / 2) / (box_h / 2)))
-        widths.append(max(1, int(box_w * TAPER_SAFETY * math.sqrt(max(0.0, 1 - t * t)))))
+        run = run_at(int(round(origin_y + top + (i + 0.5) * line_height))) if run_at else None
+        if run:
+            widths.append(max(1, int((run[1] - run[0] + 1) * TAPER_SAFETY)))
+        else:
+            widths.append(_ellipse_chord(box_w, box_h, line_height, count, i))
     return widths
 
 
-def _tapered_wrap(draw, text: str, font, box_w: int, box_h: int, line_height: int, stroke_w: int):
-    """Greedy wrap where each line fits the ellipse chord at its height; returns lines and their widths."""
+def _tapered_wrap(draw, text: str, font, box_w: int, box_h: int, line_height: int, stroke_w: int,
+                  widths_for=None):
+    """Greedy wrap where each line fits the chord at its height; returns lines and their widths."""
     lines = _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w))
+    widths_for = widths_for or (lambda count, lh: _chord_widths(count, box_w, box_h, lh))
     for _ in range(4):
-        widths = _chord_widths(len(lines), box_w, box_h, line_height)
+        widths = widths_for(len(lines), line_height)
         wrapped, idx = [], 0
         for raw in text.splitlines():
             if not raw.strip():
@@ -495,15 +588,16 @@ def _tapered_wrap(draw, text: str, font, box_w: int, box_h: int, line_height: in
             lines = wrapped
             break
         lines = wrapped
-    return lines, _chord_widths(len(lines), box_w, box_h, line_height)
+    return lines, widths_for(len(lines), line_height)
 
 
 def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int,
-          taper: bool = False) -> tuple[bool, list[str]]:
+          taper: bool = False, widths_for=None) -> tuple[bool, list[str]]:
     font = get_font_object(font_path_str, size)
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     if taper:
-        lines, widths = _tapered_wrap(draw, text, font, box_w, box_h, line_height, stroke_w)
+        lines, widths = _tapered_wrap(draw, text, font, box_w, box_h, line_height, stroke_w,
+                                      widths_for=widths_for)
     else:
         lines = _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w))
         widths = [box_w] * len(lines)
@@ -527,6 +621,7 @@ def _fit_text(
     minimum_size: int = MIN_FONT_SIZE,
     maximum_size: int = MAX_FONT_SIZE,
     taper: bool = False,
+    widths_for=None,
 ) -> tuple[int, list[str], bool]:
     minimum_size = max(MIN_FONT_SIZE, int(minimum_size))
     lo, hi = minimum_size, max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
@@ -535,7 +630,8 @@ def _fit_text(
 
     while lo <= hi:
         mid = (lo + hi) // 2
-        ok, lines = _fits(draw, text, box_w, box_h, font_path_str, mid, stroke_w, taper=taper)
+        ok, lines = _fits(draw, text, box_w, box_h, font_path_str, mid, stroke_w, taper=taper,
+                          widths_for=widths_for)
         if ok:
             best_size = mid
             best_lines = lines
@@ -547,11 +643,13 @@ def _fit_text(
         min_font = get_font_object(font_path_str, minimum_size)
         if taper:
             line_height = _calc_line_height(draw, min_font, stroke_w=stroke_w)
-            best_lines, _ = _tapered_wrap(draw, text, min_font, box_w, box_h, line_height, stroke_w)
+            best_lines, _ = _tapered_wrap(draw, text, min_font, box_w, box_h, line_height, stroke_w,
+                                          widths_for=widths_for)
         else:
             best_lines = _wrap_text(draw, text, min_font, box_w)
     fits = bool(best_lines) and _fits(
-        draw, text, box_w, box_h, font_path_str, best_size, stroke_w, taper=taper
+        draw, text, box_w, box_h, font_path_str, best_size, stroke_w, taper=taper,
+        widths_for=widths_for,
     )[0]
     return best_size, best_lines, fits
 
