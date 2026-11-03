@@ -236,6 +236,7 @@ def render_text_in_box(
     min_source_share: float = 0.0,
     size_is_hint: bool = False,
     taper: bool = False,
+    _lobe_run=None,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -294,8 +295,9 @@ def render_text_in_box(
     draw = ImageDraw.Draw(image)
 
     # Tapered lines follow the interior at their own height; without a bright
-    # interior the ellipse stays in charge.
-    run_at = _interior_run_at(image, (x1, y1, x2, y2)) if taper else None
+    # interior the ellipse stays in charge. A lobe render already knows its run.
+    run_at = _lobe_run if _lobe_run is not None else (
+        _interior_run_at(image, (x1, y1, x2, y2)) if taper else None)
 
     target_size = None
     if isinstance(font_size, (int, float)) and font_size > 0:
@@ -304,6 +306,26 @@ def render_text_in_box(
         target_size = int(font_size)
 
     font_path_str = str(font_path)
+
+    # A double balloon with one paragraph per lobe letters each paragraph in
+    # its own lobe, at one shared size; anything else keeps the single block.
+    paras = text.split("\n")
+    if (taper and _lobe_run is None and (not bg_color or bg_color in ("transparent", "none", ""))
+            and len(paras) >= 2 and all(p.strip() for p in paras)):
+        lobes = _detect_lobes(image, (x1, y1, x2, y2))
+        if lobes and len(lobes) == len(paras):
+            size, lobes = _fit_lobes(draw, paras, lobes, font_path_str, stroke_w, padding,
+                                     image.size[0])
+            if size is not None:
+                for para, (lbox, lrun) in zip(paras, lobes):
+                    render_text_in_box(image, para, lbox, font_path=font_path, padding=padding,
+                                       fill=fill, font_size=size, is_bold=is_bold, font_name=font_name,
+                                       stroke_width=stroke_width, stroke_color=stroke_color,
+                                       bg_color=bg_color, corner_radius=corner_radius, shape=shape,
+                                       horizontal_align=horizontal_align, vertical_align="middle",
+                                       source_cap_px=None, enlarge=False, min_source_share=0.0,
+                                       size_is_hint=False, taper=True, _lobe_run=lrun)
+                return image
 
     if target_size is not None:
         actual_size = target_size
@@ -556,6 +578,204 @@ def _run_widths(run_at, origin_y, box_w, box_h, line_height, count):
         else:
             widths.append(_ellipse_chord(box_w, box_h, line_height, count, i))
     return widths
+
+
+LOBE_SECOND_PEAK = 0.55  # a second peak this small is a bump on one balloon, not a lobe
+LOBE_NECK = 0.80  # the pinch between lobes sits this far inside the smaller lobe's radius
+LOBE_MIN_RADIUS = 20  # a lobe smaller than a readable line holds no paragraph
+LOBE_MIN_SIZE = 40  # a lobe box smaller than this is not a place to letter
+
+
+def _bright_component(image, box):
+    """The enclosed bright region overlapping ``box``, or None.
+
+    Page background is bright too, but it touches the image edge; a balloon
+    interior is fenced in by its outline, so it does not.
+    """
+    import cv2
+
+    gray = np.asarray(image.convert("L"))
+    bright = (gray > 210).astype(np.uint8)
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(bright, 8)
+    x1, y1, x2, y2 = (int(v) for v in box)
+    img_h, img_w = gray.shape[:2]
+    best, best_count = None, 0
+    for lab in range(1, len(stats)):
+        bx, by, bw, bh, _ = (int(v) for v in stats[lab])
+        if bx <= 0 or by <= 0 or bx + bw >= img_w or by + bh >= img_h:
+            continue
+        comp = labels == lab
+        count = int(comp[y1:y2, x1:x2].sum())
+        if count > best_count:
+            best, best_count = comp, count
+    if best is None or best_count == 0:
+        return None
+    flood = np.zeros((best.shape[0] + 2, best.shape[1] + 2), dtype=np.uint8)
+    canvas = (1 - best.astype(np.uint8)) * 255
+    cv2.floodFill(canvas, flood, (0, 0), 0)
+    return best | (canvas == 255)
+
+
+def _detect_lobes(image, box):
+    """A double balloon's lobes, as (box, run) pairs top to bottom, or None.
+
+    The lobes are the interior's two large inscribed circles, joined by a
+    pinch: the distance transform peaks twice, and the saddle on the line
+    between the peaks sits well inside the smaller peak's radius. A single
+    balloon peaks once and falls through, as does a shape with no real pinch.
+    """
+    import cv2
+
+    try:
+        comp = _bright_component(image, box)
+    except Exception:
+        return None
+    if comp is None:
+        return None
+    x1, y1, x2, y2 = (int(v) for v in box)
+    dist = cv2.distanceTransform(comp.astype(np.uint8), cv2.DIST_L2, 5)
+    sub = dist[y1:y2, x1:x2]
+    if sub.size == 0:
+        return None
+    py, px = np.unravel_index(np.argmax(sub), sub.shape)
+    p1 = (int(px + x1), int(py + y1))
+    d1 = float(sub[py, px])
+    if d1 < LOBE_MIN_RADIUS:
+        return None
+    suppressed = dist.copy()
+    yy, xx = np.ogrid[:dist.shape[0], :dist.shape[1]]
+    suppressed[(xx - p1[0]) ** 2 + (yy - p1[1]) ** 2 <= d1 ** 2] = 0
+    sub2 = suppressed[y1:y2, x1:x2]
+    py2, px2 = np.unravel_index(np.argmax(sub2), sub2.shape)
+    p2 = (int(px2 + x1), int(py2 + y1))
+    d2 = float(sub2[py2, px2])
+    if d2 < LOBE_SECOND_PEAK * d1:
+        return None
+    saddle = min(float(dist[int(round(p1[1] + (p2[1] - p1[1]) * t)),
+                            int(round(p1[0] + (p2[0] - p1[0]) * t))])
+                 for t in np.linspace(0, 1, 101))
+    if saddle > LOBE_NECK * min(d1, d2):
+        return None
+    peaks = sorted(((p1, d1), (p2, d2)), key=lambda pd: pd[0][1])
+    if abs(peaks[1][0][1] - peaks[0][0][1]) < 0.25 * math.hypot(p2[0] - p1[0], p2[1] - p1[1]):
+        return None
+    ys, xs = np.where(comp)
+    near = [np.hypot(xs - pk[0], ys - pk[1]) for pk, _ in peaks]
+    lobes = []
+    for i, (pk, _d) in enumerate(peaks):
+        own = near[i] <= near[1 - i]
+        ax, ay = xs[own], ys[own]
+        if not len(ax):
+            return None
+        lx1, ly1 = max(x1, int(ax.min())), max(y1, int(ay.min()))
+        lx2, ly2 = min(x2, int(ax.max()) + 1), min(y2, int(ay.max()) + 1)
+        if lx2 - lx1 < LOBE_MIN_SIZE or ly2 - ly1 < LOBE_MIN_SIZE:
+            return None
+        order = np.argsort(ay, kind="stable")
+        say, sax = ay[order], ax[order]
+        uniq, starts = np.unique(say, return_index=True)
+        runs = {}
+        for j, row in enumerate(uniq):
+            seg = sax[starts[j]:starts[j + 1] if j + 1 < len(uniq) else len(sax)]
+            runs[int(row)] = (int(seg.min()), int(seg.max()))
+        lobes.append(((lx1, ly1, lx2, ly2), (lambda r: (lambda y: r.get(y)))(runs)))
+    return lobes
+
+
+def _windowed_run(run, half):
+    """The run shared by every row a line covers either side of its centre.
+
+    A line's glyphs reach above and below its centre row, where a neck
+    narrows fast; centring on the centre row alone lets descenders cross it.
+    """
+    def at(y):
+        lo = hi = None
+        yy = y - half
+        while yy <= y + half:
+            r = run(yy)
+            if r is None:
+                return None
+            lo = r[0] if lo is None else max(lo, r[0])
+            hi = r[1] if hi is None else min(hi, r[1])
+            if hi < lo:
+                return None
+            yy += 4
+        r = run(y)
+        if r is None:
+            return None
+        lo, hi = max(lo, r[0]), min(hi, r[1])
+        return (lo, hi) if hi >= lo else None
+
+    return at
+
+
+def _lobe_widths(run, origin_y, box_w, box_h, line_height, count):
+    """Each line's width from its lobe's run at its height, else too narrow to fit.
+
+    Unlike the ellipse fallback, a missing run here must not widen the line:
+    no run means the line has left its lobe.
+    """
+    if count <= 0:
+        return []
+    total_h = line_height * count
+    top = (box_h - total_h) / 2
+    widths = []
+    for i in range(count):
+        r = run(int(round(origin_y + top + (i + 0.5) * line_height))) if run else None
+        widths.append(max(1, int((r[1] - r[0] + 1) * TAPER_SAFETY)) if r else 1)
+    return widths
+
+
+def _lobe_common_size(draw, paras, lobes, font_path_str, stroke_w, padding, image_w):
+    """Largest size fitting every paragraph in its own lobe, or None.
+
+    One size for all paragraphs: lobes lettered at different sizes would read
+    as two voices, not one block split across lobes.
+    """
+    scale = max(1.0, image_w / REFERENCE_PAGE_WIDTH)
+    readable = int(RENDER_MIN_READABLE_FONT_SIZE * scale)
+    maximum = int(MAX_FONT_SIZE * scale)
+    lo, hi, best = readable, maximum, None
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        ok = True
+        for para, (lbox, lrun) in zip(paras, lobes):
+            lx1, ly1, lx2, ly2 = lbox
+            pad = max(2, min(padding, int(min(lx2 - lx1, ly2 - ly1) * RENDER_PADDING_RATIO_MAX)))
+            bw, bh = (lx2 - lx1) - pad * 2, (ly2 - ly1) - pad * 2
+            widths_for = (lambda count, lh, _run=lrun, _oy=ly1 + pad, _bw=bw, _bh=bh:
+                          _lobe_widths(_run, _oy, _bw, _bh, lh, count))
+            if not _fits(draw, para, bw, bh, font_path_str, mid, stroke_w,
+                         taper=True, widths_for=widths_for)[0]:
+                ok = False
+                break
+        if ok:
+            best, lo = mid, mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
+def _fit_lobes(draw, paras, lobes, font_path_str, stroke_w, padding, image_w):
+    """A shared size and windowed runs for per-lobe lettering, or (None, None).
+
+    The window follows the size's line height, and the size follows the
+    windowed fit, so the loop shrinks until a size passes at its own line
+    height — or gives up and the caller keeps the single block.
+    """
+    size = _lobe_common_size(draw, paras, lobes, font_path_str, stroke_w, padding, image_w)
+    if size is None:
+        return None, None
+    for _ in range(4):
+        lh = _calc_line_height(draw, get_font_object(font_path_str, size), stroke_w)
+        windowed = [(box, _windowed_run(run, lh // 2)) for box, run in lobes]
+        again = _lobe_common_size(draw, paras, windowed, font_path_str, stroke_w, padding, image_w)
+        if again is None:
+            return None, None
+        if again >= size:
+            return size, windowed
+        size = again
+    return None, None
 
 
 def _tapered_wrap(draw, text: str, font, box_w: int, box_h: int, line_height: int, stroke_w: int,

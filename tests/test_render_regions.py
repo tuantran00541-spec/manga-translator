@@ -267,6 +267,112 @@ def test_double_balloon_lines_follow_each_lobe():
     assert (after & ~before).any(), "the text still renders"
 
 
+def _double_balloon_canvas():
+    """A double balloon of a different size and position than the Academy one.
+
+    The interior is one region under one figure-8 outline, as a real double
+    balloon is: drawing two outlined ellipses in turn would leave the second
+    outline as a chord across the first and split the interior in two.
+    """
+    ys, xs = np.mgrid[0:560, 0:500]
+    mask = np.zeros((560, 500), dtype=bool)
+    for cx, cy, rx, ry in ((170, 180, 110, 100), (320, 310, 120, 105)):
+        mask |= ((xs - cx) / rx) ** 2 + ((ys - cy) / ry) ** 2 <= 1
+    canvas_arr = np.full((560, 500, 3), 128, np.uint8)
+    canvas_arr[mask] = 255
+    inner = mask.copy()
+    inner[1:-1, 1:-1] &= mask[:-2, 1:-1] & mask[2:, 1:-1] & mask[1:-1, :-2] & mask[1:-1, 2:]
+    canvas_arr[mask & ~inner] = 0
+    return Image.fromarray(canvas_arr), Image.fromarray((mask * 255).astype(np.uint8))
+
+
+def _row_blocks(ink):
+    """Ink rows grouped into blocks by vertical gaps, as (top, bottom, centre)."""
+    rows = ink.any(axis=1)
+    blocks, start = [], None
+    for i, on in enumerate(rows):
+        if on and start is None:
+            start = i
+        elif not on and start is not None:
+            if i - start >= 2:
+                blocks.append((start, i))
+            start = None
+    if start is not None:
+        blocks.append((start, len(rows)))
+    merged = []
+    for a, b in blocks:
+        if merged and a - merged[-1][1] <= 4:
+            merged[-1] = (merged[-1][0], b)
+        else:
+            merged.append((a, b))
+    return [(a, b, (a + b) // 2) for a, b in merged]
+
+
+def test_two_lobes_detected_on_a_different_double_balloon():
+    from app.render.text_renderer import _detect_lobes
+
+    canvas, _mask = _double_balloon_canvas()
+    lobes = _detect_lobes(canvas, (60, 80, 420, 405))
+    assert lobes is not None and len(lobes) == 2
+    (top, _), (bottom, _) = lobes
+    assert top[0] <= 170 <= top[2] and top[1] <= 180 <= top[3]
+    assert bottom[0] <= 320 <= bottom[2] and bottom[1] <= 310 <= bottom[3]
+    assert (top[1] + top[3]) // 2 < (bottom[1] + bottom[3]) // 2
+
+
+def test_two_paragraphs_centre_in_their_own_lobes():
+    from app.render.text_renderer import _detect_lobes, render_text_in_box
+
+    canvas, mask = _double_balloon_canvas()
+    box = (60, 80, 420, 405)
+    lobes = _detect_lobes(canvas, box)
+    assert lobes is not None
+    before = np.asarray(canvas)[:, :, 0] < 160
+    render_text_in_box(canvas, "Alpha beta gamma delta\nEpsilon zeta eta theta",
+                       box, fill="#000000", taper=True)
+    after = np.asarray(canvas)[:, :, 0] < 160
+    new_ink = after & ~before & (np.asarray(mask) == 0)
+    assert not new_ink.any(), "no lettering leaves the lobes"
+    blocks = _row_blocks(after & ~before)
+    assert len(blocks) >= 2, "both paragraphs render"
+    top_c = (lobes[0][0][1] + lobes[0][0][3]) // 2
+    bottom_c = (lobes[1][0][1] + lobes[1][0][3]) // 2
+    mid = (top_c + bottom_c) // 2
+    upper = [b for b in blocks if b[2] < mid]
+    lower = [b for b in blocks if b[2] >= mid]
+    assert upper and lower, "the paragraphs sit in different lobes"
+    assert abs((upper[0][0] + upper[-1][1]) // 2 - top_c) <= 35
+    assert abs((lower[0][0] + lower[-1][1]) // 2 - bottom_c) <= 35
+    assert upper[-1][1] < lower[0][0], "no line straddles the neck"
+
+
+def test_paragraph_lobe_mismatch_falls_back_to_one_block():
+    from app.render.text_renderer import _detect_lobes, render_text_in_box
+
+    canvas, mask = _double_balloon_canvas()
+    box = (60, 80, 420, 405)
+    assert _detect_lobes(canvas, box) is not None
+    before = np.asarray(canvas)[:, :, 0] < 160
+    render_text_in_box(canvas, "Alpha beta\nGamma delta\nEpsilon zeta",
+                       box, fill="#000000", taper=True)
+    after = np.asarray(canvas)[:, :, 0] < 160
+    new_ink = after & ~before & (np.asarray(mask) == 0)
+    assert not new_ink.any(), "the fallback still stays inside the lobes"
+    blocks = _row_blocks(after & ~before)
+    centre = (blocks[0][0] + blocks[-1][1]) // 2
+    assert abs(centre - (box[1] + box[3]) // 2) <= 40, "three paragraphs stay one centred block"
+
+
+def test_single_balloon_has_no_lobes():
+    from PIL import ImageDraw
+
+    from app.render.text_renderer import _detect_lobes
+
+    canvas = Image.new("RGB", (400, 400), (128, 128, 128))
+    ImageDraw.Draw(canvas).ellipse((100, 100, 300, 300), fill="white", outline="black", width=3)
+    assert _detect_lobes(canvas, (100, 100, 300, 300)) is None
+
+
 def test_dark_balloon_falls_back_to_the_ellipse():
     from PIL import ImageDraw
 
