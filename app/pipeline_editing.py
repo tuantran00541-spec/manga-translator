@@ -352,6 +352,7 @@ class PipelineEditingMixin:
         repaint: list[tuple[int, int, int, int]] = (),
         skip_covered: bool = False,
         require_repaint_strokes: bool = False,
+        release_preserve: list[tuple[int, int, int, int]] = (),
     ) -> dict:
         """Add preserve regions, manual boxes and repaint areas with one re-inpaint of the page."""
         processed_dir = PROCESSED_DIR / chapter_id
@@ -385,7 +386,10 @@ class PipelineEditingMixin:
                 # A box that grew over the letters of a box already there would letter that text twice.
                 active = [b for b in boxes_snapshot if not b.get("removed")]
                 new_boxes = [b for b in new_boxes if not any(overlap_share(b, other) >= COVERED_SHARE for other in active)]
-            preserve_regions = old_preserve + added_preserve
+            released = {tuple(int(v) for v in rect) for rect in release_preserve}
+            preserve_regions = [region for region in old_preserve
+                                if tuple(region.get(k) for k in ("x1", "y1", "x2", "y2")) not in released]
+            preserve_regions += added_preserve
             boxes_snapshot.extend(copy.deepcopy(new_boxes))
 
             final_mask_path = self._manual_mask_path(processed_dir, img_path)
@@ -422,7 +426,7 @@ class PipelineEditingMixin:
                         manual_mask_posix=tmp_mask_path.as_posix() if mask is not None else manual_mask_posix,
                         manual_lama_mask_posix=manual_lama_mask_posix,
                         # Only a new mask on the same boxes can reuse the box inpaint.
-                        reuse_auto_clean=not added_preserve and not new_boxes,
+                        reuse_auto_clean=not added_preserve and not new_boxes and preserve_regions == old_preserve,
                         preserve_regions=preserve_regions,
                     )
                     if mask is not None:

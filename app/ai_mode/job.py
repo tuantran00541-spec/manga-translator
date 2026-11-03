@@ -123,11 +123,12 @@ def _append(items: list, value) -> None:
         items.append(value)
 
 
-def pipeline_fix(chapter_id: str, page_index: int, rects: list) -> None:
+def pipeline_fix(chapter_id: str, page_index: int, rects: list, *, release_preserve=()) -> dict:
     """Erase residue again in one re-inpaint of the slice."""
     from app.dependencies import pipeline
 
-    pipeline.apply_review_fixes(chapter_id, page_index, repaint=list(rects), require_repaint_strokes=True)
+    return pipeline.apply_review_fixes(chapter_id, page_index, repaint=list(rects), require_repaint_strokes=True,
+                                       release_preserve=list(release_preserve))
 
 
 class AIModeRunner:
@@ -502,9 +503,17 @@ class AIModeRunner:
         async def repaint(page_index: int, rects: list) -> None:
             async with workers:
                 try:
-                    if self._scan_logos.get(page_index):
-                        await asyncio.to_thread(self._free_logos_with_text, page_index, rects)
-                    await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
+                    freed = [logo for logo in self._scan_logos.get(page_index, []) if _covered(logo, list(rects))]
+                    if freed:
+                        result = await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects,
+                                                         release_preserve=freed)
+                        remaining = result["pages"][page_index].get("preserve_regions") or []
+                        remaining_rects = {tuple(r.get(k) for k in ("x1", "y1", "x2", "y2")) for r in remaining}
+                        released = [logo for logo in freed if logo not in remaining_rects]
+                        self._scan_logos[page_index] = [logo for logo in self._scan_logos[page_index] if logo not in released]
+                        self.report["logos_freed"] = self.report.get("logos_freed", 0) + len(released)
+                    else:
+                        await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
                     self.report["repainted_regions"] += len(rects)
                     _append(self.report["repaint_pages"], page_index)
                     await self._verify_repaint(page_index, rects)
@@ -529,22 +538,6 @@ class AIModeRunner:
             left = await asyncio.to_thread(self._still_reading, page_index, left)
         for rect in left:
             _append(self.report["residue_left"], {"page": page_index + 1, "rect": [int(v) for v in rect]})
-
-    def _free_logos_with_text(self, page_index: int, residue) -> None:
-        """A scan logo region the review finds leftover text on was a watermark; it stops protecting that text."""
-        freed = [logo for logo in self._scan_logos[page_index] if _covered(logo, list(residue))]
-        if not freed:
-            return
-        with get_manifest_lock(self.job.chapter_id):
-            manifest = load_manifest_raw(self.job.chapter_id)
-            page = manifest["pages"][page_index]
-            keep = [region for region in page.get("preserve_regions") or []
-                    if (region.get("x1"), region.get("y1"), region.get("x2"), region.get("y2")) not in freed]
-            if len(keep) != len(page.get("preserve_regions") or []):
-                page["preserve_regions"] = keep
-                save_manifest_raw(self.job.chapter_id, manifest)
-        self._scan_logos[page_index] = [logo for logo in self._scan_logos[page_index] if logo not in freed]
-        self.report["logos_freed"] = self.report.get("logos_freed", 0) + len(freed)
 
     async def review(self) -> None:
         """Checkpoint 3: the model checks crops round every erased place; residue it finds is erased again."""
@@ -900,19 +893,28 @@ class AIModeRunner:
             blank.update(run.get("blank_ids") or [])
             if set(batch) <= {str(obj["id"]) for obj in self._untranslated(page_index, only, blank)}:
                 fruitless += 1
+        for obj in self._untranslated(page_index, only, set()):
+            if str(obj["id"]) in blank:
+                _append(self.report["review_list"], {
+                    "page": page_index + 1, "id": obj["id"],
+                    "reason": "AI trả bản dịch rỗng; cần xem lại nội dung và kết quả clean",
+                })
         unresolved = self._untranslated(page_index, only, blank)
         if not unresolved:
             return
         regions = [dict(obj["region"]) for obj in unresolved]
+        restored = False
         try:
             await asyncio.to_thread(pipeline.preserve_and_reinpaint, self.job.chapter_id, page_index, regions)
             self.report["restored_regions"] += len(regions)
+            restored = True
         except (ValueError, RuntimeError, OSError) as exc:
             _append(self.report["translate_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
         for obj in unresolved:
             _append(self.report["review_list"], {
                 "page": page_index + 1, "id": obj["id"],
-                "reason": "AI không dịch được sau khi thử lại; đã giữ ảnh gốc",
+                "reason": ("AI không dịch được sau khi thử lại; đã giữ ảnh gốc" if restored
+                           else "AI không dịch được; khôi phục ảnh gốc thất bại, cần kiểm tra"),
             })
 
     def _settle_blanks(self) -> int:

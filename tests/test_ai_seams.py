@@ -3,6 +3,31 @@ import pytest
 from app.ai_mode.seams import seam_mirror_ids, sync_seam_mirrors
 
 
+@pytest.mark.parametrize("centre", [100, 800])
+def test_double_balloon_cut_by_image_edge_still_has_neck(centre):
+    import cv2
+    import numpy as np
+    from app.ai_mode.seams import _balloon_neck
+
+    image = np.zeros((900, 900, 3), np.uint8)
+    for y in (300, 580):
+        cv2.ellipse(image, (centre, y), (250, 220), 0, 0, 360, (255, 255, 255), -1)
+    x1, x2 = max(0, centre - 200), min(900, centre + 200)
+    assert _balloon_neck(image, (x1, 130, x2, 410), (x1, 420, x2, 700))
+
+
+@pytest.mark.parametrize("centre", [100, 800])
+def test_single_balloon_cut_by_image_edge_has_no_neck(centre):
+    import cv2
+    import numpy as np
+    from app.ai_mode.seams import _balloon_neck
+
+    image = np.zeros((900, 900, 3), np.uint8)
+    cv2.ellipse(image, (centre, 450), (250, 400), 0, 0, 360, (255, 255, 255), -1)
+    x1, x2 = max(0, centre - 200), min(900, centre + 200)
+    assert not _balloon_neck(image, (x1, 130, x2, 410), (x1, 420, x2, 700))
+
+
 def _slice(source_y1, core_top, core_bottom, objects):
     return {"source_page": 0, "stitch_core": {"source_y1": source_y1, "core_source_y1": core_top,
                                               "core_source_y2": core_bottom, "core_y1": core_top - source_y1,

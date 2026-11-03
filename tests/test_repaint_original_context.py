@@ -302,6 +302,44 @@ def test_review_fixes_apply_preserve_boxes_and_repaint_in_one_reinpaint(tmp_path
     assert mask[40, 15].max() == 255 and mask[45, 65].max() == 0, "repaint inside a preserve region is dropped"
 
 
+def test_release_preserve_is_committed_only_with_successful_repaint(tmp_path: Path, monkeypatch):
+    import app.config as config
+    import app.manifest_utils as manifests
+    import app.pipeline_editing as editing
+
+    chapter = "abcd1234"
+    raw, processed, output = tmp_path / "raw", tmp_path / "processed", tmp_path / "output"
+    for root in (raw, processed, output):
+        (root / chapter).mkdir(parents=True)
+    original, clean = raw / chapter / "page.png", processed / chapter / "clean_page.png"
+    write_image(original, np.full((60, 80, 3), 10, dtype=np.uint8))
+    write_image(clean, np.full((60, 80, 3), 100, dtype=np.uint8))
+    for module in (config, manifests, editing):
+        monkeypatch.setattr(module, "PROCESSED_DIR", processed, raising=False)
+    monkeypatch.setattr(config, "OUTPUT_DIR", output)
+    rect = (5, 5, 25, 25)
+    region = dict(zip(("x1", "y1", "x2", "y2"), rect))
+    manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
+        "original": original.as_posix(), "clean": clean.as_posix(), "boxes": [], "preserve_regions": [region],
+    }]})
+    pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
+    pipeline._inpainter = _FakeInpainter()
+    real_repaint = pipeline._do_reinpaint
+
+    def fail(*args, **kwargs):
+        raise ValueError("repaint failed")
+
+    monkeypatch.setattr(pipeline, "_do_reinpaint", fail)
+    with pytest.raises(ValueError, match="repaint failed"):
+        pipeline.apply_review_fixes(chapter, 0, repaint=[rect], release_preserve=[rect])
+    assert manifests.load_manifest_raw(chapter)["pages"][0]["preserve_regions"] == [region]
+    monkeypatch.setattr(pipeline, "_do_reinpaint", real_repaint)
+    pipeline.apply_review_fixes(chapter, 0, repaint=[rect], release_preserve=[rect])
+    page = manifests.load_manifest_raw(chapter)["pages"][0]
+    assert page["preserve_regions"] == []
+    assert read_image(Path(page["manual_mask"]))[15, 15].max() == 255
+
+
 def test_review_fixes_can_skip_a_new_box_over_an_existing_one(tmp_path: Path, monkeypatch):
     import app.config as config
     import app.manifest_utils as manifests

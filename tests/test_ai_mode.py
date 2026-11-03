@@ -452,11 +452,42 @@ def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeyp
     monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, manifest: None)
     monkeypatch.setattr(checkpoints, "review_sheet", lambda provider, model, key, sheet, crops: (crops, None))
     seen = []
-    monkeypatch.setattr(ai_job, "pipeline_fix",
-                        lambda chapter, index, rects: seen.append(list(stored["pages"][0]["preserve_regions"])))
+    def repaint(chapter, index, rects, *, release_preserve):
+        assert release_preserve == [watermark]
+        stored["pages"][index]["preserve_regions"] = [kept]
+        seen.append([kept])
+        return stored
+
+    monkeypatch.setattr(ai_job, "pipeline_fix", repaint)
     asyncio.run(runner.review())
     assert seen == [[kept]], "the watermark is no longer protected when the repaint runs; other regions stay"
     assert runner.report["logos_freed"] == 1
+
+
+def test_failed_logo_repaint_keeps_preserve_region(monkeypatch):
+    import contextlib
+    from app.ai_mode import checkpoints
+
+    logo = (10, 10, 90, 90)
+    region = dict(zip(("x1", "y1", "x2", "y2"), logo))
+    stored = {"pages": [{"preserve_regions": [region], "boxes": [region]}]}
+    runner = _runner(monkeypatch, "review", stored)
+    runner._scan_logos[0] = [logo]
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0])
+    monkeypatch.setattr(runner, "_images", lambda *args: (np.full((120, 120, 3), 255, np.uint8),) * 2)
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda *_: contextlib.nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda *_: stored)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda *_: None)
+    monkeypatch.setattr(checkpoints, "review_sheet", lambda provider, model, key, sheet, crops: (crops, None))
+
+    def fail(*args, **kwargs):
+        raise ValueError("no detected strokes")
+
+    monkeypatch.setattr(ai_job, "pipeline_fix", fail)
+    asyncio.run(runner.review())
+    assert stored["pages"][0]["preserve_regions"] == [region]
+    assert runner.report.get("logos_freed", 0) == 0
+    assert runner.report["qc_errors"]
 
 
 def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
@@ -538,7 +569,26 @@ def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch
         "until three batches make no progress"
     )
     assert preserved == [(1, [{"x1": 10, "y1": 10, "x2": 60, "y2": 40}])], "a deliberate blank is not restored"
-    assert [item["id"] for item in runner.report["review_list"]] == ["a"]
+    assert [item["id"] for item in runner.report["review_list"]] == ["b2", "a"]
+
+
+def test_failed_restore_does_not_claim_original_was_kept(monkeypatch):
+    from app.dependencies import pipeline
+    obj = {"id": "a", "region": {"x1": 10, "y1": 10, "x2": 60, "y2": 40}, "translation": ""}
+    runner = _runner(monkeypatch, "translate", {"pages": [{"text_objects": [obj]}]})
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+
+    async def retry(*args):
+        return {"blank_ids": []}
+
+    def fail(*args):
+        raise ValueError("restore failed")
+
+    monkeypatch.setattr(runner, "_translate_retry", retry)
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint", fail)
+    asyncio.run(runner._retry_untranslated(0, "en", None))
+    assert runner.report["restored_regions"] == 0
+    assert "thất bại" in runner.report["review_list"][0]["reason"]
 
 
 def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypatch):

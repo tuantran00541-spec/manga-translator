@@ -262,7 +262,7 @@ def _balloon_neck(image, upper, lower) -> bool:
         if not label or label != candidate(labels, lower):
             return False
         x, y, width, height, _ = (int(v) for v in stats[label])
-        if (x == 0 or y == 0 or x + width >= labels.shape[1]
+        if ((x == 0 and x1 > 0) or y == 0 or (x + width >= labels.shape[1] and x2 < w)
                 or (y + height >= labels.shape[0] and y2 < h)):
             return False  # open background, not a reliably bounded balloon
         top, bottom = centre(upper)[1], centre(lower)[1]

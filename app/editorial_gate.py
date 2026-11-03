@@ -53,9 +53,10 @@ def _confidence(value) -> float:
 
 
 def script_review_fingerprint(obj: dict) -> str:
-    source = str(obj.get("ocr_text") or obj.get("source_read") or "")
+    source = str(obj.get("ocr_text") or "")
+    vision_source = str(obj.get("source_read") or "")
     translation = str(obj.get("translation") or "")
-    payload = f"{source}\0{translation}".encode("utf-8")
+    payload = f"{source}\0{vision_source}\0{translation}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -464,8 +465,6 @@ def editorial_preflight(
             oid = str(obj.get("id") or "")
             if oid and oid in checked_objects:
                 continue
-            if not _object_is_story_like(obj, candidate_ids):
-                continue
             if oid:
                 checked_objects.add(oid)
 
@@ -491,9 +490,12 @@ def editorial_preflight(
                         "untranslated_object",
                         page_index,
                         obj=obj,
-                        reason="text object was never translated (e.g. the slice ran out of budget); translate it or set a reviewed disposition before export",
+                        reason="text object has no translation or reviewed disposition; translate it or review it before export",
                     ),
                 )
+                continue
+
+            if not _object_is_story_like(obj, candidate_ids):
                 continue
 
             source_text = str(obj.get("ocr_text") or obj.get("source_read") or "").strip()

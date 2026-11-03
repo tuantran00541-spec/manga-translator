@@ -63,6 +63,27 @@ def _kinds(preflight):
     return {item["kind"] for item in preflight["blockers"]}
 
 
+def test_manual_untranslated_object_blocks_export():
+    box = _root_box(origin="manual", manual=True, semantic_type=None)
+    obj = _object(semantic_type=None, translation="", editorial_disposition="untranslated")
+    assert "untranslated_object" in _kinds(editorial_preflight(_manifest(box, [obj])))
+
+
+def test_manual_translated_overlap_blocks_export():
+    box = _root_box(origin="manual", manual=True, semantic_type=None)
+    one = _object(id="one", semantic_type=None, overlap_review_ids=["two"])
+    two = _object(id="two", semantic_type=None, translation="Khác", overlap_review_ids=["one"])
+    assert "overlapping_dialogue" in _kinds(editorial_preflight(_manifest(box, [one, two])))
+
+
+def test_script_review_expires_when_vision_source_changes_even_with_ocr():
+    from app.editorial_gate import script_review_is_current
+    obj = _object(source_read="vision original")
+    apply_script_review({"text_objects": [obj]}, obj["id"], reviewed=True)
+    obj["source_read"] = "vision corrected"
+    assert not script_review_is_current(obj)
+
+
 def test_real_p004_detector_candidate_is_high_risk_story_text():
     assert is_story_candidate(_root_box())
 
