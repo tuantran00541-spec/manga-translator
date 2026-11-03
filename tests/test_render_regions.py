@@ -178,3 +178,68 @@ def test_a_narrow_box_shrinks_the_letters_before_it_breaks_a_word():
     draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     size, lines, fits = _fit_text(draw, "Không...", 120, 400, str(DEFAULT_FONT), maximum_size=120)
     assert lines == ["Không..."] and fits, f"kept whole at {size}px"
+
+
+def test_printed_frame_detected_inside_oversized_region():
+    from PIL import ImageDraw
+
+    from app.render.page_renderer import detect_printed_frame
+
+    image = Image.new("RGB", (400, 300), "white")
+    ImageDraw.Draw(image).rectangle((100, 50, 300, 250), outline="black", width=2)
+    frame = detect_printed_frame(image, (80, 30, 320, 270))
+    assert frame is not None, "a bordered box is found inside its detector region"
+    assert 100 <= frame[0] <= 106 and 50 <= frame[1] <= 56
+    assert 294 <= frame[2] <= 300 and 244 <= frame[3] <= 250
+    assert detect_printed_frame(Image.new("RGB", (400, 300), "white"), (80, 30, 320, 270)) is None
+
+
+def test_chord_widths_narrow_toward_the_poles():
+    from app.render.text_renderer import _chord_widths
+
+    widths = _chord_widths(5, 200, 200, 30)
+    assert len(widths) == 5 and widths[2] > widths[0] and widths[2] > widths[-1]
+    assert widths[0] < 200 and widths[2] <= 200
+
+
+def test_box_container_clamps_to_printed_frame():
+    from PIL import ImageDraw
+
+    from app.render.page_renderer import render_text_objects
+    from app.schemas import RenderRequest
+
+    image = Image.new("RGB", (400, 300), "white")
+    ImageDraw.Draw(image).rectangle((100, 50, 300, 250), outline="black", width=2)
+    obj = {"id": "b", "region": {"x1": 80, "y1": 30, "x2": 320, "y2": 270},
+           "translation": "A very long translation that would fill the whole detector region",
+           "container": "box", "shape": "rectangle"}
+    req = RenderRequest(chapter_id="a1b2c3d4", page_index=0, translations={})
+    assert render_text_objects(image, req, [obj], *({} for _ in range(10))) == 1
+    ink = np.asarray(image)[:, :, 0] < 160
+    ink[50:53, :] = False
+    ink[248:251, :] = False
+    ink[:, 100:103] = False
+    ink[:, 298:301] = False
+    ys, xs = np.where(ink)
+    assert xs.min() >= 100 and xs.max() <= 300 and ys.min() >= 50 and ys.max() <= 250
+
+
+def test_tapered_lines_stay_inside_the_ellipse():
+    from app.render.text_renderer import render_text_in_box
+
+    text = "alpha beta gamma delta epsilon zeta eta theta iota kappa"
+    box = (50, 50, 250, 250)
+    cx, cy, rx, ry = 150, 150, 98, 98
+
+    def outside_ellipse(image):
+        ink = np.asarray(image)[:, :, 0] < 160
+        ys, xs = np.where(ink)
+        return [((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2
+                for x, y in zip(xs, ys) if (x, y) != (0, 0)]
+
+    tapered = Image.new("RGB", (300, 300), "white")
+    render_text_in_box(tapered, text, box, fill="#000000", taper=True)
+    assert max(outside_ellipse(tapered)) <= 1.0
+    plain = Image.new("RGB", (300, 300), "white")
+    render_text_in_box(plain, text, box, fill="#000000")
+    assert max(outside_ellipse(plain)) > 1.0, "without the taper a pole line leaves the ellipse"

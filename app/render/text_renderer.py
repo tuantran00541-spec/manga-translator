@@ -1,3 +1,4 @@
+import math
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -234,6 +235,7 @@ def render_text_in_box(
     enlarge: bool = False,
     min_source_share: float = 0.0,
     size_is_hint: bool = False,
+    taper: bool = False,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -301,22 +303,23 @@ def render_text_in_box(
 
     if target_size is not None:
         actual_size = target_size
-        fits, _ = _fits(draw, text, box_w, box_h, font_path_str, actual_size, stroke_w)
+        fits, fit_lines = _fits(draw, text, box_w, box_h, font_path_str, actual_size, stroke_w, taper=taper)
         if not fits and size_is_hint:
             readable = int(RENDER_MIN_READABLE_FONT_SIZE * max(1.0, image.width / REFERENCE_PAGE_WIDTH))
-            actual_size, _, fits = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-                                              minimum_size=readable, maximum_size=target_size)
+            actual_size, fit_lines, fits = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
+                                                     minimum_size=readable, maximum_size=target_size, taper=taper)
         if not fits:
             raise ValueError("Translation does not fit at the requested font size")
         if size_is_hint and min_source_share and actual_size < min_source_share * target_size:
             raise ValueError("Translation fits only well below the OCR font size")
         font = get_font_object(font_path_str, actual_size)
-        lines = _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w), balance=True)
+        # Tapered lines stay as fitted: a full-width re-wrap would undo the narrowing.
+        lines = fit_lines if taper else _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w), balance=True)
     else:
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
         actual_size, lines, fits_readably, (x1, y1, x2, y2) = auto_fit(
             draw, text, (x1, y1, x2, y2), image.size, font_path_str, padding=padding, stroke_w=stroke_w,
-            source_cap_px=source_cap_px, enlarge=enlarge, opaque_caption=opaque_caption)
+            source_cap_px=source_cap_px, enlarge=enlarge, opaque_caption=opaque_caption, taper=taper)
         raw_w, raw_h = x2 - x1, y2 - y1
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
@@ -331,7 +334,9 @@ def render_text_in_box(
                 raise ValueError("Translation fits only well below the source letter size")
         font = get_font_object(font_path_str, actual_size)
         # The same number of lines, evened out so no word is left alone.
-        lines = _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w), balance=True)
+        # Tapered lines stay as fitted: a full-width re-wrap would undo the narrowing.
+        if not taper:
+            lines = _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w), balance=True)
 
     shape = str(shape or "").lower()
     if shape not in ("rectangle", "ellipse"):
@@ -386,7 +391,7 @@ def render_text_in_box(
 
 def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: int = RENDER_DEFAULT_PADDING,
              stroke_w: int = RENDER_AUTO_STROKE_WIDTH, source_cap_px: int | None = None, enlarge: bool = False,
-             opaque_caption: bool = False):
+             opaque_caption: bool = False, taper: bool = False):
     """The auto font size, wrapped lines, whether it fits readably and the box it was fitted in, as the renderer letters it."""
     x1, y1, x2, y2 = (int(v) for v in box)
     raw_w, raw_h = x2 - x1, y2 - y1
@@ -410,17 +415,17 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         from app.render.source_size import SIZE_SLACK, matching_font_px
         # A misread source size must not shrink the text far below what the box holds.
         box_fit = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-                            minimum_size=readable, maximum_size=maximum_size)[0]
+                            minimum_size=readable, maximum_size=maximum_size, taper=taper)[0]
         maximum_size = max(readable, int(SOURCE_FLOOR_RATIO * box_fit),
                            int(matching_font_px(font_path_str, int(source_cap_px)) * SIZE_SLACK))
     actual_size, lines, fits_readably = _fit_text(
         draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-        minimum_size=enlarged_min if enlarge else readable, maximum_size=maximum_size,
+        minimum_size=enlarged_min if enlarge else readable, maximum_size=maximum_size, taper=taper,
     )
     if enlarge and not fits_readably:
         actual_size, lines, fits_readably = _fit_text(
             draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-            minimum_size=readable, maximum_size=maximum_size,
+            minimum_size=readable, maximum_size=maximum_size, taper=taper,
         )
     if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
         grow_x = int(round(raw_w * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
@@ -433,7 +438,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
         actual_size, lines, fits_readably = _fit_text(
             draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-            minimum_size=readable, maximum_size=maximum_size,
+            minimum_size=readable, maximum_size=maximum_size, taper=taper,
         )
     return actual_size, lines, fits_readably, (x1, y1, x2, y2)
 
@@ -445,18 +450,71 @@ REFERENCE_PAGE_WIDTH = 800  # font size limits are for a page this wide
 SOURCE_MATCH_MAX_FONT_SIZE = 200  # large source lettering may be matched past MAX_FONT_SIZE
 
 
-def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int) -> tuple[bool, list[str]]:
-    font = get_font_object(font_path_str, size)
+TAPER_SAFETY = 0.95  # a curved outline's chord is measured, then kept this far inside it
+
+
+def _chord_widths(count: int, box_w: int, box_h: int, line_height: int) -> list[int]:
+    """Each line's width on an ellipse inscribed in the box; lines near the poles get narrower."""
+    if count <= 0 or box_h <= 0:
+        return []
+    total_h = line_height * count
+    top = (box_h - total_h) / 2
+    widths = []
+    for i in range(count):
+        center = top + (i + 0.5) * line_height
+        t = max(-1.0, min(1.0, (center - box_h / 2) / (box_h / 2)))
+        widths.append(max(1, int(box_w * TAPER_SAFETY * math.sqrt(max(0.0, 1 - t * t)))))
+    return widths
+
+
+def _tapered_wrap(draw, text: str, font, box_w: int, box_h: int, line_height: int, stroke_w: int):
+    """Greedy wrap where each line fits the ellipse chord at its height; returns lines and their widths."""
     lines = _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w))
+    for _ in range(4):
+        widths = _chord_widths(len(lines), box_w, box_h, line_height)
+        wrapped, idx = [], 0
+        for raw in text.splitlines():
+            if not raw.strip():
+                wrapped.append("")
+                idx += 1
+                continue
+            current = ""
+            for word in raw.split():
+                candidate = f"{current} {word}".strip()
+                width = widths[idx] - 2 * stroke_w if idx < len(widths) else widths[-1] - 2 * stroke_w
+                if not current or draw.textbbox((0, 0), candidate, font=font)[2] <= max(1, width):
+                    current = candidate
+                else:
+                    wrapped.append(current)
+                    idx += 1
+                    current = word
+            if current:
+                wrapped.append(current)
+                idx += 1
+        if len(wrapped) == len(lines):
+            lines = wrapped
+            break
+        lines = wrapped
+    return lines, _chord_widths(len(lines), box_w, box_h, line_height)
+
+
+def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int,
+          taper: bool = False) -> tuple[bool, list[str]]:
+    font = get_font_object(font_path_str, size)
+    line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
+    if taper:
+        lines, widths = _tapered_wrap(draw, text, font, box_w, box_h, line_height, stroke_w)
+    else:
+        lines = _wrap_text(draw, text, font, max(1, box_w - 2 * stroke_w))
+        widths = [box_w] * len(lines)
     if not lines:
         return False, []
-    line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     total_h = line_height * len(lines)
     bounds = [draw.textbbox((0, 0), line, font=font, stroke_width=stroke_w) for line in lines]
-    max_line_w = max(right - left for left, _, right, _ in bounds)
     # A word broken across lines ("Khôn/g...") does not fit; a smaller size is tried first.
     whole = [word for line in lines for word in line.split()] == text.split()
-    return whole and total_h <= box_h and max_line_w <= box_w, lines
+    fits_w = all(right - left <= widths[i] for i, (left, _, right, _) in enumerate(bounds))
+    return whole and total_h <= box_h and fits_w, lines
 
 
 def _fit_text(
@@ -468,6 +526,7 @@ def _fit_text(
     stroke_w: int = RENDER_AUTO_STROKE_WIDTH,
     minimum_size: int = MIN_FONT_SIZE,
     maximum_size: int = MAX_FONT_SIZE,
+    taper: bool = False,
 ) -> tuple[int, list[str], bool]:
     minimum_size = max(MIN_FONT_SIZE, int(minimum_size))
     lo, hi = minimum_size, max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
@@ -476,7 +535,7 @@ def _fit_text(
 
     while lo <= hi:
         mid = (lo + hi) // 2
-        ok, lines = _fits(draw, text, box_w, box_h, font_path_str, mid, stroke_w)
+        ok, lines = _fits(draw, text, box_w, box_h, font_path_str, mid, stroke_w, taper=taper)
         if ok:
             best_size = mid
             best_lines = lines
@@ -486,9 +545,13 @@ def _fit_text(
 
     if not best_lines:
         min_font = get_font_object(font_path_str, minimum_size)
-        best_lines = _wrap_text(draw, text, min_font, box_w)
+        if taper:
+            line_height = _calc_line_height(draw, min_font, stroke_w=stroke_w)
+            best_lines, _ = _tapered_wrap(draw, text, min_font, box_w, box_h, line_height, stroke_w)
+        else:
+            best_lines = _wrap_text(draw, text, min_font, box_w)
     fits = bool(best_lines) and _fits(
-        draw, text, box_w, box_h, font_path_str, best_size, stroke_w
+        draw, text, box_w, box_h, font_path_str, best_size, stroke_w, taper=taper
     )[0]
     return best_size, best_lines, fits
 

@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import copy
 
+import numpy as np
+
+from app.knobs import knob
+
 OWNER_SHARE = 0.5  # share of the smaller box two slices' boxes must share to be the same text
 # Everything that decides how a line is lettered, copied from the owning slice.
 LETTERING_KEYS = (
@@ -14,6 +18,18 @@ LETTERING_KEYS = (
 
 def _shifted(rect: dict, shift: int) -> dict:
     return {key: int(rect[key]) + (shift if key in ("y1", "y2") else 0) for key in ("x1", "y1", "x2", "y2")}
+
+
+def _text_row_bands(mask: np.ndarray) -> list[tuple[int, int]]:
+    """Row bands of a mask that read as text lines; bands far taller than a line are marks, not text."""
+    rows = mask.any(axis=1)
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], rows.astype(np.int8), [0]))))
+    bands = [(int(start), int(end)) for start, end in zip(edges[::2], edges[1::2])]
+    if len(bands) < 3:
+        return bands
+    height = float(np.median([end - start for start, end in bands]))
+    kept = [(start, end) for start, end in bands if end - start <= knob("detect.block_line_spread") * height]
+    return kept or bands
 
 
 def set_letter_bounds(page: dict) -> None:
@@ -35,7 +51,14 @@ def set_letter_bounds(page: dict) -> None:
                 continue
             if mask is None or mask.shape != (y2 - y1, x2 - x1) or not mask.any():
                 continue
-            ys, xs = mask.nonzero()
+            # A box holding text plus a drawn mark (SFX under a bubble) letters
+            # where the text is, not where the mark drags the box.
+            keep_rows = np.zeros(mask.shape[0], dtype=bool)
+            for start, end in _text_row_bands(mask):
+                keep_rows[start:end] = True
+            ys, xs = np.where(mask & keep_rows[:, None])
+            if len(ys) == 0:
+                ys, xs = mask.nonzero()
             rects.append((x1 + int(xs.min()), y1 + int(ys.min()), x1 + int(xs.max()) + 1, y1 + int(ys.max()) + 1))
         if rects and len(rects) == len(source_box_ids(obj)):
             obj["letter_bounds"] = {"x1": min(r[0] for r in rects), "y1": min(r[1] for r in rects),

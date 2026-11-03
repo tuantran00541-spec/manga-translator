@@ -417,6 +417,22 @@ def test_the_lettering_area_is_the_extent_the_erase_mask_covers():
     assert "letter_bounds" not in page["text_objects"][1], "a hand-drawn object letters its whole region"
 
 
+def test_a_tall_drawn_mark_under_a_bubble_does_not_drag_the_lettering_area():
+    import numpy as np
+
+    from app.ai_mode.seams import set_letter_bounds
+    from app.image_io import encode_mask
+
+    mask = np.zeros((300, 400), np.uint8)
+    for top in (10, 45, 80, 115):
+        mask[top:top + 25, 50:350] = 255
+    mask[170:240, 80:200] = 255  # a tall SFX band under the text lines
+    page = {"boxes": [{"id": "box_a", "x1": 100, "y1": 200, "x2": 500, "y2": 500, "mask": encode_mask(mask)}],
+            "text_objects": [{"id": "text_a", "source_boxes": ["box_a"]}]}
+    set_letter_bounds(page)
+    assert page["text_objects"][0]["letter_bounds"] == {"x1": 150, "y1": 210, "x2": 450, "y2": 340}
+
+
 def test_a_found_box_grown_over_most_of_the_slice_keeps_its_own_rectangle(monkeypatch):
     # Shadow Slave 1, slice 69: a found box grew over glowing art to the whole slice, and its caption was lettered there.
     import numpy as np

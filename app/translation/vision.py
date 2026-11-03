@@ -236,7 +236,7 @@ class VisionPageTranslator:
         self, original_path: Path, cleaned_path: Path, items: list[dict],
         *, api_key: str, source_lang: str, target_lang: str,
         memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
-        elsewhere: list | tuple = (),
+        elsewhere: list | tuple = (), focus_ids: list | tuple = (),
     ) -> VisionTranslationResult:
         if not api_key.strip():
             raise ValueError(f"{self.provider.label} API key is not configured")
@@ -274,12 +274,35 @@ class VisionPageTranslator:
         )
         # One image: the boxes are drawn on the raw slice, whose text the model reads.
         marked_b64 = _encode_for_gemini(mark_objects(original, objects, elsewhere))
+        # A box the model already left blank is retried zoomed in: small lettering
+        # it skipped on the whole slice stays legible in its own crop.
+        by_real = {real_id: alias for alias, real_id in real.items()}
+        crops: list[tuple[str, str]] = []
+        for real_id in dict.fromkeys(str(v) for v in focus_ids):
+            alias = by_real.get(real_id)
+            item = next((it for it in items if str(it["id"]) == real_id), None)
+            if alias is None or item is None or len(crops) >= 8:
+                continue
+            x1, y1, x2, y2 = (int(v) for v in item["region"])
+            mx, my = max(30, (x2 - x1) // 2), max(30, (y2 - y1) // 2)
+            cx1, cy1, cx2, cy2 = max(0, x1 - mx), max(0, y1 - my), min(w, x2 + mx), min(h, y2 + my)
+            if cx2 <= cx1 or cy2 <= cy1:
+                continue
+            marked_crop = mark_objects(
+                original[cy1:cy2, cx1:cx2],
+                [{"id": alias, "bbox_xyxy": [x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1]}], ())
+            crops.append((alias, _encode_for_gemini(marked_crop)))
+        if crops:
+            prompt += ("\nDetail crops follow the slice image: each crop shows one boxed object zoomed in. "
+                       "Read that object's text from its crop when the slice is too small to read.")
         ids = set(real)
-        max_tokens = min(4096, max(1200, 160 * len(items) + 700))
+        # A focus retry reads the whole slice again, so it gets the main pass's
+        # ceiling: a small retry batch's cap truncates a reasoning model mid-answer.
+        max_tokens = 4096 if crops else min(4096, max(1200, 160 * len(items) + 700))
         if self.provider.protocol == "gemini":
-            result, data = self._gemini(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
+            result, data = self._gemini(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens, crops=crops)
         else:
-            result, data = self._openai(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
+            result, data = self._openai(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens, crops=crops)
         result, data = _unalias(result, data, real)
         ids = set(real.values())
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
@@ -318,19 +341,23 @@ class VisionPageTranslator:
             enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources, speakers=speakers,
         )
 
-    def _openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
+    def _openai(self, system, prompt, marked, *, api_key, ids, max_tokens, crops=()):
         url = str(self.provider.chat_url or "")
         if not url:
             raise ValueError("Provider does not have chat completions")
         if not self.provider.builtin:
             validate_url(url)
+        content = [
+            {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{marked}"}},
+        ]
+        for alias, b64 in crops:
+            content.append({"type": "text", "text": f"DETAIL CROP for object {alias}"})
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+        content.append({"type": "text", "text": prompt})  # the ask goes last, after the images it refers to
         payload = {
             "model": self.model,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": [
-                {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{marked}"}},
-                {"type": "text", "text": prompt},  # the ask goes last, after the images it refers to
-            ]}],
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
             "response_format": {"type": "json_object"},
             "max_tokens": max_tokens,
             "stream": False,
@@ -366,15 +393,19 @@ class VisionPageTranslator:
         cost = usage_cost_usd(usage) if self.provider.tracks_cost else None
         return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
 
-    def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens):
+    def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens, crops=()):
+        parts = [
+            {"type": "text", "text": system},
+            {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
+            {"type": "image", "data": marked, "mime_type": "image/jpeg"},
+        ]
+        for alias, b64 in crops:
+            parts.append({"type": "text", "text": f"DETAIL CROP for object {alias}"})
+            parts.append({"type": "image", "data": b64, "mime_type": "image/jpeg"})
+        parts.append({"type": "text", "text": prompt})
         payload = {
             "model": self.model, "store": False,
-            "input": [
-                {"type": "text", "text": system},
-                {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
-                {"type": "image", "data": marked, "mime_type": "image/jpeg"},
-                {"type": "text", "text": prompt},
-            ],
+            "input": parts,
             "response_format": {"type": "text", "mime_type": "application/json", "schema": _TRANSLATIONS_SCHEMA},
             "generation_config": {"thinking_level": "low", "max_output_tokens": max_tokens},
         }

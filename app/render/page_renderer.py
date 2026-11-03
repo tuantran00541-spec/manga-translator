@@ -74,6 +74,101 @@ def letter_box(obj: dict, region: tuple[int, int, int, int]) -> tuple[int, int, 
     return box if box[0] < box[2] and box[1] < box[3] and box != tuple(region) else None
 
 
+FRAME_EDGE_STEP = 30  # a printed border steps this far in grey over two pixels; soft shading does not
+FRAME_MIN_RUN = 0.5  # a border line spans at least this share of the region side
+FRAME_MIN_SIZE = 0.5  # a detected frame keeps at least this share of the region
+FRAME_INSET = 3  # room for the border line itself and its shadow
+
+
+def _border_run(line: np.ndarray) -> int:
+    """The longest run in a boolean row or column, bridging hairline gaps from compression."""
+    best = run = gap = 0
+    for on in line:
+        if on:
+            run += gap + 1
+            gap = 0
+            best = max(best, run)
+        elif run:
+            gap += 1
+            if gap > 3:
+                run = gap = 0
+    return best
+
+
+def detect_printed_frame(image: Image.Image, region: tuple[int, int, int, int]):
+    """The printed rectangular border inside a detector region, or None when unsure.
+
+    A detector region overshoots the box it found, so lettering sized to the region
+    crosses the printed border. The border is the first long edge line met scanning
+    inward from each region edge; all four sides must agree, or nothing is claimed
+    and rendering falls back to the region.
+    """
+    x1, y1, x2, y2 = (int(v) for v in region)
+    if x2 - x1 < 40 or y2 - y1 < 40:
+        return None
+    max_inset = min(120, max(20, int(0.25 * min(x2 - x1, y2 - y1))))
+    gray = np.asarray(image.convert("L"))
+    img_h, img_w = gray.shape[:2]
+    cx1, cy1 = max(0, x1 - max_inset), max(0, y1 - max_inset)
+    cx2, cy2 = min(img_w, x2 + max_inset), min(img_h, y2 + max_inset)
+    crop = gray[cy1:cy2, cx1:cx2]
+    rx1, ry1, rx2, ry2 = x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1
+    # Borders are edges, not darkness: a thin light-grey line still steps sharply.
+    vedge = np.zeros(crop.shape, dtype=bool)
+    vedge[1:-1] = np.abs(crop[2:].astype(int) - crop[:-2].astype(int)) > FRAME_EDGE_STEP
+    hedge = np.zeros(crop.shape, dtype=bool)
+    hedge[:, 1:-1] = np.abs(crop[:, 2:].astype(int) - crop[:, :-2].astype(int)) > FRAME_EDGE_STEP
+
+    def scan_side(fixed_range, along, horizontal: bool, inward: int):
+        """The inner edge of the first long edge line met scanning inward, or None."""
+        lo, hi = min(fixed_range), max(fixed_range)
+        need = FRAME_MIN_RUN * (along[1] - along[0])
+
+        def qualifies(pos):
+            line = vedge[pos, along[0]:along[1]] if horizontal else hedge[along[0]:along[1], pos]
+            return _border_run(line) >= need
+
+        start = fixed_range[0] if inward > 0 else fixed_range[0] - 1
+        for d in range(max_inset + 1):
+            pos = start + d * inward
+            if pos < lo or pos >= hi:
+                return None
+            if qualifies(pos):
+                edge = pos
+                # A double border reads as two lines a few pixels apart; the text
+                # belongs inside the inner one, so keep walking while lines recur.
+                while True:
+                    nxt = edge + inward
+                    while nxt >= lo and nxt < hi and not qualifies(nxt):
+                        nxt += inward
+                        if abs(nxt - edge) > 12:
+                            break
+                    if nxt < lo or nxt >= hi or abs(nxt - edge) > 12 or not qualifies(nxt):
+                        break
+                    edge = nxt
+                    while True:
+                        nxt = edge + inward
+                        if nxt < lo or nxt >= hi or not qualifies(nxt):
+                            break
+                        edge = nxt
+                return edge + 1 if inward > 0 else edge
+        return None
+
+    top = scan_side((ry1, ry2), (rx1, rx2), True, 1)
+    bottom = scan_side((ry2, ry1), (rx1, rx2), True, -1)
+    left = scan_side((rx1, rx2), (ry1, ry2), False, 1)
+    right = scan_side((rx2, rx1), (ry1, ry2), False, -1)
+    if None in (top, bottom, left, right):
+        return None
+    frame = (left + FRAME_INSET + cx1, top + FRAME_INSET + cy1,
+             right - FRAME_INSET + cx1, bottom - FRAME_INSET + cy1)
+    if (frame[2] - frame[0] < FRAME_MIN_SIZE * (x2 - x1)
+            or frame[3] - frame[1] < FRAME_MIN_SIZE * (y2 - y1)
+            or frame[0] < x1 or frame[1] < y1 or frame[2] > x2 or frame[3] > y2):
+        return None
+    return frame
+
+
 def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, int], **style) -> Image.Image:
     """Letter ``box`` even where it runs past the top or bottom of the slice, clipped to the slice.
 
@@ -345,6 +440,11 @@ def render_text_objects(
         if obj_shape not in ("rectangle", "ellipse"):
             obj_shape = "rectangle"
 
+        container = str(obj.get("container") or "").lower()
+        # A curved container narrows its lines toward the poles; a rectangular one
+        # is clamped to its printed border when one is found. Neither is guessed:
+        # an unknown container keeps the region behaviour it always had.
+        taper = container in ("bubble", "spiky") or obj_shape == "ellipse"
         style = dict(
             fill=box_color,
             font_size=box_size,
@@ -360,23 +460,44 @@ def render_text_objects(
             vertical_align=v_align,
             source_cap_px=obj.get("source_cap_px"),
             enlarge=bool(obj.get("enlarge")),
+            taper=taper,
         )
+
+        def _attempts_for(box):
+            tight = letter_box(obj, box)
+            if not tight:
+                return [box]
+            half = tuple((a + b) // 2 for a, b in zip(tight, box))
+            return [tight, half, box] if half != tight else [tight, box]
+
         # The lettering goes where the source lettering was, then halfway to the region, then the region,
         # taking the first that holds it near the source size.
-        tight = letter_box(obj, coords)
-        attempts = [coords]
-        if tight:
-            half = tuple((a + b) // 2 for a, b in zip(tight, coords))
-            attempts = [tight, half, coords] if half != tight else [tight, coords]
+        ladders = [_attempts_for(coords)]
+        if not taper and container in ("box", "screen"):
+            frame = detect_printed_frame(image, coords)
+            if frame:
+                clamped = (max(coords[0], frame[0]), max(coords[1], frame[1]),
+                           min(coords[2], frame[2]), min(coords[3], frame[3]))
+                if clamped[0] < clamped[2] and clamped[1] < clamped[3] and clamped != coords:
+                    # The in-frame ladder runs first; when nothing fits readably inside
+                    # the frame, the region ladder below keeps the old behaviour.
+                    ladders.insert(0, _attempts_for(clamped))
         try:
-            for attempt, box in enumerate(attempts):
-                share = SOURCE_SIZE_SHARE if attempt < len(attempts) - 1 else 0.0
-                try:
-                    image = _render_in_region(image, translation.strip(), box, min_source_share=share, **style)
+            rendered = False
+            for attempts in ladders:
+                for attempt, box in enumerate(attempts):
+                    share = SOURCE_SIZE_SHARE if attempt < len(attempts) - 1 else 0.0
+                    try:
+                        image = _render_in_region(image, translation.strip(), box, min_source_share=share, **style)
+                        rendered = True
+                        break
+                    except ValueError:
+                        if attempt == len(attempts) - 1:
+                            break
+                if rendered:
                     break
-                except ValueError:
-                    if attempt == len(attempts) - 1:
-                        raise
+            if not rendered:
+                raise ValueError("Translation does not fit in the region")
             rendered_count += 1
         except Exception as e:
             logger.opt(exception=True).error(

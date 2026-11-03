@@ -617,9 +617,12 @@ class AIModeRunner:
                 if run is not None and run.get("unboxed"):
                     await self._add_unboxed(page_index, run["unboxed"], source_lang)
                 # A failed or cut-off slice retries everything; otherwise only what the model skipped.
-                if run is None or run.get("remaining") or run.get("missing_ids"):
-                    only = None if run is None or run.get("remaining") else set(run.get("missing_ids") or [])
-                    await self._retry_untranslated(page_index, source_lang, only)
+                # An explicit blank counts as skipped too: the model saw the box and said nothing.
+                if run is None or run.get("remaining") or run.get("missing_ids") or run.get("blank_ids"):
+                    only = None if run is None or run.get("remaining") else set(run.get("missing_ids") or []) | set(run.get("blank_ids") or [])
+                    await self._retry_untranslated(
+                        page_index, source_lang, only,
+                        focus=set(run.get("blank_ids") or []) if run else None)
                 finished += 1
                 self._progress(finished, len(indices))
 
@@ -791,7 +794,8 @@ class AIModeRunner:
         self.report["seam_copies"] = self.report.get("seam_copies", 0) + len(changed)
         return changed
 
-    async def _translate_retry(self, page_index: int, source_lang: str, object_ids: list[str] | None) -> dict:
+    async def _translate_retry(self, page_index: int, source_lang: str, object_ids: list[str] | None,
+                               focus_ids: list[str] | None = None) -> dict:
         from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context
 
         remaining = self._remaining_budget()
@@ -800,7 +804,7 @@ class AIModeRunner:
             source_lang=source_lang, target_lang=self.settings.target_lang,
             budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
             provider=self.provider.id, model=self.settings.model,
-            max_objects=RETRY_BATCH, object_ids=object_ids,
+            max_objects=RETRY_BATCH, object_ids=object_ids, focus_ids=focus_ids,
         ), memory=self._memory, slice_total=self._slice_total, skip_seam_mirrors=True)
         run = data.get("translation_run") or {}
         self.report["translated"] += int(run.get("translated") or 0)
@@ -870,7 +874,8 @@ class AIModeRunner:
             and isinstance(obj.get("region"), dict) and not text_object_in_preserve_region(page, obj)
         ]
 
-    async def _retry_untranslated(self, page_index: int, source_lang: str, only: set[str] | None) -> None:
+    async def _retry_untranslated(self, page_index: int, source_lang: str, only: set[str] | None,
+                                  focus: set[str] | None = None) -> None:
         """Retry untranslated objects in small batches; what never translates keeps its original pixels."""
         from app.dependencies import pipeline
 
@@ -885,7 +890,9 @@ class AIModeRunner:
                 break
             batch = [str(obj["id"]) for obj in targets[:RETRY_BATCH]]
             try:
-                run = await self._translate_retry(page_index, source_lang, batch)
+                run = await self._translate_retry(
+                    page_index, source_lang, batch,
+                    focus_ids=[obj_id for obj_id in batch if focus and obj_id in focus])
             except HTTPException as exc:
                 _append(self.report["translate_errors"], f"Lát {page_index + 1} (thử lại): {_detail(exc)[:200]}")
                 fruitless += 1

@@ -120,6 +120,8 @@ class TranslateVisionPageRequest(TranslateChapterRequest):
     max_objects: int | None = Field(default=None, ge=1, le=100)
     # Only these objects (still untranslated ones); None means every untranslated object.
     object_ids: list[str] | None = Field(default=None, max_length=100)
+    # Objects to also send as zoomed crops; a box the model left blank gets read again up close.
+    focus_ids: list[str] | None = Field(default=None, max_length=100)
 
 
 def _resolve_vision_provider(provider_id: str):
@@ -278,6 +280,7 @@ async def translate_page_in_context(
             translator.translate_page, original_path, clean_path, candidates,
             api_key=api_key, source_lang=req.source_lang, target_lang=req.target_lang,
             memory=memory, slice_number=req.page_index + 1, slice_total=slice_total, elsewhere=elsewhere,
+            focus_ids=req.focus_ids or (),
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

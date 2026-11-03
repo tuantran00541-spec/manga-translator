@@ -554,7 +554,7 @@ def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch
     runner = _runner(monkeypatch, "translate", manifest)
     monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
 
-    async def retry(page_index, source_lang, object_ids, force=False):
+    async def retry(page_index, source_lang, object_ids, force=False, focus_ids=None):
         retries.append((page_index, object_ids))
         if page_index == 0:  # b1 translated, b2 deliberately left blank (a watermark)
             manifest["pages"][0]["text_objects"][0]["translation"] = "Chào"
@@ -578,7 +578,7 @@ def test_failed_restore_does_not_claim_original_was_kept(monkeypatch):
     runner = _runner(monkeypatch, "translate", {"pages": [{"text_objects": [obj]}]})
     monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
 
-    async def retry(*args):
+    async def retry(*args, **kwargs):
         return {"blank_ids": []}
 
     def fail(*args):
@@ -668,7 +668,7 @@ def test_translate_stage_preserves_slice_order_and_reports_failures(monkeypatch)
     monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
     retried = []
 
-    async def retry(page_index, source_lang, only):
+    async def retry(page_index, source_lang, only, focus=None):
         retried.append((page_index, only))
 
     monkeypatch.setattr(runner, "_retry_untranslated", retry)
@@ -683,6 +683,39 @@ def test_translate_stage_preserves_slice_order_and_reports_failures(monkeypatch)
     assert runner.report["translated"] == 18
     assert runner.report["translate_errors"] == ["Lát 4: provider down"]
     assert job.stages["translate"]["done"] == 10
+
+
+def test_translate_stage_retries_blanks_with_focus_crops(monkeypatch):
+    import app.routers.ocr as ocr_router
+
+    async def detected(chapter_id, req=None):
+        return {"source_lang": None}
+
+    async def fake_translate(req, memory=None, slice_total=None, skip_seam_mirrors=False):
+        assert slice_total == 2
+        if req.page_index == 0:
+            return {"translation_run": {"translated": 1, "unreadable": 1, "estimated_cost_usd": None,
+                                        "blank_ids": ["b1"], "missing_ids": ["m1"]}}
+        return {"translation_run": {"translated": 2, "unreadable": 0, "estimated_cost_usd": None,
+                                    "blank_ids": [], "missing_ids": []}}
+
+    monkeypatch.setattr(ocr_router, "detect_chapter_language", detected)
+    monkeypatch.setattr(translation_router, "translate_page_in_context", fake_translate)
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="translate", cost_usd=None,
+                           stages={"translate": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
+    monkeypatch.setattr(runner, "_manifest", lambda: {"pages": [{}, {}]})
+    monkeypatch.setattr(runner, "_sync_seams", lambda: asyncio.sleep(0, result=[]))
+    monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
+    retried = []
+
+    async def retry(page_index, source_lang, only, focus=None):
+        retried.append((page_index, only, focus))
+
+    monkeypatch.setattr(runner, "_retry_untranslated", retry)
+    asyncio.run(runner.translate())
+    assert retried == [(0, {"m1", "b1"}, {"b1"})], "blanks retry with their ids in focus for a zoomed re-read"
 
 
 # -- translate -> render -> gate-free export ---------------------------------
@@ -777,7 +810,7 @@ def test_retry_keeps_going_on_a_long_slice_while_batches_make_progress(monkeypat
     monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
     batches = []
 
-    async def retry(page_index, source_lang, object_ids, force=False):
+    async def retry(page_index, source_lang, object_ids, force=False, focus_ids=None):
         batches.append(object_ids)
         for obj in manifest["pages"][0]["text_objects"]:
             if obj["id"] in object_ids:
@@ -806,7 +839,7 @@ def test_a_line_the_translator_sees_outside_every_box_is_boxed_erased_and_transl
     runner = _runner(monkeypatch, "translate", manifest)
     monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
 
-    async def retry(page_index, source_lang, only):
+    async def retry(page_index, source_lang, only, focus=None):
         retried.append((page_index, only))
 
     monkeypatch.setattr(runner, "_retry_untranslated", retry)

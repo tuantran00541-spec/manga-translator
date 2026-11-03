@@ -164,13 +164,10 @@ class PageProcessingMixin:
                 else:
                     record.pop("overlap_context_only", None)
 
-            skip_auto_overlap_inpaint = bool(
-                record.get("overlap_context_only")
-                and not record.get("geometry_overridden")
-            )
+            # Overlap strips carry seam mirrors, so their text is erased too: a
+            # mirror rendered onto an unerased strip shows two languages at once.
             if (
                 not record.get("removed")
-                and not skip_auto_overlap_inpaint
                 and not record.get("deferred_reason")
                 and (record.get("safe_to_inpaint") or record.get("geometry_overridden"))
             ):
