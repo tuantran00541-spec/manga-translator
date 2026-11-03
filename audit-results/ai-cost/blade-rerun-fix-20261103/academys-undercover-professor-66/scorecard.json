@@ -1,0 +1,119 @@
+{
+ "clean": {
+  "slices": 70,
+  "text_left": 4,
+  "ghosts": 0,
+  "items": [
+   {
+    "slice": 4,
+    "kind": "text",
+    "box": [
+     174,
+     1527,
+     632,
+     1727
+    ],
+    "px": 1428,
+    "share": 0.038
+   },
+   {
+    "slice": 69,
+    "kind": "text",
+    "box": [
+     37,
+     1975,
+     485,
+     2182
+    ],
+    "px": 350,
+    "share": 0.021
+   },
+   {
+    "slice": 70,
+    "kind": "text",
+    "box": [
+     158,
+     1018,
+     712,
+     1269
+    ],
+    "px": 3343,
+    "share": 0.064
+   },
+   {
+    "slice": 72,
+    "kind": "text",
+    "box": [
+     244,
+     4315,
+     717,
+     4579
+    ],
+    "px": 5653,
+    "share": 0.277
+   }
+  ]
+ },
+ "text": {
+  "objects": 198,
+  "translated": 177,
+  "untranslated": 21,
+  "needs_review": 6,
+  "kept_original": 0
+ },
+ "spend": {
+  "cost_usd": 0.0645,
+  "requests": 148,
+  "prompt_tokens": 527900,
+  "images": 204,
+  "wall_s": 1666.7,
+  "by_stage": {
+   "scan": {
+    "requests": 36,
+    "images": 72,
+    "prompt_tokens": 42136,
+    "completion_tokens": 15623
+   },
+   "glossary": {
+    "requests": 2,
+    "images": 0,
+    "prompt_tokens": 5653,
+    "completion_tokens": 2435
+   },
+   "review": {
+    "requests": 17,
+    "images": 17,
+    "prompt_tokens": 45561,
+    "completion_tokens": 477
+   },
+   "translate": {
+    "requests": 93,
+    "images": 115,
+    "prompt_tokens": 434550,
+    "completion_tokens": 64727
+   }
+  },
+  "stage_s": {
+   "download": 4.4,
+   "scan": 111.2,
+   "clean": 387.1,
+   "review": 64.3,
+   "translate": 1074.0,
+   "polish": 0.0,
+   "render": 23.9,
+   "finish": 0.2
+  }
+ },
+ "polish": {
+  "judged": 0,
+  "flagged": 0,
+  "rewritten": 0,
+  "still_flagged": 0
+ },
+ "fit": {
+  "does_not_fit": 1,
+  "under_20px": 1,
+  "split_word": 0,
+  "missing_glyphs": 0
+ }
+}
