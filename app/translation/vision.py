@@ -234,6 +234,24 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
     return marked
 
 
+def _native_tiles(image, *, side: int = MAX_QC_SIDE, overlap: int = 128, max_tiles: int = 8):
+    """Cover an oversized image with overlapping, unscaled tiles in original coordinates."""
+    height, width = image.shape[:2]
+    if max(height, width) <= side:
+        return []
+
+    def starts(length):
+        positions = [0]
+        while positions[-1] + side < length:
+            positions.append(min(positions[-1] + side - overlap, length - side))
+        return positions
+
+    xs, ys = starts(width), starts(height)
+    if len(xs) * len(ys) > max_tiles:
+        raise ValueError("Slice needs too many full-resolution vision tiles; split it before translation")
+    return [(x, y, min(width, x + side), min(height, y + side)) for y in ys for x in xs]
+
+
 class VisionPageTranslator:
     def __init__(self, provider: AIProvider, model: str):
         if not provider.supports_visual_qc:
@@ -279,7 +297,15 @@ class VisionPageTranslator:
             + "Write translated_text in sentence case, even when the source is in capitals."
         )
         # One image: the boxes are drawn on the raw slice, whose text the model reads.
-        marked_b64 = _encode_for_gemini(mark_objects(original, objects, elsewhere))
+        marked_image = mark_objects(original, objects, elsewhere)
+        marked_b64 = _encode_for_gemini(marked_image)
+        tiles = [(rect, _encode_for_gemini(marked_image[rect[1]:rect[3], rect[0]:rect[2]]))
+                 for rect in _native_tiles(marked_image)]
+        if tiles:
+            prompt += ("\nDETAIL TILE images cover the full original slice at native resolution, with overlap. "
+                       "Their labels give x1,y1,x2,y2 in original pixels. Read text from these tiles; "
+                       "they overlap, so do not duplicate text. Return unboxed coordinates on the "
+                       "0-1000 grid of the entire original slice, not a tile.")
         # A box the model already left blank is retried zoomed in: small lettering
         # it skipped on the whole slice stays legible in its own crop.
         by_real = {real_id: alias for alias, real_id in real.items()}
@@ -310,9 +336,9 @@ class VisionPageTranslator:
         # ceiling: a small retry batch's cap truncates a reasoning model mid-answer.
         max_tokens = 4096 if crops else min(4096, max(1200, 160 * len(items) + 700))
         if self.provider.protocol == "gemini":
-            result, data = self._gemini(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens, crops=crops)
+            result, data = self._gemini(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens, crops=crops, tiles=tiles)
         else:
-            result, data = self._openai(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens, crops=crops)
+            result, data = self._openai(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens, crops=crops, tiles=tiles)
         result, data = _unalias(result, data, real)
         ids = set(real.values())
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
@@ -353,7 +379,7 @@ class VisionPageTranslator:
             enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources, speakers=speakers,
         )
 
-    def _openai(self, system, prompt, marked, *, api_key, ids, max_tokens, crops=()):
+    def _openai(self, system, prompt, marked, *, api_key, ids, max_tokens, crops=(), tiles=()):
         url = str(self.provider.chat_url or "")
         if not url:
             raise ValueError("Provider does not have chat completions")
@@ -363,6 +389,9 @@ class VisionPageTranslator:
             {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{marked}"}},
         ]
+        for rect, b64 in tiles:
+            content.append({"type": "text", "text": f"DETAIL TILE {rect[0]},{rect[1]},{rect[2]},{rect[3]}"})
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
         for alias, b64 in crops:
             content.append({"type": "text", "text": f"DETAIL CROP for object {alias}"})
             content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
@@ -405,12 +434,15 @@ class VisionPageTranslator:
         cost = usage_cost_usd(usage) if self.provider.tracks_cost else None
         return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
 
-    def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens, crops=()):
+    def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens, crops=(), tiles=()):
         parts = [
             {"type": "text", "text": system},
             {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
             {"type": "image", "data": marked, "mime_type": "image/jpeg"},
         ]
+        for rect, b64 in tiles:
+            parts.append({"type": "text", "text": f"DETAIL TILE {rect[0]},{rect[1]},{rect[2]},{rect[3]}"})
+            parts.append({"type": "image", "data": b64, "mime_type": "image/jpeg"})
         for alias, b64 in crops:
             parts.append({"type": "text", "text": f"DETAIL CROP for object {alias}"})
             parts.append({"type": "image", "data": b64, "mime_type": "image/jpeg"})

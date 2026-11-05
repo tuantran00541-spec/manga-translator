@@ -69,6 +69,9 @@ def test_scan_keeps_each_slices_lettering_as_who_and_text_lines():
 
 
 def test_scan_sends_every_slice_as_a_labelled_image(monkeypatch):
+    import base64
+    import io
+    from PIL import Image
     sent = []
 
     class Response:
@@ -85,8 +88,15 @@ def test_scan_sends_every_slice_as_a_labelled_image(monkeypatch):
     scans, cost = scan_slices(PROVIDERS["openai"], "vision-test", "key", images)
 
     content = sent[0]["json"]["messages"][0]["content"]
-    assert [item["text"] for item in content if item["type"] == "text"][1:] == ["SLICE 4", "SLICE 5"]
-    assert sum(item["type"] == "image_url" for item in content) == 2
+    labels = [item["text"] for item in content if item["type"] == "text"][1:]
+    assert "SLICE 4" in labels and "SLICE 5" in labels
+    assert any(label.startswith("DETAIL TILE SLICE 4 ") for label in labels)
+    assert sum(item["type"] == "image_url" for item in content) >= 4
+    for i, item in enumerate(content[:-1]):
+        if item.get("text", "").startswith("DETAIL TILE SLICE 4 "):
+            coords = tuple(map(int, item["text"].split()[-1].split(",")))
+            encoded = content[i + 1]["image_url"]["url"].split(",", 1)[1]
+            assert Image.open(io.BytesIO(base64.b64decode(encoded))).size == (coords[2] - coords[0], coords[3] - coords[1])
     assert [scan.is_credit for scan in scans] == [True, False]
     assert cost is None, "OpenAI does not report priced usage"
 

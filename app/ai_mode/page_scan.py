@@ -199,9 +199,24 @@ def scan_slices(
     if not slices:
         return [], 0.0
     sizes = {index: (image.shape[1], image.shape[0]) for index, image in slices}
-    images = [(f"SLICE {index}", _thumbnail(image)) for index, image in slices]
+    from app.translation.vision import _native_tiles
+
+    images = []
+    tiled = False
+    for index, image in slices:
+        tiles = _native_tiles(image)
+        images.append((f"SLICE {index}", _thumbnail(image) if tiles else image))
+        for x1, y1, x2, y2 in tiles:
+            tiled = True
+            images.append((f"DETAIL TILE SLICE {index} {x1},{y1},{x2},{y2}", image[y1:y2, x1:x2]))
+    prompt = SCAN_PROMPT
+    if tiled:
+        prompt += ("\nDETAIL TILE SLICE images are overlapping native-resolution portions of the named slice; "
+                   "their labels give x1,y1,x2,y2 in original pixels. Read lettering from them, "
+                   "deduplicate overlap, and return one answer per SLICE, not one per tile. "
+                   "Return logo coordinates on the 0-1000 grid of the entire original slice, not a tile.")
     result = request_vision_json(
-        provider, model, api_key, SCAN_PROMPT, images,
+        provider, model, api_key, prompt, images,
         schema=SCAN_SCHEMA, max_tokens=min(6000, 400 + 900 * len(slices)), stage="scan",
     )
     return parse_scan(result.data, sizes), result.estimated_cost_usd

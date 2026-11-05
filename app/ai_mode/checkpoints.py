@@ -14,10 +14,10 @@ MIN_SIDE_PX = 10
 MAX_AREA_RATIO = 0.4  # a box over most of a slice is a misread
 MARGIN_PX = 6
 CROP_PAD_PX = 24  # background shown round an erased box, where a ghost or smear would sit
-MAX_CROP_SIDE = 900  # a bigger crop is shrunk to this; letter fragments still show
 SHEET_SIDE = 2048
 TAG_PX = 30  # strip above each crop carrying its id
 GAP_PX = 8
+TILE_OVERLAP = 128
 CLEAN_REVIEW_EFFORT = "low"
 
 CLEAN_REVIEW_PROMPT = (
@@ -44,17 +44,31 @@ def crops_for(page_index: int, original: np.ndarray, clean: np.ndarray, boxes) -
     """One raw | clean pair round each erased box."""
     h, w = clean.shape[:2]
     out = []
-    for n, (x1, y1, x2, y2) in enumerate(boxes):
-        cx1, cy1 = max(0, x1 - CROP_PAD_PX), max(0, y1 - CROP_PAD_PX)
-        cx2, cy2 = min(w, x2 + CROP_PAD_PX), min(h, y2 + CROP_PAD_PX)
+    def starts(length, side):
+        values = [0]
+        while values[-1] + side < length:
+            values.append(min(values[-1] + side - TILE_OVERLAP, length - side))
+        return values
+
+    for x1, y1, x2, y2 in boxes:
+        tile_w, tile_h = (SHEET_SIDE - GAP_PX) // 2, SHEET_SIDE - TAG_PX
+        # Do not split a region that already fits merely to add its surrounding padding.
+        pad_x = min(CROP_PAD_PX, max(0, (tile_w - (x2 - x1)) // 2)) if x2 - x1 <= tile_w else CROP_PAD_PX
+        pad_y = min(CROP_PAD_PX, max(0, (tile_h - (y2 - y1)) // 2)) if y2 - y1 <= tile_h else CROP_PAD_PX
+        cx1, cy1 = max(0, x1 - pad_x), max(0, y1 - pad_y)
+        cx2, cy2 = min(w, x2 + pad_x), min(h, y2 + pad_y)
         if cx2 - cx1 < MIN_SIDE_PX or cy2 - cy1 < MIN_SIDE_PX:
             continue
-        before, after = original[cy1:cy2, cx1:cx2], clean[cy1:cy2, cx1:cx2]
-        crop = np.hstack([before, np.full((before.shape[0], GAP_PX, 3), 255, np.uint8), after])
-        scale = min(1.0, MAX_CROP_SIDE / max(crop.shape[:2]))
-        if scale < 1.0:
-            crop = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-        out.append(Crop(f"{page_index + 1}.{n + 1}", page_index, (x1, y1, x2, y2), crop))
+        for ty in starts(cy2 - cy1, tile_h):
+            for tx in starts(cx2 - cx1, tile_w):
+                ax, ay = cx1 + tx, cy1 + ty
+                bx, by = min(cx2, ax + tile_w), min(cy2, ay + tile_h)
+                rect = (max(x1, ax), max(y1, ay), min(x2, bx), min(y2, by))
+                if rect[0] >= rect[2] or rect[1] >= rect[3]:
+                    continue
+                before, after = original[ay:by, ax:bx], clean[ay:by, ax:bx]
+                crop = np.hstack([before, np.full((before.shape[0], GAP_PX, 3), 255, np.uint8), after])
+                out.append(Crop(f"{page_index + 1}.{len(out) + 1}", page_index, rect, crop))
     return out
 
 

@@ -118,7 +118,8 @@ def test_small_source_text_gets_detail_crop_on_first_read(tmp_path, monkeypatch)
         original, clean, [{"id": "text_1", "text": "", "region": [10, 1000, 300, 1100], "source_cap_px": 20}],
         api_key="fake-test-key", source_lang="en", target_lang="vi")
     content = sent[0]["json"]["messages"][1]["content"]
-    assert sum(item.get("type") == "image_url" for item in content) == 2
+    assert any(item.get("text") == "DETAIL CROP for object 1" for item in content)
+    assert sum(item.get("type") == "image_url" for item in content) >= 2
 
 
 @pytest.fixture
@@ -346,6 +347,74 @@ def test_empty_slice_can_be_sent_to_vision_to_find_unboxed_text(tmp_path, monkey
         original, clean, [], api_key="fake-test-key", source_lang="en", target_lang="vi")
     assert len(sent) == 1
     assert result.unboxed == ((40, 120, 201, 241),)
+
+
+def test_tall_slice_sends_overlapping_native_resolution_tiles_for_coverage(tmp_path, monkeypatch):
+    import base64
+    import io
+    import re
+
+    original, clean = tmp_path / "raw.png", tmp_path / "clean.png"
+    Image.new("RGB", (720, 3867), "white").save(original)
+    Image.new("RGB", (720, 3867), "white").save(clean)
+    sent = []
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"translations":[],"unboxed":[]}'}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: sent.append(kwargs) or Response())
+    VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, [], api_key="fake-test-key", source_lang="en", target_lang="vi")
+    content = sent[0]["json"]["messages"][1]["content"]
+    tiles = []
+    for i, item in enumerate(content[:-1]):
+        if item.get("type") != "text" or not item.get("text", "").startswith("DETAIL TILE "):
+            continue
+        coords = tuple(map(int, re.findall(r"\d+", item["text"])))
+        assert len(coords) == 4
+        data = content[i + 1]["image_url"]["url"].split(",", 1)[1]
+        image = Image.open(io.BytesIO(base64.b64decode(data)))
+        assert image.size == (coords[2] - coords[0], coords[3] - coords[1])
+        tiles.append(coords)
+    assert len(tiles) >= 2
+    assert tiles[0][:2] == (0, 0) and tiles[-1][3] == 3867
+    assert all(a[3] > b[1] for a, b in zip(tiles, tiles[1:]))
+
+
+def test_gemini_payload_keeps_native_tiles_and_original_coordinates(monkeypatch):
+    sent = []
+
+    class Response:
+        ok, status_code = True, 200
+
+        def json(self):
+            return {"usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: sent.append(kwargs) or Response())
+    monkeypatch.setattr("app.translation.vision.gemini_output_text", lambda body: '{"translations":[]}')
+    VisionPageTranslator(PROVIDERS["gemini"], "vision-test")._gemini(
+        "system", "prompt", "overview", api_key="test-key", ids=set(), max_tokens=1200,
+        tiles=[((0, 1819, 720, 3867), "native-tile")],
+    )
+    parts = sent[0]["json"]["input"]
+    pos = next(i for i, part in enumerate(parts) if part.get("text") == "DETAIL TILE 0,1819,720,3867")
+    assert parts[pos + 1]["data"] == "native-tile"
+
+
+def test_native_tiles_cover_wide_and_tall_image_and_fail_closed_over_limit():
+    from app.translation.vision import _native_tiles
+
+    tiles = _native_tiles(np.zeros((3000, 3000, 3), dtype=np.uint8))
+    covered = np.zeros((3000, 3000), dtype=bool)
+    for x1, y1, x2, y2 in tiles:
+        assert x2 - x1 <= 2048 and y2 - y1 <= 2048
+        covered[y1:y2, x1:x2] = True
+    assert covered.all()
+    with pytest.raises(ValueError, match="too many"):
+        _native_tiles(np.zeros((9000, 3000, 3), dtype=np.uint8))
 
 
 def test_unboxed_limit_reports_when_vision_found_more_than_it_can_process(tmp_path, monkeypatch):

@@ -3,14 +3,17 @@ import numpy as np
 from app.ai_mode.checkpoints import SHEET_SIDE, TAG_PX, crops_for, pack
 
 
-def test_each_erased_box_gets_a_padded_raw_clean_pair_and_huge_ones_are_shrunk():
+def test_large_review_crops_are_tiled_at_native_resolution():
     clean = np.full((3000, 1600, 3), 255, np.uint8)
     original = np.zeros_like(clean)
     crops = crops_for(4, original, clean, [(100, 100, 300, 200), (0, 0, 1600, 2000), (5, 5, 7, 7)])
-    assert [crop.id for crop in crops] == ["5.1", "5.2", "5.3"]
+    assert [crop.id for crop in crops] == [f"5.{i}" for i in range(1, 5)]
     assert crops[0].image.shape[:2] == (148, 504), "24 px of background round the box, raw | gap | clean"
     assert crops[0].image[:, :248].max() == 0 and crops[0].image[:, 248:].min() == 255, "raw on the left"
-    assert max(crops[1].image.shape[:2]) == 900
+    assert crops[1].image.shape[0] == 2009
+    assert crops[1].image.shape[1] <= SHEET_SIDE
+    assert crops[1].rect[0] == 0 and crops[2].rect[2] == 1600
+    assert crops[1].rect[2] > crops[2].rect[0], "tiles overlap to retain text crossing their boundary"
     assert crops[0].rect == (100, 100, 300, 200)
 
 
