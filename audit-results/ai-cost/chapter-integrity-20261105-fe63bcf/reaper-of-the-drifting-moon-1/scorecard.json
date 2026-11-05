@@ -1,0 +1,82 @@
+{
+ "clean": {
+  "slices": 47,
+  "unchecked_slices": [],
+  "skipped_slices": [
+   8,
+   10,
+   24,
+   26,
+   48,
+   50
+  ],
+  "excluded_preserve_regions": 13,
+  "all_slices_scored_without_exclusions": false,
+  "scope": "detector-based residue estimate only; not proof of complete text detection or undamaged artwork",
+  "text_left": 0,
+  "ghosts": 0,
+  "items": []
+ },
+ "text": {
+  "objects": 113,
+  "translated": 92,
+  "untranslated": 21,
+  "needs_review": 2,
+  "kept_original": 0
+ },
+ "spend": {
+  "cost_usd": 0.03167,
+  "requests": 101,
+  "prompt_tokens": 288264,
+  "images": 176,
+  "wall_s": 660.7,
+  "by_stage": {
+   "scan": {
+    "requests": 27,
+    "images": 53,
+    "prompt_tokens": 37626,
+    "completion_tokens": 8674
+   },
+   "glossary": {
+    "requests": 2,
+    "images": 0,
+    "prompt_tokens": 2285,
+    "completion_tokens": 1396
+   },
+   "review": {
+    "requests": 7,
+    "images": 7,
+    "prompt_tokens": 18828,
+    "completion_tokens": 219
+   },
+   "translate": {
+    "requests": 65,
+    "images": 116,
+    "prompt_tokens": 229525,
+    "completion_tokens": 26396
+   }
+  },
+  "stage_s": {
+   "download": 3.4,
+   "scan": 45.0,
+   "clean": 109.1,
+   "review": 24.6,
+   "translate": 467.6,
+   "polish": 0.0,
+   "render": 6.7,
+   "finish": 0.1
+  }
+ },
+ "polish": {
+  "judged": 0,
+  "flagged": 0,
+  "rewritten": 0,
+  "still_flagged": 0
+ },
+ "fit": {
+  "does_not_fit": 0,
+  "under_20px": 1,
+  "split_word": 0,
+  "missing_glyphs": 1
+ }
+}

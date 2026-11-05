@@ -64,15 +64,6 @@
   }
  },
  {
-  "id": "sakana/fugu-ultra-v2",
-  "name": "Fugu Ultra v2",
-  "pricing": {
-   "input": "0.00000525",
-   "output": "0.0000315",
-   "input_cache_read": "0.000000525"
-  }
- },
- {
   "id": "bytedance/seedream-4.0",
   "name": "Seedream 4.0",
   "pricing": {
@@ -91,6 +82,15 @@
    "output_modalities": [
     "image"
    ]
+  }
+ },
+ {
+  "id": "sakana/fugu-ultra-v2",
+  "name": "Fugu Ultra v2",
+  "pricing": {
+   "input": "0.00000525",
+   "output": "0.0000315",
+   "input_cache_read": "0.000000525"
   }
  },
  {
@@ -118,15 +118,6 @@
    "input": "0.00000105",
    "output": "0.0000021",
    "input_cache_read": "0.000000105"
-  }
- },
- {
-  "id": "xiaomi/mimo-v2.6-flash",
-  "name": "MiMo V2.6 Flash",
-  "pricing": {
-   "input": "0.000000147",
-   "output": "0.000000294",
-   "input_cache_read": "0.00000000294"
   }
  },
  {
@@ -172,12 +163,12 @@
   }
  },
  {
-  "id": "deepseek/deepseek-v4-pro",
-  "name": "DeepSeek V4 Pro",
+  "id": "xiaomi/mimo-v2.6-flash",
+  "name": "MiMo V2.6 Flash",
   "pricing": {
-   "input": "0.000001386",
-   "output": "0.000004158",
-   "input_cache_read": "0.0000001386"
+   "input": "0.000000147",
+   "output": "0.000000294",
+   "input_cache_read": "0.00000000294"
   }
  },
  {
@@ -199,6 +190,15 @@
    "output_modalities": [
     "image"
    ]
+  }
+ },
+ {
+  "id": "deepseek/deepseek-v4-pro",
+  "name": "DeepSeek V4 Pro",
+  "pricing": {
+   "input": "0.000001386",
+   "output": "0.000004158",
+   "input_cache_read": "0.0000001386"
   }
  },
  {
@@ -604,16 +604,6 @@
   }
  },
  {
-  "id": "openai/o1",
-  "name": "o1",
-  "pricing": {
-   "input": "0.00001575",
-   "output": "0.000063",
-   "input_cache_read": "0.000007875",
-   "web_search": "14.7"
-  }
- },
- {
   "id": "google/veo-3.1-lite-generate-001",
   "name": "Veo 3.1 Lite Generate",
   "pricing": {
@@ -651,6 +641,16 @@
    "output_modalities": [
     "video"
    ]
+  }
+ },
+ {
+  "id": "openai/o1",
+  "name": "o1",
+  "pricing": {
+   "input": "0.00001575",
+   "output": "0.000063",
+   "input_cache_read": "0.000007875",
+   "web_search": "14.7"
   }
  },
  {
@@ -1088,15 +1088,6 @@
   }
  },
  {
-  "id": "alibaba/qwen3.5-9b",
-  "name": "Qwen 3.5 9B",
-  "pricing": {
-   "input": "0.000000084",
-   "output": "0.0000001365",
-   "request": "0.000105"
-  }
- },
- {
   "id": "minimax/minimax-m2.7",
   "name": "MiniMax M2.7",
   "pricing": {
@@ -1104,6 +1095,15 @@
    "output": "0.00000126",
    "input_cache_read": "0.000000063",
    "input_cache_write": "0.00000039375"
+  }
+ },
+ {
+  "id": "alibaba/qwen3.5-9b",
+  "name": "Qwen 3.5 9B",
+  "pricing": {
+   "input": "0.000000084",
+   "output": "0.0000001365",
+   "request": "0.000105"
   }
  },
  {
@@ -1203,14 +1203,6 @@
   }
  },
  {
-  "id": "zai/glm-4.7-flash",
-  "name": "GLM 4.7 Flash",
-  "pricing": {
-   "input": "0.0000000735",
-   "output": "0.00000042"
-  }
- },
- {
   "id": "minimax/minimax-h3-max",
   "name": "MiniMax H3 Max",
   "pricing": {
@@ -1239,6 +1231,14 @@
    "output_modalities": [
     "video"
    ]
+  }
+ },
+ {
+  "id": "zai/glm-4.7-flash",
+  "name": "GLM 4.7 Flash",
+  "pricing": {
+   "input": "0.0000000735",
+   "output": "0.00000042"
   }
  },
  {
@@ -1536,16 +1536,6 @@
   }
  },
  {
-  "id": "alibaba/qwen3.8-27b",
-  "name": "Qwen3.8 27B",
-  "pricing": {
-   "input": "0.000000525",
-   "output": "0.00000315",
-   "input_cache_read": "0.000000105",
-   "input_cache_write": "0.00000065625"
-  }
- },
- {
   "id": "spacexai/grok-build-0.1",
   "name": "Grok Build 0.1",
   "pricing": {
@@ -1553,6 +1543,16 @@
    "output": "0.0000021",
    "input_cache_read": "0.00000021",
    "web_search": "5.25"
+  }
+ },
+ {
+  "id": "alibaba/qwen3.8-27b",
+  "name": "Qwen3.8 27B",
+  "pricing": {
+   "input": "0.000000525",
+   "output": "0.00000315",
+   "input_cache_read": "0.000000105",
+   "input_cache_write": "0.00000065625"
   }
  },
  {
@@ -1603,15 +1603,6 @@
   }
  },
  {
-  "id": "amazon/nova-pro",
-  "name": "Nova Pro",
-  "pricing": {
-   "input": "0.00000084",
-   "output": "0.00000336",
-   "input_cache_read": "0.00000021"
-  }
- },
- {
   "id": "spacexai/grok-4.20-multi-agent",
   "name": "Grok 4.20 Multi-Agent",
   "pricing": {
@@ -1619,6 +1610,15 @@
    "output": "0.000002625",
    "input_cache_read": "0.00000021",
    "web_search": "5.25"
+  }
+ },
+ {
+  "id": "amazon/nova-pro",
+  "name": "Nova Pro",
+  "pricing": {
+   "input": "0.00000084",
+   "output": "0.00000336",
+   "input_cache_read": "0.00000021"
   }
  },
  {
@@ -2027,6 +2027,16 @@
   }
  },
  {
+  "id": "openai/gpt-4.1-mini-fast",
+  "name": "GPT-4.1 mini (Fast)",
+  "pricing": {
+   "input": "0.000000735",
+   "output": "0.00000294",
+   "input_cache_read": "0.00000018375",
+   "web_search": "10.5"
+  }
+ },
+ {
   "id": "minimax/minimax-m2.1",
   "name": "MiniMax M2.1",
   "pricing": {
@@ -2037,13 +2047,11 @@
   }
  },
  {
-  "id": "openai/gpt-4.1-mini-fast",
-  "name": "GPT-4.1 mini (Fast)",
+  "id": "typesafe-ai/jev-1.14.0",
+  "name": "Jev 1.14.0",
   "pricing": {
-   "input": "0.000000735",
-   "output": "0.00000294",
-   "input_cache_read": "0.00000018375",
-   "web_search": "10.5"
+   "input": "0.0000000462",
+   "output": "0"
   }
  },
  {
@@ -2061,14 +2069,6 @@
   "pricing": {
    "input": "0.0000001575",
    "output": "0.0000006825"
-  }
- },
- {
-  "id": "typesafe-ai/jev-1.14.0",
-  "name": "Jev 1.14.0",
-  "pricing": {
-   "input": "0.0000000462",
-   "output": "0"
   }
  },
  {
@@ -2294,15 +2294,6 @@
   }
  },
  {
-  "id": "zai/glm-4.6",
-  "name": "GLM 4.6",
-  "pricing": {
-   "input": "0.00000063",
-   "output": "0.00000231",
-   "input_cache_read": "0.0000001155"
-  }
- },
- {
   "id": "openai/gpt-image-2",
   "name": "GPT Image 2",
   "pricing": {
@@ -2321,6 +2312,15 @@
    "output_modalities": [
     "image"
    ]
+  }
+ },
+ {
+  "id": "zai/glm-4.6",
+  "name": "GLM 4.6",
+  "pricing": {
+   "input": "0.00000063",
+   "output": "0.00000231",
+   "input_cache_read": "0.0000001155"
   }
  },
  {
@@ -3250,14 +3250,6 @@
   }
  },
  {
-  "id": "typesafe-ai/jev",
-  "name": "Jev",
-  "pricing": {
-   "input": "0.0000000462",
-   "output": "0"
-  }
- },
- {
   "id": "minimax/minimax-m2.1-lightning",
   "name": "MiniMax M2.1 Lightning",
   "pricing": {
@@ -3265,6 +3257,14 @@
    "output": "0.00000252",
    "input_cache_read": "0.0000000315",
    "input_cache_write": "0.00000039375"
+  }
+ },
+ {
+  "id": "typesafe-ai/jev",
+  "name": "Jev",
+  "pricing": {
+   "input": "0.0000000462",
+   "output": "0"
   }
  },
  {
