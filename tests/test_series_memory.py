@@ -61,6 +61,39 @@ def test_a_finished_chapter_teaches_the_series_and_the_next_chapter_starts_from_
     assert saved["characters"] == [{"name": "Terna", "note": "goddess"}] and saved["notes"] == "fantasy"
 
 
+def test_blocked_chapter_does_not_commit_terms_to_series_memory(monkeypatch, tmp_path):
+    url = "https://example.com/manga/story/chapter-1"
+    job = ai_job.AIModeJob(job_id="j", settings=AIModeSettings(url=url, provider="openai", model="m"), chapter_id="c1",
+                           stage="finish", stages={"finish": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    runner._memory = ChapterMemory("", {})
+    saved = []
+    monkeypatch.setattr(series_memory, "save", lambda *args: saved.append(args))
+    monkeypatch.setattr("app.routers.export._preflight_copy", lambda manifest, **_: {"blocker_count": 1, "blockers": []})
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda *_: {})
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda *_: None)
+    monkeypatch.setattr(ai_job, "OUTPUT_DIR", tmp_path)
+    asyncio.run(runner.finish())
+    assert saved == []
+
+
+def test_qc_failure_does_not_commit_terms_to_series_memory(monkeypatch, tmp_path):
+    url = "https://example.com/manga/story/chapter-1"
+    job = ai_job.AIModeJob(job_id="j", settings=AIModeSettings(url=url, provider="openai", model="m"), chapter_id="c1",
+                           stage="finish", stages={"finish": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    runner._memory = ChapterMemory("", {})
+    runner.report["qc_errors"].append("review failed")
+    saved = []
+    monkeypatch.setattr(series_memory, "save", lambda *args: saved.append(args))
+    monkeypatch.setattr("app.routers.export._preflight_copy", lambda manifest, **_: {"blocker_count": 0, "blockers": []})
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda *_: {})
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda *_: None)
+    monkeypatch.setattr(ai_job, "OUTPUT_DIR", tmp_path)
+    asyncio.run(runner.finish())
+    assert saved == []
+
+
 def test_the_user_reads_and_edits_a_series_memory_by_its_chapter_url():
     import pytest
     from fastapi import HTTPException

@@ -21,6 +21,21 @@ from app.translation.vision import (
 CHAPTER = "a1b2c3d4"
 
 
+def test_box_markers_do_not_cover_any_candidate_text():
+    from app.translation.vision import mark_objects
+
+    image = np.full((250, 400, 3), 255, np.uint8)
+    image[0:20, 60:120] = 0
+    image[105:126, 100:130] = 0
+    objects = [{"id": "1", "bbox_xyxy": [50, 0, 160, 70]},
+               {"id": "2", "bbox_xyxy": [80, 90, 200, 130]},
+               {"id": "3", "bbox_xyxy": [95, 130, 200, 175]}]
+    marked = mark_objects(image, objects)
+    assert np.array_equal(marked[0:20, 60:120], image[0:20, 60:120])
+    assert np.array_equal(marked[105:126, 100:130], image[105:126, 100:130])
+    assert not np.array_equal(marked, image), "visible box markers remain"
+
+
 def test_vision_parser_rejects_unknown_duplicate_and_omitted_ids():
     assert parse_vision_translation(
         '{"translations":[{"id":"a","translated_text":"Xin chào"},'
@@ -84,6 +99,26 @@ def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeyp
     assert '"id":"1"' in prompt and "text_1" not in prompt
     assert '"bbox_xyxy":[10,20,50,40]' in prompt
     assert "fontSize" not in prompt and "strokeColor" not in prompt
+
+
+def test_small_source_text_gets_detail_crop_on_first_read(tmp_path, monkeypatch):
+    original, clean = tmp_path / "raw.png", tmp_path / "clean.png"
+    Image.new("RGB", (800, 4000), "white").save(original)
+    Image.new("RGB", (800, 4000), "white").save(clean)
+    sent = []
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"translations":[{"id":"1","translated_text":"Xin chào"}]}'}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: sent.append(kwargs) or Response())
+    VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, [{"id": "text_1", "text": "", "region": [10, 1000, 300, 1100], "source_cap_px": 20}],
+        api_key="fake-test-key", source_lang="en", target_lang="vi")
+    content = sent[0]["json"]["messages"][1]["content"]
+    assert sum(item.get("type") == "image_url" for item in content) == 2
 
 
 @pytest.fixture
@@ -213,6 +248,22 @@ def test_explicit_blank_attempt_is_saved_without_an_automatic_review(saved_chapt
     assert not obj.get("editorial_reviewed")
 
 
+def test_blank_translation_preserves_vision_source_for_review(saved_chapter, monkeypatch):
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *args, **kwargs: VisionTranslationResult(
+            {"obj_1": ""}, self.model, {}, None, sources={"obj_1": "READABLE SOURCE"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
+    )
+    asyncio.run(translation_router.translate_page_in_context(request))
+    obj = manifests.load_manifest_raw(CHAPTER)["pages"][0]["text_objects"][0]
+    assert obj["source_read"] == "READABLE SOURCE"
+    assert not obj.get("editorial_reviewed")
+
+
 def test_successful_retry_clears_untranslated_disposition(saved_chapter, monkeypatch):
     manifest = manifests.load_manifest_raw(CHAPTER)
     manifest["pages"][0]["text_objects"][0]["editorial_disposition"] = "untranslated"
@@ -259,6 +310,66 @@ def test_page_without_detections_reports_unchecked_coverage(saved_chapter, monke
     )
     run = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
     assert run["coverage_unchecked"] is True
+
+
+def test_empty_slice_can_be_sent_to_vision_to_find_unboxed_text(tmp_path, monkeypatch):
+    original, clean = tmp_path / "raw.png", tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "white").save(clean)
+    sent = []
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({
+                "translations": [], "unboxed": [{"x1": 100, "y1": 200, "x2": 500, "y2": 400}],
+            })}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: sent.append(kwargs) or Response())
+    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, [], api_key="fake-test-key", source_lang="en", target_lang="vi")
+    assert len(sent) == 1
+    assert result.unboxed == ((40, 120, 201, 241),)
+
+
+def test_unboxed_limit_reports_when_vision_found_more_than_it_can_process(tmp_path, monkeypatch):
+    original, clean = tmp_path / "raw.png", tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "white").save(clean)
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            boxes = [{"x1": 100, "y1": 100, "x2": 500, "y2": 400}] * 9
+            return {"choices": [{"message": {"content": json.dumps({"translations": [], "unboxed": boxes})}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, [], api_key="fake-test-key", source_lang="en", target_lang="vi")
+    assert len(result.unboxed) == 8
+    assert result.unboxed_truncated is True
+
+
+def test_ai_mode_can_request_coverage_scan_without_detections(saved_chapter, monkeypatch):
+    manifest = manifests.load_manifest_raw(CHAPTER)
+    manifest["pages"][0]["text_objects"] = []
+    manifests.save_manifest_raw(CHAPTER, manifest)
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    calls = []
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *args, **kwargs: calls.append(args[2]) or VisionTranslationResult(
+            {}, self.model, {}, None, unboxed=((10, 20, 80, 70),), unboxed_truncated=True),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", scan_when_empty=True,
+    )
+    run = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert calls == [[]]
+    assert run["unboxed"] == [[10, 20, 80, 70]]
+    assert run["unboxed_truncated"] is True
 
 
 def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_slice(tmp_path, monkeypatch):

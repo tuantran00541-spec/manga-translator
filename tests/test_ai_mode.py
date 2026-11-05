@@ -287,7 +287,7 @@ def test_scan_stage_skips_textless_slices_but_not_most_of_a_chapter(monkeypatch)
     assert skipped == [] and runner.report["textless_rejected"] == [0, 1, 2, 3, 4]
 
 
-def test_with_a_decider_it_alone_picks_the_slices_to_skip(monkeypatch):
+def test_with_a_decider_textless_requires_scan_confirmation(monkeypatch):
     from app.ai_mode import decider
     from app.ai_providers import resolve_provider
 
@@ -297,9 +297,43 @@ def test_with_a_decider_it_alone_picks_the_slices_to_skip(monkeypatch):
     runner, skipped, _ = _scan_stage(monkeypatch, [
         SliceScan(2, False, 0.0, (), no_text=True), SliceScan(4, False, 0.0, (), no_text=True), SliceScan(7, True, 0.9, ()),
     ], provider=minirouter)
-    assert sorted(skipped) == [3, 4, 7]
-    assert runner.report["credit_pages"] == [7] and runner.report["textless_pages"] == [3, 4]
+    assert sorted(skipped) == [4, 7]
+    assert runner.report["credit_pages"] == [7] and runner.report["textless_pages"] == [4]
     assert runner.report["skip_kept"] == [2] and runner.report["skip_unjudged"] == [6]
+
+
+def test_decider_cannot_skip_a_slice_with_scan_transcript(monkeypatch):
+    from app.ai_mode import decider
+    from app.ai_providers import resolve_provider
+
+    monkeypatch.setattr(decider, "storyless_slices", lambda provider, key, indices, load: (
+        [3], {i: 0.01 if i == 3 else 0.9 for i in indices}))
+    provider = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
+    scan = SliceScan(3, False, 0.0, (), no_text=False, lines=(("speaker", "I am here."),))
+    runner, skipped, _ = _scan_stage(monkeypatch, [scan], provider=provider)
+    assert 3 not in skipped
+    assert 3 not in runner.report["textless_pages"]
+
+
+def test_credit_classification_cannot_discard_a_scan_transcript(monkeypatch):
+    scan = SliceScan(3, True, 0.9, (), lines=(("speaker", "I am here."),))
+    runner, skipped, _ = _scan_stage(monkeypatch, [scan])
+    assert 3 not in skipped
+    assert 3 not in runner.report["credit_pages"]
+
+
+def test_textless_without_decider_cannot_discard_a_scan_transcript(monkeypatch):
+    scan = SliceScan(3, False, 0.0, (), no_text=True, lines=(("speaker", "I am here."),))
+    runner, skipped, _ = _scan_stage(monkeypatch, [scan])
+    assert 3 not in skipped
+    assert 3 not in runner.report["textless_pages"]
+
+
+def test_unanswered_transcript_does_not_authorize_skipping_slice(monkeypatch):
+    scan = SliceScan(3, False, 0.0, (), no_text=True, answered=False)
+    runner, skipped, _ = _scan_stage(monkeypatch, [scan])
+    assert 3 not in skipped
+    assert 3 not in runner.report["textless_pages"]
 
 
 def test_scan_parse_requires_a_confident_textless_answer():
@@ -656,6 +690,8 @@ def test_translate_stage_preserves_slice_order_and_reports_failures(monkeypatch)
     job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="translate", cost_usd=None,
                            stages={"translate": {"done": 0, "total": 0, "detail": ""}})
     runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    coverage = []
+    monkeypatch.setattr(runner, "_set_coverage_unchecked", lambda index, value: coverage.append((index, value)), raising=False)
     monkeypatch.setattr(runner, "_active_pages", lambda: list(range(10)))
     monkeypatch.setattr(runner, "_manifest", lambda: {"pages": [{} for _ in range(10)]})
     synced = []
@@ -674,6 +710,7 @@ def test_translate_stage_preserves_slice_order_and_reports_failures(monkeypatch)
     monkeypatch.setattr(runner, "_retry_untranslated", retry)
     asyncio.run(runner.translate())
     assert retried == [(3, None)], "a failed slice retries every object in the same stage"
+    assert (3, True) in coverage
 
     assert started == list(range(10)), "slices start in reading order so earlier memory reaches later slices"
     assert len(memories) == 1 and None not in memories, "one chapter memory shared by every slice"
@@ -695,7 +732,7 @@ def test_translate_stage_retries_blanks_with_focus_crops(monkeypatch):
         assert slice_total == 2
         if req.page_index == 0:
             return {"translation_run": {"translated": 1, "unreadable": 1, "estimated_cost_usd": None,
-                                        "blank_ids": ["b1"], "missing_ids": ["m1"]}}
+                                        "blank_ids": ["b1"], "missing_ids": ["m1"], "unboxed_truncated": True}}
         return {"translation_run": {"translated": 2, "unreadable": 0, "estimated_cost_usd": None,
                                     "blank_ids": [], "missing_ids": []}}
 
@@ -708,6 +745,8 @@ def test_translate_stage_retries_blanks_with_focus_crops(monkeypatch):
     monkeypatch.setattr(runner, "_manifest", lambda: {"pages": [{}, {}]})
     monkeypatch.setattr(runner, "_sync_seams", lambda: asyncio.sleep(0, result=[]))
     monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
+    coverage = []
+    monkeypatch.setattr(runner, "_set_coverage_unchecked", lambda index, value: coverage.append((index, value)))
     retried = []
 
     async def retry(page_index, source_lang, only, focus=None):
@@ -715,7 +754,29 @@ def test_translate_stage_retries_blanks_with_focus_crops(monkeypatch):
 
     monkeypatch.setattr(runner, "_retry_untranslated", retry)
     asyncio.run(runner.translate())
-    assert retried == [(0, {"m1", "b1"}, {"b1"})], "blanks retry with their ids in focus for a zoomed re-read"
+    assert retried == [(0, {"m1", "b1"}, {"m1", "b1"})], "blank and omitted IDs both need a zoomed re-read"
+    assert (0, True) in coverage
+
+
+def test_budget_exhaustion_marks_every_unchecked_slice(monkeypatch):
+    import app.routers.ocr as ocr_router
+
+    async def detected(chapter_id, req=None):
+        return {"source_lang": None}
+
+    monkeypatch.setattr(ocr_router, "detect_chapter_language", detected)
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="translate", cost_usd=0,
+                           stages={"translate": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
+    monkeypatch.setattr(runner, "_manifest", lambda: {"pages": [{}, {}]})
+    monkeypatch.setattr(runner, "_remaining_budget", lambda: 0.0)
+    monkeypatch.setattr(runner, "_sync_seams", lambda: asyncio.sleep(0, result=[]))
+    monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
+    coverage = []
+    monkeypatch.setattr(runner, "_set_coverage_unchecked", lambda index, value: coverage.append((index, value)))
+    asyncio.run(runner.translate())
+    assert coverage == [(0, True), (1, True)]
 
 
 # -- translate -> render -> gate-free export ---------------------------------
@@ -824,19 +885,24 @@ def test_retry_keeps_going_on_a_long_slice_while_batches_make_progress(monkeypat
 
 
 def test_a_line_the_translator_sees_outside_every_box_is_boxed_erased_and_translated(monkeypatch):
+    import contextlib
     from app.dependencies import pipeline
 
     existing = {"x1": 100, "y1": 100, "x2": 200, "y2": 160}
     manifest = {"pages": [{"width": 400, "height": 600, "boxes": [existing], "text_objects": [{"id": "old"}]}]}
     added, retried = [], []
 
-    def fixes(chapter, index, boxes=(), skip_covered=False):
+    def fixes(chapter, index, boxes=(), skip_covered=False, require_box_strokes=False):
         assert skip_covered, "a box that grows over existing letters is not added"
+        assert require_box_strokes, "automatic boxes must not erase a rectangle when no strokes are detected"
         added.append(list(boxes))
         manifest["pages"][0]["text_objects"].append({"id": "new"})
 
     monkeypatch.setattr(pipeline, "apply_review_fixes", fixes, raising=False)
     runner = _runner(monkeypatch, "translate", manifest)
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda *_: contextlib.nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda *_: manifest)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda *_: None)
     monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
 
     async def retry(page_index, source_lang, only, focus=None):
@@ -846,6 +912,26 @@ def test_a_line_the_translator_sees_outside_every_box_is_boxed_erased_and_transl
     asyncio.run(runner._add_unboxed(0, [[105, 105, 195, 155], [20, 300, 180, 360], [0, 0, 3, 3]], "en"))
     assert added == [[(14, 294, 186, 366)]], "a box over existing text and a speck are dropped; the line gets a margin"
     assert retried == [(0, {"new"})] and runner.report["missed_added"] == 1
+
+
+def test_unboxed_without_strokes_is_persisted_for_review(monkeypatch):
+    import contextlib
+    from app.dependencies import pipeline
+    from app.editorial_gate import editorial_preflight
+
+    manifest = {"pages": [{"width": 400, "height": 600, "boxes": [], "text_objects": []}]}
+    runner = _runner(monkeypatch, "translate", manifest)
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda *_: contextlib.nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda *_: manifest)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda *_: None)
+
+    def fail(*args, **kwargs):
+        raise ValueError("no detected strokes")
+
+    monkeypatch.setattr(pipeline, "apply_review_fixes", fail)
+    asyncio.run(runner._add_unboxed(0, [[20, 300, 180, 360]], "en"))
+    assert manifest["pages"][0]["unresolved_ai_regions"] == [{"x1": 14, "y1": 294, "x2": 186, "y2": 366}]
+    assert any(b["kind"] == "unresolved_ai_region" for b in editorial_preflight(manifest)["blockers"])
 
 
 def test_blank_objects_require_review_regardless_of_attempt(monkeypatch):

@@ -55,9 +55,9 @@ def _pages(archive_path: Path, out: Path, max_width: int = 800) -> int:
         return len(names)
 
 
-def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
+def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560, *, manifest: dict | None = None) -> int:
     """Save each active slice as original | final side by side for a close review."""
-    from app.routers.image import _rendered_file_path
+    from app.routers.image import _current_rendered_path
 
     folder = out / "pairs"
     folder.mkdir(parents=True, exist_ok=True)
@@ -65,9 +65,9 @@ def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
     for index, page in enumerate(pages):
         if page.get("skipped") or not page.get("original"):
             continue
-        final_path = _rendered_file_path(chapter_id, index)
-        if not final_path.is_file():
-            final_path = Path(page.get("clean") or "")
+        final_path = _current_rendered_path(chapter_id, index, manifest or {"pages": pages})
+        if final_path is None:
+            continue
         raw, final = cv2.imread(str(page["original"])), cv2.imread(str(final_path))
         if raw is None or final is None:
             continue
@@ -124,7 +124,7 @@ def _fit_metrics(obj: dict, page_width: int) -> dict:
 
     from app.parameters import RENDER_AUTO_STROKE_WIDTH, RENDER_DEFAULT_PADDING, RENDER_PADDING_RATIO_MAX
     from app.render.page_renderer import _render_region_for_text_object, _resolve_ocr_style
-    from app.render.text_renderer import _calc_line_height, _wrap_text, auto_fit, drawable, font_draws_text, get_font_object, get_font_path
+    from app.render.text_renderer import _fits, auto_fit, drawable, font_draws_text, get_font_path
 
     text = str(obj.get("translation") or "").strip()
     region = _render_region_for_text_object(obj)
@@ -146,9 +146,7 @@ def _fit_metrics(obj: dict, page_width: int) -> dict:
     if isinstance(size, (int, float)) or (isinstance(size, str) and size.isdigit()):
         source = "ocr" if style.get("fontSize") in (None, "", "auto") else "style"
         size = int(size)
-        font = get_font_object(str(font_path), size)
-        lines = _wrap_text(draw, text, font, box_w)
-        fits = bool(lines) and _calc_line_height(draw, font, stroke_w=RENDER_AUTO_STROKE_WIDTH) * len(lines) <= box_h
+        fits, lines = _fits(draw, text, box_w, box_h, str(font_path), size, RENDER_AUTO_STROKE_WIDTH)
     else:
         source = "fit"
         bg = str(style.get("bgColor") or "transparent")
@@ -314,12 +312,13 @@ def main() -> int:
             report["export_error"] = f"HTTP {exported.status_code}: {exported.text[:300]}"
     manifest_path = ROOT / "data" / "processed" / str(chapter_id) / "manifest.json"
     if chapter_id and manifest_path.is_file():
-        pages = json.loads(manifest_path.read_text(encoding="utf-8")).get("pages", [])
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        pages = manifest.get("pages", [])
         report["slices"] = len(pages)
         report["slices_active"] = sum(1 for p in pages if not p.get("skipped"))
         report["clean_ms"] = _clean_timing(pages)
         try:
-            report["pairs"] = _pairs(str(chapter_id), pages, out)
+            report["pairs"] = _pairs(str(chapter_id), pages, out, manifest=manifest)
         except Exception as exc:  # noqa: BLE001 - the pairs are a review aid, never a reason to lose the report
             report["pairs_error"] = repr(exc)[:300]
         (out / "objects.json").write_text(json.dumps(_objects(pages), ensure_ascii=False), encoding="utf-8")

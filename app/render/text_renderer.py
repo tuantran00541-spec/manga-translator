@@ -316,7 +316,16 @@ def render_text_in_box(
         if lobes and len(lobes) == len(paras):
             size, lobes = _fit_lobes(draw, paras, lobes, font_path_str, stroke_w, padding,
                                      image.size[0])
-            if size is not None:
+            if size is not None and (target_size is None or target_size <= size):
+                if target_size is not None:
+                    size = target_size
+                elif source_cap_px and not enlarge:
+                    from app.render.source_size import SIZE_SLACK, matching_font_px
+                    readable = int(RENDER_MIN_READABLE_FONT_SIZE * max(1.0, image.width / REFERENCE_PAGE_WIDTH))
+                    source_size = matching_font_px(font_path_str, int(source_cap_px))
+                    size = min(size, max(readable, int(SOURCE_FLOOR_RATIO * size), int(source_size * SIZE_SLACK)))
+                    if min_source_share and size < min_source_share * source_size:
+                        raise ValueError("Translation fits only well below the source letter size")
                 for para, (lbox, lrun) in zip(paras, lobes):
                     render_text_in_box(image, para, lbox, font_path=font_path, padding=padding,
                                        fill=fill, font_size=size, is_bold=is_bold, font_name=font_name,

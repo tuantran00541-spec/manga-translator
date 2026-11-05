@@ -11,6 +11,7 @@ STYLE = dict(fill="#202020", font_size=40)
     ("ocr_font_size", 40), ("ocr_text_color", "#123456"),
     ("lettering_color", "#123456"), ("letter_bounds", {"x1": 1, "y1": 2, "x2": 30, "y2": 40}),
     ("source_cap_px", 40), ("enlarge", True), ("font_ai_id", "dialogue.mac-dinh-3"),
+    ("container", "bubble"),
     ("font_selection_mode", "user"), ("auto_generated", True),
     ("ocr_text_region", {"x1": 1, "y1": 2, "x2": 30, "y2": 40}),
     ("auto_geometry", {"x1": 1, "y1": 2, "x2": 30, "y2": 40}),
@@ -344,6 +345,40 @@ def test_two_paragraphs_centre_in_their_own_lobes():
     assert abs((upper[0][0] + upper[-1][1]) // 2 - top_c) <= 35
     assert abs((lower[0][0] + lower[-1][1]) // 2 - bottom_c) <= 35
     assert upper[-1][1] < lower[0][0], "no line straddles the neck"
+
+
+def test_double_balloon_respects_explicit_font_size(monkeypatch):
+    import app.render.text_renderer as renderer
+
+    canvas, _ = _double_balloon_canvas()
+    sizes = []
+    original = renderer.render_text_in_box
+
+    def record(*args, **kwargs):
+        sizes.append(kwargs.get("font_size"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(renderer, "render_text_in_box", record)
+    renderer.render_text_in_box(canvas, "Alpha beta gamma delta\nEpsilon zeta eta theta",
+                                (60, 80, 420, 405), fill="#000000", taper=True, font_size=12)
+    assert sizes == [12, 12, 12]
+
+
+def test_double_balloon_applies_source_size_cap(monkeypatch):
+    import app.render.text_renderer as renderer
+
+    canvas, _ = _double_balloon_canvas()
+    sizes = []
+    original = renderer.render_text_in_box
+
+    def record(*args, **kwargs):
+        sizes.append(kwargs.get("font_size"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(renderer, "render_text_in_box", record)
+    renderer.render_text_in_box(canvas, "Alpha beta gamma delta\nEpsilon zeta eta theta",
+                                (60, 80, 420, 405), fill="#000000", taper=True, source_cap_px=9)
+    assert sizes[1] < 27 and sizes[1] == sizes[2]
 
 
 def test_paragraph_lobe_mismatch_falls_back_to_one_block():

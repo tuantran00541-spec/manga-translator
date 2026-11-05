@@ -266,6 +266,33 @@ def test_automatic_residue_repaint_refuses_a_rectangle_without_detected_strokes(
     assert np.array_equal(read_image(clean), pixels)
 
 
+def test_automatic_unboxed_text_refuses_rectangle_fallback(tmp_path: Path, monkeypatch):
+    import app.config as config
+    import app.manifest_utils as manifests
+    import app.pipeline_editing as editing
+
+    chapter = "abcd1234"
+    raw, processed = tmp_path / "raw", tmp_path / "processed"
+    for root in (raw, processed):
+        (root / chapter).mkdir(parents=True)
+    original, clean = raw / chapter / "page.png", processed / chapter / "clean_page.png"
+    pixels = np.full((80, 100, 3), 100, dtype=np.uint8)
+    write_image(original, pixels)
+    write_image(clean, pixels)
+    for module in (config, manifests, editing):
+        monkeypatch.setattr(module, "PROCESSED_DIR", processed, raising=False)
+    manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
+        "original": original.as_posix(), "clean": clean.as_posix(), "boxes": [],
+    }]})
+    pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
+    pipeline._inpainter = _FakeInpainter()
+    monkeypatch.setattr(editing, "_stroke_box", lambda image, rect: {"id": "new", "mask": None})
+    with pytest.raises(ValueError, match="without detected strokes"):
+        pipeline.apply_review_fixes(chapter, 0, boxes=[(10, 10, 90, 70)], require_box_strokes=True)
+    assert manifests.load_manifest_raw(chapter)["pages"][0]["boxes"] == []
+    assert np.array_equal(read_image(clean), pixels)
+
+
 def test_review_fixes_apply_preserve_boxes_and_repaint_in_one_reinpaint(tmp_path: Path, monkeypatch):
     import app.config as config
     import app.manifest_utils as manifests

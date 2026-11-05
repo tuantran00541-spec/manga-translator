@@ -17,7 +17,7 @@ from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
 from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.cost import language_name, usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
-from app.visual_qc.gemini import _encode_for_gemini, _read_image
+from app.visual_qc.gemini import MAX_QC_SIDE, _encode_for_gemini, _read_image
 from app.visual_qc.gemini_interactions import (
     GEMINI_INTERACTIONS_URL,
     extract_output_text as gemini_output_text,
@@ -68,6 +68,7 @@ class VisionTranslationResult:
     sources: dict[str, str] = field(default_factory=dict)  # the source text the model read in each box
     speakers: dict[str, str] = field(default_factory=dict)  # who says each box's line, or "narration"
     unboxed: tuple[tuple[int, int, int, int], ...] = ()  # pixel boxes of lines the model saw outside every box
+    unboxed_truncated: bool = False
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -223,6 +224,13 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
         ty = max(th + base, y1)
         cv2.rectangle(marked, (x1, ty - th - base), (x1 + tw + 4, ty), color, -1)
         cv2.putText(marked, label, (x1 + 2, ty - base), cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), thickness)
+    h, w = image.shape[:2]
+    for box, _, _ in boxes:
+        x1, y1, x2, y2 = (int(v) for v in box)
+        x1, x2 = max(0, x1), min(w, x2)
+        y1, y2 = max(0, y1), min(h, y2)
+        if x2 > x1 and y2 > y1:
+            marked[y1:y2, x1:x2] = image[y1:y2, x1:x2]
     return marked
 
 
@@ -240,8 +248,6 @@ class VisionPageTranslator:
     ) -> VisionTranslationResult:
         if not api_key.strip():
             raise ValueError(f"{self.provider.label} API key is not configured")
-        if not items:
-            return VisionTranslationResult({}, self.model, {}, 0.0 if self.provider.tracks_cost else None)
         original, cleaned = _read_image(original_path), _read_image(cleaned_path)
         if original.shape[:2] != cleaned.shape[:2]:
             raise ValueError("Original and cleaned slices have different dimensions")
@@ -278,7 +284,11 @@ class VisionPageTranslator:
         # it skipped on the whole slice stays legible in its own crop.
         by_real = {real_id: alias for alias, real_id in real.items()}
         crops: list[tuple[str, str]] = []
-        for real_id in dict.fromkeys(str(v) for v in focus_ids):
+        scale = min(1.0, MAX_QC_SIDE / max(h, w))
+        small_ids = [str(item["id"]) for item in items
+                     if isinstance(item.get("source_cap_px"), (int, float))
+                     and 0 < item["source_cap_px"] * scale < 20]
+        for real_id in dict.fromkeys([*(str(v) for v in focus_ids), *small_ids]):
             alias = by_real.get(real_id)
             item = next((it for it in items if str(it["id"]) == real_id), None)
             if alias is None or item is None or len(crops) >= 8:
@@ -337,7 +347,9 @@ class VisionPageTranslator:
             for raw in (data.get("unboxed") or [])[:MAX_UNBOXED] if (box := scaled_box(raw, w, h)) is not None
         )
         return replace(
-            result, font_choices=fonts, roles=roles, unboxed=unboxed, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
+            result, font_choices=fonts, roles=roles, unboxed=unboxed,
+            unboxed_truncated=len(data.get("unboxed") or []) > MAX_UNBOXED,
+            review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
             enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources, speakers=speakers,
         )
 

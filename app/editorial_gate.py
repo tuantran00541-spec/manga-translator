@@ -52,6 +52,18 @@ def _confidence(value) -> float:
         return 0.0
 
 
+def _region_coverage(region: dict, box: dict) -> float:
+    try:
+        x1, y1, x2, y2 = (float(region[k]) for k in ("x1", "y1", "x2", "y2"))
+        bx1, by1, bx2, by2 = (float(box[k]) for k in ("x1", "y1", "x2", "y2"))
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+    area = (x2 - x1) * (y2 - y1)
+    if x2 <= x1 or y2 <= y1 or bx2 <= bx1 or by2 <= by1:
+        return 0.0
+    return max(0.0, min(x2, bx2) - max(x1, bx1)) * max(0.0, min(y2, by2) - max(y1, by1)) / area
+
+
 def script_review_fingerprint(obj: dict) -> str:
     source = str(obj.get("ocr_text") or "")
     vision_source = str(obj.get("source_read") or "")
@@ -193,6 +205,7 @@ def _append_blocker(blockers: list[dict], seen: set[tuple], item: dict) -> None:
         item.get("box_id"),
         item.get("object_id"),
         item.get("reason"),
+        tuple((item.get("region") or {}).get(k) for k in ("x1", "y1", "x2", "y2")),
     )
     if key not in seen:
         seen.add(key)
@@ -346,6 +359,15 @@ def editorial_preflight(
         if not isinstance(page, dict) or page.get("skipped"):
             continue
 
+        render_revision = int(page.get("render_revision") or 0)
+        coverage_reviewed = bool(page.get("rendered") and render_revision > 0
+                                 and int(page.get("final_review_approved_render_revision") or 0) == render_revision)
+        if page.get("ai_coverage_unchecked") and not coverage_reviewed:
+            _append_blocker(blockers, blocker_keys, _blocker(
+                "ai_coverage_unchecked", page_index,
+                reason="AI could not check the slice for missed text; review the rendered slice before export",
+            ))
+
         objects = [
             obj for obj in (page.get("text_objects") or []) if isinstance(obj, dict)
         ]
@@ -353,6 +375,29 @@ def editorial_preflight(
         for obj in objects:
             for box_id in source_box_ids(obj):
                 refs_by_box.setdefault(box_id, []).append(obj)
+
+        for region in page.get("unresolved_ai_regions") or []:
+            if not isinstance(region, dict):
+                continue
+            resolved = False
+            for box in page.get("boxes") or []:
+                if not isinstance(box, dict) or box.get("removed") or not _region_coverage(region, box) >= 0.8:
+                    continue
+                refs = refs_by_box.get(str(box.get("id") or ""), [])
+                if _reviewed_disposition(box, refs) in EDITORIAL_DROP_DISPOSITIONS:
+                    resolved = True
+                    break
+                if any(not obj.get("source_missing") and not obj.get("joined_into")
+                       and not obj.get("overlap_dropped") and not text_object_in_preserve_region(page, obj)
+                       and str(obj.get("translation") or "").strip() for obj in refs):
+                    resolved = True
+                    break
+            if not resolved:
+                _append_blocker(blockers, blocker_keys, {
+                    "kind": "unresolved_ai_region", "page_index": page_index,
+                    "region": {key: region.get(key) for key in ("x1", "y1", "x2", "y2")},
+                    "reason": "AI found possible text that could not be safely processed",
+                })
 
         candidates = [
             box
@@ -373,6 +418,15 @@ def editorial_preflight(
             live_refs = [obj for obj in refs if not obj.get("source_missing")]
             in_preserve = geometry_center_in_regions(box, page_preserve_regions(page))
             disposition = _reviewed_disposition(box, refs)
+
+            if in_preserve and disposition not in EDITORIAL_DROP_DISPOSITIONS:
+                for obj in refs:
+                    if (obj.get("source_missing") or
+                            str(obj.get("ocr_text") or obj.get("source_read") or obj.get("translation") or "").strip()):
+                        _append_blocker(blockers, blocker_keys, _blocker(
+                            "preserved_untranslated_story", page_index, box=box, obj=obj,
+                            reason="preserved story text is not lettered; review its disposition before export",
+                        ))
 
             accounted = bool(
                 in_preserve
@@ -467,6 +521,12 @@ def editorial_preflight(
                 continue
             if oid:
                 checked_objects.add(oid)
+
+            if obj.get("seam_translation_conflict"):
+                _append_blocker(blockers, blocker_keys, _blocker(
+                    "seam_translation_conflict", page_index, obj=obj,
+                    reason="conflicting translations across the slice seam require review",
+                ))
 
             for other_id in obj.get("overlap_review_ids") or []:
                 other = objects_by_id.get(str(other_id))

@@ -352,6 +352,7 @@ class PipelineEditingMixin:
         repaint: list[tuple[int, int, int, int]] = (),
         skip_covered: bool = False,
         require_repaint_strokes: bool = False,
+        require_box_strokes: bool = False,
         release_preserve: list[tuple[int, int, int, int]] = (),
     ) -> dict:
         """Add preserve regions, manual boxes and repaint areas with one re-inpaint of the page."""
@@ -382,6 +383,8 @@ class PipelineEditingMixin:
 
             added_preserve = [dict(zip(("x1", "y1", "x2", "y2"), r)) for r in map(clip, preserve) if r]
             new_boxes = [_stroke_box(image, r) for r in map(clip, boxes) if r]
+            if require_box_strokes and any(not box.get("mask") for box in new_boxes):
+                raise ValueError("Cannot add automatic box without detected strokes; manual review required")
             if skip_covered:
                 # A box that grew over the letters of a box already there would letter that text twice.
                 active = [b for b in boxes_snapshot if not b.get("removed")]

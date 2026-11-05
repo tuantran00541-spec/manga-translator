@@ -75,6 +75,23 @@ def test_a_bubble_only_one_slice_has_is_translated_there():
     assert seam_mirror_ids(manifest, 0) == set()
 
 
+def test_missing_owner_does_not_prevent_mirror_from_being_translated():
+    manifest = _chapter()
+    manifest["pages"][1]["text_objects"][0]["source_missing"] = True
+    assert seam_mirror_ids(manifest, 0) == set()
+
+
+def test_conflicting_seam_translations_are_not_overwritten_and_block_export():
+    from app.editorial_gate import editorial_preflight
+
+    manifest = _chapter()
+    mirror = manifest["pages"][0]["text_objects"][0]
+    mirror["translation"] = "Một câu khác."
+    sync_seam_mirrors(manifest)
+    assert mirror["translation"] == "Một câu khác."
+    assert any(item["kind"] == "seam_translation_conflict" for item in editorial_preflight(manifest)["blockers"])
+
+
 def test_of_two_identical_letterings_only_the_larger_stays():
     from app.ai_mode.seams import drop_overlapping_letters
 
@@ -96,6 +113,18 @@ def test_overlapping_different_dialogue_is_not_silently_discarded():
     assert first["translation"] == "Tôi sẽ đi trước."
     assert second["translation"] == "Hãy cẩn thận!"
     assert first.get("needs_review") and second.get("needs_review")
+
+
+def test_matching_translation_with_different_speakers_is_not_dropped():
+    from app.ai_mode.seams import drop_overlapping_letters
+    from app.editorial_gate import editorial_preflight
+
+    first = _obj("first", 100, 300, "Vâng.", speaker="A")
+    second = _obj("second", 150, 250, "Vâng.", speaker="B")
+    manifest = {"pages": [{"text_objects": [first, second]}]}
+    assert drop_overlapping_letters(manifest) == []
+    assert second["translation"] == "Vâng."
+    assert editorial_preflight(manifest)["status"] == "BLOCKED"
 
 
 def test_conflicting_overlapping_dialogue_blocks_export_until_separated():

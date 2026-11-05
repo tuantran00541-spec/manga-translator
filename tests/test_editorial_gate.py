@@ -69,6 +69,47 @@ def test_manual_untranslated_object_blocks_export():
     assert "untranslated_object" in _kinds(editorial_preflight(_manifest(box, [obj])))
 
 
+def test_unresolved_unboxed_ai_region_blocks_until_translated():
+    region = {"x1": 10, "y1": 10, "x2": 100, "y2": 60}
+    page = {"boxes": [], "text_objects": [], "unresolved_ai_regions": [region]}
+    manifest = {"pages": [page]}
+    assert "unresolved_ai_region" in _kinds(editorial_preflight(manifest))
+    page["unresolved_ai_regions"].append({"x1": 200, "y1": 10, "x2": 290, "y2": 60})
+    assert len([b for b in editorial_preflight(manifest)["blockers"] if b["kind"] == "unresolved_ai_region"]) == 2
+    page["unresolved_ai_regions"].pop()
+    partial = {"x1": 10, "y1": 10, "x2": 30, "y2": 60}
+    page["boxes"] = [{"id": "manual", "manual": True, **partial}]
+    page["text_objects"] = [{"id": "text", "source_boxes": ["manual"], "region": partial, "translation": "Xin chào"}]
+    assert "unresolved_ai_region" in _kinds(editorial_preflight(manifest))
+    page["boxes"] = [{"id": "manual", "manual": True, **region}]
+    page["text_objects"] = [{"id": "text", "source_boxes": ["manual"], "region": region, "translation": "Xin chào"}]
+    assert "unresolved_ai_region" not in _kinds(editorial_preflight(manifest))
+
+
+def test_failed_ai_coverage_scan_requires_current_final_review():
+    page = {"boxes": [], "text_objects": [], "ai_coverage_unchecked": True, "render_revision": 1, "rendered": True}
+    manifest = {"pages": [page]}
+    assert "ai_coverage_unchecked" in _kinds(editorial_preflight(manifest))
+    apply_final_review(page, approved=True)
+    assert "ai_coverage_unchecked" not in _kinds(editorial_preflight(manifest))
+    page["render_revision"] = 2
+    assert "ai_coverage_unchecked" in _kinds(editorial_preflight(manifest))
+
+
+def test_automatically_preserved_known_story_source_still_requires_review():
+    box = _root_box(needs_review=False, safe_to_inpaint=True, deferred_reason=None)
+    obj = _object(translation="", source_missing=True)
+    manifest = _manifest(box, [obj])
+    manifest["pages"][0]["preserve_regions"] = [obj["region"]]
+    assert "preserved_untranslated_story" in _kinds(editorial_preflight(manifest))
+    obj["translation"] = "Bản dịch đã lưu nhưng không được render"
+    assert "preserved_untranslated_story" in _kinds(editorial_preflight(manifest))
+    obj["ocr_text"] = ""
+    assert "preserved_untranslated_story" in _kinds(editorial_preflight(manifest))
+    obj["translation"] = ""
+    assert "preserved_untranslated_story" in _kinds(editorial_preflight(manifest))
+
+
 def test_manual_translated_overlap_blocks_export():
     box = _root_box(origin="manual", manual=True, semantic_type=None)
     one = _object(id="one", semantic_type=None, overlap_review_ids=["two"])

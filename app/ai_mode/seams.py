@@ -90,6 +90,8 @@ def _rect(obj: dict, offset: int) -> tuple[int, int, int, int] | None:
 
 def _owner(pages: list, page_index: int, obj: dict):
     """(page index, object) of the slice whose core holds the object's centre, when it has the same object."""
+    from app.region_policy import text_object_in_preserve_region
+
     page = pages[page_index]
     core = _core(page)
     rect = _rect(obj, core[0]) if core else None
@@ -106,6 +108,8 @@ def _owner(pages: list, page_index: int, obj: dict):
         # A line joined into another is lettered by that one, whose region covers it.
         best = max(((candidate, other_rect) for candidate in other.get("text_objects") or []
                     if isinstance(candidate, dict) and not candidate.get("joined_into")
+                    and not candidate.get("source_missing") and not candidate.get("overlap_dropped")
+                    and not text_object_in_preserve_region(other, candidate)
                     and (other_rect := _rect(candidate, other_core[0]))),
                    key=lambda item: _shared(rect, item[1]), default=None)
         if best is None or _shared(rect, best[1]) < OWNER_SHARE:
@@ -143,6 +147,17 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
             if found is None or not str(found[1].get("translation") or "").strip():
                 continue
             owner_page, owner = found
+            current = str(obj.get("translation") or "").strip()
+            target = str(owner.get("translation") or "").strip()
+            if current and current != target:
+                conflict = {"page": owner_page, "id": str(owner.get("id"))}
+                if obj.get("seam_translation_conflict") != conflict:
+                    obj["seam_translation_conflict"] = conflict
+                    if page_index not in changed:
+                        changed.append(page_index)
+                continue
+            if obj.pop("seam_translation_conflict", None) is not None and page_index not in changed:
+                changed.append(page_index)
             shift = _core(pages[owner_page])[0] - core[0]
             region = _shifted(owner["region"], shift)
             update = {key: copy.deepcopy(owner[key]) for key in LETTERING_KEYS if key in owner}
@@ -178,7 +193,15 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
             rect = _rect(obj, 0)
             overlaps = [other for other in kept if _shared(rect, _rect(other, 0)) >= OVERLAP_KEEP]
             text = " ".join(str(obj["translation"]).casefold().split()).strip(" .,!?:;…")
-            duplicates = [other for other in overlaps if (other_text := " ".join(
+            def compatible(other):
+                for key in ("speaker", "source_read", "ocr_text"):
+                    left = " ".join(str(obj.get(key) or "").casefold().split())
+                    right = " ".join(str(other.get(key) or "").casefold().split())
+                    if left and right and left != right:
+                        return False
+                return True
+
+            duplicates = [other for other in overlaps if compatible(other) and (other_text := " ".join(
                 str(other["translation"]).casefold().split()).strip(" .,!?:;…"))
                 and text and text == other_text]
             if duplicates and len(duplicates) == len(overlaps):

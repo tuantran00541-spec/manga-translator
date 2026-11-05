@@ -122,6 +122,7 @@ class TranslateVisionPageRequest(TranslateChapterRequest):
     object_ids: list[str] | None = Field(default=None, max_length=100)
     # Objects to also send as zoomed crops; a box the model left blank gets read again up close.
     focus_ids: list[str] | None = Field(default=None, max_length=100)
+    scan_when_empty: bool = False
 
 
 def _resolve_vision_provider(provider_id: str):
@@ -260,7 +261,7 @@ async def translate_page_in_context(
         }
         page_number = req.page_index
 
-    if not candidates:
+    if not candidates and not req.scan_when_empty:
         result = urlify_manifest(manifest)
         result["translation_run"] = {
             "translated": 0, "unreadable": 0, "stale": 0, "model": model,
@@ -321,6 +322,10 @@ async def translate_page_in_context(
                 unreadable += 1
                 if candidate["id"] not in getattr(translated, "missing_ids", ()):
                     blank_ids.append(candidate["id"])
+                    source_read = getattr(translated, "sources", {}).get(candidate["id"])
+                    if source_read and obj.get("source_read") != source_read:
+                        obj["source_read"] = source_read
+                        changed = True
                     # An explicit blank is an attempt, not an editorial decision.
                     if obj.get("translation_attempted") is not True:
                         obj["translation_attempted"] = True
@@ -403,6 +408,7 @@ async def translate_page_in_context(
         "blank_ids": blank_ids,
         "art_regions": art_regions,
         "unboxed": [list(box) for box in getattr(translated, "unboxed", ())],
+        "unboxed_truncated": bool(getattr(translated, "unboxed_truncated", False)),
         "remaining": max(0, total_candidates - len(candidates)),
     }
     return result

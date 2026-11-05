@@ -39,7 +39,7 @@ def _normalized_text_object(obj: dict) -> dict:
         "source_missing": bool(obj.get("source_missing", False)),
         **{key: obj.get(key) for key in (
             "ocr_font_size", "ocr_text_color", "lettering_color", "letter_bounds", "source_cap_px",
-            "enlarge", "font_ai_id", "font_selection_mode", "auto_generated", "ocr_text_region", "auto_geometry",
+            "enlarge", "container", "font_ai_id", "font_selection_mode", "auto_generated", "ocr_text_region", "auto_geometry",
         )},
     }
 

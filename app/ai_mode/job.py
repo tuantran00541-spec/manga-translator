@@ -278,7 +278,7 @@ class AIModeRunner:
         storyless = await judge if judge is not None else None
         self._check_cancel()
 
-        credits = sorted(scan.page_index for scan in scans if scan.is_credit)
+        credits = sorted(scan.page_index for scan in scans if scan.is_credit and scan.answered and not scan.lines)
         if storyless is not None:
             storyless, chances = storyless
             # The decider decides; a slice the scan would skip but the decider sees story text in is kept.
@@ -296,9 +296,11 @@ class AIModeRunner:
 
         # Textless slices are exported as they are; skipping them saves cleanup and translation.
         if storyless is not None:
-            textless = [index for index in storyless if index not in credits]
+            confirmed_textless = {scan.page_index for scan in scans if scan.no_text and scan.answered and not scan.lines}
+            textless = [index for index in storyless if index not in credits and index in confirmed_textless]
         else:
-            textless = sorted(scan.page_index for scan in scans if scan.no_text and scan.page_index not in credits)
+            textless = sorted(scan.page_index for scan in scans if scan.no_text and scan.answered
+                              and not scan.lines and scan.page_index not in credits)
         if len(textless) > TEXTLESS_MAX_SHARE * len(active):
             self.report["textless_rejected"] = textless
             textless = []
@@ -584,11 +586,15 @@ class AIModeRunner:
         async def translate_one(page_index: int) -> None:
             nonlocal finished, out_of_budget
             async with gate:
-                if self.job.cancel_requested or out_of_budget:
+                if self.job.cancel_requested:
+                    return
+                if out_of_budget:
+                    await asyncio.to_thread(self._set_coverage_unchecked, page_index, True)
                     return
                 remaining = self._remaining_budget()
                 if remaining is not None and remaining < 0.001:
                     out_of_budget = True
+                    await asyncio.to_thread(self._set_coverage_unchecked, page_index, True)
                     return
                 try:
                     data = await translate_page_in_context(TranslateVisionPageRequest(
@@ -596,11 +602,16 @@ class AIModeRunner:
                         source_lang=source_lang, target_lang=self.settings.target_lang,
                         budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
                         provider=self.provider.id, model=self.settings.model,
+                        scan_when_empty=True,
                     ), memory=memory, slice_total=slice_total, skip_seam_mirrors=True)
                     run = data.get("translation_run") or {}
                 except HTTPException as exc:
                     _append(self.report["translate_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
                     run = None
+                if run is None or run.get("coverage_unchecked") or run.get("unboxed_truncated"):
+                    await asyncio.to_thread(self._set_coverage_unchecked, page_index, True)
+                elif self._manifest()["pages"][page_index].get("ai_coverage_unchecked"):
+                    await asyncio.to_thread(self._set_coverage_unchecked, page_index, False)
                 if run is not None:
                     if run.get("coverage_unchecked"):
                         _append(self.report["review_list"], {
@@ -622,7 +633,7 @@ class AIModeRunner:
                     only = None if run is None or run.get("remaining") else set(run.get("missing_ids") or []) | set(run.get("blank_ids") or [])
                     await self._retry_untranslated(
                         page_index, source_lang, only,
-                        focus=set(run.get("blank_ids") or []) if run else None)
+                        focus=(set(run.get("blank_ids") or []) | set(run.get("missing_ids") or [])) if run else None)
                 finished += 1
                 self._progress(finished, len(indices))
 
@@ -758,10 +769,21 @@ class AIModeRunner:
                 fresh.append(box)
         if not fresh:
             return
+        def record_unresolved():
+            with get_manifest_lock(self.job.chapter_id):
+                manifest = load_manifest_raw(self.job.chapter_id)
+                pending = manifest["pages"][page_index].setdefault("unresolved_ai_regions", [])
+                for rect in fresh:
+                    region = dict(zip(("x1", "y1", "x2", "y2"), rect))
+                    if region not in pending:
+                        pending.append(region)
+                save_manifest_raw(self.job.chapter_id, manifest)
+
+        await asyncio.to_thread(record_unresolved)
         before = {str(obj.get("id")) for obj in page.get("text_objects") or [] if isinstance(obj, dict)}
         try:
             await asyncio.to_thread(pipeline.apply_review_fixes, self.job.chapter_id, page_index, boxes=fresh,
-                                    skip_covered=True)
+                                    skip_covered=True, require_box_strokes=True)
         except (HTTPException, RuntimeError, ValueError, OSError) as exc:
             _append(self.report["translate_errors"], f"Lát {page_index + 1}: thêm chữ sót thất bại: {_detail(exc)[:150]}")
             return
@@ -856,6 +878,17 @@ class AIModeRunner:
             _, changed = ensure_page_text_objects(manifest["pages"][page_index])
             if changed:
                 save_manifest_raw(self.job.chapter_id, manifest)
+
+    def _set_coverage_unchecked(self, page_index: int, unchecked: bool) -> None:
+        with get_manifest_lock(self.job.chapter_id):
+            manifest = load_manifest_raw(self.job.chapter_id)
+            page = manifest["pages"][page_index]
+            if unchecked:
+                page["ai_coverage_unchecked"] = True
+                page.pop("final_review_approved_render_revision", None)
+            else:
+                page.pop("ai_coverage_unchecked", None)
+            save_manifest_raw(self.job.chapter_id, manifest)
 
     def _untranslated(self, page_index: int, only: set[str] | None, blank: set[str]) -> list[dict]:
         from app.region_policy import text_object_in_preserve_region
@@ -1020,7 +1053,9 @@ class AIModeRunner:
             for item in (preflight.get("blockers") or [])[:10]
         ]
         key = series_memory.language_series_key(self.settings.url, self.settings.target_lang)
-        if key and self._memory is not None:
+        unsettled = any(self.report.get(name) for name in (
+            "scan_errors", "translate_errors", "render_errors", "qc_errors", "review_list", "residue_left"))
+        if key and self._memory is not None and not preflight.get("blocker_count") and not unsettled:
             # The next chapter of this series starts from what this one settled.
             snapshot = self._memory.snapshot(settled=False)
             series_memory.save(key, series_memory.learn(
