@@ -418,13 +418,19 @@ def test_join_stage_uses_original_image_to_keep_double_balloon_lobes_apart(monke
 
 
 def test_review_reports_sheet_skipped_for_budget(monkeypatch):
-    runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [{"x1": 10, "y1": 10, "x2": 90, "y2": 90}]}]})
+    import contextlib
+    manifest = {"pages": [{"boxes": [{"x1": 10, "y1": 10, "x2": 90, "y2": 90}]}]}
+    runner = _runner(monkeypatch, "review", manifest)
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda *_: contextlib.nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda *_: manifest)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda *_: None)
     monkeypatch.setattr(runner, "_active_pages", lambda: [0])
     monkeypatch.setattr(runner, "_images", lambda *args: (np.full((200, 200, 3), 255, np.uint8),) * 2)
     monkeypatch.setattr(runner, "_remaining_budget", lambda: 0.0)
     asyncio.run(runner.review())
     assert runner.report["qc_errors"], "unreviewed sheets must not appear to have passed"
     assert runner.report["review_sheets"] == 0
+    assert manifest["pages"][0]["ai_clean_review_unchecked"] is True
 
 
 def test_review_sends_crops_on_sheets_and_erases_the_flagged_ones_again(monkeypatch):
@@ -522,6 +528,7 @@ def test_failed_logo_repaint_keeps_preserve_region(monkeypatch):
     assert stored["pages"][0]["preserve_regions"] == [region]
     assert runner.report.get("logos_freed", 0) == 0
     assert runner.report["qc_errors"]
+    assert stored["pages"][0]["ai_clean_review_unchecked"] is True
 
 
 def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
@@ -932,6 +939,22 @@ def test_unboxed_without_strokes_is_persisted_for_review(monkeypatch):
     asyncio.run(runner._add_unboxed(0, [[20, 300, 180, 360]], "en"))
     assert manifest["pages"][0]["unresolved_ai_regions"] == [{"x1": 14, "y1": 294, "x2": 186, "y2": 366}]
     assert any(b["kind"] == "unresolved_ai_region" for b in editorial_preflight(manifest)["blockers"])
+
+
+def test_partially_covered_and_oversized_unboxed_regions_are_not_silently_lost(monkeypatch):
+    import contextlib
+    from app.editorial_gate import editorial_preflight
+
+    page = {"width": 400, "height": 600, "boxes": [{"x1": 30, "y1": 30, "x2": 50, "y2": 50}], "text_objects": []}
+    manifest = {"pages": [page]}
+    runner = _runner(monkeypatch, "translate", manifest)
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda *_: contextlib.nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda *_: manifest)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda *_: None)
+    asyncio.run(runner._add_unboxed(0, [[20, 20, 120, 120], [0, 0, 400, 400]], "en"))
+    regions = page["unresolved_ai_regions"]
+    assert len(regions) == 2
+    assert len([b for b in editorial_preflight(manifest)["blockers"] if b["kind"] == "unresolved_ai_region"]) == 2
 
 
 def test_blank_objects_require_review_regardless_of_attempt(monkeypatch):

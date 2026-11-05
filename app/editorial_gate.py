@@ -367,6 +367,11 @@ def editorial_preflight(
                 "ai_coverage_unchecked", page_index,
                 reason="AI could not check the slice for missed text; review the rendered slice before export",
             ))
+        if page.get("ai_clean_review_unchecked") and not coverage_reviewed:
+            _append_blocker(blockers, blocker_keys, _blocker(
+                "ai_clean_review_unchecked", page_index,
+                reason="AI cleanup review failed or found unresolved damage; review the rendered slice before export",
+            ))
 
         objects = [
             obj for obj in (page.get("text_objects") or []) if isinstance(obj, dict)
@@ -564,6 +569,11 @@ def editorial_preflight(
             # A reviewed credit, duplicate, noise or kept-as-drawn object is not lettered, so it needs no translation.
             if disposition in EDITORIAL_DROP_DISPOSITIONS:
                 continue
+            if obj.get("ai_translation_needs_review") and not script_review_is_current(obj):
+                _append_blocker(blockers, blocker_keys, _blocker(
+                    "ai_translation_review", page_index, obj=obj,
+                    reason="AI flagged this translation for review",
+                ))
             if not source_text and not translation:
                 _append_blocker(
                     blockers,

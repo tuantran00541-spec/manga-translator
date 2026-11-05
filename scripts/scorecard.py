@@ -33,17 +33,29 @@ def clean_score(pages: list[dict], detector) -> dict:
     """Text and ghosts the cleanup left on each exported slice, found by the detector models."""
     items = []
     checked = 0
+    unchecked, skipped = [], []
+    excluded_preserves = 0
     for index, page in enumerate(pages):
-        if page.get("skipped") or not page.get("clean") or not page.get("original"):
+        if page.get("skipped"):
+            skipped.append(index + 1)
             continue
-        original, clean = read_image(Path(page["original"])), read_image(Path(page["clean"]))
+        if not page.get("clean") or not page.get("original"):
+            unchecked.append(index + 1)
+            continue
+        try:
+            original, clean = read_image(Path(page["original"])), read_image(Path(page["clean"]))
+        except OSError:
+            unchecked.append(index + 1)
+            continue
         if original is None or clean is None or original.shape != clean.shape:
+            unchecked.append(index + 1)
             continue
         top, bottom = _slice_view(page)
         bottom = min(bottom, original.shape[0])
         before, after = np.ascontiguousarray(original[top:bottom]), np.ascontiguousarray(clean[top:bottom])
         keep = [(int(r["x1"]), int(r["y1"]) - top, int(r["x2"]), int(r["y2"]) - top)
                 for r in page_preserve_regions(page)]
+        excluded_preserves += len(keep)
         checked += 1
         for item in leftovers(before, after, text_mask(before.shape[:2], detector.text_boxes(before)), keep):
             x1, y1, x2, y2 = item.box
@@ -51,6 +63,11 @@ def clean_score(pages: list[dict], detector) -> dict:
                           "px": item.px, "share": item.share})
     return {
         "slices": checked,
+        "unchecked_slices": unchecked,
+        "skipped_slices": skipped,
+        "excluded_preserve_regions": excluded_preserves,
+        "all_slices_scored_without_exclusions": not (unchecked or skipped or excluded_preserves),
+        "scope": "detector-based residue estimate only; not proof of complete text detection or undamaged artwork",
         "text_left": sum(item["kind"] == "text" for item in items),
         "ghosts": sum(item["kind"] == "ghost" for item in items),
         "items": items,

@@ -370,8 +370,13 @@ function buildChapterExportButton() {
   button.type = "button";
   button.className = "ui-btn ui-btn-primary chapter-export-run";
   button.textContent = "Xuất chương";
-  wrap.append(buildExportOptions(), button);
-  let forced = false;
+  const issues = document.createElement("details");
+  issues.className = "chapter-export-issues";
+  issues.hidden = true;
+  const summary = document.createElement("summary");
+  const issueList = document.createElement("ul");
+  issues.append(summary, issueList);
+  wrap.append(buildExportOptions(), button, issues);
 
   const renderChapter = async (chapterId, force) => {
     const response = await fetch(`/api/render/chapter?chapter_id=${encodeURIComponent(chapterId)}${force ? "&force=true" : ""}`, {
@@ -392,12 +397,45 @@ function buildChapterExportButton() {
       }
       if (chapterId !== window.currentChapterId) return;
       let { response, data } = await renderChapter(chapterId, false);
-      // Unfinished text asks before exporting; the untranslated regions stay clean in the file.
-      forced = false;
       if (response.status === 409 && data?.detail?.code === "editorial_preflight") {
-        if (!window.confirm(`${data.detail.message}\nVẫn xuất chương? Những vùng đó sẽ để trống chữ.`)) return;
-        ({ response, data } = await renderChapter(chapterId, true));
-        forced = true;
+        const blockers = Array.isArray(data.detail.blockers) ? data.detail.blockers : [];
+        summary.textContent = `${data.detail.message} Chọn lát để xem lại.`;
+        issueList.replaceChildren();
+        const labels = {
+          unresolved_ai_region: "Chữ AI phát hiện chưa xử lý",
+          ai_clean_review_unchecked: "Chưa kiểm tra clean",
+          ai_coverage_unchecked: "Chưa kiểm tra chữ sót",
+          ai_translation_review: "Bản dịch AI cần duyệt",
+          preserved_untranslated_story: "Chữ gốc được giữ lại cần duyệt",
+          overlapping_dialogue: "Chữ chồng nhau",
+          untranslated_object: "Chưa dịch",
+          untranslated_story_object: "Chưa dịch",
+        };
+        for (const blocker of blockers) {
+          const index = Number(blocker.page_index);
+          if (!Number.isInteger(index) || index < 0 || index >= (window.currentManifest?.pages?.length || 0)) continue;
+          const item = document.createElement("li");
+          const link = document.createElement("button");
+          link.type = "button";
+          link.className = "ui-btn";
+          const region = blocker.region;
+          const location = region && ["x1", "y1", "x2", "y2"].every(k => Number.isFinite(Number(region[k])))
+            ? ` · vùng (${region.x1}, ${region.y1})–(${region.x2}, ${region.y2})` : "";
+          link.textContent = `Xem lát ${index + 1} · ${labels[blocker.kind] || "Cần xem lại"}${location}`;
+          link.addEventListener("click", () => {
+            if (window.editorState) {
+              window.editorState.activePageIndex = index;
+              window.editorState.selectedTextObjectId = blocker.object_id || null;
+            }
+            window.initialReviewCanonicalPageIndex = index;
+            window.renderReview?.();
+          });
+          item.appendChild(link);
+          issueList.appendChild(item);
+        }
+        issues.hidden = false;
+        issues.open = true;
+        return;
       }
       if (!response.ok) {
         const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d?.detail || `HTTP ${s}`;
@@ -407,7 +445,7 @@ function buildChapterExportButton() {
       window.currentManifest = data;
 
       const anchor = document.createElement("a");
-      anchor.href = exportHref(chapterId, forced);
+      anchor.href = exportHref(chapterId, false);
       anchor.download = `manga-translator-${chapterId}.${exportOptions().archive}`;
       document.body.appendChild(anchor);
       anchor.click();

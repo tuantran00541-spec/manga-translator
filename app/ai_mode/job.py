@@ -457,6 +457,7 @@ class AIModeRunner:
         from app.ai_mode import checkpoints
 
         crops: list = []
+        unchecked_pages: set[int] = set()
         finished = 0
 
         def cut(page_index: int) -> list:
@@ -469,6 +470,7 @@ class AIModeRunner:
                 crops.extend(await asyncio.to_thread(cut, page_index))
             except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
                 _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+                unchecked_pages.add(page_index)
             finished += 1
             self._progress(finished, total, stage="review")
         sheets = await asyncio.to_thread(checkpoints.pack, crops)
@@ -479,15 +481,18 @@ class AIModeRunner:
                 remaining = self._remaining_budget()
                 if self.job.cancel_requested:
                     _append(self.report["qc_errors"], "Bỏ qua tờ kiểm tra clean do tác vụ bị hủy")
+                    unchecked_pages.update(c.page_index for c in placed)
                     return []
                 if remaining is not None and remaining < 0.001:
                     _append(self.report["qc_errors"], "Bỏ qua tờ kiểm tra clean do hết ngân sách")
+                    unchecked_pages.update(c.page_index for c in placed)
                     return []
                 try:
                     found, cost = await _ai_call(checkpoints.review_sheet, self.provider, self.settings.model,
                                                  self.api_key, sheet, placed)
                 except (RuntimeError, ValueError, OSError) as exc:
                     _append(self.report["qc_errors"], f"Tờ crop: {_detail(exc)[:200]}")
+                    unchecked_pages.update(c.page_index for c in placed)
                     return []
                 self._add_cost(cost)
                 self.report["review_sheets"] = self.report.get("review_sheets", 0) + 1
@@ -518,11 +523,24 @@ class AIModeRunner:
                         await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
                     self.report["repainted_regions"] += len(rects)
                     _append(self.report["repaint_pages"], page_index)
-                    await self._verify_repaint(page_index, rects)
+                    if await self._verify_repaint(page_index, rects):
+                        unchecked_pages.add(page_index)
                 except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
                     _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+                    unchecked_pages.add(page_index)
 
         await asyncio.gather(*(repaint(page_index, rects) for page_index, rects in sorted(by_page.items())))
+        if unchecked_pages:
+            await asyncio.to_thread(self._mark_clean_review_unchecked, unchecked_pages)
+
+    def _mark_clean_review_unchecked(self, page_indices: set[int]) -> None:
+        with get_manifest_lock(self.job.chapter_id):
+            manifest = load_manifest_raw(self.job.chapter_id)
+            for index in page_indices:
+                page = manifest["pages"][index]
+                page["ai_clean_review_unchecked"] = True
+                page.pop("final_review_approved_render_revision", None)
+            save_manifest_raw(self.job.chapter_id, manifest)
 
     def _still_reading(self, page_index: int, rects: list) -> list:
         """The repainted rectangles where the letter model still reads text on the clean slice."""
@@ -531,7 +549,7 @@ class AIModeRunner:
         clean = self._images(page_index, "clean", PROCESSED_DIR)[1]
         return [rect for rect in rects if still_reads(clean, tuple(int(v) for v in rect))]
 
-    async def _verify_repaint(self, page_index: int, rects: list) -> None:
+    async def _verify_repaint(self, page_index: int, rects: list) -> list:
         """Read each repainted place again on the CPU; text still there gets one more pass, then goes to the reviewer."""
         left = await asyncio.to_thread(self._still_reading, page_index, rects)
         if left:
@@ -540,6 +558,7 @@ class AIModeRunner:
             left = await asyncio.to_thread(self._still_reading, page_index, left)
         for rect in left:
             _append(self.report["residue_left"], {"page": page_index + 1, "rect": [int(v) for v in rect]})
+        return left
 
     async def review(self) -> None:
         """Checkpoint 3: the model checks crops round every erased place; residue it finds is erased again."""
@@ -754,32 +773,44 @@ class AIModeRunner:
     async def _add_unboxed(self, page_index: int, boxes: list, source_lang: str) -> None:
         """Lines the translator saw outside every box are boxed, erased and translated like the rest."""
         from app.ai_mode.checkpoints import MARGIN_PX, MAX_AREA_RATIO, MIN_SIDE_PX
+        from app.editorial_gate import _region_coverage
         from app.dependencies import pipeline
 
         page = self._manifest()["pages"][page_index]
         width, height = int(page.get("width") or 0), int(page.get("height") or 0)
         existing = self._page_boxes(page_index)
-        fresh = []
+        fresh, pending_review = [], []
         for x1, y1, x2, y2 in self._in_core(page_index, [tuple(map(int, box)) for box in boxes]):
+            raw = (x1, y1, x2, y2)
+            region = dict(zip(("x1", "y1", "x2", "y2"), raw))
+            def as_region(rect):
+                return dict(zip(("x1", "y1", "x2", "y2"), rect))
+            if any(_region_coverage(region, as_region(other)) >= 0.8 for other in existing + fresh):
+                continue
             if (x2 - x1 < MIN_SIDE_PX or y2 - y1 < MIN_SIDE_PX
                     or (width and height and (x2 - x1) * (y2 - y1) > MAX_AREA_RATIO * width * height)):
+                pending_review.append(raw)
                 continue
             box = (max(0, x1 - MARGIN_PX), max(0, y1 - MARGIN_PX), x2 + MARGIN_PX, y2 + MARGIN_PX)
-            if not _covered(box, existing + fresh):
+            if _covered(box, existing + fresh):
+                pending_review.append(raw)
+            else:
                 fresh.append(box)
-        if not fresh:
+        if not fresh and not pending_review:
             return
         def record_unresolved():
             with get_manifest_lock(self.job.chapter_id):
                 manifest = load_manifest_raw(self.job.chapter_id)
                 pending = manifest["pages"][page_index].setdefault("unresolved_ai_regions", [])
-                for rect in fresh:
+                for rect in fresh + pending_review:
                     region = dict(zip(("x1", "y1", "x2", "y2"), rect))
                     if region not in pending:
                         pending.append(region)
                 save_manifest_raw(self.job.chapter_id, manifest)
 
         await asyncio.to_thread(record_unresolved)
+        if not fresh:
+            return
         before = {str(obj.get("id")) for obj in page.get("text_objects") or [] if isinstance(obj, dict)}
         try:
             await asyncio.to_thread(pipeline.apply_review_fixes, self.job.chapter_id, page_index, boxes=fresh,

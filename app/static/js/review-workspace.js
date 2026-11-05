@@ -411,7 +411,7 @@
     const workspace = document.createElement("div");
     workspace.className = "review-workspace-shell review-canvas-only review-canvas-fullbleed";
     workspace._initialCanonicalPageIndex = requestedPageIndex;
-    if (previousState?.chapterId === chapterId) {
+    if (previousState?.chapterId === chapterId && !Number.isInteger(requestedPageIndex)) {
       workspace._reviewRestoreState = previousState;
     }
 

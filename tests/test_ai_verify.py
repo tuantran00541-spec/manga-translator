@@ -47,3 +47,26 @@ def test_the_scorecard_counts_objects_and_marks_better_and_worse():
     new = {"clean": {"text_left": 1}, "text": {"translated": 9}, "spend": {"cost_usd": 0.2}}
     assert scorecard.compare(base, new) == [
         "clean.text_left: 3 -> 1 (better)", "text.translated: 10 -> 9 (worse)"]
+
+
+def test_clean_score_reports_unchecked_slices_and_excluded_preserves(tmp_path):
+    image = _page()
+    original, clean = tmp_path / "raw.png", tmp_path / "clean.png"
+    cv2.imwrite(str(original), image)
+    cv2.imwrite(str(clean), image)
+    pages = [
+        {"original": str(original), "clean": str(clean), "preserve_regions": [{"x1": 0, "y1": 0, "x2": 300, "y2": 250}]},
+        {"original": str(original), "clean": str(tmp_path / "missing.png")},
+        {"skipped": True},
+    ]
+    class Detector:
+        def text_boxes(self, image):
+            return []
+
+    result = scorecard.clean_score(pages, Detector())
+    assert result["slices"] == 1
+    assert result["unchecked_slices"] == [2]
+    assert result["skipped_slices"] == [3]
+    assert result["excluded_preserve_regions"] == 1
+    assert result["all_slices_scored_without_exclusions"] is False
+    assert "not proof" in result["scope"]

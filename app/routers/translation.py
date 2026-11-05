@@ -360,6 +360,7 @@ async def translate_page_in_context(
                 obj["container"] = container
             if candidate["id"] in getattr(translated, "review_ids", ()):
                 obj["needs_review"] = True
+                obj["ai_translation_needs_review"] = True
                 review += 1
             color = getattr(translated, "colors", {}).get(candidate["id"]) or candidate.get("source_ink")
             if color:

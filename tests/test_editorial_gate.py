@@ -96,6 +96,27 @@ def test_failed_ai_coverage_scan_requires_current_final_review():
     assert "ai_coverage_unchecked" in _kinds(editorial_preflight(manifest))
 
 
+def test_ai_translation_flag_requires_current_script_review():
+    box = _root_box(safe_to_inpaint=True, needs_review=False, deferred_reason=None)
+    obj = _object(needs_review=True, ai_translation_needs_review=True)
+    manifest = _manifest(box, [obj])
+    assert "ai_translation_review" in _kinds(editorial_preflight(manifest))
+    apply_script_review(manifest["pages"][0], obj["id"], reviewed=True)
+    assert "ai_translation_review" not in _kinds(editorial_preflight(manifest))
+    obj["translation"] = "Thay đổi"
+    assert "ai_translation_review" in _kinds(editorial_preflight(manifest))
+
+
+def test_failed_clean_review_requires_current_final_review():
+    page = {"boxes": [], "text_objects": [], "ai_clean_review_unchecked": True, "render_revision": 1, "rendered": True}
+    manifest = {"pages": [page]}
+    assert "ai_clean_review_unchecked" in _kinds(editorial_preflight(manifest))
+    apply_final_review(page, approved=True)
+    assert "ai_clean_review_unchecked" not in _kinds(editorial_preflight(manifest))
+    page["render_revision"] = 2
+    assert "ai_clean_review_unchecked" in _kinds(editorial_preflight(manifest))
+
+
 def test_automatically_preserved_known_story_source_still_requires_review():
     box = _root_box(needs_review=False, safe_to_inpaint=True, deferred_reason=None)
     obj = _object(translation="", source_missing=True)

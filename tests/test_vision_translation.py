@@ -300,6 +300,21 @@ def test_omitted_id_is_not_recorded_as_explicit_blank(saved_chapter, monkeypatch
     assert not obj.get("translation_attempted")
 
 
+def test_ai_review_flag_is_persisted_separately_from_layout_review(saved_chapter, monkeypatch):
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *args, **kwargs: VisionTranslationResult(
+            {"obj_1": "Xin chào"}, self.model, {}, None, review_ids=frozenset({"obj_1"})),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
+    )
+    asyncio.run(translation_router.translate_page_in_context(request))
+    obj = manifests.load_manifest_raw(CHAPTER)["pages"][0]["text_objects"][0]
+    assert obj["ai_translation_needs_review"] is True
+
+
 def test_page_without_detections_reports_unchecked_coverage(saved_chapter, monkeypatch):
     manifest = manifests.load_manifest_raw(CHAPTER)
     manifest["pages"][0]["text_objects"] = []

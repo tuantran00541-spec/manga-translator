@@ -397,6 +397,23 @@ def _edge_fragments(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, size: 
     return grown | (pad & area)
 
 
+def _light_paper(crop: np.ndarray, seed: np.ndarray) -> np.ndarray:
+    """Large light surface immediately around dark lettering, not a light letter on dark art."""
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    paper = gray >= 235
+    if not seed.any() or (gray[seed] < 110).mean() < 0.6:
+        return np.zeros(seed.shape, bool)
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(paper.astype(np.uint8))
+    near = (cv2.dilate(seed.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0) & ~seed
+    candidates, counts = np.unique(labels[near & paper], return_counts=True)
+    if not len(candidates):
+        return np.zeros(seed.shape, bool)
+    label = int(candidates[counts.argmax()])
+    if label == 0 or stats[label, cv2.CC_STAT_AREA] < max(500, 2 * int(seed.sum())):
+        return np.zeros(seed.shape, bool)
+    return labels == label
+
+
 def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_letters: bool = False):
     """Padded box, grown over letters its edge cuts, and the erase mask of its letters, outline and glow.
 
@@ -417,10 +434,14 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_lette
     ring = np.ones((ey2 - ey1, ex2 - ex1), bool)
     ring[by1 - ey1:by2 - ey1, bx1 - ex1:bx2 - ex1] = False
     bg = cv2.cvtColor(image[ey1:ey2, ex1:ex2], cv2.COLOR_BGR2LAB)[ring]
+    paper = _light_paper(crop, seed)
+    if paper.any() and len(bg):
+        local_bg = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)[paper]
+        bg = np.concatenate((bg, local_bg[np.arange(len(bg)) % len(local_bg)]))
     size = text_size(seed, prob)
     grown = grow(crop, seed, bg, int(size * REACH))
     grown = _edge_fragments(crop, seed, grown, size, (by1 == 0, by2 == h))
-    plate = _plate(crop, seed, grown, bg, size, (bx1 > 0, by1 > 0, bx2 < w, by2 < h))
+    plate = None if paper.any() else _plate(crop, seed, grown, bg, size, (bx1 > 0, by1 > 0, bx2 < w, by2 < h))
     if plate is not None:
         grown = grown | plate
     return ((bx1, by1, bx2, by2), grown, seed) if with_letters else ((bx1, by1, bx2, by2), grown)

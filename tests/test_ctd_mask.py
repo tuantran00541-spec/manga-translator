@@ -19,6 +19,27 @@ def _full(image, box, mask):
     return full
 
 
+def test_dark_lettering_in_white_balloon_does_not_mask_the_paper(monkeypatch):
+    image = np.full((260, 300, 3), 30, np.uint8)
+    cv2.ellipse(image, (150, 125), (70, 55), 0, 0, 360, (255, 255, 255), -1)
+    cv2.ellipse(image, (150, 125), (70, 55), 0, 0, 360, (0, 0, 0), 2)
+    ink = np.zeros(image.shape[:2], np.uint8)
+    cv2.putText(ink, "HAA", (104, 140), cv2.FONT_HERSHEY_SIMPLEX, 1.2, 255, 3)
+    image[ink > 0] = 0
+
+    def detected(img, first, step):
+        x1, y1, x2, y2 = first
+        seed = ink[y1:y2, x1:x2] > 0
+        return first, seed, seed.astype(np.float32)
+
+    monkeypatch.setattr(ctd_mask, "_reach_cut_letters", detected)
+    bounds, mask = ctd_mask.letter_mask(image, (80, 65, 220, 185))
+    full = _full(image, bounds, mask)
+    paper = image[:, :, 0] > 240
+    assert (full & (ink > 0)).sum() >= 0.95 * (ink > 0).sum()
+    assert (full & paper).sum() < 0.25 * paper.sum(), "balloon paper must not be erased as text glow"
+
+
 def test_the_model_sees_the_padded_box_at_full_and_half_size(ink_model):
     image = np.full((300, 700, 3), 235, np.uint8)
     cv2.putText(image, "HELLO", (120, 180), cv2.FONT_HERSHEY_DUPLEX, 2.0, (20, 20, 20), 5)

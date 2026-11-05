@@ -28,6 +28,12 @@ BLOCKER_LABELS = {
     "untranslated_story_object": "chưa dịch",
     "story_object_missing_ocr": "chưa có chữ gốc",
     "unaccounted_story_candidate": "chữ chưa có vùng",
+    "unresolved_ai_region": "chữ AI phát hiện chưa xử lý",
+    "ai_clean_review_unchecked": "chưa kiểm tra clean",
+    "ai_coverage_unchecked": "chưa kiểm tra chữ sót",
+    "ai_translation_review": "bản dịch AI cần duyệt",
+    "preserved_untranslated_story": "chữ gốc được giữ lại cần duyệt",
+    "overlapping_dialogue": "chữ chồng nhau",
 }
 
 
@@ -54,6 +60,7 @@ def _editorial_gate_or_409(
             "code": "editorial_preflight",
             "blocker_count": preflight["blocker_count"],
             "counts": counts,
+            "blockers": preflight["blockers"],
             "message": f"Chương còn {parts}.",
         },
     )
