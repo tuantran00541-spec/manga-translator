@@ -24,7 +24,7 @@ LOGO_MIN_CONFIDENCE = 0.6
 LOGO_MAX_AREA_RATIO = 0.5
 LOGO_MIN_SIDE_PX = 12
 LOGO_MARGIN_PX = 8
-SCAN_MAX_SIDE = 1280
+SCAN_MAX_SIDE = 2400  # slices are cut 2400 tall; shrinking them made small text unreadable to the model
 MAX_LINES = 40
 MAX_WHO = 60
 MAX_LINE = 300
@@ -200,6 +200,7 @@ def scan_slices(
     images = [(f"SLICE {index}", _thumbnail(image)) for index, image in slices]
     result = request_vision_json(
         provider, model, api_key, SCAN_PROMPT, images,
-        schema=SCAN_SCHEMA, max_tokens=min(6000, 400 + 900 * len(slices)), stage="scan",
+        # Reasoning models spend this budget thinking before answering; a starved budget comes back empty.
+        schema=SCAN_SCHEMA, max_tokens=1000000, stage="scan",
     )
     return parse_scan(result.data, sizes), result.estimated_cost_usd

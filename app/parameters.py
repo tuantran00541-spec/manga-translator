@@ -100,8 +100,9 @@ FIXED_LAMA_RECYCLE_MEMORY_LIMIT_BYTES = _env_int(
 TRANSLATION_CONNECT_TIMEOUT_SECONDS = _env_float(
     "MANGA_TRANSLATION_CONNECT_TIMEOUT_SECONDS", 10.0, minimum=1.0, maximum=300.0
 )
+# Reasoning models answer slowly on dense slices; the old 120s cut killed requests mid-thought.
 TRANSLATION_READ_TIMEOUT_SECONDS = _env_float(
-    "MANGA_TRANSLATION_READ_TIMEOUT_SECONDS", 120.0, minimum=1.0, maximum=1800.0
+    "MANGA_TRANSLATION_READ_TIMEOUT_SECONDS", 600.0, minimum=1.0, maximum=1800.0
 )
 REMOTE_CONNECT_TIMEOUT_SECONDS = _env_float(
     "MANGA_REMOTE_CONNECT_TIMEOUT_SECONDS", 30.0, minimum=1.0, maximum=300.0

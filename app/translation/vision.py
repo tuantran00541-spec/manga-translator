@@ -15,7 +15,7 @@ from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ
 from app.security import validate_url
 from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
 from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
-from app.translation.cost import language_name, usage_cost_usd
+from app.translation.cost import language_name, response_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini, _read_image
 from app.visual_qc.gemini_interactions import (
@@ -70,6 +70,36 @@ class VisionTranslationResult:
     unboxed: tuple[tuple[int, int, int, int], ...] = ()  # pixel boxes of lines the model saw outside every box
 
 
+def _merge_translation_results(
+    first: VisionTranslationResult, second: VisionTranslationResult,
+) -> VisionTranslationResult:
+    # Halves of one batch: every per-object map unions, usage and cost add up.
+    usage: dict = {}
+    for part in (first.usage, second.usage):
+        for key, value in (part or {}).items():
+            if isinstance(value, (int, float)):
+                usage[key] = usage.get(key, 0) + value
+    cost = None
+    if first.estimated_cost_usd is not None or second.estimated_cost_usd is not None:
+        cost = (first.estimated_cost_usd or 0.0) + (second.estimated_cost_usd or 0.0)
+    return VisionTranslationResult(
+        translations={**first.translations, **second.translations},
+        model=first.model,
+        usage=usage,
+        estimated_cost_usd=cost,
+        font_choices={**first.font_choices, **second.font_choices},
+        roles={**first.roles, **second.roles},
+        review_ids=first.review_ids | second.review_ids,
+        missing_ids=first.missing_ids | second.missing_ids,
+        enlarge_ids=first.enlarge_ids | second.enlarge_ids,
+        colors={**first.colors, **second.colors},
+        containers={**first.containers, **second.containers},
+        sources={**first.sources, **second.sources},
+        speakers={**first.speakers, **second.speakers},
+        unboxed=tuple(first.unboxed) + tuple(second.unboxed),
+    )
+
+
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
     source = str(content or "").strip()
     if source.startswith(chr(96) * 3):
@@ -110,6 +140,54 @@ def parse_vision_translation(content: str, expected_ids: set[str], *, allow_miss
             raise RuntimeError("Vision model omitted one or more text-object IDs")
         results.update({item_id: "" for item_id in expected_ids - set(results)})
     return results
+
+
+def _salvage_translations(choice: dict, expected_ids: set[str]) -> dict[str, str]:
+    """Complete entries from a reply cut off mid-list; the cut tail entry never parses, so it drops."""
+    message = choice.get("message") if isinstance(choice, dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str):
+        return {}
+    start = content.find('"translations"')
+    open_bracket = content.find("[", start) if start >= 0 else -1
+    if open_bracket < 0:
+        return {}
+    salvaged: dict[str, str] = {}
+    depth = 0
+    in_string = False
+    escaped = False
+    element_start: int | None = None
+    for pos in range(open_bracket + 1, len(content)):
+        char = content[pos]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if depth == 0:
+                element_start = pos
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0 and element_start is not None:
+                try:
+                    entry = json.loads(content[element_start:pos + 1])
+                except ValueError:
+                    entry = None
+                if (isinstance(entry, dict) and isinstance(entry.get("id"), str)
+                        and entry["id"] in expected_ids and isinstance(entry.get("translated_text"), str)
+                        and entry["id"] not in salvaged):
+                    salvaged[entry["id"]] = entry["translated_text"]
+                element_start = None
+        elif char == "]" and depth == 0:
+            break
+    return salvaged
 
 
 def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[str, str], dict[str, dict], dict]:
@@ -213,6 +291,7 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
     scale = max(0.6, width / 1000)
     boxes = [(obj["bbox_xyxy"], str(obj["id"]), MARK_COLOR) for obj in objects]
     boxes += [(box, ELSEWHERE_LABEL, ELSEWHERE_COLOR) for box in elsewhere]
+    originals = [tuple(int(v) for v in box) for box, _, _ in boxes]
     for box, label, color in boxes:
         # Outlined just outside the box, so the line never covers the letters the model reads.
         pad = 2 * thickness
@@ -220,9 +299,24 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
         x1, y1, x2, y2 = x1 - pad, y1 - pad, x2 + pad, y2 + pad
         cv2.rectangle(marked, (x1, y1), (x2, y2), color, thickness)
         (tw, th), base = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
-        ty = max(th + base, y1)
-        cv2.rectangle(marked, (x1, ty - th - base), (x1 + tw + 4, ty), color, -1)
-        cv2.putText(marked, label, (x1 + 2, ty - base), cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), thickness)
+        lw, lh = tw + 4, th + base
+        lx = min(max(x1, 0), max(0, width - lw))
+        # The label sits clear of the box it names, above it when there is room
+        # and below it at the top edge, so it never covers text the model reads.
+        cy = (y1 + y2) // 2 - lh // 2
+        candidates = [(lx, y1 - lh, lx + lw, y1), (lx, y2, lx + lw, y2 + lh),
+                      (x2, cy, x2 + lw, cy + lh), (x1 - lw, cy, x1, cy + lh)]
+
+        def _intrusion(rect) -> int:
+            rx1, ry1, rx2, ry2 = rect
+            if rx1 < 0 or rx2 > width or ry1 < 0 or ry2 > marked.shape[0]:
+                return 1 << 30
+            return sum(max(0, min(rx2, ox2) - max(rx1, ox1)) * max(0, min(ry2, oy2) - max(ry1, oy1))
+                       for ox1, oy1, ox2, oy2 in originals)
+
+        lx, top, _, bottom = min(candidates, key=_intrusion)
+        cv2.rectangle(marked, (lx, top), (lx + lw, bottom), color, -1)
+        cv2.putText(marked, label, (lx + 2, bottom - base), cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), thickness)
     return marked
 
 
@@ -236,12 +330,53 @@ class VisionPageTranslator:
         self, original_path: Path, cleaned_path: Path, items: list[dict],
         *, api_key: str, source_lang: str, target_lang: str,
         memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
-        elsewhere: list | tuple = (),
+        elsewhere: list | tuple = (), _max_tokens: int = 1000000,
     ) -> VisionTranslationResult:
         if not api_key.strip():
             raise ValueError(f"{self.provider.label} API key is not configured")
         if not items:
             return VisionTranslationResult({}, self.model, {}, 0.0 if self.provider.tracks_cost else None)
+        try:
+            return self._translate_batch(
+                original_path, cleaned_path, items, api_key=api_key, source_lang=source_lang,
+                target_lang=target_lang, memory=memory, slice_number=slice_number,
+                slice_total=slice_total, elsewhere=elsewhere, max_tokens=_max_tokens,
+            )
+        except RuntimeError as exc:
+            if "finish_reason=length" not in str(exc):
+                raise
+            if len(items) >= 2:
+                # A reply cut off mid-list loses the whole batch when nothing salvages;
+                # halves carry half the output each, so the cut moves past the content.
+                mid = len(items) // 2
+                first = self.translate_page(
+                    original_path, cleaned_path, items[:mid], api_key=api_key, source_lang=source_lang,
+                    target_lang=target_lang, memory=memory, slice_number=slice_number,
+                    slice_total=slice_total, elsewhere=elsewhere, _max_tokens=_max_tokens,
+                )
+                second = self.translate_page(
+                    original_path, cleaned_path, items[mid:], api_key=api_key, source_lang=source_lang,
+                    target_lang=target_lang, memory=memory, slice_number=slice_number,
+                    slice_total=slice_total, elsewhere=elsewhere, _max_tokens=_max_tokens,
+                )
+                return _merge_translation_results(first, second)
+            if _max_tokens < 16384:
+                # One box alone still cut off: the budget went on reasoning before
+                # the answer, so the answer itself needs more headroom, not fewer boxes.
+                return self.translate_page(
+                    original_path, cleaned_path, items, api_key=api_key, source_lang=source_lang,
+                    target_lang=target_lang, memory=memory, slice_number=slice_number,
+                    slice_total=slice_total, elsewhere=elsewhere,
+                    _max_tokens=min(16384, _max_tokens * 2),
+                )
+            raise
+
+    def _translate_batch(
+        self, original_path: Path, cleaned_path: Path, items: list[dict],
+        *, api_key: str, source_lang: str, target_lang: str,
+        memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
+        elsewhere: list | tuple = (), max_tokens: int = 1000000,
+    ) -> VisionTranslationResult:
         original, cleaned = _read_image(original_path), _read_image(cleaned_path)
         if original.shape[:2] != cleaned.shape[:2]:
             raise ValueError("Original and cleaned slices have different dimensions")
@@ -275,7 +410,7 @@ class VisionPageTranslator:
         # One image: the boxes are drawn on the raw slice, whose text the model reads.
         marked_b64 = _encode_for_gemini(mark_objects(original, objects, elsewhere))
         ids = set(real)
-        max_tokens = min(4096, max(1200, 160 * len(items) + 700))
+        # A cap, not a target: raising it costs nothing unless the reply actually grows.
         if self.provider.protocol == "gemini":
             result, data = self._gemini(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         else:
@@ -360,10 +495,20 @@ class VisionPageTranslator:
         except (TypeError, KeyError, ValueError) as exc:
             choice = (body.get("choices") or [{}])[0] if isinstance(body, dict) else {}
             reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+            salvaged = _salvage_translations(choice, ids) if reason == "length" else {}
+            if salvaged:
+                # Keep what the reply finished; the missing ids still route to retry downstream.
+                translations, font_choices, data = _parse_vision_payload(
+                    json.dumps({"translations": [
+                        {"id": key, "translated_text": text} for key, text in salvaged.items()
+                    ]}, ensure_ascii=False), ids)
+                usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+                cost = response_cost_usd(usage, self.provider.id, self.model, getattr(response, "headers", None))
+                return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
             raise RuntimeError(f"{self.provider.label} returned no translation text ({exc}; finish_reason={reason})") from exc
         translations, font_choices, data = _parse_vision_payload(answer, ids)
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
-        cost = usage_cost_usd(usage) if self.provider.tracks_cost else None
+        cost = response_cost_usd(usage, self.provider.id, self.model, getattr(response, "headers", None))
         return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
 
     def _gemini(self, system, prompt, marked, *, api_key, ids, max_tokens):

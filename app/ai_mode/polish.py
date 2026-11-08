@@ -216,7 +216,7 @@ def rewrite(provider, model: str, api_key: str, lines: list[Line], memory: dict,
               + json.dumps({k: memory.get(k) for k in ("glossary", "characters", "address") if memory.get(k)},
                            ensure_ascii=False, separators=(",", ":"))
               + "\n\nITEMS: " + json.dumps(items, ensure_ascii=False, separators=(",", ":")))
-    result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=min(4096, 200 + 120 * len(lines)),
+    result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=1000000,
                                  stage="polish")
     wanted = {line.id for line in lines}
     out = {}
