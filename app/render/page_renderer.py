@@ -59,25 +59,6 @@ def _rank_renders(rendered: list) -> list:
     return pool
 
 
-def _choose_render(rendered: list) -> Image.Image:
-    """The attempt that letters fewest lines; ties letter largest.
-
-    Ranking is fit and readability only: an attempt the bubble
-    measurement never corrected — its fit box is the raw region — is not
-    trusted over one the measurement placed inside the bubble, however
-    few lines it letters: the raw box can straddle an outline the
-    measured box avoids. Below-share attempts are a last resort, so a
-    text that only fits small still letters rather than vanishing.
-    Among equal line counts, the larger size wins: a tight box that wraps
-    to the same lines at a smaller size only strands the text small in a
-    big bubble. The ladder's tight-to-region order is generation order,
-    not preference — it survives only as the final tiebreak. Separation
-    is not this ranking's job: the guard below vetoes colliding attempts
-    in ranked order instead of re-ranking them.
-    """
-    return _rank_renders(rendered)[0][2]
-
-
 def _ink_mask(base: Image.Image, candidate: Image.Image):
     """Pixels where a candidate differs from the image it would paint onto."""
     return (np.abs(np.asarray(candidate).astype(int)
