@@ -74,6 +74,42 @@ def system_prompt(target_name: str, target_lang: str, settled: dict | None = Non
     return "\n\n".join(parts)
 
 
+_TEXT_TASK = """
+<task>
+The source texts are given as JSON objects (id + source); there is no image. Translate each into {target} the way a native reader would say it.
+DO: translate the meaning, keep each line short, and use the settled glossary and forms of address exactly.
+ANSWER: the JSON in <output>, nothing else.
+</task>
+
+<rules>
+- Translate the meaning. A sentence often runs across boxes: translate the whole sentence once, then split it over its boxes in reading order so each box ends at a natural break; never leave a box ending on a dangling word such as "trong", "của" or "và".
+- Treat <chapter_glossary> and CHAPTER MEMORY as settled and use their names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
+- Copy the source punctuation exactly: every "...", "?!", "!?\", \"!!\" and \"—\" stays where the source has it. Keep the tone; make jokes only where the source does.
+- Break lines with "\\n" between phrases, with at least two words on each line and every name and word kept whole.
+</rules>
+""".strip()
+
+_TEXT_OUTPUT = """
+<output>
+JSON only:
+{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>"}}]}}
+Every id appears once in translations.
+</output>
+""".strip()
+
+
+def text_system_prompt(target_name: str, target_lang: str, settled: dict | None = None) -> str:
+    """The vision system prompt's conventions, rewritten for a text-only re-translate: no image, no roles."""
+    parts = [_TEXT_TASK.format(target=target_name)]
+    if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
+        parts.append(_VIETNAMESE)
+    parts.append(_TEXT_OUTPUT.format())
+    if settled:
+        parts.append("<chapter_glossary>\n" + json.dumps(settled, ensure_ascii=False, separators=(",", ":"))
+                     + "\n</chapter_glossary>")
+    return "\n\n".join(parts)
+
+
 def _clean(value, limit: int = MAX_FIELD_CHARS) -> str:
     text = " ".join(str(value or "").split())
     return text[:limit]

@@ -14,7 +14,7 @@ from app.ai_providers import AIProvider, auth_headers
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
-from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
+from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt, text_system_prompt
 from app.translation.cost import language_name, response_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini, _read_image
@@ -323,7 +323,7 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
 def retranslate_text(
     provider: AIProvider, model: str, api_key: str, pairs: list[tuple[str, str]],
     *, source_lang: str, target_lang: str, memory_snapshot: dict | None = None,
-    max_tokens: int = 65536,
+    settled: dict | None = None, max_tokens: int = 65536,
 ) -> dict[str, str]:
     """Re-translate (id, source-text) pairs with a text-only model.
 
@@ -339,15 +339,17 @@ def retranslate_text(
         if str(source_lang or "").lower() in {"", "auto"}
         else language_name(source_lang)
     )
+    # The same conventions the vision call translates under; without them the text
+    # model writes literal, unidiomatic Vietnamese (a bare "translate this" prompt).
     prompt = (
-        (f"CHAPTER MEMORY (context from earlier slices, not to be copied into the answer): "
-         f"{json.dumps(memory_snapshot, ensure_ascii=False, separators=(',', ':'))}\n\n"
-         if memory_snapshot else "")
+        text_system_prompt(language_name(target_lang), target_lang, settled)
+        + "\n\n"
+        + (f"CHAPTER MEMORY (context from earlier slices, not to be copied into the answer): "
+           f"{json.dumps(memory_snapshot, ensure_ascii=False, separators=(',', ':'))}\n\n"
+           if memory_snapshot else "")
         + f"Translate these text objects from {source_name} to {language_name(target_lang)}.\n"
         + json.dumps({"objects": [{"id": i, "source": s} for i, s in pairs]},
                      ensure_ascii=False, separators=(",", ":"))
-        + '\n\nTranslate every object above and answer with one JSON object that starts with {"translations":[. '
-        + "Write translated_text in sentence case, even when the source is in capitals."
     )
     result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=max_tokens, stage="translate")
     expected = {i for i, _ in pairs}
@@ -475,6 +477,7 @@ class VisionPageTranslator:
                 self.translate_provider, self.translate_model, self.translate_api_key or "",
                 pairs, source_lang=source_lang, target_lang=target_lang,
                 memory_snapshot=memory.snapshot(settled=False) if memory is not None else None,
+                settled=memory.settled() if memory is not None else None,
             )
             if retold:
                 result = replace(result, translations={**result.translations,
