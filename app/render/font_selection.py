@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.render.font_catalog import FontNotFoundError, load_font_catalog, resolve_font_id
+from app.render.font_guide import font_for
 
 __all__ = ["font_path_for_id", "resolve_object_font"]
 
@@ -46,6 +47,14 @@ def resolve_object_font(
         return "default", "default", {"reason": "ai_selection_rejected", "requested": str(ai_font_id)}
 
     if style_font.lower() == "auto" or selection_mode == "auto" or bool(obj.get("auto_generated")):
+        # Automatic means the role-and-container guide, not a blanket
+        # default: a shout in a spiky balloon letters differently from
+        # dialogue, and only an unknown guide answer falls back.
+        guided = font_for(obj.get("typography_role"), obj.get("container"))
+        if _valid_font_id(guided):
+            return guided, "auto", {"reason": "auto_guide",
+                                    "role": obj.get("typography_role"),
+                                    "container": obj.get("container")}
         return "default", "default", {"reason": "auto_default"}
 
     if _valid_font_id(style_font) and style_font.lower() != "default":

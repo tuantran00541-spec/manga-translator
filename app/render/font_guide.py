@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 DEFAULT_LETTERING_FONT = "dialogue.mac-dinh-3"
-# The font follows what the text is and what it sits in, never the model's taste, so one kind of text always
-# looks the same: speech and narration boxes in the comic font, bold captions on the art, shouts in spiky balloons.
-FONT_BY_ROLE = {"system_ui": "skill.exo-2", "skill_name": "skill.kanit", "sfx": "sfx.black-ops-one"}
+# The font follows what the text is and what it sits in, never the model's taste, with the dialogue font as
+# the fallback where a container has no entry for a role: every bubble role letters in the dialogue font,
+# since the bubble map is empty, so one role can letter differently in different containers.
+FONT_BY_ROLE = {"system_ui": "skill.exo-2", "skill_name": "skill.kanit"}
 FONT_BY_CONTAINER = {
     "bubble": {},
     "spiky": {"*": "emphasis.bangers"},

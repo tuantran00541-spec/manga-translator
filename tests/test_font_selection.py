@@ -47,8 +47,8 @@ def test_auto_objects_render_with_the_default_font():
         {"style": {"font": "default"}, "auto_generated": True},
     ):
         font_id, mode, metadata = resolve_object_font(obj)
-        assert (font_id, mode) == ("default", "default")
-        assert metadata["reason"] == "auto_default"
+        assert (font_id, mode) == ("dialogue.mac-dinh-3", "auto")
+        assert metadata["reason"] == "auto_guide"
 
 
 def test_ai_may_delegate_to_auto():
@@ -60,8 +60,8 @@ def test_ai_may_delegate_to_auto():
         ai_font_mode="ai",
     )
 
-    assert (font_id, mode) == ("default", "default")
-    assert metadata["reason"] == "auto_default"
+    assert (font_id, mode) == ("dialogue.mac-dinh-3", "auto")
+    assert metadata["reason"] == "auto_guide"
 
 
 def test_valid_ai_selection_is_used_for_auto_generated_objects():

@@ -35,7 +35,7 @@ _ALL = (
     # The erase mask: letters from comic-text-detector, grown into outline, glow and shadow.
     Knob("mask.ink_threshold", 0.3, 0.15, 0.6, "letter probability that counts as ink"),
     Knob("mask.pad_share", 0.25, 0.0, 0.6, "room round a box, as a share of its height, for letters its edge cuts"),
-    Knob("mask.reach", 1.0, 0.3, 2.0, "how far, in letter heights, outline and glow may spread from the letters"),
+    Knob("mask.reach", 1.0, 0.3, 2.0, "letter-height reach for outline and fringe; smooth spread stops at 0.3×, full reach only prunes art-touching growth"),
     Knob("mask.outline", 0.12, 0.0, 0.4, "share of the reach every letter keeps as outline"),
     Knob("mask.edge", 60.0, 20.0, 120.0, "Lab lightness gradient above which a pixel is drawn art, not glow"),
     Knob("mask.ring", 6, 2, 16, "width of the band past the crop where background colours are read"),
