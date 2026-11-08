@@ -1,0 +1,111 @@
+name: AI-mode run
+
+# Dispatch-only: pushing this file never starts a run by itself.
+on:
+  workflow_dispatch:
+    inputs:
+      chapter_url:
+        description: "Chapter URL to translate"
+        required: true
+        default: "https://asurascans.com/comics/the-former-supreme-ab39de10/chapter/1"
+      model:
+        description: "Model id"
+        required: false
+        default: "nvidia/nemotron-3.5-super-vl-120b-a12b"
+      target_lang:
+        description: "Target language"
+        required: false
+        default: "vi"
+      budget_usd:
+        description: "Budget in USD (custom providers do not track cost)"
+        required: false
+        default: "0.30"
+      images_per_request:
+        description: "Slices per vision request"
+        required: false
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime
+        run: |
+          python -m pip install --only-binary :all: -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Restore detector and inpaint models
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Use the committed Kiuyha, not the cached one
+        run: git checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx
+
+      - name: Download LaMa when the cache has expired
+        run: |
+          test -f models/lama-manga-dynamic.onnx || curl -fsSL -o models/lama-manga-dynamic.onnx \
+            https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/lama-manga-dynamic.onnx
+          echo "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9  models/lama-manga-dynamic.onnx" | sha256sum -c
+
+      - name: Build the CTD mask model
+        uses: ./.github/actions/build-ctd
+
+      - name: Wire the NVIDIA provider from the repo secret
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA }}
+        run: python scripts/wire_nvidia_provider.py
+
+      - name: Start the app server
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8000/api/visual_qc/settings >/dev/null && break
+            sleep 5
+          done
+          curl -fsS http://127.0.0.1:8000/api/visual_qc/settings | python -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          ok = d['providers']['nvidia']['configured']
+          print('nvidia configured:', ok)
+          sys.exit(0 if ok else 1)
+          "
+
+      - name: Run the chapter
+        run: |
+          python scripts/ai_mode_run.py --url "${{ inputs.chapter_url }}" --provider nvidia --model "${{ inputs.model }}" --target-lang "${{ inputs.target_lang }}" --budget-usd "${{ inputs.budget_usd }}" --images-per-request "${{ inputs.images_per_request }}"
+
+      - name: Upload rendered chapter
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-mode-chapter
+          path: |
+            data/output/
+            server.log
+          if-no-files-found: warn
