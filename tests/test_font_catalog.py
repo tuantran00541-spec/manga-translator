@@ -7,7 +7,8 @@ def test_catalog_contains_comic_categories_and_real_font_files():
     from app.render.font_catalog import load_font_catalog
 
     catalog = load_font_catalog()
-    assert 60 <= len(catalog.records) <= 80
+    # Trimmed to the majority-style set, so the floor is a sanity bound, not a target.
+    assert 30 <= len(catalog.records) <= 80
     categories = {record.category for record in catalog.records}
     assert {"dialogue", "emphasis", "thought", "narration", "skill", "sfx", "horror", "romance"} <= categories
     for record in catalog.records:

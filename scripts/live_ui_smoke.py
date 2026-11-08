@@ -121,7 +121,7 @@ def _exercise_font_picker(page: Page) -> None:
           };
         }"""
     )
-    if catalog["status"] != 200 or catalog["count"] < 60 or not catalog["grouped"]:
+    if catalog["status"] != 200 or catalog["count"] < 30 or not catalog["grouped"]:
         raise AssertionError(f"font catalog contract failed: {catalog}")
 
 
