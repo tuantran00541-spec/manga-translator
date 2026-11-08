@@ -121,6 +121,19 @@ async def _ai_call(fn, *args):
     return await asyncio.get_running_loop().run_in_executor(_AI_CALLS, functools.partial(fn, *args))
 
 
+def _object_has_text_evidence(obj: dict) -> bool:
+    """True when some stage read text in this object: OCR text, the source
+    the vision model read off the image, or a role/container the model
+    judged. A detector box alone is not evidence -- art gets boxed too."""
+    if str(obj.get("ocr_text") or "").strip():
+        return True
+    if str(obj.get("source_read") or "").strip():
+        return True
+    return bool(str(obj.get("typography_role") or "").strip()
+                or str(obj.get("role") or "").strip()
+                or str(obj.get("container") or "").strip())
+
+
 def _append(items: list, value) -> None:
     if len(items) < MAX_REPORT_ITEMS:
         items.append(value)
@@ -619,17 +632,23 @@ class AIModeRunner:
                 if run is not None and run.get("unboxed"):
                     await self._add_unboxed(page_index, run["unboxed"], source_lang)
                 # A failed or cut-off slice retries everything; otherwise only what the model skipped.
-                if run is None or run.get("remaining") or run.get("missing_ids"):
-                    only = None if run is None or run.get("remaining") else set(run.get("missing_ids") or [])
+                # A translation the model gave but the commit refused as
+                # stale is still untranslated: retry it instead of silently
+                # dropping it, or its object ends up an unattempted blank
+                # no later stage can tell from a line never attempted.
+                if run is None or run.get("remaining") or run.get("missing_ids") or run.get("stale"):
+                    only = None if run is None or run.get("remaining") or run.get("stale") else set(run.get("missing_ids") or [])
                     await self._retry_untranslated(page_index, source_lang, only)
                 finished += 1
                 self._progress(finished, len(indices))
 
         await asyncio.to_thread(self._join_stacked_lines, indices)
+        await self._create_seam_mirrors()
         self._progress(0, len(indices))
         await asyncio.gather(*(translate_one(page_index) for page_index in indices))
         self._check_cancel()
         if out_of_budget:
+            self.report["translate_out_of_budget"] = True
             _append(self.report["translate_errors"], "Hết ngân sách, các lát còn lại chưa dịch")
         await self._sync_seams()
         sheet = memory.snapshot()
@@ -771,6 +790,46 @@ class AIModeRunner:
             _append(self.report["unboxed_pages"], page_index + 1)
             await self._retry_untranslated(page_index, source_lang, now - before)
 
+    async def _create_seam_mirrors(self) -> list[tuple[int, str]]:
+        """Mirror overlap-context fragments onto their slice, erased and ready to letter.
+
+        Runs after clean (boxes exist) and before translate: each new mirror
+        anchors a fragment the owning slice translates, and the English
+        under it is re-inpainted now, so the render later has a clean
+        surface. The translate step skips mirrors as ``lettered_elsewhere``
+        and the seam sync letters them from their owners.
+        """
+        from app.ai_mode.seams import create_seam_mirrors
+        from app.manifest_utils import save_manifest_raw
+
+        def create() -> tuple[list[tuple[int, str]], dict[int, list[tuple[int, int, int, int]]]]:
+            with get_manifest_lock(self.job.chapter_id):
+                manifest = load_manifest_raw(self.job.chapter_id)
+                created = create_seam_mirrors(manifest)
+                rects: dict[int, list[tuple[int, int, int, int]]] = {}
+                for page_index, obj_id in created:
+                    obj = next((o for o in manifest["pages"][page_index].get("text_objects") or []
+                                if isinstance(o, dict) and str(o.get("id")) == obj_id), None)
+                    if obj is None or not isinstance(obj.get("region"), dict):
+                        continue
+                    region = obj["region"]
+                    rects.setdefault(page_index, []).append(
+                        (int(region["x1"]), int(region["y1"]), int(region["x2"]), int(region["y2"])))
+                if created:
+                    save_manifest_raw(self.job.chapter_id, manifest)
+                return created, rects
+
+        created, rects = await asyncio.to_thread(create)
+        for page_index, page_rects in sorted(rects.items()):
+            try:
+                await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, page_rects)
+            except (HTTPException, RuntimeError, ValueError, OSError) as exc:
+                _append(self.report["translate_errors"],
+                        f"Lát {page_index + 1}: xóa chữ chờ ghép thất bại: {_detail(exc)[:150]}")
+        if created:
+            self.report["seam_mirrors_created"] = self.report.get("seam_mirrors_created", 0) + len(created)
+        return created
+
     async def _sync_seams(self) -> list[int]:
         """Letter every text crossing a slice cut exactly as its owning slice does."""
         from app.ai_mode.seams import drop_overlapping_letters, sync_seam_mirrors
@@ -907,6 +966,8 @@ class AIModeRunner:
 
         chapter_id = self.job.chapter_id
         settled = 0
+        report = getattr(self, "report", None) or {}
+        out_of_budget = bool(report.get("translate_out_of_budget"))
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             for page in manifest.get("pages") or []:
@@ -915,9 +976,21 @@ class AIModeRunner:
                 for obj in page.get("text_objects") or []:
                     if (not isinstance(obj, dict) or obj.get("source_missing") or obj.get("joined_into")
                             or obj.get("overlap_dropped") or obj.get("editorial_reviewed")
+                            # A seam mirror is lettered by its owner; the
+                            # owner carries the verdict, so the copy never blocks alone.
+                            or obj.get("seam_owner")
                             or str(obj.get("translation") or "").strip() or text_object_in_preserve_region(page, obj)):
                         continue
                     if obj.get("translation_attempted"):
+                        obj["editorial_disposition"], obj["editorial_reviewed"] = "non_story", True
+                    elif not _object_has_text_evidence(obj) and not out_of_budget:
+                        # No stage ever read a character here: no OCR text,
+                        # nothing the vision model read, no role the model
+                        # judged. The detector box alone is not text -- a
+                        # strip of art boxed by mistake -- so there is
+                        # nothing untranslated to block on. When the run ran
+                        # out of budget, though, "never attempted" may mean
+                        # "never had the chance", so those still block.
                         obj["editorial_disposition"], obj["editorial_reviewed"] = "non_story", True
                     else:
                         # Left unreviewed on purpose: the gate blocks export on this disposition.

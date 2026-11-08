@@ -29,6 +29,13 @@ def _slice_view(page: dict) -> tuple[int, int]:
     return int(core.get("core_y1", 0)), int(core.get("core_y2", 1 << 30))
 
 
+def _overlap_share(box, other) -> float:
+    """Share of ``box`` covered by ``other``."""
+    ix = max(0, min(box[2], other[2]) - max(box[0], other[0]))
+    iy = max(0, min(box[3], other[3]) - max(box[1], other[1]))
+    return ix * iy / max(1, (box[2] - box[0]) * (box[3] - box[1]))
+
+
 def clean_score(pages: list[dict], detector) -> dict:
     """Text and ghosts the cleanup left on each exported slice, found by the detector models."""
     items = []
@@ -45,7 +52,28 @@ def clean_score(pages: list[dict], detector) -> dict:
         keep = [(int(r["x1"]), int(r["y1"]) - top, int(r["x2"]), int(r["y2"]) - top)
                 for r in page_preserve_regions(page)]
         checked += 1
-        for item in leftovers(before, after, text_mask(before.shape[:2], detector.text_boxes(before)), keep):
+        # Detector boxes the letter model never masked (dark-on-dark lettering) are not in the
+        # manifest, so the letter blocks above cannot see them; a box the cleanup left alone
+        # is checked by comparing original with clean instead. Boxes the manifest already
+        # holds are the letter check's business, not this one's.
+        raw_boxes = []
+        detect = getattr(detector, "detect_slice", None)
+        if callable(detect):
+            manifest = [(int(b["x1"]), int(b["y1"]) - top, int(b["x2"]), int(b["y2"]) - top)
+                        for b in page.get("boxes") or []
+                        if isinstance(b, dict) and not b.get("removed")
+                        and all(k in b for k in ("x1", "y1", "x2", "y2"))]
+            for x1, y1, x2, y2, _score in detect(original):
+                shifted = (x1, y1 - top, x2, y2 - top)
+                if not any(_overlap_share(shifted, m) >= 0.5 for m in manifest):
+                    raw_boxes.append(shifted)
+        # A fallback box carries no letters — the segmenter was blind there, so its
+        # whole-box mask must not count as seen letters: it would cover its own raw box
+        # in the check below and let the text escape both paths. The raw-box path
+        # judges those boxes.
+        real = [b for b in detector.text_boxes(before) if getattr(b, "letters", None) is not None]
+        for item in leftovers(before, after, text_mask(before.shape[:2], real), keep,
+                              raw_boxes):
             x1, y1, x2, y2 = item.box
             items.append({"slice": index + 1, "kind": item.kind, "box": [x1, y1 + top, x2, y2 + top],
                           "px": item.px, "share": item.share})

@@ -267,6 +267,7 @@ def render_text_in_box(
     container: str | None = None,
     source_letter_box: tuple[int, int, int, int] | None = None,
     stats: dict | None = None,
+    size_band_hi_cap: int | None = None,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -298,6 +299,14 @@ def render_text_in_box(
     else:
         font_path = Path(font_path)
     font_path, text = drawable(font_path, text)
+
+    # A chapter band caps the size a short block may grow to in a roomy
+    # bubble. The ceiling is in font px, from the band's cap through this
+    # object's own font, so a narrow font keeps its own proportions.
+    size_ceiling_px = None
+    if size_band_hi_cap:
+        from app.render.source_size import SIZE_SLACK, matching_font_px
+        size_ceiling_px = int(matching_font_px(str(font_path), int(size_band_hi_cap)) * SIZE_SLACK)
 
     if fill is None or fill == "auto" or fill == "":
         text_color = auto_detect_text_color(image, box)
@@ -362,7 +371,8 @@ def render_text_in_box(
             source_cap_px=source_cap_px, enlarge=enlarge, opaque_caption=opaque_caption,
             curved=curved, image=image, centered=centred, container=container,
             source_letter_box=source_letter_box, centres_out=line_centres,
-            stats_out=fit_stats, min_source_share=min_source_share)
+            stats_out=fit_stats, min_source_share=min_source_share,
+            size_ceiling_px=size_ceiling_px)
         raw_w, raw_h = x2 - x1, y2 - y1
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
@@ -393,7 +403,7 @@ def render_text_in_box(
                 opaque_caption=opaque_caption, curved=False, image=image, centered=centred,
                 container=container, source_letter_box=source_letter_box,
                 centres_out=retry_centres, stats_out=retry_stats,
-                min_source_share=min_source_share)
+                min_source_share=min_source_share, size_ceiling_px=size_ceiling_px)
             if r_fits and not retry_stats.get("below_floor_ratio"):
                 actual_size, fitted_lines, fits_readably = r_size, r_lines, r_fits
                 x1, y1, x2, y2 = rx1, ry1, rx2, ry2
@@ -453,6 +463,7 @@ def render_text_in_box(
             stats["stages_skipped"] = fit_stats.get("stages_skipped", [])
             stats["band_narrowing"] = fit_stats.get("band_narrowing", {})
             stats["cap_relaxed"] = fit_stats.get("cap_relaxed", False)
+            stats["size_ceiling_px"] = fit_stats.get("size_ceiling_px")
             stats["lines_source"] = lines_source
 
     shape = str(shape or "").lower()
@@ -576,7 +587,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
              opaque_caption: bool = False, curved: bool = False, image=None, centered: bool = True,
              container: str | None = None, source_letter_box: tuple[int, int, int, int] | None = None,
              centres_out: list | None = None, stats_out: dict | None = None,
-             min_source_share: float = 0.0):
+             min_source_share: float = 0.0, size_ceiling_px: int | None = None):
     """The auto font size, wrapped lines, whether it fits readably and the box it was fitted in, as the renderer letters it.
 
     One decision order, each stage feeding the next: the frame interior is
@@ -816,6 +827,10 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
                                      curved=curved, bands=bands_for())[0]
                 maximum_size = max(maximum_size, min(uncapped, int(cap_ceiling * 1.5)))
                 cap_relaxed = maximum_size > max(readable, int(SOURCE_FLOOR_RATIO * box_fit), cap_ceiling)
+    if size_ceiling_px:
+        # The band is a ceiling on growth, never a floor: a long text in
+        # a small box still shrinks below it to fit.
+        maximum_size = max(readable, min(maximum_size, int(size_ceiling_px)))
     fit_bands = bands_for()
     if curved and centered and image is not None and fit_bands is None:
         # The outline measurement failed, so the fit below is a rectangle
@@ -1012,10 +1027,14 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
                 font_path_str, int(source_cap_px))
         # The floor share is a floor, not just a ceiling: a fit that
         # only holds far below what the box holds leaves the object for
-        # review instead of lettering it small.
+        # review instead of lettering it small. The floor is judged
+        # against the size the band allows, not the raw box fit: a
+        # ceiling holding a short block below 60% of its roomy box is
+        # the band working, not a fit failure.
+        floor_box_fit = min(box_fit, size_ceiling_px) if size_ceiling_px else box_fit
         below_floor_ratio = bool(
             fits_readably and source_cap_px and not enlarge and box_fit is not None
-            and actual_size < int(SOURCE_FLOOR_RATIO * box_fit))
+            and actual_size < int(SOURCE_FLOOR_RATIO * floor_box_fit))
         stats_out.update({
             "frame": frame,
             "frame_source": frame_source,
@@ -1028,6 +1047,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             "band_narrowing": dict(band_verdict),
             "cap_ceiling": cap_ceiling,
             "cap_relaxed": cap_relaxed,
+            "size_ceiling_px": size_ceiling_px,
             "share_ok": share_ok,
             "below_floor_ratio": below_floor_ratio,
         })
@@ -1432,7 +1452,7 @@ def _box_frame(image: Image.Image, box):
     dark = grey < 110
     box_w, box_h = cx2 - cx1, cy2 - cy1
 
-    def rule_groups(share):
+    def rule_groups(share, edge=2):
         groups = []
         start = None
         for i, v in enumerate(share):
@@ -1443,10 +1463,23 @@ def _box_frame(image: Image.Image, box):
                 start = None
         if start is not None:
             groups.append((start, len(share)))
-        return [(a, b) for a, b in groups if b - a <= 16 and a >= 2 and b <= len(share) - 2]
+        return [(a, b) for a, b in groups if b - a <= 16 and a >= edge and b <= len(share) - edge]
 
     col_share = dark.mean(axis=0)
     col_groups = rule_groups(col_share)
+    if len(col_groups) < 2:
+        # A rule can sit flush with the region edge: the detector
+        # region usually stops just past the rule, so the run ends
+        # at the crop edge and the 2 px guard drops a genuine rule,
+        # leaving the dimension unmeasured. The strict pass runs
+        # first, so a box that already measures keeps its frame;
+        # only a short-handed dimension retries with edge runs
+        # admitted. A run touching the edge still shows the end the
+        # frame uses — the left rule's inner end, the right rule's
+        # inner start — and the pairing geometry below (straddling
+        # the centre, interior at least half the region) is what
+        # keeps an edge artifact from becoming a frame.
+        col_groups = rule_groups(col_share, edge=0)
     fx1, fx2 = cx1, cx2
     if len(col_groups) >= 2:
         left, right = col_groups[0], col_groups[-1]
@@ -1454,6 +1487,8 @@ def _box_frame(image: Image.Image, box):
             fx1, fx2 = cx1 + left[1], cx1 + right[0]
     row_share = dark.mean(axis=1)
     row_groups = rule_groups(row_share)
+    if len(row_groups) < 2:
+        row_groups = rule_groups(row_share, edge=0)
     fy1, fy2 = cy1, cy2
     if len(row_groups) >= 2:
         top, bottom = row_groups[0], row_groups[-1]
@@ -1465,6 +1500,20 @@ def _box_frame(image: Image.Image, box):
     # a panel gap is not. Each dimension is searched on its own expanded
     # crop, with the share denominator kept at the region extent, so
     # expanding one dimension cannot unfind the other's rules.
+    # A stepped frame straddles the region edge: one rule sits inside
+    # the region while the other sits just outside it, so neither the
+    # inside-only pass nor the outside-only pairing below can pair
+    # them. A missing outside side falls back to the inside pass's
+    # outermost group on that side, converted to expanded coordinates;
+    # the paper strip is only judged where the rule lies outside the
+    # region, since the inside pass already trusts an inside rule
+    # with no strip. A rule flush with the region edge has no strip
+    # to judge, so a missing strip is skipped, not failed. The
+    # fallback runs only where the inside pass measured nothing: a
+    # dimension it already measured keeps its frame, so an outside
+    # neighbour's rule cannot widen it through the fallback.
+    first_fx = (fx1, fx2)
+    first_fy = (fy1, fy2)
     full_grey = np.asarray(image.convert("L"))
     for axis in ("x", "y"):
         if axis == "x":
@@ -1473,15 +1522,31 @@ def _box_frame(image: Image.Image, box):
             share = crop.mean(axis=0) if crop.size else np.array([])
             lo, hi, extent = cx1 - ex1, cx2 - ex1, box_w
             strips = lambda a, b: full_grey[cy1:cy2, ex1 + a:ex1 + b]
+            first_groups = col_groups
+            unmeasured = first_fx == (cx1, cx2)
         else:
             ey1, ey2 = max(0, y1 - BOX_RULE_EXPAND), min(height, y2 + BOX_RULE_EXPAND)
             crop = full_grey[ey1:ey2, cx1:cx2] < 110
             share = crop.mean(axis=1) if crop.size else np.array([])
             lo, hi, extent = cy1 - ey1, cy2 - ey1, box_h
             strips = lambda a, b: full_grey[ey1 + a:ey1 + b, cx1:cx2]
+            first_groups = row_groups
+            unmeasured = first_fy == (cy1, cy2)
         groups = rule_groups(share) if share.size else []
-        before = [g for g in groups if g[1] <= lo]
-        after = [g for g in groups if g[0] >= hi]
+        # A group belongs to a side when its bulk lies past the region
+        # edge: a rule ending a pixel past the edge still belongs to
+        # that side, while a rule inside the region belongs to neither
+        # side here and is reached through the fallback below instead.
+        before = [g for g in groups if (g[0] + g[1]) // 2 < lo]
+        after = [g for g in groups if (g[0] + g[1]) // 2 > hi]
+        if unmeasured and not before and first_groups:
+            g0 = first_groups[0]
+            if g0[1] + lo <= (lo + hi) // 2:
+                before = [(g0[0] + lo, g0[1] + lo)]
+        if unmeasured and not after and first_groups:
+            g1 = first_groups[-1]
+            if g1[0] + lo >= (lo + hi) // 2:
+                after = [(g1[0] + lo, g1[1] + lo)]
         if not before or not after:
             continue
         outer_lo, outer_hi = before[-1], after[0]
@@ -1492,10 +1557,20 @@ def _box_frame(image: Image.Image, box):
         strip_a = strips(outer_lo[1], lo) if lo > outer_lo[1] else None
         strip_b = strips(hi, outer_hi[0]) if outer_hi[0] > hi else None
         paper_ok = True
-        for strip in (strip_a, strip_b):
-            if strip is None or strip.shape[0] < 2 or strip.shape[1] < 2:
-                paper_ok = False
-                break
+        for strip, trim_left in ((strip_a, True), (strip_b, False)):
+            if strip is None:
+                continue
+            # The column hugging the rule carries the rule's own
+            # antialiased edge, not the strip: judge the strip
+            # without it, and a strip too thin to judge after the
+            # trim is no strip at all — a panel gap is wide, so a
+            # sliver cannot be the evidence that rejects the rule.
+            if trim_left:
+                strip = strip[:, 1:]
+            else:
+                strip = strip[:, :-1]
+            if strip.size == 0 or strip.shape[0] < 2 or strip.shape[1] < 2:
+                continue
             if float((strip >= 180).mean()) < 0.8:
                 paper_ok = False
                 break

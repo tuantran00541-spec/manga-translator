@@ -70,7 +70,7 @@ def test_ocr_plan_skips_preserve_and_process_required(monkeypatch):
 def test_render_snapshot_suppresses_preserve_text(monkeypatch):
     import app.routers.render_commit as module
     seen = []
-    monkeypatch.setattr(module, "render_text_objects", lambda _i, _r, objs, *_a: seen.extend(o["id"] for o in objs) or len(objs))
+    monkeypatch.setattr(module, "render_text_objects", lambda _i, _r, objs, *_a, **_k: seen.extend(o["id"] for o in objs) or len(objs))
     page = {"preserve_regions": [{"x1": 0, "y1": 0, "x2": 70, "y2": 70}], "text_objects": [
         {"id": "protected", "region": {"x1": 10, "y1": 10, "x2": 50, "y2": 50}, "translation": "NO"},
         {"id": "story", "region": {"x1": 100, "y1": 100, "x2": 160, "y2": 150}, "translation": "OK"},

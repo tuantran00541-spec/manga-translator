@@ -23,6 +23,15 @@ HALVES_MIN_OVERLAP = 256  # rows the two halves of the coarse pass share at leas
 PAGE_WIDTH = 400  # slice width at page scale, where the model scores big lettering highest
 PAGE_OVERLAP = 0.15  # share of a page-scale window repeated in the next one
 PAGE_CONFIDENCE = 0.45  # page-scale score a box needs; drawn sound effects score below it, lettering above
+MASKLESS_MIN_SCORE = 0.5  # a box this confident is text even when the letter model reads nothing there:
+# dark letters on a dark map score 0.7+ with the box model and ~0.0 with the letter model, so dropping
+# the box drops the text. The box is kept with a whole-box mask instead.
+MASKLESS_MIN_PIECES = 3  # ... but only when it holds several separate dark pieces: text is several letters,
+# a window lattice or logo the box model also scores is one connected shape.
+MASKLESS_PIECE_PX = 20  # a piece this small is a speck, not a letter
+MASKLESS_PIECE_SHARE = 0.25  # a piece bigger than this share of its box is a shape, not a letter
+MASKLESS_DARK_DROP = 25  # grey levels darker than the box median that count as ink
+ROTATED_MIN_SCORE = PAGE_CONFIDENCE  # a sideways box needs the same score as a page-scale one
 EDGE_TOUCH = knob("detect.edge_touch")
 UNION_SHARE = knob("detect.union_share")
 SAME_LINE = knob("detect.same_line")
@@ -242,6 +251,24 @@ def _rows(output: np.ndarray, conf_threshold: float) -> np.ndarray:
     return np.concatenate([boxes[picked], scores[picked, None]], axis=1)
 
 
+def _dark_pieces(image: np.ndarray, box: tuple[int, int, int, int]) -> int:
+    """Letter-sized dark pieces in a box: several separate letters, not one connected shape.
+
+    Dark lettering the segmenter misses still reads as ink against its own background; a lattice
+    or logo the box model scores is one big connected piece, and a speck is not a letter.
+    """
+    x1, y1, x2, y2 = box
+    crop = image[y1:y2, x1:x2]
+    if crop.size == 0:
+        return 0
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    ink = (gray < max(20, int(np.median(gray)) - MASKLESS_DARK_DROP)).astype(np.uint8)
+    _, _, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    cap = MASKLESS_PIECE_SHARE * (x2 - x1) * (y2 - y1)
+    return int(((areas >= MASKLESS_PIECE_PX) & (areas <= cap)).sum())
+
+
 class KiuyhaTextDetector:
     def __init__(self, model_path, conf_threshold: float = knob("detect.confidence"), session=None):
         self.session = session if session is not None else make_session(model_path)
@@ -299,8 +326,31 @@ class KiuyhaTextDetector:
         """Padded text boxes for a slice: coarse and page-scale passes, pieces of one text merged."""
         h, w = image.shape[:2]
         found = _union_overlapping(self._coarse_boxes(image) + self.page_boxes(image))
+        if not found:
+            # The upright passes saw nothing at all: a vertical sign reads as text only sideways.
+            found = _union_overlapping(self._rotated_boxes(image))
         return [(max(0, x1 - BOX_PAD), max(0, y1 - BOX_PAD), min(w, x2 + BOX_PAD), min(h, y2 + BOX_PAD), score)
                 for x1, y1, x2, y2, score in found]
+
+    def _rotated_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
+        """Boxes from the slice turned 90 degrees both ways, mapped back: vertical lettering the upright passes miss."""
+        h, w = image.shape[:2]
+        found = []
+        for code, clockwise in ((cv2.ROTATE_90_CLOCKWISE, True), (cv2.ROTATE_90_COUNTERCLOCKWISE, False)):
+            turned = cv2.rotate(image, code)
+            for x1, y1, x2, y2, score in self.raw_boxes(turned):
+                if score < ROTATED_MIN_SCORE:
+                    continue
+                if clockwise:
+                    # Upright (x, y) reads as turned (H-1-y, x).
+                    box = (y1, h - 1 - x2, y2, h - 1 - x1)
+                else:
+                    # Upright (x, y) reads as turned (y, W-1-x).
+                    box = (w - 1 - y2, x1, w - 1 - y1, x2)
+                bx1, by1, bx2, by2 = (max(0, box[0]), max(0, box[1]), min(w, box[2]), min(h, box[3]))
+                if bx2 > bx1 and by2 > by1:
+                    found.append((bx1, by1, bx2, by2, score))
+        return found
 
     def _coarse_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
         """Boxes from the whole slice at once, as two halves when that helps."""
@@ -375,6 +425,12 @@ class KiuyhaTextDetector:
             (x1, y1, x2, y2), mask, letters = letter_mask(image, (x1, y1, x2, y2), with_letters=True)
             if mask.any():
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters))
+            elif score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1 and _dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES:
+                # The letter model is blind here, not the box model: the box stays, masked whole,
+                # so the text is still erased and read instead of silently dropped. Downstream
+                # already copes with a box that has no letters (it falls back to the box extent).
+                full = np.full((y2 - y1, x2 - x1), 255, np.uint8)
+                boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None))
         return [part for box in _join_grown(boxes) for piece in _split_blocks(box) for part in _split_sideways(piece)]
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:

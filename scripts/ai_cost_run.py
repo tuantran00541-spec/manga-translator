@@ -220,14 +220,31 @@ def _scorecard(pages: list, report: dict, out: Path) -> dict:
     return card
 
 
-def main() -> int:
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("url")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--balance", type=float, default=5.0, help="USD credited to the test account")
     parser.add_argument("--timeout-min", type=float, default=60)
     parser.add_argument("--polish", action="store_true", help="let the Jev judge grade and send back weak lines")
-    args = parser.parse_args()
+    parser.add_argument("--translate-provider", default="manga-cloud",
+                        help="provider for the text re-translate (Manga Cloud picks its model per stage)")
+    parser.add_argument("--translate-model", default="xiaomi/mimo-v2.6-flash",
+                        help="text model that re-translates the vision model's wording")
+    return parser
+
+
+def _start_payload(args) -> dict:
+    """What POST /api/ai_mode/start gets: the re-translate rides along, so the vision model's wording is re-read by the text model."""
+    payload: dict = {"url": args.url, "provider": "manga-cloud", "polish": args.polish}
+    if args.translate_provider and args.translate_model:
+        payload["translate_provider"] = args.translate_provider
+        payload["translate_model"] = args.translate_model
+    return payload
+
+
+def main() -> int:
+    args = _parser().parse_args()
     out = args.out.resolve()
     if not out.is_relative_to(ROOT):
         raise SystemExit(f"{args.out} must be inside {ROOT}")
@@ -255,7 +272,7 @@ def main() -> int:
         _wait(f"{APP}/health", app)
 
         started = time.perf_counter()
-        response = requests.post(f"{APP}/api/ai_mode/start", json={"url": args.url, "provider": "manga-cloud", "polish": args.polish}, timeout=60)
+        response = requests.post(f"{APP}/api/ai_mode/start", json=_start_payload(args), timeout=60)
         if not response.ok:
             raise SystemExit(f"start failed: {response.status_code} {response.text[:400]}")
         job = response.json()

@@ -68,8 +68,29 @@ def _normalize_region(region: dict, w: int, h: int) -> tuple[int, int, int, int]
     return x1, y1, x2, y2
 
 
-def _paint_residue(mask: np.ndarray, clean: np.ndarray | None, rect: tuple[int, int, int, int]) -> None:
-    """Mark the leftover strokes in ``rect`` of the cleaned slice; the whole rectangle only when none stand out."""
+_RESIDUE_GHOST_MARGIN = 60  # grey levels: clean ink this close to the original ink is leftover text
+_RESIDUE_FILL_SIGMA = 8.0  # blur that reads the local bubble fill past the letters
+_RESIDUE_INK_DROP = 15  # grey levels darker than the local fill that marks real ink
+_RESIDUE_MIN_COMPONENT_PX = 8  # a leftover stroke fragment smaller than this is model noise, not text
+
+
+def _paint_residue(
+    mask: np.ndarray,
+    clean: np.ndarray | None,
+    rect: tuple[int, int, int, int],
+    original: np.ndarray | None = None,
+) -> None:
+    """Mark the leftover strokes in ``rect`` of the cleaned slice.
+
+    When the letter model sees no strokes left, the rectangle used to be
+    repainted whole — which on a coloured bubble erases the bubble's own
+    fill with it (LaMa over the full box bleaches a mid-grey gradient to
+    flat near-white). With the original slice available, only ink the
+    clean still carries where the original had letters can be leftover
+    text, so only those letter shapes are marked and a fully cleaned
+    bubble is left alone. Without an original there is nothing to compare
+    against, so the whole rectangle is repainted as before.
+    """
     from app.detector.kiuyha_detector import letter_mask
 
     if clean is not None and clean.shape[:2] == mask.shape:
@@ -77,6 +98,44 @@ def _paint_residue(mask: np.ndarray, clean: np.ndarray | None, rect: tuple[int, 
         if strokes.any():
             view = mask[y1:y2, x1:x2]
             view[strokes] = 255
+            return
+        if original is not None and original.shape[:2] == mask.shape:
+            (gx1, gy1, gx2, gy2), _grown, seed = letter_mask(original, rect, with_letters=True)
+            if seed.any():
+                # The seed can carry fill-grey pixels beside the letters, so
+                # a seed pixel only counts as ink when it was darker than
+                # its own neighbourhood in the original; and it only counts
+                # as leftover when the clean still carries it.
+                orig_gray = (
+                    cv2.cvtColor(original[gy1:gy2, gx1:gx2], cv2.COLOR_BGR2GRAY)
+                    if original.ndim == 3
+                    else original[gy1:gy2, gx1:gx2]
+                )
+                clean_gray = (
+                    cv2.cvtColor(clean[gy1:gy2, gx1:gx2], cv2.COLOR_BGR2GRAY)
+                    if clean.ndim == 3
+                    else clean[gy1:gy2, gx1:gx2]
+                )
+                orig_fill = cv2.GaussianBlur(orig_gray, (0, 0), _RESIDUE_FILL_SIGMA)
+                was_ink = orig_gray.astype(np.int32) < orig_fill.astype(np.int32) - _RESIDUE_INK_DROP
+                ghost = (
+                    seed
+                    & was_ink
+                    & (clean_gray.astype(np.int32) <= orig_gray.astype(np.int32) + _RESIDUE_GHOST_MARGIN)
+                )
+                if ghost.any():
+                    # Specks are letter-model noise, not leftover strokes;
+                    # each would otherwise become its own LaMa run.
+                    count, labels, stats, _ = cv2.connectedComponentsWithStats(
+                        ghost.astype(np.uint8), connectivity=8
+                    )
+                    keep = np.zeros(count, bool)
+                    keep[1:] = stats[1:, cv2.CC_STAT_AREA] >= _RESIDUE_MIN_COMPONENT_PX
+                    ghost = keep[labels]
+                if ghost.any():
+                    view = mask[gy1:gy2, gx1:gx2]
+                    view[ghost] = 255
+                    return
             return
     mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
 
@@ -391,7 +450,7 @@ class PipelineEditingMixin:
             for rect in repaint_rects:
                 if mask is None:
                     mask = np.zeros((h, w), dtype=np.uint8)
-                _paint_residue(mask, clean, rect)
+                _paint_residue(mask, clean, rect, original=image)
             if mask is not None:
                 existing = self._read_manual_mask(
                     Path(manual_mask_posix) if manual_mask_posix else final_mask_path, (h, w))

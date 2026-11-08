@@ -460,6 +460,8 @@ def editorial_preflight(
                 continue
             if str(obj.get("joined_into") or "") in live_ids:
                 continue  # its line is lettered by the object it joined
+            if obj.get("seam_owner"):
+                continue  # lettered by its owner; the owner carries the verdict
             oid = str(obj.get("id") or "")
             if oid and oid in checked_objects:
                 continue

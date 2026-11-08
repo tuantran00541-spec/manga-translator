@@ -542,6 +542,7 @@ def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monke
 
     monkeypatch.setattr(runner, "_sync_seams", sync)
     monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
+    monkeypatch.setattr(runner, "_create_seam_mirrors", lambda: asyncio.sleep(0))
     retried = []
 
     async def retry(page_index, source_lang, only):
@@ -692,21 +693,56 @@ def test_a_line_the_translator_sees_outside_every_box_is_boxed_erased_and_transl
 
 
 def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
-    region = {"x1": 0, "y1": 0, "x2": 50, "y2": 20}
+    region = { "x1": 0, "y1": 0, "x2": 50, "y2": 20}
     manifest = {"pages": [
         {"text_objects": [{"id": "said", "translation": "Chào", "region": region},
                           {"id": "credit", "translation": "", "translation_attempted": True, "region": region},
                           {"id": "gone", "translation": "", "source_missing": True, "region": region},
-                          {"id": "unread", "translation": "", "region": region}]},
+                          {"id": "unread", "translation": "", "ocr_text": "hello world", "region": region},
+                          {"id": "phantom", "translation": "", "region": region},
+                          {"id": "mirror", "translation": "", "seam_owner": {"page": 1, "id": "owner"},
+                           "region": region}]},
         {"skipped": True, "text_objects": [{"id": "skip", "translation": "", "region": region}]},
     ]}
     saved = []
     monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter: manifest)
     monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter, data: saved.append(chapter))
     runner = _runner(monkeypatch, "render", manifest)
-    assert runner._settle_blanks() == 2 and saved == [CHAPTER]
+    assert runner._settle_blanks() == 3 and saved == [CHAPTER]
     objects = manifest["pages"][0]["text_objects"]
     assert objects[1]["editorial_disposition"] == "non_story" and objects[1]["editorial_reviewed"] is True
     # A blank the translator never tried stays unreviewed, so export blocks on it.
     assert objects[3]["editorial_disposition"] == "untranslated" and not objects[3].get("editorial_reviewed")
+    # A blank with no evidence of any text -- no OCR, no role, no read --
+    # is a phantom, not a line: settle it instead of blocking on nothing.
+    assert objects[4]["editorial_disposition"] == "non_story" and objects[4]["editorial_reviewed"] is True
+    # A seam copy carries no verdict of its own; its owner does.
+    assert "editorial_disposition" not in objects[5]
     assert "editorial_disposition" not in objects[0] and "editorial_disposition" not in objects[2]
+
+
+def test_a_stale_answer_still_counts_as_untranslated_and_retries(monkeypatch):
+    import app.routers.ocr as ocr_router
+
+    async def detected(chapter_id, req=None):
+        return {"source_lang": None}
+
+    async def fake_translate(req, memory=None, slice_total=None, skip_seam_mirrors=False):
+        run = {"translated": 1, "unreadable": 0, "estimated_cost_usd": None}
+        if req.page_index == 1:
+            run["stale"] = 1  # the model answered, the commit refused it
+        return {"translation_run": run}
+
+    monkeypatch.setattr(ocr_router, "detect_chapter_language", detected)
+    monkeypatch.setattr(translation_router, "translate_page_in_context", fake_translate)
+    runner = _runner(monkeypatch, "translate", {"pages": [{}, {}]})
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
+    monkeypatch.setattr(runner, "_create_seam_mirrors", lambda: asyncio.sleep(0))
+    retried = []
+
+    async def retry(page_index, source_lang, only):
+        retried.append((page_index, only))
+
+    monkeypatch.setattr(runner, "_retry_untranslated", retry)
+    asyncio.run(runner.translate())
+    assert retried == [(1, None)], "a stale slice retries every object, like a failed one"

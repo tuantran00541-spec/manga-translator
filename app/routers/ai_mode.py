@@ -97,11 +97,22 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
     if req.provider == cloud.CLOUD_PROVIDER_ID:
         reservation = await run_in_threadpool(cloud.reserve_job)
         provider = cloud.cloud_provider(str(reservation.get("model") or ""))
+        # The text re-translate runs through Manga Cloud too: the gateway picks its
+        # model from the retranslate stage, and the job token is its key, resolved
+        # inside the job where the cloud binding lives. A direct provider has no
+        # key on the cost-run runner, so it is refused here instead of failing per slice.
+        translate_provider_id = translate_model_name = None
+        if req.translate_provider and req.translate_model:
+            if req.translate_provider != cloud.CLOUD_PROVIDER_ID:
+                raise HTTPException(400, "A.I mode on Manga Cloud re-translates through Manga Cloud")
+            translate_provider_id = cloud.CLOUD_PROVIDER_ID
+            translate_model_name = validate_model_name(req.translate_model, default="")
         settings = AIModeSettings(
             url=req.url, provider=provider.id, model=provider.default_qc_model, target_lang=req.target_lang,
             budget_usd=float(reservation.get("cost_cap_usd") or req.budget_usd), workers=req.workers,
             # Manga Cloud reads on a free model that takes two images a request; it is not the user's to raise.
             story_notes=req.story_notes, polish=req.polish, images_per_request=2,
+            translate_provider=translate_provider_id, translate_model=translate_model_name,
         )
         job_token = str(reservation["job_token"])
         bound = bind_cloud_job(provider, job_token)

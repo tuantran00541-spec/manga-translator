@@ -5,6 +5,7 @@ from PIL import Image
 from fastapi import HTTPException
 
 from app.logging_config import logger
+from app.render.size_bands import banded_cap
 from app.render.text_renderer import render_text_in_box
 from app.schemas import RenderRequest
 
@@ -416,6 +417,7 @@ def render_text_objects(
     core_y1: int | None = None,
     core_y2: int | None = None,
     verdicts: list | None = None,
+    size_bands: dict | None = None,
 ) -> int:
     """Paint ``text_objects`` onto ``image`` in one decision order.
 
@@ -574,6 +576,27 @@ def render_text_objects(
         bounds = obj.get("letter_bounds")
         if _valid_region(bounds):
             style["source_letter_box"] = tuple(int(bounds[k]) for k in ("x1", "y1", "x2", "y2"))
+        # Chapter size band: clamp the measured source cap toward the
+        # role median, so one chapter's body lettering reads as one size.
+        # The ceiling also binds the 0.6-of-box-fit growth for a short
+        # block in a roomy bubble, even when the cap itself is in band.
+        # Enlarge and fixed-size objects keep their own sizing, and a
+        # band can only shrink the cap the fit sees, never refuse: the
+        # share and floor gates below are judged on the banded cap.
+        band_info = None
+        cap = obj.get("source_cap_px")
+        fixed_size = ((isinstance(box_size, (int, float)) and box_size > 0)
+                      or (isinstance(box_size, str) and box_size.isdigit()
+                          and int(box_size) > 0))
+        if (size_bands and not style["enlarge"] and not fixed_size
+                and isinstance(cap, (int, float)) and cap > 0):
+            role = str(obj.get("typography_role") or obj.get("role") or "dialogue")
+            band = size_bands.get(role)
+            if band is not None:
+                eff_cap = banded_cap(role, cap, size_bands)
+                style["source_cap_px"] = eff_cap
+                style["size_band_hi_cap"] = int(round(band[1]))
+                band_info = {"role": role, "cap": cap, "effective_cap": eff_cap}
         # The lettering goes where the source lettering was, then roomier
         # boxes; the attempt that letters fewest lines wins, ties largest.
         attempts = fit_attempts(obj, coords)
@@ -686,6 +709,8 @@ def render_text_objects(
                 painted = False
                 best = None
                 verdict: dict = {"id": oid}
+                if band_info is not None:
+                    verdict["size_band"] = band_info
                 if render_text != translation.strip():
                     verdict["joined_free"] = True
                 for item in _rank_renders(rendered):

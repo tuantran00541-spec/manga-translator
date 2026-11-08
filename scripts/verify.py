@@ -15,6 +15,9 @@ GHOST = 0.1  # letter probability of a faint trace: a soft shadow or a redrawn o
 LEFT_SHARE, LEFT_MIN_PX = 0.02, 40  # ink still read, as a share of the block's original ink
 GHOST_SHARE, GHOST_MIN_PX = 0.03, 200  # faint traces, as a share of the block's original ink
 MIN_PIECES, PIECE_PX = 3, 20  # text is several separate letters; a balloon outline scrap is one or two strokes
+UNCHANGED_TOL = 12  # grey levels: a pixel this close in original and clean was not repainted
+UNCHANGED_SHARE = 0.85  # share of a box's pixels unchanged that means nothing was erased there
+UNCHANGED_MIN_STD = 10  # grey spread of the original box: flat art is unchanged trivially, text is not
 
 
 @dataclass(frozen=True)
@@ -51,14 +54,31 @@ def _kept(box: tuple[int, int, int, int], keep) -> bool:
     return any(k[0] <= cx < k[2] and k[1] <= cy < k[3] for k in keep)
 
 
-def leftovers(original: np.ndarray, clean: np.ndarray, letters: np.ndarray, keep=()) -> list[Leftover]:
+def _covered_by(rect: tuple[int, int, int, int], rects) -> bool:
+    """True when one of ``rects`` overlaps at least a quarter of ``rect``."""
+    x1, y1, x2, y2 = rect
+    area = max(1, (x2 - x1) * (y2 - y1))
+    for ax1, ay1, ax2, ay2 in rects:
+        ix = max(0, min(x2, ax2) - max(x1, ax1))
+        iy = max(0, min(y2, ay2) - max(y1, ay1))
+        if ix * iy >= 0.25 * area:
+            return True
+    return False
+
+
+def leftovers(original: np.ndarray, clean: np.ndarray, letters: np.ndarray, keep=(), raw_boxes=()) -> list[Leftover]:
     """Blocks of the original's letters that still read as text, or as a faint ghost, on the clean image.
 
     ``letters`` marks the original's letters; blocks centred in a ``keep`` box (logos, art) are left alone.
+    ``raw_boxes`` are detector boxes that produced no letters (the letter model is blind to dark-on-dark
+    lettering): a box whose interior the cleanup left alone still holds its text, and the letter blocks
+    above can never see it, so it is checked by comparing original with clean instead.
     """
     h, w = letters.shape
     found = []
+    rects = []
     for block, (x1, y1, x2, y2) in _blocks(letters):
+        rects.append((x1, y1, x2, y2))
         if _kept((x1, y1, x2, y2), keep):
             continue
         bx1, by1, bx2, by2 = max(0, x1 - PAD_PX), max(0, y1 - PAD_PX), min(w, x2 + PAD_PX), min(h, y2 + PAD_PX)
@@ -78,4 +98,22 @@ def leftovers(original: np.ndarray, clean: np.ndarray, letters: np.ndarray, keep
             found.append(Leftover((x1, y1, x2, y2), "text", left, round(left / ink, 3)))
         elif faint >= max(GHOST_MIN_PX, GHOST_SHARE * ink):
             found.append(Leftover((x1, y1, x2, y2), "ghost", faint, round(faint / ink, 3)))
+    for box in raw_boxes:
+        x1, y1, x2, y2 = (int(v) for v in box)
+        x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
+        if x2 - x1 < 8 or y2 - y1 < 8 or _kept((x1, y1, x2, y2), keep) or _covered_by((x1, y1, x2, y2), rects):
+            continue
+        before = original[y1:y2, x1:x2]
+        after = clean[y1:y2, x1:x2]
+        if before.shape != after.shape or before.size == 0:
+            continue
+        grey = cv2.cvtColor(before, cv2.COLOR_BGR2GRAY) if before.ndim == 3 else before
+        if float(grey.std()) < UNCHANGED_MIN_STD:
+            continue
+        same = np.abs(before.astype(np.int16) - after.astype(np.int16))
+        same = same.max(axis=2) if same.ndim == 3 else same
+        same = same <= UNCHANGED_TOL
+        share = float(same.mean())
+        if share >= UNCHANGED_SHARE:
+            found.append(Leftover((x1, y1, x2, y2), "text", int(same.sum()), round(share, 3)))
     return found

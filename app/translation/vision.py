@@ -351,7 +351,9 @@ def retranslate_text(
         + json.dumps({"objects": [{"id": i, "source": s} for i, s in pairs]},
                      ensure_ascii=False, separators=(",", ":"))
     )
-    result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=max_tokens, stage="translate")
+    # Its own checkpoint: sharing "translate" would send this text-only second
+    # pass to the vision model again instead of the retranslate model.
+    result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=max_tokens, stage="retranslate")
     expected = {i for i, _ in pairs}
     out = {}
     for entry in (result.data.get("translations") or []):

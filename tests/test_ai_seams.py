@@ -103,6 +103,64 @@ def test_review_boxes_are_masked_by_letters_not_rectangles():
     assert (mask[10:60, 10:60] == 255).all(), "nothing stands out: the rectangle is repainted"
 
 
+def test_review_repaint_with_original_leaves_a_clean_bubble_alone(monkeypatch):
+    import cv2
+    import numpy as np
+
+    from app.detector import ctd_mask
+    from app.pipeline_editing import _paint_residue
+    from ctd_fake import InkModel
+
+    monkeypatch.setattr(ctd_mask, "_session", InkModel())
+    original = np.full((400, 600, 3), 160, np.uint8)
+    cv2.putText(original, "LEFT", (200, 220), cv2.FONT_HERSHEY_DUPLEX, 1.5, (0, 0, 0), 3)
+    clean = np.full((400, 600, 3), 160, np.uint8)
+    mask = np.zeros((400, 600), np.uint8)
+    _paint_residue(mask, clean, (150, 150, 450, 260), original=original)
+    assert not mask.any(), "a bubble whose letters are already gone needs no repaint"
+
+
+def test_review_repaint_with_original_erases_only_ghost_ink(monkeypatch):
+    import cv2
+    import numpy as np
+
+    from app.detector import ctd_mask
+    from app.pipeline_editing import _paint_residue
+    from ctd_fake import InkModel
+
+    monkeypatch.setattr(ctd_mask, "_session", InkModel())
+    original = np.full((400, 600, 3), 160, np.uint8)
+    cv2.putText(original, "LEFT", (200, 220), cv2.FONT_HERSHEY_DUPLEX, 1.5, (0, 0, 0), 3)
+    clean = np.full((400, 600, 3), 160, np.uint8)
+    cv2.putText(clean, "LEFT", (200, 220), cv2.FONT_HERSHEY_DUPLEX, 1.5, (50, 50, 50), 3)
+    mask = np.zeros((400, 600), np.uint8)
+    _paint_residue(mask, clean, (150, 150, 450, 260), original=original)
+    assert mask[200, 210] == 255 or mask[205, 205] == 255
+    assert (mask[150:260, 150:450] == 255).mean() < 0.6, "the bubble fill round the ghost is kept"
+
+
+def test_review_repaint_with_original_ignores_isolated_specks(monkeypatch):
+    import cv2
+    import numpy as np
+
+    from app.detector import ctd_mask
+    from app.pipeline_editing import _paint_residue
+    from ctd_fake import InkModel
+
+    monkeypatch.setattr(ctd_mask, "_session", InkModel())
+    original = np.full((400, 600, 3), 160, np.uint8)
+    cv2.putText(original, "LEFT", (200, 220), cv2.FONT_HERSHEY_DUPLEX, 1.5, (0, 0, 0), 3)
+    clean = np.full((400, 600, 3), 160, np.uint8)
+    # Isolated faint dots sitting on the old letters: model noise, not strokes.
+    # Grey, so the letter model reads no strokes and the ghost path decides.
+    ink_y, ink_x = np.where(cv2.cvtColor(original, cv2.COLOR_BGR2GRAY) < 30)
+    for y, x in list(zip(ink_y, ink_x))[::37]:
+        clean[y, x] = (50, 50, 50)
+    mask = np.zeros((400, 600), np.uint8)
+    _paint_residue(mask, clean, (150, 150, 450, 260), original=original)
+    assert not mask.any(), "single-pixel specks must not become repaint runs"
+
+
 def test_both_slices_agree_on_the_owner_even_when_one_sees_the_text_cut():
     # Slice 0 sees only the top of the bubble (1900-2050, centre in its own core); slice 1 sees it whole.
     top = _slice(0, 0, 2000, [_obj("a", 1900, 2050, "")])
@@ -296,3 +354,94 @@ def test_a_found_box_grown_over_most_of_the_slice_keeps_its_own_rectangle(monkey
                         lambda image, rect: ((0, 0, 600, 400), np.ones((400, 600), bool)))
     box = _stroke_box(np.zeros((400, 600, 3), np.uint8), (150, 150, 450, 260))
     assert (box["x1"], box["y1"], box["x2"], box["y2"]) == (150, 150, 450, 260) and box["mask"] is None
+
+
+def _luna_21_22():
+    """Former Supreme 1, slices 21-22: the narration box spans the cut.
+
+    Slice 21 (page 20) holds only the bottom sliver as an overlap-context
+    box; slice 22 (page 21) holds the whole box and translates it.
+    """
+    top = _slice(0, 0, 2103, [])
+    top["boxes"] = [{"id": "box_89", "x1": 89, "y1": 2698, "x2": 779, "y2": 2871,
+                     "overlap_context_only": True}]
+    bottom = _slice(1335, 2103, 6083, [
+        _obj("text_ca3c", 1310, 1803, "Trọng tâm của sức mạnh Võ Lâm Minh,\nlực lượng tấn công bí mật, “Ẩn Các”."),
+    ])
+    bottom["text_objects"][0]["region"] = {"x1": 26, "y1": 1310, "x2": 809, "y2": 1803}
+    return {"pages": [top, bottom]}
+
+
+def test_an_overlap_context_box_gets_a_mirror_from_the_neighbour_that_owns_it():
+    from app.ai_mode.seams import create_seam_mirrors
+
+    manifest = _luna_21_22()
+    assert create_seam_mirrors(manifest) == [(0, "text_89")]
+    mirror = manifest["pages"][0]["text_objects"][0]
+    assert mirror["region"] == {"x1": 89, "y1": 2698, "x2": 779, "y2": 2871}
+    assert mirror["source_boxes"] == ["box_89"] and mirror["translation"] == ""
+    assert mirror["seam_owner"] == {"page": 1, "id": "text_ca3c"}
+    assert create_seam_mirrors(manifest) == [], "a second pass creates nothing"
+    assert sync_seam_mirrors(manifest) == [0]
+    assert mirror["translation"].startswith("Trọng tâm của sức mạnh Võ Lâm Minh")
+    # The copy letters where the owner does, so the two halves line up --
+    # even past this slice's bottom edge, where only drawing is clipped.
+    assert mirror["region"] == {"x1": 26, "y1": 2645, "x2": 809, "y2": 3138}
+
+
+def test_an_overlap_box_with_no_matching_neighbour_gets_no_mirror():
+    from app.ai_mode.seams import create_seam_mirrors
+
+    manifest = _luna_21_22()
+    manifest["pages"][1]["text_objects"][0]["region"] = {"x1": 26, "y1": 100, "x2": 809, "y2": 300}
+    assert create_seam_mirrors(manifest) == []
+
+
+def test_a_mirror_is_never_created_from_another_mirror():
+    from app.ai_mode.seams import _owner
+
+    # Inconsistent on purpose: the only candidate in the neighbour is itself
+    # a copy, so creation must not chain copies across slices.
+    owner = _obj("o", 100, 300, "Chào")
+    mirror = _obj("m", 100, 300, "Chào", seam_owner={"page": 0, "id": "o"})
+    manifest = {"pages": [_slice(0, 0, 2000, [owner]),
+                          _slice(1232, 1000, 4000, [mirror]),
+                          _slice(1000, 3000, 5000, [])]}
+    probe = {"region": {"x1": 100, "y1": 332, "x2": 500, "y2": 532}}
+    assert _owner(manifest["pages"], 2, probe) == (1, mirror)
+    assert _owner(manifest["pages"], 2, probe, skip_mirrors=True) is None
+
+
+def test_a_seam_mirror_is_not_marked_source_missing():
+    from app.ai_mode.seams import create_seam_mirrors
+    from app.text_objects import ensure_page_text_objects
+
+    manifest = _luna_21_22()
+    manifest["pages"][0]["boxes"][0]["ocr_eligible"] = False
+    assert create_seam_mirrors(manifest) == [(0, "text_89")]
+    created, _ = ensure_page_text_objects(manifest["pages"][0])
+    assert created == 0, "the overlap box makes no ordinary object"
+    mirror = manifest["pages"][0]["text_objects"][0]
+    assert "source_missing" not in mirror, "its anchor box is outside the core by design"
+
+
+def test_a_seam_mirror_does_not_block_export_on_its_own():
+    from app.editorial_gate import editorial_preflight
+
+    def box(box_id):
+        return {"id": box_id, "x1": 0, "y1": 0, "x2": 100, "y2": 50,
+                "confidence": 0.95, "semantic_type": "speech_bubble"}
+
+    def obj(obj_id, boxes, translation, **extra):
+        return {"id": obj_id, "source_boxes": boxes, "ocr_text": "hello world",
+                "translation": translation, "region": {"x1": 0, "y1": 0, "x2": 100, "y2": 50}, **extra}
+
+    mirror = obj("m", ["box_m"], "", seam_owner={"page": 1, "id": "o"})
+    owner = obj("o", ["box_o"], "Chào thế giới")
+    manifest = {"pages": [{"boxes": [box("box_m")], "text_objects": [mirror]},
+                          {"boxes": [box("box_o")], "text_objects": [owner]}]}
+    assert editorial_preflight(manifest)["blocker_count"] == 0
+    owner["translation"] = ""
+    blockers = editorial_preflight(manifest)["blockers"]
+    assert [item["kind"] for item in blockers] == ["untranslated_story_object"], \
+        "the owner still blocks once; the copy never double-counts it"

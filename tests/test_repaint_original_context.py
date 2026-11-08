@@ -236,17 +236,28 @@ def test_add_manual_boxes_adds_every_box_with_one_reinpaint(tmp_path: Path, monk
 
 
 def test_review_fixes_apply_preserve_boxes_and_repaint_in_one_reinpaint(tmp_path: Path, monkeypatch):
+    import cv2
+
     import app.config as config
     import app.manifest_utils as manifests
     import app.pipeline_editing as editing
+    from app.detector import ctd_mask
+    from ctd_fake import InkModel
 
+    # The repaint only marks leftover ink: the original carries a black
+    # letter in the first repaint rect, the clean still carries its ghost.
+    monkeypatch.setattr(ctd_mask, "_session", InkModel())
     chapter = "abcd1234"
     raw, processed, output = tmp_path / "raw", tmp_path / "processed", tmp_path / "output"
     for root in (raw, processed, output):
         (root / chapter).mkdir(parents=True)
     original = raw / chapter / "page.png"
-    write_image(original, np.full((60, 80, 3), 10, dtype=np.uint8))
-    write_image(processed / chapter / "clean_page.png", np.full((60, 80, 3), 100, dtype=np.uint8))
+    original_img = np.full((60, 80, 3), 160, dtype=np.uint8)
+    cv2.putText(original_img, "X", (10, 46), cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 0, 0), 3)
+    write_image(original, original_img)
+    clean_img = np.full((60, 80, 3), 160, dtype=np.uint8)
+    cv2.putText(clean_img, "X", (10, 46), cv2.FONT_HERSHEY_DUPLEX, 1.0, (50, 50, 50), 3)
+    write_image(processed / chapter / "clean_page.png", clean_img)
     for module in (config, manifests, editing):
         monkeypatch.setattr(module, "PROCESSED_DIR", processed, raising=False)
     monkeypatch.setattr(config, "OUTPUT_DIR", output)

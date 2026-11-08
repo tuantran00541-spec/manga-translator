@@ -32,7 +32,7 @@ ROLES = frozenset({"system", "user", "assistant"})
 REASONING_BUDGETS = {"none": 0, "minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}
 
 
-STAGES = frozenset({"scan", "glossary", "review", "translate", "polish"})  # A.I mode checkpoints a client may name
+STAGES = frozenset({"scan", "glossary", "review", "translate", "retranslate", "polish"})  # A.I mode checkpoints a client may name
 MAX_JUDGE_STATE_CHARS = 8000  # one translated line with its neighbours and notes
 MAX_JUDGE_QUESTIONS = 8
 

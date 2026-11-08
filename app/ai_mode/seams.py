@@ -120,7 +120,7 @@ def _rect(obj: dict, offset: int) -> tuple[int, int, int, int] | None:
         return None
 
 
-def _owner(pages: list, page_index: int, obj: dict):
+def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = False):
     """(page index, object) of the slice whose core holds the object's centre, when it has the same object."""
     page = pages[page_index]
     core = _core(page)
@@ -136,8 +136,11 @@ def _owner(pages: list, page_index: int, obj: dict):
             continue
         # The two slices may box the same text a little differently, so containment counts, not IoU.
         # A line joined into another is lettered by that one, whose region covers it.
+        # A mirror is a copy, not a source: creating from one would chain copies
+        # across slices instead of lettering from the slice that owns the text.
         best = max(((candidate, other_rect) for candidate in other.get("text_objects") or []
                     if isinstance(candidate, dict) and not candidate.get("joined_into")
+                    and not (skip_mirrors and candidate.get("seam_owner"))
                     and (other_rect := _rect(candidate, other_core[0]))),
                    key=lambda item: _shared(rect, item[1]), default=None)
         if best is None or _shared(rect, best[1]) < OWNER_SHARE:
@@ -147,6 +150,80 @@ def _owner(pages: list, page_index: int, obj: dict):
         if other_core[1] <= center < other_core[2]:
             return other_index, best[0]
     return None
+
+
+def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
+    """Give each overlap-context box its own mirror object; returns what was created.
+
+    A detector box lying entirely outside its slice's stitch core is kept
+    only as context: clean never erases it and ``ensure_page_text_objects``
+    makes no object for it, so the text it holds stays in English on that
+    slice even though the neighbouring slice translates it. The mirror
+    anchors the fragment here with the owner's id; the translate step
+    already skips such mirrors (``lettered_elsewhere``) and the existing
+    seam sync then letters each one exactly as its owning slice does.
+    A box with no matching neighbour object gets nothing: with no owner
+    there is no lettering to copy.
+    """
+    from app.text_objects import DEFAULT_TEXT_OBJECT_STYLE, _auto_object_id, source_box_ids
+
+    pages = manifest.get("pages") or []
+    created: list[tuple[int, str]] = []
+    for page_index, page in enumerate(pages):
+        if not isinstance(page, dict) or page.get("skipped"):
+            continue
+        covered = {ref for obj in page.get("text_objects") or [] if isinstance(obj, dict)
+                   for ref in source_box_ids(obj)}
+        # One text, one mirror per slice: two fragment boxes of the same text
+        # would letter it twice, so only the larger fragment anchors it.
+        by_owner: dict[tuple[int, str], tuple[dict, dict]] = {}
+        for box in page.get("boxes") or []:
+            if not isinstance(box, dict) or not box.get("overlap_context_only") or box.get("removed"):
+                continue
+            box_id = str(box.get("id") or "")
+            if not box_id or box_id in covered:
+                continue
+            try:
+                region = {"x1": int(box["x1"]), "y1": int(box["y1"]),
+                          "x2": int(box["x2"]), "y2": int(box["y2"])}
+            except (KeyError, TypeError, ValueError):
+                continue
+            if region["x2"] <= region["x1"] or region["y2"] <= region["y1"]:
+                continue
+            found = _owner(pages, page_index, {"region": region}, skip_mirrors=True)
+            if found is None:
+                continue
+            owner_page, owner = found
+            key = (owner_page, str(owner.get("id")))
+            if key in by_owner and _area((region["x1"], region["y1"], region["x2"], region["y2"])) <= _area(
+                    (by_owner[key][0]["x1"], by_owner[key][0]["y1"],
+                     by_owner[key][0]["x2"], by_owner[key][0]["y2"])):
+                continue
+            by_owner[key] = (box, owner)
+        for (owner_page, owner_id), (box, owner) in by_owner.items():
+            region = {"x1": int(box["x1"]), "y1": int(box["y1"]),
+                      "x2": int(box["x2"]), "y2": int(box["y2"])}
+            box_id = str(box.get("id"))
+            ocr_text = str(box.get("ocr_text") or "")
+            page.setdefault("text_objects", []).append({
+                "id": _auto_object_id(box_id),
+                "shape": "rectangle",
+                "region": copy.deepcopy(region),
+                "source_boxes": [box_id],
+                "ocr_text": ocr_text,
+                "translation": "",
+                "style": dict(DEFAULT_TEXT_OBJECT_STYLE),
+                "font_selection_mode": "auto",
+                "font_match": None,
+                "font_ai_id": None,
+                "origin": "detector",
+                "auto_generated": True,
+                "auto_geometry": copy.deepcopy(region),
+                "auto_ocr_text": ocr_text,
+                "seam_owner": {"page": owner_page, "id": owner_id},
+            })
+            created.append((page_index, _auto_object_id(box_id)))
+    return created
 
 
 def seam_mirror_ids(manifest: dict, page_index: int) -> set[str]:

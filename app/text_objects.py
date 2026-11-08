@@ -137,6 +137,10 @@ def sync_existing_auto_text_object(page: dict, box: dict) -> bool:
             continue
         if box_id not in source_box_ids(obj):
             continue
+        # A seam mirror's region is the owner's lettering shifted onto this
+        # slice; re-reading its anchor box must not drag it back to the box.
+        if obj.get("seam_owner"):
+            continue
         changed = _sync_existing_auto_object(obj, box, region) or changed
     return changed
 
@@ -162,9 +166,15 @@ def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
     for box in boxes:
         if not isinstance(box, dict) or box.get("removed"):
             continue
-        if box.get("ocr_eligible") is False:
-            continue
         box_id = str(box.get("id") or "")
+        if box.get("ocr_eligible") is False:
+            # An overlap-context box anchors a seam mirror by design: the
+            # mirror's source box is outside this slice's core, so it is
+            # never "missing" just because no ordinary object uses it.
+            anchor = covered.get(box_id) if box_id else None
+            if isinstance(anchor, dict) and anchor.get("seam_owner"):
+                active_box_ids.add(box_id)
+            continue
         if not box_id:
             continue
         region = _region_from_box(box)

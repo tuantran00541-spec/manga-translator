@@ -1,0 +1,200 @@
+"""Family F: the text re-translate must actually run on the Manga Cloud path.
+
+Run 42492185657 (Luna re-run 3) shows the break: every one of its 98
+``translate`` gateway rows carries one image, and a re-translate call carries
+none, so the re-translate never ran and Luna's vision wording stood everywhere.
+Three gaps chained to cause it: the cost-run script never sent
+translate_provider/translate_model, the cloud branch of /api/ai_mode/start
+dropped them even when sent, and the gateway routed the re-translate under the
+same "translate" stage as the vision read, so no second model could answer it.
+"""
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from PIL import Image
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import app.routers.ai_mode as ai_mode_router
+import app.translation.vision as vision
+from app.ai_mode.vision_json import VisionJSONResult, stage_headers
+from app.cloud import cloud_provider
+from app.translation.vision import VisionPageTranslator, VisionTranslationResult, retranslate_text
+
+CHAPTER_URL = "https://asurascans.com/comics/the-former-supreme-ab39de10/chapter/1"
+TRANSLATE_MODEL = "xiaomi/mimo-v2.6-flash"
+
+
+def _load_ai_cost_run():
+    spec = importlib.util.spec_from_file_location("ai_cost_run", ROOT / "scripts" / "ai_cost_run.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_retranslate_is_its_own_gateway_stage(monkeypatch):
+    from gateway.app import STAGES, upstream_from_env
+
+    assert "retranslate" in STAGES
+    monkeypatch.setenv("GATEWAY_STAGE_MODELS",
+                       '[{"stage": "translate", "model": "deepseek/deepseek-v4.1-flash-1017",'
+                       ' "price": [0.07875, 0.315, 0.001575]},'
+                       ' {"stage": "retranslate", "model": "xiaomi/mimo-v2.6-flash",'
+                       ' "price": [0.147, 0.294, 0.00294]}]')
+    upstream = upstream_from_env()
+    assert [route.model for route in upstream.chain("translate")] == ["deepseek/deepseek-v4.1-flash-1017"]
+    assert [route.model for route in upstream.chain("retranslate")] == ["xiaomi/mimo-v2.6-flash"]
+    monkeypatch.setenv("GATEWAY_STAGE_MODELS", '[{"stage": "read", "model": "x", "price": [0, 0]}]')
+    with pytest.raises(ValueError):
+        upstream_from_env()
+
+
+def test_retranslate_text_names_the_retranslate_stage(monkeypatch):
+    seen = {}
+
+    def fake_request(provider, model, api_key, prompt, images, **kwargs):
+        seen.update(provider=provider, model=model, images=images, stage=kwargs.get("stage"), prompt=prompt)
+        return VisionJSONResult({"translations": [{"id": "a", "translated_text": "Xin chào"}]}, {}, None)
+
+    monkeypatch.setattr(vision, "request_vision_json", fake_request)
+    out = retranslate_text(cloud_provider(), TRANSLATE_MODEL, "job-token", [("a", "Hello")],
+                           source_lang="en", target_lang="vi")
+    assert out == {"a": "Xin chào"}
+    assert seen["stage"] == "retranslate", "the gateway must not route this to the vision model"
+    assert seen["images"] == [], "a re-translate carries no image, unlike the vision read"
+    assert seen["model"] == TRANSLATE_MODEL
+    assert '"source":"Hello"' in seen["prompt"]
+    assert stage_headers(cloud_provider(), "retranslate") == {"X-MT-Stage": "retranslate"}
+
+
+def _slice_images(tmp_path):
+    original = tmp_path / "original.png"
+    clean = tmp_path / "clean.png"
+    Image.new("RGB", (160, 120), "white").save(original)
+    Image.new("RGB", (160, 120), "white").save(clean)
+    return original, clean
+
+
+def _vision_answer(monkeypatch):
+    """The vision read answers with its own wording, role and container."""
+
+    def fake_openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
+        result = VisionTranslationResult({"1": "vision wording"}, self.model, {}, None)
+        data = {"translations": [{"id": "1", "translated_text": "vision wording",
+                                  "source": "Hello", "role": "dialogue", "container": "bubble"}]}
+        return result, data
+
+    monkeypatch.setattr(VisionPageTranslator, "_openai", fake_openai)
+
+
+def test_translate_batch_retranslates_each_batch(tmp_path, monkeypatch):
+    original, clean = _slice_images(tmp_path)
+    _vision_answer(monkeypatch)
+    retold = {}
+
+    def fake_retranslate(provider, model, api_key, pairs, **kwargs):
+        retold.update(provider=provider, model=model, pairs=pairs, stage=kwargs.get("stage"))
+        return {"text_1": "mimo wording"}
+
+    monkeypatch.setattr(vision, "retranslate_text", fake_retranslate)
+    translator = VisionPageTranslator(
+        cloud_provider(), "deepseek/deepseek-v4.1-flash-1017",
+        translate_provider=cloud_provider(), translate_model=TRANSLATE_MODEL,
+        translate_api_key="job-token",
+    )
+    answer = translator.translate_page(
+        original, clean, [{"id": "text_1", "text": "Hello", "region": [10, 20, 50, 40]}],
+        api_key="job-token", source_lang="en", target_lang="vi",
+    )
+    assert retold["pairs"] == [("text_1", "Hello")]
+    assert retold["model"] == TRANSLATE_MODEL
+    assert answer.translations == {"text_1": "mimo wording"}, "the text model's wording replaces the vision wording"
+    # Role/container still come from the vision read, so the font does not move.
+    assert answer.roles == {"text_1": "dialogue"} and answer.containers == {"text_1": "bubble"}
+
+
+def test_translate_batch_without_a_text_model_keeps_vision_wording(tmp_path, monkeypatch):
+    original, clean = _slice_images(tmp_path)
+    _vision_answer(monkeypatch)
+    called = []
+    monkeypatch.setattr(vision, "retranslate_text", lambda *a, **k: called.append(True) or {})
+    translator = VisionPageTranslator(cloud_provider(), "deepseek/deepseek-v4.1-flash-1017")
+    answer = translator.translate_page(
+        original, clean, [{"id": "text_1", "text": "Hello", "region": [10, 20, 50, 40]}],
+        api_key="job-token", source_lang="en", target_lang="vi",
+    )
+    assert not called
+    assert answer.translations == {"text_1": "vision wording"}
+
+
+class _Jobs:
+    def __init__(self):
+        self.settings = None
+
+    def active_job(self):
+        return None
+
+    def start(self, settings, *, provider, api_key, on_finish=None):
+        self.settings = settings
+        return {"job_id": "job-1"}
+
+
+def _start_cloud(monkeypatch, **overrides):
+    jobs = _Jobs()
+    monkeypatch.setattr(ai_mode_router, "ai_mode_jobs", jobs)
+    # URL validation does a live DNS lookup; the wiring under test starts after it.
+    monkeypatch.setattr(ai_mode_router, "validate_url", lambda url: None)
+    monkeypatch.setattr(ai_mode_router.cloud, "reserve_job",
+                        lambda: {"job_token": "tok", "cost_cap_usd": 0.30,
+                                 "model": "deepseek/deepseek-v4.1-flash-1017"})
+    monkeypatch.setattr(ai_mode_router, "bind_cloud_job", lambda *a: "bound")
+    monkeypatch.setattr(ai_mode_router, "unbind_cloud_job", lambda token: None)
+    request = ai_mode_router.AIModeStartRequest(
+        url=CHAPTER_URL, provider="manga-cloud", **overrides)
+    asyncio.run(ai_mode_router.start_ai_mode(request))
+    return jobs.settings
+
+
+def test_cloud_start_carries_the_retranslate_into_job_settings(monkeypatch):
+    settings = _start_cloud(monkeypatch, translate_provider="manga-cloud",
+                            translate_model=TRANSLATE_MODEL)
+    assert settings.translate_provider == "manga-cloud"
+    assert settings.translate_model == TRANSLATE_MODEL
+    assert settings.model == "deepseek/deepseek-v4.1-flash-1017"
+
+
+def test_cloud_start_refuses_a_direct_retranslate_provider(monkeypatch):
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        _start_cloud(monkeypatch, translate_provider="deepseek",
+                     translate_model="deepseek/deepseek-v4.1-flash-1017")
+    assert exc.value.status_code == 400
+
+
+def test_cloud_start_without_retranslate_fields_leaves_them_unset(monkeypatch):
+    settings = _start_cloud(monkeypatch)
+    assert settings.translate_provider is None and settings.translate_model is None
+
+
+def test_ai_cost_run_posts_the_retranslate_by_default():
+    module = _load_ai_cost_run()
+    args = module._parser().parse_args(["https://example.com/chapter/1", "--out", "out"])
+    assert args.translate_provider == "manga-cloud"
+    assert args.translate_model == TRANSLATE_MODEL
+    payload = module._start_payload(args)
+    assert payload == {"url": "https://example.com/chapter/1", "provider": "manga-cloud",
+                       "polish": False, "translate_provider": "manga-cloud",
+                       "translate_model": TRANSLATE_MODEL}
+    assert module._start_payload(SimpleNamespace(
+        url="https://example.com/chapter/1", polish=True,
+        translate_provider="", translate_model="")) == {
+        "url": "https://example.com/chapter/1", "provider": "manga-cloud", "polish": True}

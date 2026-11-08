@@ -521,3 +521,15 @@ def test_lines_outside_every_box_come_back_as_pixel_boxes(tmp_path, monkeypatch)
         source_lang="en", target_lang="vi")
     assert result.unboxed == ((40, 300, 361, 361),)
     assert result.speakers == {"top": "Sunny"}, "speakers come back under the real ids"
+
+
+def test_translate_prompt_lists_map_labels_and_place_signs_as_unboxed():
+    # Former Supreme 1, slices 91/93/103: map labels and a legible place sign were left
+    # untranslated because the prompt only required dialogue/narration/captions in "unboxed"
+    # and let "signs that are only scenery" stay out; a legible place sign is not scenery.
+    from app.translation.context import system_prompt
+
+    prompt = system_prompt("Vietnamese", "vi")
+    assert "labels on a map or diagram" in prompt
+    assert "a legible sign naming a place" in prompt
+    assert "A sign is only scenery when it is illegible or purely decorative" in prompt

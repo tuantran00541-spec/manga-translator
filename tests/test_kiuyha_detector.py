@@ -320,3 +320,93 @@ def test_one_wide_text_with_word_gaps_stays_whole():
         letters[top:top + 20, 345:680] = True
     box = _text_box(0, 0, 700, 140, 0.9, letters.copy(), "kiuyha", letters)
     assert len(_split_sideways(box)) == 1, "a word gap is not a gutter between texts"
+
+
+class _FixedSession(_Session):
+    """End-to-end head returning exactly the boxes given, at the scores given."""
+
+    def __init__(self, boxes):
+        super().__init__([1, 3, 1280, 1280])
+        self.boxes = boxes
+
+    def run(self, _names, feeds):
+        self.blobs.append(feeds["images"])
+        rows = np.zeros((1, 300, 6), np.float32)
+        for i, (x1, y1, x2, y2, score) in enumerate(self.boxes):
+            rows[0, i] = [x1, y1, x2, y2, score, 0]
+        return [rows]
+
+
+def _blind_ctd(monkeypatch):
+    """The letter model reads nothing: dark-on-dark lettering it is blind to."""
+    monkeypatch.setattr(ctd_mask, "_session", InkModel(dark_below=0))
+
+
+def test_a_confident_box_the_letter_model_cannot_read_is_kept_whole(monkeypatch):
+    # Former Supreme 1, slice 93: SHANDONG/ANHUI/JIANGXI/FUJIAN score 0.72-0.86 with the box
+    # model and ~0.0 with the letter model, so text_boxes dropped them and the labels stayed English.
+    _blind_ctd(monkeypatch)
+    image = np.full((1280, 1280, 3), (200, 180, 160), np.uint8)
+    cv2.putText(image, "SHANDONG", (100, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (60, 50, 40), 4)
+    boxes = KiuyhaTextDetector("unused", session=_BlobSession()).text_boxes(image)
+    assert len(boxes) == 1
+    box = boxes[0]
+    assert box.mask.any() and (box.mask > 0).all(), "a kept box is masked whole, so it is erased and read"
+    assert box.letters is None, "no letters were read; downstream falls back to the box extent"
+
+
+def test_one_connected_shape_the_letter_model_cannot_read_is_still_dropped(monkeypatch):
+    # A window lattice scores 0.52 with the box model on Former Supreme 1, slice 74: one
+    # connected shape, not several letters, so the whole-box mask must not keep it.
+    _blind_ctd(monkeypatch)
+    image = np.full((1280, 1280, 3), (230, 220, 210), np.uint8)
+    for x in range(100, 301, 40):
+        cv2.line(image, (x, 100), (x, 260), (60, 50, 40), 6)
+    for y in range(100, 261, 40):
+        cv2.line(image, (100, y), (300, y), (60, 50, 40), 6)
+    boxes = KiuyhaTextDetector("unused", session=_BlobSession()).text_boxes(image)
+    assert boxes == []
+
+
+def test_a_faint_box_the_letter_model_cannot_read_is_still_dropped(monkeypatch):
+    # The keep-bar stays high: a 0.4 box over art the letter model cannot read is not text worth erasing.
+    _blind_ctd(monkeypatch)
+    image = np.full((1280, 1280, 3), (200, 180, 160), np.uint8)
+    image[100:160, 100:300] = (60, 50, 40)
+    boxes = KiuyhaTextDetector("unused", session=_FixedSession([(100, 100, 300, 160, 0.4)])).text_boxes(image)
+    assert boxes == []
+
+
+def test_a_vertical_sign_is_found_when_the_upright_passes_see_nothing(monkeypatch):
+    # Former Supreme 1, slice 103: the upright passes find no box at all for the vertical
+    # "ZHEJIANG PROVINCE" sign, but the sideways passes score it 0.68-0.82.
+    _blind_ctd(monkeypatch)
+    image = np.full((900, 300, 3), (200, 180, 160), np.uint8)
+    detector = KiuyhaTextDetector("unused", session=_FixedSession([]))
+    # One upright text at (50, 699)-(150, 799): clockwise it reads as turned (100, 50)-(200, 150),
+    # counter-clockwise as turned (699, 149)-(799, 249). Both map back to the same upright box.
+    sideways = iter([[(100, 50, 200, 150, 0.8)], [(699, 149, 799, 249, 0.7)]])
+
+    def raw_boxes(blob_image):
+        # The sideways image is 300 tall and 900 wide; the upright one is 900 tall and 300 wide.
+        if blob_image.shape[1] > blob_image.shape[0]:
+            return next(sideways)
+        return []
+
+    monkeypatch.setattr(detector, "raw_boxes", raw_boxes)
+    found = detector.detect_slice(image)
+    assert len(found) == 1, "both sideways passes map onto the one upright box"
+    from app.knobs import knob
+
+    pad = knob("detect.box_pad")
+    assert found[0][:4] == (50 - pad, 699 - pad, 150 + pad, 799 + pad)
+    assert found[0][4] == 0.8
+
+
+def test_sideways_boxes_below_the_page_bar_are_not_kept(monkeypatch):
+    _blind_ctd(monkeypatch)
+    image = np.full((900, 300, 3), (200, 180, 160), np.uint8)
+    detector = KiuyhaTextDetector("unused", session=_FixedSession([]))
+    monkeypatch.setattr(detector, "raw_boxes",
+                        lambda blob_image: [(100, 50, 200, 150, 0.4)] if blob_image.shape[1] > blob_image.shape[0] else [])
+    assert detector.detect_slice(image) == []

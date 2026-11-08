@@ -16,6 +16,7 @@ from app.manifest_utils import (
 from app.render.identity import render_input_signature, stamp_render_artifact
 from app.render.font_selection import resolve_object_font
 from app.render.page_renderer import cleanup_tmp, render_boxes_legacy, render_text_objects, style_get
+from app.render.size_bands import chapter_size_bands
 from app.schemas import RenderRequest
 from app.security import validate_chapter_id
 from app.region_policy import geometry_center_in_regions, page_preserve_regions, text_object_in_preserve_region
@@ -63,6 +64,7 @@ def _render_snapshot(
     page: dict,
     drafts: dict,
     styles: dict[str, dict],
+    size_bands: dict | None = None,
 ) -> int:
     text_objects = page.get("text_objects") or []
     if text_objects:
@@ -92,6 +94,7 @@ def _render_snapshot(
             styles["corner_radii"],
             styles["horizontal_aligns"],
             styles["vertical_aligns"],
+            size_bands=size_bands,
         )
     legacy_page = copy.deepcopy(page)
     preserve_regions = page_preserve_regions(page)
@@ -176,7 +179,7 @@ def _persist_legacy_drafts(manifest: dict, req: RenderRequest, styles: dict[str,
                 draft[field] = bool(value) if field == "bold" else value
 
 
-def _load_render_snapshot(req: RenderRequest) -> tuple[dict, dict, str]:
+def _load_render_snapshot(req: RenderRequest) -> tuple[dict, dict, str, dict]:
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
         pages = manifest.get("pages", [])
@@ -188,11 +191,14 @@ def _load_render_snapshot(req: RenderRequest) -> tuple[dict, dict, str]:
         if page.get("process_required"):
             raise HTTPException(409, "Cannot render this page before processing")
         drafts = copy.deepcopy(manifest.get("drafts", {}))
+        # The chapter's own body-lettering median, so one chapter reads
+        # as one size; the manifest holds every page, this one included.
+        size_bands = chapter_size_bands(pages)
         try:
             signature = render_input_signature(manifest, req.page_index)
         except FileNotFoundError as exc:
             raise HTTPException(404, "Base image not found. Hãy chạy xử lý trang trước khi kết xuất.") from exc
-    return page, drafts, signature
+    return page, drafts, signature, size_bands
 
 
 def _commit_render(
@@ -240,7 +246,7 @@ def _commit_render(
 )
 def render_page(req: RenderRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    page, drafts, snapshot_signature = _load_render_snapshot(req)
+    page, drafts, snapshot_signature, size_bands = _load_render_snapshot(req)
     base_value = page.get("clean") or page.get("original")
     if not base_value:
         raise HTTPException(400, "Page has no image to render onto")
@@ -260,7 +266,7 @@ def render_page(req: RenderRequest) -> dict:
         raise HTTPException(500, "Cannot open base image") from exc
 
     styles = _request_style_maps(req)
-    rendered_count = _render_snapshot(image, req, page, drafts, styles)
+    rendered_count = _render_snapshot(image, req, page, drafts, styles, size_bands=size_bands)
 
     out_dir = OUTPUT_DIR / req.chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)

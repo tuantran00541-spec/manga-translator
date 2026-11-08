@@ -27,8 +27,9 @@ on:
         description: 'Models per checkpoint, in fallback order: [{"stage":"review","model":"...","price":[in,out],"effort":"none"}]'
         required: false
         # qwen3.7-flash scans and checks residue (cheapest reader that takes images, no thinking); muse reads
-        # names and terms; luna translates.
-        default: '[{"stage":"scan","model":"alibaba/qwen3.7-flash","price":[0.0315,0.1365,0.0063],"effort":"none"},{"stage":"scan","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"review","model":"alibaba/qwen3.7-flash","price":[0.0315,0.1365,0.0063],"effort":"none"},{"stage":"review","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"translate","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"translate","model":"xiaomi/mimo-v2.6-flash","price":[0.147,0.294,0.00294]}]'
+        # names and terms; 1017 translates (MiniRouter catalog 2026-11-05: 0.07875/0.315/0.001575 per 1M);
+        # mimo re-translates the wording as a second opinion and backs up the vision translate.
+        default: '[{"stage":"scan","model":"alibaba/qwen3.7-flash","price":[0.0315,0.1365,0.0063],"effort":"none"},{"stage":"scan","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"glossary","model":"openai/gpt-6-luna","price":[0.105,0.525,0.0105]},{"stage":"review","model":"alibaba/qwen3.7-flash","price":[0.0315,0.1365,0.0063],"effort":"none"},{"stage":"review","model":"meta/muse-spark-1.2-contributor","price":[0.105,0.21,0.0021],"effort":"none"},{"stage":"translate","model":"deepseek/deepseek-v4.1-flash-1017","price":[0.07875,0.315,0.001575]},{"stage":"translate","model":"xiaomi/mimo-v2.6-flash","price":[0.147,0.294,0.00294]},{"stage":"retranslate","model":"xiaomi/mimo-v2.6-flash","price":[0.147,0.294,0.00294]}]'
 
 permissions:
   contents: write
