@@ -106,18 +106,12 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
         job_token = str(reservation["job_token"])
         bound = bind_cloud_job(provider, job_token)
         try:
-            result = ai_mode_jobs.start(settings, provider=provider, api_key=job_token, on_finish=_cloud_finish_hook(job_token))
+            return ai_mode_jobs.start(settings, provider=provider, api_key=job_token, on_finish=_cloud_finish_hook(job_token))
         except RuntimeError as exc:
             await run_in_threadpool(cloud.finish_job, job_token, "cancelled")
             raise HTTPException(409, str(exc)) from exc
         finally:
             unbind_cloud_job(bound)
-        overrides = {"model": settings.model, "images_per_request": 2}
-        # Reservation cap replaces the request budget only when the gateway sets one.
-        if reservation.get("cost_cap_usd"):
-            overrides["budget_usd"] = settings.budget_usd
-        result["overrides_applied"] = overrides
-        return result
     # Resolve the provider and key before downloading anything, so a missing
     # key fails in a second instead of after the chapter was fetched.
     try:
