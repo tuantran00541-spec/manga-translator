@@ -26,22 +26,33 @@ def set_letter_bounds(page: dict) -> None:
         if not isinstance(obj, dict):
             continue
         rects = []
+        box_rects = []
         for ref in source_box_ids(obj):
             box = boxes.get(ref)
-            mask = decode_mask_value(box.get("mask")) if box else None
+            if not box:
+                continue
             try:
                 x1, y1, x2, y2 = (int(box[k]) for k in ("x1", "y1", "x2", "y2"))
             except (KeyError, TypeError, ValueError):
                 continue
-            if mask is None or mask.shape != (y2 - y1, x2 - x1) or not mask.any():
-                continue
-            ys, xs = mask.nonzero()
-            rects.append((x1 + int(xs.min()), y1 + int(ys.min()), x1 + int(xs.max()) + 1, y1 + int(ys.max()) + 1))
-        if rects and len(rects) == len(source_box_ids(obj)):
-            obj["letter_bounds"] = {"x1": min(r[0] for r in rects), "y1": min(r[1] for r in rects),
-                                    "x2": max(r[2] for r in rects), "y2": max(r[3] for r in rects)}
-        else:
-            obj.pop("letter_bounds", None)
+            mask = decode_mask_value(box.get("mask"))
+            if mask is not None and mask.shape == (y2 - y1, x2 - x1) and mask.any():
+                ys, xs = mask.nonzero()
+                rects.append((x1 + int(xs.min()), y1 + int(ys.min()), x1 + int(xs.max()) + 1, y1 + int(ys.max()) + 1))
+            else:
+                box_rects.append((x1, y1, x2, y2))
+        # One unusable box must not erase the extent the usable boxes still prove.
+        # A detection box with no usable mask still bounds the lettering it
+        # detected; without any bounds the fit has only the region-wide
+        # attempt, so the box extent beats no bounds at all. Mask extents
+        # win where they exist: they are the letters, while a box may hold
+        # outline and margin round them.
+        use = rects or box_rects
+        if use:
+            obj["letter_bounds"] = {"x1": min(r[0] for r in use), "y1": min(r[1] for r in use),
+                                    "x2": max(r[2] for r in use), "y2": max(r[3] for r in use)}
+        # Otherwise keep whatever bounds the object already had: no usable
+        # box must erase an extent proven earlier.
 
 
 def _core(page: dict) -> tuple[int, int, int] | None:

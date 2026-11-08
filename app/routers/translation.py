@@ -226,7 +226,11 @@ def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
             candidate["source_ink"] = ink
         # A lone "!" or "?" is one or two ink pieces, too few to trust in longer text but all the letters it has.
         short = len("".join(str(candidate.get("text") or "").split())) <= 2
-        cap = source_cap_px(raw, candidate["region"], min_pieces=1 if short else 3)
+        # The cap is the source lettering's size, so it is measured where
+        # the lettering was (fit_region), never over the whole region:
+        # art strokes in a roomy region read as giant letters otherwise.
+        cap = source_cap_px(raw, candidate["region"], min_pieces=1 if short else 3,
+                            bounds=candidate.get("fit_region"))
         if cap:
             candidate["source_cap_px"] = cap
             candidate["max_chars"] = char_budget(font_path, candidate.get("fit_region") or candidate["region"], cap)

@@ -139,11 +139,17 @@ def _contrast(a, b) -> float:
     return (la + 0.05) / (lb + 0.05)
 
 
-def _mean_color(image: Image.Image, box) -> tuple[int, int, int]:
-    crop = np.asarray(image.convert("RGB").crop(tuple(int(v) for v in box)))
-    if crop.size == 0:
-        return (255, 255, 255)
-    return tuple(int(v) for v in crop.reshape(-1, 3).mean(axis=0))
+def _light_background_grey(image: Image.Image, box) -> float:
+    """75th-percentile grey of the box: the paper the glyphs will touch.
+
+    A box mean mixes the bubble paper with dark art around it, so black
+    text on a light bubble reads low-contrast and gets a thick outline
+    it does not need. The lightest quarter is the paper, not the art.
+    """
+    grey = np.asarray(image.convert("L").crop(tuple(int(v) for v in box)))
+    if grey.size == 0:
+        return 255.0
+    return float(np.percentile(grey, 75))
 
 
 def get_font_path(font_name: str = "default") -> Path:
@@ -308,7 +314,8 @@ def render_text_in_box(
         except (ValueError, TypeError):
             stroke_w = RENDER_AUTO_STROKE_WIDTH
 
-    if _contrast(text_color, _mean_color(image, (x1, y1, x2, y2))) < LOW_CONTRAST_RATIO:
+    bg_grey = _light_background_grey(image, (x1, y1, x2, y2))
+    if _contrast(text_color, (bg_grey, bg_grey, bg_grey)) < LOW_CONTRAST_RATIO:
         # Letters close to the background colour get a thick contrasting outline.
         stroke_w = max(stroke_w, LOW_CONTRAST_STROKE_WIDTH)
 
@@ -348,6 +355,7 @@ def render_text_in_box(
     else:
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
         line_centres = []
+        retry_adopted = False
         fit_stats: dict = {}
         actual_size, fitted_lines, fits_readably, (x1, y1, x2, y2) = auto_fit(
             draw, text, (x1, y1, x2, y2), image.size, font_path_str, padding=padding, stroke_w=stroke_w,
@@ -358,6 +366,43 @@ def render_text_in_box(
         raw_w, raw_h = x2 - x1, y2 - y1
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+        # A band fit that fails — outright, or below the source floor —
+        # while the rectangle fit holds it is a degenerate-bands failure,
+        # not a too-long-text failure; retry without bands before refusing.
+        # Slice 81's cleaned outline trips it on the readable floor (the
+        # waist check fires for the region box but not the trimmed one),
+        # so the retry covers both failures, not just the floor ratio.
+        # The retry is skipped for a roomy fallback attempt when a tight
+        # letter box exists: a rectangle fit there lands the text on the
+        # region, not the bubble, and the ranking prefers it over the
+        # tight attempt that placed the text correctly (slice 25's region
+        # attempt at 200px outranking the tight 28px one).
+        _letter_area = ((source_letter_box[2] - source_letter_box[0])
+                        * (source_letter_box[3] - source_letter_box[1])
+                        if source_letter_box is not None else None)
+        _retry_roomy = (_letter_area is not None
+                        and (x2 - x1) * (y2 - y1) > 4 * _letter_area)
+        if (curved and fit_stats.get("bands_used") and not _retry_roomy
+                and (not fits_readably
+                     or (source_cap_px and not enlarge and fit_stats.get("below_floor_ratio")))):
+            retry_stats: dict = {}
+            retry_centres: list = []
+            r_size, r_lines, r_fits, (rx1, ry1, rx2, ry2) = auto_fit(
+                draw, text, (x1, y1, x2, y2), image.size, font_path_str, padding=padding,
+                stroke_w=stroke_w, source_cap_px=source_cap_px, enlarge=enlarge,
+                opaque_caption=opaque_caption, curved=False, image=image, centered=centred,
+                container=container, source_letter_box=source_letter_box,
+                centres_out=retry_centres, stats_out=retry_stats,
+                min_source_share=min_source_share)
+            if r_fits and not retry_stats.get("below_floor_ratio"):
+                actual_size, fitted_lines, fits_readably = r_size, r_lines, r_fits
+                x1, y1, x2, y2 = rx1, ry1, rx2, ry2
+                line_centres = retry_centres
+                fit_stats = retry_stats
+                retry_adopted = True
+                raw_w, raw_h = x2 - x1, y2 - y1
+                pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+                box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
         if not fits_readably:
             raise ValueError(
                 "Translation does not fit at the minimum readable font size; "
@@ -375,8 +420,9 @@ def render_text_in_box(
         lines = _wrap_text(draw, text, font, box_w, balance=True)
         lines_source = "balanced"
         draw_spans = None
-        if centred and curved:
-            bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad))
+        if centred and curved and not retry_adopted:
+            bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
+                                  letter_box=source_letter_box)
             if bands is not None:
                 # Evened lines can push a long line into a narrow band; the fitted lines stay inside.
                 if not _lines_fit_bands(draw, lines, font, box_w, box_h, stroke_w, bands):
@@ -635,7 +681,8 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
                 # so the cut box itself is the frame and its two-lobe
                 # handling below runs instead of the split path.
                 cut_bands = _bubble_bands(image, (cut[0] + pad, cut[1] + pad,
-                                                  cut[2] - pad, cut[3] - pad))
+                                                  cut[2] - pad, cut[3] - pad),
+                                            letter_box=source_letter_box)
                 if _ray_loses_lobe(cut_bands, cut, pad, ray):
                     ray = None
                     cut_frame = True
@@ -670,12 +717,14 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             # fitted to the whole interior and split across them by its
             # per-line centres, instead of one lobe being discarded.
             probe = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                                  verdict=band_verdict)
-            if probe is not None and _two_lobes(probe, box_w):
+                                  verdict=band_verdict, letter_box=source_letter_box)
+            if probe is not None and _two_lobes(probe, box_w,
+                                                frame_measured=(frame_source != "region_no_frame")):
                 lobe_decision = "two_lobes_full"
                 stages_skipped.append("trim:two_lobes_kept")
             else:
-                x1, y1, x2, y2 = _trim_bubble_box(image, (x1, y1, x2, y2))
+                x1, y1, x2, y2 = _trim_bubble_box(image, (x1, y1, x2, y2),
+                                                  letter_box=source_letter_box)
                 lobe_decision = "single_lobe_trim"
         raw_w, raw_h = x2 - x1, y2 - y1
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
@@ -689,7 +738,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         # Its gate already refuses a waist, so it runs on the split path
         # too; only the trim stays split-only.
         centre_bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                                     verdict=band_verdict)
+                                     verdict=band_verdict, letter_box=source_letter_box)
         # A two-lobe fit already centres each line on its own lobe's band,
         # so narrowing to the middle band would throw away the lobe
         # interior the two-lobe verdict just kept.
@@ -713,7 +762,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         if image is None or not centered or not curved:
             return None
         return _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                             verdict=band_verdict)
+                             verdict=band_verdict, letter_box=source_letter_box)
 
     # Size limits are set for an 800 px wide page and grow with wider pages.
     scale = max(1.0, image_size[0] / REFERENCE_PAGE_WIDTH)
@@ -784,12 +833,17 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             minimum_size=readable, maximum_size=maximum_size, curved=curved,
             bands=bands_for(),
         )
-    if curved and centered and image is not None and not fits_readably and fit_bands is not None and not split_bubble:
+    # The recovery move stays available without a frame: a centred fit
+    # that fits nowhere is rescued by moving to fitting rows, and there
+    # is no centred placement to preserve. Only the regrow below is
+    # gated on a measured frame.
+    if (curved and centered and image is not None and not fits_readably and fit_bands is not None
+            and not split_bubble):
         # Centred lines can land on rows where the region box holds no bubble
         # interior at all — a tall region over a short bubble, or a bubble
         # over the next panel — while wider rows above or below hold them.
         # Move the block to the closest fitting rows instead of failing.
-        for size in range(maximum_size, readable - 1, -1):
+        for size in _scan_sizes(maximum_size, readable - 1):
             font_try = get_font_object(font_path_str, size)
             lines_try = _wrap_text(draw, text, font_try, box_w)
             if not lines_try or [w for line in lines_try for w in line.split()] != text.split():
@@ -822,7 +876,10 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             y1, y2 = new_y1, new_y2
             fallbacks.append("band_placement_move")
             break
-    if curved and centered and image is not None and fits_readably and actual_size < maximum_size and not split_bubble:
+    # Without a measured frame the regrow must not move the block onto
+    # the widest measured rows — those may be leaked paper, not bubble.
+    if (curved and centered and image is not None and fits_readably and actual_size < maximum_size
+            and not split_bubble and frame_source != "region_no_frame"):
         bands = bands_for()
         if bands is not None:
             # Centred placement can strand a short block on a narrow waist
@@ -835,7 +892,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             # gets its own growth below, without a move or a re-wrap.
             # The move stays inside the measured frame, never just on
             # the canvas.
-            for size in range(maximum_size, actual_size, -1):
+            for size in _scan_sizes(maximum_size, actual_size):
                 font_try = get_font_object(font_path_str, size)
                 lines_try = _wrap_text(draw, text, font_try, box_w)
                 if not lines_try or [w for line in lines_try for w in line.split()] != text.split():
@@ -950,6 +1007,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             "frame_source": frame_source,
             "below_readable_floor": not fits_readably,
             "readable_floor_px": readable,
+            "bands_used": fit_bands is not None,
             "lobe": lobe_decision,
             "fallbacks": list(fallbacks),
             "stages_skipped": list(stages_skipped),
@@ -1025,6 +1083,32 @@ RAY_LOBE_SLACK = 16  # interior this far past a ray frame is a lost lobe, not ed
 BOX_RULE_EXPAND = 64  # how far past a region a narration frame's rules are searched for
 DIVIDER_ROW_SHARE = 0.6  # a row this full of strong edge is a panel divider
 DIVIDER_KEEP_SHARE = 0.4  # a cut keeping less than this share of the height is no cut
+
+
+def _flood_seeds(w: int, h: int, letter_box: tuple[int, int, int, int] | None = None) -> list[tuple[int, int]]:
+    """Seed points for a paper flood, in crop coordinates.
+
+    Letters sit inside the bubble, so seeds sampled over the letter area
+    flood the interior; a seed on paper outside the bubble floods the
+    surroundings instead, and the union then calls that paper the bubble.
+    Without a letter area the old nine-point grid over the whole crop
+    stands, since a flood still needs a start.
+    """
+    if letter_box is not None:
+        lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
+        lx1, ly1 = max(0, lx1), max(0, ly1)
+        lx2, ly2 = min(w, lx2), min(h, ly2)
+        if lx2 - lx1 >= 4 and ly2 - ly1 >= 4:
+            # Most points land on the paper between letters; one good
+            # seed floods the whole interior, and fills grown from a
+            # seed on a dark letter are too small and grey-wrong to join
+            # the union.
+            return [(lx1 + (2 * i + 1) * (lx2 - lx1) // 10,
+                     ly1 + (2 * j + 1) * (ly2 - ly1) // 6)
+                    for j in range(3) for i in range(5)]
+    return [(w // 2, h // 2),
+            (w // 4, h // 4), (3 * w // 4, h // 4), (w // 4, 3 * h // 4), (3 * w // 4, 3 * h // 4),
+            (w // 2, h // 4), (w // 2, 3 * h // 4), (w // 4, h // 2), (3 * w // 4, h // 2)]
 
 
 def _paper_union(grey, seeds):
@@ -1113,7 +1197,41 @@ def _outline_gap(mag_row, a: int, b: int):
     return False
 
 
-def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None = None):
+def _bands_split_by_waist(bands, box_w: int) -> bool:
+    """Whether a near-empty waist splits the flood into two flooded parts.
+
+    Centred lines land on the waist and size to it, while the lobes above
+    and below hold far wider rows — the bands describe two regions, not
+    one bubble's interior. A bubble that simply ends partway down the box
+    leaves empty bands with flood on one side only, and is not split.
+    The run must be at least 3 bands: a 2-band dip is the narrowing step
+    misreading letter rows (slice 25's bands 1-2 collapse to 10/2 px
+    while the rows either side hold ~360), and the flood either side must
+    clear half the box. Calibrated on slice 81 (3-band waist, 0.57/0.99
+    flood) vs slice 25 (2-band dip, 0.47/0.45 flood).
+    """
+    if not bands or box_w <= 0:
+        return False
+    cov = [sum(b - a for a, b in band) / box_w for band in bands]
+    start = None
+    for i, c in enumerate(cov):
+        if c < 0.15:
+            if start is None:
+                start = i
+            continue
+        if start is not None and i - start >= 3:
+            if start > 0 and max(cov[:start]) > 0.5 and max(cov[i:]) > 0.5:
+                return True
+        start = None
+    return False
+
+
+_BANDS_CACHE: dict = {}
+_BANDS_CACHE_MAX = 128
+
+
+def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None = None,
+                  letter_box: tuple[int, int, int, int] | None = None):
     """Per-band ink intervals of the bubble interior holding ``box``, or None.
 
     The box sits inside its bubble, so flooding outward from several seeds on the
@@ -1122,6 +1240,13 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
     on art, a box cut by a panel edge — falls back to the rectangle/ellipse fit.
     When ``verdict`` is given, narrowing the flood leaves a trace there, so a
     fit that shrank can be told apart from one that never narrowed.
+    ``letter_box`` seeds the flood from the letter area (absolute coordinates);
+    without it the seeds spread over the whole box and one on paper outside
+    the bubble can define the flood.
+    Bands are cached per (image, box): one fit measures them several times
+    on the same box, and the flood plus per-row gap analysis is the slow
+    part of the render. The cache holds the image so its id cannot be
+    reused by another image while an entry stands.
     """
     x1, y1, x2, y2 = (int(v) for v in box)
     width, height = image.size
@@ -1132,14 +1257,38 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
     grey = np.asarray(image.convert("L"))[y1:y2, x1:x2]
     if grey.size == 0:
         return None
+    letter_key = tuple(int(v) for v in letter_box) if letter_box is not None else None
+    cache_key = (id(image), (x1, y1, x2, y2), band_count, letter_key)
+    hit = _BANDS_CACHE.get(cache_key)
+    if hit is not None:
+        _image_ref, bands, delta = hit
+        if verdict is not None:
+            for key, value in delta.items():
+                if isinstance(value, bool):
+                    verdict[key] = verdict.get(key, False) or value
+                else:
+                    verdict[key] = verdict.get(key, 0) + value
+        return [list(band) for band in bands] if bands is not None else None
     h, w = grey.shape
-    seeds = [(w // 2, h // 2),
-             (w // 4, h // 4), (3 * w // 4, h // 4), (w // 4, 3 * h // 4), (3 * w // 4, 3 * h // 4),
-             (w // 2, h // 4), (w // 2, 3 * h // 4), (w // 4, h // 2), (3 * w // 4, h // 2)]
-    filled = _paper_union(grey, seeds)
-    if filled is None or float(filled.mean()) < BAND_MIN_FILL:
+    crop_letter = None
+    if letter_box is not None:
+        lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
+        crop_letter = (lx1 - x1, ly1 - y1, lx2 - x1, ly2 - y1)
+    letter_seeded = (crop_letter is not None and crop_letter[2] - crop_letter[0] >= 4
+                     and crop_letter[3] - crop_letter[1] >= 4)
+    filled = _paper_union(grey, _flood_seeds(w, h, crop_letter))
+    delta: dict = {}
+    # A letter-seeded flood is the bubble the letters sit in, however
+    # small a share of the box that is; the half-box floor only judges
+    # grid-seeded floods, where a small fill is art, not a bubble.
+    min_fill = 0.02 if letter_seeded else BAND_MIN_FILL
+    if filled is None or float(filled.mean()) < min_fill:
+        delta["bands_none"] = True
         if verdict is not None:
             verdict["bands_none"] = True
+        _BANDS_CACHE[cache_key] = (image, None, delta)
+        if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
+            _BANDS_CACHE.pop(next(iter(_BANDS_CACHE)))
         return None
     try:
         import cv2
@@ -1214,13 +1363,37 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
         # narrows, so each band keeps a small margin inside its own width.
         bands.append([(a + BAND_EDGE_PAD, b - BAND_EDGE_PAD) if b - a > 2 * BAND_EDGE_PAD else (a, b)
                       for a, b in merged])
+    delta["gap_cut_rows"] = gap_cut_rows
+    delta["vote_bands"] = vote_bands
+    delta["bands_rolled_back"] = rolled_back
+    delta["bands_kept_narrowed"] = kept_narrowed
+    if gap_cut_rows or vote_bands:
+        delta["narrowed"] = True
+    if _bands_split_by_waist(bands, x2 - x1):
+        # A waist-split flood sizes centred lines to the waist while the
+        # lobes hold far wider rows; the rectangle/ellipse fit is the
+        # honest fallback, not a fit to the narrowest rows.
+        delta["bands_none"] = True
+        delta["bands_split_waist"] = True
+        if verdict is not None:
+            for key, value in delta.items():
+                if isinstance(value, bool):
+                    verdict[key] = verdict.get(key, False) or value
+                else:
+                    verdict[key] = verdict.get(key, 0) + value
+        _BANDS_CACHE[cache_key] = (image, None, delta)
+        if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
+            _BANDS_CACHE.pop(next(iter(_BANDS_CACHE)))
+        return None
     if verdict is not None:
-        verdict["gap_cut_rows"] = verdict.get("gap_cut_rows", 0) + gap_cut_rows
-        verdict["vote_bands"] = verdict.get("vote_bands", 0) + vote_bands
-        verdict["bands_rolled_back"] = verdict.get("bands_rolled_back", 0) + rolled_back
-        verdict["bands_kept_narrowed"] = verdict.get("bands_kept_narrowed", 0) + kept_narrowed
-        if gap_cut_rows or vote_bands:
-            verdict["narrowed"] = True
+        for key, value in delta.items():
+            if isinstance(value, bool):
+                verdict[key] = verdict.get(key, False) or value
+            else:
+                verdict[key] = verdict.get(key, 0) + value
+    _BANDS_CACHE[cache_key] = (image, [list(band) for band in bands], delta)
+    if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
+        _BANDS_CACHE.pop(next(iter(_BANDS_CACHE)))
     return bands
 
 
@@ -1394,7 +1567,7 @@ def _screen_frame(image: Image.Image, box):
     return (fx1, fx2, fy1, fy2, measured_x, measured_y)
 
 
-def _two_lobes(bands, box_w: int) -> bool:
+def _two_lobes(bands, box_w: int, frame_measured: bool = True) -> bool:
     """Whether the measured bands hold two wide lobes with drifting centres.
 
     A tail is narrow, so it never counts as a lobe; only intervals at
@@ -1404,8 +1577,11 @@ def _two_lobes(bands, box_w: int) -> bool:
     rows, so a band holding two wide intervals is two lobes, not one.
     A single bent body drifts too, but its wide intervals share one
     centre line; two lobes do not.
+    With no frame measured the bands themselves are unproven — a flood
+    leaked through a faint outline reads as two lobes — so the verdict
+    is withheld and the trim runs instead of being vetoed by it.
     """
-    if not bands or box_w <= 0:
+    if not bands or box_w <= 0 or not frame_measured:
         return False
     widest = 0
     for band in bands:
@@ -1623,7 +1799,7 @@ def _ray_boxes(mag, grey, box, seeds):
     return passing[0]
 
 
-def _trim_bubble_box(image, bbox):
+def _trim_bubble_box(image, bbox, letter_box: tuple[int, int, int, int] | None = None):
     """The lobe of ``bbox`` holding its widest row, or ``bbox`` untrimmed.
 
     Two lobes share one outline with an open junction, and a tail narrows
@@ -1646,10 +1822,11 @@ def _trim_bubble_box(image, bbox):
     if grey.size == 0:
         return bbox
     h, w = grey.shape
-    seeds = [(w // 2, h // 2),
-             (w // 4, h // 4), (3 * w // 4, h // 4), (w // 4, 3 * h // 4), (3 * w // 4, 3 * h // 4),
-             (w // 2, h // 4), (w // 2, 3 * h // 4), (w // 4, h // 2), (3 * w // 4, h // 2)]
-    filled = _paper_union(grey, seeds)
+    crop_letter = None
+    if letter_box is not None:
+        lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
+        crop_letter = (lx1 - x1, ly1 - y1, lx2 - x1, ly2 - y1)
+    filled = _paper_union(grey, _flood_seeds(w, h, crop_letter))
     if filled is None or float(filled.mean()) < BAND_MIN_FILL:
         return bbox
     centre = w // 2
@@ -1878,6 +2055,26 @@ def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int
     return fits, lines
 
 
+def _scan_sizes(hi: int, lo: int, limit: int = 200):
+    """Sizes from hi down to lo + 1, largest first.
+
+    Exact when the range is short; a coarse grid when it is long, so a
+    bogus cap cannot make the fit scan hundreds of sizes. The smallest
+    size is always tried, since a fit there is the last resort.
+    """
+    span = hi - lo
+    if span <= limit:
+        yield from range(hi, lo, -1)
+        return
+    step = max(2, -(-span // limit))
+    last = None
+    for size in range(hi, lo, -step):
+        last = size
+        yield size
+    if last != lo + 1:
+        yield lo + 1
+
+
 def _fit_text(
     draw,
     text: str,
@@ -1910,7 +2107,7 @@ def _fit_text(
         # push a long line into a narrow chord at one size and not the next, so
         # a binary search can land far below the largest fitting size. Scan down
         # from the rectangle fit, which bounds every curved fit from above.
-        for size in range(best_size, minimum_size - 1, -1):
+        for size in _scan_sizes(best_size, minimum_size - 1):
             ok, lines = _fits(draw, text, box_w, box_h, font_path_str, size, stroke_w,
                               curved=curved, bands=bands)
             if ok:

@@ -26,9 +26,18 @@ def _letter_pieces(ink: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return labels, np.where(keep[:, None], stats, -1)
 
 
-def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3) -> int | None:
-    """Median letter height in ``rect`` of the raw slice, or None when fewer than ``min_pieces`` letters stand out."""
+def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> int | None:
+    """Median letter height in ``rect`` of the raw slice, or None when fewer than ``min_pieces`` letters stand out.
+
+    When ``bounds`` is given, only ink inside it counts: a region may hold
+    art strokes far taller than the lettering, and measuring over the whole
+    region lets one art stroke set the cap for the whole object.
+    """
     x1, y1, x2, y2 = (int(v) for v in rect)
+    if bounds is not None:
+        bx1, by1, bx2, by2 = (int(v) for v in bounds)
+        x1, y1 = max(x1, bx1), max(y1, by1)
+        x2, y2 = min(x2, bx2), min(y2, by2)
     crop = raw[max(0, y1):y2, max(0, x1):x2]
     if crop.size == 0 or min(crop.shape[:2]) < 8:
         return None
