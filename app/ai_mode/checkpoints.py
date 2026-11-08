@@ -101,6 +101,6 @@ def review_sheet(provider, model: str, api_key: str, sheet: np.ndarray, crops: l
     """Checkpoint 3: one request per sheet; returns the crops with residue left."""
     # This check thinks (low effort) so it looks at every crop.
     result = request_vision_json(provider, model, api_key, CLEAN_REVIEW_PROMPT, [("SHEET OF CROPS", sheet)],
-                                 max_tokens=800, reasoning_effort=CLEAN_REVIEW_EFFORT, stage="review")
+                                 max_tokens=1000000, reasoning_effort=CLEAN_REVIEW_EFFORT, stage="review")
     flagged = {str(item) for item in result.data.get("residue") or [] if isinstance(item, (str, int, float))}
     return [crop for crop in crops if crop.id in flagged], result.estimated_cost_usd

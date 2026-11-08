@@ -53,7 +53,7 @@ def read_glossary(provider, model: str, api_key: str, target_name: str, target_l
     """One request over a batch of original slices."""
     prompt = _prompt(target_name, target_lang, _IMAGES, "what the images show")
     images = [(f"SLICE {index + 1}", image) for index, image in slices]
-    result = request_vision_json(provider, model, api_key, prompt, images, max_tokens=3000, stage="glossary")
+    result = request_vision_json(provider, model, api_key, prompt, images, max_tokens=1000000, stage="glossary")
     return result.data, result.estimated_cost_usd
 
 
@@ -68,7 +68,7 @@ def read_glossary_text(provider, model: str, api_key: str, target_name: str, tar
     """One text-only request over the scan's transcript of a run of slices."""
     source = _TRANSCRIPT.replace("{lines}", transcript(lines))
     prompt = _prompt(target_name, target_lang, source, "how the transcript describes the look")
-    result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=3000, stage="glossary")
+    result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=1000000, stage="glossary")
     return result.data, result.estimated_cost_usd
 
 
