@@ -32,15 +32,21 @@ def main() -> int:
     p.add_argument("--budget-usd", type=float, default=0.30)
     p.add_argument("--polish", action="store_true")
     p.add_argument("--images-per-request", type=int, default=2)
+    p.add_argument("--translate-provider", default=None)
+    p.add_argument("--translate-model", default=None)
     p.add_argument("--poll-seconds", type=int, default=60)
     p.add_argument("--max-minutes", type=int, default=280)
     args = p.parse_args()
 
-    started = _req("POST", "/api/ai_mode/start", {
+    payload = {
         "url": args.url, "provider": args.provider, "model": args.model,
         "target_lang": args.target_lang, "budget_usd": args.budget_usd,
         "polish": args.polish, "images_per_request": args.images_per_request,
-    })
+    }
+    if args.translate_provider and args.translate_model:
+        payload["translate_provider"] = args.translate_provider
+        payload["translate_model"] = args.translate_model
+    started = _req("POST", "/api/ai_mode/start", payload)
     job_id = started.get("job_id")
     if not job_id:
         print("start failed:", started, file=sys.stderr)

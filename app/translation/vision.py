@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 import requests
 
-from app.ai_mode.vision_json import stage_headers
+from app.ai_mode.vision_json import request_vision_json, stage_headers
 from app.box_format import scaled_box
 from app.ai_providers import AIProvider, auth_headers
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
@@ -320,11 +320,58 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
     return marked
 
 
+def retranslate_text(
+    provider: AIProvider, model: str, api_key: str, pairs: list[tuple[str, str]],
+    *, source_lang: str, target_lang: str, memory_snapshot: dict | None = None,
+    max_tokens: int = 65536,
+) -> dict[str, str]:
+    """Re-translate (id, source-text) pairs with a text-only model.
+
+    The vision model reads the image and judges role/container (which picks the
+    font); this re-translates the source lines it read, so the wording is the
+    text model's. Returns {id: translated_text} for the pairs the model answered.
+    """
+    pairs = [(str(i), str(s).strip()) for i, s in pairs if str(s).strip()]
+    if not pairs:
+        return {}
+    source_name = (
+        "the original language"
+        if str(source_lang or "").lower() in {"", "auto"}
+        else language_name(source_lang)
+    )
+    prompt = (
+        (f"CHAPTER MEMORY (context from earlier slices, not to be copied into the answer): "
+         f"{json.dumps(memory_snapshot, ensure_ascii=False, separators=(',', ':'))}\n\n"
+         if memory_snapshot else "")
+        + f"Translate these text objects from {source_name} to {language_name(target_lang)}.\n"
+        + json.dumps({"objects": [{"id": i, "source": s} for i, s in pairs]},
+                     ensure_ascii=False, separators=(",", ":"))
+        + '\n\nTranslate every object above and answer with one JSON object that starts with {"translations":[. '
+        + "Write translated_text in sentence case, even when the source is in capitals."
+    )
+    result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=max_tokens, stage="translate")
+    expected = {i for i, _ in pairs}
+    out = {}
+    for entry in (result.data.get("translations") or []):
+        if not isinstance(entry, dict):
+            continue
+        key, value = str(entry.get("id") or ""), entry.get("translated_text")
+        if key in expected and isinstance(value, str) and value.strip():
+            out[key] = value
+    return out
+
+
 class VisionPageTranslator:
-    def __init__(self, provider: AIProvider, model: str):
+    def __init__(self, provider: AIProvider, model: str, *, translate_provider: AIProvider | None = None,
+                 translate_model: str | None = None, translate_api_key: str | None = None):
         if not provider.supports_visual_qc:
             raise ValueError(f"{provider.label} cannot receive image inputs")
         self.provider, self.model = provider, model
+        # A second model re-translates the source lines the vision model read, so the
+        # wording is the text model's while role/container (which picks the font) stay the vision model's.
+        self.translate_provider, self.translate_model, self.translate_api_key = (
+            translate_provider, translate_model, translate_api_key,
+        )
 
     def translate_page(
         self, original_path: Path, cleaned_path: Path, items: list[dict],
@@ -417,6 +464,24 @@ class VisionPageTranslator:
             result, data = self._openai(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         result, data = _unalias(result, data, real)
         ids = set(real.values())
+        if self.translate_provider is not None and self.translate_model:
+            # The vision model reads the image and judges role/container; a text model
+            # re-translates the source lines it read, so the wording is the text model's.
+            pairs = [
+                (str(item["id"]), (result.sources.get(str(item["id"])) or str(item.get("text") or "").strip()))
+                for item in items
+            ]
+            retold = retranslate_text(
+                self.translate_provider, self.translate_model, self.translate_api_key or "",
+                pairs, source_lang=source_lang, target_lang=target_lang,
+                memory_snapshot=memory.snapshot(settled=False) if memory is not None else None,
+            )
+            if retold:
+                result = replace(result, translations={**result.translations,
+                                                       **{k: v for k, v in retold.items() if k in result.translations}})
+                for entry in data.get("translations") or []:
+                    if isinstance(entry, dict) and str(entry.get("id")) in retold:
+                        entry["translated_text"] = retold[str(entry["id"])]
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
             result, data = _drop_foreign_script(result, data)
         roles, containers, review, answered, enlarge, colors, sources = {}, {}, set(), set(), set(), {}, {}

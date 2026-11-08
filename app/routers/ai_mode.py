@@ -10,7 +10,7 @@ from app.ai_mode.job import AIModeJobManager, AIModeSettings
 from app import cloud, series_memory
 from app.ai_providers import bind_cloud_job, normalize_provider_id, unbind_cloud_job, validate_model_name
 from app.parameters import PIPELINE_DEFAULT_WORKERS
-from app.routers.translation import _resolve_vision_provider, validate_lang_code
+from app.routers.translation import _resolve_text_provider, _resolve_vision_provider, validate_lang_code
 from app.secret_store import SecretStoreUnavailable, get_provider_api_key
 from app.security import MAX_REMOTE_URL_LENGTH, validate_url
 
@@ -28,6 +28,20 @@ class AIModeStartRequest(BaseModel):
     story_notes: str = Field(default="", max_length=1500)
     polish: bool = False
     images_per_request: int = Field(default=2, ge=1, le=8)
+    # A second model re-translates the source lines the vision model read; unset means the vision model's wording stands.
+    translate_provider: str | None = None
+    translate_model: str | None = None
+
+    @field_validator("translate_provider")
+    @classmethod
+    def _translate_provider(cls, value: str | None) -> str | None:
+        return normalize_provider_id(value) if value else None
+
+    @field_validator("translate_model")
+    @classmethod
+    def _translate_model(cls, value: str | None) -> str | None:
+        value = (value or "").strip()
+        return validate_model_name(value, default="") if value else None
 
     @field_validator("url")
     @classmethod
@@ -92,12 +106,18 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
         job_token = str(reservation["job_token"])
         bound = bind_cloud_job(provider, job_token)
         try:
-            return ai_mode_jobs.start(settings, provider=provider, api_key=job_token, on_finish=_cloud_finish_hook(job_token))
+            result = ai_mode_jobs.start(settings, provider=provider, api_key=job_token, on_finish=_cloud_finish_hook(job_token))
         except RuntimeError as exc:
             await run_in_threadpool(cloud.finish_job, job_token, "cancelled")
             raise HTTPException(409, str(exc)) from exc
         finally:
             unbind_cloud_job(bound)
+        overrides = {"model": settings.model, "images_per_request": 2}
+        # Reservation cap replaces the request budget only when the gateway sets one.
+        if reservation.get("cost_cap_usd"):
+            overrides["budget_usd"] = settings.budget_usd
+        result["overrides_applied"] = overrides
+        return result
     # Resolve the provider and key before downloading anything, so a missing
     # key fails in a second instead of after the chapter was fetched.
     try:
@@ -110,10 +130,25 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
         raise HTTPException(503, str(exc)) from exc
     if not api_key:
         raise HTTPException(409, f"{provider.label} API key is not configured")
+    # Resolve the text model too, so a missing key fails in a second instead of after the chapter was fetched.
+    translate_provider_id = translate_model_name = None
+    if req.translate_provider and req.translate_model:
+        try:
+            text_provider = _resolve_text_provider(req.translate_provider)
+            translate_model_name = validate_model_name(req.translate_model, default="")
+            text_api_key = get_provider_api_key(text_provider.id, provider_label=text_provider.label)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except SecretStoreUnavailable as exc:
+            raise HTTPException(503, str(exc)) from exc
+        if not text_api_key:
+            raise HTTPException(409, f"{text_provider.label} API key is not configured")
+        translate_provider_id = text_provider.id
     settings = AIModeSettings(
         url=req.url, provider=provider.id, model=model, target_lang=req.target_lang,
         budget_usd=req.budget_usd, workers=req.workers, story_notes=req.story_notes, polish=req.polish,
         images_per_request=req.images_per_request,
+        translate_provider=translate_provider_id, translate_model=translate_model_name,
     )
     try:
         return ai_mode_jobs.start(settings, provider=provider, api_key=api_key)

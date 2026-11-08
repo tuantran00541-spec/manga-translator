@@ -1,4 +1,4 @@
-"""A.I mode job: URL -> four A.I checkpoints (scan, clean, review, translate) -> a lettered chapter.
+"""A.I mode job: URL -> scan, clean, review, translate -> a lettered chapter.
 
 Every stage reuses the same endpoint functions the editor calls, so locking,
 revision checks and manifest bookkeeping are identical to manual work. The
@@ -35,7 +35,7 @@ from app.security import validate_managed_path
 STAGES: tuple[tuple[str, str], ...] = (
     ("download", "Tải chương"),
     ("scan", "Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo"),
-    ("clean", "Checkpoint 2: Clean ảnh"),
+    ("clean", "Bước 2: Clean ảnh"),
     ("review", "Checkpoint 3: AI so ảnh gốc và ảnh clean"),
     ("translate", "Checkpoint 4: Dịch và chọn font"),
     ("polish", "Nâng cao: soát câu dịch"),
@@ -52,11 +52,12 @@ CREDIT_MAX_ABSOLUTE = 3
 TEXTLESS_MAX_SHARE = 0.5
 REVIEW_CONCURRENCY = 8  # review (checkpoint 3) has no reading-order dependency
 TRANSLATE_CONCURRENCY = 3
-# Objects per retry request, and retry batches without progress before restoring the original.
+# Objects per retry request; a batch that yields nothing is set aside until the rest had a turn.
 RETRY_BATCH = 4
-RETRY_ROUNDS = 3
 # Objects per slice given back their original pixels when their translation cannot be lettered.
 RENDER_RESTORE_ATTEMPTS = 3
+UNBOXED_MAX_OVERLAP = 0.1  # of the smaller box; a missed-line report overlapping a box past this is a re-read
+DUPLICATE_TOKEN_SHARE = 0.8  # of the shorter line's words; past this a new object repeats an old one
 POLISH_ROUNDS = 2  # rewrites of one line before its best version stays
 POLISH_CONCURRENCY = 8  # judge calls in flight; each is one short text
 MAX_GRADED_KEPT = 400  # first grades kept in the report
@@ -87,6 +88,9 @@ class AIModeSettings:
     story_notes: str = ""
     polish: bool = False  # advanced: a judge model grades each line and weak ones are rewritten
     images_per_request: int = 2  # slices sent together to the scan and glossary; the user raises it for their model
+    # A second model re-translates the source lines the vision model read; unset means the vision model's wording stands.
+    translate_provider: str | None = None
+    translate_model: str | None = None
 
 
 @dataclass
@@ -118,9 +122,90 @@ async def _ai_call(fn, *args):
     return await asyncio.get_running_loop().run_in_executor(_AI_CALLS, functools.partial(fn, *args))
 
 
-def _append(items: list, value) -> None:
+def _append(items: list, value) -> bool:
+    # False when the cap drops the item, so the caller can say the list was cut.
     if len(items) < MAX_REPORT_ITEMS:
         items.append(value)
+        return True
+    return False
+
+
+def _mark_recurring_left_edge_strips(manifest: dict, *, min_group: int = 3) -> list[str]:
+    """Mark never-attempted objects that repeat as a left-edge strip.
+
+    A site watermark recurs across slices at the same edge with the same size
+    and thin, wide lettering; no dialogue bubble does. Marked objects read as
+    reviewed non-story text, so the gate stops flagging them and no retry
+    restores their pixels.
+    """
+    from app.region_policy import text_object_in_preserve_region
+
+    groups: dict[int, list[dict]] = {}
+    for page in manifest.get("pages") or []:
+        if not isinstance(page, dict) or page.get("skipped"):
+            continue
+        for obj in page.get("text_objects") or []:
+            if (not isinstance(obj, dict) or not obj.get("id")
+                    or str(obj.get("translation") or "").strip()
+                    or obj.get("source_missing") or obj.get("joined_into")
+                    or obj.get("overlap_dropped")
+                    or not isinstance(obj.get("region"), dict)
+                    or text_object_in_preserve_region(page, obj)):
+                continue
+            region = obj["region"]
+            try:
+                x1, y1, x2, y2 = (int(region[k]) for k in ("x1", "y1", "x2", "y2"))
+            except (KeyError, TypeError, ValueError):
+                continue
+            w, h = x2 - x1, y2 - y1
+            if x1 != 0 or w > 250 or h > 130:
+                continue
+            bounds = obj.get("letter_bounds")
+            if not isinstance(bounds, dict):
+                continue
+            try:
+                lw = int(bounds["x2"]) - int(bounds["x1"])
+                lh = int(bounds["y2"]) - int(bounds["y1"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if w <= 0 or h <= 0 or lw < 0.8 * w or lh > 0.65 * h:
+                continue
+            groups.setdefault(h // 20, []).append(obj)
+    marked: list[str] = []
+    for members in groups.values():
+        if len(members) < min_group:
+            continue
+        for obj in members:
+            if obj.get("translation_attempted") or obj.get("editorial_reviewed"):
+                continue
+            obj["editorial_disposition"] = "non_story"
+            obj["editorial_reviewed"] = True
+            marked.append(str(obj["id"]))
+    return marked
+
+
+def _never_attempted_targets(manifest: dict) -> dict[int, list[str]]:
+    """Pages with empty objects no translate call ever attempted, minus reviewed ones."""
+    from app.region_policy import text_object_in_preserve_region
+
+    targets: dict[int, list[str]] = {}
+    for page_index, page in enumerate(manifest.get("pages") or []):
+        if not isinstance(page, dict) or page.get("skipped"):
+            continue
+        ids = []
+        for obj in page.get("text_objects") or []:
+            if (isinstance(obj, dict) and obj.get("id")
+                    and not obj.get("source_missing") and not obj.get("joined_into")
+                    and not obj.get("overlap_dropped")
+                    and not str(obj.get("translation") or "").strip()
+                    and not obj.get("translation_attempted")
+                    and not (obj.get("editorial_reviewed") and obj.get("editorial_disposition"))
+                    and isinstance(obj.get("region"), dict)
+                    and not text_object_in_preserve_region(page, obj)):
+                ids.append(str(obj["id"]))
+        if ids:
+            targets[page_index] = ids
+    return targets
 
 
 def pipeline_fix(chapter_id: str, page_index: int, rects: list) -> None:
@@ -145,9 +230,20 @@ class AIModeRunner:
             "translated": 0, "unreadable": 0, "review_flags": 0, "translate_errors": [], "render_errors": [],
             "editorial_blockers": 0, "blocker_samples": [], "source_lang": None,
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
-            "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [], "unboxed_pages": [],
+            "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [], "review_list_truncated": False,
+            "unboxed_pages": [],
             "repaint_retried": 0, "residue_left": [], "art_kept": 0, "skip_kept": [], "skip_unjudged": [],
-            "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "errors": [], "samples": []},
+            "ghost_sweep_regions": 0, "ghost_sweep_pages": [], "final_check": {},
+            "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "judge_failed": 0,
+                       "overlong_dropped": 0, "errors": [], "samples": []},
+            "cost_partial": False, "budget_enforced": bool(provider.tracks_cost),
+            # The decision-model extras exist only where the provider exposes them; say so up front.
+            "features": {"art_screen": decider.available(provider, api_key),
+                         "story_veto": decider.available(provider, api_key),
+                         "polish_judge": decider.available(provider, api_key)},
+            "qc_failed_sheets": 0, "qc_budget_skipped": 0, "glossary_failed_batches": 0, "over_budget": 0,
+            "unboxed_rejected": 0, "clean_errors": [], "unverified_lettered": 0,
+            "textless_recovered": [],
         })
         self._memory = None
         self._series: dict | None = None
@@ -159,6 +255,8 @@ class AIModeRunner:
         # The lettering the scan read on each slice it answered for, as (who, text) lines.
         self._transcripts: dict[int, tuple[tuple[str, str], ...]] = {}
         self._slice_total: int | None = None
+        # Slice caps promised to calls still in flight; gates count them as spent.
+        self._reserved_usd = 0.0
 
     # -- bookkeeping ---------------------------------------------------------
     def _check_cancel(self) -> None:
@@ -174,14 +272,20 @@ class AIModeRunner:
 
     def _add_cost(self, cost: float | None) -> None:
         if cost is None:
-            self.job.cost_usd = None
-        elif self.job.cost_usd is not None:
+            # An uncosted call leaves the known total alone; wiping it would blind the budget for the whole job.
+            self.report["cost_partial"] = True
+        elif self.job.cost_usd is None:
+            # First real cost on an untracked job: the total starts here, and the budget gate starts with it.
+            self.job.cost_usd = float(cost)
+            self.job.report["budget_enforced"] = True
+        else:
             self.job.cost_usd += float(cost)
 
     def _remaining_budget(self) -> float | None:
-        if not self.provider.tracks_cost or self.job.cost_usd is None:
+        # The gate follows cost data, not the provider flag: a job tracks cost once its provider does, or once a real cost has arrived.
+        if self.job.cost_usd is None or not (self.provider.tracks_cost or self.job.report.get("budget_enforced")):
             return None
-        return max(0.0, self.settings.budget_usd - self.job.cost_usd)
+        return max(0.0, self.settings.budget_usd - self.job.cost_usd - self._reserved_usd)
 
     def _manifest(self) -> dict:
         with get_manifest_lock(self.job.chapter_id):
@@ -230,11 +334,23 @@ class AIModeRunner:
 
         gate = asyncio.Semaphore(SCAN_CONCURRENCY)
         finished = 0
+        out_of_budget = False
 
         async def scan_one(index: int) -> None:
-            nonlocal finished
+            nonlocal finished, out_of_budget
             async with gate:
                 if self.job.cancel_requested:
+                    return
+                if out_of_budget:
+                    finished += 1
+                    self._progress(finished, len(active))
+                    return
+                remaining = self._remaining_budget()
+                if remaining is not None and remaining < 0.001:
+                    out_of_budget = True
+                    _append(self.report["scan_errors"], {"pages": [index], "error": "Hết ngân sách, chưa quét"})
+                    finished += 1
+                    self._progress(finished, len(active))
                     return
                 try:
                     await scan_images([index])
@@ -244,9 +360,20 @@ class AIModeRunner:
             self._progress(finished, len(active))
 
         async def scan_batch(batch: list[int]) -> bool:
-            nonlocal finished
+            nonlocal finished, out_of_budget
             async with gate:
                 if self.job.cancel_requested:
+                    return True
+                if out_of_budget:
+                    finished += len(batch)
+                    self._progress(finished, len(active))
+                    return True
+                remaining = self._remaining_budget()
+                if remaining is not None and remaining < 0.001:
+                    out_of_budget = True
+                    _append(self.report["scan_errors"], {"pages": batch, "error": "Hết ngân sách, chưa quét"})
+                    finished += len(batch)
+                    self._progress(finished, len(active))
                     return True
                 try:
                     await scan_images(batch)
@@ -295,9 +422,16 @@ class AIModeRunner:
 
         # Textless slices are exported as they are; skipping them saves cleanup and translation.
         if storyless is not None:
+            # The decider already second-guessed the scan here; its verdict stands.
             textless = [index for index in storyless if index not in credits]
         else:
-            textless = sorted(scan.page_index for scan in scans if scan.no_text and scan.page_index not in credits)
+            # A scan textless verdict is never trusted on its own: each such slice
+            # is read again alone before it may be skipped, so one misread slice
+            # is kept for translation instead of going out untranslated.
+            # (Non-decider path only: when the decider second-guessed the scan, its verdict stands with no re-read.)
+            textless = await self._confirm_textless(
+                sorted(scan.page_index for scan in scans if scan.no_text and scan.page_index not in credits),
+                scan_call)
         if len(textless) > TEXTLESS_MAX_SHARE * len(active):
             self.report["textless_rejected"] = textless
             textless = []
@@ -319,6 +453,33 @@ class AIModeRunner:
         self._transcripts = {scan.page_index: scan.lines for scan in scans if scan.page_index not in credits}
         self._progress(len(active), len(active),
                        f"{len(credits)} lát credit, {len(textless)} lát không chữ, {logos} logo")
+
+    async def _confirm_textless(self, candidates: list[int], scan_call) -> list[int]:
+        """Re-read each scan-textless slice alone; only a slice still textless on re-read may be skipped.
+
+        A re-read that finds text, omits the slice or fails keeps the slice: skipping
+        a slice that holds text loses it, while keeping a truly textless slice only
+        costs a cleanup and a translation pass that finds nothing.
+        """
+        confirmed: list[int] = []
+        for pos, index in enumerate(candidates):
+            if self.job.cancel_requested:
+                break
+            remaining = self._remaining_budget()
+            if remaining is not None and remaining < 0.001:
+                _append(self.report["scan_errors"],
+                        {"pages": candidates[pos:], "error": "Hết ngân sách, chưa xác nhận không chữ"})
+                break
+            try:
+                found, cost = await _ai_call(scan_call, [index])
+                self._add_cost(cost)
+            except (RuntimeError, ValueError, OSError) as exc:
+                _append(self.report["scan_errors"], {"pages": [index], "error": f"re-read: {_detail(exc)[:300]}"})
+                continue
+            if any(scan.page_index == index and scan.no_text for scan in found):
+                confirmed.append(index)
+        self.report["textless_recovered"] = sorted(set(candidates) - set(confirmed))
+        return confirmed
 
     async def clean(self) -> None:
         from app.routers.chapters import chapter_processing_jobs
@@ -349,10 +510,16 @@ class AIModeRunner:
                 fed = len(done)
                 if snapshot["status"] in {"completed", "failed"}:
                     break
+                self._check_cancel()
                 await asyncio.sleep(POLL_SECONDS)
             if snapshot["status"] == "failed":
                 errors = "; ".join(str(item.get("message")) for item in snapshot.get("errors") or [])
                 raise AIModeFailed(f"Clean thất bại: {errors or 'lỗi không rõ'}")
+            clean_errors = snapshot.get("errors") or []
+            if clean_errors:
+                # A completed job can still carry per-slice failures; name them here, not stages later.
+                self.report["clean_errors"] = [str(item.get("message") or item)[:200] for item in clean_errors[:20]]
+                self._progress(len(indices), len(indices), f"{len(clean_errors)} lát clean lỗi")
             self._check_cancel()
         except BaseException:
             self._review_task.cancel()
@@ -382,6 +549,7 @@ class AIModeRunner:
 
         pages = self._manifest().get("pages", [])
         gate = asyncio.Semaphore(SCAN_CONCURRENCY)
+        budget_noted = False
 
         target = language_name(self.settings.target_lang)
 
@@ -395,13 +563,22 @@ class AIModeRunner:
                                  images)
 
         async def read(batch: list[int]) -> dict:
+            nonlocal budget_noted
             async with gate:
                 if self.job.cancel_requested:
+                    return {}
+                remaining = self._remaining_budget()
+                if remaining is not None and remaining < 0.001:
+                    # The glossary only helps; translation goes on without it.
+                    if not budget_noted:
+                        budget_noted = True
+                        _append(self.report["translate_errors"], "Bảng thuật ngữ: hết ngân sách, bỏ qua")
                     return {}
                 try:
                     data, cost = await _ai_call(read_batch, batch)
                 except (RuntimeError, ValueError, OSError) as exc:
                     _append(self.report["translate_errors"], f"Bảng thuật ngữ lát {batch[0] + 1}: {_detail(exc)[:150]}")
+                    self.report["glossary_failed_batches"] += 1
                     return {}
                 self._add_cost(cost)
                 return data
@@ -456,14 +633,34 @@ class AIModeRunner:
         crops: list = []
         finished = 0
 
-        def cut(page_index: int) -> list:
+        def cut(page_index: int) -> tuple[list, list]:
+            from app.detector.ctd_mask import ghost_reads
+
             original, clean = self._images(page_index, "clean", PROCESSED_DIR)
-            return checkpoints.crops_for(page_index, original, clean, self._in_core(page_index, self._page_boxes(page_index)))
+            page = self._manifest()["pages"][page_index]
+            boxes = self._in_core(page_index, self._page_boxes(page_index))
+            crops = checkpoints.crops_for(page_index, original, clean, boxes)
+            erased = []
+            for obj in page.get("text_objects") or []:
+                if not (obj.get("translation") or "").strip():
+                    continue
+                region = obj.get("region") or {}
+                try:
+                    rect = (int(region["x1"]), int(region["y1"]), int(region["x2"]), int(region["y2"]))
+                except (KeyError, TypeError, ValueError):
+                    continue
+                erased.append(rect)
+            ghosts = [rect for rect in self._in_core(page_index, erased) if ghost_reads(clean, rect)]
+            return crops, ghosts
 
         self._progress(0, total, stage="review")
+        ghost_by_page: dict[int, list] = {}
         while (page_index := await self._review_queue.get()) is not None:
             try:
-                crops.extend(await asyncio.to_thread(cut, page_index))
+                page_crops, page_ghosts = await asyncio.to_thread(cut, page_index)
+                crops.extend(page_crops)
+                if page_ghosts:
+                    ghost_by_page[page_index] = page_ghosts
             except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
                 _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
             finished += 1
@@ -471,26 +668,39 @@ class AIModeRunner:
         sheets = await asyncio.to_thread(checkpoints.pack, crops)
         gate = asyncio.Semaphore(REVIEW_CONCURRENCY)
 
-        async def check(sheet, placed) -> list:
+        async def check(sheet, placed) -> list | None:
             async with gate:
-                remaining = self._remaining_budget()
-                if self.job.cancel_requested or (remaining is not None and remaining < 0.001):
+                if self.job.cancel_requested:
                     return []
+                remaining = self._remaining_budget()
+                if remaining is not None and remaining < 0.001:
+                    # An unchecked sheet is not a clean sheet; it counts as failed, with its cause kept apart.
+                    self.report["qc_budget_skipped"] += 1
+                    return None
                 try:
                     found, cost = await _ai_call(checkpoints.review_sheet, self.provider, self.settings.model,
                                                  self.api_key, sheet, placed)
                 except (RuntimeError, ValueError, OSError) as exc:
                     _append(self.report["qc_errors"], f"Tờ crop: {_detail(exc)[:200]}")
-                    return []
+                    return None
                 self._add_cost(cost)
                 return found
 
-        flagged = [crop for found in await asyncio.gather(*(check(s, p) for s, p in sheets)) for crop in found]
+        checked = await asyncio.gather(*(check(s, p) for s, p in sheets))
+        # A sheet the model could not answer is not a clean sheet; count it where the user can see it.
+        self.report["qc_failed_sheets"] = sum(1 for found in checked if found is None)
+        flagged = [crop for found in checked if found for crop in found]
         self.report["review_sheets"] = len(sheets)
         self.report["review_crops"] = len(crops)
         by_page: dict[int, list] = {}
         for crop in flagged:
             by_page.setdefault(crop.page_index, []).append(crop.rect)
+        # Ghosts the model review never flagged still get repainted, once each.
+        for page_index, rects in ghost_by_page.items():
+            known = by_page.setdefault(page_index, [])
+            for rect in rects:
+                if tuple(rect) not in [tuple(r) for r in known]:
+                    known.append(rect)
         # Slices are repainted side by side, as each worker's inpainting uses one core.
         workers = asyncio.Semaphore(max(1, int(self.settings.workers or 1)))
 
@@ -509,11 +719,14 @@ class AIModeRunner:
         await asyncio.gather(*(repaint(page_index, rects) for page_index, rects in sorted(by_page.items())))
 
     def _still_reading(self, page_index: int, rects: list) -> list:
-        """The repainted rectangles where the letter model still reads text on the clean slice."""
-        from app.detector.ctd_mask import still_reads
+        """The repainted rectangles where text still shows on the clean slice, read or ghosted."""
+        from app.detector.ctd_mask import ghost_reads, light_ghost_reads, still_reads
 
         clean = self._images(page_index, "clean", PROCESSED_DIR)[1]
-        return [rect for rect in rects if still_reads(clean, tuple(int(v) for v in rect))]
+        return [rect for rect in rects
+                if still_reads(clean, tuple(int(v) for v in rect))
+                or ghost_reads(clean, tuple(int(v) for v in rect))
+                or light_ghost_reads(clean, tuple(int(v) for v in rect))]
 
     async def _verify_repaint(self, page_index: int, rects: list) -> None:
         """Read each repainted place again on the CPU; text still there gets one more pass, then goes to the reviewer."""
@@ -551,15 +764,19 @@ class AIModeRunner:
             self._review_queue.put_nowait(None)
         await self._review_task
         self._check_cancel()
-        self._progress(len(indices), len(indices),
-                       f"{self.report.get('review_sheets', 0)} tờ crop, repaint {self.report['repainted_regions']}")
+        detail = f"{self.report.get('review_sheets', 0)} tờ crop, repaint {self.report['repainted_regions']}"
+        if self.report.get("qc_failed_sheets"):
+            detail += f", {self.report['qc_failed_sheets']} tờ không kiểm được"
+        if self.report.get("qc_budget_skipped"):
+            detail += f", hết ngân sách {self.report['qc_budget_skipped']} tờ"
+        self._progress(len(indices), len(indices), detail)
 
     async def translate(self) -> None:
         from app.ocr.language_detect import site_language_hint
         from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context
         from app.translation.context import ChapterMemory
 
-        # The vision model reads the source language off the image, so no OCR probe runs here.
+        # The vision model reads the source language off the image; no OCR probe runs in this stage, but OCR-derived text still travels as each candidate's hint, and the editorial gate still blocks on a story object with neither OCR source nor translation.
         manifest = self._manifest()
         source_lang = manifest.get("source_lang") or site_language_hint(manifest.get("source_url")) or "auto"
         self.report["source_lang"] = source_lang
@@ -581,36 +798,60 @@ class AIModeRunner:
         # Admit slices in reading order so each sees the memory of earlier ones.
         gate = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
         finished = 0
-        out_of_budget = False
+        budget_skipped = 0
 
         async def translate_one(page_index: int) -> None:
-            nonlocal finished, out_of_budget
+            nonlocal finished, budget_skipped
             async with gate:
-                if self.job.cancel_requested or out_of_budget:
+                if self.job.cancel_requested:
                     return
                 remaining = self._remaining_budget()
+                # A reservation squeeze passes once earlier slices settle, so wait
+                # for them instead of giving up: in-flight slices always release
+                # in finally, bounded by the provider call timeout.
+                while remaining is not None and remaining < 0.001 and self._reserved_usd > 0:
+                    await asyncio.sleep(0.02)
+                    remaining = self._remaining_budget()
                 if remaining is not None and remaining < 0.001:
-                    out_of_budget = True
+                    # Nothing still reserved, so the remainder is cost alone: the
+                    # sweep retries this slice, and the stage-end message stands.
+                    budget_skipped += 1
+                    finished += 1
+                    self._progress(finished, len(indices))
                     return
+                # Each admitted slice promises its cap up front, so a later slice reads
+                # what earlier ones already claimed instead of the same stale remainder.
+                # No await sits between the read and the record, so the claim is atomic.
+                slice_cap = 0.25 if remaining is None else max(0.001, min(0.25, remaining))
+                reserved = 0.0
+                if remaining is not None:
+                    reserved = slice_cap
+                    self._reserved_usd += reserved
                 try:
-                    data = await translate_page_in_context(TranslateVisionPageRequest(
-                        chapter_id=self.job.chapter_id, page_index=page_index,
-                        source_lang=source_lang, target_lang=self.settings.target_lang,
-                        budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
-                        provider=self.provider.id, model=self.settings.model,
-                    ), memory=memory, slice_total=slice_total, skip_seam_mirrors=True)
-                    run = data.get("translation_run") or {}
-                except HTTPException as exc:
-                    _append(self.report["translate_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
-                    run = None
-                if run is not None:
-                    await self._keep_art(page_index, run)
-                    self.report["translated"] += int(run.get("translated") or 0)
-                    self.report["unreadable"] += int(run.get("unreadable") or 0)
-                    self.report["review_flags"] += int(run.get("review") or 0)
-                    self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
-                    if run.get("render_error"):
-                        _append(self.report["render_errors"], f"Lát {page_index + 1}: {run['render_error']}")
+                    try:
+                        data = await translate_page_in_context(TranslateVisionPageRequest(
+                            chapter_id=self.job.chapter_id, page_index=page_index,
+                            source_lang=source_lang, target_lang=self.settings.target_lang,
+                            budget_usd=slice_cap,
+                            provider=self.provider.id, model=self.settings.model,
+                            translate_provider=self.settings.translate_provider,
+                            translate_model=self.settings.translate_model,
+                        ), memory=memory, slice_total=slice_total, skip_seam_mirrors=True)
+                        run = data.get("translation_run") or {}
+                    except HTTPException as exc:
+                        _append(self.report["translate_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+                        run = None
+                    if run is not None:
+                        await self._keep_art(page_index, run)
+                        self.report["translated"] += int(run.get("translated") or 0)
+                        self.report["unreadable"] += int(run.get("unreadable") or 0)
+                        self.report["review_flags"] += int(run.get("review") or 0)
+                        self.report["over_budget"] += int(run.get("over_budget") or 0)
+                        self._add_cost(run.get("estimated_cost_usd"))
+                        if run.get("render_error"):
+                            _append(self.report["render_errors"], f"Lát {page_index + 1}: {run['render_error']}")
+                finally:
+                    self._reserved_usd -= reserved
                 if run is not None and run.get("unboxed"):
                     await self._add_unboxed(page_index, run["unboxed"], source_lang)
                 # A failed or cut-off slice retries everything; otherwise only what the model skipped.
@@ -624,9 +865,14 @@ class AIModeRunner:
         self._progress(0, len(indices))
         await asyncio.gather(*(translate_one(page_index) for page_index in indices))
         self._check_cancel()
-        if out_of_budget:
+        # Reservations are all released by now, so a remainder still below the
+        # floor means real exhaustion on cost alone, not a transient squeeze.
+        remaining = self._remaining_budget()
+        if budget_skipped and remaining is not None and remaining < 0.001:
             _append(self.report["translate_errors"], "Hết ngân sách, các lát còn lại chưa dịch")
         await self._sync_seams()
+        await self._sweep_never_attempted(source_lang)
+        await self._post_translate_ghost_sweep()
         sheet = memory.snapshot()
         self.report["characters"] = sheet["characters"][:MAX_REPORT_ITEMS]
         self.report["address"] = sheet["address"][:MAX_REPORT_ITEMS]
@@ -639,6 +885,14 @@ class AIModeRunner:
         stats = self.report["polish"]
         if not self.settings.polish:
             self._progress(0, 0, "Tắt")
+            return
+        if not decider.available(self.provider, self.api_key):
+            # The judge lives behind the MiniRouter /evaluate endpoint, which
+            # other providers do not serve: calling it eight times and
+            # scoring 0 is not a judgement, it is a silent no-op. Say so
+            # and spend nothing on judge calls.
+            stats["unavailable"] = "polish judge requires the MiniRouter /evaluate endpoint; not available on this provider"
+            self._progress(0, 0, "Không có judge cho provider này")
             return
         from app.ai_mode.seams import seam_mirror_ids
 
@@ -654,11 +908,18 @@ class AIModeRunner:
         language = language_name(self.settings.target_lang)
         gate = asyncio.Semaphore(POLISH_CONCURRENCY)
         unavailable = False
+        out_of_budget = False
 
         async def grade(line, text=None):
-            nonlocal unavailable
+            nonlocal unavailable, out_of_budget
             async with gate:
                 if unavailable or self.job.cancel_requested:
+                    return None
+                remaining = self._remaining_budget()
+                if remaining is not None and remaining < 0.001:
+                    if not out_of_budget:
+                        out_of_budget = True
+                        _append(stats["errors"], "Hết ngân sách, dừng chấm")
                     return None
                 try:
                     return await _ai_call(polish.judge, self.provider, self.api_key,
@@ -666,8 +927,9 @@ class AIModeRunner:
                                           polish.questions(line, memory, language))
                 except (RuntimeError, ValueError, OSError, requests.RequestException) as exc:
                     _append(stats["errors"], _detail(exc)[:200])
-                    # No judge behind this provider: stop asking.
-                    unavailable = unavailable or " 404" in _detail(exc)
+                    stats["judge_failed"] += 1
+                    # No judge behind this provider: stop asking, instead of failing every line the same way.
+                    unavailable = unavailable or " 404" in _detail(exc) or "not usable JSON" in _detail(exc)
                     return None
 
         self._progress(0, len(lines))
@@ -689,14 +951,28 @@ class AIModeRunner:
             batches = [flagged[i:i + polish.REWRITE_BATCH] for i in range(0, len(flagged), polish.REWRITE_BATCH)]
             kept = []
             for batch in batches:
+                if out_of_budget:
+                    break
+                remaining = self._remaining_budget()
+                if remaining is not None and remaining < 0.001:
+                    if not out_of_budget:
+                        out_of_budget = True
+                        _append(stats["errors"], "Hết ngân sách, dừng sửa")
+                    break
                 try:
                     texts, cost = await _ai_call(polish.rewrite, self.provider, self.settings.model, self.api_key,
                                                  batch, memory, language)
                 except (RuntimeError, ValueError, OSError) as exc:
                     _append(stats["errors"], _detail(exc)[:200])
                     continue
-                self._add_cost(cost if self.provider.tracks_cost else None)
-                candidates = [(line, texts[line.id]) for line in batch if texts.get(line.id, line.text) != line.text]
+                self._add_cost(cost)
+                # A rewrite past the fit budget would letter smaller or overflow: keep the original, not the rewrite.
+                overlong = {line.id for line in batch
+                            if line.max_chars and texts.get(line.id) and texts[line.id] != line.text
+                            and len(texts[line.id]) > line.max_chars}
+                stats["overlong_dropped"] += len(overlong)
+                candidates = [(line, texts[line.id]) for line in batch
+                              if line.id not in overlong and texts.get(line.id, line.text) != line.text]
                 regraded = await asyncio.gather(*(grade(line, text) for line, text in candidates))
                 for (line, text), found in zip(candidates, regraded):
                     if found and polish.better(found, line.scores):
@@ -737,17 +1013,32 @@ class AIModeRunner:
         """Lines the translator saw outside every box are boxed, erased and translated like the rest."""
         from app.ai_mode.checkpoints import MARGIN_PX, MAX_AREA_RATIO, MIN_SIDE_PX
         from app.dependencies import pipeline
+        from app.region_policy import overlap_share
 
         page = self._manifest()["pages"][page_index]
         width, height = int(page.get("width") or 0), int(page.get("height") or 0)
         existing = self._page_boxes(page_index)
         fresh = []
+        try:
+            original = read_image(validate_managed_path(page["original"], RAW_DIR / self.job.chapter_id))
+        except (OSError, ValueError, KeyError):
+            original = None
         for x1, y1, x2, y2 in self._in_core(page_index, [tuple(map(int, box)) for box in boxes]):
             if (x2 - x1 < MIN_SIDE_PX or y2 - y1 < MIN_SIDE_PX
                     or (width and height and (x2 - x1) * (y2 - y1) > MAX_AREA_RATIO * width * height)):
                 continue
             box = (max(0, x1 - MARGIN_PX), max(0, y1 - MARGIN_PX), x2 + MARGIN_PX, y2 + MARGIN_PX)
-            if not _covered(box, existing + fresh):
+            # Missed lettering sits outside the boxes by definition; a report reaching well into one
+            # is the model reading boxed text again (Absolute Regression 124, slice 4: share 0.21).
+            if all(overlap_share(box, other) < UNBOXED_MAX_OVERLAP for other in existing + fresh):
+                if original is not None:
+                    # A reported box over blank paper is an echo, not a text:
+                    # boxing it erases nothing and its retry invents a line.
+                    import numpy as np
+
+                    crop = original[max(0, box[1]):box[3], max(0, box[0]):box[2]]
+                    if crop.size and float((crop.mean(axis=2) < 245).mean() if crop.ndim == 3 else (crop < 245).mean()) < 0.005:
+                        continue
                 fresh.append(box)
         if not fresh:
             return
@@ -765,6 +1056,71 @@ class AIModeRunner:
             self.report["missed_added"] += len(now - before)
             _append(self.report["unboxed_pages"], page_index + 1)
             await self._retry_untranslated(page_index, source_lang, now - before)
+            await self._reject_unboxed_duplicates(page_index, before)
+
+    async def _reject_unboxed_duplicates(self, page_index: int, before: set) -> None:
+        """A new object that repeats an old object's words over that object's own place is a re-read.
+
+        Genuine missed lettering can repeat a line (an echo in the art), so the words alone do not
+        condemn it; the words plus an overlap with the object they repeat does.
+        """
+        import unicodedata
+        from collections import Counter
+
+        from app.dependencies import pipeline
+        from app.region_policy import overlap_share
+
+        def norm(text) -> str:
+            text = unicodedata.normalize("NFD", str(text or "").lower())
+            text = "".join(c for c in text if unicodedata.category(c) != "Mn").replace("đ", "d")
+            return " ".join(text.split())
+
+        def same_line(a: str, b: str) -> bool:
+            # A re-read is reworded as often as it is repeated verbatim (a dropped or swapped word),
+            # so the test is how much of the shorter line's wording the two share.
+            ta, tb = a.split(), b.split()
+            if not ta or not tb:
+                return False
+            return len(Counter(ta) & Counter(tb)) / min(len(ta), len(tb)) >= DUPLICATE_TOKEN_SHARE
+
+        page = self._manifest()["pages"][page_index]
+        olds = [obj for obj in page.get("text_objects") or []
+                if isinstance(obj, dict) and str(obj.get("id")) in before and norm(obj.get("translation"))]
+        rejected = []
+        for obj in page.get("text_objects") or []:
+            if not isinstance(obj, dict) or str(obj.get("id")) in before or not isinstance(obj.get("region"), dict):
+                continue
+            text = norm(obj.get("translation"))
+            if len(text) < 20:
+                continue
+            twin = next((old for old in olds
+                         if isinstance(old.get("region"), dict)
+                         and same_line(text, norm(old["translation"]))
+                         and overlap_share(obj["region"], old["region"]) > 0), None)
+            if twin is not None:
+                rejected.append(obj)
+        for obj in rejected:
+            with get_manifest_lock(self.job.chapter_id):
+                manifest = load_manifest_raw(self.job.chapter_id)
+                target = next((item for item in manifest["pages"][page_index].get("text_objects") or []
+                               if isinstance(item, dict) and str(item.get("id")) == str(obj.get("id"))), None)
+                if target is not None:
+                    target["translation"] = ""
+                    target["source_missing"] = True
+                    save_manifest_raw(self.job.chapter_id, manifest)
+            try:
+                await asyncio.to_thread(pipeline.preserve_and_reinpaint, self.job.chapter_id, page_index,
+                                        [dict(obj["region"])])
+            except (ValueError, RuntimeError, OSError) as exc:
+                _append(self.report["translate_errors"],
+                        f"Lát {page_index + 1}: khôi phục vùng chữ sót trùng thất bại: {_detail(exc)[:150]}")
+            self.report["unboxed_rejected"] += 1
+            self.report["missed_added"] -= 1
+            if not _append(self.report["review_list"], {
+                    "page": page_index + 1, "id": obj["id"],
+                    "reason": "Chữ sót trùng với vùng đã dịch và chồng lên nó; đã giữ ảnh gốc",
+            }):
+                self.report["review_list_truncated"] = True
 
     async def _sync_seams(self) -> list[int]:
         """Letter every text crossing a slice cut exactly as its owning slice does."""
@@ -791,16 +1147,26 @@ class AIModeRunner:
         from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context
 
         remaining = self._remaining_budget()
-        data = await translate_page_in_context(TranslateVisionPageRequest(
-            chapter_id=self.job.chapter_id, page_index=page_index,
-            source_lang=source_lang, target_lang=self.settings.target_lang,
-            budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
-            provider=self.provider.id, model=self.settings.model,
-            max_objects=RETRY_BATCH, object_ids=object_ids,
-        ), memory=self._memory, slice_total=self._slice_total, skip_seam_mirrors=True)
-        run = data.get("translation_run") or {}
-        self.report["translated"] += int(run.get("translated") or 0)
-        self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
+        # Same promise as the first pass: the cap is claimed before the call, released once its cost lands.
+        slice_cap = 0.25 if remaining is None else max(0.001, min(0.25, remaining))
+        reserved = 0.0
+        if remaining is not None:
+            reserved = slice_cap
+            self._reserved_usd += reserved
+        try:
+            data = await translate_page_in_context(TranslateVisionPageRequest(
+                chapter_id=self.job.chapter_id, page_index=page_index,
+                source_lang=source_lang, target_lang=self.settings.target_lang,
+                budget_usd=slice_cap,
+                provider=self.provider.id, model=self.settings.model,
+                max_objects=RETRY_BATCH, object_ids=object_ids,
+            ), memory=self._memory, slice_total=self._slice_total, skip_seam_mirrors=True)
+            run = data.get("translation_run") or {}
+            self.report["translated"] += int(run.get("translated") or 0)
+            self.report["over_budget"] += int(run.get("over_budget") or 0)
+            self._add_cost(run.get("estimated_cost_usd"))
+        finally:
+            self._reserved_usd -= reserved
         await self._keep_art(page_index, run)
         return run
 
@@ -818,7 +1184,7 @@ class AIModeRunner:
             _append(self.report["translate_errors"], f"Lát {page_index + 1}: giữ SFX thất bại: {_detail(exc)[:150]}")
 
     def _join_stacked_lines(self, indices: list[int]) -> None:
-        from app.ai_mode.seams import join_stacked_lines, set_letter_bounds
+        from app.ai_mode.seams import gap_frame_boundary, join_stacked_lines, set_letter_bounds
         from app.manifest_utils import save_manifest_raw
         from app.text_objects import ensure_page_text_objects
 
@@ -827,7 +1193,7 @@ class AIModeRunner:
             for page_index in indices:
                 ensure_page_text_objects(manifest["pages"][page_index])
                 set_letter_bounds(manifest["pages"][page_index])
-            self.report["lines_joined"] = join_stacked_lines(manifest, indices)
+            self.report["lines_joined"] = join_stacked_lines(manifest, indices, gap_frame_boundary)
             save_manifest_raw(self.job.chapter_id, manifest)
 
     def _ensure_objects(self, page_index: int) -> None:
@@ -852,6 +1218,7 @@ class AIModeRunner:
             obj for obj in page.get("text_objects") or []
             if isinstance(obj, dict) and obj.get("id") and not obj.get("source_missing")
             and not obj.get("overlap_dropped") and not obj.get("joined_into")
+            and not (obj.get("editorial_reviewed") and obj.get("editorial_disposition") == "duplicate")
             and not str(obj.get("translation") or "").strip()
             and (only is None or str(obj["id"]) in only) and str(obj["id"]) not in blank
             and isinstance(obj.get("region"), dict) and not text_object_in_preserve_region(page, obj)
@@ -864,22 +1231,43 @@ class AIModeRunner:
         await asyncio.to_thread(self._ensure_objects, page_index)
         blank: set[str] = set()
         _append(self.report["retried_pages"], page_index + 1)
-        fruitless = 0
-        while fruitless < RETRY_ROUNDS and not self.job.cancel_requested:
-            targets = self._untranslated(page_index, only, blank)
-            remaining = self._remaining_budget()
-            if not targets or (remaining is not None and remaining < 0.001):
+        batch_size = RETRY_BATCH
+        # A batch that yields nothing is set aside, not retried until every other
+        # batch had its turn; otherwise one stubborn head batch starves the tail.
+        # Each id is attempted at most twice, so the loop still ends.
+        deferred: set[str] = set()
+        deferred_retried = False
+        while not self.job.cancel_requested:
+            targets = [obj for obj in self._untranslated(page_index, only, blank)
+                       if str(obj["id"]) not in deferred]
+            if not targets:
+                if deferred and not deferred_retried:
+                    deferred_retried = True
+                    deferred = set()
+                    continue
                 break
-            batch = [str(obj["id"]) for obj in targets[:RETRY_BATCH]]
+            remaining = self._remaining_budget()
+            if remaining is not None and remaining < 0.001:
+                break
+            batch = [str(obj["id"]) for obj in targets[:batch_size]]
             try:
                 run = await self._translate_retry(page_index, source_lang, batch)
             except HTTPException as exc:
-                _append(self.report["translate_errors"], f"Lát {page_index + 1} (thử lại): {_detail(exc)[:200]}")
-                fruitless += 1
+                detail = _detail(exc)
+                _append(self.report["translate_errors"], f"Lát {page_index + 1} (thử lại): {detail[:200]}")
+                # A cut-off reply re-truncates at the same size; shrink instead of
+                # spending rounds on an identical batch. A lone object that still
+                # truncates is set aside with the rest of its batch.
+                if "truncated" in detail and len(batch) > 1:
+                    batch_size = max(1, batch_size // 2)
+                    continue
+                deferred.update(batch)
                 continue
             blank.update(run.get("blank_ids") or [])
             if set(batch) <= {str(obj["id"]) for obj in self._untranslated(page_index, only, blank)}:
-                fruitless += 1
+                deferred.update(batch)
+            else:
+                batch_size = RETRY_BATCH
         unresolved = self._untranslated(page_index, only, blank)
         if not unresolved:
             return
@@ -890,10 +1278,99 @@ class AIModeRunner:
         except (ValueError, RuntimeError, OSError) as exc:
             _append(self.report["translate_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
         for obj in unresolved:
-            _append(self.report["review_list"], {
-                "page": page_index + 1, "id": obj["id"],
-                "reason": "AI không dịch được sau khi thử lại; đã giữ ảnh gốc",
-            })
+            if not _append(self.report["review_list"], {
+                    "page": page_index + 1, "id": obj["id"],
+                    "reason": "AI không dịch được sau khi thử lại; đã giữ ảnh gốc",
+            }):
+                self.report["review_list_truncated"] = True
+
+    async def _sweep_never_attempted(self, source_lang: str) -> None:
+        """Retry what translation never attempted; what still fails keeps its original pixels.
+
+        A translate call that skips objects — they arrive after it, or its reply
+        omits them without listing them missing — leaves them blank through render.
+        This runs after the last translate pass, before render, so a retry or the
+        restore inside the retry covers them.
+        """
+        manifest = self._manifest()
+        marked = _mark_recurring_left_edge_strips(manifest)
+        if marked:
+            # Translate has finished and render has not started, so nothing
+            # else writes the manifest here; the lock only guards the save.
+            with get_manifest_lock(self.job.chapter_id):
+                save_manifest_raw(self.job.chapter_id, manifest)
+            self.report["watermark_marked"] = self.report.get("watermark_marked", 0) + len(marked)
+        for page_index, object_ids in _never_attempted_targets(self._manifest()).items():
+            if self.job.cancel_requested:
+                return
+            await self._retry_untranslated(page_index, source_lang, set(object_ids))
+
+    async def _post_translate_ghost_sweep(self) -> None:
+        """Sweep the chapter's own cleans for ghosts now that translations exist.
+
+        The review-time sweep runs before translate, when no object has a
+        translation yet, so its list is empty in every fresh job. This pass
+        runs after translate and tests every object's region — translated
+        or not, manual or not — against the final clean, then repaints
+        what it finds before render.
+        """
+        from app.detector.ctd_mask import ghost_reads, light_ghost_reads
+
+        def collect() -> dict[int, list]:
+            manifest = self._manifest()
+            by_page: dict[int, list] = {}
+            for page_index, page in enumerate(manifest.get("pages") or []):
+                if not isinstance(page, dict) or page.get("skipped"):
+                    continue
+                try:
+                    clean = self._images(page_index, "clean", PROCESSED_DIR)[1]
+                except (HTTPException, RuntimeError, ValueError, OSError, KeyError):
+                    continue
+                core = page.get("stitch_core") or {}
+                try:
+                    core_y1, core_y2 = int(core["core_y1"]), int(core["core_y2"])
+                except (KeyError, TypeError, ValueError):
+                    core_y1, core_y2 = None, None
+                rects = []
+                for obj in page.get("text_objects") or []:
+                    if (not isinstance(obj, dict) or obj.get("source_missing")
+                            or obj.get("joined_into") or obj.get("overlap_dropped")):
+                        continue
+                    region = obj.get("region") or {}
+                    try:
+                        rect = (int(region["x1"]), int(region["y1"]), int(region["x2"]), int(region["y2"]))
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if core_y1 is not None and (rect[3] <= core_y1 or rect[1] >= core_y2):
+                        continue
+                    if ghost_reads(clean, rect):
+                        rects.append(rect)
+                        continue
+                    # A pale-yellow ghost hides in the letter bounds, not
+                    # in the region: the region also holds art, which fails
+                    # the paper-white gate, so the bounds are judged alone.
+                    bounds = obj.get("letter_bounds") or {}
+                    try:
+                        brect = (int(bounds["x1"]), int(bounds["y1"]), int(bounds["x2"]), int(bounds["y2"]))
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if light_ghost_reads(clean, brect):
+                        rects.append(brect)
+                if rects:
+                    by_page[page_index] = rects
+            return by_page
+
+        by_page = await asyncio.to_thread(collect)
+        for page_index, rects in sorted(by_page.items()):
+            if self.job.cancel_requested:
+                return
+            try:
+                await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
+                self.report["ghost_sweep_regions"] += len(rects)
+                _append(self.report["ghost_sweep_pages"], page_index)
+                await self._verify_repaint(page_index, rects)
+            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
+                _append(self.report["qc_errors"], f"Lát {page_index + 1} (quét bóng ma): {_detail(exc)[:200]}")
 
     def _settle_blanks(self) -> int:
         """Split blanks by evidence, not guesswork: attempted blanks are reviewed non-story text, never-attempted ones block export."""
@@ -926,8 +1403,12 @@ class AIModeRunner:
         from app.routers.image import _current_rendered_path
 
         chapter_id = self.job.chapter_id
-        self.report["blanks_settled"] = await asyncio.to_thread(self._settle_blanks)
         indices = self._active_pages()
+        # Objects must exist before settle classifies blanks: an object
+        # created during render would otherwise keep no disposition at all.
+        for page_index in indices:
+            await asyncio.to_thread(self._ensure_objects, page_index)
+        self.report["blanks_settled"] = await asyncio.to_thread(self._settle_blanks)
         for done, page_index in enumerate(indices):
             self._check_cancel()
             self._progress(done, len(indices))
@@ -936,7 +1417,110 @@ class AIModeRunner:
             if page.get("skipped") or _current_rendered_path(chapter_id, page_index, manifest) is not None:
                 continue
             await self._render_one(page_index)
+        try:
+            self.report["final_check"] = await asyncio.to_thread(self._final_render_check)
+        except Exception as exc:
+            # A report-only check must never fail the render it reports on.
+            self.report["final_check"] = {"issues": [], "counts": {}, "total": 0, "error": str(exc)}
         self._progress(len(indices), len(indices))
+
+    def _final_render_check(self) -> dict:
+        """Check the job's own rendered pages, not yesterday's objects.
+
+        Every earlier check runs on inputs to render; this one reads the
+        files render actually wrote: a translated object with no ink, a
+        translation lettered twice on one slice, ink outside its region,
+        and letter-shaped ink left in the clean that no object covers.
+        """
+        import numpy as np
+
+        manifest = self._manifest()
+        chapter_id = self.job.chapter_id
+        issues: list[dict] = []
+        for page_index, page in enumerate(manifest.get("pages") or []):
+            if not isinstance(page, dict) or page.get("skipped"):
+                continue
+            rendered_path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
+            clean_path = page.get("clean")
+            if not rendered_path.is_file() or not clean_path:
+                continue
+            try:
+                rendered = read_image(rendered_path)
+                clean = read_image(validate_managed_path(clean_path, PROCESSED_DIR / chapter_id))
+            except Exception:
+                continue
+            core = page.get("stitch_core") or {}
+            try:
+                core_y1, core_y2 = int(core["core_y1"]), int(core["core_y2"])
+            except (KeyError, TypeError, ValueError):
+                core_y1, core_y2 = 0, clean.shape[0]
+            clean_core = clean[core_y1:core_y2]
+            if rendered.shape[:2] != clean_core.shape[:2]:
+                continue
+            diff = (np.abs(rendered.astype(int) - clean_core.astype(int)).max(axis=2) > 30)
+            objects = [obj for obj in page.get("text_objects") or []
+                       if isinstance(obj, dict) and not obj.get("source_missing")
+                       and not obj.get("joined_into") and not obj.get("overlap_dropped")]
+            regions = []
+            for obj in objects:
+                region = obj.get("region") or {}
+                try:
+                    rect = (int(region["x1"]), int(region["y1"]) - core_y1,
+                            int(region["x2"]), int(region["y2"]) - core_y1)
+                except (KeyError, TypeError, ValueError):
+                    continue
+                regions.append(rect)
+                translation = str(obj.get("translation") or "").strip()
+                if not translation:
+                    if not obj.get("editorial_disposition"):
+                        issues.append({"page": page_index + 1, "kind": "untranslated_object",
+                                       "id": str(obj.get("id")), "reason": "empty translation in the rendered chapter"})
+                    continue
+                x1 = max(0, rect[0]); y1 = max(0, rect[1]); x2 = min(diff.shape[1], rect[2]); y2 = min(diff.shape[0], rect[3])
+                if x2 <= x1 or y2 <= y1 or not diff[y1:y2, x1:x2].any():
+                    issues.append({"page": page_index + 1, "kind": "empty_render",
+                                   "id": str(obj.get("id")), "reason": "translated object lettered no ink on its page"})
+                    continue
+                ink = diff[y1:y2, x1:x2]
+                if ink.any():
+                    iy, ix = np.nonzero(ink)
+                    if (x1 + int(ix.min()) < rect[0] - 20 or x1 + int(ix.max()) > rect[2] + 20
+                            or y1 + int(iy.min()) < rect[1] - 20 or y1 + int(iy.max()) > rect[3] + 20):
+                        issues.append({"page": page_index + 1, "kind": "overflow",
+                                       "id": str(obj.get("id")), "reason": "rendered ink extends well past its region"})
+            seen: dict[str, str] = {}
+            for obj in objects:
+                translation = " ".join(str(obj.get("translation") or "").split()).lower()
+                if not translation:
+                    continue
+                if translation in seen:
+                    issues.append({"page": page_index + 1, "kind": "duplicate_translation",
+                                   "id": str(obj.get("id")), "reason": f"same translation as {seen[translation]} on this slice"})
+                else:
+                    seen[translation] = str(obj.get("id"))
+            # Letter-shaped ink in the clean that no object region covers:
+            # text the pipeline never boxed, left in the original pixels.
+            import cv2
+
+            grey = cv2.cvtColor(clean_core, cv2.COLOR_BGR2GRAY) if clean_core.ndim == 3 else clean_core
+            dark = (grey < 200).astype(np.uint8)
+            count, _labels, stats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+            leftovers = 0
+            for i in range(1, count):
+                x, y, w, h, area = (int(v) for v in stats[i])
+                if not (100 <= area <= 8000 and 10 <= h <= 120 and w <= 3 * h):
+                    continue
+                if any(not (x + w < rx1 or x > rx2 or y + h < ry1 or y > ry2)
+                       for rx1, ry1, rx2, ry2 in regions):
+                    continue
+                leftovers += 1
+                if leftovers <= 3:
+                    issues.append({"page": page_index + 1, "kind": "leftover_ink",
+                                   "id": None, "reason": f"letter-shaped ink at ({x},{y + core_y1},{x + w},{y + h + core_y1}) covered by no object"})
+        kinds: dict[str, int] = {}
+        for issue in issues:
+            kinds[issue["kind"]] = kinds.get(issue["kind"], 0) + 1
+        return {"issues": issues[:200], "counts": kinds, "total": len(issues)}
 
     async def _render_one(self, page_index: int) -> None:
         """Render a slice; an object that cannot be lettered gets its original pixels back.
@@ -949,8 +1533,10 @@ class AIModeRunner:
         from app.routers.render_commit import render_page
 
         chapter_id = self.job.chapter_id
-        # Sync text objects first so export cannot make the render stale.
+        # Sync text objects first so export cannot make the render stale;
+        # anything it creates is settled at once, or it would render with no disposition.
         await asyncio.to_thread(self._ensure_objects, page_index)
+        await asyncio.to_thread(self._settle_blanks)
         for attempt in range(RENDER_RESTORE_ATTEMPTS + 1):
             page = self._manifest()["pages"][page_index]
             try:
@@ -973,10 +1559,11 @@ class AIModeRunner:
                 _append(self.report["render_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
                 return
             self.report["restored_regions"] += 1
-            _append(self.report["review_list"], {
-                "page": page_index + 1, "id": obj["id"],
-                "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
-            })
+            if not _append(self.report["review_list"], {
+                    "page": page_index + 1, "id": obj["id"],
+                    "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
+            }):
+                self.report["review_list_truncated"] = True
 
     async def finish(self) -> None:
         """Report what a reviewer would still see and leave the chapter open in the editor."""
@@ -989,6 +1576,12 @@ class AIModeRunner:
             save_manifest_raw(chapter_id, manifest)
         preflight = _preflight_copy(manifest, require_final_approval=False)
         self.report["editorial_blockers"] = int(preflight.get("blocker_count") or 0)
+        # Lettered with no lettering evidence behind it (model-born boxes): visible, not mixed into the rest.
+        self.report["unverified_lettered"] = sum(
+            1 for page in manifest.get("pages", [])
+            if isinstance(page, dict) and not page.get("skipped")
+            for obj in page.get("text_objects") or []
+            if isinstance(obj, dict) and str(obj.get("translation") or "").strip() and not obj.get("letter_bounds"))
         self.report["blocker_samples"] = [
             {"kind": item.get("kind"), "page": int(item.get("page_index", 0)) + 1, "reason": item.get("reason")}
             for item in (preflight.get("blockers") or [])[:10]
@@ -1023,6 +1616,8 @@ class AIModeJobManager:
                       for key, label in STAGES}
         if not provider.tracks_cost:
             job.cost_usd = None
+        # Recorded here, not only in runner init: the start response is read before any stage runs.
+        job.report["budget_enforced"] = bool(provider.tracks_cost)
         self._jobs[job.job_id] = job
         runner = self._runner_factory(job, provider, api_key)
         job.task = asyncio.get_running_loop().create_task(self._run(job, runner, on_finish))
@@ -1069,9 +1664,12 @@ class AIModeJobManager:
 
     def snapshot(self, job_id: str) -> dict:
         job = self._get(job_id)
+        enforced = bool(job.report.get("budget_enforced"))
         return {
             "job_id": job.job_id,
             "status": job.status,
+            # "completed" alone reads as clean; blockers counted at finish say otherwise.
+            "completed_with_blockers": bool(job.status == "completed" and (job.report.get("editorial_blockers") or 0)),
             "stage": job.stage,
             "stages": [{"key": key, **copy.deepcopy(job.stages[key])} for key, _ in STAGES],
             "chapter_id": job.chapter_id,
@@ -1081,6 +1679,10 @@ class AIModeJobManager:
             "target_lang": job.settings.target_lang,
             "cost_usd": None if job.cost_usd is None else round(job.cost_usd, 6),
             "budget_usd": job.settings.budget_usd,
+            "budget_enforced": enforced,
+            "budget_note": None if enforced else (
+                "Budget is not enforced by this app for this provider: cost is not tracked, "
+                "so budget_usd does not stop this job."),
             "cancel_requested": job.cancel_requested,
             "error": job.error,
             "report": copy.deepcopy(job.report),
