@@ -2,7 +2,7 @@
   "schema_version": 1,
   "generated_at": "2026-09-22",
   "default_font": "default.ttf",
-  "font_count": 71,
+  "font_count": 43,
   "records": [
     {
       "id": "dialogue.mac-dinh-3",
@@ -79,156 +79,6 @@
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Roboto+Condensed",
       "default_rank": 2
-    },
-    {
-      "id": "dialogue.open-sans",
-      "name": "Open Sans",
-      "path": "dialogue/open-sans.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Open+Sans",
-      "default_rank": 3
-    },
-    {
-      "id": "dialogue.inter",
-      "name": "Inter",
-      "path": "dialogue/inter.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Inter",
-      "default_rank": 4
-    },
-    {
-      "id": "dialogue.nunito-sans",
-      "name": "Nunito Sans",
-      "path": "dialogue/nunito-sans.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Nunito+Sans",
-      "default_rank": 5
-    },
-    {
-      "id": "dialogue.source-sans-3",
-      "name": "Source Sans 3",
-      "path": "dialogue/source-sans-3.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Source+Sans+3",
-      "default_rank": 6
-    },
-    {
-      "id": "dialogue.public-sans",
-      "name": "Public Sans",
-      "path": "dialogue/public-sans.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Public+Sans",
-      "default_rank": 7
-    },
-    {
-      "id": "dialogue.lato",
-      "name": "Lato",
-      "path": "dialogue/lato.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Lato",
-      "default_rank": 8
-    },
-    {
-      "id": "dialogue.atkinson-hyperlegible",
-      "name": "Atkinson Hyperlegible",
-      "path": "dialogue/atkinson-hyperlegible.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Atkinson+Hyperlegible",
-      "default_rank": 9
-    },
-    {
-      "id": "dialogue.lexend",
-      "name": "Lexend",
-      "path": "dialogue/lexend.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Lexend",
-      "default_rank": 10
-    },
-    {
-      "id": "dialogue.ibm-plex-sans",
-      "name": "IBM Plex Sans",
-      "path": "dialogue/ibm-plex-sans.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/IBM+Plex+Sans",
-      "default_rank": 11
-    },
-    {
-      "id": "dialogue.assistant",
-      "name": "Assistant",
-      "path": "dialogue/assistant.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Assistant",
-      "default_rank": 12
     },
     {
       "id": "emphasis.bangers",
@@ -486,96 +336,6 @@
       "default_rank": 29
     },
     {
-      "id": "narration.libre-baskerville",
-      "name": "Libre Baskerville",
-      "path": "narration/libre-baskerville.ttf",
-      "category": "narration",
-      "tags": [
-        "serif",
-        "editorial"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Libre+Baskerville",
-      "default_rank": 30
-    },
-    {
-      "id": "narration.spectral",
-      "name": "Spectral",
-      "path": "narration/spectral.ttf",
-      "category": "narration",
-      "tags": [
-        "serif",
-        "editorial"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Spectral",
-      "default_rank": 31
-    },
-    {
-      "id": "narration.alegreya",
-      "name": "Alegreya",
-      "path": "narration/alegreya.ttf",
-      "category": "narration",
-      "tags": [
-        "serif",
-        "editorial"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Alegreya",
-      "default_rank": 32
-    },
-    {
-      "id": "narration.vollkorn",
-      "name": "Vollkorn",
-      "path": "narration/vollkorn.ttf",
-      "category": "narration",
-      "tags": [
-        "serif",
-        "editorial"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Vollkorn",
-      "default_rank": 33
-    },
-    {
-      "id": "narration.crimson-pro",
-      "name": "Crimson Pro",
-      "path": "narration/crimson-pro.ttf",
-      "category": "narration",
-      "tags": [
-        "serif",
-        "editorial"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Crimson+Pro",
-      "default_rank": 34
-    },
-    {
-      "id": "narration.literata",
-      "name": "Literata",
-      "path": "narration/literata.ttf",
-      "category": "narration",
-      "tags": [
-        "serif",
-        "editorial"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Literata",
-      "default_rank": 35
-    },
-    {
       "id": "skill.phudu",
       "name": "Phudu",
       "path": "skill/phudu.ttf",
@@ -726,21 +486,6 @@
       "default_rank": 45
     },
     {
-      "id": "sfx.knewave",
-      "name": "Knewave",
-      "path": "sfx/knewave.ttf",
-      "category": "sfx",
-      "tags": [
-        "display",
-        "sound-effect"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Knewave",
-      "default_rank": 46
-    },
-    {
       "id": "sfx.luckiest-guy",
       "name": "Luckiest Guy",
       "path": "sfx/luckiest-guy.ttf",
@@ -756,21 +501,6 @@
       "default_rank": 47
     },
     {
-      "id": "sfx.bowlby-one-sc",
-      "name": "Bowlby One SC",
-      "path": "sfx/bowlby-one-sc.ttf",
-      "category": "sfx",
-      "tags": [
-        "display",
-        "sound-effect"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Bowlby+One+SC",
-      "default_rank": 48
-    },
-    {
       "id": "sfx.titan-one",
       "name": "Titan One",
       "path": "sfx/titan-one.ttf",
@@ -784,96 +514,6 @@
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Titan+One",
       "default_rank": 49
-    },
-    {
-      "id": "sfx.concert-one",
-      "name": "Concert One",
-      "path": "sfx/concert-one.ttf",
-      "category": "sfx",
-      "tags": [
-        "display",
-        "sound-effect"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Concert+One",
-      "default_rank": 50
-    },
-    {
-      "id": "sfx.fredoka",
-      "name": "Fredoka",
-      "path": "sfx/fredoka.ttf",
-      "category": "sfx",
-      "tags": [
-        "display",
-        "sound-effect"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Fredoka",
-      "default_rank": 51
-    },
-    {
-      "id": "sfx.modak",
-      "name": "Modak",
-      "path": "sfx/modak.ttf",
-      "category": "sfx",
-      "tags": [
-        "display",
-        "sound-effect"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Modak",
-      "default_rank": 52
-    },
-    {
-      "id": "sfx.rubik-mono-one",
-      "name": "Rubik Mono One",
-      "path": "sfx/rubik-mono-one.ttf",
-      "category": "sfx",
-      "tags": [
-        "display",
-        "sound-effect"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Rubik+Mono+One",
-      "default_rank": 53
-    },
-    {
-      "id": "sfx.black-ops-one",
-      "name": "Black Ops One",
-      "path": "sfx/black-ops-one.ttf",
-      "category": "sfx",
-      "tags": [
-        "display",
-        "sound-effect"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Black+Ops+One",
-      "default_rank": 54
-    },
-    {
-      "id": "sfx.special-elite",
-      "name": "Special Elite",
-      "path": "sfx/special-elite.ttf",
-      "category": "sfx",
-      "tags": [
-        "display",
-        "sound-effect"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Special+Elite",
-      "default_rank": 55
     },
     {
       "id": "horror.nosifer",
@@ -906,36 +546,6 @@
       "default_rank": 57
     },
     {
-      "id": "horror.eater",
-      "name": "Eater",
-      "path": "horror/eater.ttf",
-      "category": "horror",
-      "tags": [
-        "horror",
-        "display"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Eater",
-      "default_rank": 58
-    },
-    {
-      "id": "horror.metal-mania",
-      "name": "Metal Mania",
-      "path": "horror/metal-mania.ttf",
-      "category": "horror",
-      "tags": [
-        "horror",
-        "display"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Metal+Mania",
-      "default_rank": 59
-    },
-    {
       "id": "romance.dancing-script",
       "name": "Dancing Script",
       "path": "romance/dancing-script.ttf",
@@ -949,66 +559,6 @@
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Dancing+Script",
       "default_rank": 60
-    },
-    {
-      "id": "romance.pacifico",
-      "name": "Pacifico",
-      "path": "romance/pacifico.ttf",
-      "category": "romance",
-      "tags": [
-        "script",
-        "display"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Pacifico",
-      "default_rank": 61
-    },
-    {
-      "id": "romance.great-vibes",
-      "name": "Great Vibes",
-      "path": "romance/great-vibes.ttf",
-      "category": "romance",
-      "tags": [
-        "script",
-        "display"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Great+Vibes",
-      "default_rank": 62
-    },
-    {
-      "id": "romance.comfortaa",
-      "name": "Comfortaa",
-      "path": "romance/comfortaa.ttf",
-      "category": "romance",
-      "tags": [
-        "script",
-        "display"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Comfortaa",
-      "default_rank": 63
-    },
-    {
-      "id": "romance.satisfy",
-      "name": "Satisfy",
-      "path": "romance/satisfy.ttf",
-      "category": "romance",
-      "tags": [
-        "script",
-        "display"
-      ],
-      "vietnamese": false,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Satisfy",
-      "default_rank": 64
     },
     {
       "id": "romance.lobster",
@@ -1069,6 +619,36 @@
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Playfair+Display+SC",
       "default_rank": 68
+    },
+    {
+      "id": "sfx.baloo-2",
+      "name": "Baloo 2 ExtraBold",
+      "path": "sfx/baloo-2.ttf",
+      "category": "sfx",
+      "tags": [
+        "display",
+        "sound-effect"
+      ],
+      "vietnamese": true,
+      "license": "OFL-1.1",
+      "license_file": "licenses/OFL.txt",
+      "source_url": "https://fonts.google.com/specimen/Baloo+2",
+      "default_rank": 69
+    },
+    {
+      "id": "romance.comfortaa",
+      "name": "Comfortaa",
+      "path": "romance/comfortaa.ttf",
+      "category": "romance",
+      "tags": [
+        "script",
+        "display"
+      ],
+      "vietnamese": true,
+      "license": "OFL-1.1",
+      "license_file": "licenses/OFL.txt",
+      "source_url": "https://fonts.google.com/specimen/Comfortaa",
+      "default_rank": 63
     }
   ]
 }
