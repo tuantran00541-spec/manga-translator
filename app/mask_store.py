@@ -116,26 +116,27 @@ def externalize_page_masks(
     mask_dir = masks_root / f"page_{int(page_index):03d}"
     externalized = 0
 
-    for fallback_index, box in enumerate(boxes):
-        if not isinstance(box, dict):
-            continue
-        value = box.get("mask")
+    def externalize_one(box: dict, key: str, fallback_index: int) -> int:
+        # One mask value to a sidecar; the erase mask and the letters
+        # mask share the box id and differ by digest, so they never
+        # collide on a filename.
+        value = box.get(key)
         if not value:
-            continue
+            return 0
 
         if is_mask_ref(value):
             existing = _validated_mask_path(value)
             if existing is not None and existing.is_file() and not existing.is_symlink():
-                continue
-            else:
-                box["mask"] = None
-            continue
+                return 0
+            box[key] = None
+            return 0
 
         raw = _legacy_png_bytes(value)
         if raw is None:
-            box["mask"] = None
-            continue
+            box[key] = None
+            return 0
 
+        tmp_path = None
         try:
             if masks_root.is_symlink() or mask_dir.is_symlink():
                 raise OSError("Refusing to write masks through a symlink")
@@ -158,17 +159,16 @@ def externalize_page_masks(
                         f"{safe_id}.{digest}.{uuid.uuid4().hex}.png"
                     )
             if final_path.exists():
-                box["mask"] = _ref_for_path(final_path)
-                externalized += 1
-                continue
+                box[key] = _ref_for_path(final_path)
+                return 1
 
             tmp_path = mask_dir / f".{safe_id}.{uuid.uuid4().hex[:10]}.tmp.png"
             tmp_path.write_bytes(raw)
             os.replace(tmp_path, final_path)
-            box["mask"] = _ref_for_path(final_path)
+            box[key] = _ref_for_path(final_path)
             if created_paths is not None:
                 created_paths.add(final_path.resolve())
-            externalized += 1
+            return 1
         except (OSError, RuntimeError, ValueError) as exc:
             logger.warning(
                 "Could not externalize mask for page {} box {}: {}",
@@ -177,10 +177,17 @@ def externalize_page_masks(
                 exc,
             )
             try:
-                if "tmp_path" in locals() and tmp_path.exists():
+                if tmp_path is not None and tmp_path.exists():
                     tmp_path.unlink()
             except OSError:
                 pass
+            return 0
+
+    for fallback_index, box in enumerate(boxes):
+        if not isinstance(box, dict):
+            continue
+        for key in ("mask", "letters_mask"):
+            externalized += externalize_one(box, key, fallback_index)
 
     return externalized
 
@@ -206,9 +213,10 @@ def prune_page_masks(
     for box in boxes:
         if not isinstance(box, dict):
             continue
-        existing = _validated_mask_path(box.get("mask"))
-        if existing is not None and existing.is_file() and not existing.is_symlink():
-            live_paths.add(existing)
+        for key in ("mask", "letters_mask"):
+            existing = _validated_mask_path(box.get(key))
+            if existing is not None and existing.is_file() and not existing.is_symlink():
+                live_paths.add(existing)
 
     removed = 0
     if mask_dir.is_dir():

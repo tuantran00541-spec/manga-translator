@@ -16,6 +16,42 @@ def _shifted(rect: dict, shift: int) -> dict:
     return {key: int(rect[key]) + (shift if key in ("y1", "y2") else 0) for key in ("x1", "y1", "x2", "y2")}
 
 
+def _top_letter_group(letters: np.ndarray, x1: int, y1: int) -> tuple[int, int, int, int] | None:
+    """BBox of the topmost text in a letters mask holding two texts stacked with a wide gap.
+
+    Row runs part where the empty band between them is at least BLOCK_GAP line
+    heights; one run, or runs with only narrow gaps, is a single text, so None
+    keeps the caller's mask-extent behaviour for ordinary boxes.
+    """
+    import numpy as np
+
+    from app.knobs import knob
+
+    rows = letters.any(axis=1)
+    if not rows.any():
+        return None
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], rows.astype(np.int8), [0]))))
+    runs = [(int(start), int(end)) for start, end in zip(edges[::2], edges[1::2])]
+    if len(runs) < 2:
+        return None
+    height = float(np.median([end - start for start, end in runs]))
+    if height <= 0:
+        return None
+    groups = [[runs[0]]]
+    for run in runs[1:]:
+        if run[0] - groups[-1][-1][1] >= knob("detect.block_gap") * height:
+            groups.append([run])
+        else:
+            groups[-1].append(run)
+    if len(groups) < 2:
+        return None
+    top_y1, top_y2 = groups[0][0][0], groups[0][-1][1]
+    cols = np.flatnonzero(letters[top_y1:top_y2].any(axis=0))
+    if len(cols) == 0:
+        return None
+    return (x1 + int(cols[0]), y1 + top_y1, x1 + int(cols[-1]) + 1, y1 + top_y2)
+
+
 def set_letter_bounds(page: dict) -> None:
     """Give each object the extent of the source lettering its boxes erase, where the translation is lettered."""
     from app.mask_store import decode_mask_value
@@ -36,7 +72,13 @@ def set_letter_bounds(page: dict) -> None:
             except (KeyError, TypeError, ValueError):
                 continue
             mask = decode_mask_value(box.get("mask"))
-            if mask is not None and mask.shape == (y2 - y1, x2 - x1) and mask.any():
+            letters = decode_mask_value(box.get("letters_mask"))
+            top = None
+            if letters is not None and letters.shape == (y2 - y1, x2 - x1) and letters.any():
+                top = _top_letter_group(letters, x1, y1)
+            if top is not None:
+                rects.append(top)
+            elif mask is not None and mask.shape == (y2 - y1, x2 - x1) and mask.any():
                 ys, xs = mask.nonzero()
                 rects.append((x1 + int(xs.min()), y1 + int(ys.min()), x1 + int(xs.max()) + 1, y1 + int(ys.max()) + 1))
             else:
@@ -44,9 +86,11 @@ def set_letter_bounds(page: dict) -> None:
         # One unusable box must not erase the extent the usable boxes still prove.
         # A detection box with no usable mask still bounds the lettering it
         # detected; without any bounds the fit has only the region-wide
-        # attempt, so the box extent beats no bounds at all. Mask extents
-        # win where they exist: they are the letters, while a box may hold
-        # outline and margin round them.
+        # attempt, so the box extent beats no bounds at all. A topmost
+        # letters group wins where it exists: a merged box can hold two
+        # texts, and only the topmost is the one translated. Mask extents
+        # win next: they are the letters, while a box may hold outline and
+        # margin round them.
         use = rects or box_rects
         if use:
             obj["letter_bounds"] = {"x1": min(r[0] for r in use), "y1": min(r[1] for r in use),

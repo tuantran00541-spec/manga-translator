@@ -737,6 +737,7 @@ def urlify_manifest(manifest: dict) -> dict:
             page["clean"] = f"/api/image/{chapter_id}/{i}/clean"
         for box in page.get("boxes", []):
             box.pop("mask", None)
+            box.pop("letters_mask", None)
     return result
 
 

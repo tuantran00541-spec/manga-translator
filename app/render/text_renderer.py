@@ -538,12 +538,24 @@ def render_text_in_box(
         if stats is not None and fill_fallback is not None:
             stats["fill_fallback"] = fill_fallback
 
+    # Where the drawn lines actually land, as their advance boxes: the
+    # ranking judges placement on ink, not on the box the fit started
+    # from, and a line's advance box slightly overestimates its glyphs,
+    # so a candidate inside the letter box is truly inside it.
+    ink_box = None
     for i, line in enumerate(lines):
         start_x, line_w = _line_start_x(draw, line, font, x1=x1, pad=pad, box_w=box_w,
                                         h_align=h_align, centred=centred, curved=curved,
                                         line_centres=line_centres, draw_spans=draw_spans,
                                         i=i, line_count=len(lines))
         cur_y = start_y + i * line_height
+        if line_w > 0:
+            bold = 1 if is_bold else 0
+            line_box = (start_x, cur_y, start_x + line_w + bold,
+                        cur_y + line_height + bold)
+            ink_box = line_box if ink_box is None else (
+                min(ink_box[0], line_box[0]), min(ink_box[1], line_box[1]),
+                max(ink_box[2], line_box[2]), max(ink_box[3], line_box[3]))
         for dx, dy in offsets:
             draw.text(
                 (start_x + dx, cur_y + dy),
@@ -553,6 +565,8 @@ def render_text_in_box(
                 stroke_width=stroke_w,
                 stroke_fill=stroke_c,
             )
+    if stats is not None and ink_box is not None:
+        stats["ink_box"] = ink_box
 
     return image
 

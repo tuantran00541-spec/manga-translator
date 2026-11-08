@@ -50,11 +50,28 @@ def _rank_renders(rendered: list) -> list:
     def stats_of(item):
         return item[3] if len(item) > 3 and isinstance(item[3], dict) else {}
 
-    corrected = [item for item in rendered
-                 if stats_of(item).get("fit_box") != stats_of(item).get("attempt_box")
-                 and stats_of(item).get("fit_box") is not None]
+    def is_corrected(item):
+        return (stats_of(item).get("fit_box") != stats_of(item).get("attempt_box")
+                and stats_of(item).get("fit_box") is not None)
+
+    corrected = [item for item in rendered if is_corrected(item)]
     pool = corrected if corrected else rendered
-    pool.sort(key=lambda item: (bool(stats_of(item).get("below_share")), item[0],
+    # A raw attempt that fits at source share beats frame-aware attempts
+    # that all fit below it: the share bar is about legibility, and a
+    # small corrected fit is not a better render than a legible raw one.
+    # The rescue needs a placed fit — a spilling raw attempt is the
+    # misplacement the share rule must not promote.
+    if corrected and all(stats_of(item).get("below_share") for item in corrected):
+        pool = pool + [item for item in rendered
+                       if not is_corrected(item)
+                       and not stats_of(item).get("below_share")
+                       and not stats_of(item).get("spills_letter_box")]
+    # Placement first: ink mostly outside the source lettering's spot
+    # is a misplacement, and a misplaced attempt does not win on size —
+    # the share rule only ranks attempts that letter where the source
+    # was. Without a letter box every attempt ranks as placed, as before.
+    pool.sort(key=lambda item: (bool(stats_of(item).get("spills_letter_box")),
+                                bool(stats_of(item).get("below_share")), item[0],
                                 -(stats_of(item).get("size") or 0), item[1]))
     return pool
 
@@ -220,6 +237,18 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
     pad = ((top, bottom), (0, 0)) + (((0, 0),) if pixels.ndim == 3 else ())
     canvas = Image.fromarray(np.pad(pixels, pad, mode="edge"), mode=image.mode)
     canvas = render_text_in_box(canvas, text, (x1, box[1] + top, x2, box[3] + top), **style)
+    # The canvas is padded, so the ink box the fit recorded sits `top`
+    # lower than the slice it is cropped back onto — and ink past the
+    # slice edge is cropped away, not visible, so it leaves the box.
+    stats = style.get("stats")
+    if isinstance(stats, dict) and stats.get("ink_box") is not None:
+        ix1, iy1, ix2, iy2 = stats["ink_box"]
+        ix1, iy1 = max(ix1, 0), max(iy1, top)
+        ix2, iy2 = min(ix2, width), min(iy2, top + height)
+        if ix2 > ix1 and iy2 > iy1:
+            stats["ink_box"] = (ix1, iy1 - top, ix2, iy2 - top)
+        else:
+            stats["ink_box"] = None
     return canvas.crop((0, top, width, top + height))
 
 
@@ -602,6 +631,24 @@ def render_text_objects(
                             ratio_only = False
                         last_error = exc
                         continue
+                # Ink mostly outside the source lettering's spot is a
+                # misplacement, not a size win: a roomier attempt that
+                # letters onto paper or art must not outrank the tight
+                # one that letters where the source was, however small.
+                # A longer translation may legitimately run a little
+                # past the source letters, so a sliver outside is no
+                # spill — only most of the ink being outside counts.
+                # Without a letter box there is nothing to judge against.
+                letter_spot = style.get("source_letter_box")
+                ink_box = attempt_stats.get("ink_box")
+                spills = False
+                if letter_spot is not None and ink_box is not None:
+                    ix1, iy1, ix2, iy2 = ink_box
+                    ox1, oy1 = max(letter_spot[0], ix1), max(letter_spot[1], iy1)
+                    ox2, oy2 = min(letter_spot[2], ix2), min(letter_spot[3], iy2)
+                    overlap = max(0, ox2 - ox1) * max(0, oy2 - oy1)
+                    spills = overlap * 2 < (ix2 - ix1) * (iy2 - iy1)
+                attempt_stats["spills_letter_box"] = spills
                 rendered.append((attempt_stats.get("lines", 0), attempt, candidate, attempt_stats))
             if not rendered:
                 # Text that fits nowhere at the readable floor is flagged,
@@ -685,6 +732,7 @@ def render_text_objects(
                             "stages_skipped": item_stats.get("stages_skipped", []),
                             "band_narrowing": item_stats.get("band_narrowing", {}),
                             "below_share": bool(item_stats.get("below_share")),
+                            "spills_letter_box": bool(item_stats.get("spills_letter_box")),
                             "fill_fallback": item_stats.get("fill_fallback"),
                             "bbox_overlap": overlap,
                         })
@@ -728,6 +776,7 @@ def render_text_objects(
                             "stages_skipped": item_stats.get("stages_skipped", []),
                             "band_narrowing": item_stats.get("band_narrowing", {}),
                             "below_share": bool(item_stats.get("below_share")),
+                            "spills_letter_box": bool(item_stats.get("spills_letter_box")),
                             "fill_fallback": item_stats.get("fill_fallback"),
                         })
                         painted = True
@@ -806,6 +855,7 @@ def render_text_objects(
                                 "stages_skipped": sstats.get("stages_skipped", []),
                                 "band_narrowing": sstats.get("band_narrowing", {}),
                                 "below_share": bool(sstats.get("below_share")),
+                                "spills_letter_box": bool(sstats.get("spills_letter_box")),
                                 "fill_fallback": sstats.get("fill_fallback"),
                             })
                             painted = True
@@ -836,6 +886,7 @@ def render_text_objects(
                                 "stages_skipped": item_stats.get("stages_skipped", []),
                                 "band_narrowing": item_stats.get("band_narrowing", {}),
                                 "below_share": bool(item_stats.get("below_share")),
+                            "spills_letter_box": bool(item_stats.get("spills_letter_box")),
                                 "fill_fallback": item_stats.get("fill_fallback"),
                             })
                             painted = True

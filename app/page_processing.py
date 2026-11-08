@@ -19,6 +19,16 @@ from app.parameters import (
 )
 
 
+def _letters_u8(letters) -> np.ndarray | None:
+    """The letters alone as a PNG-ready mask; the detector keeps none for some boxes."""
+    if letters is None:
+        return None
+    array = np.asarray(letters)
+    if array.dtype == bool:
+        return array.astype(np.uint8) * 255
+    return array.astype(np.uint8)
+
+
 def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
     """Grow the first-pass record holding ``box`` so a later re-inpaint erases it too."""
     cx, cy = (box.x1 + box.x2) / 2, (box.y1 + box.y2) / 2
@@ -117,6 +127,7 @@ class PageProcessingMixin:
             {
                 "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
                 "confidence": b.confidence, "_mask_array": b.mask,
+                "_letters_array": _letters_u8(getattr(b, "letters", None)),
                 "source_model": b.source_model, "class_id": b.class_id,
                 "class_name": b.class_name, "semantic_type": b.semantic_type,
                 "mask_source": b.mask_source, "safe_to_inpaint": bool(b.safe_to_inpaint),
@@ -145,7 +156,9 @@ class PageProcessingMixin:
                         record["detector_anchor"] = copy.deepcopy(old["detector_anchor"])
                     for key in ("x1", "y1", "x2", "y2"):
                         record[key] = int(old[key])
+                    # An overridden box moved: both masks belong to the old box.
                     record["_mask_array"] = None
+                    record["_letters_array"] = None
                     record["safe_to_inpaint"] = False
                     record["ocr_eligible"] = True
                     record["needs_review"] = True
@@ -355,8 +368,9 @@ class PageProcessingMixin:
             "tmp_clean": tmp_clean_path.as_posix(),
             "boxes": [
                 {
-                    **{k: v for k, v in record.items() if k != "_mask_array"},
+                    **{k: v for k, v in record.items() if k not in ("_mask_array", "_letters_array")},
                     "mask": encode_mask(record.get("_mask_array")),
+                    "letters_mask": encode_mask(record.get("_letters_array")),
                 }
                 for record in detector_records
             ],
