@@ -24,6 +24,12 @@ function pageLabel(pages, pageIndex) {
 }
 
 let previewActivePageIndex = 0;
+// api.js/upload.js write window.previewActivePageIndex; keep both bindings in sync.
+Object.defineProperty(window, "previewActivePageIndex", {
+  configurable: true,
+  get: () => previewActivePageIndex,
+  set: (value) => { previewActivePageIndex = value; },
+});
 let previewZoomScale = 1.0;
 let previewDrawCleanup = null;
 let previewResizeObserver = null;

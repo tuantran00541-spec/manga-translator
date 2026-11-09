@@ -533,7 +533,9 @@
     if (!session) return;
     try {
       const stick = nearBottom();
+      const sid = session.id;
       const snap = await call(`/api/agent/sessions/${session.id}?after=${lastSeq}&rev=${encodeURIComponent(infoRev)}`);
+      if (!session || session.id !== sid) return;
       snap.events.forEach((event) => { render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
       follow(stick && snap.events.length > 0);

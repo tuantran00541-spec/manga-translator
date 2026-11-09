@@ -13,6 +13,13 @@ window.hasUnsavedStitchedMarks = () => {
   return Boolean(shell?._brushChunks?.some((chunk) => chunk.dirty && chunkHasPaint(chunk)));
 };
 
+window.addEventListener("beforeunload", (event) => {
+  if (window.hasUnsavedStitchedMarks?.()) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
+
 export function mount(workspace) {
   if (!(workspace instanceof HTMLElement) || workspace.dataset.stitchInspectorMounted === "1") return;
   resetChapterState();

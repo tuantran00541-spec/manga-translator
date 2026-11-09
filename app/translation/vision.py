@@ -100,6 +100,9 @@ def _merge_translation_results(
     )
 
 
+PLACEHOLDER_TRANSLATIONS = {"n/a", "na", "n/a.", "none", "none.", "null", "undefined", "[n/a]", "(n/a)", "not applicable"}
+
+
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
     source = str(content or "").strip()
     if source.startswith(chr(96) * 3):
@@ -134,7 +137,9 @@ def parse_vision_translation(content: str, expected_ids: set[str], *, allow_miss
         if len(value) > 4000:
             raise RuntimeError("Vision model returned oversized text")
         # Not every lettering font has the ellipsis glyph.
-        results[obj_id] = value.strip().replace("…", "...")
+        cleaned = value.strip().replace("…", "...")
+        # A placeholder is not lettering; blank lets the preserve-original path keep the source art.
+        results[obj_id] = "" if cleaned.lower() in PLACEHOLDER_TRANSLATIONS else cleaned
     if set(results) != expected_ids:
         if not allow_missing or not results:
             raise RuntimeError("Vision model omitted one or more text-object IDs")

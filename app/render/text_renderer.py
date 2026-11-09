@@ -786,8 +786,25 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         # keeps the rectangle fit instead of a flood fill through the artwork.
         if image is None or not centered or not curved:
             return None
-        return _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                             verdict=band_verdict, letter_box=source_letter_box)
+        if frame_source == "region_no_frame":
+            # Without a measured outline the narrowed bands are unanchored; a rectangle fit is the honest fallback.
+            return None
+        bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
+                              verdict=band_verdict, letter_box=source_letter_box)
+        if bands is not None:
+            if source_letter_box is not None:
+                ly1, ly2 = source_letter_box[1], source_letter_box[3]
+            else:
+                ly1, ly2 = y1 + pad + 0.25 * box_h, y1 + pad + 0.75 * box_h
+            n = len(bands)
+            rows = [band for i, band in enumerate(bands)
+                    if y1 + pad + (i + 1) * box_h / n > ly1 and y1 + pad + i * box_h / n < ly2]
+            widest = max((b - a for band in (rows or bands) for a, b in band), default=0)
+            if widest < 0.4 * box_w:
+                # A fragmented flood on the lettering rows is shading, not an interior; trusting it collapses the fit.
+                band_verdict["bands_fragmented"] = True
+                return None
+        return bands
 
     # Size limits are set for an 800 px wide page and grow with wider pages.
     scale = max(1.0, image_size[0] / REFERENCE_PAGE_WIDTH)
@@ -1046,7 +1063,8 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
                     if ok_try:
                         actual_size, lines = actual_size, lines_try
                         held = True
-            if not held and greedy_size is not None:
+            if not held and greedy_size is not None and not (
+                    floor_size is not None and greedy_size < floor_size):
                 actual_size, lines = greedy_size, greedy_lines
                 held = True
             if not held:
@@ -1303,7 +1321,11 @@ def _bands_split_by_waist(bands, box_w: int) -> bool:
     """
     if not bands or box_w <= 0:
         return False
-    cov = [sum(b - a for a, b in band) / box_w for band in bands]
+    return _coverage_waist([sum(b - a for a, b in band) / box_w for band in bands])
+
+
+def _coverage_waist(cov) -> bool:
+    """Whether a >=3-row near-empty run separates two flooded halves."""
     start = None
     for i, c in enumerate(cov):
         if c < 0.15:
@@ -1369,6 +1391,7 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
                      and crop_letter[3] - crop_letter[1] >= 4)
     filled = _paper_union(grey, _flood_seeds(w, h, crop_letter))
     delta: dict = {}
+    waist_rows = False
     # A letter-seeded flood is the bubble the letters sit in, however
     # small a share of the box that is; the half-box floor only judges
     # grid-seeded floods, where a small fill is art, not a bubble.
@@ -1453,6 +1476,7 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
                     ga, gb = gap if gap is not None else (a, b)
                     cut[r, ga:gb] = True
             refined = cut if cut.any() else rows
+            waist_rows = _coverage_waist((refined.sum(axis=1) / max(1, w)).tolist())
             counts = [len(_row_runs(refined[r])) for r in range(refined.shape[0])
                       if refined[r].any()]
             cols_any = refined.any(axis=0)
@@ -1502,7 +1526,7 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
     delta["bands_kept_narrowed"] = kept_narrowed
     if gap_cut_rows or vote_bands:
         delta["narrowed"] = True
-    if _bands_split_by_waist(bands, x2 - x1):
+    if waist_rows or _bands_split_by_waist(bands, x2 - x1):
         # A waist-split flood sizes centred lines to the waist while the
         # lobes hold far wider rows; the rectangle/ellipse fit is the
         # honest fallback, not a fit to the narrowest rows.

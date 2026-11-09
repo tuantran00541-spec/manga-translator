@@ -6,8 +6,9 @@ from fastapi import HTTPException
 
 from app.logging_config import logger
 from app.render.size_bands import banded_cap
-from app.render.text_renderer import render_text_in_box
+from app.render.text_renderer import _bubble_bands, render_text_in_box
 from app.schemas import RenderRequest
+from app.translation.vision import PLACEHOLDER_TRANSLATIONS
 
 
 def style_get(d: dict, idx: int, default=None):
@@ -458,7 +459,7 @@ def render_text_objects(
         translation = style_get(req.translations, oid)
         if translation is None or translation == "":
             translation = obj.get("translation", "")
-        if not (translation or "").strip():
+        if not (translation or "").strip() or str(translation).strip().lower() in PLACEHOLDER_TRANSLATIONS:
             continue
 
         region = _render_region_for_text_object(obj)
@@ -600,6 +601,14 @@ def render_text_objects(
         # The lettering goes where the source lettering was, then roomier
         # boxes; the attempt that letters fewest lines wins, ties largest.
         attempts = fit_attempts(obj, coords)
+        if str(obj.get("container") or "").lower() in ("bubble", "spiky") and len(attempts) > 1:
+            waist: dict = {}
+            lb = obj.get("letter_bounds")
+            letter_box = tuple(int(lb[k]) for k in ("x1", "y1", "x2", "y2")) if isinstance(lb, dict) else None
+            _bubble_bands(image, coords, verdict=waist, letter_box=letter_box)
+            if waist.get("bands_split_waist"):
+                # Roomier attempts on a two-lobe region span the waist and letter across both outlines.
+                attempts = attempts[:1]
         # Frameless text only: a stored break sized for a narrow box can
         # strand a wide line as two small ones. The joined line is tried
         # on the roomiest attempt at source share; it wins only when it

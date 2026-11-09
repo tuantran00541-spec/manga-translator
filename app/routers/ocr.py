@@ -158,6 +158,10 @@ async def detect_chapter_language(chapter_id: str, req: ChapterLanguageDetectReq
         return _language_payload(manifest)
     try:
         detection = await run_in_threadpool(detect_manifest_language, chapter_id, manifest, ocr.read_probe)
+    except ModuleNotFoundError as exc:
+        # No OCR runtime on this machine: report the stored language instead of failing the editor.
+        logger.warning("Chapter {} language detection skipped, OCR runtime unavailable: {}", chapter_id, exc)
+        return _language_payload(manifest)
     except Exception as exc:
         logger.opt(exception=True).error("Chapter {} language detection failed: {}", chapter_id, exc)
         raise HTTPException(500, "Language detection failed") from exc

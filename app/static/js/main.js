@@ -288,12 +288,15 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
 
   document.addEventListener("keyup", (event) => {
     if (event.code !== "Space") return;
+    const handled = spaceDown;
     spaceDown = false;
     if (pan?.viewport) pan.viewport.classList.remove("is-panning");
     pan = null;
     currentReviewWorkspace()?.querySelector(".review-document-viewport")?.classList.remove("review-space-pan");
-    event.preventDefault();
-    event.stopImmediatePropagation();
+    if (handled) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
   }, true);
 
   document.addEventListener("pointerdown", (event) => {
