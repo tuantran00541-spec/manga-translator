@@ -175,6 +175,25 @@ def test_letters_on_a_dark_badge_are_erased_with_the_badge():
     assert (_full(image, box, mask) & badge).sum() >= 0.95 * badge.sum(), "the badge goes with its letters"
 
 
+def test_a_grey_gradient_bubble_keeps_its_fill():
+    # Former Supreme 1, slice 45: the crop spills out of the bubble, so the
+    # ring past it holds paper instead of the fill the letters sit on, and
+    # the mask flooded the gradient interior.
+    image = np.full((400, 900, 3), 255, np.uint8)
+    grad = np.repeat(np.linspace(90, 230, 300)[:, None].astype(np.uint8), 700, axis=1)
+    yy, xx = np.mgrid[0:400, 0:900]
+    inside = ((xx - 450) / 300) ** 2 + ((yy - 200) / 120) ** 2 <= 1
+    sub = inside[50:350, 100:800]
+    image[50:350, 100:800][sub] = grad[sub][..., None]
+    cv2.ellipse(image, (450, 200), (300, 120), 0, 0, 360, (0, 0, 0), 4)
+    cv2.putText(image, "HELLO", (300, 225), cv2.FONT_HERSHEY_DUPLEX, 2.0, (20, 20, 20), 5)
+    box, mask = ctd_mask.letter_mask(image, (150, 110, 750, 290))
+    full = _full(image, box, mask)
+    fill = cv2.erode(inside.astype(np.uint8), np.ones((21, 21), np.uint8)) > 0
+    fill = fill & (image.max(axis=2) >= 90)
+    assert (full & fill).sum() < 0.4 * fill.sum(), "the mask stays on the letters, not the gradient"
+
+
 def test_a_white_bubble_round_the_letters_stays():
     image = np.full((400, 900, 3), (60, 70, 90), np.uint8)
     cv2.ellipse(image, (450, 200), (300, 120), 0, 0, 360, (255, 255, 255), -1)

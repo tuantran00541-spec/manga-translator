@@ -80,11 +80,11 @@ def text_size(part: np.ndarray, prob: np.ndarray | None = None) -> int:
     return int(np.median(heights)) if len(heights) else 0
 
 
-def _centres(bg: np.ndarray) -> np.ndarray:
-    """Up to four Lab colours of the background round a crop."""
+def _centres(bg: np.ndarray, count: int = 4) -> np.ndarray:
+    """Up to `count` Lab colours of the background round a crop."""
     # k-means++ draws from OpenCV's per-thread RNG; without a fixed seed the mask depended on earlier calls.
     cv2.setRNGSeed(KMEANS_SEED)
-    _, _, centers = cv2.kmeans(bg.astype(np.float32), min(4, len(bg)), None,
+    _, _, centers = cv2.kmeans(bg.astype(np.float32), min(count, len(bg)), None,
                                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0), 2, cv2.KMEANS_PP_CENTERS)
     return centers
 
@@ -144,15 +144,25 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
         return seed
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
     bg = bg.astype(np.float32)
-    centers = _centres(bg)
+    r = max(2, int(reach * OUTLINE))
+    start = cv2.dilate(seed.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2)) > 0
+    # The ring past the crop is not the surface the letters sit on when the
+    # crop spills out of the bubble: a grey fill then reads as glow and the
+    # mask floods the bubble. Colours past the spread's own reach from the
+    # letters are background the spread could never legitimately take, so
+    # they join the sample; six centres cover the ring, the fill and the
+    # art round it.
+    far = cv2.distanceTransform((~seed).astype(np.uint8), cv2.DIST_L2, 3) > reach
+    extra = lab[far][::7]
+    if len(extra) >= 20:
+        bg = np.concatenate([bg, extra])
+    centers = _centres(bg, 6 if len(extra) >= 20 else 4)
 
     def dist(a):
         return _distance(a, centers)
 
     smooth = np.hypot(cv2.Sobel(lab[..., 0], cv2.CV_32F, 1, 0), cv2.Sobel(lab[..., 0], cv2.CV_32F, 0, 1)) < EDGE
     open_ = ((dist(lab.reshape(-1, 3)).reshape(lab.shape[:2]) > np.percentile(dist(bg), 90) + 6) & smooth) | seed
-    r = max(2, int(reach * OUTLINE))
-    start = cv2.dilate(seed.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2)) > 0
     k3 = np.ones((3, 3), np.uint8)
 
     def spread(region, steps):

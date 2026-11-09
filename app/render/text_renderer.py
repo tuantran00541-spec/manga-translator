@@ -1000,6 +1000,17 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         final_bands = bands_for()
         if final_bands is not None:
             held = False
+            # The greedy check runs first, unchanged: its verdict is what
+            # the floor and the rectangle retry read, so it stands unless
+            # it fails outright or lands below the source floor — those
+            # are the cases where the old path gives the object back or
+            # hands it to the rectangle retry, and a narrower wrap of the
+            # same text at the fitted size is the better answer. A greedy
+            # wrap can strand one long line on narrow rows while a narrower
+            # wrap fits them, and shrinking to the greedy wrap strands the
+            # block far below what the bubble holds.
+            greedy_size = None
+            greedy_lines = None
             for size in range(actual_size, readable - 1, -1):
                 font_try = get_font_object(font_path_str, size)
                 lines_try = _wrap_text(draw, text, font_try, box_w)
@@ -1008,9 +1019,36 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
                 if _calc_line_height(draw, font_try, stroke_w=stroke_w) * len(lines_try) > box_h:
                     continue
                 if _lines_fit_bands(draw, lines_try, font_try, box_w, box_h, stroke_w, final_bands):
-                    actual_size, lines = size, lines_try
-                    held = True
+                    greedy_size, greedy_lines = size, lines_try
                     break
+            floor_size = None
+            if box_fit is not None:
+                _floor_box = min(box_fit, size_ceiling_px) if size_ceiling_px else box_fit
+                floor_size = int(SOURCE_FLOOR_RATIO * _floor_box)
+            needs_rewrap = greedy_size is None or (floor_size is not None
+                                                   and greedy_size < floor_size)
+            if needs_rewrap:
+                # The re-wrap is trusted only where the bands are real
+                # interior: a fitted line sitting on a span narrower than
+                # two fifths of the box is sitting on a fragment — letters
+                # or a leak splitting the flood, not a lobe — so there the
+                # greedy verdict stands, and a fit that needs the re-wrap
+                # at every size fails here so the rectangle retry can
+                # rescue it instead of lettering small on a sliver.
+                font_try = get_font_object(font_path_str, actual_size)
+                lh_try = _calc_line_height(draw, font_try, stroke_w=stroke_w)
+                spans_try = _band_line_spans(box_w, box_h, len(lines), lh_try, final_bands)
+                rewrap_trusted = (spans_try is not None
+                                  and min(b - a for a, b in spans_try) >= 0.4 * box_w)
+                if rewrap_trusted:
+                    ok_try, lines_try = _fits(draw, text, box_w, box_h, font_path_str, actual_size,
+                                              stroke_w, curved=True, bands=final_bands)
+                    if ok_try:
+                        actual_size, lines = actual_size, lines_try
+                        held = True
+            if not held and greedy_size is not None:
+                actual_size, lines = greedy_size, greedy_lines
+                held = True
             if not held:
                 actual_size = readable
                 lines = _wrap_text(draw, text, get_font_object(font_path_str, readable), box_w)
@@ -1417,16 +1455,22 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
             refined = cut if cut.any() else rows
             counts = [len(_row_runs(refined[r])) for r in range(refined.shape[0])
                       if refined[r].any()]
-            if len(set(counts)) > 1:
+            cols_any = refined.any(axis=0)
+            if (len(set(counts)) > 1
+                    or len(_row_runs(cols_any)) < (max(counts) if counts else 0)):
                 # Rows disagreeing about how many pieces the interior has
                 # are a leak arguing with the outline: one faint-outline
                 # row's merged run must not widen the whole band, so only
-                # columns most rows agree on count as interior.
+                # columns most rows agree on count as interior. A union
+                # that merges pieces the rows keep separate is the same
+                # argument in a single run — the outline between the
+                # pieces drifts a few pixels row to row, so the union
+                # bridges it while no row does.
                 vote_bands += 1
                 votes = refined.sum(axis=0)
                 cols = votes > len(counts) // 2
             else:
-                cols = refined.any(axis=0)
+                cols = cols_any
         else:
             cols = rows.any(axis=0)
         merged = _row_runs(cols)
