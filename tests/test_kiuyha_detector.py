@@ -90,7 +90,7 @@ def test_tall_slice_runs_coarse_and_page_scale_passes_and_masks_letters_with_out
     session = _BlobSession()
     detector = KiuyhaTextDetector("unused", session=session)
     boxes = detector.text_boxes(image)
-    assert len(session.blobs) == 1 + 1, "the whole slice coarse, then once at page scale"
+    assert len(session.blobs) == 1 + 1 + 1, "the whole slice coarse, once at page scale, once low for the rescue"
     assert len(boxes) == 3, "a line seen by several passes is one box"
     for baseline in (300, 1250, 2150):
         assert any(b.y1 < baseline - 20 and b.y2 > baseline for b in boxes), baseline
@@ -410,3 +410,76 @@ def test_sideways_boxes_below_the_page_bar_are_not_kept(monkeypatch):
     monkeypatch.setattr(detector, "raw_boxes",
                         lambda blob_image: [(100, 50, 200, 150, 0.4)] if blob_image.shape[1] > blob_image.shape[0] else [])
     assert detector.detect_slice(image) == []
+
+
+class _GivenSession(_Session):
+    """End-to-end head returning exactly the boxes given, at any input size."""
+
+    def __init__(self, boxes):
+        super().__init__([1, 3, "height", "width"])
+        self.boxes = boxes
+
+    def run(self, _names, feeds):
+        self.blobs.append(feeds["images"])
+        rows = np.zeros((1, 300, 6), np.float32)
+        for i, (x1, y1, x2, y2, score) in enumerate(self.boxes):
+            rows[0, i] = [x1, y1, x2, y2, score, 0]
+        return [rows]
+
+
+def _two_words():
+    image = np.full((1280, 1280, 3), (250, 235, 220), np.uint8)
+    cv2.putText(image, "HELLO", (100, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (40, 30, 25), 4)
+    cv2.putText(image, "WORLD", (600, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (40, 30, 25), 4)
+    return image
+
+
+def test_a_word_in_a_low_box_is_rescued_as_its_own_box():
+    # Former Supreme 1, slice 91: the middle JIANGXI scores 0.239, just under the
+    # bar, while the letter model reads it plainly — the word must come back as its own box.
+    boxes = KiuyhaTextDetector("unused", session=_GivenSession([
+        (80, 100, 400, 180, 0.9), (580, 100, 900, 180, 0.15)])).text_boxes(_two_words())
+    assert len(boxes) == 2
+    rescued = [b for b in boxes if b.confidence < 0.25]
+    assert len(rescued) == 1, "only the low box is rescued; the kept word is untouched"
+    box = rescued[0]
+    assert box.letters is None, "a rescued word is masked whole, like the maskless keep"
+    assert box.mask.any() and (box.mask > 0).all()
+    assert box.x1 <= 610 and box.x2 >= 740 and box.y1 <= 135 and box.y2 >= 155, "the box holds the whole word"
+
+
+def test_a_low_box_over_a_kept_word_rescues_nothing():
+    boxes = KiuyhaTextDetector("unused", session=_GivenSession([
+        (80, 100, 400, 180, 0.9), (100, 110, 380, 170, 0.15)])).text_boxes(_two_words())
+    assert len(boxes) == 1, "the low box's letters are already erased by the kept box"
+
+
+def test_a_low_box_with_no_text_rescues_nothing():
+    # A dark plate with no letters: the pieces gate stops the rescue before any letter model runs.
+    image = np.full((1280, 1280, 3), (200, 180, 160), np.uint8)
+    image[100:160, 100:300] = (60, 50, 40)
+    boxes = KiuyhaTextDetector("unused", session=_GivenSession([(100, 100, 300, 160, 0.15)])).text_boxes(image)
+    assert boxes == []
+
+
+def test_welded_words_takes_a_fat_word_and_not_a_wide_panel():
+    from app.detector.kiuyha_detector import _welded_words
+
+    # Letters welded into one piece, like ANHUI on slice 91: bold strokes touching
+    # each other and the ridge behind them, so no letter count can find them.
+    image = np.full((400, 900, 3), (210, 190, 170), np.uint8)
+    cv2.putText(image, "ANHUI", (100, 120), cv2.FONT_HERSHEY_DUPLEX, 0.7, (40, 30, 25), 3)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    welded = cv2.dilate((gray < 150).astype(np.uint8), np.ones((5, 5), np.uint8))
+    image[welded > 0] = (40, 30, 25)
+    words = _welded_words(image, (80, 80, 300, 160))
+    assert len(words) == 1
+    (x1, y1, x2, y2), _ = words[0]
+    assert x1 <= 100 and x2 >= 160 and 100 <= y1 <= 120 and 115 <= y2 <= 140
+    # A lattice panel is one wide piece too, but it is a panel, not a word.
+    panel = np.full((400, 900, 3), (210, 190, 170), np.uint8)
+    for x in range(500, 591, 30):
+        cv2.line(panel, (x, 100), (x, 141), (60, 50, 40), 4)
+    for y in (100, 120, 141):
+        cv2.line(panel, (500, y), (590, y), (60, 50, 40), 4)
+    assert _welded_words(panel, (480, 80, 610, 160)) == []

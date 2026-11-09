@@ -445,3 +445,63 @@ def test_a_seam_mirror_does_not_block_export_on_its_own():
     blockers = editorial_preflight(manifest)["blockers"]
     assert [item["kind"] for item in blockers] == ["untranslated_story_object"], \
         "the owner still blocks once; the copy never double-counts it"
+
+
+def _stepped_narration():
+    """Run 4, slices 22/23: one stepped narration box split by the cut.
+
+    The upper fragment carries the first sentence; the lower fragment's
+    translation re-reads the whole box and repeats it. Mirrors start
+    unlettered, as the sync leaves them.
+    """
+    upper = {"id": "upper", "region": {"x1": 31, "y1": 4414, "x2": 662, "y2": 4733},
+             "translation": "Lý Diệp chưa từng thấy mặt\nCác Chủ Ẩn Các."}
+    lower = {"id": "lower", "region": {"x1": 187, "y1": 765, "x2": 833, "y2": 1154},
+             "translation": "Lý Diệp chưa từng thấy mặt\nCác Chủ Ẩn Các, mà có thấy,\n"
+                            "đó cũng là kẻ hắn không dám\nbắt chuyện."}
+    mirror_upper = {"id": "upper_mirror", "region": {"x1": 31, "y1": 434, "x2": 662, "y2": 753},
+                    "translation": ""}
+    mirror_lower = {"id": "lower_mirror", "region": {"x1": 187, "y1": 4745, "x2": 833, "y2": 5134},
+                    "translation": ""}
+    return {"pages": [
+        _slice(1335, 2103, 6083, [upper, mirror_lower]),
+        _slice(5315, 6083, 8948, [mirror_upper, lower]),
+    ]}
+
+
+def test_a_stepped_box_repeating_its_first_sentence_is_lettered_once():
+    from app.ai_mode.seams import drop_duplicated_leading_text, sync_seam_mirrors
+
+    manifest = _stepped_narration()
+    assert sync_seam_mirrors(manifest) == [0, 1]
+    assert drop_duplicated_leading_text(manifest) == [0, 1]
+    assert drop_duplicated_leading_text(manifest) == [], "trimming twice changes nothing"
+    first, second = manifest["pages"]
+    assert first["text_objects"][0]["translation"] == "Lý Diệp chưa từng thấy mặt\nCác Chủ Ẩn Các."
+    assert first["text_objects"][1]["translation"] == "Mà có thấy,\nđó cũng là kẻ hắn không dám\nbắt chuyện."
+    assert second["text_objects"][0]["translation"] == "Lý Diệp chưa từng thấy mặt\nCác Chủ Ẩn Các."
+    assert second["text_objects"][1]["translation"] == "Mà có thấy,\nđó cũng là kẻ hắn không dám\nbắt chuyện."
+    assert first["text_objects"][1]["seam_owner"] == {"page": 1, "id": "lower"}
+    assert second["text_objects"][0]["seam_owner"] == {"page": 0, "id": "upper"}
+
+
+def test_a_lower_fragment_that_does_not_repeat_is_left_alone():
+    from app.ai_mode.seams import drop_duplicated_leading_text
+
+    manifest = {"pages": [{"text_objects": [
+        {"id": "upper", "region": {"x1": 31, "y1": 100, "x2": 662, "y2": 400},
+         "translation": "Lý Diệp chưa từng thấy mặt Các Chủ Ẩn Các."},
+        {"id": "lower", "region": {"x1": 187, "y1": 412, "x2": 833, "y2": 700},
+         "translation": "Hắn làm Phó Các Chủ chỉ nửa năm sau khi gia nhập."},
+    ]}]}
+    assert drop_duplicated_leading_text(manifest) == []
+    assert manifest["pages"][0]["text_objects"][1]["translation"].startswith("Hắn làm Phó")
+
+
+def test_a_mirror_without_a_local_duplicate_keeps_its_owners_text():
+    from app.ai_mode.seams import drop_duplicated_leading_text, sync_seam_mirrors
+
+    manifest = _chapter()
+    assert sync_seam_mirrors(manifest) == [0]
+    assert drop_duplicated_leading_text(manifest) == []
+    assert manifest["pages"][0]["text_objects"][0]["translation"] == "Mẹ tôi có tâm hồn thi sĩ."

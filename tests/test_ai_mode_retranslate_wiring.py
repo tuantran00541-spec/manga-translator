@@ -135,6 +135,83 @@ def test_translate_batch_without_a_text_model_keeps_vision_wording(tmp_path, mon
     assert answer.translations == {"text_1": "vision wording"}
 
 
+def test_translate_batch_retranslates_the_vision_read_source_without_ocr_text(tmp_path, monkeypatch):
+    """Run 42505427459: A.I mode candidates carry no OCR text, so the pairs
+    must come from the ``source`` the vision reply echoes, not from the item."""
+    original, clean = _slice_images(tmp_path)
+    _vision_answer(monkeypatch)
+    retold = {}
+
+    def fake_retranslate(provider, model, api_key, pairs, **kwargs):
+        retold.update(provider=provider, model=model, pairs=pairs)
+        return {"text_1": "mimo wording"}
+
+    monkeypatch.setattr(vision, "retranslate_text", fake_retranslate)
+    translator = VisionPageTranslator(
+        cloud_provider(), "deepseek/deepseek-v4.1-flash-1017",
+        translate_provider=cloud_provider(), translate_model=TRANSLATE_MODEL,
+        translate_api_key="job-token",
+    )
+    answer = translator.translate_page(
+        original, clean, [{"id": "text_1", "text": "", "region": [10, 20, 50, 40]}],
+        api_key="job-token", source_lang="en", target_lang="vi",
+    )
+    assert retold["pairs"] == [("text_1", "Hello")], "the vision-read source is the pair, not the empty OCR text"
+    assert retold["model"] == TRANSLATE_MODEL
+    assert answer.translations == {"text_1": "mimo wording"}
+    assert answer.sources == {"text_1": "Hello"}
+
+
+def test_translate_batch_without_a_vision_source_or_ocr_text_cannot_retranslate(tmp_path, monkeypatch):
+    """No source anywhere means nothing to re-translate: no request leaves,
+    but only when the vision reply really echoed nothing."""
+    original, clean = _slice_images(tmp_path)
+
+    def fake_openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
+        result = VisionTranslationResult({"1": "vision wording"}, self.model, {}, None)
+        data = {"translations": [{"id": "1", "translated_text": "vision wording",
+                                  "role": "dialogue", "container": "bubble"}]}
+        return result, data
+
+    monkeypatch.setattr(VisionPageTranslator, "_openai", fake_openai)
+    calls = []
+    monkeypatch.setattr(vision, "request_vision_json",
+                        lambda *a, **k: calls.append(True) or VisionJSONResult({"translations": []}, {}, None))
+    translator = VisionPageTranslator(
+        cloud_provider(), "deepseek/deepseek-v4.1-flash-1017",
+        translate_provider=cloud_provider(), translate_model=TRANSLATE_MODEL,
+        translate_api_key="job-token",
+    )
+    answer = translator.translate_page(
+        original, clean, [{"id": "text_1", "text": "", "region": [10, 20, 50, 40]}],
+        api_key="job-token", source_lang="en", target_lang="vi",
+    )
+    assert not calls
+    assert answer.translations == {"text_1": "vision wording"}
+
+
+def test_retry_passes_the_retranslate_into_the_request(monkeypatch):
+    """A retry re-translates too: it goes through the same request as the first pass."""
+    from types import SimpleNamespace
+
+    import app.routers.translation as translation_router
+    from app.ai_mode.job import AIModeJob, AIModeRunner, AIModeSettings
+
+    seen = {}
+
+    async def fake_translate(req, **kwargs):
+        seen.update(translate_provider=req.translate_provider, translate_model=req.translate_model)
+        return {"translation_run": {"translated": 0}}
+
+    monkeypatch.setattr(translation_router, "translate_page_in_context", fake_translate)
+    job = AIModeJob(job_id="job-1", chapter_id="chapter-1", settings=AIModeSettings(
+        url=CHAPTER_URL, provider="manga-cloud", model="deepseek/deepseek-v4.1-flash-1017",
+        translate_provider="manga-cloud", translate_model=TRANSLATE_MODEL))
+    runner = AIModeRunner(job, SimpleNamespace(id="manga-cloud", tracks_cost=False), "tok")
+    asyncio.run(runner._translate_retry(0, "en", None))
+    assert seen == {"translate_provider": "manga-cloud", "translate_model": TRANSLATE_MODEL}
+
+
 class _Jobs:
     def __init__(self):
         self.settings = None

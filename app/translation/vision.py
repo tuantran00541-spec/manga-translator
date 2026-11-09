@@ -468,11 +468,20 @@ class VisionPageTranslator:
             result, data = self._openai(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         result, data = _unalias(result, data, real)
         ids = set(real.values())
+        # The source lines the vision model read off the image. result.sources
+        # is still empty here, and A.I mode candidates carry no OCR text, so
+        # without this the re-translate below gets empty pairs and never runs.
+        read_sources = {
+            str(entry.get("id")): " ".join(str(entry.get("source") or "").split())[:1000]
+            for entry in data.get("translations") or []
+            if isinstance(entry, dict) and str(entry.get("source") or "").strip()
+        }
         if self.translate_provider is not None and self.translate_model:
             # The vision model reads the image and judges role/container; a text model
             # re-translates the source lines it read, so the wording is the text model's.
             pairs = [
-                (str(item["id"]), (result.sources.get(str(item["id"])) or str(item.get("text") or "").strip()))
+                (str(item["id"]), (read_sources.get(str(item["id"]))
+                                   or str(item.get("text") or "").strip()))
                 for item in items
             ]
             retold = retranslate_text(
@@ -504,8 +513,8 @@ class VisionPageTranslator:
                 review.add(str(entry["id"]))
             if entry.get("enlarge") is True:
                 enlarge.add(str(entry["id"]))
-            if isinstance(entry.get("source"), str) and entry["source"].strip():
-                sources[str(entry["id"])] = " ".join(entry["source"].split())[:1000]
+            if str(entry.get("id")) in read_sources:
+                sources[str(entry["id"])] = read_sources[str(entry["id"])]
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
         fonts = {key: {"font_id": font_for(roles.get(key), containers.get(key), target_lang), "font_mode": "ai"}

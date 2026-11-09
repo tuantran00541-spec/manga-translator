@@ -32,6 +32,12 @@ MASKLESS_PIECE_PX = 20  # a piece this small is a speck, not a letter
 MASKLESS_PIECE_SHARE = 0.25  # a piece bigger than this share of its box is a shape, not a letter
 MASKLESS_DARK_DROP = 25  # grey levels darker than the box median that count as ink
 ROTATED_MIN_SCORE = PAGE_CONFIDENCE  # a sideways box needs the same score as a page-scale one
+RESCUE_MIN_SCORE = 0.10  # a box this faint is worth a second look: the box model half-sees small map labels at 0.10-0.24
+RESCUE_WORD_MAX_W = 80  # a rescued word this wide is a lattice panel, not a label
+RESCUE_WORD_MAX_H = 35
+RESCUE_WORD_MIN_AREA = 100  # a welded word this small is a speck or a mountain fleck
+RESCUE_WORD_MIN_FILL = 0.35  # letters are fat; a ridge or rail fills far less of its box
+RESCUE_WORD_PAD = 8  # a rescued box is drawn round the ink it found, so it pads out to the letters' edges
 EDGE_TOUCH = knob("detect.edge_touch")
 UNION_SHARE = knob("detect.union_share")
 SAME_LINE = knob("detect.same_line")
@@ -269,6 +275,60 @@ def _dark_pieces(image: np.ndarray, box: tuple[int, int, int, int]) -> int:
     return int(((areas >= MASKLESS_PIECE_PX) & (areas <= cap)).sum())
 
 
+def _stretch(image: np.ndarray) -> np.ndarray:
+    """The slice with its local contrast levelled: faint lettering the segmenter
+    reads at ~0.0 on the raw image reads at 0.75+ here, while the geometry stays put."""
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    lightness, a, b = cv2.split(lab)
+    lightness = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(lightness)
+    return cv2.cvtColor(cv2.merge([lightness, a, b]), cv2.COLOR_LAB2BGR)
+
+
+def _mask_coverage(shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarray:
+    """Every pixel a kept box already erases: a rescue must find new text, not the edge of kept text."""
+    cov = np.zeros(shape, bool)
+    for box in boxes:
+        if box.mask is not None:
+            cov[box.y1:box.y2, box.x1:box.x2] |= box.mask > 0
+        elif getattr(box, "letters", None) is not None:
+            cov[box.y1:box.y2, box.x1:box.x2] |= box.letters
+    return cov
+
+
+def _word_blobs(binary: np.ndarray) -> list[tuple[tuple[int, int, int, int], np.ndarray]]:
+    """Letter pixels dilated into word blobs: one blob per word, with its pixels."""
+    dil = cv2.dilate(binary.astype(np.uint8), np.ones((5, 17), np.uint8))
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(dil, 8)
+    out = []
+    for i in range(1, n):
+        x, y, w, h, area = (int(v) for v in stats[i])
+        if 10 <= h <= 45 and 15 <= w <= 220 and area >= 60:
+            out.append(((x, y, x + w, y + h), labels == i))
+    return out
+
+
+def _welded_words(image: np.ndarray, box: tuple[int, int, int, int]) -> list[tuple[tuple[int, int, int, int], np.ndarray]]:
+    """Single dark components shaped like a word: letters welded to each other
+    and to the art behind them read as one piece, so no letter count can find them.
+
+    Ink is judged against the local background, not the box median: a label on a
+    light patch of a mostly dark box is invisible to a box-wide threshold.
+    """
+    x1, y1, x2, y2 = box
+    crop = image[y1:y2, x1:x2]
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    bg = cv2.medianBlur(gray, 51)
+    ink = ((bg.astype(int) - gray.astype(int)) > MASKLESS_DARK_DROP).astype(np.uint8)
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(ink, 8)
+    out = []
+    for i in range(1, len(stats)):
+        x, y, w, h, area = (int(v) for v in stats[i])
+        if (RESCUE_WORD_MAX_W >= w >= 20 and RESCUE_WORD_MAX_H >= h >= 12
+                and area >= RESCUE_WORD_MIN_AREA and area / max(1, w * h) >= RESCUE_WORD_MIN_FILL):
+            out.append(((x1 + x, y1 + y, x1 + x + w, y1 + y + h), (labels == i)[y:y + h, x:x + w]))
+    return out
+
+
 class KiuyhaTextDetector:
     def __init__(self, model_path, conf_threshold: float = knob("detect.confidence"), session=None):
         self.session = session if session is not None else make_session(model_path)
@@ -285,7 +345,7 @@ class KiuyhaTextDetector:
             return self.fixed
         return int(math.ceil(height / STRIDE) * STRIDE), int(math.ceil(width / STRIDE) * STRIDE)
 
-    def raw_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
+    def raw_boxes(self, image: np.ndarray, conf_threshold: float | None = None) -> list[tuple[int, int, int, int, float]]:
         """Boxes (x1, y1, x2, y2, score) in ``image`` pixels from one letterboxed pass."""
         h, w = image.shape[:2]
         in_h, in_w = self._input_size(h, w)
@@ -296,7 +356,8 @@ class KiuyhaTextDetector:
         resized = image if (rw, rh) == (w, h) else cv2.resize(image, (rw, rh), interpolation=cv2.INTER_LINEAR)
         canvas[pad_y:pad_y + rh, pad_x:pad_x + rw] = resized
         blob = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB).astype(np.float32).transpose(2, 0, 1)[None] / 255.0
-        rows = _rows(self.session.run(None, {self.input_name: blob})[0], self.conf_threshold)
+        rows = _rows(self.session.run(None, {self.input_name: blob})[0],
+                     self.conf_threshold if conf_threshold is None else conf_threshold)
         boxes = []
         for x1, y1, x2, y2, score in rows:
             bx1 = int(max(0.0, (x1 - pad_x) / scale))
@@ -418,6 +479,71 @@ class KiuyhaTextDetector:
                     found.append((min(w, bx1), by1 + y0, min(w, bx2), min(h, by2 + y0), score))
         return _merge(found)
 
+    def _rescue_boxes(self, image: np.ndarray, kept: list[BubbleBox]) -> list[BubbleBox]:
+        """Words in boxes the main pass dropped (score below its bar), re-read two ways.
+
+        The box model half-sees small map labels: one candidate spans four of
+        them at 0.12, so keeping the candidate whole would translate four
+        labels as one object. Each word is split out instead, and only words
+        no kept box already erases. The raw letter pass is left out on purpose:
+        it reads window lattice as letters with high confidence, while the
+        stretched pass reads nothing there and still reads the faint words.
+        Runs after the join/split pipeline, so a rescued word is never folded
+        back into the neighbour whose rectangle it sits inside.
+        """
+        h, w = image.shape[:2]
+        cov = _mask_coverage(image.shape[:2], kept)
+        # A rescued word is new text, not the edge of a kept word: most of its
+        # own pixels already inside a kept mask (a little dilated for outline) gives it away.
+        dilated = cv2.dilate(cov.astype(np.uint8), np.ones((17, 17), np.uint8)) > 0
+        low = [box for box in self.raw_boxes(image, RESCUE_MIN_SCORE)
+               if box[4] < self.conf_threshold]
+        stretched = None
+        found: list[list] = []  # [x1, y1, x2, y2, score]
+
+        def consider(rect, pixels, score, emit=None):
+            x1, y1, x2, y2 = rect
+            if x2 - x1 < 15 or y2 - y1 < 10 or not pixels.any():
+                return
+            if float((pixels & dilated[y1:y2, x1:x2]).sum()) / float(pixels.sum()) >= 0.5:
+                return
+            found.append([*(emit or rect), score])
+
+        for x1, y1, x2, y2, score in sorted(low, key=lambda b: (b[1], b[0])):
+            if _dark_pieces(image, (x1, y1, x2, y2)) < MASKLESS_MIN_PIECES:
+                continue
+            if stretched is None:
+                stretched = _stretch(image)
+            (sx1, sy1, sx2, sy2), _, letters = letter_mask(stretched, (x1, y1, x2, y2), with_letters=True)
+            if letters is not None and letters.any():
+                uncov = letters & ~cov[sy1:sy2, sx1:sx2]
+                for (wx1, wy1, wx2, wy2), blob in _word_blobs(uncov):
+                    consider((sx1 + wx1, sy1 + wy1, sx1 + wx2, sy1 + wy2),
+                             blob[wy1:wy2, wx1:wx2], score)
+            for (wx1, wy1, wx2, wy2), pixels in _welded_words(image, (x1, y1, x2, y2)):
+                consider((wx1, wy1, wx2, wy2), pixels, score,
+                         emit=(max(0, wx1 - RESCUE_WORD_PAD), max(0, wy1 - RESCUE_WORD_PAD),
+                               min(w, wx2 + RESCUE_WORD_PAD), min(h, wy2 + RESCUE_WORD_PAD)))
+        # Partial reads of one word union into it.
+        merged: list[list] = []
+        for rect in sorted(found, key=lambda r: (r[1], r[0])):
+            for other in merged:
+                ix = max(0, min(rect[2], other[2]) - max(rect[0], other[0]))
+                iy = max(0, min(rect[3], other[3]) - max(rect[1], other[1]))
+                if ix * iy >= 0.5 * min((rect[2] - rect[0]) * (rect[3] - rect[1]),
+                                       (other[2] - other[0]) * (other[3] - other[1])):
+                    other[0], other[1] = min(other[0], rect[0]), min(other[1], rect[1])
+                    other[2], other[3] = max(other[2], rect[2]), max(other[3], rect[3])
+                    other[4] = max(other[4], rect[4])
+                    break
+            else:
+                merged.append(list(rect))
+        boxes = []
+        for x1, y1, x2, y2, score in merged:
+            full = np.full((y2 - y1, x2 - x1), 255, np.uint8)
+            boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None))
+        return boxes
+
     def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
         """Detected text blocks with letter masks, ready for inpainting and OCR."""
         boxes = []
@@ -431,7 +557,8 @@ class KiuyhaTextDetector:
                 # already copes with a box that has no letters (it falls back to the box extent).
                 full = np.full((y2 - y1, x2 - x1), 255, np.uint8)
                 boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None))
-        return [part for box in _join_grown(boxes) for piece in _split_blocks(box) for part in _split_sideways(piece)]
+        kept = [part for box in _join_grown(boxes) for piece in _split_blocks(box) for part in _split_sideways(piece)]
+        return kept + self._rescue_boxes(image, kept)
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
         """First-pass boxes the letter model still reads after inpainting, masked by what is left of their strokes."""

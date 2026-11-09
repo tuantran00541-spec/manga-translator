@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import re
 
 OWNER_SHARE = 0.5  # share of the smaller box two slices' boxes must share to be the same text
 # Everything that decides how a line is lettered, copied from the owning slice.
@@ -224,6 +225,88 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
             })
             created.append((page_index, _auto_object_id(box_id)))
     return created
+
+
+def _norm_words(text: str) -> list[str]:
+    """Words of a translation, punctuation and case aside, for prefix comparison."""
+    lowered = " ".join(str(text or "").split()).lower()
+    return lowered.translate(str.maketrans({c: " " for c in ".,;:!?\"'“”‘’…()[]{}—–-"})).split()
+
+
+def _trim_leading_words(text: str, count: int) -> str:
+    """``text`` without its first ``count`` words; the continuation becomes sentence-initial."""
+    matches = list(re.finditer(r"\S+", text))
+    if len(matches) <= count:
+        return ""
+    rest = text[matches[count - 1].end():].lstrip(" \t\r\n,.!?;:\"'“”‘’…—–-")
+    for i, ch in enumerate(rest):
+        if ch.isalpha():
+            return rest[:i] + ch.upper() + rest[i + 1:]
+    return rest
+
+
+def _dup_stacked(upper_rect, lower_rect) -> bool:
+    """True when ``lower`` sits directly under ``upper``, as fragments of one stepped box do.
+
+    The centre rule of :func:`_stacked` is left out on purpose: a stepped
+    box's fragments are offset sideways by the step, which is exactly why
+    they were never joined. The verbatim word match below is the real gate;
+    geometry only confirms the two are neighbours.
+    """
+    h = min(upper_rect[3] - upper_rect[1], lower_rect[3] - lower_rect[1])
+    if h <= 0:
+        return False
+    gap = lower_rect[1] - upper_rect[3]
+    across = min(upper_rect[2], lower_rect[2]) - max(upper_rect[0], lower_rect[0])
+    return (-STACK_TUCK * h <= gap <= STACK_GAP * h
+            and across >= STACK_OVERLAP * min(upper_rect[2] - upper_rect[0], lower_rect[2] - lower_rect[0]))
+
+
+def drop_duplicated_leading_text(manifest: dict) -> list[int]:
+    """Strip a sentence a lower stacked fragment repeats from the fragment above it.
+
+    A stepped box split into two fragments is translated twice: the upper
+    fragment carries its own sentence, while the lower fragment's
+    translation re-reads the whole box and repeats it. The repeat is
+    verbatim, so only an exact word-prefix match trims, and only between
+    stacked neighbours; mirrors and owners alike are trimmed, since the
+    sync has already copied the owner's wording onto its mirror. Returns
+    the slices that changed.
+    """
+    pages = manifest.get("pages") or []
+    changed: list[int] = []
+    for page_index, page in enumerate(pages):
+        if not isinstance(page, dict) or page.get("skipped"):
+            continue
+        objs = [obj for obj in page.get("text_objects") or []
+                if isinstance(obj, dict) and not obj.get("joined_into")
+                and not obj.get("overlap_dropped") and not obj.get("source_missing")
+                and str(obj.get("translation") or "").strip()
+                and _rect(obj, 0) is not None]
+        objs.sort(key=lambda obj: (_rect(obj, 0)[1], _rect(obj, 0)[0]))
+        for lower_index, lower in enumerate(objs):
+            lower_words = _norm_words(lower.get("translation"))
+            if len(lower_words) < 4:
+                continue
+            for upper in objs[:lower_index]:
+                upper_words = _norm_words(upper.get("translation"))
+                if len(upper_words) < 3 or len(upper_words) >= len(lower_words):
+                    continue
+                if lower_words[:len(upper_words)] != upper_words:
+                    continue
+                if not _dup_stacked(_rect(upper, 0), _rect(lower, 0)):
+                    continue
+                trimmed = _trim_leading_words(str(lower.get("translation")), len(upper_words))
+                if not trimmed or _norm_words(trimmed) == lower_words:
+                    continue
+                old = str(lower.get("translation") or "")
+                lower["translation"] = trimmed
+                if str(lower.get("auto_translation") or "") == old:
+                    lower["auto_translation"] = trimmed
+                lower_words = _norm_words(trimmed)
+                if page_index not in changed:
+                    changed.append(page_index)
+    return changed
 
 
 def seam_mirror_ids(manifest: dict, page_index: int) -> set[str]:

@@ -15,6 +15,100 @@ class _FakeInpainter:
         return image
 
 
+def test_render_stage_reletters_a_slice_rendered_against_a_partial_chapter_band(tmp_path: Path, monkeypatch):
+    """A slice rendered while later slices were still untranslated keeps the partial band it saw.
+
+    The render signature covers one slice only, so that render still counts
+    as current once the chapter is finished; the render stage must drop it
+    and letter the slice again against the finished chapter, or the early
+    slices keep their translate-time band forever.
+    """
+    import app.config as config
+    import app.dependencies as deps
+    import app.manifest_utils as manifests
+    import app.pipeline_editing as editing
+    import app.routers.export as export_router
+    import app.routers.image as image_router
+    import app.routers.render_commit as render_commit
+    from app.ai_mode.job import AIModeJob, AIModeRunner, AIModeSettings
+    from app.ai_providers import PROVIDERS
+    from app.schemas import RenderRequest
+    from PIL import Image
+
+    chapter = "e7c3b2a2"
+    processed, output, raw = tmp_path / "processed", tmp_path / "output", tmp_path / "raw"
+    (processed / chapter).mkdir(parents=True)
+    (raw / chapter).mkdir(parents=True)
+    for module, name, value in (
+        (editing, "PROCESSED_DIR", processed), (manifests, "PROCESSED_DIR", processed),
+        (config, "PROCESSED_DIR", processed), (config, "OUTPUT_DIR", output), (config, "RAW_DIR", raw),
+        (render_commit, "OUTPUT_DIR", output), (export_router, "OUTPUT_DIR", output),
+        (image_router, "OUTPUT_DIR", output), (image_router, "PROCESSED_DIR", processed), (image_router, "RAW_DIR", raw),
+    ):
+        monkeypatch.setattr(module, name, value)
+
+    clean = raw / chapter / "clean.png"
+    Image.new("RGB", (900, 1000), "white").save(clean)
+    page0 = {
+        "original": clean.as_posix(), "clean": clean.as_posix(), "boxes": [],
+        # Untranslated while slice 1 renders, as in a job mid-translate.
+        "text_objects": [{
+            "id": f"d{i}", "region": {"x1": 100, "y1": 100 + i * 100, "x2": 500, "y2": 180 + i * 100},
+            "translation": "", "typography_role": "dialogue", "container": "bubble",
+            "style": {"font": "dialogue.mac-dinh-3"},
+        } for i in range(8)],
+        "preserve_regions": [], "skipped": False, "process_required": False, "source_page": 0, "slice_index": 0,
+        "source_revision": 1, "clean_revision": 1, "render_revision": 0, "rendered": False,
+    }
+    dots = {"id": "dots", "region": {"x1": 100, "y1": 100, "x2": 282, "y2": 205},
+            "translation": ".......", "source_cap_px": 8, "typography_role": "dialogue",
+            "container": "bubble", "style": {"font": "dialogue.mac-dinh-3"}}
+    page1 = {
+        "original": clean.as_posix(), "clean": clean.as_posix(), "boxes": [],
+        "text_objects": [dots],
+        "preserve_regions": [], "skipped": False, "process_required": False, "source_page": 1, "slice_index": 1,
+        "source_revision": 1, "clean_revision": 1, "render_revision": 0, "rendered": False,
+    }
+    manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [page0, page1]})
+    # The translate-time render: no dialogue cap on slice 0 yet, so no band.
+    render_commit.render_page(RenderRequest(chapter_id=chapter, page_index=1, translations={}))
+
+    def dots_ink() -> int:
+        with Image.open(output / chapter / "page_001.png") as image:
+            grey = image.convert("L").crop((100, 100, 282, 205))
+        return sum(1 for px in grey.getdata() if px < 128)
+
+    small = dots_ink()
+    manifest = manifests.load_manifest_raw(chapter)
+    assert image_router._current_rendered_path(chapter, 1, manifest) is not None, "setup: slice 1 must be current"
+    # The rest of the chapter translates: eight 38 px dialogue caps.
+    with manifests.get_manifest_lock(chapter):
+        manifest = manifests.load_manifest_raw(chapter)
+        for obj in manifest["pages"][0]["text_objects"]:
+            obj["translation"] = "Lời thoại."
+            obj["source_cap_px"] = 38
+        manifests.save_manifest_raw(chapter, manifest)
+    manifest = manifests.load_manifest_raw(chapter)
+    assert image_router._current_rendered_path(chapter, 1, manifest) is not None, (
+        "setup: slice 1's own inputs did not change, so its render still counts as current")
+
+    rendered_pages: list[int] = []
+    real_render_page = render_commit.render_page
+
+    def counting_render_page(req):
+        rendered_pages.append(req.page_index)
+        return real_render_page(req)
+
+    monkeypatch.setattr(render_commit, "render_page", counting_render_page)
+    job = AIModeJob(job_id="j", settings=AIModeSettings(url="https://x", provider="openai", model="m"),
+                    chapter_id=chapter, stage="render", stages={"render": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    asyncio.run(runner.render())
+
+    assert 1 in rendered_pages, "the render stage skipped a slice whose render predates the finished band"
+    assert dots_ink() > small, "the dots cap must be lifted toward the chapter median on the re-render"
+
+
 def test_render_stage_restores_an_unletterable_object_and_the_slice_exports(tmp_path: Path, monkeypatch):
     import app.config as config
     import app.dependencies as deps

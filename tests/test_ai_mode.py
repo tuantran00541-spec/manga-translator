@@ -250,7 +250,7 @@ def test_scan_stage_skips_textless_slices_but_not_most_of_a_chapter(monkeypatch)
     assert skipped == [] and runner.report["textless_rejected"] == [0, 1, 2, 3, 4]
 
 
-def test_with_a_decider_it_alone_picks_the_slices_to_skip(monkeypatch):
+def test_with_a_decider_only_agreement_skips_a_slice(monkeypatch):
     from app.ai_mode import decider
     from app.ai_providers import resolve_provider
 
@@ -260,9 +260,26 @@ def test_with_a_decider_it_alone_picks_the_slices_to_skip(monkeypatch):
     runner, skipped, _ = _scan_stage(monkeypatch, [
         SliceScan(2, False, 0.0, (), no_text=True), SliceScan(4, False, 0.0, (), no_text=True), SliceScan(7, True, 0.9, ()),
     ], provider=minirouter)
-    assert sorted(skipped) == [3, 4, 7]
-    assert runner.report["credit_pages"] == [7] and runner.report["textless_pages"] == [3, 4]
+    assert sorted(skipped) == [4, 7], "3 stays: the decider alone cannot skip a slice the scan read text on"
+    assert runner.report["credit_pages"] == [7] and runner.report["textless_pages"] == [4]
     assert runner.report["skip_kept"] == [2] and runner.report["skip_unjudged"] == [6]
+    assert runner.report["skip_vetoed"] == [3]
+
+
+def test_decide_skips_needs_both_judges_to_agree():
+    # Live verdicts on the former-supreme chapter: the scan read a watermark on
+    # slice 104 but the decider called it storyless, so only the blank slices skip.
+    decision = ai_job.decide_skips({104}, {82, 100}, {82, 100, 103}, {82: 0.01, 100: 0.01, 103: 0.01}, 105)
+    assert decision["credits"] == [] and decision["textless"] == [82, 100]
+    assert decision["skip_vetoed"] == [103] and decision["skip_kept"] == [104]
+
+    # Run-4 verdicts as recorded: the scan called the title page credit and the
+    # decider agreed, so the rule alone does not save it — the prompt and the
+    # decider wording have to stop the verdicts themselves.
+    decision = ai_job.decide_skips({0, 104}, {100}, {0, 82, 100, 103, 104},
+                                   {i: 0.01 for i in (0, 82, 100, 103, 104)}, 105)
+    assert decision["credits"] == [0, 104] and decision["textless"] == [100]
+    assert decision["skip_vetoed"] == [82, 103]
 
 
 def test_scan_parse_requires_a_confident_textless_answer():
@@ -494,6 +511,7 @@ def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypat
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
     monkeypatch.setattr(runner, "_active_pages", lambda: [0])
     monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+    monkeypatch.setattr(runner, "_invalidate_renders", lambda indices: None)
     monkeypatch.setattr(runner, "_settle_blanks", lambda: 0)
     asyncio.run(runner.render())
 

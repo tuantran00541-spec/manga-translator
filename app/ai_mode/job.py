@@ -68,6 +68,37 @@ MAX_RETAINED_JOBS = 16
 MAX_REPORT_ITEMS = 50
 
 
+def decide_skips(scan_credits, scan_textless, storyless, chances, active_count):
+    """Which slices the scan stage skips, and which skips each judge vetoed.
+
+    Both judges must agree a slice holds no story text: the scan model reads
+    the whole slice and its no_text bar is strict, while the decider reads
+    small tiles and lumps watermarks and title logos in with credits. Either
+    judge seeing text keeps the slice, so one flipped verdict cannot drop it.
+    """
+    credits = sorted(scan_credits)
+    textless = sorted(scan_textless)
+    skip_kept, skip_unjudged, skip_vetoed = [], [], []
+    if storyless is not None:
+        storyless = set(storyless)
+        skip_kept = sorted((set(credits) | set(textless)) - storyless)
+        skip_unjudged = sorted(index for index, chance in (chances or {}).items() if chance is None)
+        skip_vetoed = sorted(storyless - set(credits) - set(textless))
+        credits = [index for index in credits if index in storyless]
+        textless = [index for index in textless if index in storyless]
+    limit = max(CREDIT_MAX_ABSOLUTE, int(CREDIT_MAX_SHARE * active_count))
+    credit_rejected = credits if len(credits) > limit else []
+    if credit_rejected:
+        credits = []
+    textless = [index for index in textless if index not in credits]
+    textless_rejected = textless if len(textless) > TEXTLESS_MAX_SHARE * active_count else []
+    if textless_rejected:
+        textless = []
+    return {"credits": credits, "textless": textless, "credit_rejected": credit_rejected,
+            "textless_rejected": textless_rejected, "skip_kept": skip_kept,
+            "skip_unjudged": skip_unjudged, "skip_vetoed": skip_vetoed}
+
+
 class AIModeCancelled(Exception):
     pass
 
@@ -163,6 +194,7 @@ class AIModeRunner:
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
             "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [], "unboxed_pages": [],
             "repaint_retried": 0, "residue_left": [], "art_kept": 0, "skip_kept": [], "skip_unjudged": [],
+            "skip_vetoed": [],
             "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "errors": [], "samples": []},
         })
         self._memory = None
@@ -293,30 +325,24 @@ class AIModeRunner:
         storyless = await judge if judge is not None else None
         self._check_cancel()
 
-        credits = sorted(scan.page_index for scan in scans if scan.is_credit)
-        if storyless is not None:
-            storyless, chances = storyless
-            # The decider decides; a slice the scan would skip but the decider sees story text in is kept.
-            textless = sorted(scan.page_index for scan in scans if scan.no_text)
-            self.report["skip_kept"] = sorted(set(credits + textless) - set(storyless))
-            self.report["skip_unjudged"] = sorted(index for index, chance in chances.items() if chance is None)
-            credits = [index for index in credits if index in storyless]
-        limit = max(CREDIT_MAX_ABSOLUTE, int(CREDIT_MAX_SHARE * len(active)))
-        if len(credits) > limit:
-            self.report["credit_rejected"] = credits
-            credits = []
+        storyless_set, chances = storyless if storyless is not None else (None, None)
+        decision = decide_skips(
+            {scan.page_index for scan in scans if scan.is_credit},
+            {scan.page_index for scan in scans if scan.no_text},
+            storyless_set, chances, len(active),
+        )
+        self.report["skip_kept"] = decision["skip_kept"]
+        self.report["skip_unjudged"] = decision["skip_unjudged"]
+        self.report["skip_vetoed"] = decision["skip_vetoed"]
+        self.report["credit_rejected"] = decision["credit_rejected"]
+        credits = decision["credits"]
         if credits:
             await asyncio.to_thread(pipeline.mark_skipped, chapter_id, credits, True)
         self.report["credit_pages"] = credits
 
         # Textless slices are exported as they are; skipping them saves cleanup and translation.
-        if storyless is not None:
-            textless = [index for index in storyless if index not in credits]
-        else:
-            textless = sorted(scan.page_index for scan in scans if scan.no_text and scan.page_index not in credits)
-        if len(textless) > TEXTLESS_MAX_SHARE * len(active):
-            self.report["textless_rejected"] = textless
-            textless = []
+        textless = decision["textless"]
+        self.report["textless_rejected"] = decision["textless_rejected"]
         if textless:
             await asyncio.to_thread(pipeline.mark_skipped, chapter_id, textless, True)
         self.report["textless_pages"] = textless
@@ -832,7 +858,7 @@ class AIModeRunner:
 
     async def _sync_seams(self) -> list[int]:
         """Letter every text crossing a slice cut exactly as its owning slice does."""
-        from app.ai_mode.seams import drop_overlapping_letters, sync_seam_mirrors
+        from app.ai_mode.seams import drop_duplicated_leading_text, drop_overlapping_letters, sync_seam_mirrors
         from app.manifest_utils import invalidate_page_render, save_manifest_raw
 
         def sync() -> list[int]:
@@ -841,6 +867,15 @@ class AIModeRunner:
                 dropped = drop_overlapping_letters(manifest)
                 self.report["overlaps_dropped"] = self.report.get("overlaps_dropped", 0) + len(dropped)
                 changed = sorted(set(sync_seam_mirrors(manifest)) | {page_index for page_index, _ in dropped})
+                # A stepped box translated twice repeats its first sentence
+                # in the lower fragment; the sync above just copied the
+                # repeat onto the mirror, so the trim runs after it, and
+                # again after polish rewrites re-sync.
+                trimmed = drop_duplicated_leading_text(manifest)
+                if trimmed:
+                    self.report["duplicated_leading_trimmed"] = self.report.get(
+                        "duplicated_leading_trimmed", 0) + len(trimmed)
+                changed = sorted(set(changed) | set(trimmed))
                 for page_index in changed:
                     invalidate_page_render(manifest, page_index)
                 if changed:
@@ -860,6 +895,8 @@ class AIModeRunner:
             source_lang=source_lang, target_lang=self.settings.target_lang,
             budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
             provider=self.provider.id, model=self.settings.model,
+            translate_provider=self.settings.translate_provider,
+            translate_model=self.settings.translate_model,
             max_objects=RETRY_BATCH, object_ids=object_ids,
         ), memory=self._memory, slice_total=self._slice_total, skip_seam_mirrors=True)
         run = data.get("translation_run") or {}
@@ -1000,12 +1037,28 @@ class AIModeRunner:
                 save_manifest_raw(chapter_id, manifest)
         return settled
 
+    def _invalidate_renders(self, indices: list[int]) -> None:
+        from app.manifest_utils import invalidate_page_render, save_manifest_raw
+
+        with get_manifest_lock(self.job.chapter_id):
+            manifest = load_manifest_raw(self.job.chapter_id)
+            for page_index in indices:
+                invalidate_page_render(manifest, page_index)
+            save_manifest_raw(self.job.chapter_id, manifest)
+
     async def render(self) -> None:
         from app.routers.image import _current_rendered_path
 
         chapter_id = self.job.chapter_id
         self.report["blanks_settled"] = await asyncio.to_thread(self._settle_blanks)
         indices = self._active_pages()
+        # Each slice was rendered as it was translated, against the band
+        # of the slices translated so far; the last slices never saw the
+        # first ones' caps. The render signature covers one slice only,
+        # so it still calls those partial-band renders current. Drop
+        # them all: the final pass letters every slice against the
+        # finished chapter.
+        await asyncio.to_thread(self._invalidate_renders, indices)
         for done, page_index in enumerate(indices):
             self._check_cancel()
             self._progress(done, len(indices))

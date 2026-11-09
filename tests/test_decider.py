@@ -128,6 +128,12 @@ def test_a_slice_with_an_unanswered_tile_is_never_skipped(monkeypatch):
     assert skip == [0] and chances[1] is None and chances[2] == 0.5
 
 
+def test_the_series_title_is_story_not_credit():
+    criteria = decider.STORY["kind"]["criteria"]
+    assert "series title" in criteria["story"]
+    assert "watermark" not in criteria["credit"] and "logo" not in criteria["credit"]
+
+
 def test_story_chance_reads_list_and_choice_answers():
     assert decider.story_chance({"kind": {"probabilities": [{"choice": "story", "probability": 0.3}]}}) == 0.3
     assert decider.story_chance({"kind": {"choice": "credit"}}) == 0.0

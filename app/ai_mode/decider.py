@@ -25,8 +25,8 @@ WORKERS = 8
 TIMEOUT = (5, 60)
 LETTERING = {"any": {"type": "boolean", "instructions": "Are there any letters, words or parts of letters visible in this image, even faint or smeared?"}}
 STORY = {"kind": {"type": "choice", "instructions": "What lettering does this webtoon panel show?",
-                  "criteria": {"story": "Dialogue, narration, thoughts, signs or game/system windows a reader needs translated",
-                               "credit": "Only scanlator credits, a watermark, a logo or a website address",
+                  "criteria": {"story": "Dialogue, narration, thoughts, signs, game/system windows, or the series title itself — lettering a reader needs translated",
+                               "credit": "Only scanlator credits, a staff or recruitment notice, or a website address added by the uploader",
                                "none": "No lettering at all, or only sound effects drawn into the art"}}}
 
 

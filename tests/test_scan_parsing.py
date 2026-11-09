@@ -1,5 +1,10 @@
-from app.ai_mode.page_scan import parse_scan
+from app.ai_mode.page_scan import SCAN_PROMPT, parse_scan
 from app.translation.vision import parse_vision_translation
+
+
+def test_scan_prompt_treats_a_title_page_as_story():
+    assert "title page carrying the series title" in SCAN_PROMPT
+    assert "not uploader credits" in SCAN_PROMPT
 
 
 def test_parse_scan_rejects_a_logo_covering_most_of_the_slice():
