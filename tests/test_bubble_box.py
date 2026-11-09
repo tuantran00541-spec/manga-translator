@@ -84,3 +84,22 @@ def test_trim_bubble_box_keeps_a_single_lobe():
     trimmed = _trim_bubble_box(image, (50, 50, 350, 450))
     assert 50 < trimmed[1] < 100  # the top cap rows are not text rows
     assert trimmed[3] < 300  # the neck cut keeps the lower lobe out
+
+
+def test_bubble_bands_keep_the_interior_under_diagonal_shading():
+    """A grey bubble with diagonal shading keeps wide bands, like slice 45's bubble.
+
+    The shading lines are interior art, not the outline loop: a row cut by
+    many strong edges is fragmented by shading, so _outline_gap must not
+    cut the run to the one strip holding the middle. A lobe waist shows
+    few spans (the outline loop itself) and still cuts — see reproI-081.
+    """
+    image = Image.new("RGB", (700, 400), "white")
+    draw = ImageDraw.Draw(image)
+    draw.ellipse([50, 50, 650, 350], fill=(150, 150, 150), outline=(0, 0, 0), width=4)
+    for k in range(6):
+        draw.line([(120 + k * 90, 50), (200 + k * 90, 350)], fill=(110, 110, 110), width=12)
+    bands = _bubble_bands(image, (60, 60, 640, 340))
+    assert bands is not None
+    widest = max(b - a for band in bands for a, b in band)
+    assert widest >= 0.5 * (640 - 60), f"widest band interval is {widest}"

@@ -358,17 +358,37 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
 OVERLAP_KEEP = 0.5  # two lettered objects sharing this much of the smaller one garble each other
 
 
+def _letter_rect(obj: dict) -> tuple[int, int, int, int] | None:
+    """The object's lettering extent when known, else its region.
+
+    Detector regions are loose — two map labels' boxes can overlap by
+    more than half while their letters sit in different places (slice
+    91: ANHUI's box overlaps SHAANXI's by 0.65, but ANHUI's letters are
+    below SHAANXI's). Dropping on the region alone deletes a real label.
+    Letter bounds are set by set_letter_bounds before the sync runs.
+    """
+    bounds = obj.get("letter_bounds")
+    if isinstance(bounds, dict):
+        try:
+            rect = (int(bounds["x1"]), int(bounds["y1"]), int(bounds["x2"]), int(bounds["y2"]))
+        except (KeyError, TypeError, ValueError):
+            rect = None
+        if rect is not None and rect[2] > rect[0] and rect[3] > rect[1]:
+            return rect
+    return _rect(obj, 0)
+
+
 def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
     """Of two translated objects on one slice that mostly overlap, keep the larger; returns what was dropped."""
     dropped = []
     for page_index, page in enumerate(manifest.get("pages") or []):
         objects = [obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)
-                   and str(obj.get("translation") or "").strip() and _rect(obj, 0) is not None]
-        objects.sort(key=lambda obj: -_area(_rect(obj, 0)))
+                   and str(obj.get("translation") or "").strip() and _letter_rect(obj) is not None]
+        objects.sort(key=lambda obj: -_area(_letter_rect(obj)))
         kept: list[dict] = []
         for obj in objects:
-            rect = _rect(obj, 0)
-            if any(_shared(rect, _rect(other, 0)) >= OVERLAP_KEEP for other in kept):
+            rect = _letter_rect(obj)
+            if any(_shared(rect, _letter_rect(other)) >= OVERLAP_KEEP for other in kept):
                 obj["translation"] = ""
                 obj["overlap_dropped"] = True
                 dropped.append((page_index, str(obj.get("id"))))

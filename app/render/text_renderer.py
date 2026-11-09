@@ -831,6 +831,17 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         # The band is a ceiling on growth, never a floor: a long text in
         # a small box still shrinks below it to fit.
         maximum_size = max(readable, min(maximum_size, int(size_ceiling_px)))
+    if not curved and frame_source == "region_no_frame" and box_h > 0:
+        # A frameless box shorter than one line at the readable floor can
+        # never hold text: the padding alone eats the line, so the insert
+        # fails and the original stays. Frameless text has no outline to
+        # keep off, so the margin yields to readability — shrink the pad
+        # until one floor line fits, instead of refusing the text.
+        floor_line = _calc_line_height(
+            draw, get_font_object(font_path_str, readable), stroke_w=stroke_w)
+        if box_h < floor_line:
+            pad = max(0, (raw_h - floor_line) // 2)
+            box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
     fit_bands = bands_for()
     if curved and centered and image is not None and fit_bands is None:
         # The outline measurement failed, so the fit below is a rectangle
@@ -1220,6 +1231,14 @@ def _outline_gap(mag_row, a: int, b: int):
             start = c
         prev = c
     spans.append((start, prev + 1))
+    if len(spans) > 6:
+        # Too many strong edges to be one outline loop bracketing the
+        # interior: diagonal shading (or other interior art) fragments
+        # the run into strips, and the gap holding the middle is one
+        # strip, not the bubble. Cutting to it strands the text in a
+        # sliver. A lobe waist or a leaked flood shows few spans — the
+        # outline loop itself — so those still cut below.
+        return None
     mid = (a + b) // 2
     left = a
     for s, e in spans:
@@ -1346,8 +1365,44 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
             continue
         if mag_crop is not None:
             cut = np.zeros_like(rows)
+            centre = w // 2
             for r in range(rows.shape[0]):
-                for a, b in _row_runs(rows[r]):
+                runs = _row_runs(rows[r])
+                centre_run = None
+                for a, b in runs:
+                    if a <= centre < b:
+                        centre_run = (a, b)
+                        break
+                for a, b in runs:
+                    # A run on paper outside the bubble: it reaches the
+                    # crop edge, the run holding the centre is a bounded
+                    # interior run, and a strong edge (the outline)
+                    # stands between the two. The gap-cut cannot see it
+                    # — a paper run holds no outline inside itself, so
+                    # the shave rule keeps it whole — and the cross-row
+                    # union then calls the paper the interior, so a line
+                    # clamped to the band crosses the outline where the
+                    # bubble pinches. Drop it; the centre run is the
+                    # interior that counts. Letter-seeded only: the
+                    # letter area anchors the flood to one bubble, so a
+                    # run reaching the crop edge is paper outside it.
+                    # Without that anchor a run reaching the edge can be
+                    # the interior itself (a bubble wider than its box),
+                    # or a letter fragment in an uncleaned image, and
+                    # dropping it shrinks healthy renders. A single-run
+                    # row has no other run to drop against, and a row
+                    # whose centre is not a bounded interior run is left
+                    # alone.
+                    if (letter_seeded and centre_run is not None
+                            and (a, b) != centre_run
+                            and centre_run[0] > 0 and centre_run[1] < w
+                            and (a == 0 or b == w)):
+                        lo, hi = ((b, centre_run[0]) if b <= centre_run[0]
+                                  else (centre_run[1], a))
+                        if lo < hi and bool(
+                                (mag_crop[top + r, lo:hi]
+                                 > RAY_EDGE_THRESHOLD).any()):
+                            continue
                     gap = _outline_gap(mag_crop[top + r], a, b)
                     if gap is False:
                         continue

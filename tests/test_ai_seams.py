@@ -505,3 +505,22 @@ def test_a_mirror_without_a_local_duplicate_keeps_its_owners_text():
     assert sync_seam_mirrors(manifest) == [0]
     assert drop_duplicated_leading_text(manifest) == []
     assert manifest["pages"][0]["text_objects"][0]["translation"] == "Mẹ tôi có tâm hồn thi sĩ."
+
+
+def test_overlapping_regions_with_separate_letters_both_stay():
+    """Run 42539948198 slice 91: ANHUI's region overlaps SHAANXI's by
+    0.65, so the region-only drop deleted a real map label — but ANHUI's
+    letters sit below SHAANXI's, in different places. The drop must
+    compare the lettering extent, not the loose detector boxes."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    shaanxi = {"id": "shaanxi", "region": {"x1": 742, "y1": 1269, "x2": 873, "y2": 1360},
+               "letter_bounds": {"x1": 742, "y1": 1269, "x2": 873, "y2": 1310},
+               "translation": "Thiểm Tây"}
+    anhui = {"id": "anhui", "region": {"x1": 719, "y1": 1316, "x2": 784, "y2": 1358},
+             "letter_bounds": {"x1": 719, "y1": 1330, "x2": 784, "y2": 1358},
+             "translation": "An Huy"}
+    manifest = {"pages": [{"text_objects": [shaanxi, anhui]}]}
+    assert drop_overlapping_letters(manifest) == []
+    texts = {obj["id"]: obj["translation"] for obj in manifest["pages"][0]["text_objects"]}
+    assert texts == {"shaanxi": "Thiểm Tây", "anhui": "An Huy"}
