@@ -477,6 +477,41 @@ def test_clean_failure_cancels_and_awaits_the_glossary_read(monkeypatch):
     assert task.done() and task.cancelled(), "the glossary read is stopped and awaited before clean exits"
 
 
+def test_keep_art_restores_a_blank_by_choice_object_once(monkeypatch):
+    """A model that reads text and leaves it blank on purpose still gets its
+    pixels back: the clean erased the text and nothing else restores it.
+    The region is already in preserve_regions on the second call, so the
+    same blank is not re-added; an SFX art region is still restored once.
+    """
+    from app.dependencies import pipeline
+
+    sfx_region = {"x1": 10, "y1": 10, "x2": 60, "y2": 40}
+    blank_region = {"x1": 100, "y1": 100, "x2": 150, "y2": 130}
+    manifest = {"pages": [{"text_objects": [
+        {"id": "sfx", "region": sfx_region},
+        {"id": "murmur", "region": blank_region},
+    ]}]}
+    preserved = []
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
+                        lambda chapter, index, regions: preserved.append((index, list(regions))), raising=False)
+    runner = _runner(monkeypatch, "translate", manifest)
+
+    async def scenario():
+        await runner._keep_art(0, {"art_regions": [sfx_region], "blank_ids": ["murmur"]})
+        # The restore above wrote the blank region into preserve_regions,
+        # so the next batch skips it and only the SFX is re-added.
+        manifest["pages"][0]["preserve_regions"] = [blank_region]
+        await runner._keep_art(0, {"art_regions": [sfx_region], "blank_ids": ["murmur"]})
+
+    asyncio.run(scenario())
+    assert preserved == [
+        (0, [sfx_region, blank_region]),
+        (0, [sfx_region]),
+    ], "a blank left on purpose is restored once, alongside the SFX art"
+    assert runner.report["sfx_kept"] == 2
+    assert runner.report["restored_regions"] == 1
+
+
 def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch):
     from app.dependencies import pipeline
 

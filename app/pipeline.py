@@ -309,6 +309,29 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             if clipped_mask.shape[0] != clipped_source_y2 - clipped_source_y1:
                 return None
 
+        # The letters ride with the mask, clipped to the same rows; a
+        # letters array that does not match the mask's shape belongs to
+        # another frame and is dropped rather than read misaligned.
+        clipped_letters = getattr(box, "letters", None)
+        if clipped_letters is not None:
+            if (box.mask is not None and clipped_letters.shape == box.mask.shape):
+                mask_end = clipped_letters.shape[0] - clip_bottom if clip_bottom else clipped_letters.shape[0]
+                clipped_letters = clipped_letters[clip_top:mask_end, :].copy()
+            else:
+                clipped_letters = None
+
+        # The core rides with the box, shifted and clipped like the mask:
+        # without the shift it still points at the strip, and the fold
+        # would judge coherence on the wrong rows.
+        clipped_core = getattr(box, "core", None)
+        if clipped_core is not None:
+            cx1, cy1, cx2, cy2 = (int(v) for v in clipped_core)
+            cy1 = max(int(page_source_y1), int(seam_source_y1) + cy1)
+            cy2 = min(page_source_y2, int(seam_source_y1) + cy2)
+            clipped_core = (cx1, cy1 - int(page_source_y1), cx2, cy2 - int(page_source_y1))
+            if clipped_core[3] <= clipped_core[1] or clipped_core[2] <= clipped_core[0]:
+                clipped_core = None
+
         if box.safe_to_inpaint and (
             clipped_mask is None or not np.any(clipped_mask > 0)
         ):
@@ -319,11 +342,16 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             y1=clipped_source_y1 - int(page_source_y1),
             y2=clipped_source_y2 - int(page_source_y1),
             mask=clipped_mask,
+            letters=clipped_letters,
+            core=clipped_core,
         )
 
     @staticmethod
     def _shift_detection_y(box: BubbleBox, offset_y: int) -> BubbleBox:
-        return replace(box, y1=box.y1 + offset_y, y2=box.y2 + offset_y)
+        core = getattr(box, "core", None)
+        if core is not None:
+            core = (core[0], core[1] + offset_y, core[2], core[3] + offset_y)
+        return replace(box, y1=box.y1 + offset_y, y2=box.y2 + offset_y, core=core)
 
     def _shared_seam_detections(
         self, chapter_id: str, work_items: list[tuple]

@@ -44,14 +44,15 @@ SAME_LINE = knob("detect.same_line")
 SAME_LINE_X = knob("detect.same_line_x")
 
 
-def _text_box(x1, y1, x2, y2, score, mask, source_model, letters=None) -> BubbleBox:
+def _text_box(x1, y1, x2, y2, score, mask, source_model, letters=None, core=None) -> BubbleBox:
     box = BubbleBox(
         x1, y1, x2, y2, score, mask,
         source_model=source_model, class_name="text", semantic_type="free_text",
         mask_source="text_segmenter", safe_to_inpaint=True, ocr_eligible=True,
         source_role="text_segmenter",
+        letters=letters,  # the letters alone, without outline or glow; they show the lines
+        core=core,
     )
-    box.letters = letters  # the letters alone, without outline or glow; they show the lines
     return box
 
 
@@ -637,14 +638,14 @@ class KiuyhaTextDetector:
             core = (x1, y1, x2, y2)
             (x1, y1, x2, y2), mask, letters = letter_mask(image, core, with_letters=True)
             if mask.any():
-                boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters))
+                boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters, core=core))
                 cores.append(core)
             elif score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1 and _dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES:
                 # The letter model is blind here, not the box model: the box stays, masked whole,
                 # so the text is still erased and read instead of silently dropped. Downstream
                 # already copes with a box that has no letters (it falls back to the box extent).
                 full = np.full((y2 - y1, x2 - x1), 255, np.uint8)
-                boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None))
+                boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None, core=core))
                 cores.append(core)
         kept = [part for box in _join_grown(boxes, cores) for piece in _split_blocks(box) for part in _split_sideways(piece)]
         return kept + self._rescue_boxes(image, kept)
