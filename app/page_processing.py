@@ -69,10 +69,38 @@ def _contained(box: BubbleBox, seam: BubbleBox) -> bool:
 
 
 def _fold_nested(boxes: list[BubbleBox]) -> list[BubbleBox]:
-    """A box mostly inside a larger one is the same text, so its mask joins the larger box."""
+    """A box mostly inside a larger one is the same text, so its mask joins the larger box.
+
+    Containment alone also folds a small bubble tucking under a big one:
+    the detector kept them apart because their letter rows, inside their
+    own cores, never meet. The fold asks the same question before joining,
+    and only joins when the letters cannot tell them apart. A box with no
+    letter geometry to judge by still folds: the detector never lettered it.
+    """
+    from app.detector.kiuyha_detector import _letter_geometry, _letters_coherent
+
+    def _coherent(box: BubbleBox, head: BubbleBox) -> bool:
+        a = _letter_geometry(box, getattr(box, "core", None))
+        b = _letter_geometry(head, getattr(head, "core", None))
+        if _letters_coherent(a, b):
+            return True
+        # A text flowing down into the next lobe shares its columns: the
+        # lower lines sit under the upper ones, so their letter boxes
+        # overlap in x. Two separate texts sit side by side, their columns
+        # disjoint. The veto only fires for the disjoint case; a flowing
+        # text folds, as it always did.
+        if a is None or b is None:
+            return True
+        _, (ax1, _, ax2, _) = a
+        _, (bx1, _, bx2, _) = b
+        overlap = min(ax2, bx2) - max(ax1, bx1)
+        narrower = min(ax2 - ax1, bx2 - bx1)
+        return overlap >= max(20, 0.2 * narrower)
+
     groups: list[list[BubbleBox]] = []
     for box in sorted(boxes, key=lambda b: (b.x2 - b.x1) * (b.y2 - b.y1), reverse=True):
-        home = next((group for group in groups if _contained(box, group[0])), None)
+        home = next((group for group in groups
+                     if _contained(box, group[0]) and _coherent(box, group[0])), None)
         if home is None:
             groups.append([box])
         else:
