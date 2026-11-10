@@ -1,4 +1,5 @@
 from playwright.sync_api import sync_playwright
+from playwright_stealth import Stealth
 
 from app.downloader.base import BaseAdapter
 from app.downloader.image_urls import best_srcset_candidate, resolve_image_candidate
@@ -10,6 +11,13 @@ from app.parameters import (
     DOWNLOAD_JS_STABLE_ROUNDS,
 )
 from app.security import browser_request_allowed, validate_url
+
+# A desktop Chrome fingerprint the stealth evasions match (sec-ch-ua and
+# userAgentData are derived from this UA, platform defaults to Win32).
+REAL_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
 
 
 class GenericJsAdapter(BaseAdapter):
@@ -55,7 +63,15 @@ class GenericJsAdapter(BaseAdapter):
                 ]
             )
             try:
-                context = browser.new_context(service_workers="block")
+                # A real desktop browser's context, not automation defaults:
+                # desktop UA + viewport, locale and timezone to match it.
+                context = browser.new_context(
+                    service_workers="block",
+                    user_agent=REAL_USER_AGENT,
+                    viewport={"width": 1920, "height": 1080},
+                    locale="en-US",
+                    timezone_id="America/New_York",
+                )
 
                 def guard_route(route):
                     if browser_request_allowed(route.request.url):
@@ -64,11 +80,11 @@ class GenericJsAdapter(BaseAdapter):
                         route.abort()
 
                 context.route("**/*", guard_route)
-                context.add_init_script(
-                    "Object.defineProperty(globalThis, 'WebSocket', "
-                    "{value: undefined, writable: false, configurable: false});"
-                )
                 page = context.new_page()
+                # Patch the headless tells (webdriver, plugins, languages,
+                # vendor, WebGL) before any page script runs, so a bot check
+                # sees a desktop Chrome instead of automation.
+                Stealth(chrome_runtime=True).apply_stealth_sync(page)
                 page.goto(
                     chapter_url,
                     wait_until="domcontentloaded",
