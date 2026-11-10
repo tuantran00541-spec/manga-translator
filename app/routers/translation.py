@@ -34,7 +34,7 @@ from app.routers.render_commit import render_page
 from app.text_objects import ensure_page_text_objects
 from app.region_policy import text_object_in_preserve_region
 from app.translation.cost import preflight_cost_usd
-from app.translation.vision import VisionPageTranslator, drawn_in_art
+from app.translation.vision import VisionPageTranslator, collapse_repeated_lines, drawn_in_art
 from app.translation.context import ChapterMemory
 
 
@@ -361,7 +361,7 @@ async def translate_page_in_context(
             ):
                 stale += 1
                 continue
-            value = translated.translations[candidate["id"]]
+            value = collapse_repeated_lines(translated.translations[candidate["id"]])
             role = getattr(translated, "roles", {}).get(candidate["id"])
             source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
             if role == "sfx" and drawn_in_art(source):

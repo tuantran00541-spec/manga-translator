@@ -15,7 +15,8 @@ import app.routers.render_commit as render_commit
 import app.routers.translation as translation_router
 from app.ai_providers import PROVIDERS
 from app.translation.vision import (
-    VisionPageTranslator, VisionTranslationResult, parse_vision_translation,
+    VisionPageTranslator, VisionTranslationResult, collapse_repeated_lines,
+    parse_vision_translation,
 )
 
 CHAPTER = "a1b2c3d4"
@@ -266,6 +267,36 @@ def test_chapter_memory_is_bounded_and_ignores_malformed_entries():
 def test_vision_parser_accepts_a_translations_map_and_integer_ids():
     assert parse_vision_translation('{"translations":{"1":"A","2":"B"}}', {"1", "2"}) == {"1": "A", "2": "B"}
     assert parse_vision_translation('{"translations":[{"id":1,"translated_text":"A"}]}', {"1"}) == {"1": "A"}
+
+
+def test_repeated_lines_collapse_to_one_and_differing_lines_stand():
+    assert collapse_repeated_lines("NGUYÊN TỐ\nNGUYÊN TỐ") == "NGUYÊN TỐ"
+    assert collapse_repeated_lines("NGUYÊN TỐ\nNGUYÊN TỐ\nNGUYÊN TỐ") == "NGUYÊN TỐ"
+    assert collapse_repeated_lines("NGUYÊN TỐ") == "NGUYÊN TỐ"
+    assert collapse_repeated_lines("NGUYÊN TỐ\nKHÁC") == "NGUYÊN TỐ\nKHÁC"
+    assert collapse_repeated_lines("NGUYÊN TỐ NGUYÊN TỐ") == "NGUYÊN TỐ NGUYÊN TỐ"
+
+
+def test_vision_page_commits_a_doubled_translation_collapsed(
+    saved_chapter, monkeypatch,
+):
+    _style, _region, _output = saved_chapter
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, original_path, cleaned_path, items, **kwargs: VisionTranslationResult(
+            {"obj_1": "NGUYÊN TỐ\nNGUYÊN TỐ"}, self.model, {"prompt_tokens": 100}, None
+        ),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
+        source_lang="en", target_lang="vi",
+    )
+    answer = asyncio.run(translation_router.translate_page_in_context(request))
+    assert answer["translation_run"]["translated"] == 1
+    obj = manifests.load_manifest_raw(CHAPTER)["pages"][0]["text_objects"][0]
+    assert obj["translation"] == "NGUYÊN TỐ"
+    assert obj["auto_translation"] == "NGUYÊN TỐ"
 
 
 def test_vision_reply_tells_unanswered_from_deliberately_blank_objects(tmp_path, monkeypatch):

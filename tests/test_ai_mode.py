@@ -548,6 +548,44 @@ def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypat
     assert runner.report["review_list"][0]["id"] == "text_long"
 
 
+def test_render_stage_restores_a_floor_skipped_object_without_raising(monkeypatch):
+    from app.dependencies import pipeline
+    import app.routers.export as export_router
+    import app.routers.image as image_router
+    import app.routers.render_commit as render_commit
+
+    region = {"x1": 10, "y1": 20, "x2": 60, "y2": 40}
+    manifest = {"pages": [{"text_objects": [{"id": "text_ok", "region": region}, {"id": "text_long", "region": region}]}]}
+    calls, preserved = [], []
+
+    def render(req):
+        calls.append(req)
+        if len(calls) == 1:
+            return {"skipped_objects": ["text_long"]}
+        return {}
+
+    monkeypatch.setattr(render_commit, "render_page", render)
+    monkeypatch.setattr(export_router, "_render_request_from_page", lambda chapter_id, index, page: index)
+    monkeypatch.setattr(image_router, "_current_rendered_path", lambda chapter_id, index, manifest: None)
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
+                        lambda chapter_id, index, regions: preserved.append((index, regions)), raising=False)
+
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="render",
+                           stages={"render": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0])
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+    monkeypatch.setattr(runner, "_invalidate_renders", lambda indices: None)
+    monkeypatch.setattr(runner, "_settle_blanks", lambda: 0)
+    asyncio.run(runner.render())
+
+    assert len(calls) == 2, "the slice is rendered again once the object is restored"
+    assert preserved == [(0, [region])]
+    assert runner.report["restored_regions"] == 1
+    assert runner.report["review_list"][0]["id"] == "text_long"
+
+
 def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monkeypatch):
     import app.routers.ocr as ocr_router
 

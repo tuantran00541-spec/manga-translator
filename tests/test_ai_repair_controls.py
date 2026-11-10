@@ -76,7 +76,7 @@ def test_render_snapshot_suppresses_preserve_text(monkeypatch):
         {"id": "story", "region": {"x1": 100, "y1": 100, "x2": 160, "y2": 150}, "translation": "OK"},
     ]}
     req = RenderRequest(chapter_id="abcd1234", page_index=0, translations={"protected": "NO", "story": "OK"})
-    assert _render_snapshot(Image.new("RGB", (200, 200), "white"), req, page, {}, _request_style_maps(req)) == 1
+    assert _render_snapshot(Image.new("RGB", (200, 200), "white"), req, page, {}, _request_style_maps(req)) == (1, [])
     assert seen == ["story"]
 
 

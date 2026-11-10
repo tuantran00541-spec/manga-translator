@@ -1,6 +1,7 @@
 """Regression tests for the three render defect families found on real chapter art."""
 import json
 
+import numpy as np
 from PIL import Image, ImageDraw
 
 from app.config import DEFAULT_FONT
@@ -63,3 +64,50 @@ def test_placeholder_translation_is_blank_not_lettered():
     assert parse_vision_translation(content, {"a"}) == {"a": ""}
     content = json.dumps({"translations": [{"id": "a", "translated_text": "lời thoại thật"}]})
     assert parse_vision_translation(content, {"a"}) == {"a": "lời thoại thật"}
+
+
+def _ink_bands(base, image):
+    # Diacritics sit a pixel or two above the cap line, so one line of
+    # Vietnamese reads as two raw bands; merge gaps under a line pitch.
+    diff = (np.abs(np.asarray(image).astype(int) - np.asarray(base).astype(int)).max(axis=2) > 0)
+    rows = diff.sum(axis=1)
+    raw, in_band = [], False
+    for y, count in enumerate(rows):
+        if count > 3 and not in_band:
+            start, in_band = y, True
+        elif count <= 3 and in_band:
+            raw.append((start, y - 1)); in_band = False
+    bands = []
+    for band in raw:
+        if bands and band[0] - bands[-1][1] <= 10:
+            bands[-1] = (bands[-1][0], band[1])
+        else:
+            bands.append(band)
+    return bands
+
+
+def _render_free_text(image, text):
+    obj = {"id": "t", "translation": text,
+           "region": {"x1": 50, "y1": 100, "x2": 350, "y2": 260},
+           "role": "free_text", "container": "free", "font_selection_mode": "auto"}
+    req = RenderRequest(chapter_id="c", page_index=0, translations={"t": text})
+    render_text_objects(image, req, [obj], {}, {"t": "default"}, *({} for _ in range(8)))
+    return image
+
+
+def test_doubled_translation_letters_once_not_stacked():
+    image = Image.new("RGB", (400, 400), "white")
+    base = image.copy()
+    _render_free_text(image, "NGUYÊN TỐ\nNGUYÊN TỐ")
+    assert len(_ink_bands(base, image)) == 1, "doubled translation lettered as two lines"
+
+
+def test_single_line_and_differing_lines_stand():
+    image = Image.new("RGB", (400, 400), "white")
+    base = image.copy()
+    _render_free_text(image, "NGUYÊN TỐ")
+    assert len(_ink_bands(base, image)) == 1
+    image = Image.new("RGB", (400, 400), "white")
+    base = image.copy()
+    _render_free_text(image, "NGUYÊN TỐ\nKHÁC")
+    assert len(_ink_bands(base, image)) == 2, "differing lines must still letter as two lines"

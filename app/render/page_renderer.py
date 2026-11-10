@@ -8,7 +8,7 @@ from app.logging_config import logger
 from app.render.size_bands import banded_cap
 from app.render.text_renderer import _bubble_bands, render_text_in_box
 from app.schemas import RenderRequest
-from app.translation.vision import PLACEHOLDER_TRANSLATIONS
+from app.translation.vision import PLACEHOLDER_TRANSLATIONS, collapse_repeated_lines
 
 
 def style_get(d: dict, idx: int, default=None):
@@ -62,8 +62,13 @@ def _rank_renders(rendered: list) -> list:
     # that all fit below it: the share bar is about legibility, and a
     # small corrected fit is not a better render than a legible raw one.
     # The rescue needs a placed fit — a spilling raw attempt is the
-    # misplacement the share rule must not promote.
-    if corrected and all(stats_of(item).get("below_share") for item in corrected):
+    # misplacement the share rule must not promote. A corrected attempt
+    # that spills is no better than one below share: both are failed
+    # placements, so either failure across the whole corrected pool
+    # lets a clean raw attempt back in.
+    if corrected and all(stats_of(item).get("below_share")
+                         or stats_of(item).get("spills_letter_box")
+                         for item in corrected):
         pool = pool + [item for item in rendered
                        if not is_corrected(item)
                        and not stats_of(item).get("below_share")
@@ -307,6 +312,7 @@ def render_boxes_legacy(
         translation = style_get(req.translations, box_idx)
         if translation is None or translation == "":
             translation = draft_item.get("text", "")
+        translation = collapse_repeated_lines(translation)
         if not (translation or "").strip():
             continue
 
@@ -459,6 +465,9 @@ def render_text_objects(
         translation = style_get(req.translations, oid)
         if translation is None or translation == "":
             translation = obj.get("translation", "")
+        # Stored text can predate the record-point fix, and polish or a manual
+        # edit can rewrite a translation after it; collapse again here.
+        translation = collapse_repeated_lines(translation)
         if not (translation or "").strip() or str(translation).strip().lower() in PLACEHOLDER_TRANSLATIONS:
             continue
 
@@ -686,10 +695,12 @@ def render_text_objects(
                 attempt_stats["spills_letter_box"] = spills
                 rendered.append((attempt_stats.get("lines", 0), attempt, candidate, attempt_stats))
             if not rendered:
-                # Text that fits nowhere at the readable floor is flagged,
-                # not shrunk past the floor: the raise below carries the
+                # Text that fits nowhere at the readable floor is skipped,
+                # not shrunk past the floor — and it must not take the
+                # whole page down with it: the verdict below carries the
                 # object id, so the caller restores its original pixels
-                # and lists it for review instead of leaving a blank hole.
+                # and lists it for review, and the rest still paints.
+                # Anything else still aborts the page, as before.
                 if floor_only and last_error is not None:
                     logger.warning(
                         "Chapter {} page {} object {} below readable floor, left for review",
@@ -697,13 +708,15 @@ def render_text_objects(
                     if verdicts is not None:
                         verdicts.append({"id": oid, "guard": "below_readable_floor",
                                          "review": True})
-                elif ratio_only and last_error is not None:
+                    continue
+                if ratio_only and last_error is not None:
                     logger.warning(
                         "Chapter {} page {} object {} below source floor share, left for review",
                         req.chapter_id, req.page_index, oid)
                     if verdicts is not None:
                         verdicts.append({"id": oid, "guard": "below_source_floor",
                                          "review": True})
+                    continue
                 if last_error is not None:
                     raise last_error
             else:

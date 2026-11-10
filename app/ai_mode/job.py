@@ -1110,7 +1110,40 @@ class AIModeRunner:
         for attempt in range(RENDER_RESTORE_ATTEMPTS + 1):
             page = self._manifest()["pages"][page_index]
             try:
-                await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
+                result = await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
+                skipped = [str(oid) for oid in (result.get("skipped_objects") if isinstance(result, dict) else None) or []]
+                if not skipped:
+                    return
+                # Floor-skipped objects left the page painted but their
+                # regions clean-empty: restore their original pixels
+                # together, then render the rest onto the restored base.
+                regions = []
+                objs = []
+                for item in page.get("text_objects") or []:
+                    if (isinstance(item, dict) and str(item.get("id")) in skipped
+                            and isinstance(item.get("region"), dict)):
+                        regions.append(dict(item["region"]))
+                        objs.append(item)
+                if not regions:
+                    return
+                try:
+                    await asyncio.to_thread(pipeline.preserve_and_reinpaint, chapter_id, page_index, regions)
+                except (ValueError, RuntimeError, OSError) as exc:
+                    _append(self.report["render_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
+                    return
+                self.report["restored_regions"] += len(regions)
+                for obj in objs:
+                    _append(self.report["review_list"], {
+                        "page": page_index + 1, "id": obj["id"],
+                        "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
+                    })
+                page = self._manifest()["pages"][page_index]
+                rerender = await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
+                for oid in (rerender.get("skipped_objects") if isinstance(rerender, dict) else None) or []:
+                    _append(self.report["review_list"], {
+                        "page": page_index + 1, "id": str(oid),
+                        "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
+                    })
                 return
             except HTTPException as exc:
                 detail = _detail(exc)

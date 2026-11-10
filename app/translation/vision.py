@@ -103,6 +103,17 @@ def _merge_translation_results(
 PLACEHOLDER_TRANSLATIONS = {"n/a", "na", "n/a.", "none", "none.", "null", "undefined", "[n/a]", "(n/a)", "not applicable"}
 
 
+def collapse_repeated_lines(text: str) -> str:
+    # One box can hold two copies of the same source text; the model then
+    # translates each copy and joins them, so the same line letters twice.
+    if not isinstance(text, str):
+        return text
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) > 1 and len(set(lines)) == 1:
+        return lines[0]
+    return text
+
+
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
     source = str(content or "").strip()
     if source.startswith(chr(96) * 3):

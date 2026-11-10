@@ -65,7 +65,7 @@ def _render_snapshot(
     drafts: dict,
     styles: dict[str, dict],
     size_bands: dict | None = None,
-) -> int:
+) -> tuple[int, list[str]]:
     text_objects = page.get("text_objects") or []
     if text_objects:
         _resolve_snapshot_fonts(page, styles)
@@ -79,8 +79,9 @@ def _render_snapshot(
             )
         ]
         if not active_text_objects:
-            return 0
-        return render_text_objects(
+            return 0, []
+        verdicts: list[dict] = []
+        rendered_count = render_text_objects(
             image,
             req,
             active_text_objects,
@@ -95,7 +96,16 @@ def _render_snapshot(
             styles["horizontal_aligns"],
             styles["vertical_aligns"],
             size_bands=size_bands,
+            verdicts=verdicts,
         )
+        # Objects the floor refused are skipped, not failed: their ids
+        # travel back so the caller restores their original pixels.
+        skipped = [
+            str(v["id"])
+            for v in verdicts
+            if v.get("review") and v.get("guard") in ("below_readable_floor", "below_source_floor")
+        ]
+        return rendered_count, skipped
     legacy_page = copy.deepcopy(page)
     preserve_regions = page_preserve_regions(page)
     for box in legacy_page.get("boxes") or []:
@@ -114,7 +124,7 @@ def _render_snapshot(
         styles["stroke_colors"],
         styles["bg_colors"],
         styles["corner_radii"],
-    )
+    ), []
 
 
 def _set_style_value(style: dict, field: str, value, *, stringify: bool = False) -> None:
@@ -266,7 +276,7 @@ def render_page(req: RenderRequest) -> dict:
         raise HTTPException(500, "Cannot open base image") from exc
 
     styles = _request_style_maps(req)
-    rendered_count = _render_snapshot(image, req, page, drafts, styles, size_bands=size_bands)
+    rendered_count, skipped_objects = _render_snapshot(image, req, page, drafts, styles, size_bands=size_bands)
 
     out_dir = OUTPUT_DIR / req.chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -316,4 +326,5 @@ def render_page(req: RenderRequest) -> dict:
         "output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered",
         "committed": True,
         "render_revision": render_revision,
+        "skipped_objects": skipped_objects,
     }
