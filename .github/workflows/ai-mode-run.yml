@@ -5,9 +5,13 @@ on:
   workflow_dispatch:
     inputs:
       chapter_url:
-        description: "Chapter URL to translate"
-        required: true
-        default: "https://asurascans.com/comics/the-former-supreme-ab39de10/chapter/1"
+        description: "Chapter URL to translate (exactly one of chapter_url and chapter_zip)"
+        required: false
+        default: ""
+      chapter_zip:
+        description: "Repo-relative path to a chapter zip of page images (exactly one of chapter_url and chapter_zip)"
+        required: false
+        default: ""
       model:
         description: "Model id (vision: reads the images, judges role/container for font choice)"
         required: false
@@ -112,7 +116,12 @@ jobs:
 
       - name: Run the chapter
         run: |
-          python scripts/ai_mode_run.py --url "${{ inputs.chapter_url }}" --provider nvidia --model "${{ inputs.model }}" --target-lang "${{ inputs.target_lang }}" --budget-usd "${{ inputs.budget_usd }}" --images-per-request "${{ inputs.images_per_request }}" --translate-provider "${{ inputs.translate_provider }}" --translate-model "${{ inputs.translate_model }}"
+          if [ -n "${{ inputs.chapter_zip }}" ]; then
+            SRC_ARGS="--chapter-zip ${{ inputs.chapter_zip }}"
+          else
+            SRC_ARGS="--url ${{ inputs.chapter_url }}"
+          fi
+          python scripts/ai_mode_run.py $SRC_ARGS --provider nvidia --model "${{ inputs.model }}" --target-lang "${{ inputs.target_lang }}" --budget-usd "${{ inputs.budget_usd }}" --images-per-request "${{ inputs.images_per_request }}" --translate-provider "${{ inputs.translate_provider }}" --translate-model "${{ inputs.translate_model }}"
 
       - name: Upload rendered chapter
         if: always()

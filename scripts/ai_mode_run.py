@@ -6,9 +6,11 @@ completes, fails, or is cancelled. Exits 0 only on completion.
 """
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
+import uuid
 
 BASE = "http://127.0.0.1:8000"
 
@@ -23,9 +25,33 @@ def _req(method, path, payload=None):
         return json.loads(resp.read())
 
 
+def _upload_zip(path: str) -> str:
+    """POST one chapter zip to /api/chapter/upload; return its chapter_id."""
+    boundary = uuid.uuid4().hex
+    with open(path, "rb") as handle:
+        data = handle.read()
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="files"; filename="{os.path.basename(path)}"\r\n'
+        "Content-Type: application/zip\r\n\r\n"
+    ).encode() + data + f"\r\n--{boundary}--\r\n".encode()
+    req = urllib.request.Request(
+        BASE + "/api/chapter/upload", data=body, method="POST",
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        result = json.loads(resp.read())
+    chapter_id = result.get("chapter_id")
+    if not chapter_id:
+        raise RuntimeError(f"chapter upload failed: {result}")
+    print(f"uploaded {path}: chapter {chapter_id}, {len(result.get('pages') or [])} pages", flush=True)
+    return chapter_id
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--url", required=True)
+    p.add_argument("--url", default=None)
+    p.add_argument("--chapter-zip", default=None)
     p.add_argument("--provider", default="nvidia")
     p.add_argument("--model", required=True)
     p.add_argument("--target-lang", default="vi")
@@ -38,11 +64,19 @@ def main() -> int:
     p.add_argument("--max-minutes", type=int, default=280)
     args = p.parse_args()
 
+    if bool(args.url) == bool(args.chapter_zip):
+        print("provide exactly one of --url and --chapter-zip", file=sys.stderr)
+        return 2
+
     payload = {
-        "url": args.url, "provider": args.provider, "model": args.model,
+        "provider": args.provider, "model": args.model,
         "target_lang": args.target_lang, "budget_usd": args.budget_usd,
         "polish": args.polish, "images_per_request": args.images_per_request,
     }
+    if args.chapter_zip:
+        payload["chapter_id"] = _upload_zip(args.chapter_zip)
+    else:
+        payload["url"] = args.url
     if args.translate_provider and args.translate_model:
         payload["translate_provider"] = args.translate_provider
         payload["translate_model"] = args.translate_model
