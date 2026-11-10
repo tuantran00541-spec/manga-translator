@@ -49,6 +49,17 @@ def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> in
     pieces = sorted((int(h), int(area)) for _x, _y, _w, h, area in stats if area > 0)
     if len(pieces) < max(1, min_pieces):
         return None
+    # One art blob can carry more ink than all the letters together, so the
+    # area median reads its height, not the lettering's. Drop a tallest
+    # piece that towers over the rest, but only while a real letter set
+    # remains to read by: a lone tall piece may be the letter itself.
+    while len(pieces) > max(3, min_pieces):
+        rest = pieces[:-1]
+        rest_ink = np.cumsum([area for _h, area in rest])
+        rest_med = rest[int(np.searchsorted(rest_ink, rest_ink[-1] / 2))][0]
+        if pieces[-1][0] <= 3 * max(1, rest_med):
+            break
+        pieces = rest
     # The height holding the middle of the ink: specks of art are many but carry little of it.
     ink = np.cumsum([area for _h, area in pieces])
     return pieces[int(np.searchsorted(ink, ink[-1] / 2))][0]

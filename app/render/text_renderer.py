@@ -582,6 +582,66 @@ def render_text_in_box(
     return image
 
 
+def _spiky_base_interval(mag, band_rows: int) -> list[tuple[int | None, int | None]]:
+    """Innermost strong stroke each side of the centre, per band row range.
+
+    The flood leaks through the gaps between spikes to their tips, so a
+    spiky band overstates the interior by the spike depth. The base is
+    the innermost strong edge on each side; a median over the band's
+    rows keeps gap rows from setting it. A side with no stroke on most
+    rows reports None, so a softened outline narrows nothing.
+    """
+    h, w = mag.shape
+    centre = w // 2
+    strong = mag > RAY_EDGE_THRESHOLD
+    lefts: list[int | None] = []
+    rights: list[int | None] = []
+    for r in range(h):
+        row = strong[r]
+        left_hits = np.flatnonzero(row[:centre])
+        lefts.append(int(left_hits[-1]) if len(left_hits) else None)
+        right_hits = np.flatnonzero(row[centre:])
+        rights.append(int(centre + right_hits[0]) if len(right_hits) else None)
+    out = []
+    for i in range(band_rows):
+        top = i * h // band_rows
+        bottom = (i + 1) * h // band_rows
+        ls = [v for v in lefts[top:bottom] if v is not None]
+        rs = [v for v in rights[top:bottom] if v is not None]
+        rows = max(1, bottom - top)
+        left = int(np.median(ls)) if len(ls) * 2 >= rows else None
+        right = int(np.median(rs)) if len(rs) * 2 >= rows else None
+        out.append((left, right))
+    return out
+
+
+SPIKY_BASE_MAX_DEPTH = 64  # a spike leaks this far past its base at most; deeper is interior art
+
+
+def _narrow_to_spiky_base(bands, bases):
+    """Narrow spiky bands to the spike bases, or leave them unchanged.
+
+    A side is narrowed only where most of its rows show a base stroke
+    sitting within spike depth of the band's edge, and never by more
+    than an eighth of the band's width: a stroke deeper inside is
+    interior art, not the outline, and narrowing onto it collapses
+    the fit. A softened outline shows no base stroke and narrows nothing.
+    """
+    out = []
+    for band, (base_left, base_right) in zip(bands, bases):
+        new_band = []
+        for a, b in band:
+            na, nb = a, b
+            eighth = max(0, (b - a) // 8)
+            if base_left is not None and base_left - a <= SPIKY_BASE_MAX_DEPTH:
+                na = max(a, min(base_left, a + eighth))
+            if base_right is not None and b - base_right <= SPIKY_BASE_MAX_DEPTH:
+                nb = min(b, max(base_right, b - eighth))
+            new_band.append((na, nb) if nb - na >= 8 else (a, b))
+        out.append(new_band)
+    return out
+
+
 def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: int = RENDER_DEFAULT_PADDING,
              stroke_w: int = RENDER_AUTO_STROKE_WIDTH, source_cap_px: int | None = None, enlarge: bool = False,
              opaque_caption: bool = False, curved: bool = False, image=None, centered: bool = True,
@@ -797,7 +857,8 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         # LaMa-softened outline must not force the ellipse guess when the
         # interior can still be measured.
         bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                              verdict=band_verdict, letter_box=source_letter_box)
+                              verdict=band_verdict, letter_box=source_letter_box,
+                              spiky=str(container or "").lower() == "spiky")
         if bands is not None:
             if source_letter_box is not None:
                 ly1, ly2 = source_letter_box[1], source_letter_box[3]
@@ -1351,7 +1412,8 @@ _BANDS_CACHE_MAX = 128
 
 
 def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None = None,
-                  letter_box: tuple[int, int, int, int] | None = None):
+                  letter_box: tuple[int, int, int, int] | None = None,
+                  spiky: bool = False):
     """Per-band ink intervals of the bubble interior holding ``box``, or None.
 
     The box sits inside its bubble, so flooding outward from several seeds on the
@@ -1378,7 +1440,7 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
     if grey.size == 0:
         return None
     letter_key = tuple(int(v) for v in letter_box) if letter_box is not None else None
-    cache_key = (id(image), (x1, y1, x2, y2), band_count, letter_key)
+    cache_key = (id(image), (x1, y1, x2, y2), band_count, letter_key, spiky)
     hit = _BANDS_CACHE.get(cache_key)
     if hit is not None:
         _image_ref, bands, delta = hit
@@ -1555,6 +1617,12 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
                 verdict[key] = verdict.get(key, False) or value
             else:
                 verdict[key] = verdict.get(key, 0) + value
+    if spiky and mag_crop is not None:
+        # The flood leaks through the gaps between spikes to their
+        # tips, so spiky bands overstate the interior by the spike
+        # depth; the bases are the interior the lines must hold.
+        bases = _spiky_base_interval(mag_crop, band_count)
+        bands = _narrow_to_spiky_base(bands, bases)
     _BANDS_CACHE[cache_key] = (image, [list(band) for band in bands], delta)
     if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
         _BANDS_CACHE.pop(next(iter(_BANDS_CACHE), None), None)
@@ -2320,6 +2388,18 @@ def _fit_text(
             lo = mid + 1
         else:
             hi = mid - 1
+
+    # The rectangle fit is not monotonic in size: a short text wraps to one
+    # line too wide for the box at one size and to two lines that fit at a
+    # larger one, so the search above can stop at the one-line ceiling
+    # while a bigger size holds. Scan up for the true ceiling; the curved
+    # scan below starts from it, so a one-line failure must not cap the fit.
+    hi_max = max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
+    for size in range(best_size + 1, hi_max + 1):
+        ok, lines = _fits(draw, text, box_w, box_h, font_path_str, size, stroke_w)
+        if ok:
+            best_size = size
+            best_lines = lines
 
     if (curved or bands is not None) and best_lines:
         # The ellipse/band predicate is not monotonic in size: a word break can
