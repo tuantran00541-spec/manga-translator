@@ -786,9 +786,16 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         # keeps the rectangle fit instead of a flood fill through the artwork.
         if image is None or not centered or not curved:
             return None
-        if frame_source == "region_no_frame":
-            # Without a measured outline the narrowed bands are unanchored; a rectangle fit is the honest fallback.
+        if frame_source == "region_no_frame" and source_letter_box is None:
+            # No measured outline and no lettering to anchor the flood: the
+            # narrowed bands would be unanchored, so a rectangle fit is the
+            # honest fallback.
             return None
+        # The frame is only the gate here, not an input: the flood seeds
+        # from the lettering itself, and its gap-cut, vote and fragmented
+        # checks reject a leak the same way. A ray that fails on a
+        # LaMa-softened outline must not force the ellipse guess when the
+        # interior can still be measured.
         bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
                               verdict=band_verdict, letter_box=source_letter_box)
         if bands is not None:

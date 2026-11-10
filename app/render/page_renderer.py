@@ -594,9 +594,12 @@ def render_text_objects(
             role = str(obj.get("typography_role") or obj.get("role") or "dialogue")
             band = size_bands.get(role)
             if band is not None:
-                eff_cap = banded_cap(role, cap, size_bands)
+                letter_w = (bounds["x2"] - bounds["x1"]) if _valid_region(bounds) else None
+                eff_cap = banded_cap(role, cap, size_bands, letter_w)
                 style["source_cap_px"] = eff_cap
-                style["size_band_hi_cap"] = int(round(band[1]))
+                # An exempt display cap lifts its own ceiling too; a clamped
+                # cap keeps the band hi.
+                style["size_band_hi_cap"] = int(round(max(band[1], eff_cap)))
                 band_info = {"role": role, "cap": cap, "effective_cap": eff_cap}
         # The lettering goes where the source lettering was, then roomier
         # boxes; the attempt that letters fewest lines wins, ties largest.

@@ -14,7 +14,9 @@ and nothing is ever forced below readability.
 Only the body roles are banded. SFX, titles, shouts and free text set their
 size from the art — a sound effect is big because the art is big — so a
 chapter median would be the wrong reference for them, and they stay
-unbanded.
+unbanded. A body cap far above the band hi is still display lettering, not
+noise, when the lettering is as wide as it is tall — an art stroke that tall
+would be narrow — so it keeps its own cap instead of shrinking to the body size.
 """
 from __future__ import annotations
 
@@ -63,12 +65,20 @@ def chapter_size_bands(pages) -> dict[str, tuple[float, float]]:
     return bands
 
 
-def banded_cap(role: str, cap: float, bands: dict[str, tuple[float, float]] | None) -> float:
-    """The cap the fit should use: clamped into the role band, or untouched."""
+def banded_cap(role: str, cap: float, bands: dict[str, tuple[float, float]] | None,
+               letter_w: float | None = None) -> float:
+    """The cap the fit should use: clamped into the role band, or untouched.
+
+    A cap far above the band hi, spanning lettering as wide as it is tall,
+    is display lettering, not a misread: an art stroke that tall would be
+    narrow. It keeps its own cap, so a shout does not shrink to the body size.
+    """
     if not bands or cap is None:
         return cap
     band = bands.get(str(role or "dialogue"))
     if band is None:
         return cap
     lo, hi = band
+    if letter_w is not None and cap > 2 * hi and letter_w >= 2 * cap:
+        return float(cap)
     return min(max(float(cap), lo), hi)

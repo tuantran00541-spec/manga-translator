@@ -163,8 +163,12 @@ def _fit_metrics(obj: dict, page_width: int, bands: dict | None = None) -> dict:
         if bands and isinstance(cap, (int, float)) and cap > 0:
             role = str(obj.get("typography_role") or "dialogue")
             if role in bands:
-                cap = banded_cap(role, cap, bands)
-                ceiling = int(matching_font_px(str(font_path), int(round(bands[role][1]))) * SIZE_SLACK)
+                lb = obj.get("letter_bounds")
+                letter_w = None
+                if isinstance(lb, dict) and all(k in lb for k in ("x1", "x2")):
+                    letter_w = lb["x2"] - lb["x1"]
+                cap = banded_cap(role, cap, bands, letter_w)
+                ceiling = int(matching_font_px(str(font_path), int(round(max(bands[role][1], cap)))) * SIZE_SLACK)
         size, lines, fits, _ = auto_fit(draw, text, (x1, y1, x2, y2), (page_width, 10 ** 6), str(font_path),
                                         source_cap_px=cap, enlarge=bool(obj.get("enlarge")),
                                         opaque_caption=bg not in ("transparent", "none", ""),
