@@ -1409,7 +1409,7 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
             verdict["bands_none"] = True
         _BANDS_CACHE[cache_key] = (image, None, delta)
         if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
-            _BANDS_CACHE.pop(next(iter(_BANDS_CACHE)))
+            _BANDS_CACHE.pop(next(iter(_BANDS_CACHE), None), None)
         return None
     try:
         import cv2
@@ -1547,7 +1547,7 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
                     verdict[key] = verdict.get(key, 0) + value
         _BANDS_CACHE[cache_key] = (image, None, delta)
         if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
-            _BANDS_CACHE.pop(next(iter(_BANDS_CACHE)))
+            _BANDS_CACHE.pop(next(iter(_BANDS_CACHE), None), None)
         return None
     if verdict is not None:
         for key, value in delta.items():
@@ -1557,7 +1557,7 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
                 verdict[key] = verdict.get(key, 0) + value
     _BANDS_CACHE[cache_key] = (image, [list(band) for band in bands], delta)
     if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
-        _BANDS_CACHE.pop(next(iter(_BANDS_CACHE)))
+        _BANDS_CACHE.pop(next(iter(_BANDS_CACHE), None), None)
     return bands
 
 

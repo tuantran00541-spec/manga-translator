@@ -1,4 +1,4 @@
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 from playwright_stealth import Stealth
 
 from app.downloader.base import BaseAdapter
@@ -85,6 +85,12 @@ class GenericJsAdapter(BaseAdapter):
                 # vendor, WebGL) before any page script runs, so a bot check
                 # sees a desktop Chrome instead of automation.
                 Stealth(chrome_runtime=True).apply_stealth_sync(page)
+                # route() does not intercept WebSocket handshakes; keep them disabled so a
+                # page cannot open an SSRF channel the HTTP guard never sees.
+                context.add_init_script(
+                    "Object.defineProperty(globalThis, 'WebSocket', "
+                    "{value: undefined, writable: false, configurable: false});"
+                )
                 page.goto(
                     chapter_url,
                     wait_until="domcontentloaded",
@@ -104,7 +110,7 @@ class GenericJsAdapter(BaseAdapter):
                         arg=[self.img_selector, self.min_width],
                         timeout=DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS,
                     )
-                except Exception:
+                except PlaywrightTimeoutError:
                     pass
                 self._scroll_until_stable(page)
 
