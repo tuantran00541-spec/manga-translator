@@ -43,7 +43,7 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-22.04
-    timeout-minutes: 300
+    timeout-minutes: 350
     env:
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: "."
