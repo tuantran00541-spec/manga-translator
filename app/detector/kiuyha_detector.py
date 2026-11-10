@@ -361,6 +361,32 @@ def _dark_pieces(image: np.ndarray, box: tuple[int, int, int, int]) -> int:
     return int(((areas >= MASKLESS_PIECE_PX) & (areas <= cap)).sum())
 
 
+def _has_letter_piece(image: np.ndarray, box: tuple[int, int, int, int]) -> bool:
+    """True when a letter-sized dark piece stands whole inside the box.
+
+    A rescued word is a word: its letters end inside the box, with
+    background around them. A stroke fragment of a much bigger shape
+    runs off the box's edges, so every piece in the crop touches an
+    edge and none counts. The height cap of the renderer's letter
+    measurement is left out on purpose: a tall rescued letter is still
+    a letter, and only the edge test tells a fragment from a word.
+    """
+    x1, y1, x2, y2 = box
+    crop = image[y1:y2, x1:x2]
+    if crop.size == 0 or min(crop.shape[:2]) < 8:
+        return False
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if np.count_nonzero(ink) > ink.size / 2:
+        ink = 255 - ink
+    _, _, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    height, width = ink.shape[:2]
+    for x, y, w, h, area in stats[1:]:
+        if area >= 12 and h >= 5 and w <= 3 * h and x > 0 and y > 0 and x + w < width and y + h < height:
+            return True
+    return False
+
+
 def _stretch(image: np.ndarray) -> np.ndarray:
     """The slice with its local contrast levelled: faint lettering the segmenter
     reads at ~0.0 on the raw image reads at 0.75+ here, while the geometry stays put."""
@@ -626,6 +652,14 @@ class KiuyhaTextDetector:
                 merged.append(list(rect))
         boxes = []
         for x1, y1, x2, y2, score in merged:
+            # A rescued word is a word: its letters stand inside the box
+            # and measure. A stroke fragment of a much bigger shape (a
+            # piece of a giant SFX the box model never saw) fills the box
+            # edge to edge, so no letter piece survives — translating it
+            # paints a tiny word on top of the art it came from (Mount
+            # Hua p021: "TẦM NHÌN" at 12px over the kept SFX).
+            if not _has_letter_piece(image, (x1, y1, x2, y2)):
+                continue
             full = np.full((y2 - y1, x2 - x1), 255, np.uint8)
             boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None))
         return boxes

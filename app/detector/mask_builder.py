@@ -55,7 +55,68 @@ def adaptive_dilate_mask(
     return dilated
 
 
-def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
+def _repair_mask_from_ink(
+    mask: np.ndarray,
+    crop_img: np.ndarray | None,
+    box_rects: list[tuple[int, int, int, int]],
+) -> np.ndarray:
+    """Union the ink the segmenter mask only partly covers.
+
+    A letter model reads the middle of a stroke and misses its ends,
+    so the mask covers a giant SFX at a third and the clean pass leaves
+    most of it smeared on the page (Mount Hua p075: 47% of the SFX ink
+    survived). Dark-ink components that touch the mask are the same
+    text the mask partly covers, so they join it, dilated the same
+    ~10px. A component joins only when it is a box's own ink: inside
+    the box bar a small cut the box model made, and no bigger than the
+    box — a shape bigger than the box, or sticking out of it by more
+    than a few pixels (a hat, a bubble outline), is art, not text,
+    and stays out.
+    """
+    if crop_img is None or not box_rects or not np.any(mask > 127):
+        return mask
+    gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY) if crop_img.ndim == 3 else crop_img
+    if gray.shape[:2] != mask.shape[:2]:
+        return mask
+    _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if np.count_nonzero(ink) > ink.size / 2:
+        ink = 255 - ink  # letters are the minority class
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
+    near_mask = cv2.dilate((mask > 127).astype(np.uint8), kernel) > 0
+    _, labels, stats, _ = cv2.connectedComponentsWithStats((ink > 0).astype(np.uint8), connectivity=8)
+    repair = np.zeros_like(mask)
+    for label, (x, y, w, h, area) in enumerate(
+            (tuple(int(v) for v in row) for row in stats[1:]), start=1):
+        if area < 12:
+            continue
+        # The component belongs to a box when it sits inside it: a
+        # stroke the box cut by a few pixels still counts (the box model
+        # draws tight), but a shape that sticks out further — a hat, a
+        # bubble outline — is art continuing past the box. A component
+        # wider or taller than the box itself is likewise a shape, not
+        # a letter, however little it sticks out.
+        if not any(_component_in_box(x, y, w, h, rect) for rect in box_rects):
+            continue
+        component = labels[y:y + h, x:x + w] == label
+        if not np.any(component & near_mask[y:y + h, x:x + w]):
+            continue
+        repair[y:y + h, x:x + w] = np.maximum(
+            repair[y:y + h, x:x + w], component.astype(np.uint8) * 255)
+    if np.any(repair > 127):
+        mask = np.maximum(mask, cv2.dilate(repair, kernel, iterations=1))
+    return mask
+
+
+def _component_in_box(x: int, y: int, w: int, h: int,
+                      rect: tuple[int, int, int, int]) -> bool:
+    """True when a component is a box's own ink: inside the box bar a
+    small cut (3% of the box's shorter side), and no bigger than the box
+    in either dimension."""
+    bx1, by1, bx2, by2 = rect
+    margin = 0.03 * min(bx2 - bx1, by2 - by1)
+    return (w <= bx2 - bx1 and h <= by2 - by1
+            and x >= bx1 - margin and y >= by1 - margin
+            and x + w <= bx2 + margin and y + h <= by2 + margin)
     explicit = getattr(box, "allow_rectangle_fallback", None)
     if explicit is not None:
         return bool(explicit)
@@ -81,6 +142,7 @@ def build_mask(
 ) -> np.ndarray:
     h, w = image_shape
     mask = np.zeros((h, w), dtype=np.uint8)
+    box_rects: list[tuple[int, int, int, int]] = []
 
     for box in boxes:
         box_w = box.x2 - box.x1
@@ -126,6 +188,7 @@ def build_mask(
             src = box.mask[y1 - box.y1:y2 - box.y1, x1 - box.x1:x2 - box.x1]
             dest = mask[y1:y2, x1:x2]
             mask[y1:y2, x1:x2] = np.maximum(dest, src)
+            box_rects.append((max(0, box.x1), max(0, box.y1), min(w, box.x2), min(h, box.y2)))
         else:
             if not _rectangle_fallback_allowed(box):
                 logger.warning(
@@ -148,6 +211,9 @@ def build_mask(
             x2 = min(w, box.x2 + MASK_EXPAND)
             y2 = min(h, box.y2 + MASK_EXPAND)
             cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
+            box_rects.append((x1, y1, x2, y2))
+
+    mask = _repair_mask_from_ink(mask, crop_img, box_rects)
 
     return adaptive_dilate_mask(
         mask,

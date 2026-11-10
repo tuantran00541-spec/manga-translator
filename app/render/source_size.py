@@ -60,6 +60,30 @@ def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> in
         if pieces[-1][0] <= 3 * max(1, rest_med):
             break
         pieces = rest
+    # A box can hold two sizes at once — a bubble's lettering plus a
+    # giant SFX stroke, or lettering plus grit — and the area median
+    # then reads whichever carries more ink, not the lettering. Group
+    # the pieces by height and read the cap from the group that holds
+    # the most pieces: real lettering repeats at one size, art strokes
+    # do not. Groups an eighth the height of the tallest group or less
+    # are dust, not lettering, and are dropped first.
+    if len(pieces) > 1:
+        groups: list[list[tuple[int, int]]] = [[pieces[0]]]
+        for piece in pieces[1:]:
+            if piece[0] > 1.5 * max(1, groups[-1][-1][0]):
+                groups.append([piece])
+            else:
+                groups[-1].append(piece)
+
+        def _median_height(group: list[tuple[int, int]]) -> int:
+            heights = sorted(h for h, _a in group)
+            return heights[len(heights) // 2]
+
+        tallest = max(_median_height(group) for group in groups)
+        groups = [group for group in groups if _median_height(group) * 8 >= tallest]
+        if groups:
+            group = max(groups, key=lambda g: (len(g), sum(a for _h, a in g)))
+            pieces = group
     # The height holding the middle of the ink: specks of art are many but carry little of it.
     ink = np.cumsum([area for _h, area in pieces])
     return pieces[int(np.searchsorted(ink, ink[-1] / 2))][0]

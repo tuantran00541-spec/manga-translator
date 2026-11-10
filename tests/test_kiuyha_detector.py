@@ -174,6 +174,26 @@ def test_pieces_of_one_text_from_different_passes_become_one_box():
     assert len(_union_overlapping([(0, 0, 100, 100, 0.9), (95, 95, 200, 200, 0.9)])) == 2, "a touching corner is two texts"
 
 
+def test_a_rescued_word_needs_a_letter_standing_inside_its_box():
+    """Rerun-4 Mount Hua p021: a stroke fragment of the giant kept SFX
+    was rescued as a word and rendered "TẦM NHÌN" at 12px on top of the
+    SFX it came from. A word's letters end inside its box; a fragment of
+    a bigger shape runs off the box's edges, so no letter piece stands
+    in it."""
+    from app.detector.kiuyha_detector import _has_letter_piece
+
+    word = np.full((200, 300, 3), 255, np.uint8)
+    cv2.putText(word, "HELLO", (40, 120), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 3)
+    assert _has_letter_piece(word, (20, 60, 280, 160))
+    # Strokes that run off the box's edges are fragments of a bigger
+    # shape, not a word, however letter-sized the pieces look.
+    strokes = np.full((200, 300, 3), 255, np.uint8)
+    for x in (60, 120, 180):
+        cv2.rectangle(strokes, (x, 0), (x + 25, 200), (0, 0, 0), -1)
+    assert not _has_letter_piece(strokes, (40, 60, 260, 160))
+    assert not _has_letter_piece(np.full((100, 100, 3), 255, np.uint8), (0, 0, 100, 100))
+
+
 class _NestedSession(_Session):
     """A block box with a line box inside it, as the model returns for one bubble."""
 

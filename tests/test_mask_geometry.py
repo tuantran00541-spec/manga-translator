@@ -6,6 +6,31 @@ from app.page_processing import _contained, _fold_nested
 from app.pipeline import ChapterPipeline
 
 
+def test_a_mask_that_only_partly_covers_a_stroke_is_repaired_from_the_ink():
+    """Rerun-4 Mount Hua p075: the letter model read the middle of the
+    giant SFX and missed its ends, so the mask covered a third of the
+    strokes and the clean left 47% of the ink smeared on the page. Ink
+    that touches the mask and belongs to the box joins it; a shape
+    bigger than the box, or one the mask never touched, stays out."""
+    import cv2
+
+    from app.detector.mask_builder import build_mask
+
+    image = np.full((300, 400, 3), 255, np.uint8)
+    cv2.rectangle(image, (100, 80), (130, 220), (0, 0, 0), -1)  # a stroke, mask covers only its middle
+    cv2.rectangle(image, (135, 100), (160, 280), (0, 0, 0), -1)  # art beside it, running past the box's bottom
+    cv2.rectangle(image, (280, 80), (310, 220), (0, 0, 0), -1)  # a stroke the mask never touched
+    mask = np.zeros((200, 300), np.uint8)
+    mask[70:110, 50:80] = 255  # the segmenter found only the stroke's middle
+    box = BubbleBox(50, 50, 350, 250, 0.9, mask, source_model="text_segmenter",
+                    class_name="text", semantic_type="free_text", mask_source="text_segmenter",
+                    safe_to_inpaint=True, ocr_eligible=True, source_role="text_segmenter")
+    built = build_mask((300, 400), [box], image)
+    assert built[100, 115] > 127 and built[200, 115] > 127, "the whole stroke joins the mask"
+    assert built[150, 147] <= 127, "the art bar runs past the box, so it stays out"
+    assert built[150, 295] <= 127, "ink the mask never touched is not the mask's to take"
+
+
 def test_remap_local_mask_page_space_copies_intersection():
     source_box = {"x1": 0, "y1": 0, "x2": 4, "y2": 4}
     target_box = {"x1": 2, "y1": 2, "x2": 6, "y2": 6}
