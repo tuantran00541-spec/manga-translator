@@ -354,6 +354,23 @@ def render_text_in_box(
     curved = str(container or "").lower() in _CURVED_CONTAINERS or str(shape or "").lower() == "ellipse"
     centred = h_align == "center" and v_align == "middle"
 
+    if target_size is not None and curved and centred:
+        # A fixed size (usually the OCR-measured source size) never saw
+        # the band machinery, so its lines can cross a spiky outline
+        # even while the fit would have shrunk them (ch79 p021: 52px
+        # lines touching where the fit caps at 45). Validate the fixed
+        # lines against the measured bands — spiky-narrowed for spiky
+        # containers — and fall back to the fit when they do not fit; a
+        # fixed size that fits is untouched.
+        _fixed_font = get_font_object(font_path_str, target_size)
+        _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
+        _bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
+                               letter_box=source_letter_box,
+                               spiky=str(container or "").lower() == "spiky")
+        if _bands is not None and not _lines_fit_bands(
+                draw, _fixed_lines, _fixed_font, box_w, box_h, stroke_w, _bands):
+            target_size = None
+
     if target_size is not None:
         actual_size = target_size
         font = get_font_object(font_path_str, actual_size)
@@ -432,7 +449,8 @@ def render_text_in_box(
         draw_spans = None
         if centred and curved and not retry_adopted:
             bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                                  letter_box=source_letter_box)
+                                  letter_box=source_letter_box,
+                                  spiky=str(container or "").lower() == "spiky")
             if bands is not None:
                 # Evened lines can push a long line into a narrow band; the fitted lines stay inside.
                 if not _lines_fit_bands(draw, lines, font, box_w, box_h, stroke_w, bands):
@@ -1523,9 +1541,16 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
                     # row has no other run to drop against, and a row
                     # whose centre is not a bounded interior run is left
                     # alone.
+                    # Boundedness is judged on the side facing the paper
+                    # run only: a bubble wider than its box lets its
+                    # interior run touch the far edge (ch42 p010 — the
+                    # interior reaches the right edge while paper on the
+                    # left survives), and that far touch says nothing
+                    # about the paper on this side.
                     if (letter_seeded and centre_run is not None
                             and (a, b) != centre_run
-                            and centre_run[0] > 0 and centre_run[1] < w
+                            and ((b <= centre_run[0] and centre_run[0] > 0)
+                                 or (a >= centre_run[1] and centre_run[1] < w))
                             and (a == 0 or b == w)):
                         lo, hi = ((b, centre_run[0]) if b <= centre_run[0]
                                   else (centre_run[1], a))

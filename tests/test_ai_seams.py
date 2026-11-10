@@ -59,6 +59,78 @@ def test_of_two_letterings_on_the_same_text_only_the_larger_stays():
     assert texts == {"small": "", "big": "Có khi cậu phải giết chúng đấy, nhóc.", "other": "Ừm."}
 
 
+def test_overlapping_lettering_with_different_words_both_stay():
+    """Rerun-4 ch42 p012: lobe 1's "ANYHOW," lettering sits 91% inside
+    the double bubble's lettering, but it is different words, not the
+    same text twice — dropping on geometry alone emptied lobe 1."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    big = {"id": "bubble", "region": {"x1": 196, "y1": 366, "x2": 719, "y2": 648},
+           "letter_bounds": {"x1": 196, "y1": 374, "x2": 668, "y2": 590},
+           "translation": "Sống chung với kẻ nóng nảy đó, cậu sắp khổ dài dài rồi."}
+    small = {"id": "lobe1", "region": {"x1": 145, "y1": 340, "x2": 386, "y2": 450},
+             "letter_bounds": {"x1": 181, "y1": 375, "x2": 349, "y2": 420},
+             "translation": "Dù sao đi nữa."}
+    manifest = {"pages": [{"text_objects": [big, small]}]}
+    assert drop_overlapping_letters(manifest) == []
+    texts = {obj["id"]: obj["translation"] for obj in manifest["pages"][0]["text_objects"]}
+    assert texts["lobe1"] == "Dù sao đi nữa."
+    assert texts["bubble"].startswith("Sống chung")
+
+
+def test_overlapping_cloud_against_its_oval_both_stay():
+    """Rerun-4 ch42 p008: the "HE..." cloud tucks against the big oval,
+    so its lettering shares 0.59 with the oval's — different words, so
+    both stay."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    big = {"id": "oval", "region": {"x1": 134, "y1": 1346, "x2": 644, "y2": 1677},
+           "letter_bounds": {"x1": 208, "y1": 1418, "x2": 636, "y2": 1668},
+           "translation": "Tan học, tôi sẽ đi thẳng đến phòng huấn luyện riêng."}
+    small = {"id": "cloud", "region": {"x1": 468, "y1": 1569, "x2": 677, "y2": 1708},
+             "letter_bounds": {"x1": 489, "y1": 1607, "x2": 639, "y2": 1708},
+             "translation": "Hê..."}
+    manifest = {"pages": [{"text_objects": [big, small]}]}
+    assert drop_overlapping_letters(manifest) == []
+    texts = {obj["id"]: obj["translation"] for obj in manifest["pages"][0]["text_objects"]}
+    assert texts["cloud"] == "Hê..."
+
+
+def test_a_reworded_duplicate_still_drops():
+    """Same text read twice need not come back word-identical; most
+    words shared is still a duplicate."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, "Chuyện đó có gì không ổn?"),
+                                            _obj("big", 100, 300, "Chuyện đó có vấn đề gì không?")]}]}
+    assert drop_overlapping_letters(manifest) == [(0, "small")]
+    texts = {obj["id"]: obj["translation"] for obj in manifest["pages"][0]["text_objects"]}
+    assert texts["small"] == ""
+
+
+def test_a_dropped_duplicate_lends_its_geometry_to_the_keeper():
+    """Rerun-4 ch42 p010: the detector split one bubble into left and
+    right halves; dropping the twin must not shrink the survivor to its
+    half — the keeper's region and lettering grow to the union, so the
+    text is fitted to the whole bubble."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    left = {"id": "left", "region": {"x1": 78, "y1": 36, "x2": 395, "y2": 352},
+            "letter_bounds": {"x1": 145, "y1": 46, "x2": 395, "y2": 311},
+            "translation": "Chuyện đó có vấn đề gì không?"}
+    right = {"id": "right", "region": {"x1": 195, "y1": 0, "x2": 517, "y2": 253},
+             "letter_bounds": {"x1": 212, "y1": 46, "x2": 463, "y2": 251},
+             "translation": "Chuyện đó có vấn đề gì không?"}
+    manifest = {"pages": [{"text_objects": [left, right]}]}
+    assert drop_overlapping_letters(manifest) == [(0, "right")]
+    kept = manifest["pages"][0]["text_objects"][0]
+    assert kept["id"] == "left"
+    assert kept["region"] == {"x1": 78, "y1": 0, "x2": 517, "y2": 352}
+    assert kept["letter_bounds"] == {"x1": 145, "y1": 46, "x2": 463, "y2": 311}
+    assert kept["translation"] == "Chuyện đó có vấn đề gì không?"
+    assert manifest["pages"][0]["text_objects"][1]["translation"] == ""
+
+
 def test_a_core_box_cut_by_the_slice_edge_gives_way_to_the_whole_seam_box():
     from app.detector.boxes import BubbleBox
     from app.page_processing import _contained

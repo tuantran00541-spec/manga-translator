@@ -546,6 +546,44 @@ def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch
     assert [item["id"] for item in runner.report["review_list"]] == ["a"]
 
 
+def test_a_story_blank_that_never_translates_is_restored_with_a_review_entry(monkeypatch):
+    """Round 9: a story box the model blanks on every retry used to vanish
+    silently — the first blank put it in `blank`, which then excluded it
+    from both further retries and the unresolved restore, so no review
+    entry was ever written and the bubble stayed white. A blank left on
+    purpose (SFX, art) is still settled by the blank, not restored here.
+    """
+    from app.dependencies import pipeline
+
+    def obj(obj_id, translation=""):
+        return {"id": obj_id, "region": {"x1": 10, "y1": 10, "x2": 60, "y2": 40}, "translation": translation}
+
+    manifest = {"pages": [
+        {"width": 400, "height": 600, "text_objects": [obj("story"), obj("sfx")]},
+    ]}
+    preserved, retries = [], []
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
+                        lambda chapter, index, regions: preserved.append((index, regions)), raising=False)
+    runner = _runner(monkeypatch, "translate", manifest)
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+
+    async def retry(page_index, source_lang, object_ids, force=False):
+        retries.append((page_index, object_ids))
+        # The model blanks the story box every time; the SFX is blank by choice.
+        return {"blank_ids": ["story", "sfx"], "story_blank_ids": ["story"]}
+
+    monkeypatch.setattr(runner, "_translate_retry", retry)
+    asyncio.run(runner._retry_untranslated(0, "en", {"story", "sfx"}))
+    assert retries == [(0, ["story", "sfx"]), (0, ["story"]), (0, ["story"]), (0, ["story"])], (
+        "a story blank is retried until the rounds run out, not abandoned after the first blank; "
+        "the first round settles the SFX, so it does not count as fruitless"
+    )
+    assert preserved == [(0, [{"x1": 10, "y1": 10, "x2": 60, "y2": 40}])], (
+        "only the story box is restored; the SFX blank stays settled by the blank"
+    )
+    assert [item["id"] for item in runner.report["review_list"]] == ["story"]
+
+
 def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypatch):
     from app.dependencies import pipeline
     import app.routers.export as export_router

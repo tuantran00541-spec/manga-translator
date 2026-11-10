@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import re
+import unicodedata
 
 OWNER_SHARE = 0.5  # share of the smaller box two slices' boxes must share to be the same text
 # Everything that decides how a line is lettered, copied from the owning slice.
@@ -382,8 +383,65 @@ def _letter_rect(obj: dict) -> tuple[int, int, int, int] | None:
     return _rect(obj, 0)
 
 
+def _norm_words(text: str) -> list[str]:
+    """Words of a translation, case- and punctuation-folded, for comparison."""
+    folded = unicodedata.normalize("NFKC", str(text or "")).lower()
+    folded = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in folded)
+    return folded.split()
+
+
+def _translations_duplicate(a: str, b: str) -> bool:
+    """True when two translations say the same thing in different words.
+
+    Overlapping lettering is usually one text detected twice — but two
+    bubbles can overlap on the page (a cloud tucked against an oval, a
+    lobe against its double bubble) while holding different words, and
+    dropping on geometry alone deletes the smaller bubble's text (ch42
+    p008 "HE..." cloud, p012 lobe 1 "ANYHOW,"). The smaller object is
+    only a duplicate when its words are the larger one's words: an exact
+    match, a substring, or most words shared. A reworded duplicate
+    still shares most words; distinct content shares almost none.
+    """
+    raw_a, raw_b = str(a or "").strip(), str(b or "").strip()
+    if not raw_a or not raw_b:
+        return False
+    if raw_a == raw_b:
+        return True
+    words_a, words_b = _norm_words(raw_a), _norm_words(raw_b)
+    if not words_a or not words_b:
+        return False
+    joined_a, joined_b = " ".join(words_a), " ".join(words_b)
+    if joined_a in joined_b or joined_b in joined_a:
+        return True
+    shared = len(set(words_a) & set(words_b))
+    union = len(set(words_a) | set(words_b))
+    return union and shared / union >= 0.6
+
+
+def _union_rect(a: dict | None, b: dict | None) -> dict | None:
+    """Bounding-box union of two {x1,y1,x2,y2} dicts, or the one that exists."""
+    if not isinstance(a, dict):
+        return dict(b) if isinstance(b, dict) else None
+    if not isinstance(b, dict):
+        return dict(a)
+    try:
+        return {"x1": min(int(a["x1"]), int(b["x1"])), "y1": min(int(a["y1"]), int(b["y1"])),
+                "x2": max(int(a["x2"]), int(b["x2"])), "y2": max(int(a["y2"]), int(b["y2"]))}
+    except (KeyError, TypeError, ValueError):
+        return dict(a)
+
+
 def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
-    """Of two translated objects on one slice that mostly overlap, keep the larger; returns what was dropped."""
+    """Of two translated objects on one slice that mostly overlap, keep the larger; returns what was dropped.
+
+    Only a duplicate is dropped: the smaller object keeps its translation
+    when it says something the larger one does not, however much their
+    lettering overlaps. And a dropped duplicate is not just deleted —
+    the detector often splits one bubble into two overlapping halves
+    (ch42 p010: the bubble's left and right halves), so the keeper
+    absorbs the dropped half's region and lettering, and the survivor
+    is fitted to the whole bubble instead of the half it happened to be.
+    """
     dropped = []
     for page_index, page in enumerate(manifest.get("pages") or []):
         objects = [obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)
@@ -392,10 +450,21 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
         kept: list[dict] = []
         for obj in objects:
             rect = _letter_rect(obj)
-            if any(_shared(rect, _letter_rect(other)) >= OVERLAP_KEEP for other in kept):
+            overlapped = [other for other in kept
+                          if _shared(rect, _letter_rect(other)) >= OVERLAP_KEEP]
+            dup_of = next((other for other in overlapped
+                           if _translations_duplicate(str(obj.get("translation") or ""),
+                                                      str(other.get("translation") or ""))), None)
+            if dup_of is not None:
                 obj["translation"] = ""
                 obj["overlap_dropped"] = True
                 dropped.append((page_index, str(obj.get("id"))))
+                # The dropped half belonged to the keeper's bubble: the
+                # keeper's fit box grows to the union, so the text is
+                # sized to the bubble, not to the half that survived.
+                dup_of["region"] = _union_rect(dup_of.get("region"), obj.get("region"))
+                dup_of["letter_bounds"] = _union_rect(dup_of.get("letter_bounds"),
+                                                       obj.get("letter_bounds"))
             else:
                 kept.append(obj)
     return dropped
