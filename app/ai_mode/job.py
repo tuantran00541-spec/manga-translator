@@ -675,7 +675,13 @@ class AIModeRunner:
                 if run is not None:
                     await self._keep_art(page_index, run)
                     self.report["translated"] += int(run.get("translated") or 0)
-                    self.report["unreadable"] += int(run.get("unreadable") or 0)
+                    # "unreadable" counts every empty value at commit, including
+                    # the ones the model left blank on purpose (SFX, art) which
+                    # _keep_art then restores to legible source art; the page
+                    # reads fine while the number says otherwise, so only the
+                    # ids the model actually omitted count as unreadable.
+                    self.report["unreadable"] += max(
+                        0, int(run.get("unreadable") or 0) - len(run.get("blank_ids") or []))
                     self.report["review_flags"] += int(run.get("review") or 0)
                     self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
                     if run.get("render_error"):
@@ -687,8 +693,11 @@ class AIModeRunner:
                 # stale is still untranslated: retry it instead of silently
                 # dropping it, or its object ends up an unattempted blank
                 # no later stage can tell from a line never attempted.
-                if run is None or run.get("remaining") or run.get("missing_ids") or run.get("stale"):
-                    only = None if run is None or run.get("remaining") or run.get("stale") else set(run.get("missing_ids") or [])
+                # A blank on a story box retries too: the model failed to
+                # read it, and restoring it would leave source text on the page.
+                if run is None or run.get("remaining") or run.get("missing_ids") or run.get("story_blank_ids") or run.get("stale"):
+                    only = None if run is None or run.get("remaining") or run.get("stale") else (
+                        set(run.get("missing_ids") or []) | set(run.get("story_blank_ids") or []))
                     await self._retry_untranslated(page_index, source_lang, only)
                 finished += 1
                 self._progress(finished, len(indices))
@@ -939,18 +948,23 @@ class AIModeRunner:
         a LaMa hole and the text is gone from the page entirely. A region
         already in preserve_regions is skipped, so repeated calls — the
         initial translate and every retry batch — restore each blank once.
+        A blank on a story box is NOT restored here: the model failed to
+        read it, so it is retried first, and only the retry's unresolved
+        path restores it (with a review entry) if it never translates.
         """
         from app.dependencies import pipeline
         from app.region_policy import text_object_in_preserve_region
 
         art_regions = list(run.get("art_regions") or [])
         regions = list(art_regions)
+        story_blanks = set(run.get("story_blank_ids") or [])
         blank_ids = run.get("blank_ids") or []
         if blank_ids:
             manifest = self._manifest()
             page = manifest["pages"][page_index]
             for obj in page.get("text_objects") or []:
                 if (isinstance(obj, dict) and str(obj.get("id")) in blank_ids
+                        and str(obj.get("id")) not in story_blanks
                         and isinstance(obj.get("region"), dict)
                         and not text_object_in_preserve_region(page, obj)):
                     regions.append(dict(obj["region"]))

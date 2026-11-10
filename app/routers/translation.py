@@ -338,6 +338,7 @@ async def translate_page_in_context(
 
     committed = stale = unreadable = review = 0
     blank_ids: list[str] = []
+    story_blank_ids: list[str] = []  # blanks the model left on a story box (any role but sfx)
     art_regions: list[dict] = []  # sound effects left as art get their original pixels back
     with get_manifest_lock(req.chapter_id):
         latest = load_manifest_raw(req.chapter_id)
@@ -362,6 +363,8 @@ async def translate_page_in_context(
                 stale += 1
                 continue
             value = collapse_repeated_lines(translated.translations[candidate["id"]])
+            if isinstance(value, str):
+                value = value.strip()
             role = getattr(translated, "roles", {}).get(candidate["id"])
             source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
             if role == "sfx" and drawn_in_art(source):
@@ -372,6 +375,11 @@ async def translate_page_in_context(
                     blank_ids.append(candidate["id"])
                     # Attempted and left blank on purpose; distinguishes blank-by-choice from blank-by-budget.
                     obj["translation_attempted"] = True
+                    # A blank on a story box is a failure to read, not a
+                    # choice: it is retried, not restored to source art.
+                    # Only a sound effect the artist drew is art.
+                    if role != "sfx":
+                        story_blank_ids.append(candidate["id"])
                     # Only a sound effect the artist drew is art; a watermark or a review box around missed text stays erased.
                     manual = {str(box.get("id")) for box in page.get("boxes") or []
                               if isinstance(box, dict) and box.get("manual")}
@@ -446,6 +454,7 @@ async def translate_page_in_context(
         "rendered_pages": rendered_pages, "render_error": render_error,
         "missing_ids": sorted(getattr(translated, "missing_ids", ())),
         "blank_ids": blank_ids,
+        "story_blank_ids": story_blank_ids,
         "art_regions": art_regions,
         "unboxed": [list(box) for box in getattr(translated, "unboxed", ())],
         "remaining": max(0, total_candidates - len(candidates)),

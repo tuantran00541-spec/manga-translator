@@ -249,6 +249,36 @@ _FOREIGN_SCRIPT = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u4
 _ENGLISH_WORDS = frozenset(
     "the and with you your to of is are was were its it's this that for in on my me we what i".split())
 
+# Everyday English content words: a short shout with no function word in it
+# ("SENIOR BROTHER!") is still English, but a kept title ("GAME OVER") is
+# not, so title and game words stay out of this list on purpose.
+_ENGLISH_CONTENT_WORDS = frozenset(
+    "senior brother sister problem school teacher student please thanks thank sorry hello goodbye "
+    "friend friends family father mother morning tonight today tomorrow yesterday people person "
+    "woman women children world think thought want need help stop wait come look know good great "
+    "little first never always really very much many thing things something nothing everything "
+    "everyone somebody nobody where when why how which whose about after before because could "
+    "should would there here then".split())
+
+# Punctuation models emit that looks ASCII but is not: curly quotes, a
+# non-breaking space, a zero-width joiner, an ellipsis. One such character
+# anywhere defeats str.isascii, so the script checks below would let an
+# English line straight through; fold them to their ASCII form first.
+# Letters (and Vietnamese diacritics) are untouched.
+_CONFUSABLES = str.maketrans({
+    "‘": "'", "’": "'", "‚": "'", "“": '"', "”": '"', "„": '"',
+    " ": " ", "…": "...", "—": "-", "–": "-",
+})
+_ZERO_WIDTH = ("​", "‌", "‍", "﻿")
+
+
+def _normalize_for_script_check(text: str) -> str:
+    """Fold confusable punctuation to ASCII so isascii means what it says."""
+    normalized = str(text or "").translate(_CONFUSABLES)
+    for char in _ZERO_WIDTH:
+        normalized = normalized.replace(char, "")
+    return normalized
+
 
 def drawn_in_art(source: str) -> bool:
     """True for lettering in Chinese, Japanese or Korean script, which in a translated chapter the artist drew."""
@@ -257,9 +287,12 @@ def drawn_in_art(source: str) -> bool:
 
 def _untranslated_english(text: str) -> bool:
     """True for a line left in English: plain ASCII with at least two words, one of them an English function word."""
+    text = _normalize_for_script_check(text)
     words = [word.strip(".,!?;:\"'()-—…").lower() for word in text.split()]
     words = [word for word in words if word]
-    return text.isascii() and len(words) >= 2 and any(word in _ENGLISH_WORDS for word in words)
+    return (text.isascii() and len(words) >= 2
+            and (any(word in _ENGLISH_WORDS for word in words)
+                 or any(word in _ENGLISH_CONTENT_WORDS for word in words)))
 
 
 # Common Vietnamese words written without their diacritics.
@@ -270,6 +303,7 @@ _BARE_VIETNAMESE = frozenset(
 def _missing_diacritics(text: str) -> bool:
     """True when any line is Vietnamese written in plain ASCII, which readers cannot accept."""
     for line in text.splitlines():
+        line = _normalize_for_script_check(line)
         words = [word.strip(".,!?;:\"'()-—…").lower() for word in line.split()]
         if line.isascii() and sum(word in _BARE_VIETNAMESE for word in words) >= 2:
             return True
