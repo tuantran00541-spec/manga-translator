@@ -210,6 +210,55 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
     return candidates
 
 
+def _rect_gap(a: list[int], b: list[int]) -> int:
+    """Gap between two [x1, y1, x2, y2] rects (0 when they touch or overlap)."""
+    dx = max(b[0] - a[2], a[0] - b[2], 0)
+    dy = max(b[1] - a[3], a[1] - b[3], 0)
+    return max(dx, dy)
+
+
+_SFX_LIKE_ROLES = frozenset({"sfx", "free_text"})
+_DUPLICATE_GAP_PX = 100  # two instances of one SFX in a panel nearly touch; separate panels are further apart
+
+
+def _duplicate_sfx_ids(candidates: list[dict], translated) -> set[str]:
+    """Ids of a sound effect drawn twice in one panel, to keep once as art.
+
+    The artist sometimes draws one SFX twice in a panel (ch111 p002: the
+    cheer, top-left and mid-right); the detector correctly finds both, the
+    model translates both to the same word, and the page shows the word
+    twice. Keep the larger instance and leave the other as the artist
+    drew it. Scoped so it cannot fire on legitimate repeats: same source
+    read and same translation, both SFX-like roles, and the boxes near
+    each other (one panel). Dialogue that repeats in different bubbles
+    is another role and never matches.
+    """
+    roles = getattr(translated, "roles", {}) or {}
+    sources = getattr(translated, "sources", {}) or {}
+    translations = getattr(translated, "translations", {}) or {}
+    by_key: dict[tuple[str, str], list[dict]] = {}
+    for candidate in candidates:
+        cid = str(candidate["id"])
+        if str(roles.get(cid) or "").strip().lower() not in _SFX_LIKE_ROLES:
+            continue
+        source = " ".join(str(sources.get(cid) or candidate.get("text") or "").split()).lower()
+        value = " ".join(str(translations.get(cid) or "").split()).lower()
+        if not source or not value:
+            continue
+        by_key.setdefault((source, value), []).append(candidate)
+    duplicates: set[str] = set()
+    for group in by_key.values():
+        if len(group) < 2:
+            continue
+        group.sort(key=lambda c: -((c["region"][2] - c["region"][0])
+                                    * (c["region"][3] - c["region"][1])))
+        keeper = group[0]
+        for other in group[1:]:
+            if _rect_gap(keeper["region"], other["region"]) <= _DUPLICATE_GAP_PX:
+                duplicates.add(str(other["id"]))
+    return duplicates
+
+
 def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
     """Measure each region's source letter size and the characters that fit it at that size."""
     from app.render.font_catalog import resolve_font_id
@@ -340,6 +389,7 @@ async def translate_page_in_context(
     blank_ids: list[str] = []
     story_blank_ids: list[str] = []  # blanks the model left on a story box (any role but sfx)
     art_regions: list[dict] = []  # sound effects left as art get their original pixels back
+    duplicate_ids = _duplicate_sfx_ids(candidates, translated)
     with get_manifest_lock(req.chapter_id):
         latest = load_manifest_raw(req.chapter_id)
         pages = latest.get("pages", [])
@@ -369,6 +419,8 @@ async def translate_page_in_context(
             source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
             if role == "sfx" and drawn_in_art(source):
                 value = ""  # a sound effect the artist drew stays as drawn, whatever the model wrote
+            if candidate["id"] in duplicate_ids:
+                value = ""  # the same SFX drawn twice in one panel: keep one, leave this as art
             if not value:
                 unreadable += 1
                 if candidate["id"] not in getattr(translated, "missing_ids", ()):
@@ -378,13 +430,16 @@ async def translate_page_in_context(
                     # A blank on a story box is a failure to read, not a
                     # choice: it is retried, not restored to source art.
                     # Only a sound effect the artist drew is art.
-                    if role != "sfx":
+                    # A duplicate SFX is blank by decision, not by failure,
+                    # so it is kept as art and never retried.
+                    if role != "sfx" and candidate["id"] not in duplicate_ids:
                         story_blank_ids.append(candidate["id"])
                     # Only a sound effect the artist drew is art; a watermark or a review box around missed text stays erased.
                     manual = {str(box.get("id")) for box in page.get("boxes") or []
                               if isinstance(box, dict) and box.get("manual")}
-                    if (role == "sfx" and drawn_in_art(source)
-                            and not set(map(str, obj.get("source_boxes") or [])) & manual):
+                    if (candidate["id"] in duplicate_ids
+                            or (role == "sfx" and drawn_in_art(source)
+                                and not set(map(str, obj.get("source_boxes") or [])) & manual)):
                         art_regions.append(dict(obj["region"]))
                 continue
             obj["translation"] = value

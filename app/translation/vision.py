@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -274,10 +275,32 @@ _ZERO_WIDTH = ("​", "‌", "‍", "﻿")
 
 def _normalize_for_script_check(text: str) -> str:
     """Fold confusable punctuation to ASCII so isascii means what it says."""
-    normalized = str(text or "").translate(_CONFUSABLES)
+    normalized = unicodedata.normalize("NFKC", str(text or ""))
+    normalized = normalized.translate(_CONFUSABLES)
     for char in _ZERO_WIDTH:
         normalized = normalized.replace(char, "")
-    return normalized
+    # Any other invisible or spacing character a model may emit (thin
+    # space, figure space, soft hyphen, direction mark): drop it or fold
+    # it to a space, so one such character cannot shield a whole line.
+    return "".join(
+        " " if char.isspace() else ("" if unicodedata.category(char) == "Cf" else char)
+        for char in normalized)
+
+
+# A model hides one exotic space or a full-width "!" in an otherwise
+# English line and str.isascii goes false, so the checks below look at
+# the letters, not the whole string: punctuation and spacing never decide.
+_ASCII_WORD = re.compile(r"[A-Za-z]+")
+
+
+def _ascii_words(text: str) -> list[str]:
+    """ASCII letter runs after NFKC (full-width Latin folds to ASCII)."""
+    return _ASCII_WORD.findall(unicodedata.normalize("NFKC", text or ""))
+
+
+def _has_non_ascii_letter(text: str) -> bool:
+    """True when any letter carries a diacritic or another script."""
+    return any(char.isalpha() and ord(char) > 127 for char in (text or ""))
 
 
 def drawn_in_art(source: str) -> bool:
@@ -286,11 +309,12 @@ def drawn_in_art(source: str) -> bool:
 
 
 def _untranslated_english(text: str) -> bool:
-    """True for a line left in English: plain ASCII with at least two words, one of them an English function word."""
+    """True for a line left in English: ASCII letters only, at least two words, one of them an English function word."""
     text = _normalize_for_script_check(text)
-    words = [word.strip(".,!?;:\"'()-—…").lower() for word in text.split()]
-    words = [word for word in words if word]
-    return (text.isascii() and len(words) >= 2
+    if _has_non_ascii_letter(text):
+        return False
+    words = [word.lower() for word in _ascii_words(text)]
+    return (len(words) >= 2
             and (any(word in _ENGLISH_WORDS for word in words)
                  or any(word in _ENGLISH_CONTENT_WORDS for word in words)))
 
@@ -304,16 +328,79 @@ def _missing_diacritics(text: str) -> bool:
     """True when any line is Vietnamese written in plain ASCII, which readers cannot accept."""
     for line in text.splitlines():
         line = _normalize_for_script_check(line)
-        words = [word.strip(".,!?;:\"'()-—…").lower() for word in line.split()]
-        if line.isascii() and sum(word in _BARE_VIETNAMESE for word in words) >= 2:
+        if _has_non_ascii_letter(line):
+            continue
+        words = [word.lower() for word in _ascii_words(line)]
+        if sum(word in _BARE_VIETNAMESE for word in words) >= 2:
             return True
     return False
 
 
+def _latin_noise(text: str) -> bool:
+    """True for a value that is not a translation at all but a vision
+    misread of stylised Korean SFX as Latin look-alikes: no real word
+    (no ASCII letter-run of two or more, no non-ASCII letter) and the
+    value is built from digits, slashes or single letters, e.g. "1/10"
+    for a swish SFX, "N/O/Z/N" for a nod. A bare ellipsis or a single
+    grunt ("...", "A", "MM!") is not noise: it is a pause or a sound
+    the model carried over, and blanking it would only manufacture a
+    retry."""
+    words = _ascii_words(text)
+    if any(len(word) >= 2 for word in words) or _has_non_ascii_letter(text):
+        return False
+    normalized = _normalize_for_script_check(text)
+    return "/" in normalized or len(words) >= 2
+
+
+def _bare_scream(text: str) -> bool:
+    """True for a shout that is one letter repeated, no diacritics,
+    e.g. "AAAAA!!!": the model misread brush H's as A's and the
+    re-translate passed the Latin through. No Vietnamese word is a
+    single letter repeated, so this can never be a correct rendering;
+    a one- or two-letter grunt ("A!", "AA!") is left alone."""
+    words = _ascii_words(text)
+    if len(words) != 1:
+        return False
+    word = words[0]
+    if len(word) < 3 or len(set(word)) != 1:
+        return False
+    if _has_non_ascii_letter(text):
+        return False
+    rest = _normalize_for_script_check(text).replace(word, "", 1)
+    return all(not char.isalnum() for char in rest)
+
+
+# Hangul syllables and jamo: the script a Korean sound effect is drawn in.
+_HANGUL = re.compile(r"[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]")
+_VOWELS = frozenset("aeiou")
+
+
+def _hangul_misread(source: str, text: str) -> bool:
+    """True when a Korean SFX came back as Latin consonants: the model
+    read the Hangul strokes as look-alike letters (ㅍ as F, 르 as F,
+    륵 as R → "FFR") and the pipeline rendered the nonsense in the
+    source's own pink. A real Vietnamese rendering always has a vowel
+    in every syllable, so a vowel-less Latin return for a Hangul source
+    is a misread, never a translation; dropping it leaves the SFX as
+    the artist drew it, which is the standing SFX policy."""
+    if not _HANGUL.search(source or ""):
+        return False
+    if _has_non_ascii_letter(text):
+        return False
+    words = _ascii_words(text)
+    return bool(words) and not any(
+        char.lower() in _VOWELS for word in words for char in word)
+
+
 def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[VisionTranslationResult, dict]:
     """Treat CJK, untranslated English or diacritic-less lines as unanswered so they are retried, and keep them out of memory."""
+    sources = {str(entry.get("id")): str(entry.get("source") or "")
+               for entry in data.get("translations") or []
+               if isinstance(entry, dict)}
     foreign = {key for key, value in result.translations.items()
-               if _FOREIGN_SCRIPT.search(value) or _untranslated_english(value) or _missing_diacritics(value)}
+               if _FOREIGN_SCRIPT.search(value) or _untranslated_english(value) or _missing_diacritics(value)
+               or _latin_noise(value) or _bare_scream(value)
+               or _hangul_misread(sources.get(key, ""), value)}
     data = dict(data)
     if isinstance(data.get("translations"), list):
         data["translations"] = [entry for entry in data["translations"]

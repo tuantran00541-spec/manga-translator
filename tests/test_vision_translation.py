@@ -379,6 +379,18 @@ def test_rerun3_english_returns_are_caught_even_with_confusable_punctuation():
     assert _untranslated_english("OF COURSE NOT HE\u2019S STILL A SKILLED SO THE SCHOOL ENDB SUSPENSION.")
     assert _untranslated_english(
         "SHAANXI MAY BE FAR, BUT IT WOULDN\u2019T TAKE LONG TO GET THERE IF I SET MY MIND TO IT\u2026")
+    # Round 9: the same shield, from characters E1 never folded — a thin
+    # or figure space, a narrow no-break space, an ideographic space, a
+    # full-width "!", a soft hyphen, a direction mark. Each one alone used
+    # to defeat str.isascii and let the whole English line straight through.
+    assert _untranslated_english("SENIOR BROTHER!\u2009")
+    assert _untranslated_english("SENIOR BROTHER!\u2007")
+    assert _untranslated_english("SENIOR BROTHER!\u202f")
+    assert _untranslated_english("SENIOR BROTHER!\u3000")
+    assert _untranslated_english("SENIOR BROTHER\uff01")
+    assert _untranslated_english("SENIOR BROTHER!\u00ad")
+    assert _untranslated_english("SENIOR BROTHER!\u200e")
+    assert _untranslated_english("\uff33\uff25\uff2e\uff29\uff2f\uff32 \uff22\uff32\uff2f\uff34\uff28\uff25\uff32\uff01")
     # Names and kept titles still pass through, and a one-word grunt is out of scope.
     assert not _untranslated_english("HELMUT...?")
     assert not _untranslated_english("GAME OVER") and not _untranslated_english("FRONDIER DE ROAH!")
@@ -391,7 +403,64 @@ def test_vietnamese_written_without_diacritics_is_treated_as_untranslated():
 
     assert _missing_diacritics("Hậu quả do năng lực\ndang tro thanh mot van de xoi hoi moi")
     assert _missing_diacritics("Toi khong the lam nhu vay")
+    # Round 9: the same exotic-character shield must not hide a diacritic-less line either.
+    assert _missing_diacritics("Toi khong the lam nhu vay\uff01")
+    assert _missing_diacritics("Toi khong the lam nhu vay\u2009")
     assert not _missing_diacritics("Bọn tôi không thể!") and not _missing_diacritics("Level Up! Dungeon Break")
+
+
+def test_a_vision_misread_of_korean_sfx_as_latin_noise_is_treated_as_untranslated():
+    """Rerun-4 Former Supreme: the vision model read stylised Korean
+    onomatopoeia stroke-by-stroke as Latin look-alikes ("1/10" for a
+    swish, "N/O/Z/N" for a nod) and the page rendered the nonsense in
+    the render font. A value with no real word in it is not a
+    translation, so it is dropped and the object is retried."""
+    from app.translation.vision import _latin_noise
+
+    assert _latin_noise("1/10")
+    assert _latin_noise("N/O/Z/N")
+    # Real SFX and real words pass through untouched.
+    assert not _latin_noise("KYA AH AH!")
+    assert not _latin_noise("HUFF")
+    assert not _latin_noise("PHÙ...")
+    assert not _latin_noise("*THỞ DÀI*")
+    assert not _latin_noise("MM!")
+    # A bare ellipsis or a lone number is a pause or a count the model
+    # carried over, not a misread.
+    assert not _latin_noise("...")
+    assert not _latin_noise("12")
+
+
+def test_a_bare_scream_with_no_diacritics_is_treated_as_untranslated():
+    """Rerun-4 Mount Hua p075: the shout came back "AAAAA!!!" — brush
+    H's misread as A's, no diacritics, and the re-translate passed the
+    Latin through. No Vietnamese word is one letter repeated, so the
+    value is dropped and the object is retried on the image."""
+    from app.translation.vision import _bare_scream
+
+    assert _bare_scream("AAAAA!!!")
+    assert _bare_scream("HHHHH...")
+    assert not _bare_scream("ÁÁÁÁ!!!")
+    assert not _bare_scream("HAHA!")
+    assert not _bare_scream("A!")
+    assert not _bare_scream("AA!")
+    assert not _bare_scream("Chuyện đó có vấn đề gì không?")
+
+
+def test_a_hangul_sfx_misread_as_latin_consonants_is_treated_as_untranslated():
+    """Rerun-4 ch79 p026: the vision model read the pink Korean SFX as
+    the Latin string "FFR" and the pipeline rendered it in the source's
+    own pink. A real Vietnamese rendering has a vowel in every syllable,
+    so a vowel-less Latin return for a Hangul source is a misread, and
+    dropping it leaves the SFX as the artist drew it."""
+    from app.translation.vision import _hangul_misread
+
+    assert _hangul_misread("푸르륵", "FFR")
+    assert not _hangul_misread("푸르륵", "BÙM")
+    assert not _hangul_misread("푸르륵", "RẦM")
+    assert not _hangul_misread("푸르륵", "PHÙ...")
+    assert not _hangul_misread("HELLO", "FFR")
+    assert not _hangul_misread("푸르륵", "Chuyện đó có vấn đề gì không?")
 
 
 def test_recent_lines_keep_the_source_so_a_sentence_can_run_into_the_next_slice():
@@ -416,6 +485,39 @@ def test_the_font_follows_role_and_container_not_the_model():
     assert font_for("dialogue", "bubble", "es") == "thought.comic-neue", "the base font has no ñ, ç or ß"
     assert font_for("narration", "free", "de") == "emphasis.anton"
     assert parse_vision_translation('{"translations":[{"id":"a","translated_text":"Thì…"}]}', {"a"}) == {"a": "Thì..."}
+
+
+def test_a_sound_effect_drawn_twice_in_one_panel_is_translated_once(saved_chapter, monkeypatch):
+    """Rerun-4 ch111 p002: the cheer SFX is drawn twice in one panel;
+    the detector finds both and the model translates both to "CỔ VŨ".
+    The larger instance is translated and rendered; the smaller is left
+    as the artist drew it (its region restored), not retried — and a
+    repeated line in a different role is never deduped."""
+    _style, region, _output = saved_chapter
+    latest = manifests.load_manifest_raw(CHAPTER)
+    latest["pages"][0]["text_objects"].append({
+        "id": "obj_2", "shape": "rectangle",
+        "region": {"x1": 20, "y1": 110, "x2": 150, "y2": 180},
+        "style": _style, "ocr_text": "Hello", "translation": "",
+    })
+    manifests.save_manifest_raw(CHAPTER, latest)
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult(
+            {"obj_1": "CỔ VŨ", "obj_2": "CỔ VŨ"}, self.model, {}, None,
+            roles={"obj_1": "free_text", "obj_2": "free_text"},
+            sources={"obj_1": "와성", "obj_2": "와성"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="ko", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["translated"] == 1
+    assert info["blank_ids"] == ["obj_2"]
+    assert info["story_blank_ids"] == []
+    assert info["art_regions"] == [{"x1": 20, "y1": 110, "x2": 150, "y2": 180}]
+    assert info["missing_ids"] == []
 
 
 def test_sound_effect_left_as_art_returns_its_region_for_restoring(saved_chapter, monkeypatch):
