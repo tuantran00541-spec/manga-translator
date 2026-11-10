@@ -74,6 +74,22 @@ class GenericJsAdapter(BaseAdapter):
                     wait_until="domcontentloaded",
                     timeout=DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS,
                 )
+                # A bot challenge serves a near-empty page first and only swaps
+                # in the real reader once its check clears; reading the images
+                # immediately would return the challenge's (empty) set.
+                try:
+                    page.wait_for_function(
+                        "([selector, minWidth]) => {"
+                        "  for (const img of document.querySelectorAll(selector)) {"
+                        "    if ((img.naturalWidth || 0) >= minWidth) return true;"
+                        "  }"
+                        "  return false;"
+                        "}",
+                        arg=[self.img_selector, self.min_width],
+                        timeout=DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS,
+                    )
+                except Exception:
+                    pass
                 self._scroll_until_stable(page)
 
                 elements = page.query_selector_all(self.img_selector)
