@@ -25,6 +25,7 @@ HOME_SECRETS = (".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".git-cr
                 ".config/gcloud", ".config/gh", ".config/git", ".config/opencode", ".config/google-chrome", ".config/chromium",
                 ".config/BraveSoftware", ".local/share/keyrings", ".local/share/python_keyring", ".password-store", ".mozilla",
                 ".claude/.credentials.json", ".codex/auth.json", ".codex/config.toml", ".manga-agent/mcp.json", ".cache/huggingface/token",
+                ".config/manga-translator",
                 "Library/Keychains", "Library/Application Support/Google/Chrome")
 SYSTEM_SECRETS = ("/run/user", "/run/secrets", "/var/run/secrets")
 # More folders to keep unreadable, added by whoever stores private data (the agent's own saved sessions).

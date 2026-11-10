@@ -61,6 +61,33 @@ def test_a_finished_chapter_teaches_the_series_and_the_next_chapter_starts_from_
     assert saved["characters"] == [{"name": "Terna", "note": "goddess"}] and saved["notes"] == "fantasy"
 
 
+def test_finish_keeps_an_editor_save_made_while_the_job_ran(monkeypatch):
+    url = "https://asurascans.com/comics/solo-swordmaster-3ec3b16f/chapter/1"
+    key = series_memory.series_key(url)
+    series_memory.save(key, {"names": [{"source": "Raon", "target": "Raon"}]})
+    job = ai_job.AIModeJob(job_id="j", settings=AIModeSettings(url=url, provider="openai", model="m"), chapter_id="c1",
+                           stage="finish", stages={"finish": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    runner._series = series_memory.load(key)  # the stale snapshot taken when translate started
+    runner._memory = ChapterMemory("", {})
+    runner._memory.update(1, {"characters": [{"name": "Terna", "note": "goddess"}]}, {}, [])
+    runner.report["glossary"] = {"terms": [{"source": "Avatar", "target": "Hóa Thân"}]}
+    # An editor saves a new name mid-run; finish must merge into the fresh file, not the stale snapshot.
+    current = series_memory.load(key)
+    current["names"].append({"source": "Editor", "target": "Biên Tập"})
+    series_memory.save(key, current)
+    monkeypatch.setattr("app.routers.export._preflight_copy", lambda manifest, **_: {"blocker_count": 0, "blockers": []})
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: {})
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, manifest: None)
+    monkeypatch.setattr(ai_job, "OUTPUT_DIR", series_memory.SERIES_DIR / "out")
+    asyncio.run(runner.finish())
+
+    saved = series_memory.load(key)
+    assert {"source": "Editor", "target": "Biên Tập"} in saved["names"], "the editor's mid-run save survives"
+    assert [t["target"] for t in saved["terms"]] == ["Hóa Thân"], "the chapter still teaches the series"
+    assert saved["characters"] == [{"name": "Terna", "note": "goddess"}]
+
+
 def test_the_user_reads_and_edits_a_series_memory_by_its_chapter_url():
     import pytest
     from fastapi import HTTPException

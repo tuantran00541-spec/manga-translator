@@ -7,6 +7,7 @@
   };
   const CLOUD = "manga-cloud";
   let pollTimer = null;
+  let pollGeneration = 0;
   let currentJob = null;
   let account = null;
 
@@ -357,14 +358,19 @@
     }));
   }
 
-  async function poll(jobId) {
-    window.clearTimeout(pollTimer);
+  // Only the latest poll loop may apply responses; stale loops are discarded.
+  async function poll(jobId, generation) {
+    if (generation === undefined) {
+      generation = ++pollGeneration;
+      window.clearTimeout(pollTimer);
+    }
     try {
       const wasRunning = currentJob?.job_id === jobId && (currentJob.status === "pending" || currentJob.status === "running");
       const job = await requestJson(`/api/ai_mode/jobs/${encodeURIComponent(jobId)}`);
+      if (generation !== pollGeneration) return;
       render(job);
       if (job.status === "pending" || job.status === "running") {
-        pollTimer = window.setTimeout(() => poll(jobId), POLL_MS);
+        pollTimer = window.setTimeout(() => poll(jobId, generation), POLL_MS);
       } else if (job.status === "completed" && wasRunning && job.chapter_id) {
         // A job finishing while watched opens its chapter; an old finished job only shows its summary.
         window.showToast?.("A.I mode xong, đang mở chương.", "success");
@@ -372,12 +378,13 @@
         window.resumeChapter?.(job.chapter_id);
       }
     } catch (err) {
+      if (generation !== pollGeneration) return;
       if (err.status === 404) {
         storage("remove", JOB_KEY);
         setRunning(false);
         return;
       }
-      pollTimer = window.setTimeout(() => poll(jobId), POLL_MS * 2);
+      pollTimer = window.setTimeout(() => poll(jobId, generation), POLL_MS * 2);
     }
   }
 

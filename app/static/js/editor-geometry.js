@@ -46,10 +46,12 @@
     return geomDirty.size > 0;
   };
 
-  window.pendingGeomUpdates = function pendingGeomUpdates() {
+  window.pendingGeomUpdates = function pendingGeomUpdates(chapterId) {
     const updates = [];
-    geomDirty.forEach((region, key) => {
+    geomDirty.forEach((entry, key) => {
+      if (chapterId !== undefined && entry?.chapterId !== chapterId) return;
       const [pi, id] = key.split(":");
+      const region = entry?.region;
       if (region && typeof region === "object") updates.push({ page_index: Number(pi), id, region });
     });
     return updates;
@@ -63,16 +65,17 @@
     return geomHasError;
   };
 
-  async function flushGeomPersist(pageIndex) {
+  async function flushGeomPersist(pageIndex, chapterId = window.currentChapterId) {
     clearTimeout(geomTimer);
     geomTimer = null;
     if (geomDirty.size === 0) return;
     const keys = [];
-    geomDirty.forEach((_v, k) => {
+    geomDirty.forEach((entry, k) => {
       const [pi] = k.split(":");
-      if (pageIndex === undefined || Number(pi) === pageIndex) keys.push(k);
+      if ((pageIndex === undefined || Number(pi) === pageIndex) && entry?.chapterId === chapterId) keys.push(k);
     });
     if (keys.length === 0) return;
+    if (!chapterId) return;
 
     const currentGen = ++geomGeneration;
     const controller = new AbortController();
@@ -88,7 +91,7 @@
       await Promise.all(keys.map(async (k) => {
         const [pi, id] = k.split(":");
         const pIndex = Number(pi);
-        const region = geomDirty.get(k);
+        const region = geomDirty.get(k)?.region;
         if (!region || typeof region !== "object") {
           geomDirty.delete(k);
           return;
@@ -99,7 +102,7 @@
             headers: { "Content-Type": "application/json" },
             signal: controller.signal,
             body: JSON.stringify({
-              chapter_id: currentManifest.chapter_id,
+              chapter_id: chapterId,
               page_index: pIndex,
               id,
               region,
@@ -150,8 +153,11 @@
     if (!obj || !obj.region) return;
     window.editorHistory?.touch(pageIndex, id);
     geomDirty.set(`${pageIndex}:${id}`, {
-      x1: obj.region.x1, y1: obj.region.y1,
-      x2: obj.region.x2, y2: obj.region.y2,
+      chapterId: window.currentChapterId || null,
+      region: {
+        x1: obj.region.x1, y1: obj.region.y1,
+        x2: obj.region.x2, y2: obj.region.y2,
+      },
     });
     geomHasError = false;
     if (typeof window.refreshSaveStatus === "function") {
@@ -173,9 +179,11 @@
   window.removePendingGeom = removePendingGeom;
 
   function reapplyPendingGeom() {
-    geomDirty.forEach((region, k) => {
+    geomDirty.forEach((entry, k) => {
+      if (entry?.chapterId !== window.currentChapterId) return;
       const [pi, id] = k.split(":");
       const obj = textObject(Number(pi), id);
+      const region = entry?.region;
       if (obj && region && typeof region === "object") {
         obj.region = { x1: region.x1, y1: region.y1, x2: region.x2, y2: region.y2 };
       }

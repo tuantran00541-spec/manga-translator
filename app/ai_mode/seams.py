@@ -227,15 +227,19 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
     return created
 
 
+_WORD_SEPARATORS = ".,;:!?\"'“”‘’…()[]{}—–-"
+
+
 def _norm_words(text: str) -> list[str]:
     """Words of a translation, punctuation and case aside, for prefix comparison."""
     lowered = " ".join(str(text or "").split()).lower()
-    return lowered.translate(str.maketrans({c: " " for c in ".,;:!?\"'“”‘’…()[]{}—–-"})).split()
+    return lowered.translate(str.maketrans({c: " " for c in _WORD_SEPARATORS})).split()
 
 
 def _trim_leading_words(text: str, count: int) -> str:
     """``text`` without its first ``count`` words; the continuation becomes sentence-initial."""
-    matches = list(re.finditer(r"\S+", text))
+    # The same punctuation-aware boundaries as _norm_words, so a contraction or hyphen counts as its parts.
+    matches = list(re.finditer(r"[^\s" + re.escape(_WORD_SEPARATORS) + r"]+", text))
     if len(matches) <= count:
         return ""
     rest = text[matches[count - 1].end():].lstrip(" \t\r\n,.!?;:\"'“”‘’…—–-")

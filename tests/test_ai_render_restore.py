@@ -16,12 +16,11 @@ class _FakeInpainter:
 
 
 def test_render_stage_reletters_a_slice_rendered_against_a_partial_chapter_band(tmp_path: Path, monkeypatch):
-    """A slice rendered while later slices were still untranslated keeps the partial band it saw.
+    """A slice rendered against a partial chapter band is re-lettered once the chapter finishes.
 
-    The render signature covers one slice only, so that render still counts
-    as current once the chapter is finished; the render stage must drop it
-    and letter the slice again against the finished chapter, or the early
-    slices keep their translate-time band forever.
+    The render signature fingerprints the chapter band, so finishing the
+    chapter stales the early slice's partial-band render and the render
+    stage letters it again against the finished chapter.
     """
     import app.config as config
     import app.dependencies as deps
@@ -89,8 +88,8 @@ def test_render_stage_reletters_a_slice_rendered_against_a_partial_chapter_band(
             obj["source_cap_px"] = 38
         manifests.save_manifest_raw(chapter, manifest)
     manifest = manifests.load_manifest_raw(chapter)
-    assert image_router._current_rendered_path(chapter, 1, manifest) is not None, (
-        "setup: slice 1's own inputs did not change, so its render still counts as current")
+    assert image_router._current_rendered_path(chapter, 1, manifest) is None, (
+        "the finished chapter band changed, so slice 1's partial-band render must be stale")
 
     rendered_pages: list[int] = []
     real_render_page = render_commit.render_page

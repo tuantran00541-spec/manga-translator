@@ -1,6 +1,8 @@
 // The open chapter; every screen reads these, so they exist before any chapter is loaded.
 var currentChapterId = null;
 var currentManifest = null;
+// Safe default so the inspector can render before /api/fonts resolves.
+let availableFonts = [];
 
 async function parseApiResponse(resp) {
   let data = null;
@@ -241,6 +243,20 @@ async function refreshChapterManifest(chapterId) {
 }
 window.refreshChapterManifest = refreshChapterManifest;
 
+// Flush the old chapter's drafts so they never save into the chapter being opened.
+async function flushEditsBeforeChapterChange() {
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
+  try {
+    if (typeof window.flushAllPendingPersists === "function") {
+      await window.flushAllPendingPersists(undefined, chapterId);
+    }
+  } catch (_) {
+    if (typeof window.cancelPendingPersist === "function") window.cancelPendingPersist();
+  }
+}
+window.flushEditsBeforeChapterChange = flushEditsBeforeChapterChange;
+
 async function resumeChapter(chapterId) {
   if (!chapterId) return;
   const navigationSeq = ++_chapterNavigationSeq;
@@ -250,6 +266,8 @@ async function resumeChapter(chapterId) {
     if (!resp.ok) {
       throw new Error(getErrorMessage(resp.status, data));
     }
+    if (navigationSeq !== _chapterNavigationSeq) return;
+    await flushEditsBeforeChapterChange();
     if (navigationSeq !== _chapterNavigationSeq) return;
     currentManifest = data;
     currentChapterId = currentManifest.chapter_id;
@@ -307,6 +325,8 @@ async function loadChapter() {
     if (!resp.ok) {
       throw new Error(getErrorMessage(resp.status, data));
     }
+    if (navigationSeq !== _chapterNavigationSeq) return;
+    await flushEditsBeforeChapterChange();
     if (navigationSeq !== _chapterNavigationSeq) return;
     currentManifest = data;
     currentChapterId = currentManifest.chapter_id;
@@ -484,48 +504,6 @@ async function _processSelectedPagesOnce() {
       btn.disabled = false;
       btn.textContent = "Tiếp tục xử lý";
     }
-  }
-}
-
-async function fetchOcr(pageIndex, boxIndex, originalEl) {
-  const page = currentManifest.pages[pageIndex];
-  let lang;
-  try {
-    lang = await window.resolveSourceLang();
-  } catch (err) {
-    originalEl.textContent = "(" + err.message + ")";
-    showToast(err.message, "error");
-    return;
-  }
-  const box = page && page.boxes ? page.boxes[boxIndex] : null;
-
-  if (box && box.ocr_text && box.ocr_lang === lang) {
-    originalEl.textContent = box.ocr_text;
-    return;
-  }
-  try {
-    const resp = await fetch("/api/ocr_box", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chapter_id: currentChapterId,
-        page_index: pageIndex,
-        box_index: boxIndex,
-        lang,
-      }),
-    });
-    const data = await parseApiResponse(resp);
-    if (!resp.ok) {
-      throw new Error(getErrorMessage(resp.status, data));
-    }
-    if (box) {
-      box.ocr_text = data.text || "";
-      box.ocr_lang = lang;
-    }
-    originalEl.textContent = data.text || "(không nhận dạng được)";
-  } catch (err) {
-    originalEl.textContent = "(Lỗi OCR: " + err.message + ")";
-    showToast("Không thể hoàn tất OCR: " + err.message, "error");
   }
 }
 

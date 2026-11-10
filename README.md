@@ -28,7 +28,7 @@ Give it a chapter link, a ZIP/CBZ or a folder of images. It erases the original 
 | Clean | Translate | Edit |
 | :--- | :--- | :--- |
 | Erases letters, outlines and glow, keeps the art | **A.I mode** runs a whole chapter for about $0.07 | Undo/redo, brush, restore, find & replace |
-| Two full webtoon chapters: **0** text left | Vietnamese, English, Indonesian, Spanish, Portuguese, French, German | 71 comic fonts, style presets, keyboard proofreading |
+| Two full webtoon chapters: **0** text left | Vietnamese, English, Indonesian, Spanish, Portuguese, French, German | 43 comic fonts, style presets, keyboard proofreading |
 | Small ONNX models, runs on any laptop CPU | Any OpenAI-compatible provider, or your own key | Exports the stitched chapter as a ZIP |
 
 [All features, benchmarks and limitations →](docs/FEATURES.md)

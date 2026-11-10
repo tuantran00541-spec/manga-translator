@@ -485,7 +485,8 @@ class _HttpTransport:
     def close(self) -> None:
         if self.session_id:
             try:
-                requests.delete(self.url, headers={"Mcp-Session-Id": self.session_id, **self.headers}, timeout=5)
+                requests.delete(self.url, headers={"Mcp-Session-Id": self.session_id, **self.headers}, timeout=5,
+                                allow_redirects=False)
             except requests.RequestException:
                 pass
 

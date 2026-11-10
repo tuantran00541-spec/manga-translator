@@ -77,6 +77,9 @@ async function uploadChapter(files) {
     if (!resp.ok) {
       throw new Error(getErr(resp.status, data));
     }
+    if (typeof window.flushEditsBeforeChapterChange === "function") {
+      await window.flushEditsBeforeChapterChange();
+    }
     currentManifest = data;
     currentChapterId = currentManifest.chapter_id;
     try {

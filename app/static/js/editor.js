@@ -104,6 +104,7 @@ function applyManifestResponse(manifest, pageIndex, opts = {}) {
     if (obj) _applyStateDiff(obj, currentState, snapshot);
   }
   _textDirty.forEach((entry) => {
+    if (entry.chapterId !== currentChapterId) return;
     if (entry.pageIndex === pageIndex && entry.id === targetId) return;
     const obj = findTextObject(entry.pageIndex, entry.id);
     if (!obj) return;

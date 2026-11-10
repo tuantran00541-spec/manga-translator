@@ -434,11 +434,12 @@ def update_text_object(req: UpdateTextObjectRequest) -> dict:
         changes["translation"] = req.translation
     if req.style is not None:
         changes["style"] = req.style.model_dump()
-    if req.font_selection_mode is not None:
+    # An explicit null clears a font field; an omitted one leaves it untouched.
+    if "font_selection_mode" in req.model_fields_set:
         changes["font_selection_mode"] = req.font_selection_mode
-    if req.font_match is not None:
+    if "font_match" in req.model_fields_set:
         changes["font_match"] = req.font_match
-    if req.font_ai_id is not None:
+    if "font_ai_id" in req.model_fields_set:
         changes["font_ai_id"] = req.font_ai_id
     try:
         manifest = pipeline.update_text_object(
@@ -478,11 +479,11 @@ def update_text_objects_bulk(req: BulkUpdateTextObjectsRequest) -> dict:
                 changes["translation"] = item.translation
             if item.style is not None:
                 changes["style"] = item.style.model_dump()
-            if item.font_selection_mode is not None:
+            if "font_selection_mode" in item.model_fields_set:
                 changes["font_selection_mode"] = item.font_selection_mode
-            if item.font_match is not None:
+            if "font_match" in item.model_fields_set:
                 changes["font_match"] = item.font_match
-            if item.font_ai_id is not None:
+            if "font_ai_id" in item.model_fields_set:
                 changes["font_ai_id"] = item.font_ai_id
             manifest = pipeline.update_text_object(req.chapter_id, item.page_index, item.id, changes)
             if item.ocr_text is not None and item.translation is None:

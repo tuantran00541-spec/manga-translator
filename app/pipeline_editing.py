@@ -978,6 +978,11 @@ class PipelineEditingMixin:
                 merged.update(cleaned)
                 obj["style"] = merged
 
+            # Font picks persist like any other edit; an explicit null clears the field.
+            for key in ("font_selection_mode", "font_match", "font_ai_id"):
+                if key in changes:
+                    obj[key] = changes[key]
+
             invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
         return manifest

@@ -329,16 +329,17 @@ def retranslate_text(
     provider: AIProvider, model: str, api_key: str, pairs: list[tuple[str, str]],
     *, source_lang: str, target_lang: str, memory_snapshot: dict | None = None,
     settled: dict | None = None, max_tokens: int = 65536,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], float | None, dict]:
     """Re-translate (id, source-text) pairs with a text-only model.
 
     The vision model reads the image and judges role/container (which picks the
     font); this re-translates the source lines it read, so the wording is the
-    text model's. Returns {id: translated_text} for the pairs the model answered.
+    text model's. Returns ({id: translated_text}, cost, usage) for the pairs the
+    model answered, so the second billed pass joins the vision read's budget.
     """
     pairs = [(str(i), str(s).strip()) for i, s in pairs if str(s).strip()]
     if not pairs:
-        return {}
+        return {}, None, {}
     source_name = (
         "the original language"
         if str(source_lang or "").lower() in {"", "auto"}
@@ -367,7 +368,7 @@ def retranslate_text(
         key, value = str(entry.get("id") or ""), entry.get("translated_text")
         if key in expected and isinstance(value, str) and value.strip():
             out[key] = value
-    return out
+    return out, result.estimated_cost_usd, result.usage
 
 
 class VisionPageTranslator:
@@ -489,12 +490,21 @@ class VisionPageTranslator:
                                    or str(item.get("text") or "").strip()))
                 for item in items
             ]
-            retold = retranslate_text(
+            retold, retold_cost, retold_usage = retranslate_text(
                 self.translate_provider, self.translate_model, self.translate_api_key or "",
                 pairs, source_lang=source_lang, target_lang=target_lang,
                 memory_snapshot=memory.snapshot(settled=False) if memory is not None else None,
                 settled=memory.settled() if memory is not None else None,
             )
+            # The re-translate is billed separately, so its cost and usage join the vision read's.
+            usage = dict(result.usage or {})
+            for key, value in (retold_usage or {}).items():
+                if isinstance(value, (int, float)):
+                    usage[key] = usage.get(key, 0) + value
+            cost = result.estimated_cost_usd
+            if cost is not None or retold_cost is not None:
+                cost = (cost or 0.0) + (retold_cost or 0.0)
+            result = replace(result, usage=usage, estimated_cost_usd=cost)
             if retold:
                 result = replace(result, translations={**result.translations,
                                                        **{k: v for k, v in retold.items() if k in result.translations}})

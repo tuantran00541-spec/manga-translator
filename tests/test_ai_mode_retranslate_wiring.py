@@ -62,12 +62,14 @@ def test_retranslate_text_names_the_retranslate_stage(monkeypatch):
 
     def fake_request(provider, model, api_key, prompt, images, **kwargs):
         seen.update(provider=provider, model=model, images=images, stage=kwargs.get("stage"), prompt=prompt)
-        return VisionJSONResult({"translations": [{"id": "a", "translated_text": "Xin chào"}]}, {}, None)
+        return VisionJSONResult({"translations": [{"id": "a", "translated_text": "Xin chào"}]},
+                                {"prompt_tokens": 5}, 0.01)
 
     monkeypatch.setattr(vision, "request_vision_json", fake_request)
-    out = retranslate_text(cloud_provider(), TRANSLATE_MODEL, "job-token", [("a", "Hello")],
-                           source_lang="en", target_lang="vi")
+    out, cost, usage = retranslate_text(cloud_provider(), TRANSLATE_MODEL, "job-token", [("a", "Hello")],
+                                      source_lang="en", target_lang="vi")
     assert out == {"a": "Xin chào"}
+    assert cost == 0.01 and usage == {"prompt_tokens": 5}, "the second pass returns its billed cost and usage"
     assert seen["stage"] == "retranslate", "the gateway must not route this to the vision model"
     assert seen["images"] == [], "a re-translate carries no image, unlike the vision read"
     assert seen["model"] == TRANSLATE_MODEL
@@ -102,7 +104,7 @@ def test_translate_batch_retranslates_each_batch(tmp_path, monkeypatch):
 
     def fake_retranslate(provider, model, api_key, pairs, **kwargs):
         retold.update(provider=provider, model=model, pairs=pairs, stage=kwargs.get("stage"))
-        return {"text_1": "mimo wording"}
+        return {"text_1": "mimo wording"}, None, {}
 
     monkeypatch.setattr(vision, "retranslate_text", fake_retranslate)
     translator = VisionPageTranslator(
@@ -121,11 +123,38 @@ def test_translate_batch_retranslates_each_batch(tmp_path, monkeypatch):
     assert answer.roles == {"text_1": "dialogue"} and answer.containers == {"text_1": "bubble"}
 
 
+def test_translate_batch_adds_the_retranslate_cost_and_usage(tmp_path, monkeypatch):
+    """The text re-translate is a second billed pass; its cost and usage must reach the budget."""
+    original, clean = _slice_images(tmp_path)
+
+    def fake_openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
+        result = VisionTranslationResult({"1": "vision wording"}, self.model, {"prompt_tokens": 100}, 0.05)
+        data = {"translations": [{"id": "1", "translated_text": "vision wording",
+                                  "source": "Hello", "role": "dialogue", "container": "bubble"}]}
+        return result, data
+
+    monkeypatch.setattr(VisionPageTranslator, "_openai", fake_openai)
+    monkeypatch.setattr(vision, "request_vision_json", lambda *a, **k: VisionJSONResult(
+        {"translations": [{"id": "text_1", "translated_text": "mimo wording"}]},
+        {"prompt_tokens": 7, "completion_tokens": 3}, 0.02))
+    translator = VisionPageTranslator(
+        cloud_provider(), "deepseek/deepseek-v4.1-flash-1017",
+        translate_provider=cloud_provider(), translate_model=TRANSLATE_MODEL, translate_api_key="job-token",
+    )
+    answer = translator.translate_page(
+        original, clean, [{"id": "text_1", "text": "Hello", "region": [10, 20, 50, 40]}],
+        api_key="job-token", source_lang="en", target_lang="vi",
+    )
+    assert answer.translations == {"text_1": "mimo wording"}
+    assert answer.estimated_cost_usd == pytest.approx(0.07), "the second pass joins the vision read's cost"
+    assert answer.usage == {"prompt_tokens": 107, "completion_tokens": 3}
+
+
 def test_translate_batch_without_a_text_model_keeps_vision_wording(tmp_path, monkeypatch):
     original, clean = _slice_images(tmp_path)
     _vision_answer(monkeypatch)
     called = []
-    monkeypatch.setattr(vision, "retranslate_text", lambda *a, **k: called.append(True) or {})
+    monkeypatch.setattr(vision, "retranslate_text", lambda *a, **k: called.append(True) or ({}, None, {}))
     translator = VisionPageTranslator(cloud_provider(), "deepseek/deepseek-v4.1-flash-1017")
     answer = translator.translate_page(
         original, clean, [{"id": "text_1", "text": "Hello", "region": [10, 20, 50, 40]}],
@@ -144,7 +173,7 @@ def test_translate_batch_retranslates_the_vision_read_source_without_ocr_text(tm
 
     def fake_retranslate(provider, model, api_key, pairs, **kwargs):
         retold.update(provider=provider, model=model, pairs=pairs)
-        return {"text_1": "mimo wording"}
+        return {"text_1": "mimo wording"}, None, {}
 
     monkeypatch.setattr(vision, "retranslate_text", fake_retranslate)
     translator = VisionPageTranslator(

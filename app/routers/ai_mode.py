@@ -223,9 +223,12 @@ def read_series_memory(req: SeriesMemoryRequest) -> dict:
 @router.post("/series/save")
 def save_series_memory(req: SeriesMemoryRequest) -> dict:
     key = _series_key(req.url)
-    current = series_memory.load(key)
-    data = series_memory.from_text(req.text if req.text is not None else series_memory.to_text(current), current)
-    if req.notes is not None:
-        data["notes"] = req.notes
-    data = series_memory.save(key, data)
+
+    def edit(current: dict) -> dict:
+        data = series_memory.from_text(req.text if req.text is not None else series_memory.to_text(current), current)
+        if req.notes is not None:
+            data["notes"] = req.notes
+        return data
+
+    data = series_memory.update(key, edit)
     return {"key": key, "text": series_memory.to_text(data), "notes": data["notes"], "chapters": len(data["chapters"])}

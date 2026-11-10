@@ -485,6 +485,21 @@ def test_a_stepped_box_repeating_its_first_sentence_is_lettered_once():
     assert second["text_objects"][0]["seam_owner"] == {"page": 0, "id": "upper"}
 
 
+def test_a_hyphenated_prefix_is_trimmed_by_words_not_whitespace_tokens():
+    from app.ai_mode.seams import drop_duplicated_leading_text
+
+    # "It's" and "well-known" each normalise to two words, so the repeat is six
+    # words but only four whitespace tokens; trimming by tokens ate "that he".
+    manifest = {"pages": [{"text_objects": [
+        {"id": "upper", "region": {"x1": 100, "y1": 100, "x2": 500, "y2": 300},
+         "translation": "It's a well-known fact."},
+        {"id": "lower", "region": {"x1": 100, "y1": 310, "x2": 500, "y2": 510},
+         "translation": "It's a well-known fact that he left."},
+    ]}]}
+    assert drop_duplicated_leading_text(manifest) == [0]
+    assert manifest["pages"][0]["text_objects"][1]["translation"] == "That he left."
+
+
 def test_a_lower_fragment_that_does_not_repeat_is_left_alone():
     from app.ai_mode.seams import drop_duplicated_leading_text
 

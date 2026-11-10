@@ -78,7 +78,7 @@ function scheduleTextObjectPersist(pageIndex, id) {
   if (!obj) return;
   window.editorHistory?.touch(pageIndex, id);
   document.dispatchEvent(new CustomEvent("text-object-edited", { detail: { pageIndex, id } }));
-  _textDirty.set(`${pageIndex}:${id}`, Object.assign({ pageIndex, id }, _captureTextState(obj)));
+  _textDirty.set(`${pageIndex}:${id}`, Object.assign({ pageIndex, id, chapterId: currentChapterId }, _captureTextState(obj)));
   _textHasError = false;
   refreshSaveStatus();
   clearTimeout(_textTimer);
@@ -132,23 +132,22 @@ async function _persistTextObjectsIndividually(chapterId, items) {
       failures.push(err);
       if (chapterId === currentChapterId) {
         _textHasError = true;
-        _textDirty.set(`${p.pageIndex}:${p.id}`, Object.assign({ pageIndex: p.pageIndex, id: p.id }, _captureTextState(obj)));
+        _textDirty.set(`${p.pageIndex}:${p.id}`, Object.assign({ pageIndex: p.pageIndex, id: p.id, chapterId }, _captureTextState(obj)));
       }
     }
   }));
   return failures;
 }
 
-async function _flushTextObjectPersistNow(pageIndex) {
+async function _flushTextObjectPersistNow(pageIndex, chapterId = currentChapterId) {
   clearTimeout(_textTimer);
   _textTimer = null;
   if (_textDirty.size === 0) return;
   const items = [];
   _textDirty.forEach((v) => {
-    if (pageIndex === undefined || v.pageIndex === pageIndex) items.push(v);
+    if ((pageIndex === undefined || v.pageIndex === pageIndex) && v.chapterId === chapterId) items.push(v);
   });
   if (items.length === 0) return;
-  const chapterId = currentChapterId;
   if (!chapterId) return;
   items.forEach((v) => _textDirty.delete(`${v.pageIndex}:${v.id}`));
   _textSaving += items.length;
@@ -176,8 +175,8 @@ async function _flushTextObjectPersistNow(pageIndex) {
   }
 }
 
-function flushTextObjectPersist(pageIndex) {
-  const job = _textPersistChain.catch(() => {}).then(() => _flushTextObjectPersistNow(pageIndex));
+function flushTextObjectPersist(pageIndex, chapterId) {
+  const job = _textPersistChain.catch(() => {}).then(() => _flushTextObjectPersistNow(pageIndex, chapterId));
   _textPersistChain = job;
   return job;
 }
@@ -194,9 +193,9 @@ window.removePendingPersist = function removePendingPersist(pageIndex, id) {
   refreshSaveStatus();
 };
 
-window.flushAllPendingPersists = async function flushAllPendingPersists(pageIndex) {
-  const jobs = [flushTextObjectPersist(pageIndex)];
-  if (typeof window.flushGeomPersist === "function") jobs.push(window.flushGeomPersist(pageIndex));
+window.flushAllPendingPersists = async function flushAllPendingPersists(pageIndex, chapterId) {
+  const jobs = [flushTextObjectPersist(pageIndex, chapterId)];
+  if (typeof window.flushGeomPersist === "function") jobs.push(window.flushGeomPersist(pageIndex, chapterId));
   await Promise.all(jobs);
 };
 
@@ -214,8 +213,8 @@ window.addEventListener("pagehide", () => {
   const chapterId = currentChapterId;
   if (!chapterId) return;
   clearTimeout(_textTimer);
-  const updates = _bulkUpdates([..._textDirty.values()]);
-  if (typeof window.pendingGeomUpdates === "function") updates.push(...window.pendingGeomUpdates());
+  const updates = _bulkUpdates([..._textDirty.values()].filter((entry) => entry.chapterId === chapterId));
+  if (typeof window.pendingGeomUpdates === "function") updates.push(...window.pendingGeomUpdates(chapterId));
   if (!updates.length) return;
   try {
     fetch("/api/text_object/update_bulk", {

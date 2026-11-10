@@ -450,6 +450,33 @@ def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
     assert runner.job.stages["review"]["done"] == 3
 
 
+def test_clean_failure_cancels_and_awaits_the_glossary_read(monkeypatch):
+    import app.routers.chapters as chapters_router
+
+    runner = _runner(monkeypatch, "clean", {"pages": [{}, {}]})
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
+
+    async def slow_glossary(indices):
+        await asyncio.sleep(30)
+        return {}
+
+    monkeypatch.setattr(runner, "_read_glossary", slow_glossary)
+
+    class Jobs:
+        def start(self, chapter_id, page_indices, workers, **kwargs):
+            raise RuntimeError("clean start failed")
+
+    monkeypatch.setattr(chapters_router, "chapter_processing_jobs", Jobs())
+
+    async def scenario():
+        with pytest.raises(RuntimeError, match="clean start failed"):
+            await runner.clean()
+        return runner._glossary_task
+
+    task = asyncio.run(scenario())
+    assert task.done() and task.cancelled(), "the glossary read is stopped and awaited before clean exits"
+
+
 def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch):
     from app.dependencies import pipeline
 

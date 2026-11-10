@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -65,16 +66,27 @@ def load(key: str | None) -> dict:
     return clean(data)
 
 
-def save(key: str, data: dict) -> dict:
+def _write(key: str, data: dict) -> dict:
+    """Replace the series file atomically; the caller holds its lock."""
     path = _path(key)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {**clean(data), "updated_at": time.time()}
-    with FileLock(str(path) + ".lock"):
-        fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(data, handle, ensure_ascii=False, indent=1)
-        os.replace(tmp, path)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
     return data
+
+
+def save(key: str, data: dict) -> dict:
+    with FileLock(str(_path(key)) + ".lock"):
+        return _write(key, data)
+
+
+def update(key: str, mutate: Callable[[dict], dict]) -> dict:
+    """Load, mutate and save under one lock so concurrent writers keep each other's edits."""
+    with FileLock(str(_path(key)) + ".lock"):
+        return _write(key, mutate(load(key)))
 
 
 def list_series() -> list[dict]:

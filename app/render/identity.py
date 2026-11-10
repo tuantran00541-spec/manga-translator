@@ -4,7 +4,9 @@ import hashlib
 import json
 from pathlib import Path
 
-RENDER_IDENTITY_VERSION = "phase45-v2"
+from app.render.size_bands import chapter_size_bands
+
+RENDER_IDENTITY_VERSION = "phase45-v3"
 
 
 def file_revision(path: Path) -> tuple[int, int, int]:
@@ -23,8 +25,18 @@ def _normalized_box(box: dict) -> dict:
     }
 
 
+def _normalized_optional_region(value) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    try:
+        return {k: int(value.get(k, 0)) for k in ("x1", "y1", "x2", "y2")}
+    except (TypeError, ValueError):
+        return None
+
+
 def _normalized_text_object(obj: dict) -> dict:
     region = obj.get("region") or {}
+    cap = obj.get("source_cap_px")
     return {
         "id": str(obj.get("id") or ""),
         "shape": str(obj.get("shape") or "rectangle"),
@@ -37,6 +49,14 @@ def _normalized_text_object(obj: dict) -> dict:
         "translation": str(obj.get("translation") or ""),
         "style": obj.get("style") or {},
         "source_missing": bool(obj.get("source_missing", False)),
+        "font_selection_mode": str(obj.get("font_selection_mode") or ""),
+        "font_ai_id": str(obj.get("font_ai_id")) if obj.get("font_ai_id") else None,
+        "letter_bounds": _normalized_optional_region(obj.get("letter_bounds")),
+        "source_cap_px": float(cap) if isinstance(cap, (int, float)) else None,
+        "typography_role": str(obj.get("typography_role") or ""),
+        "role": str(obj.get("role") or ""),
+        "container": str(obj.get("container") or ""),
+        "ocr_text_region": _normalized_optional_region(obj.get("ocr_text_region")),
     }
 
 
@@ -67,6 +87,8 @@ def render_input_signature(manifest: dict, page_index: int) -> str:
         render_content = {
             "mode": "text_objects",
             "objects": [_normalized_text_object(obj) for obj in text_objects],
+            # Bands draw on every page, so a sibling's edit must stale this render too.
+            "chapter_size_bands": chapter_size_bands(pages),
         }
     else:
         render_content = {

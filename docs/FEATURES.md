@@ -118,7 +118,7 @@ The browser workbench edits translated text, font, size, weight, stroke, backgro
 - **Proofreading panel** (Ctrl+F, Ctrl+H): every source line and translation of the chapter in reading order, editable in place, with find, replace-all and an untranslated-only filter.
 - **Style presets**: save a text object's look as "Dialogue", "Narration" or "SFX", apply it with keys 1-9 or to many checked rows at once. Presets are kept in `data/style_presets.json`.
 
-The renderer bundles **71 comic fonts** (69 under OFL-1.1, 40 covering Vietnamese) across dialogue, emphasis, thought, narration, skill, SFX, horror and romance. A.I mode letters each text in the font for its role and container (speech, narration, shouts, screens, SFX); every font choice is validated against the installed catalog rather than accepted as a file path. Wrapped lines are balanced so a line never leaves one word alone. See [comic-fonts.md](comic-fonts.md).
+The renderer bundles **43 comic fonts** across dialogue, emphasis, thought, narration, skill, SFX, horror and romance. A.I mode letters each text in the font for its role and container (speech, narration, shouts, screens, SFX); every font choice is validated against the installed catalog rather than accepted as a file path. Wrapped lines are balanced so a line never leaves one word alone. See [comic-fonts.md](comic-fonts.md).
 
 ### AI providers
 

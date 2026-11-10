@@ -111,7 +111,15 @@ def _render_request_from_page(chapter_id: str, page_index: int, page: dict) -> R
         translations[oid] = str(obj.get("translation") or "")
         style = obj.get("style") or {}
         colors[oid] = str(style.get("color") or "auto")
-        fonts[oid] = str(style.get("font") or "default")
+        # Only explicit picks are sent; auto/AI fonts must stay re-resolvable.
+        mode = obj.get("font_selection_mode")
+        font = style.get("font")
+        if mode == "auto":
+            fonts[oid] = "auto"
+        elif mode == "user":
+            fonts[oid] = str(font or "default")
+        elif not obj.get("font_ai_id") and font and str(font) != "default":
+            fonts[oid] = str(font)
         font_sizes[oid] = style.get("fontSize", "auto")
         bolds[oid] = bool(style.get("bold", False))
         stroke_widths[oid] = style.get("strokeWidth", "auto")

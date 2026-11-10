@@ -154,6 +154,17 @@ async def _ai_call(fn, *args):
     return await asyncio.get_running_loop().run_in_executor(_AI_CALLS, functools.partial(fn, *args))
 
 
+async def _cancel_and_wait(task: asyncio.Task | None) -> None:
+    """Stop a background A.I task and wait for it, so no billed call outlives the job."""
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
+
+
 def _object_has_text_evidence(obj: dict) -> bool:
     """True when some stage read text in this object: OCR text, the source
     the vision model read off the image, or a role/container the model
@@ -324,13 +335,17 @@ class AIModeRunner:
 
         # Probe with one batch; if it fails, scan slice by slice.
         self._progress(0, len(active))
-        if batches and not await scan_batch(batches[0]):
-            await asyncio.gather(*(scan_one(index) for index in active))
-        elif batches:
-            results = await asyncio.gather(*(scan_batch(batch) for batch in batches[1:]))
-            rejected = [index for batch, ok in zip(batches[1:], results) if not ok for index in batch]
-            await asyncio.gather(*(scan_one(index) for index in rejected))
-        storyless = await judge if judge is not None else None
+        try:
+            if batches and not await scan_batch(batches[0]):
+                await asyncio.gather(*(scan_one(index) for index in active))
+            elif batches:
+                results = await asyncio.gather(*(scan_batch(batch) for batch in batches[1:]))
+                rejected = [index for batch, ok in zip(batches[1:], results) if not ok for index in batch]
+                await asyncio.gather(*(scan_one(index) for index in rejected))
+            storyless = await judge if judge is not None else None
+        except BaseException:
+            await _cancel_and_wait(judge)
+            raise
         self._check_cancel()
 
         storyless_set, chances = storyless if storyless is not None else (None, None)
@@ -376,19 +391,19 @@ class AIModeRunner:
         indices = self._active_pages()
         # The glossary only needs the original slices, so it is read while cleanup runs.
         self._glossary_task = asyncio.create_task(self._read_glossary(indices))
-        if not indices:
-            self._progress(0, 0, "Không có lát nào cần clean")
-            return
-        screen = self._art_screen()
-        snapshot = chapter_processing_jobs.start(
-            self.job.chapter_id, page_indices=indices, workers=self.settings.workers,
-            **({"screen": screen} if screen is not None else {}),
-        )
-        job_id = snapshot["job_id"]
-        # Checkpoint 3 starts on each slice as soon as it is clean, so its A.I calls overlap the cleanup.
-        self._start_review(len(indices))
-        wanted, fed = set(indices), 0
         try:
+            if not indices:
+                self._progress(0, 0, "Không có lát nào cần clean")
+                return
+            screen = self._art_screen()
+            snapshot = chapter_processing_jobs.start(
+                self.job.chapter_id, page_indices=indices, workers=self.settings.workers,
+                **({"screen": screen} if screen is not None else {}),
+            )
+            job_id = snapshot["job_id"]
+            # Checkpoint 3 starts on each slice as soon as it is clean, so its A.I calls overlap the cleanup.
+            self._start_review(len(indices))
+            wanted, fed = set(indices), 0
             while True:
                 snapshot = chapter_processing_jobs.snapshot(job_id)
                 self._progress(snapshot["completed"], snapshot["total"])
@@ -405,7 +420,9 @@ class AIModeRunner:
                 raise AIModeFailed(f"Clean thất bại: {errors or 'lỗi không rõ'}")
             self._check_cancel()
         except BaseException:
-            self._review_task.cancel()
+            # Stop the background reads too, or they keep issuing billed calls after the job dies.
+            await _cancel_and_wait(self._glossary_task)
+            await _cancel_and_wait(self._review_task)
             raise
         self._review_queue.put_nowait(None)
 
@@ -1136,9 +1153,13 @@ class AIModeRunner:
         if key and self._memory is not None:
             # The next chapter of this series starts from what this one settled.
             snapshot = self._memory.snapshot(settled=False)
-            series_memory.save(key, series_memory.learn(
-                self._series or series_memory.load(key), self.report.get("glossary") or {}, snapshot["characters"],
-                snapshot["address"], self.settings.url, self.settings.story_notes))
+            glossary = self.report.get("glossary") or {}
+
+            def learn_current(current: dict) -> dict:
+                return series_memory.learn(current, glossary, snapshot["characters"], snapshot["address"],
+                                           self.settings.url, self.settings.story_notes)
+
+            series_memory.update(key, learn_current)
         report_path = OUTPUT_DIR / chapter_id / "ai_mode_report.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(self.report, ensure_ascii=False, indent=1), encoding="utf-8")

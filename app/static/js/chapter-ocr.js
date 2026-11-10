@@ -276,40 +276,6 @@
     workspaceRoot().querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
   }
 
-  async function safeFetchOcr(pageIndex, boxIndex, originalEl) {
-    const chapterId = window.currentChapterId;
-    if (!chapterId) return;
-    try {
-      const lang = await currentLang();
-      if (chapterId !== window.currentChapterId) return;
-      const data = await requestJson("/api/ocr_box", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chapter_id: chapterId,
-          page_index: pageIndex,
-          box_index: boxIndex,
-          lang,
-        }),
-      });
-      if (chapterId !== window.currentChapterId) return;
-      const page = window.currentManifest?.pages?.[pageIndex];
-      const box = (page?.boxes || []).find((item) => String(item?.id) === String(data.box_id));
-      if (box) {
-        box.ocr_text = data.text || "";
-        box.ocr_lang = lang;
-        box.ocr_engine = data.engine || "";
-      }
-      if (originalEl) originalEl.textContent = data.text || "(không nhận dạng được)";
-    } catch (err) {
-      if (chapterId === window.currentChapterId) {
-        if (originalEl) originalEl.textContent = "(Lỗi OCR: " + err.message + ")";
-        showToast("Không thể hoàn tất OCR: " + err.message, "error");
-      }
-    }
-  }
-
-  window.fetchOcr = safeFetchOcr;
   window.mountChapterOCR = scan;
   window.startChapterOCR = startChapterOCR;
 })();
