@@ -4,22 +4,24 @@ import math
 
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.ai_mode.job import AIModeJobManager, AIModeSettings
 from app import cloud, series_memory
 from app.ai_providers import bind_cloud_job, normalize_provider_id, unbind_cloud_job, validate_model_name
+from app.manifest_utils import load_manifest_raw
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.routers.translation import _resolve_text_provider, _resolve_vision_provider, validate_lang_code
 from app.secret_store import SecretStoreUnavailable, get_provider_api_key
-from app.security import MAX_REMOTE_URL_LENGTH, validate_url
+from app.security import MAX_REMOTE_URL_LENGTH, validate_chapter_id, validate_url
 
 router = APIRouter(prefix="/api/ai_mode", tags=["ai-mode"])
 ai_mode_jobs = AIModeJobManager()
 
 
 class AIModeStartRequest(BaseModel):
-    url: str
+    url: str | None = None
+    chapter_id: str | None = None
     provider: str = "deepseek"
     model: str | None = None
     target_lang: str = "vi"
@@ -45,11 +47,17 @@ class AIModeStartRequest(BaseModel):
 
     @field_validator("url")
     @classmethod
-    def _url(cls, value: str) -> str:
+    def _url(cls, value: str | None) -> str | None:
         value = str(value or "").strip()
-        if not value or len(value) > MAX_REMOTE_URL_LENGTH:
-            raise ValueError("A chapter URL is required")
-        return value
+        if len(value) > MAX_REMOTE_URL_LENGTH:
+            raise ValueError("Chapter URL is too long")
+        return value or None
+
+    @model_validator(mode="after")
+    def _one_source(self) -> "AIModeStartRequest":
+        if bool(self.url) == bool(self.chapter_id):
+            raise ValueError("Provide exactly one of url and chapter_id")
+        return self
 
     @field_validator("provider")
     @classmethod
@@ -91,10 +99,16 @@ def _cloud_finish_hook(job_token: str):
 
 @router.post("/start")
 async def start_ai_mode(req: AIModeStartRequest) -> dict:
-    await run_in_threadpool(validate_url, req.url)
+    if req.chapter_id:
+        await run_in_threadpool(validate_chapter_id, req.chapter_id)
+        await run_in_threadpool(load_manifest_raw, req.chapter_id)
+    else:
+        await run_in_threadpool(validate_url, req.url)
     if ai_mode_jobs.active_job() is not None:
         raise HTTPException(409, "An A.I mode job is already running")
     if req.provider == cloud.CLOUD_PROVIDER_ID:
+        if req.chapter_id:
+            raise HTTPException(400, "chapter_id is local-only; Manga Cloud starts from a URL")
         reservation = await run_in_threadpool(cloud.reserve_job)
         provider = cloud.cloud_provider(str(reservation.get("model") or ""))
         # The text re-translate runs through Manga Cloud too: the gateway picks its
@@ -108,7 +122,7 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
             translate_provider_id = cloud.CLOUD_PROVIDER_ID
             translate_model_name = validate_model_name(req.translate_model, default="")
         settings = AIModeSettings(
-            url=req.url, provider=provider.id, model=provider.default_qc_model, target_lang=req.target_lang,
+            url=req.url or "", chapter_id=req.chapter_id, provider=provider.id, model=provider.default_qc_model, target_lang=req.target_lang,
             budget_usd=float(reservation.get("cost_cap_usd") or req.budget_usd), workers=req.workers,
             # Manga Cloud reads on a free model that takes two images a request; it is not the user's to raise.
             story_notes=req.story_notes, polish=req.polish, images_per_request=2,
@@ -150,7 +164,7 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
             raise HTTPException(409, f"{text_provider.label} API key is not configured")
         translate_provider_id = text_provider.id
     settings = AIModeSettings(
-        url=req.url, provider=provider.id, model=model, target_lang=req.target_lang,
+        url=req.url or "", chapter_id=req.chapter_id, provider=provider.id, model=model, target_lang=req.target_lang,
         budget_usd=req.budget_usd, workers=req.workers, story_notes=req.story_notes, polish=req.polish,
         images_per_request=req.images_per_request,
         translate_provider=translate_provider_id, translate_model=translate_model_name,

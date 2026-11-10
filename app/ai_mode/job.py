@@ -121,6 +121,8 @@ class AIModeSettings:
     # A second model re-translates the source lines the vision model read; unset means the vision model's wording stands.
     translate_provider: str | None = None
     translate_model: str | None = None
+    # A chapter already on disk (e.g. built from an upload) skips the download.
+    chapter_id: str | None = None
 
 
 @dataclass
@@ -243,6 +245,12 @@ class AIModeRunner:
 
     # -- stages --------------------------------------------------------------
     async def download(self) -> None:
+        if self.settings.chapter_id:
+            # A chapter already on disk (e.g. built from an upload) skips the fetch.
+            self.job.chapter_id = str(self.settings.chapter_id)
+            manifest = await asyncio.to_thread(self._manifest)
+            self._progress(1, 1, f"{len(manifest.get('pages') or [])} lát")
+            return
         from app.routers.chapters import create_chapter
         from app.schemas import ChapterRequest
 
