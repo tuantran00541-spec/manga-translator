@@ -1037,7 +1037,11 @@ class AIModeRunner:
                 _append(self.report["translate_errors"], f"Lát {page_index + 1} (thử lại): {_detail(exc)[:200]}")
                 fruitless += 1
                 continue
-            blank.update(run.get("blank_ids") or [])
+            blank.update(set(run.get("blank_ids") or []) - set(run.get("story_blank_ids") or []))
+            # A blank on a story box is a failed read, not a choice: it
+            # stays retryable, and when it never translates it must land
+            # in unresolved below (restored, with a review entry). Only a
+            # blank left on purpose — SFX, art — is settled by the blank.
             if set(batch) <= {str(obj["id"]) for obj in self._untranslated(page_index, only, blank)}:
                 fruitless += 1
         unresolved = self._untranslated(page_index, only, blank)

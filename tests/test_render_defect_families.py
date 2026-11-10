@@ -18,6 +18,38 @@ def _ellipse_bubble(fill):
     return image
 
 
+def test_a_fixed_size_that_crosses_a_spiky_outline_falls_back_to_the_fit():
+    """Rerun-4 ch79 p021: the top spiky bubble rendered at the OCR-measured
+    fixed 52px, whose lines touch the outline at 0px, while the fit caps
+    at 45px with real gaps. A fixed size never saw the band machinery, so
+    its lines are validated against the measured (spiky-narrowed) bands
+    and fall back to the fit when they do not fit; a fixed size that
+    fits is left exactly alone."""
+    import math
+
+    from app.render.text_renderer import render_text_in_box
+
+    cx, cy, outer, inner, points = 350, 200, 170, 120, 12
+    star = []
+    for i in range(2 * points):
+        angle = math.pi * i / points - math.pi / 2
+        radius = outer if i % 2 == 0 else inner
+        star.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+    image = Image.new("RGB", (700, 400), "white")
+    ImageDraw.Draw(image).polygon(star, fill="white", outline=(0, 0, 0), width=4)
+    long = "HẮN ĐÃ CHIẾN ĐẤU VỚI MỘT CON NGƯỜI ĐIÊN CUỒNG, VƯỢT QUA VÔ SỐ CẠM BẪY"
+    stats: dict = {}
+    render_text_in_box(image.copy(), long, (200, 60, 500, 340),
+                       font_name="dialogue.mac-dinh-3", font_size=60,
+                       container="spiky", stats=stats)
+    assert stats["size"] == 30, f"fixed 60px should fall back to the fit, got {stats['size']}"
+    stats = {}
+    render_text_in_box(image.copy(), "HẮN ĐÃ CHIẾN ĐẤU", (200, 60, 500, 340),
+                       font_name="dialogue.mac-dinh-3", font_size=24,
+                       container="spiky", stats=stats)
+    assert stats["size"] == 24, f"a fitting fixed size must stay put, got {stats['size']}"
+
+
 def test_fragmented_bands_do_not_collapse_to_the_readable_floor(monkeypatch):
     import app.render.text_renderer as tr
     monkeypatch.setattr(tr, "_bubble_bands", lambda *a, **k: [[(10, 11)] for _ in range(24)])

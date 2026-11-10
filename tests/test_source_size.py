@@ -122,3 +122,20 @@ def test_a_lone_exclamation_mark_has_a_source_size():
     cv2.circle(image, (78, 180), 10, (0, 0, 0), -1)
     assert source_cap_px(image, (0, 0, 157, 224)) is None
     assert 100 < source_cap_px(image, (0, 0, 157, 224), min_pieces=1) < 120
+
+
+def test_a_box_holding_lettering_plus_giant_sfx_reads_the_lettering_size():
+    """Rerun-4 Mount Hua p013: the detector merged a giant Korean SFX
+    and a bubble into one box; the SFX strokes (137–201px) carried 81%
+    of the ink, so the area median read 172px and "BIẾT RỒI." rendered
+    at 189px, mostly outside the bubble. The lettering repeats at one
+    size (41–44px) while the art strokes do not, so the cap comes from
+    the group with the most pieces, and the render drops to ~77px."""
+    image = np.full((378, 675, 3), 255, np.uint8)
+    cv2.putText(image, "I GOT IT.", (60, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 0), 3)
+    for x, y, w, h in ((80, 20, 30, 137), (220, 40, 40, 172), (420, 10, 35, 201)):
+        cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 0), -1)  # SFX strokes
+    for x, y in ((500, 300), (550, 320), (600, 290), (520, 330), (580, 350), (640, 310)):
+        cv2.circle(image, (x, y), 5, (0, 0, 0), -1)  # specks
+    cap = source_cap_px(image, (0, 0, 675, 378))
+    assert cap is not None and 30 <= cap <= 55, cap
