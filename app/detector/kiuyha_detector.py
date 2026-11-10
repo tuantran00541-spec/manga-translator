@@ -71,6 +71,18 @@ def _merge(boxes: list[tuple[int, int, int, int, float]]) -> list[tuple[int, int
     return [(int(a), int(b), int(c), int(d), float(e)) for a, b, c, d, e in kept]
 
 
+def _overlaps(a: list, b: list) -> bool:
+    """Two rects hold pieces of one text by geometry alone: the same line, or mostly the same area."""
+    ix = min(a[2], b[2]) - max(a[0], b[0])
+    iy = min(a[3], b[3]) - max(a[1], b[1])
+    smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+    # One line's fragments share a real slice of the width too; two bubbles side by
+    # side only brush at the edge, and joining them centres the text between them.
+    same_line = (iy >= SAME_LINE * min(a[3] - a[1], b[3] - b[1])
+                 and ix >= SAME_LINE_X * min(a[2] - a[0], b[2] - b[0]))
+    return ix > 0 and iy > 0 and (same_line or ix * iy >= UNION_SHARE * max(1, smaller))
+
+
 def _union_overlapping(boxes: list[tuple[int, int, int, int, float]]) -> list[tuple[int, int, int, int, float]]:
     """Join overlapping pieces of one text seen by different passes: the same line, or mostly the same area."""
     merged = [list(box) for box in boxes]
@@ -79,15 +91,8 @@ def _union_overlapping(boxes: list[tuple[int, int, int, int, float]]) -> list[tu
         changed = False
         for i in range(len(merged)):
             for j in range(i + 1, len(merged)):
-                a, b = merged[i], merged[j]
-                ix = min(a[2], b[2]) - max(a[0], b[0])
-                iy = min(a[3], b[3]) - max(a[1], b[1])
-                smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
-                # One line's fragments share a real slice of the width too; two bubbles side by
-                # side only brush at the edge, and joining them centres the text between them.
-                same_line = (iy >= SAME_LINE * min(a[3] - a[1], b[3] - b[1])
-                             and ix >= SAME_LINE_X * min(a[2] - a[0], b[2] - b[0]))
-                if ix > 0 and iy > 0 and (same_line or ix * iy >= UNION_SHARE * max(1, smaller)):
+                if _overlaps(merged[i], merged[j]):
+                    a, b = merged[i], merged[j]
                     merged[i] = [min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]), max(a[4], b[4])]
                     del merged[j]
                     changed = True
@@ -97,9 +102,89 @@ def _union_overlapping(boxes: list[tuple[int, int, int, int, float]]) -> list[tu
     return [(int(a), int(b), int(c), int(d), float(e)) for a, b, c, d, e in merged]
 
 
-def _join_grown(boxes: list[BubbleBox]) -> list[BubbleBox]:
+JOIN_STACK_GAP = 0.2  # stacked fragments of one text sit this close, as a share of the shorter lettering
+JOIN_STACK_CENTRE = 0.15  # centres this far apart, as a share of the wider lettering, are two texts
+
+
+def _letter_geometry(box: BubbleBox, core: tuple[int, int, int, int] | None = None):
+    """A box's letter rows and letter bbox in slice coords, or None when it has no letters to judge by.
+
+    ``core`` is the raw detector rect the box grew from: letters the growth
+    pulled in past it belong to the neighbour the growth reached, not this box.
+    """
+    letters = getattr(box, "letters", None)
+    if letters is None or not letters.any():
+        return None
+    y0, x0 = box.y1, box.x1
+    if core is not None:
+        r0, r1 = max(0, core[1] - box.y1), min(letters.shape[0], core[3] - box.y1)
+        c0, c1 = max(0, core[0] - box.x1), min(letters.shape[1], core[2] - box.x1)
+        if r1 <= r0 or c1 <= c0:
+            return None
+        letters = letters[r0:r1, c0:c1]
+        if not letters.any():
+            return None
+        y0, x0 = box.y1 + r0, box.x1 + c0
+    rows = np.flatnonzero(letters.any(axis=1)) + y0
+    cols = np.flatnonzero(letters.any(axis=0)) + x0
+    return (set(int(r) for r in rows),
+            (int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1))
+
+
+def _merge_geometry(a, b):
+    """Letter geometry of two boxes joined into one: whatever either held."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    rows_a, box_a = a
+    rows_b, box_b = b
+    return (rows_a | rows_b,
+            (min(box_a[0], box_b[0]), min(box_a[1], box_b[1]),
+             max(box_a[2], box_b[2]), max(box_a[3], box_b[3])))
+
+
+def _letters_coherent(a, b) -> bool:
+    """Two grown boxes hold one text: same-line fragments, or stacked and centre-aligned.
+
+    A small bubble tucking under a big one overlaps it once grown, but shares no
+    letter row with it and sits far off-centre, so geometry alone would fold it in.
+    """
+    if a is None or b is None:
+        return True
+    rows_a, box_a = a
+    rows_b, box_b = b
+    if rows_a & rows_b:
+        return True
+    (ux1, uy1, ux2, uy2), (lx1, ly1, lx2, ly2) = sorted((box_a, box_b), key=lambda box: box[1])
+    gap = ly1 - uy2
+    shorter = min(uy2 - uy1, ly2 - ly1)
+    wider = max(ux2 - ux1, lx2 - lx1)
+    offset = abs((ux1 + ux2) - (lx1 + lx2)) / 2
+    return gap <= JOIN_STACK_GAP * shorter and offset <= JOIN_STACK_CENTRE * wider
+
+
+def _join_grown(boxes: list[BubbleBox], cores: list[tuple[int, int, int, int]] | None = None) -> list[BubbleBox]:
     """Boxes that grew into each other while taking cut letters are one text; their masks are joined."""
-    rects = _union_overlapping([(b.x1, b.y1, b.x2, b.y2, b.confidence) for b in boxes])
+    groups = [[[b.x1, b.y1, b.x2, b.y2, b.confidence],
+               _letter_geometry(b, cores[i] if cores is not None else None)]
+              for i, b in enumerate(boxes)]
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(groups)):
+            for j in range(i + 1, len(groups)):
+                if _overlaps(groups[i][0], groups[j][0]) and _letters_coherent(groups[i][1], groups[j][1]):
+                    a, b = groups[i], groups[j]
+                    a[0] = [min(a[0][0], b[0][0]), min(a[0][1], b[0][1]),
+                            max(a[0][2], b[0][2]), max(a[0][3], b[0][3]), max(a[0][4], b[0][4])]
+                    a[1] = _merge_geometry(a[1], b[1])
+                    del groups[j]
+                    changed = True
+                    break
+            if changed:
+                break
+    rects = [g[0] for g in groups]
     if len(rects) == len(boxes):
         return boxes
     joined = []
@@ -547,17 +632,21 @@ class KiuyhaTextDetector:
     def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
         """Detected text blocks with letter masks, ready for inpainting and OCR."""
         boxes = []
+        cores = []
         for x1, y1, x2, y2, score in self.detect_slice(image):
-            (x1, y1, x2, y2), mask, letters = letter_mask(image, (x1, y1, x2, y2), with_letters=True)
+            core = (x1, y1, x2, y2)
+            (x1, y1, x2, y2), mask, letters = letter_mask(image, core, with_letters=True)
             if mask.any():
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters))
+                cores.append(core)
             elif score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1 and _dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES:
                 # The letter model is blind here, not the box model: the box stays, masked whole,
                 # so the text is still erased and read instead of silently dropped. Downstream
                 # already copes with a box that has no letters (it falls back to the box extent).
                 full = np.full((y2 - y1, x2 - x1), 255, np.uint8)
                 boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None))
-        kept = [part for box in _join_grown(boxes) for piece in _split_blocks(box) for part in _split_sideways(piece)]
+                cores.append(core)
+        kept = [part for box in _join_grown(boxes, cores) for piece in _split_blocks(box) for part in _split_sideways(piece)]
         return kept + self._rescue_boxes(image, kept)
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:

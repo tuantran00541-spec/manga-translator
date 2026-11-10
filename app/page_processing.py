@@ -29,6 +29,9 @@ def _letters_u8(letters) -> np.ndarray | None:
     return array.astype(np.uint8)
 
 
+LEFTOVER_OUTLINE_RATIO = 1.5  # a leftover swallowing its target is the outline read as letters
+
+
 def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
     """Grow the first-pass record holding ``box`` so a later re-inpaint erases it too."""
     cx, cy = (box.x1 + box.x2) / 2, (box.y1 + box.y2) / 2
@@ -37,6 +40,15 @@ def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
         x1, y1, x2, y2 = (int(record[k]) for k in ("x1", "y1", "x2", "y2"))
         if not (x1 <= cx <= x2 and y1 <= cy <= y2) or mask is None or mask.shape != (y2 - y1, x2 - x1):
             continue
+        if (
+            box.x1 <= x1 and box.y1 <= y1 and box.x2 >= x2 and box.y2 >= y2
+            and (box.x2 - box.x1) * (box.y2 - box.y1)
+            >= LEFTOVER_OUTLINE_RATIO * max(1, (x2 - x1) * (y2 - y1))
+        ):
+            # Outline read as letters: fold the mask overlap in, keep the rect tight.
+            if box.mask is not None and box.mask.shape == (box.y2 - box.y1, box.x2 - box.x1):
+                mask |= box.mask[y1 - box.y1:y2 - box.y1, x1 - box.x1:x2 - box.x1]
+            return
         ux1, uy1, ux2, uy2 = min(x1, box.x1), min(y1, box.y1), max(x2, box.x2), max(y2, box.y2)
         grown = np.zeros((uy2 - uy1, ux2 - ux1), np.uint8)
         grown[y1 - uy1:y2 - uy1, x1 - ux1:x2 - ux1] = mask
