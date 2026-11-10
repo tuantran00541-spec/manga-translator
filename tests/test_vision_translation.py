@@ -363,6 +363,29 @@ def test_english_left_as_the_translation_is_treated_as_untranslated():
     assert not _untranslated_english("Level của ngươi là bao nhiêu?")
 
 
+def test_rerun3_english_returns_are_caught_even_with_confusable_punctuation():
+    from app.translation.vision import _untranslated_english
+
+    # Whole bubbles returned in English in rerun-3 (ch42 p010/p015, former-supreme p063).
+    assert _untranslated_english("IS THERE A PROBLEM WITH THAT?")
+    assert _untranslated_english("OF COURSE NOT HE'S STILL A SKILLED SO THE SCHOOL ENDB SUSPENSION.")
+    assert _untranslated_english(
+        "SHAANXI MAY BE FAR, BUT IT WOULDN'T TAKE LONG TO GET THERE IF I SET MY MIND TO IT...")
+    # A short shout with no function word in it (mount-hua p018) is still English.
+    assert _untranslated_english("SENIOR BROTHER!")
+    # One invisible or curly character must not shield the whole line.
+    assert _untranslated_english("IS THERE A PROBLEM WITH THAT?\u00a0")
+    assert _untranslated_english("IS THERE A PROBLEM WITH THAT?\u200b")
+    assert _untranslated_english("OF COURSE NOT HE\u2019S STILL A SKILLED SO THE SCHOOL ENDB SUSPENSION.")
+    assert _untranslated_english(
+        "SHAANXI MAY BE FAR, BUT IT WOULDN\u2019T TAKE LONG TO GET THERE IF I SET MY MIND TO IT\u2026")
+    # Names and kept titles still pass through, and a one-word grunt is out of scope.
+    assert not _untranslated_english("HELMUT...?")
+    assert not _untranslated_english("GAME OVER") and not _untranslated_english("FRONDIER DE ROAH!")
+    assert not _untranslated_english("HELMUT VỪA RỒI PHÒNG 301...?")
+    assert not _untranslated_english("MM!")
+
+
 def test_vietnamese_written_without_diacritics_is_treated_as_untranslated():
     from app.translation.vision import _missing_diacritics
 
@@ -437,6 +460,34 @@ def test_a_sound_effect_the_artist_drew_stays_as_art_even_when_the_model_transla
     )
     info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
     assert info["translated"] == 0 and info["blank_ids"] == ["obj_1"] and info["art_regions"] == [region]
+
+
+def test_a_blank_on_a_story_box_is_listed_for_retry_not_restored_as_art(saved_chapter, monkeypatch):
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None, roles={"obj_1": "dialogue"},
+                                                       sources={"obj_1": "그..."}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="ko", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["blank_ids"] == ["obj_1"] and info["story_blank_ids"] == ["obj_1"] and info["art_regions"] == []
+
+
+def test_a_whitespace_only_translation_counts_as_blank(saved_chapter, monkeypatch):
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": "   "}, self.model, {}, None,
+                                                       roles={"obj_1": "dialogue"}, sources={"obj_1": "그..."}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="ko", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["translated"] == 0 and info["blank_ids"] == ["obj_1"] and info["story_blank_ids"] == ["obj_1"]
 
 
 def test_a_sound_effect_lettered_in_latin_script_is_translated(saved_chapter, monkeypatch):

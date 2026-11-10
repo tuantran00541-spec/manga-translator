@@ -680,6 +680,66 @@ def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monke
     assert job.stages["translate"]["done"] == 10
 
 
+def test_unreadable_counts_only_the_ids_the_model_omitted_not_the_blanks_it_chose(monkeypatch):
+    import app.routers.ocr as ocr_router
+
+    async def detected(chapter_id, req=None):
+        return {"source_lang": None}
+
+    async def fake_translate(req, memory=None, slice_total=None, skip_seam_mirrors=False):
+        # Three empty values at commit: two the model left blank on purpose
+        # (SFX/art, restored to legible source art) and one it omitted.
+        if req.page_index == 0:
+            return {"translation_run": {"translated": 1, "unreadable": 3,
+                                        "blank_ids": ["a", "b"], "missing_ids": ["c"],
+                                        "estimated_cost_usd": None}}
+        return {"translation_run": {"translated": 1, "unreadable": 0, "estimated_cost_usd": None}}
+
+    monkeypatch.setattr(ocr_router, "detect_chapter_language", detected)
+    monkeypatch.setattr(translation_router, "translate_page_in_context", fake_translate)
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="translate", cost_usd=None,
+                           stages={"translate": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
+    monkeypatch.setattr(runner, "_manifest", lambda: {"pages": [{}, {}]})
+    monkeypatch.setattr(runner, "_sync_seams", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
+    monkeypatch.setattr(runner, "_create_seam_mirrors", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(runner, "_keep_art", lambda page_index, run: asyncio.sleep(0))
+    monkeypatch.setattr(runner, "_retry_untranslated", lambda page_index, source_lang, only: asyncio.sleep(0))
+    asyncio.run(runner.translate())
+    assert runner.report["unreadable"] == 1, "blank-by-choice is restored art, not unreadable"
+
+
+def test_a_blank_on_a_story_box_triggers_a_retry_for_that_box_only(monkeypatch):
+    import app.routers.ocr as ocr_router
+
+    async def detected(chapter_id, req=None):
+        return {"source_lang": None}
+
+    async def fake_translate(req, memory=None, slice_total=None, skip_seam_mirrors=False):
+        return {"translation_run": {"translated": 0, "unreadable": 1,
+                                    "blank_ids": ["x"], "story_blank_ids": ["x"], "missing_ids": [],
+                                    "estimated_cost_usd": None}}
+
+    monkeypatch.setattr(ocr_router, "detect_chapter_language", detected)
+    monkeypatch.setattr(translation_router, "translate_page_in_context", fake_translate)
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="translate", cost_usd=None,
+                           stages={"translate": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0])
+    monkeypatch.setattr(runner, "_manifest", lambda: {"pages": [{}]})
+    monkeypatch.setattr(runner, "_sync_seams", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
+    monkeypatch.setattr(runner, "_create_seam_mirrors", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(runner, "_keep_art", lambda page_index, run: asyncio.sleep(0))
+    retried = []
+    monkeypatch.setattr(runner, "_retry_untranslated",
+                        lambda page_index, source_lang, only: (retried.append((page_index, only)), asyncio.sleep(0))[1])
+    asyncio.run(runner.translate())
+    assert retried == [(0, {"x"})], "a story blank is retried, not silently restored"
+
+
 # -- translate -> render -> gate-free export ---------------------------------
 
 @pytest.fixture
