@@ -931,15 +931,35 @@ class AIModeRunner:
         return run
 
     async def _keep_art(self, page_index: int, run: dict) -> None:
-        """Sound effects the model left as art get their original pixels back."""
-        from app.dependencies import pipeline
+        """Sound effects the model left as art get their original pixels back.
 
-        regions = run.get("art_regions") or []
+        Blank-by-choice objects get the same treatment: the model read the
+        text and chose to leave it blank, so the text is art the clean
+        erased and nothing else restores it. Without this the region stays
+        a LaMa hole and the text is gone from the page entirely. A region
+        already in preserve_regions is skipped, so repeated calls — the
+        initial translate and every retry batch — restore each blank once.
+        """
+        from app.dependencies import pipeline
+        from app.region_policy import text_object_in_preserve_region
+
+        art_regions = list(run.get("art_regions") or [])
+        regions = list(art_regions)
+        blank_ids = run.get("blank_ids") or []
+        if blank_ids:
+            manifest = self._manifest()
+            page = manifest["pages"][page_index]
+            for obj in page.get("text_objects") or []:
+                if (isinstance(obj, dict) and str(obj.get("id")) in blank_ids
+                        and isinstance(obj.get("region"), dict)
+                        and not text_object_in_preserve_region(page, obj)):
+                    regions.append(dict(obj["region"]))
         if not regions:
             return
         try:
             await asyncio.to_thread(pipeline.preserve_and_reinpaint, self.job.chapter_id, page_index, regions)
-            self.report["sfx_kept"] += len(regions)
+            self.report["sfx_kept"] += len(art_regions)
+            self.report["restored_regions"] += len(regions) - len(art_regions)
         except (ValueError, RuntimeError, OSError) as exc:
             _append(self.report["translate_errors"], f"Lát {page_index + 1}: giữ SFX thất bại: {_detail(exc)[:150]}")
 
