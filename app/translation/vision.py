@@ -914,6 +914,7 @@ class VisionPageTranslator:
                 f"{self.provider.label} HTTP {response.status_code}: "
                 f"{_safe_error_detail(response, api_key.strip())}"
             )
+        body = None
         try:
             body = response.json()
             answer = _extract_output_text(body)

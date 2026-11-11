@@ -21,7 +21,7 @@ LAMA_URL = "https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/l
 LAMA_SHA256 = "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9"
 CTD_URL = "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx"
 CTD_SHA256 = "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f"
-# The same export, built once in CI (publish-ctd-model), so an install needs no torch.
+# The same export, prebuilt and published as a release artifact, so an install needs no torch.
 CTD_SEG_URL = "https://github.com/tuantran00541-spec/manga-translator/releases/download/models-v1/ctd_seg.onnx"
 CTD_SEG_SHA256 = "8a0820470be7a118713083de61b8ec966c106e7f53024490a01c68d889915e60"
 # Kept across updates: the environment, models, chapters and logs of the user.

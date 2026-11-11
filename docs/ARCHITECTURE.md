@@ -85,7 +85,7 @@ flowchart TD
     D --> E["main.py: lifespan"]
     E --> F["check_models() → log trạng thái"]
     E --> G["mount /static → app/static/"]
-    E --> H["include_router × 10: chapters · automation · translation · OCR · editor · render · image · export · AI providers"]
+    E --> H["include_router × 14: chapters · automation · translation · OCR · editor · render_commit · render · image · export · visual_qc · ai_mode · account · agent · extension"]
     E --> I["thêm RequestSizeLimitMiddleware"]
     E --> J["GET /health → {status, models_missing}"]
     E --> K["GET / → app/templates/index.html"]
@@ -286,12 +286,12 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A["index.html — nạp CSS + JS theo thứ tự:<br/>toast → api → upload → preview → review<br/>→ review-workspace → editor → editor-box-transform → main"] --> B["main.js bootstrap:<br/>gán nút Tải chapter, initUpload, loadRecentChapters, loadFonts"]
+    A["index.html — nạp CSS + JS theo thứ tự:<br/>toast → api → upload → preview → review<br/>→ review-workspace → editor → editor-geometry → main"] --> B["main.js bootstrap:<br/>gán nút Tải chapter, initUpload, loadRecentChapters, loadFonts"]
     B --> C["api.js — lớp gọi /api/*"]
     C --> D["preview.js — renderPreview():<br/>xem các trang sau slice, chọn trang để xử lý"]
     D --> E["review.js — renderReview():<br/>kiểm tra/điều chỉnh box + brush/magic wand"]
     E --> F["editor.js — renderEditor():<br/>dịch + chỉnh font/size/màu/stroke/align"]
-    F --> G["editor-box-transform.js —<br/>kéo/thả, resize text object"]
+    F --> G["editor-geometry.js —<br/>kéo/thả, resize text object"]
     G -->|"flush → /api/text_object/*"| C
     C -->|"/api/process_pages"| D
     C -->|"/api/repaint_mask / reset_manual_mask"| E

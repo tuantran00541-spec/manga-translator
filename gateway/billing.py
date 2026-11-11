@@ -155,7 +155,7 @@ class Billing:
         config = self.config
         if not config.payos_enabled:
             raise BillingError(503, "Thanh toán QR chưa được cấu hình")
-        order_code = int(self.store.now() * 1000) % 10**12 * 100 + secrets.randbelow(100)
+        order_code = int(self.store.now() * 1000) % 10**12 * 100000 + secrets.randbelow(100000)
         body = {
             "orderCode": order_code,
             "amount": quote["pay"],

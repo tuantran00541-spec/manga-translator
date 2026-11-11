@@ -69,30 +69,41 @@ async function finishFailedProcessing(chapterId, snapshot, { reconnect = false }
   }
 }
 
+let monitoredProcessingJobId = null;
 async function monitorProcessingJob(initialSnapshot, chapterId, options = {}) {
-  let snapshot = initialSnapshot;
-  const reconnect = options.reconnect === true;
+  const jobId = initialSnapshot?.job_id ?? null;
+  // One monitor per job: a resume/reconnect while the original monitor is
+  // still polling must not start a second loop that double-finishes (and
+  // double-starts OCR) when the job completes.
+  if (jobId && monitoredProcessingJobId === jobId) return initialSnapshot;
+  monitoredProcessingJobId = jobId;
+  try {
+    let snapshot = initialSnapshot;
+    const reconnect = options.reconnect === true;
 
-  while (
-    chapterId === currentChapterId
-    && (snapshot?.status === "pending" || snapshot?.status === "running")
-  ) {
-    setProcessingUi(snapshot);
-    await sleepProcessingPoll();
+    while (
+      chapterId === currentChapterId
+      && (snapshot?.status === "pending" || snapshot?.status === "running")
+    ) {
+      setProcessingUi(snapshot);
+      await sleepProcessingPoll();
+      if (chapterId !== currentChapterId) return snapshot;
+      snapshot = await processingJson(
+        `/api/process/jobs/${encodeURIComponent(snapshot.job_id)}`,
+      );
+    }
+
     if (chapterId !== currentChapterId) return snapshot;
-    snapshot = await processingJson(
-      `/api/process/jobs/${encodeURIComponent(snapshot.job_id)}`,
-    );
+    setProcessingUi(snapshot);
+    if (snapshot?.status === "completed") {
+      await finishSuccessfulProcessing(chapterId);
+    } else if (snapshot?.status === "failed") {
+      await finishFailedProcessing(chapterId, snapshot, { reconnect });
+    }
+    return snapshot;
+  } finally {
+    if (monitoredProcessingJobId === jobId) monitoredProcessingJobId = null;
   }
-
-  if (chapterId !== currentChapterId) return snapshot;
-  setProcessingUi(snapshot);
-  if (snapshot?.status === "completed") {
-    await finishSuccessfulProcessing(chapterId);
-  } else if (snapshot?.status === "failed") {
-    await finishFailedProcessing(chapterId, snapshot, { reconnect });
-  }
-  return snapshot;
 }
 
 window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPagesOnce() {

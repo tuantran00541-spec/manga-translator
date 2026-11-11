@@ -21,7 +21,6 @@ test:
 
 test-browser:
 	python scripts/browser_sanity.py
-	node scripts/editor_auto_sync_sanity.js
 	node scripts/studio_runtime_sanity.js
 	node scripts/theme_runtime_sanity.js
 	@echo "Run scripts/live_ui_smoke.py against a started server for real Chromium coverage."

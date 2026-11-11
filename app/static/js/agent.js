@@ -32,6 +32,7 @@
   let session = null;
   let lastSeq = 0;
   let pollTimer = null;
+  let pollGeneration = 0;
   let loaded = false;
   let commands = [];
   let infoRev = "";
@@ -528,22 +529,26 @@
     next.focus();
   }
 
-  async function poll() {
+  async function poll(generation) {
     clearTimeout(pollTimer);
     if (!session) return;
+    // Only the latest poll loop may apply responses; a fresh poll() (send,
+    // approval, session open) supersedes any loop still awaiting a reply.
+    if (generation === undefined) generation = ++pollGeneration;
     try {
       const stick = nearBottom();
       const sid = session.id;
       const snap = await call(`/api/agent/sessions/${session.id}?after=${lastSeq}&rev=${encodeURIComponent(infoRev)}`);
-      if (!session || session.id !== sid) return;
+      if (!session || session.id !== sid || generation !== pollGeneration) return;
       snap.events.forEach((event) => { render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
       follow(stick && snap.events.length > 0);
-      if (snap.status !== "idle") pollTimer = setTimeout(poll, snap.live ? POLL_MS / 2 : POLL_MS);
+      if (snap.status !== "idle") pollTimer = setTimeout(() => poll(generation), snap.live ? POLL_MS / 2 : POLL_MS);
       else loadSessions();
     } catch (error) {
+      if (generation !== pollGeneration) return;
       $("agent-status").textContent = error.message;
-      pollTimer = setTimeout(poll, POLL_MS * 4);
+      pollTimer = setTimeout(() => poll(generation), POLL_MS * 4);
     }
   }
 
@@ -685,6 +690,7 @@
 
   function resetLog() {
     clearTimeout(pollTimer);
+    pollGeneration++;
     session = null;
     lastSeq = 0;
     infoRev = "";

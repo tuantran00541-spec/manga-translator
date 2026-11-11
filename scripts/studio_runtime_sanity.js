@@ -34,7 +34,7 @@ assert(reviewWorkspace.includes('review-canvas-only'), 'Review must mount the si
 assert(stitchInspector.includes('new AbortController()'), 'stitched Review interactions must have abortable ownership');
 assert(
   stitchInspector.includes('window.addEventListener("keydown", (e) => {')
-    && /\}, \{ signal \}\);\n\s*window\.addEventListener\("keyup"/.test(stitchInspector),
+    && /\}, \{ signal \}\);\r?\n\s*window\.addEventListener\("keyup"/.test(stitchInspector),
   'stitched Review key listener must be abortable'
 );
 assert(

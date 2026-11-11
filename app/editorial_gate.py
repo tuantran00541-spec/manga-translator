@@ -611,7 +611,7 @@ def editorial_preflight(
         "resolved_story_candidate_count": resolved_candidate_count,
         "blocker_count": len(blockers),
         "untranslated_count": sum(
-            blocker.get("kind") == "untranslated_story_object"
+            blocker.get("kind") in ("untranslated_story_object", "untranslated_object")
             for blocker in blockers
         ),
         "high_risk_region_count": len(high_risk_regions),

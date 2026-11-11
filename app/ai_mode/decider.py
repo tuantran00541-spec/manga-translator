@@ -154,6 +154,15 @@ def slice_story(api_base: str, api_key: str, image) -> float | None:
 def storyless_slices(provider, api_key: str, indices: list[int], load) -> tuple[list[int], dict[int, float | None]]:
     """Slices the model is sure hold no story text, and each slice's chance; a slice it could not judge is kept."""
     api_base = str(provider.api_base).rstrip("/")
+
+    def judge(index: int) -> float | None:
+        try:
+            return slice_story(api_base, api_key, load(index))
+        except Exception as exc:
+            # One unreadable slice must not abort the whole scan: keep it as unjudged.
+            logger.warning("Slice {} could not be judged for story text: {}", index, exc)
+            return None
+
     with ThreadPoolExecutor(WORKERS) as pool:
-        chances = dict(zip(indices, pool.map(lambda index: slice_story(api_base, api_key, load(index)), indices)))
+        chances = dict(zip(indices, pool.map(judge, indices)))
     return sorted(index for index, chance in chances.items() if chance is not None and chance < SKIP_BELOW), chances

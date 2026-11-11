@@ -115,13 +115,22 @@ jobs:
           "
 
       - name: Run the chapter
+        env:
+          CHAPTER_ZIP: ${{ inputs.chapter_zip }}
+          CHAPTER_URL: ${{ inputs.chapter_url }}
+          MODEL: ${{ inputs.model }}
+          TARGET_LANG: ${{ inputs.target_lang }}
+          BUDGET_USD: ${{ inputs.budget_usd }}
+          IMAGES_PER_REQUEST: ${{ inputs.images_per_request }}
+          TRANSLATE_PROVIDER: ${{ inputs.translate_provider }}
+          TRANSLATE_MODEL: ${{ inputs.translate_model }}
         run: |
-          if [ -n "${{ inputs.chapter_zip }}" ]; then
-            SRC_ARGS="--chapter-zip ${{ inputs.chapter_zip }}"
+          if [ -n "$CHAPTER_ZIP" ]; then
+            SRC_ARGS=(--chapter-zip "$CHAPTER_ZIP")
           else
-            SRC_ARGS="--url ${{ inputs.chapter_url }}"
+            SRC_ARGS=(--url "$CHAPTER_URL")
           fi
-          python scripts/ai_mode_run.py $SRC_ARGS --provider nvidia --model "${{ inputs.model }}" --target-lang "${{ inputs.target_lang }}" --budget-usd "${{ inputs.budget_usd }}" --images-per-request "${{ inputs.images_per_request }}" --translate-provider "${{ inputs.translate_provider }}" --translate-model "${{ inputs.translate_model }}"
+          python scripts/ai_mode_run.py "${SRC_ARGS[@]}" --provider nvidia --model "$MODEL" --target-lang "$TARGET_LANG" --budget-usd "$BUDGET_USD" --images-per-request "$IMAGES_PER_REQUEST" --translate-provider "$TRANSLATE_PROVIDER" --translate-model "$TRANSLATE_MODEL"
 
       - name: Upload rendered chapter
         if: always()

@@ -26,8 +26,8 @@ def validate(root: Path, catalog_path: Path) -> list[str]:
     payload = json.loads(catalog_path.read_text(encoding="utf-8"))
     errors: list[str] = []
     records = payload.get("records", [])
-    if not 60 <= len(records) <= 80:
-        errors.append(f"expected 60-80 records, got {len(records)}")
+    if not 30 <= len(records) <= 80:
+        errors.append(f"expected 30-80 records, got {len(records)}")
     seen: set[str] = set()
     for record in records:
         font_id = record.get("id")

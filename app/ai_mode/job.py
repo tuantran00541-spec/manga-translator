@@ -457,6 +457,7 @@ class AIModeRunner:
                     if page_index in wanted:
                         self._review_queue.put_nowait(page_index)
                 fed = len(done)
+                self._check_cancel()
                 if snapshot["status"] in {"completed", "failed"}:
                     break
                 await asyncio.sleep(POLL_SECONDS)
@@ -911,10 +912,11 @@ class AIModeRunner:
                 touched.add(line.page_index)
                 committed.add(line.id)
             save_manifest_raw(self.job.chapter_id, manifest)
-        # The manifest now says not-rendered for the touched pages: drop
-        # their stale files too (M2), like _invalidate_renders does.
-        if touched:
-            pipeline._sync_output_dir(self.job.chapter_id, manifest, sorted(touched))
+            # The manifest now says not-rendered for the touched pages: drop
+            # their stale files too (M2), under the same lock so a concurrent
+            # render cannot commit a fresh PNG that this sync then deletes.
+            if touched:
+                pipeline._sync_output_dir(self.job.chapter_id, manifest, sorted(touched))
         return (committed, dropped)
 
     async def _add_unboxed(self, page_index: int, boxes: list, source_lang: str) -> None:
@@ -1014,15 +1016,13 @@ class AIModeRunner:
                     invalidate_page_render(manifest, page_index)
                 if changed:
                     save_manifest_raw(self.job.chapter_id, manifest)
+                    # Drop the invalidated pages' stale files under the same
+                    # lock (M2); the render stage re-renders them afterwards.
+                    from app.dependencies import pipeline
+                    pipeline._sync_output_dir(self.job.chapter_id, manifest, changed)
                 return changed
 
         changed = await asyncio.to_thread(sync)
-        if changed:
-            # The sync invalidated these pages: drop their stale files too
-            # (M2), like _invalidate_renders does. The render stage
-            # re-renders them afterwards.
-            from app.dependencies import pipeline
-            pipeline._sync_output_dir(self.job.chapter_id, self._manifest(), changed)
         self.report["seam_copies"] = self.report.get("seam_copies", 0) + len(changed)
         return changed
 
@@ -1280,11 +1280,10 @@ class AIModeRunner:
             for page_index in indices:
                 invalidate_page_render(manifest, page_index)
             save_manifest_raw(self.job.chapter_id, manifest)
-        # The manifest now says not-rendered: drop the stale files too, so
-        # the output dir agrees (M2). The render loop below re-renders
-        # every active page; a page whose re-render then fails leaves no
-        # stale PNG behind for QA to count as present.
-        pipeline._sync_output_dir(self.job.chapter_id, manifest, indices)
+            # The manifest now says not-rendered: drop the stale files too, so
+            # the output dir agrees (M2), under the same lock so a concurrent
+            # render cannot commit a fresh PNG that this sync then deletes.
+            pipeline._sync_output_dir(self.job.chapter_id, manifest, indices)
 
     async def render(self) -> None:
         from app.routers.image import _current_rendered_path

@@ -198,7 +198,6 @@ class Inpainter:
             dynamic=bool(expected_dynamic),
             fixed_size=INPAINT_SIZE,
         )
-        self.session = session
         self.lama_contract = contract
         self.image_input = contract.image_input_name
         self.mask_input = contract.mask_input_name
@@ -212,6 +211,9 @@ class Inpainter:
         self._recycle_fixed_session = (
             self._serialize_fixed_inference and _should_recycle_fixed_session()
         )
+        # Publish last: the lock-free fast path in _ensure_session keys off
+        # self.session, so every field a run reads must already be set.
+        self.session = session
 
     def _ensure_session(self) -> None:
         if self.session is not None:

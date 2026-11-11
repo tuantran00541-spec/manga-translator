@@ -60,7 +60,7 @@ class Route:
 @dataclass(frozen=True)
 class Upstream:
     base: str
-    api_key: str
+    api_key: str = field(repr=False)
     model: str
     input_usd_per_m: float
     output_usd_per_m: float

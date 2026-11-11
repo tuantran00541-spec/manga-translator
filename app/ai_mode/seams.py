@@ -206,7 +206,7 @@ def _source_words(obj: dict) -> list[str]:
     the fallback. An object with neither carries no source evidence.
     """
     for key in ("source_read", "ocr_text", "auto_ocr_text"):
-        words = _norm_words(obj.get(key))
+        words = _fold_words(obj.get(key))
         if words:
             return words
     return []
@@ -534,7 +534,7 @@ def _letter_rect(obj: dict) -> tuple[int, int, int, int] | None:
     return _rect(obj, 0)
 
 
-def _norm_words(text: str) -> list[str]:
+def _fold_words(text: str) -> list[str]:
     """Words of a translation, case- and punctuation-folded, for comparison."""
     folded = unicodedata.normalize("NFKC", str(text or "")).lower()
     folded = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in folded)
@@ -572,7 +572,7 @@ def _translations_duplicate(a: str, b: str) -> bool:
     bubbles can each say "Của tôi", so only a longer shared run proves
     one text read twice.
     """
-    words_a, words_b = _norm_words(a), _norm_words(b)
+    words_a, words_b = _fold_words(a), _fold_words(b)
     if not words_a or not words_b:
         return False
     short, long = sorted((words_a, words_b), key=len)
