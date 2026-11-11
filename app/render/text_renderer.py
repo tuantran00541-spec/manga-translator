@@ -354,6 +354,7 @@ def render_text_in_box(
     curved = str(container or "").lower() in _CURVED_CONTAINERS or str(shape or "").lower() == "ellipse"
     centred = h_align == "center" and v_align == "middle"
 
+    _fixed_height_fallback = False
     if target_size is not None and curved and centred:
         # A fixed size (usually the OCR-measured source size) never saw
         # the band machinery, so its lines can cross a spiky outline
@@ -370,6 +371,22 @@ def render_text_in_box(
         if _bands is not None and not _lines_fit_bands(
                 draw, _fixed_lines, _fixed_font, box_w, box_h, stroke_w, _bands):
             target_size = None
+
+    if target_size is not None:
+        # A fixed size whose wrapped lines are taller than the box aborts
+        # the whole page (render N3): page_renderer re-raises anything
+        # that is not floor/ratio-only, and _render_one retries the same
+        # failing size. Fall back to the fit on height overflow, as Fix K
+        # does for width — the fit sizes down, or refuses at the floor
+        # and the object is skipped and restored instead of aborting.
+        # The check mirrors the draw-time raise below exactly (same wrap,
+        # same line height), so a size that passes here cannot raise there.
+        _fixed_font = get_font_object(font_path_str, target_size)
+        _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
+        if (_calc_line_height(draw, _fixed_font, stroke_w=stroke_w)
+                * len(_fixed_lines) > box_h):
+            target_size = None
+            _fixed_height_fallback = True
 
     if target_size is not None:
         actual_size = target_size
@@ -468,6 +485,7 @@ def render_text_in_box(
         stats["lines"] = len(lines)
         stats["size"] = actual_size
         stats["fit_box"] = (x1, y1, x2, y2)
+        stats["fixed_size_height_fallback"] = _fixed_height_fallback
         if h_align == "center":
             # Per-line centres only exist for a curved auto fit; every
             # other centred path centres on the box, and the flag says
@@ -950,6 +968,20 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         # The outline measurement failed, so the fit below is a rectangle
         # fit on a bubble: recorded, not passed off as outline-aware.
         fallbacks.append("bands_none_rectangle")
+    if (not curved and centered and image is not None and source_letter_box is not None
+            and str(container or "").lower() not in _CURVED_CONTAINERS
+            and str(container or "").lower() not in ("screen", "free")):
+        # N5, flag only: the container label gates all bubble geometry,
+        # so a bubble whose label is missing or wrong renders as a
+        # rectangle with no trace in the verdict. Probe the outline for
+        # the flag only — the fit below stays a rectangle fit; the
+        # rectangle-retry call passes container="bubble", so the label
+        # gate above keeps it from flagging a band failure as a label
+        # failure. The entry rides the fallbacks list the verdict
+        # already copies, so no new verdict field is needed.
+        if _probe_closed_bubble(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
+                                source_letter_box):
+            fallbacks.append("rectangle_rendered_closed_bubble")
     actual_size, lines, fits_readably = _fit_text(
         draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
         minimum_size=enlarged_min if enlarge else readable, maximum_size=maximum_size, curved=curved,
@@ -1652,6 +1684,45 @@ def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None
     if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
         _BANDS_CACHE.pop(next(iter(_BANDS_CACHE), None), None)
     return bands
+
+
+def _probe_closed_bubble(image, box, letter_box) -> bool:
+    """True when the letter-seeded flood of ``box`` measures a closed outline
+    that narrows toward its top and bottom — a bubble rendered as a rectangle
+    because its container label gates the curved path (render N5, flag only).
+
+    The probe never sizes or places anything: it only answers whether the
+    region looks like a bubble, so the fit stays a rectangle fit and the
+    verdict can say so. Measuring the outline to drive the fit is the
+    rewrite's work, not this flag's. A straight-sided box measures near-
+    constant band widths top to bottom and is not flagged; a flood that
+    cannot cover the lettering rows is shading, not an interior, by the
+    same 0.4 rule ``bands_for`` refuses bands by.
+    """
+    bands = _bubble_bands(image, box, letter_box=letter_box)
+    if bands is None:
+        return False
+    box_w = box[2] - box[0]
+    box_h = box[3] - box[1]
+    if box_w <= 0 or box_h <= 0:
+        return False
+    widths = [max((b - a for a, b in row), default=0) for row in bands]
+    present = [w for w in widths if w > 0]
+    if len(present) < 8:
+        return False
+    ly1, ly2 = letter_box[1], letter_box[3]
+    n = len(bands)
+    letter_rows = [widths[i] for i in range(n)
+                   if box[1] + (i + 1) * box_h / n > ly1
+                   and box[1] + i * box_h / n < ly2]
+    if max(letter_rows, default=0) < 0.4 * box_w:
+        return False
+    widest = max(present)
+    if widest < 0.5 * box_w:
+        return False
+    first = next(w for w in widths if w > 0)
+    last = next(w for w in reversed(widths) if w > 0)
+    return first < 0.8 * widest and last < 0.8 * widest
 
 
 def _box_frame(image: Image.Image, box):

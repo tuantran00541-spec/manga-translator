@@ -18,6 +18,79 @@ def _ellipse_bubble(fill):
     return image
 
 
+def test_fixed_size_too_tall_for_its_box_falls_back_to_the_fit():
+    """Render N3: a fixed size whose wrapped lines are taller than the box
+    aborted the whole page — page_renderer re-raises anything that is not
+    floor/ratio-only, and _render_one retried the same failing size 3x.
+    The height overflow now falls back to the fit, as Fix K does for
+    width: the text letters smaller instead of raising, and a fixed size
+    that fits stays exactly put."""
+    from app.render.text_renderer import render_text_in_box
+
+    image = Image.new("RGB", (700, 400), "white")
+    long = "Anh đã nói với tôi rằng chuyện này không đơn giản như vậy đâu"
+    stats: dict = {}
+    render_text_in_box(image.copy(), long, (200, 60, 500, 140),
+                       font_name="dialogue.mac-dinh-3", font_size=40,
+                       stats=stats)
+    assert stats.get("fixed_size_height_fallback") is True, \
+        f"height overflow should fall back to the fit, got {stats}"
+    assert stats["size"] < 40, f"fallback should letter smaller than 40px, got {stats['size']}"
+    stats = {}
+    render_text_in_box(image.copy(), "Chuyện này đơn giản", (200, 60, 500, 140),
+                       font_name="dialogue.mac-dinh-3", font_size=24,
+                       stats=stats)
+    assert stats["size"] == 24, f"a fitting fixed size must stay put, got {stats['size']}"
+    assert stats.get("fixed_size_height_fallback") is False
+
+
+def test_unlabelled_bubble_rendered_as_rectangle_is_flagged():
+    """Render N5, flag only: the container label gates all bubble geometry,
+    so a bubble with no label renders as a rectangle with no trace in the
+    verdict. The outline is probed for the flag only — the fit stays a
+    rectangle fit — and the flag rides the fallbacks list the verdict
+    already copies. A straight-sided box and a bare white page measure
+    constant band widths and are not flagged."""
+    from app.render.text_renderer import render_text_in_box
+
+    image = _ellipse_bubble("white")
+    draw = ImageDraw.Draw(image)
+    stats: dict = {}
+    auto_fit(draw, "Ta đã bảo ngươi đừng gọi ta là Các Chủ.", (60, 60, 640, 340),
+             image.size, str(DEFAULT_FONT), source_cap_px=40, image=image,
+             container=None, centered=True,
+             source_letter_box=(200, 150, 400, 250), stats_out=stats)
+    assert "rectangle_rendered_closed_bubble" in stats["fallbacks"], \
+        f"unlabelled bubble must be flagged, got {stats['fallbacks']}"
+
+    stats = {}
+    render_text_in_box(image.copy(), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",
+                       (60, 60, 640, 340), font_name="dialogue.mac-dinh-3",
+                       source_letter_box=(200, 150, 400, 250), stats=stats)
+    assert "rectangle_rendered_closed_bubble" in stats["fallbacks"], \
+        "the flag must reach the render stats the verdict copies"
+
+    plain = Image.new("RGB", (700, 400), "white")
+    stats = {}
+    auto_fit(ImageDraw.Draw(plain), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",
+             (60, 60, 640, 340), plain.size, str(DEFAULT_FONT), source_cap_px=40,
+             image=plain, container=None, centered=True,
+             source_letter_box=(200, 150, 400, 250), stats_out=stats)
+    assert "rectangle_rendered_closed_bubble" not in stats["fallbacks"], \
+        "no outline means no closed bubble to flag"
+
+    boxed = Image.new("RGB", (700, 400), "white")
+    ImageDraw.Draw(boxed).rectangle([50, 50, 650, 350], fill="white",
+                                    outline=(0, 0, 0), width=4)
+    stats = {}
+    auto_fit(ImageDraw.Draw(boxed), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",
+             (60, 60, 640, 340), boxed.size, str(DEFAULT_FONT), source_cap_px=40,
+             image=boxed, container=None, centered=True,
+             source_letter_box=(200, 150, 400, 250), stats_out=stats)
+    assert "rectangle_rendered_closed_bubble" not in stats["fallbacks"], \
+        "a straight-sided box must not read as a bubble"
+
+
 def test_a_fixed_size_that_crosses_a_spiky_outline_falls_back_to_the_fit():
     """Rerun-4 ch79 p021: the top spiky bubble rendered at the OCR-measured
     fixed 52px, whose lines touch the outline at 0px, while the fit caps

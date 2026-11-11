@@ -400,6 +400,45 @@ def export_preflight(chapter_id: str) -> dict:
         return _preflight_copy(manifest)
 
 
+def _restore_skipped_and_rerender(
+    chapter_id: str, page_index: int, skipped: list[str]
+) -> tuple[int, list[str], str | None]:
+    """Restore the original pixels of floor-skipped objects, then re-render.
+
+    Mirrors the job flow (``AIModeRunner._render_one``): a skipped object
+    leaves its region clean-empty, so its region is preserved and
+    re-inpainted from the original, and the page is rendered again onto
+    the restored base — the preserved region excludes the object from the
+    second render. Returns (restored count, re-render skipped ids,
+    restore error or None). A restore failure leaves the hole in place
+    and is reported, not raised: one unrestorable page must not cost the
+    whole chapter render.
+    """
+    from app.dependencies import pipeline
+
+    with get_manifest_lock(chapter_id):
+        page = load_manifest_raw(chapter_id)["pages"][page_index]
+        regions = [
+            dict(item["region"])
+            for item in page.get("text_objects") or []
+            if isinstance(item, dict)
+            and str(item.get("id")) in skipped
+            and isinstance(item.get("region"), dict)
+        ]
+    if not regions:
+        return 0, [], None
+    try:
+        pipeline.preserve_and_reinpaint(chapter_id, page_index, regions)
+    except (ValueError, RuntimeError, OSError) as exc:
+        return 0, [], str(exc)[:150]
+    with get_manifest_lock(chapter_id):
+        page = load_manifest_raw(chapter_id)["pages"][page_index]
+        request = _render_request_from_page(chapter_id, page_index, page)
+    rerender = render_page(request)
+    rerender_skipped = [str(oid) for oid in (rerender.get("skipped_objects") or [])]
+    return len(regions), rerender_skipped, None
+
+
 @router.post("/render/chapter")
 def render_chapter(chapter_id: str, force: bool = False) -> dict:
     validate_chapter_id(chapter_id)
@@ -419,6 +458,9 @@ def render_chapter(chapter_id: str, force: bool = False) -> dict:
     rendered = 0
     reused = 0
     skipped = 0
+    restored_regions = 0
+    restore_failures: list[dict] = []
+    review_list: list[dict] = []
     for page_index in range(total):
         with get_manifest_lock(chapter_id):
             latest_page_manifest = load_manifest_raw(chapter_id)
@@ -437,8 +479,31 @@ def render_chapter(chapter_id: str, force: bool = False) -> dict:
                 reused += 1
                 continue
             request = _render_request_from_page(chapter_id, page_index, page)
-        render_page(request)
+        result = render_page(request)
         rendered += 1
+        # A floor-skipped object leaves its region clean-empty; without
+        # a restore the page keeps a white hole (render N6). The job flow
+        # restores it — this path ignored render_page's return value.
+        skipped_ids = [str(oid) for oid in (result.get("skipped_objects") or [])]
+        if skipped_ids:
+            restored, rerender_skipped, restore_error = _restore_skipped_and_rerender(
+                chapter_id, page_index, skipped_ids)
+            restored_regions += restored
+            if restore_error is not None:
+                restore_failures.append({
+                    "page": page_index + 1, "ids": skipped_ids, "reason": restore_error,
+                })
+            else:
+                for oid in skipped_ids:
+                    review_list.append({
+                        "page": page_index + 1, "id": oid,
+                        "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
+                    })
+            for oid in rerender_skipped:
+                review_list.append({
+                    "page": page_index + 1, "id": oid,
+                    "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
+                })
 
     latest = load_manifest_raw(chapter_id)
     result = urlify_manifest(latest)
@@ -447,6 +512,9 @@ def render_chapter(chapter_id: str, force: bool = False) -> dict:
         "reused": reused,
         "skipped": skipped,
         "total": len(latest.get("pages", [])),
+        "restored_regions": restored_regions,
+        "restore_failures": restore_failures,
+        "review_list": review_list,
         "download_url": f"/api/export/{chapter_id}.zip" + ("?force=true" if force else ""),
         "editorial_preflight": preflight,
     }

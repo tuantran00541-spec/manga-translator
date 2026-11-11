@@ -15,6 +15,63 @@ class _FakeInpainter:
         return image
 
 
+def test_render_chapter_restores_an_unletterable_object(tmp_path: Path, monkeypatch):
+    """Render N6: render_chapter called render_page and ignored the returned
+    skipped_objects, so a floor-skipped object kept a cleaned-white hole.
+    It now restores the skipped regions and re-renders, as the job flow
+    does — the output shows the original pixels, not the clean image."""
+    import app.config as config
+    import app.dependencies as deps
+    import app.manifest_utils as manifests
+    import app.pipeline_editing as editing
+    import app.routers.export as export_router
+    import app.routers.image as image_router
+    import app.routers.render_commit as render_commit
+    from PIL import Image
+
+    chapter = "e7c3b2a0"
+    processed, output, raw = tmp_path / "processed", tmp_path / "output", tmp_path / "raw"
+    (processed / chapter).mkdir(parents=True)
+    (raw / chapter).mkdir(parents=True)
+    for module, name, value in (
+        (editing, "PROCESSED_DIR", processed), (manifests, "PROCESSED_DIR", processed),
+        (config, "PROCESSED_DIR", processed), (config, "OUTPUT_DIR", output), (config, "RAW_DIR", raw),
+        (render_commit, "OUTPUT_DIR", output), (export_router, "OUTPUT_DIR", output),
+        (image_router, "OUTPUT_DIR", output), (image_router, "PROCESSED_DIR", processed), (image_router, "RAW_DIR", raw),
+    ):
+        monkeypatch.setattr(module, name, value)
+    original = np.full((200, 300, 3), 30, dtype=np.uint8)
+    img_path = raw / chapter / "page.png"
+    write_image(img_path, original)
+    boxes = [{"id": "b1", "x1": 10, "y1": 10, "x2": 30, "y2": 20, "confidence": 1.0, "manual": True,
+              "origin": "manual", "ocr_eligible": True}]
+    pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
+    pipeline._inpainter = _FakeInpainter()
+    clean = pipeline._do_reinpaint(processed / chapter, img_path, original, boxes,
+                                   manual_mask_posix=None, manual_lama_mask_posix=None, preserve_regions=[])
+    long_line = "Một câu dịch rất dài không thể nào vừa trong một ô nhỏ như thế này được " * 6
+    manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
+        "original": img_path.as_posix(), "clean": clean, "boxes": boxes,
+        "text_objects": [{"id": "tiny", "region": {"x1": 10, "y1": 10, "x2": 30, "y2": 20},
+                          "translation": long_line, "source_boxes": ["b1"], "style": {},
+                          "auto_generated": True, "auto_geometry": {"x1": 10, "y1": 10, "x2": 30, "y2": 20}}],
+        "preserve_regions": [], "skipped": False, "process_required": False, "source_page": 0, "slice_index": 0,
+        "source_revision": 1, "clean_revision": 1, "render_revision": 0, "rendered": False,
+    }]})
+    monkeypatch.setattr(deps, "pipeline", pipeline)
+
+    result = export_router.render_chapter(chapter, force=True)
+
+    assert result["chapter_render"]["restored_regions"] == 1, result["chapter_render"]
+    assert result["chapter_render"]["restore_failures"] == [], result["chapter_render"]
+    manifest = manifests.load_manifest_raw(chapter)
+    assert image_router._current_rendered_path(chapter, 0, manifest) is not None, "the slice must be rendered"
+    with Image.open(output / chapter / "page_000.png") as image:
+        crop = np.asarray(image.convert("L").crop((10, 10, 30, 20)))
+    assert float(crop.mean()) < 100, (
+        f"the skipped region must show the dark original, not the clean image (mean {crop.mean():.1f})")
+
+
 def test_render_stage_reletters_a_slice_rendered_against_a_partial_chapter_band(tmp_path: Path, monkeypatch):
     """A slice rendered against a partial chapter band is re-lettered once the chapter finishes.
 
