@@ -34,7 +34,7 @@ jobs:
       MANGA_ORT_OPENVINO_STREAMS: "1"
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       OPENBLAS_NUM_THREADS: "1"
-      CHAPTER_URL: ${{ github.event.inputs.chapter_url || 'https://asurascans.com/comics/shadow-slave-05c7df14/chapter/1' }}
+      CHAPTER_URL: ${{ github.event.inputs.chapter_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -79,7 +79,15 @@ jobs:
           test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha-tuned-1023.onnx
 
       - name: Process the whole chapter
-        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run
+        run: |
+          # The runner cannot download from AsuraScans (Cloudflare 403s its
+          # IP/TLS fingerprint), so the gate runs on a chapter zip instead.
+          if [ -n "$CHAPTER_URL" ]; then
+            python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run
+          else
+            curl -fsSL -o nano-machine-ch001.zip "https://github.com/${{ github.repository }}/releases/download/nano-wave1/nano-machine-ch001.zip"
+            python scripts/chapter_run.py nano-machine-ch001.zip --out audit-results/chapter-run
+          fi
 
       - name: Save evidence to audit-evidence
         if: always()

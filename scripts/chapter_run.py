@@ -85,7 +85,15 @@ def main() -> int:
 
     pipeline = build_processing_pipeline()
     started = time.perf_counter()
-    pages = pipeline.download_chapter(args.url, args.chapter_id, workers=2)["pages"]
+    # A local zip skips the download: the runner cannot reach AsuraScans
+    # (Cloudflare 403s its IP/TLS fingerprint), so the gate runs on a zip.
+    if Path(args.url).is_file():
+        data = Path(args.url).read_bytes()
+        pages = pipeline.create_chapter_from_uploads(
+            args.chapter_id, [(Path(args.url).name, data)]
+        )["pages"]
+    else:
+        pages = pipeline.download_chapter(args.url, args.chapter_id, workers=2)["pages"]
     download_s = time.perf_counter() - started
     started = time.perf_counter()
     pipeline.process_pages(args.chapter_id, list(range(len(pages))))
