@@ -131,7 +131,10 @@ def story_chance(answers: dict | None) -> float | None:
     if isinstance(probs, list):
         for entry in probs:
             if isinstance(entry, dict) and entry.get("choice", entry.get("name")) == "story":
-                return float(entry.get("probability", 0.0))
+                probability = entry.get("probability")
+                # A story entry with no probability is unjudged, not storyless:
+                # defaulting to 0.0 would skip a slice the model never scored.
+                return float(probability) if isinstance(probability, (int, float)) else None
     return 1.0 if answer.get("choice") == "story" else 0.0 if answer.get("choice") else None
 
 

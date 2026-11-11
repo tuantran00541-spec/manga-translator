@@ -219,3 +219,32 @@ def test_render_stage_restores_an_unletterable_object_and_the_slice_exports(tmp_
     # Export re-syncs text objects first; that must not invalidate the render.
     snapshot = export_router._snapshot_export_inputs(chapter)
     assert [item["page_index"] for item in snapshot] == [0]
+
+
+def test_export_snapshot_does_not_save_the_manifest(tmp_path, monkeypatch):
+    """M6: export is a read path — the ensured objects live in the
+    in-memory manifest the gate and snapshot read, and saving here
+    would mutate the chapter on every export."""
+    import app.config as config
+    import app.manifest_utils as manifests
+    import app.routers.export as export_router
+
+    chapter = "c3d4e5f6"
+    processed = tmp_path / "processed"
+    (processed / chapter).mkdir(parents=True)
+    monkeypatch.setattr(manifests, "PROCESSED_DIR", processed)
+    monkeypatch.setattr(config, "PROCESSED_DIR", processed)
+    manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
+        "boxes": [{"id": "b1", "x1": 10, "y1": 10, "x2": 30, "y2": 20}],
+        "text_objects": [], "skipped": False, "source_page": 0, "slice_index": 0,
+    }]})
+    saved = []
+    monkeypatch.setattr(export_router, "save_manifest_raw", lambda chapter_id, data: saved.append(chapter_id))
+    monkeypatch.setattr(export_router, "_editorial_gate_or_409", lambda manifest, **kw: None)
+    monkeypatch.setattr(export_router, "_export_path_for_page",
+                        lambda chapter_id, page_index, page, manifest: tmp_path / "page.png")
+    monkeypatch.setattr(export_router, "_file_revision", lambda path: 1)
+    snapshot = export_router._snapshot_export_inputs(chapter)
+    assert saved == []
+    assert [item["page_index"] for item in snapshot] == [0]
+    assert manifests.load_manifest_raw(chapter)["pages"][0]["text_objects"] == []

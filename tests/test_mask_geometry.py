@@ -162,3 +162,61 @@ def test_unauthorized_box_without_safe_flag_reaches_the_fallback_check():
     built = build_mask((300, 400), [authorised], None)
     assert built.shape == (300, 400)
     assert not np.any(built > 0), "a mask-less box with no fallback leaves no mask"
+
+
+def test_merge_mask_evidence_unions_rects_with_no_verified_mask():
+    """N15: with no verified mask anywhere, the merge still spans every
+    grouped box — otherwise it silently drops the rects it was meant to
+    fold in — and drops the letters, which would read against the
+    wrong rows in the wider rect."""
+    from app.detector.boxes import _merge_mask_evidence
+
+    base = BubbleBox(10, 10, 50, 30, 0.9, None)
+    other = BubbleBox(40, 20, 80, 40, 0.8, None)
+    merged = _merge_mask_evidence([base, other])
+    assert (merged.x1, merged.y1, merged.x2, merged.y2) == (10, 10, 80, 40)
+    assert merged.letters is None and merged.mask is None
+    assert merged.verified_mask is False
+
+
+def test_merge_mask_evidence_unions_rects_when_the_union_is_the_base():
+    """N15: when the union rect equals the base rect, the merge returns
+    the base unchanged instead of a wider box."""
+    from app.detector.boxes import _merge_mask_evidence
+
+    base = BubbleBox(10, 10, 50, 30, 0.9, None)
+    other = BubbleBox(20, 15, 40, 25, 0.8, None)
+    merged = _merge_mask_evidence([base, other])
+    assert (merged.x1, merged.y1, merged.x2, merged.y2) == (10, 10, 50, 30)
+
+
+def test_merge_mask_evidence_includes_the_base_rect():
+    """N15: the base's own rect joins the union even when the base has
+    no verified mask — leaving it out shrinks the merged box away
+    from its anchor."""
+    from app.detector.boxes import _merge_mask_evidence
+
+    base = BubbleBox(0, 0, 100, 100, 0.9, None)
+    evidence = BubbleBox(50, 50, 150, 150, 0.8, np.full((100, 100), 255, np.uint8))
+    merged = _merge_mask_evidence([base, evidence])
+    assert (merged.x1, merged.y1, merged.x2, merged.y2) == (0, 0, 150, 150)
+    assert merged.mask is not None and merged.mask.shape == (150, 150)
+
+
+def test_map_seam_detection_to_page_shrinks_the_box_to_a_short_mask():
+    """N14(b): mask rows are top-aligned with the box, so a mask shorter
+    than its box shrinks the box to the rows the mask actually covers
+    instead of dropping the whole box."""
+    mask = np.arange(1, 7, dtype=np.uint8).reshape(2, 3)
+    box = BubbleBox(1, 0, 4, 4, 1.0, mask.copy())
+
+    mapped = ChapterPipeline._map_seam_detection_to_page(
+        box,
+        seam_source_y1=10,
+        page_source_y1=10,
+        page_height=4,
+    )
+
+    assert mapped is not None
+    assert (mapped.y1, mapped.y2) == (0, 2)
+    assert mapped.mask is not None and mapped.mask.shape == (2, 3)

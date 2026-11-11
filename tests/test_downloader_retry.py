@@ -1,3 +1,4 @@
+import pytest
 import requests
 
 import app.downloader.base as base_module
@@ -62,3 +63,23 @@ def test_image_download_does_not_retry_validation_errors(monkeypatch, tmp_path):
         raise AssertionError("validation error must propagate")
 
     assert calls == ["https://cdn.example.test/000.jpg"]
+
+
+def test_an_unparseable_content_length_is_treated_as_no_limit():
+    """S6: some servers send odd Content-Length headers; the streamed
+    reader still enforces the byte limit, so the header is a warning,
+    not a rejection."""
+    from app.downloader.http import _reject_oversized_content_length
+
+    response = requests.Response()
+    response.headers["Content-Length"] = "not-a-number"
+    _reject_oversized_content_length(response, 1024)
+
+    over = requests.Response()
+    over.headers["Content-Length"] = "2048"
+    with pytest.raises(ValueError):
+        _reject_oversized_content_length(over, 1024)
+    negative = requests.Response()
+    negative.headers["Content-Length"] = "-1"
+    with pytest.raises(ValueError):
+        _reject_oversized_content_length(negative, 1024)

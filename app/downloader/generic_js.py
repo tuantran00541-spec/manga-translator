@@ -1,6 +1,8 @@
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 from playwright_stealth import Stealth
 
+from loguru import logger
+
 from app.downloader.base import BaseAdapter
 from app.downloader.image_urls import best_srcset_candidate, resolve_image_candidate
 from app.parameters import (
@@ -111,7 +113,10 @@ class GenericJsAdapter(BaseAdapter):
                         timeout=DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS,
                     )
                 except PlaywrightTimeoutError:
-                    pass
+                    # No image reached the minimum width in time: the page
+                    # may be a bot challenge or a slow reader. The adapter
+                    # returns the short list it found, if any, with no error.
+                    logger.warning("JS image wait timed out for {}; returning what loaded", chapter_url)
                 self._scroll_until_stable(page)
 
                 elements = page.query_selector_all(self.img_selector)

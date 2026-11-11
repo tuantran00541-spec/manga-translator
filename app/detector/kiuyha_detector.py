@@ -31,6 +31,10 @@ MASKLESS_MIN_PIECES = 3  # ... but only when it holds several separate dark piec
 MASKLESS_PIECE_PX = 20  # a piece this small is a speck, not a letter
 MASKLESS_PIECE_SHARE = 0.25  # a piece bigger than this share of its box is a shape, not a letter
 MASKLESS_DARK_DROP = 25  # grey levels darker than the box median that count as ink
+MASKLESS_SMALL_BOX_AREA = 15000  # a box this small holds a label line, not a shape: light letters on a dark ground
+# score 0 dark pieces (the pieces test only counts dark ink), so the pieces test cannot vouch for it — the box
+# model's own score has to. A dialogue bubble is several times bigger, so the lattice/logo rejection the pieces
+# test provides still holds where it matters.
 ROTATED_MIN_SCORE = PAGE_CONFIDENCE  # a sideways box needs the same score as a page-scale one
 RESCUE_MIN_SCORE = 0.10  # a box this faint is worth a second look: the box model half-sees small map labels at 0.10-0.24
 RESCUE_WORD_MAX_W = 80  # a rescued word this wide is a lattice panel, not a label
@@ -38,7 +42,6 @@ RESCUE_WORD_MAX_H = 35
 RESCUE_WORD_MIN_AREA = 100  # a welded word this small is a speck or a mountain fleck
 RESCUE_WORD_MIN_FILL = 0.35  # letters are fat; a ridge or rail fills far less of its box
 RESCUE_WORD_PAD = 8  # a rescued box is drawn round the ink it found, so it pads out to the letters' edges
-EDGE_TOUCH = knob("detect.edge_touch")
 UNION_SHARE = knob("detect.union_share")
 SAME_LINE = knob("detect.same_line")
 SAME_LINE_X = knob("detect.same_line_x")
@@ -658,15 +661,18 @@ class KiuyhaTextDetector:
                 if score < PAGE_CONFIDENCE:
                     continue
                 centre = (cx1 + cx2) / 2
+                # A centre in the blank letterbox gap between columns cannot
+                # be mapped to one window, so the box is dropped here; the
+                # coarse pass is the backstop for it. A box cut by an inner
+                # window edge is NOT dropped: tall text is cut by every
+                # window edge, so it is never seen whole anywhere, and the
+                # union step below reassembles the partial window rects.
                 column = next((c for c in columns if c[0] <= centre < c[0] + sw), None)
                 if column is None:
                     continue
                 x, rh, y0, part_h = column
                 bx1, bx2 = int(max(0, cx1 - x) / scale), int(math.ceil(min(sw, cx2 - x) / scale))
                 by1, by2 = int(max(0, cy1) / scale), int(math.ceil(min(rh, cy2) / scale))
-                # A box cut by an inner window edge is seen whole in the next window.
-                if (by1 <= EDGE_TOUCH / scale and y0 > 0) or (by2 >= part_h - EDGE_TOUCH / scale and y0 + part_h < h):
-                    continue
                 if bx2 - bx1 > 4 and by2 - by1 > 4:
                     found.append((min(w, bx1), by1 + y0, min(w, bx2), min(h, by2 + y0), score))
         return found
@@ -758,7 +764,9 @@ class KiuyhaTextDetector:
             if mask.any():
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters, core=core))
                 cores.append(core)
-            elif score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1 and _dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES:
+            elif (score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1
+                  and (_dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
+                       or (x2 - x1) * (y2 - y1) <= MASKLESS_SMALL_BOX_AREA)):
                 # The letter model is blind here, not the box model: the box stays, masked whole,
                 # so the text is still erased and read instead of silently dropped. Downstream
                 # already copes with a box that has no letters (it falls back to the box extent).

@@ -82,7 +82,8 @@ def test_scan_sends_every_slice_as_a_labelled_image(monkeypatch):
 
     monkeypatch.setattr("app.ai_mode.vision_json.requests.post", lambda url, **kw: sent.append(kw) or Response())
     images = [(4, np.full((3000, 800, 3), 255, np.uint8)), (5, np.zeros((900, 800, 3), np.uint8))]
-    scans, cost = scan_slices(PROVIDERS["openai"], "vision-test", "key", images)
+    scans, cost, malformed = scan_slices(PROVIDERS["openai"], "vision-test", "key", images)
+    assert malformed == []
 
     content = sent[0]["json"]["messages"][0]["content"]
     assert [item["text"] for item in content if item["type"] == "text"][1:] == ["SLICE 4", "SLICE 5"]
@@ -147,6 +148,40 @@ def test_manager_cancel_before_first_stage():
     assert snapshot["status"] == "cancelled"
 
 
+def test_manager_marks_a_run_with_blockers_as_completed_with_blockers():
+    """N13: a run that finished with editorial blockers is not cleanly
+    done; the chapter still needs a reviewer before export."""
+
+    class BlockingRunner(RecordingRunner):
+        def __init__(self, job, provider, api_key):
+            super().__init__(job, provider, api_key)
+            self.report = {"editorial_blockers": 1}
+
+    RecordingRunner.calls, RecordingRunner.fail_at = [], None
+    manager = AIModeJobManager(runner_factory=BlockingRunner)
+
+    async def scenario():
+        snapshot = manager.start(SETTINGS, provider=PROVIDERS["openai"], api_key="test-key")
+        await manager._jobs[snapshot["job_id"]].task
+        return manager.snapshot(snapshot["job_id"])
+
+    snapshot = asyncio.run(scenario())
+    assert snapshot["status"] == "completed_with_blockers"
+
+
+def test_review_entries_are_capped_per_page_not_per_chapter(monkeypatch):
+    """N10(b): a long chapter's late pages must not lose their review
+    entries to the first fifty pages' worth."""
+    runner = _runner(monkeypatch, "render", {"pages": []})
+    items = runner.report["review_list"]
+    for page in (1, 2):
+        for i in range(60):
+            runner._append_page_capped(items, {"page": page, "id": f"p{page}-{i}"})
+    assert len(items) == 100
+    assert sum(1 for item in items if item["page"] == 1) == 50
+    assert sum(1 for item in items if item["page"] == 2) == 50
+
+
 def test_manager_allows_one_active_job():
     manager = AIModeJobManager(runner_factory=RecordingRunner)
 
@@ -170,7 +205,7 @@ def _scan_stage(monkeypatch, scans, pages=8, provider=None):
     monkeypatch.setattr(ai_job, "validate_managed_path", lambda value, root: value)
     monkeypatch.setattr(ai_job, "read_image", lambda path: np.zeros((100, 80, 3), np.uint8))
     monkeypatch.setattr(ai_job, "scan_slices", lambda provider, model, key, images: (
-        [scan for scan in scans if scan.page_index in {index for index, _ in images}], 0.001,
+        [scan for scan in scans if scan.page_index in {index for index, _ in images}], 0.001, [],
     ))
     monkeypatch.setattr(pipeline, "mark_skipped", lambda chapter_id, indices, value: skipped.extend(indices))
     monkeypatch.setattr(chapters, "_set_page_preserve_regions",
@@ -193,7 +228,7 @@ def test_scan_stage_skips_credit_slices_and_preserves_logos(monkeypatch):
     assert skipped == [7]
     assert list(preserved) == [0]
     assert preserved[0][0].model_dump() == {"x1": 10, "y1": 10, "x2": 60, "y2": 40}
-    assert runner.report["credit_pages"] == [7] and runner.report["logo_regions"] == 1
+    assert runner.report["credit_pages"] == [8] and runner.report["logo_regions"] == 1
     assert runner.job.cost_usd == pytest.approx(0.002), "two scan batches of four slices"
 
 
@@ -206,14 +241,14 @@ def test_scan_stage_retries_a_rejected_batch_one_slice_at_a_time(monkeypatch):
             raise RuntimeError("Manga Cloud HTTP 502: Upstream HTTP 422")
         if images[0][0] == 6:
             raise RuntimeError("still rejected")
-        return [SliceScan(images[0][0], images[0][0] == 7, 0.9, ())], 0.001
+        return [SliceScan(images[0][0], images[0][0] == 7, 0.9, ())], 0.001, []
 
     runner, skipped, _ = _scan_stage(monkeypatch, [])
     monkeypatch.setattr(ai_job, "scan_slices", one_image_only)
     asyncio.run(runner.scan())
     assert calls[0] == [0, 1, 2, 3], "the first batch probes whether the provider takes several images"
     assert sorted(calls[1:]) == [[0], [1], [2], [3], [4], [5], [6], [7]], "after one rejected batch, scan slice by slice"
-    assert runner.report["scan_errors"][-1] == {"pages": [6], "error": "still rejected"}
+    assert runner.report["scan_errors"][-1] == {"pages": [7], "error": "still rejected"}
     assert skipped[-1:] == [7]
 
 
@@ -225,7 +260,7 @@ def test_scan_stage_retries_only_the_batch_that_failed(monkeypatch):
         calls.append(indices)
         if indices == [4, 5, 6, 7]:
             raise RuntimeError("Manga Cloud HTTP 502")
-        return [SliceScan(index, index == 7, 0.9, ()) for index in indices], 0.001
+        return [SliceScan(index, index == 7, 0.9, ()) for index in indices], 0.001, []
 
     runner, skipped, _ = _scan_stage(monkeypatch, [])
     monkeypatch.setattr(ai_job, "scan_slices", flaky_second_batch)
@@ -237,17 +272,17 @@ def test_scan_stage_retries_only_the_batch_that_failed(monkeypatch):
 def test_scan_stage_refuses_to_skip_most_of_a_chapter(monkeypatch):
     runner, skipped, _ = _scan_stage(monkeypatch, [SliceScan(i, True, 0.9, ()) for i in range(5)])
     assert skipped == []
-    assert runner.report["credit_rejected"] == [0, 1, 2, 3, 4]
+    assert runner.report["credit_rejected"] == [1, 2, 3, 4, 5]
 
 
 def test_scan_stage_skips_textless_slices_but_not_most_of_a_chapter(monkeypatch):
     runner, skipped, _ = _scan_stage(monkeypatch, [
         SliceScan(2, False, 0.0, (), no_text=True), SliceScan(5, False, 0.0, (), no_text=True),
     ])
-    assert skipped == [2, 5] and runner.report["textless_pages"] == [2, 5]
+    assert skipped == [2, 5] and runner.report["textless_pages"] == [3, 6]
 
     runner, skipped, _ = _scan_stage(monkeypatch, [SliceScan(i, False, 0.0, (), no_text=True) for i in range(5)])
-    assert skipped == [] and runner.report["textless_rejected"] == [0, 1, 2, 3, 4]
+    assert skipped == [] and runner.report["textless_rejected"] == [1, 2, 3, 4, 5]
 
 
 def test_with_a_decider_only_agreement_skips_a_slice(monkeypatch):
@@ -261,9 +296,9 @@ def test_with_a_decider_only_agreement_skips_a_slice(monkeypatch):
         SliceScan(2, False, 0.0, (), no_text=True), SliceScan(4, False, 0.0, (), no_text=True), SliceScan(7, True, 0.9, ()),
     ], provider=minirouter)
     assert sorted(skipped) == [4, 7], "3 stays: the decider alone cannot skip a slice the scan read text on"
-    assert runner.report["credit_pages"] == [7] and runner.report["textless_pages"] == [4]
-    assert runner.report["skip_kept"] == [2] and runner.report["skip_unjudged"] == [6]
-    assert runner.report["skip_vetoed"] == [3]
+    assert runner.report["credit_pages"] == [8] and runner.report["textless_pages"] == [5]
+    assert runner.report["skip_kept"] == [3] and runner.report["skip_unjudged"] == [7]
+    assert runner.report["skip_vetoed"] == [4]
     assert runner.report["judge"]["available"] is True and runner.report["single_judge_skips"] == []
 
 
@@ -303,7 +338,7 @@ def test_scan_stage_reports_the_judge_unavailable_on_a_non_minirouter_provider(m
     assert skipped == [2, 5]
     assert runner.report["judge"]["available"] is False
     assert runner.report["judge"]["provider"] == "api.deepseek.com"
-    assert runner.report["single_judge_skips"] == [2, 5]
+    assert runner.report["single_judge_skips"] == [3, 6]
 
 
 def test_scan_parse_requires_a_confident_textless_answer():
@@ -730,6 +765,47 @@ def test_render_stage_restores_a_floor_skipped_object_without_raising(monkeypatc
     assert runner.report["review_list"][0]["id"] == "text_long"
 
 
+def test_render_stage_restores_again_when_the_rerender_skips_too(monkeypatch):
+    """N14: a skipped object is restored and the slice re-rendered; if the
+    re-render skips it again, it is restored again instead of the loop
+    leaving a hole or restoring twice in one attempt."""
+    from app.dependencies import pipeline
+    import app.routers.export as export_router
+    import app.routers.image as image_router
+    import app.routers.render_commit as render_commit
+
+    region = {"x1": 10, "y1": 20, "x2": 60, "y2": 40}
+    manifest = {"pages": [{"text_objects": [{"id": "text_ok", "region": region}, {"id": "text_long", "region": region}]}]}
+    calls, preserved = [], []
+
+    def render(req):
+        calls.append(req)
+        if len(calls) < 3:
+            return {"skipped_objects": ["text_long"]}
+        return {}
+
+    monkeypatch.setattr(render_commit, "render_page", render)
+    monkeypatch.setattr(export_router, "_render_request_from_page", lambda chapter_id, index, page: index)
+    monkeypatch.setattr(image_router, "_current_rendered_path", lambda chapter_id, index, manifest: None)
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
+                        lambda chapter_id, index, regions: preserved.append((index, regions)), raising=False)
+
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="render",
+                           stages={"render": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0])
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
+    monkeypatch.setattr(runner, "_invalidate_renders", lambda indices: None)
+    monkeypatch.setattr(runner, "_settle_blanks", lambda: 0)
+    asyncio.run(runner.render())
+
+    assert len(calls) == 3, "render, restore, re-render, restore, re-render"
+    assert preserved == [(0, [region]), (0, [region])]
+    assert runner.report["restored_regions"] == 2
+    assert [item["id"] for item in runner.report["review_list"]] == ["text_long", "text_long"]
+
+
 def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monkeypatch):
     import app.routers.ocr as ocr_router
 
@@ -1006,6 +1082,20 @@ def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
     # A seam copy carries no verdict of its own; its owner does.
     assert "editorial_disposition" not in objects[5]
     assert "editorial_disposition" not in objects[0] and "editorial_disposition" not in objects[2]
+
+def test_a_no_evidence_blank_settles_even_when_the_run_ran_out_of_budget(monkeypatch):
+    """N17: a blank with no evidence of any text is a phantom, not a
+    line — it settles non_story however the run ended, even out of
+    budget."""
+    region = {"x1": 0, "y1": 0, "x2": 50, "y2": 20}
+    manifest = {"pages": [{"text_objects": [{"id": "phantom", "translation": "", "region": region}]}]}
+    saved = []
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter: manifest)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter, data: saved.append(chapter))
+    runner = _runner(monkeypatch, "render", manifest)
+    runner.report["translate_out_of_budget"] = True
+    assert runner._settle_blanks() == 1 and saved == [CHAPTER]
+    assert manifest["pages"][0]["text_objects"][0]["editorial_disposition"] == "non_story"
 
 
 def test_a_stale_answer_still_counts_as_untranslated_and_retries(monkeypatch):

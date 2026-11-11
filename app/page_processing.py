@@ -10,6 +10,7 @@ import numpy as np
 
 from app.detector.boxes import BubbleBox, _merge_mask_evidence, apply_final_nms
 from app.image_io import encode_mask, read_image, write_image
+from app.logging_config import logger
 from app.manifest_utils import assign_stable_detector_box_ids
 from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
 from app.mask_store import decode_mask_value
@@ -50,11 +51,19 @@ def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
                 mask |= box.mask[y1 - box.y1:y2 - box.y1, x1 - box.x1:x2 - box.x1]
             return
         ux1, uy1, ux2, uy2 = min(x1, box.x1), min(y1, box.y1), max(x2, box.x2), max(y2, box.y2)
+        if box.mask is None or box.mask.shape != (box.y2 - box.y1, box.x2 - box.x1):
+            # No mask to fold in: the union would crash on None (or read
+            # misaligned rows), so the record stays as it was.
+            logger.warning("Leftover box at ({}, {}) has no usable mask; leaving its record unfolded",
+                           box.x1, box.y1)
+            return
         grown = np.zeros((uy2 - uy1, ux2 - ux1), np.uint8)
         grown[y1 - uy1:y2 - uy1, x1 - ux1:x2 - ux1] = mask
         grown[box.y1 - uy1:box.y2 - uy1, box.x1 - ux1:box.x2 - ux1] |= box.mask
         record.update(x1=ux1, y1=uy1, x2=ux2, y2=uy2, _mask_array=grown)
         return
+    logger.warning("Leftover box at ({}, {}) matches no first-pass record; its mask stays as stored",
+                   box.x1, box.y1)
 
 
 LEFTOVER_PASSES = 3  # erase what the detector still sees after inpainting, up to this many times

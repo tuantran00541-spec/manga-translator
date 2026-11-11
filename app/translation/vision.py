@@ -12,6 +12,7 @@ import requests
 from app.ai_mode.vision_json import request_vision_json, stage_headers
 from app.box_format import scaled_box
 from app.ai_providers import AIProvider, auth_headers
+from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
@@ -433,13 +434,22 @@ def _line_is_latin_noise(line: str) -> bool:
 def _bare_scream(text: str) -> bool:
     """True when any line of the value is a shout that is one letter repeated, no diacritics,
     e.g. "AAAAA!!!": the model misread brush H's as A's and the
-    re-translate passed the Latin through. No Vietnamese word is a
-    single letter repeated, so this can never be a correct rendering;
+    re-translate passed the Latin through. The repeated letter may wear
+    diacritics ("ÁÁÁÁA"); it is stripped before the check. No Vietnamese
+    word is a single letter repeated, so this can never be a correct rendering;
     a one- or two-letter grunt ("A!", "AA!") is left alone."""
     return any(_line_is_bare_scream(line) for line in str(text or "").splitlines())
 
 
+def _strip_diacritics(text: str) -> str:
+    """NFKD-strip diacritics, so a scream written with accented capitals ("ÁÁÁÁA") reads as its bare letters."""
+    return "".join(char for char in unicodedata.normalize("NFKD", text or "") if not unicodedata.combining(char))
+
+
 def _line_is_bare_scream(line: str) -> bool:
+    # The repeated letter may wear diacritics ("ÁÁÁÁA" for a brush H): strip
+    # them first, or _ascii_words sees one bare A and the scream passes.
+    line = _strip_diacritics(line)
     words = _ascii_words(line)
     if len(words) != 1:
         return False
@@ -513,10 +523,26 @@ def _filter_foreign_lines(value: str, source: str) -> str:
                 continue
             kept.append(line)
         else:
+            # A diacritic line can still be a bare scream ("ÁÁÁÁA!!!"): the
+            # segment strip alone would keep it, so the scream check runs here too.
+            if _bare_scream(line):
+                continue
             stripped = _strip_english_segments(line)
             if stripped.strip():
                 kept.append(stripped)
     return "\n".join(kept)
+
+
+def _memory_name_is_english(entry: dict, key: str) -> bool:
+    """True when a memory name field is untranslated English: a character
+    name, or an address from/to. Names keep their source spelling, so an
+    English name is not a name the model read — it is a translation the
+    model invented, and it would teach the next slices the wrong name.
+    Single-word names pass (one listed word is not proof of English),
+    and the self/other pronoun terms are single words by nature."""
+    fields = ("name",) if key == "characters" else ("from", "to")
+    return any(isinstance(entry, dict) and _untranslated_english(entry.get(field) or "")
+               for field in fields)
 
 
 def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[VisionTranslationResult, dict]:
@@ -550,7 +576,8 @@ def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[V
     for key in ("characters", "address"):
         if isinstance(data.get(key), list):
             data[key] = [entry for entry in data[key]
-                         if not _FOREIGN_SCRIPT.search(json.dumps(entry, ensure_ascii=False))]
+                         if not _FOREIGN_SCRIPT.search(json.dumps(entry, ensure_ascii=False))
+                         and not _memory_name_is_english(entry, key)]
     if foreign or kept:
         result = replace(result, translations={key: ("" if key in foreign else kept.get(key, value))
                                                for key, value in result.translations.items()})
@@ -636,12 +663,19 @@ def retranslate_text(
     result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=max_tokens, stage="retranslate")
     expected = {i for i, _ in pairs}
     out = {}
-    for entry in (result.data.get("translations") or []):
+    translations = result.data.get("translations") or []
+    if isinstance(translations, dict):
+        # A model may answer the object map instead of the list, as the
+        # vision parse does; iterating the dict would only yield its keys.
+        translations = [{"id": key, "translated_text": value} for key, value in translations.items()]
+    for entry in translations:
         if not isinstance(entry, dict):
             continue
         key, value = str(entry.get("id") or ""), entry.get("translated_text")
         if key in expected and isinstance(value, str) and value.strip():
             out[key] = value
+    if pairs and not out:
+        logger.warning("Re-translate returned no translations for {} pairs; keeping the vision wording", len(pairs))
     return out, result.estimated_cost_usd, result.usage
 
 
@@ -764,12 +798,19 @@ class VisionPageTranslator:
                                    or str(item.get("text") or "").strip()))
                 for item in items
             ]
-            retold, retold_cost, retold_usage = retranslate_text(
-                self.translate_provider, self.translate_model, self.translate_api_key or "",
-                pairs, source_lang=source_lang, target_lang=target_lang,
-                memory_snapshot=memory.snapshot(settled=False) if memory is not None else None,
-                settled=memory.settled() if memory is not None else None,
-            )
+            retold, retold_cost, retold_usage = {}, None, {}
+            try:
+                retold, retold_cost, retold_usage = retranslate_text(
+                    self.translate_provider, self.translate_model, self.translate_api_key or "",
+                    pairs, source_lang=source_lang, target_lang=target_lang,
+                    memory_snapshot=memory.snapshot(settled=False) if memory is not None else None,
+                    settled=memory.settled() if memory is not None else None,
+                )
+            except (RuntimeError, ValueError, OSError) as exc:
+                # The second pass is a wording upgrade, not the translation:
+                # its failure keeps the vision wording instead of the slice.
+                logger.warning("Re-translate failed for slice {}: {}; keeping the vision wording",
+                               slice_number, str(exc)[:150])
             # The re-translate is billed separately, so its cost and usage join the vision read's.
             usage = dict(result.usage or {})
             for key, value in (retold_usage or {}).items():
@@ -786,6 +827,15 @@ class VisionPageTranslator:
                     if isinstance(entry, dict) and str(entry.get("id")) in retold:
                         entry["translated_text"] = retold[str(entry["id"])]
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
+            # Salvaged entries carry no source, so the gate below cannot see
+            # the Hangul behind a Latin misread; backfill it from the OCR
+            # text the candidates carried, as the re-translate pairs do.
+            for entry in data.get("translations") or []:
+                if isinstance(entry, dict) and not str(entry.get("source") or "").strip():
+                    ocr = next((str(item.get("text") or "")
+                                for item in items if str(item.get("id")) == str(entry.get("id"))), "")
+                    if ocr.strip():
+                        entry["source"] = ocr
             result, data = _drop_foreign_script(result, data)
         roles, containers, review, answered, enlarge, colors, sources = {}, {}, set(), set(), set(), {}, {}
         for entry in data.get("translations") or []:
@@ -804,12 +854,19 @@ class VisionPageTranslator:
                 enlarge.add(str(entry["id"]))
             if str(entry.get("id")) in read_sources:
                 sources[str(entry["id"])] = read_sources[str(entry["id"])]
+            elif str(entry.get("source") or "").strip():
+                # Backfilled from the candidate OCR text just before the gate.
+                sources[str(entry["id"])] = " ".join(str(entry["source"]).split())[:1000]
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
         fonts = {key: {"font_id": font_for(roles.get(key), containers.get(key), target_lang), "font_mode": "ai"}
                  for key in (result.font_choices or {})}
         if memory is not None:
-            memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
+            # A doubled line in memory teaches the next slices the
+            # repetition; collapse it before the update, as the commit does.
+            memory.update(slice_number or 0, data,
+                          {key: collapse_repeated_lines(value) for key, value in result.translations.items()},
+                          [str(item["id"]) for item in items])
         speakers = {str(k): " ".join(str(v).split())[:80] for k, v in (data.get("speakers") or {}).items()
                     if str(k) in ids and isinstance(v, str) and v.strip()} if isinstance(data.get("speakers"), dict) else {}
         unboxed = tuple(

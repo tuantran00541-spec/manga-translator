@@ -139,21 +139,32 @@ def _logo_box(raw, width: int, height: int) -> tuple[int, int, int, int] | None:
     )
 
 
-def parse_scan(data: dict, sizes: dict[int, tuple[int, int]]) -> list[SliceScan]:
+def parse_scan(data: dict, sizes: dict[int, tuple[int, int]], *, errors: list | None = None) -> list[SliceScan]:
     """Map the model answer onto the requested slices; unknown slices are ignored.
 
     ``sizes`` maps page index to the ORIGINAL slice (width, height). A slice the
     model did not answer for is reported as neither credit nor logo-bearing.
+    Malformed entries (not an object, a non-integer slice, a duplicate slice)
+    are recorded in ``errors`` when given, instead of vanishing silently:
+    a systematically malformed scan response must show up in the report.
     """
     answers: dict[int, dict] = {}
     for entry in (data or {}).get("slices") or []:
         if not isinstance(entry, dict):
+            if errors is not None:
+                errors.append({"slice": None, "reason": "entry is not an object"})
             continue
         try:
             index = int(entry.get("slice"))
         except (TypeError, ValueError):
+            if errors is not None:
+                errors.append({"slice": entry.get("slice"), "reason": "slice is not an integer"})
             continue
-        if index in sizes and index not in answers:
+        if index in answers:
+            if errors is not None:
+                errors.append({"slice": index, "reason": "duplicate slice entry; first entry kept"})
+            continue
+        if index in sizes:
             answers[index] = entry
 
     scans = []
@@ -193,10 +204,14 @@ def scan_slices(
     model: str,
     api_key: str,
     slices: list[tuple[int, np.ndarray]],
-) -> tuple[list[SliceScan], float | None]:
-    """Scan one batch of (page_index, original image) with a single request."""
+) -> tuple[list[SliceScan], float | None, list[dict]]:
+    """Scan one batch of (page_index, original image) with a single request.
+
+    Returns (scans, cost, malformed): the malformed scan entries the model
+    returned, for the report — a slice whose entry was malformed is scanned
+    as unjudged, never skipped."""
     if not slices:
-        return [], 0.0
+        return [], 0.0, []
     sizes = {index: (image.shape[1], image.shape[0]) for index, image in slices}
     images = [(f"SLICE {index}", _thumbnail(image)) for index, image in slices]
     result = request_vision_json(
@@ -204,4 +219,5 @@ def scan_slices(
         # Reasoning models spend this budget thinking before answering; a starved budget comes back empty.
         schema=SCAN_SCHEMA, max_tokens=1000000, stage="scan",
     )
-    return parse_scan(result.data, sizes), result.estimated_cost_usd
+    errors: list[dict] = []
+    return parse_scan(result.data, sizes, errors=errors), result.estimated_cost_usd, errors

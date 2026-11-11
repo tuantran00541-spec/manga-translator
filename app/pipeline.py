@@ -305,10 +305,19 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         clipped_mask = box.mask
         if clipped_mask is not None:
             mask_h = clipped_mask.shape[0]
-            mask_end = mask_h - clip_bottom if clip_bottom else mask_h
-            clipped_mask = clipped_mask[clip_top:mask_end, :].copy()
-            if clipped_mask.shape[0] != clipped_source_y2 - clipped_source_y1:
+            # Mask rows are top-aligned with the box: row 0 is the box's
+            # first source row. When the mask is shorter than the box (a
+            # mask from another frame), the box shrinks to the rows the
+            # mask actually covers instead of dropping the whole box; an
+            # empty intersection drops it.
+            row_start = max(0, clipped_source_y1 - source_y1)
+            row_end = min(mask_h, clipped_source_y2 - source_y1)
+            if row_end <= row_start:
                 return None
+            clipped_mask = clipped_mask[row_start:row_end, :].copy()
+            clip_top, clip_bottom = row_start, mask_h - row_end
+            clipped_source_y1 = source_y1 + row_start
+            clipped_source_y2 = source_y1 + row_end
 
         # The letters ride with the mask, clipped to the same rows; a
         # letters array that does not match the mask's shape belongs to

@@ -26,3 +26,21 @@ def test_parse_vision_translation_fills_omitted_ids_when_allowed():
     content = '{"translations":[{"id":"1","translated_text":"xin chao"}]}'
     result = parse_vision_translation(content, {"1", "2"}, allow_missing=True)
     assert result == {"1": "xin chao", "2": ""}
+
+
+def test_parse_scan_reports_malformed_entries_instead_of_silently_dropping_them():
+    """S8: a scan answer that is not a well-formed slice list is a model
+    error worth a review entry, not a quiet empty chapter."""
+    errors = []
+    data = {"slices": ["not an object",
+                       {"slice": "x", "is_credit": False, "credit_confidence": 0.0},
+                       {"slice": 0, "is_credit": False, "credit_confidence": 0.0},
+                       {"slice": 0, "is_credit": True, "credit_confidence": 0.9}]}
+    scans = parse_scan(data, {0: (100, 100)}, errors=errors)
+    assert len(scans) == 1 and scans[0].is_credit is False
+    assert [entry["reason"] for entry in errors] == [
+        "entry is not an object",
+        "slice is not an integer",
+        "duplicate slice entry; first entry kept",
+    ]
+    assert [entry["slice"] for entry in errors] == [None, "x", 0]

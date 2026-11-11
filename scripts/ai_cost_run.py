@@ -123,6 +123,11 @@ def _fit_metrics(obj: dict, page_width: int, bands: dict | None = None) -> dict:
     renderer clamps the measured cap into its role band and ceilings growth
     at the band hi, so a reproduction that sizes from the raw cap describes
     a render that never happened.
+
+    The ``font_px`` below is a reproduction, not the drawn size: it is a
+    rectangle fit on a blank image, with no image, no bubble curve, no
+    container and no letter box. Quote it as a fit estimate, never as the
+    size the renderer drew.
     """
     from PIL import Image, ImageDraw
 
@@ -381,6 +386,10 @@ def main() -> int:
         sizes = sorted(line["font_px_at_800"] for line in measured)
         report["readability"] = {
             "rendered": len(measured),
+            # font_px is a band-clamped rectangle-fit reproduction on a
+            # blank image, not the size the renderer drew: measure drawn
+            # sizes from the rendered pages, never from this block.
+            "font_px_basis": "reproduced rectangle fit (no image, no bubble curve, no container, no letter box)",
             "font_px_at_800": {"min": sizes[0], "p10": sizes[len(sizes) // 10], "median": sizes[len(sizes) // 2], "max": sizes[-1]},
             "under_16px": sum(size < 16 for size in sizes),
             "under_20px": sum(size < 20 for size in sizes),

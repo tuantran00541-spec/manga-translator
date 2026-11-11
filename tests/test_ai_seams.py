@@ -48,6 +48,54 @@ def test_a_bubble_only_one_slice_has_is_translated_there():
     assert seam_mirror_ids(manifest, 0) == set()
 
 
+def test_a_duplicate_far_from_the_keeper_keeps_its_own_region():
+    """N3: the keeper absorbs a dropped duplicate's region only when the
+    two regions touch. The dropped object's lettering overlaps the
+    keeper's (that is why it is dropped), but its region sits far away —
+    a stale box, not the keeper's bubble — so the keeper must not grow
+    to cover it."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    keeper = _obj("keeper", 100, 300, "Có khi cậu phải giết chúng đấy, nhóc.")
+    near = _obj("near", 120, 160, "Có khi cậu phải giết chúng")
+    far = _obj("far", 400, 460, "Có khi cậu phải giết chúng")
+    far["letter_bounds"] = {"x1": 100, "y1": 120, "x2": 500, "y2": 160}
+    manifest = {"pages": [{"text_objects": [keeper, near, far]}]}
+    assert drop_overlapping_letters(manifest) == [(0, "near"), (0, "far")]
+    assert keeper["region"] == {"x1": 100, "y1": 100, "x2": 500, "y2": 300}
+    assert far["region"] == {"x1": 100, "y1": 400, "x2": 500, "y2": 460}
+    assert far.get("overlap_dropped") is True
+
+
+def test_a_seam_owner_is_never_dropped_as_a_duplicate():
+    """N16: a seam mirror is a second lettering of the same text by
+    design; dropping it as a duplicate would erase the mirror copy."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    manifest = {"pages": [{"text_objects": [_obj("owner", 100, 300, "Chào bạn",
+                                                  seam_owner={"page": 1, "id": "b"}),
+                                            _obj("big", 100, 300, "Chào bạn")]}]}
+    assert drop_overlapping_letters(manifest) == []
+
+
+def test_sync_seam_mirrors_does_not_copy_an_untranslated_owner():
+    """P2-6: a mirror may only carry a translation the gate would keep;
+    an English owner stays untranslated on both slices."""
+    manifest = _chapter()
+    manifest["pages"][1]["text_objects"][0]["translation"] = "SENIOR BROTHER!"
+    assert sync_seam_mirrors(manifest) == []
+    assert manifest["pages"][0]["text_objects"][0]["translation"] == ""
+
+
+def test_sync_seam_mirrors_copies_the_gate_filtered_owner_text():
+    """P2-6: a mixed owner copies its Vietnamese line only, not the
+    English line the gate drops."""
+    manifest = _chapter()
+    manifest["pages"][1]["text_objects"][0]["translation"] = "Đi thôi\nSENIOR BROTHER!"
+    assert sync_seam_mirrors(manifest) == [0]
+    assert manifest["pages"][0]["text_objects"][0]["translation"] == "Đi thôi"
+
+
 def test_of_two_letterings_on_the_same_text_only_the_larger_stays():
     from app.ai_mode.seams import drop_overlapping_letters
 

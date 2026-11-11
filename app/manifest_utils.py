@@ -13,6 +13,7 @@ from filelock import FileLock, Timeout
 
 from app.config import PROCESSED_DIR
 from app.inpaint.mask_geometry import reconcile_detector_geometry_override
+from app.logging_config import logger
 from app.mask_store import externalize_page_masks, prune_page_masks
 from app.ocr.identity import (
     OCR_CACHE_FIELDS,
@@ -336,11 +337,14 @@ def recover_page_artifact_transactions(chapter_dir: Path) -> int:
                 or target_generation < 1
                 or not isinstance(records, list)
             ):
+                logger.warning("Skipping artifact journal {}: invalid payload", journal_path.name)
                 continue
             readable, current_generation, current_transaction_id = (
                 _manifest_page_artifact_state(chapter_dir, page_index)
             )
             if not readable:
+                logger.warning("Skipping artifact journal {}: page {} state is unreadable",
+                               journal_path.name, page_index)
                 continue
             if current_generation > target_generation:
                 committed = True
@@ -370,7 +374,10 @@ def recover_page_artifact_transactions(chapter_dir: Path) -> int:
                     path.unlink(missing_ok=True)
             journal_path.unlink(missing_ok=True)
             recovered += 1
-        except (KeyError, TypeError, ValueError, OSError):
+        except (KeyError, TypeError, ValueError, OSError) as exc:
+            # A corrupt journal is skipped, not deleted: the file is the
+            # only evidence of what the interrupted transaction was doing.
+            logger.warning("Skipping corrupt artifact journal {}: {}", journal_path.name, str(exc)[:150])
             continue
     return recovered
 

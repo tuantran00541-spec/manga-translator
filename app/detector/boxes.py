@@ -66,9 +66,27 @@ def _merge_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
     base = max(boxes, key=lambda box: float(box.confidence))
     evidence = [box for box in boxes if box.verified_mask]
     if not evidence:
-        return replace(base)
-    x1, y1 = min(b.x1 for b in evidence), min(b.y1 for b in evidence)
-    x2, y2 = max(b.x2 for b in evidence), max(b.y2 for b in evidence)
+        # No verified mask anywhere: the union still spans every grouped
+        # box, or the merge silently drops the rects it was meant to fold
+        # in. The letters are dropped when the rect grows — a base-only
+        # letters array would be read against the wrong rows in the wider
+        # rect — and the mask stays the base's, unverified, so the shape
+        # check in verified_mask now fails honestly.
+        x1, y1 = min(b.x1 for b in boxes), min(b.y1 for b in boxes)
+        x2, y2 = max(b.x2 for b in boxes), max(b.y2 for b in boxes)
+        if (x1, y1, x2, y2) == (base.x1, base.y1, base.x2, base.y2):
+            return replace(base)
+        cored = [box.core for box in boxes if getattr(box, "core", None) is not None]
+        merged_core = None
+        if cored:
+            merged_core = (min(c[0] for c in cored), min(c[1] for c in cored),
+                           max(c[2] for c in cored), max(c[3] for c in cored))
+        return replace(base, x1=x1, y1=y1, x2=x2, y2=y2, letters=None, core=merged_core)
+    # The base's own rect joins the union even when the base has no
+    # verified mask: the highest-confidence box is the merge's anchor,
+    # and leaving its rect out shrinks the merged box away from it.
+    x1, y1 = min([base.x1] + [b.x1 for b in evidence]), min([base.y1] + [b.y1 for b in evidence])
+    x2, y2 = max([base.x2] + [b.x2 for b in evidence]), max([base.y2] + [b.y2 for b in evidence])
     merged = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
     for box in evidence:
         view = merged[box.y1 - y1:box.y2 - y1, box.x1 - x1:box.x2 - x1]

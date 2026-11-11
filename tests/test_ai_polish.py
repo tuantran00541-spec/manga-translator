@@ -86,6 +86,11 @@ def _manifest_runner(monkeypatch, manifest):
     monkeypatch.setattr(ai_job, "get_manifest_lock", lambda chapter_id: contextlib.nullcontext())
     monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: manifest)
     monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, data: None)
+    # The fixture has no chapter, so the M2 output-dir sync after the
+    # commit has nowhere to run; stub it (the sync itself is covered by
+    # the render/export suites).
+    import app.dependencies as deps
+    monkeypatch.setattr(deps.pipeline, "_sync_output_dir", lambda *a, **k: None)
     return runner
 
 

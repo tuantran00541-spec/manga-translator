@@ -377,6 +377,26 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
             shift = _core(pages[owner_page])[0] - core[0]
             region = _shifted(owner["region"], shift)
             update = {key: copy.deepcopy(owner[key]) for key in LETTERING_KEYS if key in owner}
+            # The owner's translation was gated when it was committed, but a
+            # later polish or manual edit can leave English (or CJK) in it;
+            # the copy passes the same gate, or the mirror letters the
+            # untranslated text the gate would have blanked. A copy that
+            # gates to nothing is skipped, leaving the mirror as it was.
+            from app.translation.vision import VisionTranslationResult, _drop_foreign_script
+
+            owner_id = str(owner.get("id"))
+            probe = VisionTranslationResult(
+                {owner_id: str(owner.get("translation") or "")}, "", {}, None)
+            probe_data = {"translations": [{"id": owner_id,
+                                            "source": str(owner.get("source_read") or owner.get("ocr_text") or ""),
+                                            "translated_text": str(owner.get("translation") or "")}]}
+            gated = _drop_foreign_script(probe, probe_data)[0].translations.get(owner_id, "")
+            if not gated.strip():
+                continue
+            if gated != str(owner.get("translation") or ""):
+                update["translation"] = gated
+                if "auto_translation" in update:
+                    update["auto_translation"] = gated
             # The copy letters in exactly the area the owner does, so the two halves line up.
             if isinstance(owner.get("letter_bounds"), dict):
                 update["letter_bounds"] = _shifted(owner["letter_bounds"], shift)
@@ -486,6 +506,23 @@ def _union_rect(a: dict | None, b: dict | None) -> dict | None:
         return dict(a)
 
 
+def _regions_touch(a: dict | None, b: dict | None, gap_px: int = 8) -> bool:
+    """True when two region rects overlap or sit within a few pixels of each
+    other: the halves of one bubble the detector split. A dropped object
+    whose region sits apart is a different bubble that merely shares
+    lettering, and the keeper must not absorb its region."""
+    if not (isinstance(a, dict) and isinstance(b, dict)):
+        return False
+    try:
+        ax1, ay1, ax2, ay2 = (int(a[k]) for k in ("x1", "y1", "x2", "y2"))
+        bx1, by1, bx2, by2 = (int(b[k]) for k in ("x1", "y1", "x2", "y2"))
+    except (KeyError, TypeError, ValueError):
+        return False
+    gap_x = max(bx1 - ax2, ax1 - bx2)
+    gap_y = max(by1 - ay2, ay1 - by2)
+    return gap_x <= gap_px and gap_y <= gap_px
+
+
 def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
     """Of two translated objects on one slice that mostly overlap, keep the larger; returns what was dropped.
 
@@ -496,11 +533,14 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
     (ch42 p010: the bubble's left and right halves), so the keeper
     absorbs the dropped half's region and lettering, and the survivor
     is fitted to the whole bubble instead of the half it happened to be.
+    A seam mirror is never dropped here, nor a keeper: its text is owned
+    by another slice, and the sync, not the drop, decides what it says.
     """
     dropped = []
     for page_index, page in enumerate(manifest.get("pages") or []):
         objects = [obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)
-                   and str(obj.get("translation") or "").strip() and _letter_rect(obj) is not None]
+                   and str(obj.get("translation") or "").strip() and _letter_rect(obj) is not None
+                   and not obj.get("seam_owner")]
         objects.sort(key=lambda obj: -_area(_letter_rect(obj)))
         kept: list[dict] = []
         for obj in objects:
@@ -514,12 +554,16 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
                 obj["translation"] = ""
                 obj["overlap_dropped"] = True
                 dropped.append((page_index, str(obj.get("id"))))
-                # The dropped half belonged to the keeper's bubble: the
-                # keeper's fit box grows to the union, so the text is
-                # sized to the bubble, not to the half that survived.
-                dup_of["region"] = _union_rect(dup_of.get("region"), obj.get("region"))
-                dup_of["letter_bounds"] = _union_rect(dup_of.get("letter_bounds"),
-                                                       obj.get("letter_bounds"))
+                # The dropped half belonged to the keeper's bubble only when
+                # their regions touch: the detector often splits one bubble
+                # into two overlapping halves (ch42 p010), so the keeper's
+                # fit box grows to the union. A dropped object whose region
+                # sits apart is a different bubble that merely shares
+                # lettering, and the keeper must not absorb its region.
+                if _regions_touch(dup_of.get("region"), obj.get("region")):
+                    dup_of["region"] = _union_rect(dup_of.get("region"), obj.get("region"))
+                    dup_of["letter_bounds"] = _union_rect(dup_of.get("letter_bounds"),
+                                                           obj.get("letter_bounds"))
             else:
                 kept.append(obj)
     return dropped

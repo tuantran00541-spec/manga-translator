@@ -656,3 +656,65 @@ def test_split_sideways_keeps_a_core_clipped_to_each_piece():
         assert piece.core[0] >= piece.x1 and piece.core[1] >= piece.y1
         assert piece.core[2] <= piece.x2 and piece.core[3] <= piece.y2
         assert _letter_geometry(piece, piece.core) is not None
+
+
+def test_a_box_cut_by_an_inner_window_edge_is_kept_in_page_boxes():
+    """N6: a box cut by an inner window edge is NOT dropped on the
+    assumption the next window sees it whole — tall text is cut by
+    every window edge, so it is never seen whole anywhere, and the
+    union step reassembles the partial window rects. Only a centre in
+    the blank letterbox gap is dropped (the coarse pass is its
+    backstop)."""
+    image = np.full((1200, 400, 3), 255, np.uint8)
+    image[400:500, 100:300] = 0  # cut by window 0's bottom edge
+    image[900:1000, 100:300] = 0  # ink for the later windows
+    session = _Session([1, 3, 416, 416])
+    boxes = KiuyhaTextDetector("unused", session=session).page_boxes(image)
+    rects = [tuple(box[:4]) for box in boxes]
+    assert (100, 400, 300, 416) in rects, "the window-0 partial rect is kept"
+    assert (100, 400, 300, 500) in rects, "the whole rect is still seen in a later window"
+
+
+def test_a_small_box_with_no_letter_mask_is_kept_not_dropped(monkeypatch):
+    """N9: the letter model is blind to light-on-dark text, not the box
+    model; a small box with no letter mask is kept whole so the text is
+    still erased and read, while a big one with no dark pieces is not."""
+    from app.detector import kiuyha_detector as kd
+
+    image = np.full((600, 800, 3), 255, np.uint8)
+
+    def no_mask(_image, core, with_letters=False):
+        x1, y1, x2, y2 = core
+        empty = np.zeros((y2 - y1, x2 - x1), bool)
+        return ((x1, y1, x2, y2), empty, empty)
+
+    monkeypatch.setattr(kd, "letter_mask", no_mask)
+    detector = KiuyhaTextDetector("unused", session=_Session([1, 3, 1280, 1280]))
+    monkeypatch.setattr(detector, "_raw_slice_boxes",
+                        lambda _image: [(100, 100, 220, 180, 0.9), (100, 300, 700, 600, 0.9)])
+    monkeypatch.setattr(detector, "_rescue_boxes", lambda _image, kept: [])
+    boxes = detector.text_boxes(image)
+    assert [(b.x1, b.y1, b.x2, b.y2) for b in boxes] == [(100, 100, 220, 180)]
+
+
+def test_a_leftover_without_a_usable_mask_leaves_its_record_unfolded():
+    """N10: folding a maskless leftover into its record would crash on
+    None (or read misaligned rows); the record stays as it was."""
+    from app.detector.boxes import BubbleBox
+    from app.page_processing import _fold_leftover
+
+    record = {"x1": 10, "y1": 10, "x2": 50, "y2": 30, "_mask_array": np.full((20, 40), 255, np.uint8)}
+    _fold_leftover([record], BubbleBox(25, 20, 65, 40, 0.9, None))
+    assert (record["x1"], record["y1"], record["x2"], record["y2"]) == (10, 10, 50, 30)
+    assert record["_mask_array"].shape == (20, 40)
+
+
+def test_a_leftover_matching_no_record_is_left_as_stored():
+    """N10: a leftover whose centre sits in no first-pass record has
+    nowhere to fold into; it stays as stored instead of crashing."""
+    from app.detector.boxes import BubbleBox
+    from app.page_processing import _fold_leftover
+
+    record = {"x1": 10, "y1": 10, "x2": 50, "y2": 30, "_mask_array": np.full((20, 40), 255, np.uint8)}
+    _fold_leftover([record], BubbleBox(200, 200, 240, 220, 0.9, np.full((20, 40), 255, np.uint8)))
+    assert (record["x1"], record["y1"], record["x2"], record["y2"]) == (10, 10, 50, 30)
