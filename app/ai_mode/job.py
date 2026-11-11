@@ -1221,6 +1221,7 @@ class AIModeRunner:
         return settled
 
     def _invalidate_renders(self, indices: list[int]) -> None:
+        from app.dependencies import pipeline
         from app.manifest_utils import invalidate_page_render, save_manifest_raw
 
         with get_manifest_lock(self.job.chapter_id):
@@ -1228,6 +1229,11 @@ class AIModeRunner:
             for page_index in indices:
                 invalidate_page_render(manifest, page_index)
             save_manifest_raw(self.job.chapter_id, manifest)
+        # The manifest now says not-rendered: drop the stale files too, so
+        # the output dir agrees (M2). The render loop below re-renders
+        # every active page; a page whose re-render then fails leaves no
+        # stale PNG behind for QA to count as present.
+        pipeline._sync_output_dir(self.job.chapter_id, manifest, indices)
 
     async def render(self) -> None:
         from app.routers.image import _current_rendered_path
@@ -1352,6 +1358,10 @@ class AIModeRunner:
 
             series_memory.update(key, learn_current)
         report_path = OUTPUT_DIR / chapter_id / "ai_mode_report.json"
+        # The chapter manifest is what makes a QA finding provable after
+        # the run (per-page translation/attempt/source-read state); the run
+        # artifact uploads it alongside this report.
+        self.report["manifest"] = f"data/processed/{chapter_id}/manifest.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(self.report, ensure_ascii=False, indent=1), encoding="utf-8")
         self._progress(1, 1, "Xong")

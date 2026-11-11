@@ -1,5 +1,6 @@
 import copy
 import os
+import shutil
 import threading
 import time
 from dataclasses import replace
@@ -826,7 +827,14 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
 
     @staticmethod
     def _sync_output_dir(chapter_id: str, manifest: dict, page_indices: list[int] | None = None) -> None:
+        # Sole owner of the output dir: a page's file on disk must agree
+        # with what the manifest claims about it. A skipped page ships in
+        # export as its clean-or-original fallback (M1), so the dir holds
+        # that same image instead of a hole; a page the manifest says is
+        # not rendered holds no file at all (M2), never a stale render.
         from app.config import OUTPUT_DIR
+        from app.routers.image import _fallback_page_path
+
         out_dir = OUTPUT_DIR / chapter_id
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -840,6 +848,25 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 continue
 
             target_path = out_dir / f"page_{i:03d}.png"
+            if page.get("skipped"):
+                try:
+                    source = _fallback_page_path(chapter_id, page)
+                except Exception as exc:
+                    logger.warning("Could not resolve fallback image for skipped page {}: {}", i, exc)
+                    source = None
+                if source is not None and source.exists():
+                    try:
+                        shutil.copyfile(source, target_path)
+                    except OSError as exc:
+                        logger.warning("Could not write fallback output {}: {}", target_path, exc)
+                else:
+                    try:
+                        if target_path.exists():
+                            target_path.unlink()
+                    except OSError as exc:
+                        logger.warning("Could not remove stale output {}: {}", target_path, exc)
+                continue
+
             try:
                 if target_path.exists():
                     target_path.unlink()

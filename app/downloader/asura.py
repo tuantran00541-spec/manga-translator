@@ -9,6 +9,7 @@ from app.downloader.base import BaseAdapter
 from app.downloader.generic_js import GenericJsAdapter
 from app.downloader.http import read_response_limited, safe_get
 from app.downloader.image_urls import best_srcset_candidate, resolve_image_candidate
+from app.logging_config import logger
 from app.parameters import REMOTE_CONNECT_TIMEOUT_SECONDS
 from app.security import MAX_REMOTE_DOCUMENT_BYTES
 
@@ -58,6 +59,21 @@ def _ordered_reader_urls(candidates: list[tuple[int, str]]) -> list[str]:
     while page_number in by_page:
         out.append(by_page[page_number])
         page_number += 1
+    if by_page and page_number <= max(by_page):
+        # A gap: pages exist past the first missing number. Stopping here
+        # silently truncated the chapter at the gap, so fail loudly
+        # instead -- the registry falls through to the JS adapter on this
+        # error, which preserves DOM order and does not number pages.
+        highest = max(by_page)
+        logger.warning(
+            "Asura chapter page list has a gap at page {}; found pages up to {}; refusing to truncate",
+            page_number,
+            highest,
+        )
+        raise ValueError(
+            f"Asura chapter page list has a gap at page {page_number} "
+            f"(pages found up to {highest}); refusing to truncate the chapter"
+        )
     return out
 
 
