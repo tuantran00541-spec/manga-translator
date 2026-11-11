@@ -167,11 +167,27 @@ def test_pipeline_detect_names_the_model_and_reports_timing():
 
 
 def test_pieces_of_one_text_from_different_passes_become_one_box():
-    from app.detector.kiuyha_detector import _union_overlapping
+    from app.detector.kiuyha_detector import _union_coherent
 
+    image = np.full((600, 800, 3), 255, np.uint8)
+    cv2.putText(image, "HELLO WORLD", (110, 145), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
+    cv2.putText(image, "SECOND LINE", (110, 435), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
     pieces = [(100, 100, 400, 160, 0.9), (350, 100, 700, 160, 0.8), (100, 400, 300, 450, 0.7)]
-    assert _union_overlapping(pieces) == [(100, 100, 700, 160, 0.9), (100, 400, 300, 450, 0.7)]
-    assert len(_union_overlapping([(0, 0, 100, 100, 0.9), (95, 95, 200, 200, 0.9)])) == 2, "a touching corner is two texts"
+    assert _union_coherent(image, pieces) == [(100, 100, 700, 160, 0.9), (100, 400, 300, 450, 0.7)]
+    assert len(_union_coherent(image, [(0, 0, 100, 100, 0.9), (95, 95, 200, 200, 0.9)])) == 2, "a touching corner is two texts"
+
+
+def test_two_texts_sharing_a_line_are_not_merged_before_letters():
+    """N1: the raw merges unioned same-line boxes on geometry alone, before
+    any letters existed. Two texts on one line whose letter rows never meet
+    are two texts, even though their rects overlap on the same line."""
+    from app.detector.kiuyha_detector import _union_coherent
+
+    image = np.full((300, 800, 3), 255, np.uint8)
+    cv2.putText(image, "HELLO", (120, 130), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
+    cv2.putText(image, "WORLD", (500, 190), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
+    pair = [(100, 100, 400, 200, 0.9), (350, 100, 700, 200, 0.9)]
+    assert len(_union_coherent(image, pair)) == 2
 
 
 def test_a_rescued_word_needs_a_letter_standing_inside_its_box():
@@ -311,10 +327,13 @@ def test_two_touching_lines_are_never_cut_through():
 
 
 def test_two_bubbles_side_by_side_are_not_joined():
-    from app.detector.kiuyha_detector import _union_overlapping
+    from app.detector.kiuyha_detector import _union_coherent
 
+    image = np.full((300, 700, 3), 255, np.uint8)
+    cv2.putText(image, "HELLO", (20, 120), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
+    cv2.putText(image, "WORLD", (420, 120), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
     pair = [(0, 0, 300, 200, 0.9), (285, 10, 585, 210, 0.9)]
-    assert len(_union_overlapping(pair)) == 2, "an edge sliver is a neighbour bubble, not a fragment"
+    assert len(_union_coherent(image, pair)) == 2, "an edge sliver is a neighbour bubble, not a fragment"
 
 
 def test_two_texts_side_by_side_split_into_their_own_boxes():
@@ -503,3 +522,137 @@ def test_welded_words_takes_a_fat_word_and_not_a_wide_panel():
     for y in (100, 120, 141):
         cv2.line(panel, (500, y), (590, y), (60, 50, 40), 4)
     assert _welded_words(panel, (480, 80, 610, 160)) == []
+
+
+def test_a_welded_word_passes_the_rescue_gate():
+    """N3: Fix G's gate killed wide welded words — _has_letter_piece
+    requires w <= 3*h, but _welded_words emits one component up to 80
+    wide x 12 tall. A welded word is exempt from the width test: its
+    shape was already checked where it was found, and the width test
+    exists to catch fragments of a bigger shape, which a welded word
+    is not."""
+    from app.detector.kiuyha_detector import _has_letter_piece
+
+    word = np.full((100, 200, 3), 255, np.uint8)
+    cv2.rectangle(word, (60, 40), (139, 59), (0, 0, 0), -1)  # one 80x20 component
+    assert not _has_letter_piece(word, (40, 20, 160, 80)), "the old gate kills an 80x20 word"
+    assert _has_letter_piece(word, (40, 20, 160, 80), allow_wide=True)
+
+
+def test_a_welded_word_in_a_low_box_is_rescued(monkeypatch):
+    """N3 end to end: a short wide welded word (JIANGXI, 64x19, ratio 3.4)
+    scores 0.15, under the bar, and the letter model is blind here, so only
+    _welded_words can find it — and only the width exemption lets it through
+    the gate (64 > 3*19)."""
+    _blind_ctd(monkeypatch)
+    image = np.full((1280, 1280, 3), (250, 235, 220), np.uint8)
+    cv2.putText(image, "HELLO", (100, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (40, 30, 25), 4)
+    cv2.putText(image, "JIANGXI", (100, 360), cv2.FONT_HERSHEY_DUPLEX, 0.5, (40, 30, 25), 3)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    welded = cv2.dilate((gray < 150).astype(np.uint8), np.ones((5, 5), np.uint8))
+    image[welded > 0] = (40, 30, 25)
+    cv2.putText(image, "H", (400, 360), cv2.FONT_HERSHEY_DUPLEX, 0.7, (40, 30, 25), 3)
+    cv2.putText(image, "K", (500, 360), cv2.FONT_HERSHEY_DUPLEX, 0.7, (40, 30, 25), 3)
+    boxes = KiuyhaTextDetector("unused", session=_GivenSession([
+        (80, 100, 400, 180, 0.9), (80, 300, 600, 420, 0.15)])).text_boxes(image)
+    rescued = [b for b in boxes if b.confidence < 0.25]
+    assert any(b.x1 <= 100 and b.x2 >= 160 and b.y1 <= 350 and b.y2 >= 360 for b in rescued), \
+        "the welded word comes back as its own box"
+
+
+def test_missing_letter_geometry_is_unknown_not_coherent():
+    """N5: _letters_coherent returned True when either geometry was None,
+    so maskless boxes and boxes whose core-clipped letters are empty always
+    joined — including the case the D4 guard was built for."""
+    from app.detector.kiuyha_detector import _letters_coherent
+
+    geometry = (set(range(10, 30)), (10, 10, 190, 30))
+    assert _letters_coherent(None, geometry) is False
+    assert _letters_coherent(geometry, None) is False
+    assert _letters_coherent(None, None) is False
+    assert _letters_coherent(geometry, geometry) is True
+
+
+def test_join_grown_does_not_fold_a_maskless_box_into_a_lettered_one():
+    """N5: a maskless box overlapping a lettered one on the same line used
+    to join on geometry alone (None counted as coherent)."""
+    from app.detector.kiuyha_detector import _join_grown
+
+    letters = np.zeros((100, 200), bool)
+    letters[10:30, 10:190] = True
+    lettered = _text_box(0, 0, 200, 100, 0.9, np.full((100, 200), 255, np.uint8), "kiuyha",
+                         letters, core=(0, 0, 200, 100))
+    maskless = _text_box(50, 20, 250, 120, 0.9, np.full((100, 200), 255, np.uint8), "kiuyha",
+                         None, core=(50, 20, 250, 120))
+    assert len(_join_grown([lettered, maskless], [(0, 0, 200, 100), (50, 20, 250, 120)])) == 2
+
+
+def test_join_grown_still_dedupes_a_maskless_box_seen_twice():
+    """The N5 change must not un-dedupe: two near-identical maskless rects
+    are one detection seen by two passes, not two texts."""
+    from app.detector.kiuyha_detector import _join_grown
+
+    first = _text_box(0, 0, 200, 100, 0.9, np.full((100, 200), 255, np.uint8), "kiuyha",
+                      None, core=(0, 0, 200, 100))
+    second = _text_box(2, 2, 202, 102, 0.8, np.full((100, 200), 255, np.uint8), "kiuyha",
+                       None, core=(2, 2, 202, 102))
+    joined = _join_grown([first, second], [(0, 0, 200, 100), (2, 2, 202, 102)])
+    assert len(joined) == 1
+    assert (joined[0].x1, joined[0].y1, joined[0].x2, joined[0].y2) == (0, 0, 202, 102)
+    assert joined[0].core == (0, 0, 202, 102)
+
+
+def test_join_grown_keeps_the_core_of_the_boxes_it_joins():
+    """N4: the _join_grown rebuild dropped ``core``, so _fold_nested judged
+    coherence on unclipped, growth-contaminated letters downstream."""
+    from app.detector.kiuyha_detector import _join_grown, _letter_geometry
+
+    letters = np.zeros((100, 400), bool)
+    letters[10:30, 10:390] = True
+    left = _text_box(0, 0, 200, 100, 0.9, np.full((100, 200), 255, np.uint8), "kiuyha",
+                     letters[:, :200].copy(), core=(0, 0, 200, 100))
+    right = _text_box(150, 0, 400, 100, 0.8, np.full((100, 250), 255, np.uint8), "kiuyha",
+                      letters[:, 150:].copy(), core=(150, 0, 400, 100))
+    joined = _join_grown([left, right], [(0, 0, 200, 100), (150, 0, 400, 100)])
+    assert len(joined) == 1
+    assert joined[0].core == (0, 0, 400, 100)
+    assert _letter_geometry(joined[0], joined[0].core) is not None
+
+
+def test_split_blocks_keeps_a_core_clipped_to_each_piece():
+    """N4: split pieces dropped ``core`` too, so their letters were judged
+    unclipped downstream."""
+    from app.detector.kiuyha_detector import _letter_geometry
+
+    letters = np.zeros((200, 300), bool)
+    for top in (10, 40):
+        letters[top:top + 20, 10:150] = True
+    for top in (92, 122):
+        letters[top:top + 20, 140:290] = True
+    box = _text_box(5, 7, 305, 207, 0.9, letters.copy(), "kiuyha", letters, core=(5, 7, 305, 207))
+    pieces = _split_blocks(box)
+    assert len(pieces) == 2
+    for piece in pieces:
+        assert piece.core is not None
+        assert piece.core[0] >= piece.x1 and piece.core[1] >= piece.y1
+        assert piece.core[2] <= piece.x2 and piece.core[3] <= piece.y2
+        assert _letter_geometry(piece, piece.core) is not None
+
+
+def test_split_sideways_keeps_a_core_clipped_to_each_piece():
+    """N4, sideways: same as _split_blocks — the pieces carry the part of
+    the raw rect they came from, clipped to their own rect."""
+    from app.detector.kiuyha_detector import _letter_geometry, _split_sideways
+
+    letters = np.zeros((140, 700), bool)
+    for top in (10, 40, 70):
+        letters[top:top + 20, 20:300] = True
+        letters[top:top + 20, 420:680] = True
+    box = _text_box(0, 0, 700, 140, 0.9, letters.copy(), "kiuyha", letters, core=(0, 0, 700, 140))
+    pieces = _split_sideways(box)
+    assert len(pieces) == 2
+    for piece in pieces:
+        assert piece.core is not None
+        assert piece.core[0] >= piece.x1 and piece.core[1] >= piece.y1
+        assert piece.core[2] <= piece.x2 and piece.core[3] <= piece.y2
+        assert _letter_geometry(piece, piece.core) is not None
