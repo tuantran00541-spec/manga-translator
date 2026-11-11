@@ -117,6 +117,9 @@ def _component_in_box(x: int, y: int, w: int, h: int,
     return (w <= bx2 - bx1 and h <= by2 - by1
             and x >= bx1 - margin and y >= by1 - margin
             and x + w <= bx2 + margin and y + h <= by2 + margin)
+
+
+def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
     explicit = getattr(box, "allow_rectangle_fallback", None)
     if explicit is not None:
         return bool(explicit)

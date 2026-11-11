@@ -137,3 +137,28 @@ def test_fold_nested_still_merges_letter_rows_that_share_a_line():
 
     assert len(folded) == 1
     assert (folded[0].x1, folded[0].y1, folded[0].x2, folded[0].y2) == (0, 0, 500, 100)
+
+
+def test_unauthorized_box_without_safe_flag_reaches_the_fallback_check():
+    """Rerun-5 Helmut ch.70: the job died at translate 13/58 with
+    NameError _rectangle_fallback_allowed, deleted by round 9 while its
+    two call sites survived. The other runs never hit it because a
+    safe_to_inpaint box short-circuits the or; this box forces the
+    second operand, and the mask-less build forces the second call
+    site, so both must answer instead of raising."""
+    from app.detector.mask_builder import build_mask, is_destructive_box_authorized
+
+    box = BubbleBox(50, 50, 150, 150, 0.9, None, source_model="kiuyha",
+                    safe_to_inpaint=False)
+    assert is_destructive_box_authorized(box) is False
+    built = build_mask((300, 400), [box], None)
+    assert built.shape == (300, 400)
+    assert not np.any(built > 0), "an unauthorized box leaves no mask"
+    # The second call site: an authorized but mask-less box reaches the
+    # rectangle-fallback check itself, past the authorization gate.
+    authorised = BubbleBox(50, 50, 150, 150, 0.9, None, source_model="kiuyha",
+                           safe_to_inpaint=True)
+    assert is_destructive_box_authorized(authorised) is True
+    built = build_mask((300, 400), [authorised], None)
+    assert built.shape == (300, 400)
+    assert not np.any(built > 0), "a mask-less box with no fallback leaves no mask"
