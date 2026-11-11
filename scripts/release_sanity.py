@@ -310,6 +310,98 @@ def check_duplicate_api_routes() -> None:
     print(f"Route uniqueness OK: {len(seen)} API routes")
 
 
+def _defined_names(tree: ast.AST) -> set[str]:
+    """Every name a module defines textually: assignments, arguments,
+    imports, defs/classes, except/match bindings. A name used but never
+    defined anywhere in its module is undefined (the ch70 class:
+    `_rectangle_fallback_allowed` was called at two sites after round 9
+    deleted its `def`)."""
+    defined: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            defined.add(node.id)
+        elif isinstance(node, ast.arg):
+            defined.add(node.arg)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined.add(node.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                defined.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name != "*":
+                    defined.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            defined.add(node.name)
+        elif isinstance(node, ast.MatchAs) and node.name:
+            defined.add(node.name)
+        elif isinstance(node, ast.MatchStar) and node.name:
+            defined.add(node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            defined.add(node.rest)
+    return defined
+
+
+def check_undefined_python_names() -> None:
+    import builtins
+
+    allowed = set(dir(builtins)) | {
+        "__name__", "__file__", "__doc__", "__package__", "__spec__",
+        "__loader__", "__cached__", "__builtins__", "__path__",
+    }
+    failures: list[str] = []
+    for path in PYTHON_PATHS:
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
+        defined = _defined_names(tree)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                if node.id not in defined and node.id not in allowed:
+                    failures.append(f"{path}:{node.lineno}: undefined name {node.id}")
+
+    _fail("Undefined Python names found:", failures)
+    print("Undefined Python name check OK")
+
+
+_TERMINATORS = (ast.Return, ast.Raise, ast.Break, ast.Continue)
+
+
+def check_dead_code_after_terminator() -> None:
+    """Any statement after a return/raise/break/continue in the same
+    block can never run. At the round-9 head the deleted function's body
+    survived exactly like this (mask_builder.py:120-127)."""
+    failures: list[str] = []
+
+    def scan_block(body: list[ast.stmt], path: Path) -> None:
+        terminator: str | None = None
+        for stmt in body:
+            if terminator is not None:
+                failures.append(
+                    f"{path}:{stmt.lineno}: unreachable code after {terminator}"
+                )
+            if isinstance(stmt, _TERMINATORS):
+                terminator = type(stmt).__name__.lower()
+
+    def visit(node: ast.AST, path: Path) -> None:
+        for _field, value in ast.iter_fields(node):
+            if (
+                isinstance(value, list)
+                and value
+                and all(isinstance(item, ast.stmt) for item in value)
+            ):
+                scan_block(value, path)
+        for child in ast.iter_child_nodes(node):
+            visit(child, path)
+
+    for path in PYTHON_PATHS:
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
+        visit(tree, path)
+
+    _fail("Unreachable code found:", failures)
+    print("Unreachable code check OK")
+
+
 def check_javascript_function_reachability() -> None:
     source_by_path = {
         path: path.read_text(encoding="utf-8")
@@ -374,6 +466,8 @@ def main() -> None:
     check_python_module_reachability()
     check_exact_python_helper_duplication()
     check_duplicate_api_routes()
+    check_undefined_python_names()
+    check_dead_code_after_terminator()
     check_javascript_function_reachability()
 
 
