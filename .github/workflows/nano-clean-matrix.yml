@@ -112,6 +112,13 @@ jobs:
           CID=$(printf "a%07x" "$((10#$CHAPTER))")
           python scripts/clean_chapter_zip.py --zip "nano-machine-ch${CHAPTER}.zip" --chapter-id "$CID" --out "audit-results/nano-clean/ch${CHAPTER}"
 
+      - name: Classify the clean
+        run: |
+          # Triage leftover text into detector misses (fine-tune material)
+          # vs inpaint skips; only suspect crops ride along as evidence.
+          CID=$(printf "a%07x" "$((10#$CHAPTER))")
+          python scripts/classify_clean.py --chapter-id "$CID" --out "audit-results/nano-clean/ch${CHAPTER}/classification"
+
       - name: Save evidence to audit-evidence
         if: always()
         uses: ./.github/actions/save-evidence
