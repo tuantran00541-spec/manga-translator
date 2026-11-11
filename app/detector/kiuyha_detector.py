@@ -100,6 +100,30 @@ def _core_letters(box: BubbleBox):
     return clipped
 
 
+def _clip_letters_to_cut(letters, box: BubbleBox, waist: dict, keep_first: bool):
+    """``letters`` with the far side of the waist cut zeroed, same shape.
+
+    A trim keeps one lobe's mask; the letters keep the same lobe's
+    text, so downstream reads of the array (OCR, translate, letter
+    bounds) see only this box's own lines, not the neighbour's the
+    growth pulled in.
+    """
+    clipped = np.array(letters, copy=True)
+    if waist["orientation"] == "horizontal":
+        cut_local = min(max(int(waist["cut_y"]) - box.y1, 0), clipped.shape[0])
+        if keep_first:
+            clipped[cut_local:] = 0
+        else:
+            clipped[:cut_local] = 0
+    else:
+        cut_local = min(max(int(waist["cut_x"]) - box.x1, 0), clipped.shape[1])
+        if keep_first:
+            clipped[:, cut_local:] = 0
+        else:
+            clipped[:, :cut_local] = 0
+    return clipped
+
+
 def _trim_bubble_mask(box: BubbleBox) -> None:
     """Narrow a box's mask to the lobe holding (almost) all its letters.
 
@@ -126,13 +150,74 @@ def _trim_bubble_mask(box: BubbleBox) -> None:
     pieces = split_bubble_mask(mask, waist)
     if pieces is None:
         return
-    keep = pieces[0] if first_share >= second_share else pieces[1]
+    keep_first = first_share >= second_share
+    keep = pieces[0] if keep_first else pieces[1]
     if own is None:
         return
     ys, xs = np.nonzero(np.asarray(own))
     if _letters_inside_mask(keep, xs + box.x1, ys + box.y1) < GAP_MIN_CONTAINMENT:
         return
     box.bubble_mask = keep
+    box.letters = _clip_letters_to_cut(letters, box, waist, keep_first)
+
+
+def _split_shared_union_masks(boxes: list[BubbleBox]) -> None:
+    """Give each box sharing one union mask its own lobe's mask.
+
+    Two boxes in one double bubble each flood the whole union, so
+    neither box's own letters show a waist (each holds one cluster).
+    Pooled, their core letters do: the clusters sit on either side of
+    the waist, so the waist fires on the union of them, and each box
+    keeps the piece holding (almost) all its own core letters. A box
+    whose own letters genuinely span the waist keeps the union: the
+    post-fold waist split divides the box itself.
+    """
+    groups: dict[tuple, list[BubbleBox]] = {}
+    for box in boxes:
+        mask = getattr(box, "bubble_mask", None)
+        if not isinstance(mask, dict) or mask.get("kind") != "bubble":
+            continue
+        groups.setdefault(tuple(int(v) for v in mask["bbox"]), []).append(box)
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        mask = members[0].bubble_mask
+        mx1, my1, mx2, my2 = (int(v) for v in mask["bbox"])
+        pooled = np.zeros((my2 - my1, mx2 - mx1), dtype=np.uint8)
+        for box in members:
+            own = _core_letters(box)
+            if own is None:
+                continue
+            own = np.asarray(own)
+            r0, r1 = max(0, box.y1 - my1), min(my2 - my1, box.y2 - my1)
+            c0, c1 = max(0, box.x1 - mx1), min(mx2 - mx1, box.x2 - mx1)
+            ar0, ac0 = r0 - (box.y1 - my1), c0 - (box.x1 - mx1)
+            pooled[r0:r1, c0:c1] |= own[ar0:ar0 + (r1 - r0), ac0:ac0 + (c1 - c0)].astype(np.uint8)
+        if not pooled.any():
+            continue
+        waist = find_waist(mask, letters=pooled, box=(mx1, my1, mx2, my2))
+        if waist is None:
+            continue
+        pieces = split_bubble_mask(mask, waist)
+        if pieces is None:
+            continue
+        for box in members:
+            own = _core_letters(box)
+            if own is None:
+                continue
+            letters = getattr(box, "letters", None)
+            if letters is None or not np.asarray(letters).any():
+                continue
+            first_share, second_share = _waist_letter_shares(box, waist, own)
+            if min(first_share, second_share) >= GAP_MIN_SIDE_SHARE:
+                continue
+            keep_first = first_share >= second_share
+            keep = pieces[0] if keep_first else pieces[1]
+            ys, xs = np.nonzero(np.asarray(own))
+            if _letters_inside_mask(keep, xs + box.x1, ys + box.y1) < GAP_MIN_CONTAINMENT:
+                continue
+            box.bubble_mask = keep
+            box.letters = _clip_letters_to_cut(letters, box, waist, keep_first)
 
 
 def _attach_bubble_masks(image: np.ndarray, boxes: list[BubbleBox]) -> None:
@@ -142,6 +227,7 @@ def _attach_bubble_masks(image: np.ndarray, boxes: list[BubbleBox]) -> None:
             image, (box.x1, box.y1, box.x2, box.y2),
             letters=getattr(box, "letters", None))
         _trim_bubble_mask(box)
+    _split_shared_union_masks(boxes)
 
 
 def _split_waist_box(box: BubbleBox) -> list[BubbleBox]:

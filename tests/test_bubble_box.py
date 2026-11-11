@@ -84,6 +84,63 @@ def test_trim_mask_keeps_the_lobe_holding_the_lettering():
     assert both is mask, "lettering spanning both lobes keeps the whole mask"
 
 
+def _union_mask_from_circles(bbox=(60, 60, 560, 340)):
+    """The union of two diagonal circles, one interval per band."""
+    import math
+
+    x1, y1, x2, y2 = bbox
+    h = y2 - y1
+    rows = []
+    for i in range(24):
+        y = y1 + (i + 0.5) * h / 24
+        spans = []
+        for (cx, cy) in ((200, 150), (420, 250)):
+            dy = y - cy
+            if abs(dy) < 140:
+                dx = math.sqrt(140 * 140 - dy * dy)
+                spans.append((int(cx - dx), int(cx + dx)))
+        spans.sort()
+        merged = []
+        for a, b in spans:
+            if merged and a <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b])
+        rows.append([[a - x1, b - x1] for a, b in merged])
+    return {"bbox": list(bbox), "cx": 310, "cy": 200, "rows": rows, "kind": "bubble"}
+
+
+def test_trim_with_letters_cuts_a_diagonal_waist():
+    """The letter bitmap sees the diagonal waist the mask alone hides.
+
+    One object's letters span both lobes (left lines and right lines
+    with a clean column gap between them), while its letter box sits
+    whole in the left lobe: the trim cuts the union and returns the
+    left lobe. Without the bitmap the same mask has no waist at all.
+    """
+    from app.render.text_renderer import _mask_centroid
+
+    mask = _union_mask_from_circles()
+    assert find_waist(mask) is None
+    letters = np.zeros((80, 420), bool)
+    letters[10:30, 0:180] = True    # left lobe lines
+    letters[40:60, 0:180] = True
+    letters[10:30, 240:420] = True  # right lobe lines
+    letters[40:60, 240:420] = True
+    piece = _trim_mask_to_letters(mask, (60, 60, 560, 340), (100, 180, 280, 240),
+                                  letters=letters, letters_box=(100, 170, 520, 250))
+    assert piece is not mask
+    assert piece["bbox"][2] <= 340
+    assert piece["bbox"][0] == mask["bbox"][0] and piece["cx"] < mask["cx"]
+    # The piece centres on its own lobe, not on the union seed.
+    assert (piece["cx"], piece["cy"]) == _mask_centroid(piece)
+    assert piece["cy"] != mask["cy"]
+    # Trimming the piece again, with the same letters, keeps it whole.
+    again = _trim_mask_to_letters(piece, (60, 60, 560, 340), (100, 180, 280, 240),
+                                  letters=letters, letters_box=(100, 170, 520, 250))
+    assert again is piece
+
+
 def test_mask_rows_keep_the_interior_under_diagonal_shading():
     """A grey bubble with diagonal shading keeps wide rows, like slice 45's bubble.
 

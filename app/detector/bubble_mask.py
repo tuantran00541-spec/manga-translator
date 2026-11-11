@@ -64,6 +64,7 @@ GAP_MIN_CONTAINMENT = 0.70  # each side's letters inside its own piece's mask
 GAP_MAX_EXTENSION_RATIO = 0.5  # a piece's mask may not extend past its side's letters by more than this share of the letters' width, measured over the side's letter rows: a single oval cut through staggered lines fails this, a lobe does not
 GAP_MIN_STEP_RATIO = 0.15  # the mask profile must corroborate a letter gap: a step this big between adjacent middle bands (the second lobe starting), or a dip and a rise of GAP_MIN_RISE_RATIO after it -- a single oval's profile is smooth in the middle, so a gap alone never splits it
 GAP_MIN_RISE_RATIO = 0.05
+GAP_MIN_OFFSET_RATIO = 0.15  # a row-gap waist also needs the two letter clusters offset sideways by this share of the mask width: two lines of one oval sit over each other, two lobes offset diagonally do not
 
 
 def _empty_rows() -> list[list[list[int]]]:
@@ -488,6 +489,11 @@ def find_waist(mask: dict | None, letters=None, box=None) -> dict | None:
       each side's letters sit inside its own half of the mask without
       the half reaching far past them. Needs ``letters`` (box-local)
       and ``box``; skipped without them. ``cut_x`` is the gap midpoint.
+    - ``horizontal`` (lobes offset diagonally, stacked): the letter
+      rows have a clean gap between two clusters whose columns are
+      offset sideways, and the width profile corroborates two lobes.
+      Needs ``letters`` and ``box``; skipped without them. ``cut_y``
+      is the gap midpoint.
     - ``horizontal`` (lobes stacked): the row-width profile dips to a
       narrow band between two wide lobes. ``cut_y`` is the middle of
       the dip; the lobes are the rows above and below it.
@@ -518,6 +524,12 @@ def find_waist(mask: dict | None, letters=None, box=None) -> dict | None:
     # --- diagonally offset lobes: a clean gap in the letter columns ---
     if letters is not None and box is not None:
         waist = _letter_gap_waist(mask, letters, box)
+        if waist is not None:
+            return waist
+
+    # --- diagonally offset lobes: a clean gap in the letter rows ---
+    if letters is not None and box is not None:
+        waist = _row_gap_waist(mask, letters, box)
         if waist is not None:
             return waist
 
@@ -819,6 +831,125 @@ def _letter_gap_waist(mask: dict, letters, box) -> dict | None:
     }
 
 
+def _row_gap_waist(mask: dict, letters, box) -> dict | None:
+    """A horizontal waist from a clean gap in the letter rows.
+
+    The mirror of ``_letter_gap_waist`` for lobes offset diagonally
+    the other way: the clusters sit one above the other, sharing
+    columns, so no column gap exists -- but their rows do not meet,
+    and their columns are offset sideways. A gap counts only when
+    both clusters hold real lettering, each side's letters sit inside
+    its own half of the mask, and two corroborations hold: the
+    clusters' column centres are offset (two lines of one oval sit
+    over each other, two lobes do not), and the width profile shows
+    two lobes (a step or a dip and a rise in the middle bands -- a
+    single oval's profile is smooth, so a row gap alone never splits
+    it). The clusters' columns must also overlap: a line that flows
+    across the waist -- reaching from one cluster's columns into the
+    other's -- ties the two together, and column-disjoint clusters are
+    side-by-side texts, not stacked lobes. And the gap must be the
+    widest vertical whitespace in the letters: the gap between two
+    lines of one text is ordinary line spacing, so a narrower gap is
+    a line break, not a waist. There is no extension test
+    here: the upper half reaches across the diagonal join into the
+    lower lobe's top, so it always extends past its own letters -- the
+    offset is what tells the two apart, not the reach.
+    """
+    letters = np.asarray(letters)
+    if letters.size == 0 or not letters.any():
+        return None
+    x1, y1, x2, y2 = (int(v) for v in box)
+    if letters.shape != (y2 - y1, x2 - x1):
+        return None
+    ys, xs = np.nonzero(letters)
+    xs = xs + x1
+    ys = ys + y1
+    total = len(xs)
+    if total == 0:
+        return None
+    present = np.zeros(ys.max() + 1, dtype=bool)
+    present[ys] = True
+    gaps: list[tuple[int, int]] = []
+    in_gap = False
+    for y in range(int(ys.min()), int(ys.max()) + 1):
+        if not present[y] and not in_gap:
+            start = y
+            in_gap = True
+        elif present[y] and in_gap:
+            gaps.append((start, y - 1))
+            in_gap = False
+    mx1, my1, mx2, my2 = (int(v) for v in mask["bbox"])
+    union_area = _mask_row_width_sum(mask)
+    if union_area <= 0:
+        return None
+    widths = []
+    for row in mask["rows"]:
+        if not row:
+            widths.append(0)
+        else:
+            widths.append(max(int(b) for _, b in row) - min(int(a) for a, _ in row))
+    if not _profile_corroborates(widths, mask["rows"]):
+        return None
+    mask_width = max(1, mx2 - mx1)
+    best = None
+    # A waist gap is the widest vertical whitespace in the text: the
+    # gap between two lines of one text is ordinary line spacing, so a
+    # candidate narrower than another gap in the same letters is just
+    # a line break, not a waist. A lone gap has nothing to beat.
+    gap_lens = [g[1] - g[0] + 1 for g in gaps]
+    for gap_start, gap_end in gaps:
+        if gap_end - gap_start + 1 < GAP_MIN_PX:
+            continue
+        if sum(1 for length in gap_lens if length >= gap_end - gap_start + 1) > 1:
+            continue
+        cut_y = (gap_start + gap_end) // 2
+        if not (my1 < cut_y < my2):
+            continue
+        above = ys < cut_y
+        below = ~above
+        above_share = float(above.sum()) / total
+        below_share = float(below.sum()) / total
+        if min(above_share, below_share) < GAP_MIN_SIDE_SHARE:
+            continue
+        pieces = split_bubble_mask(mask, {"orientation": "horizontal", "cut_y": cut_y})
+        if pieces is None:
+            continue
+        upper_mask, lower_mask = pieces
+        if min(_mask_row_width_sum(upper_mask), _mask_row_width_sum(lower_mask)) < GAP_MIN_PIECE_SHARE * union_area:
+            continue
+        if _letters_inside_mask(upper_mask, xs[above], ys[above]) < GAP_MIN_CONTAINMENT:
+            continue
+        if _letters_inside_mask(lower_mask, xs[below], ys[below]) < GAP_MIN_CONTAINMENT:
+            continue
+        # The clusters sit sideways of each other: the upper text's
+        # column centre against the lower text's, as a share of the
+        # mask width. Two lines of one bubble share a centre; two
+        # lobes offset diagonally do not. Their columns must also
+        # overlap: a line flowing across the waist reaches from one
+        # cluster's columns into the other's and ties them together.
+        above_cx = (int(xs[above].min()) + int(xs[above].max())) / 2
+        below_cx = (int(xs[below].min()) + int(xs[below].max())) / 2
+        if abs(above_cx - below_cx) < GAP_MIN_OFFSET_RATIO * mask_width:
+            continue
+        overlap = min(int(xs[above].max()), int(xs[below].max())) - max(int(xs[above].min()), int(xs[below].min()))
+        if overlap < GAP_MIN_PX:
+            continue
+        key = min(above_share, below_share)
+        if best is None or key > best[0]:
+            best = (key, cut_y, (gap_start, gap_end),
+                    (above_share, below_share))
+    if best is None:
+        return None
+    _, cut_y, gap, shares = best
+    return {
+        "orientation": "horizontal",
+        "cut_y": int(cut_y),
+        "gap": (int(gap[0]), int(gap[1])),
+        "lobe_heights": (int(cut_y - my1), int(my2 - cut_y)),
+        "letter_shares": (round(float(shares[0]), 3), round(float(shares[1]), 3)),
+    }
+
+
 def split_bubble_mask(mask: dict, waist: dict) -> tuple[dict, dict] | None:
     """Two masks, one per lobe, cut at ``waist`` (from find_waist)."""
     if not isinstance(mask, dict) or mask.get("kind") != "bubble":
@@ -877,6 +1008,41 @@ def shift_bubble_mask(mask: dict | None, dx: int = 0, dy: int = 0) -> dict | Non
     except (KeyError, TypeError, ValueError):
         return None
     return shifted
+
+
+def clip_bubble_mask(mask: dict | None, box: tuple[int, int, int, int]) -> dict | None:
+    """The part of ``mask`` inside ``box``, as a mask, or None when nothing holds.
+
+    A sub-box of a bubble is a slice of its interior, not a bubble of
+    its own: the rows are the mask's rows cut to the box, re-quantized
+    onto the part that remains. Spans outside the box's rows are
+    dropped; the rest are clipped to its columns.
+    """
+    if not isinstance(mask, dict) or mask.get("kind") != "bubble":
+        return None
+    try:
+        bx1, by1, bx2, by2 = (int(v) for v in box)
+    except (TypeError, ValueError):
+        return None
+    if bx2 <= bx1 or by2 <= by1:
+        return None
+    spans: list[tuple[int, int, list[tuple[int, int]]]] = []
+    for a, b, intervals in _mask_spans(mask):
+        top, bottom = max(a, by1), min(b, by2)
+        if bottom <= top:
+            continue
+        clipped = [(max(p, bx1), min(q, bx2)) for p, q in intervals
+                   if min(q, bx2) > max(p, bx1)]
+        if clipped:
+            spans.append((top, bottom, clipped))
+    if not spans:
+        return None
+    clipped_mask = _mask_from_spans(spans, mask)
+    width = clipped_mask["bbox"][2] - clipped_mask["bbox"][0]
+    height = clipped_mask["bbox"][3] - clipped_mask["bbox"][1]
+    if width < 16 or height < 16:
+        return None
+    return clipped_mask
 
 
 def merge_bubble_masks(masks: list[dict | None]) -> dict | None:

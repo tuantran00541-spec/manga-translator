@@ -5,7 +5,7 @@ from PIL import Image
 from fastapi import HTTPException
 
 from app.logging_config import logger
-from app.detector.bubble_mask import shift_bubble_mask
+from app.detector.bubble_mask import clip_bubble_mask, shift_bubble_mask
 from app.render.text_renderer import render_text_in_box
 from app.schemas import RenderRequest
 from app.translation.vision import PLACEHOLDER_TRANSLATIONS, collapse_repeated_lines
@@ -247,6 +247,10 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
     padded_style = style
     if top and isinstance(style.get("bubble_mask"), dict):
         padded_style = {**style, "bubble_mask": shift_bubble_mask(style["bubble_mask"], dy=top)}
+    if top and isinstance(style.get("letters_box"), tuple):
+        padded_style = {**padded_style,
+                        "letters_box": (style["letters_box"][0], style["letters_box"][1] + top,
+                                        style["letters_box"][2], style["letters_box"][3] + top)}
     canvas = render_text_in_box(canvas, text, (x1, box[1] + top, x2, box[3] + top), **padded_style)
     # The canvas is padded, so the ink box the fit recorded sits `top`
     # lower than the slice it is cropped back onto — and ink past the
@@ -591,6 +595,17 @@ def render_text_objects(
         bounds = obj.get("letter_bounds")
         if _valid_region(bounds):
             style["source_letter_box"] = tuple(int(bounds[k]) for k in ("x1", "y1", "x2", "y2"))
+        # The letter bitmap the trim needs to see a diagonal waist: the
+        # clean image cannot supply it, so the object carries it (framed
+        # on its region). A bitmap that no longer matches the region --
+        # a geometry override moved the box -- is ignored downstream.
+        if obj.get("letters_mask"):
+            from app.mask_store import decode_mask_value
+
+            decoded_letters = decode_mask_value(obj.get("letters_mask"))
+            if decoded_letters is not None:
+                style["letters"] = decoded_letters
+                style["letters_box"] = coords_raw
         fixed_size = ((isinstance(box_size, (int, float)) and box_size > 0)
                       or (isinstance(box_size, str) and box_size.isdigit()
                           and int(box_size) > 0))
@@ -825,11 +840,18 @@ def render_text_objects(
                                     sstats: dict = {"attempt_box": sbox}
                                     scandidate = None
                                     # The sub-box is a slice of the frame, not
-                                    # the whole bubble: the full mask would
-                                    # refit the bubble and collide again, so
-                                    # this attempt fits the sub-box alone
-                                    # (deriving its own mask when it can).
-                                    stacked_style = {**style, "bubble_mask": None}
+                                    # the whole bubble: the mask is clipped to
+                                    # it, so this attempt fits the slice alone
+                                    # instead of refitting the whole bubble and
+                                    # colliding again. The clipped mask needs
+                                    # no trim -- and the full letters would
+                                    # re-cut it -- so it renders without them.
+                                    stacked_mask = None
+                                    if isinstance(style.get("bubble_mask"), dict):
+                                        stacked_mask = clip_bubble_mask(
+                                            style["bubble_mask"], sbox)
+                                    stacked_style = {**style, "bubble_mask": stacked_mask,
+                                                     "letters": None, "letters_box": None}
                                     try:
                                         scandidate = _render_in_region(
                                             image.copy(), render_text, sbox,

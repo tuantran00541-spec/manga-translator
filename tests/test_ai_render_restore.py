@@ -72,12 +72,13 @@ def test_render_chapter_restores_an_unletterable_object(tmp_path: Path, monkeypa
         f"the skipped region must show the dark original, not the clean image (mean {crop.mean():.1f})")
 
 
-def test_render_stage_reletters_a_slice_rendered_against_a_partial_chapter_band(tmp_path: Path, monkeypatch):
-    """A slice rendered against a partial chapter band is re-lettered once the chapter finishes.
+def test_render_stage_leaves_a_slice_rendered_before_the_chapter_finishes_alone(tmp_path: Path, monkeypatch):
+    """A slice rendered while the chapter was unfinished stays current once it finishes.
 
-    The render signature fingerprints the chapter band, so finishing the
-    chapter stales the early slice's partial-band render and the render
-    stage letters it again against the finished chapter.
+    The render signature covers only the page's own objects -- the
+    chapter band is dead -- so finishing the chapter does not stale
+    an early slice's render, and the render stage does not letter it
+    again.
     """
     import app.config as config
     import app.dependencies as deps
@@ -126,7 +127,7 @@ def test_render_stage_reletters_a_slice_rendered_against_a_partial_chapter_band(
         "source_revision": 1, "clean_revision": 1, "render_revision": 0, "rendered": False,
     }
     manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [page0, page1]})
-    # The translate-time render: no dialogue cap on slice 0 yet, so no band.
+    # The translate-time render: slice 0 untranslated while slice 1 renders.
     render_commit.render_page(RenderRequest(chapter_id=chapter, page_index=1, translations={}))
 
     def dots_ink() -> int:
@@ -145,8 +146,8 @@ def test_render_stage_reletters_a_slice_rendered_against_a_partial_chapter_band(
             obj["source_cap_px"] = 38
         manifests.save_manifest_raw(chapter, manifest)
     manifest = manifests.load_manifest_raw(chapter)
-    assert image_router._current_rendered_path(chapter, 1, manifest) is None, (
-        "the finished chapter band changed, so slice 1's partial-band render must be stale")
+    assert image_router._current_rendered_path(chapter, 1, manifest) is not None, (
+        "finishing the chapter must not stale slice 1: its own objects did not change")
 
     rendered_pages: list[int] = []
     real_render_page = render_commit.render_page
@@ -161,11 +162,8 @@ def test_render_stage_reletters_a_slice_rendered_against_a_partial_chapter_band(
     runner = AIModeRunner(job, PROVIDERS["openai"], "key")
     asyncio.run(runner.render())
 
-    assert 1 in rendered_pages, "the render stage skipped a slice whose render predates the finished band"
-    # The band no longer sizes anything, so the re-render letters the dots
-    # exactly as before — the staleness detection above is what this test
-    # still pins, not a size lift.
-    assert dots_ink() == small, "the dots must render identically without the band"
+    assert 1 not in rendered_pages, "the render stage re-lettered a slice that was still current"
+    assert dots_ink() == small, "the dots must render identically"
 
 
 def test_render_stage_restores_an_unletterable_object_and_the_slice_exports(tmp_path: Path, monkeypatch):

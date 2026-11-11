@@ -18,6 +18,32 @@ def _shifted(rect: dict, shift: int) -> dict:
     return {key: int(rect[key]) + (shift if key in ("y1", "y2") else 0) for key in ("x1", "y1", "x2", "y2")}
 
 
+def _shifted_letters(value, shift: int):
+    """A letter bitmap moved ``shift`` rows down (negative: up), same frame.
+
+    A seam mirror letters the owner's text on the neighbouring slice, so
+    its bitmap moves with its region; rows shifted off the frame are
+    lost, and the vacated rows are empty. An undecodable value stays
+    undecodable -- the mirror keeps no bitmap rather than a wrong one.
+    """
+    import numpy as np
+
+    from app.image_io import encode_mask
+    from app.mask_store import decode_mask_value
+
+    arr = decode_mask_value(value)
+    if arr is None:
+        return None
+    moved = np.zeros_like(arr)
+    if shift == 0:
+        moved = arr
+    elif 0 < shift < arr.shape[0]:
+        moved[shift:] = arr[:-shift]
+    elif -arr.shape[0] < shift < 0:
+        moved[:shift] = arr[-shift:]
+    return encode_mask(moved)
+
+
 def _top_letter_group(letters: np.ndarray, x1: int, y1: int) -> tuple[int, int, int, int] | None:
     """BBox of the topmost text in a letters mask holding two texts stacked with a wide gap.
 
@@ -99,6 +125,44 @@ def set_letter_bounds(page: dict) -> None:
                                     "x2": max(r[2] for r in use), "y2": max(r[3] for r in use)}
         # Otherwise keep whatever bounds the object already had: no usable
         # box must erase an extent proven earlier.
+        # The letter bitmap follows the same boxes, framed on the
+        # object's region: the render's trim reads it to see a diagonal
+        # waist, and the clean image cannot supply it. A merged object
+        # unions its boxes' letters; an object with no usable letters
+        # keeps whatever bitmap it already had.
+        import numpy as np
+
+        from app.image_io import encode_mask
+
+        region = obj.get("region")
+        if isinstance(region, dict):
+            try:
+                rx1, ry1, rx2, ry2 = (int(region[k]) for k in ("x1", "y1", "x2", "y2"))
+            except (KeyError, TypeError, ValueError):
+                rx1 = ry1 = rx2 = ry2 = 0
+            if rx2 > rx1 and ry2 > ry1:
+                union = np.zeros((ry2 - ry1, rx2 - rx1), dtype=np.uint8)
+                usable = False
+                for ref in source_box_ids(obj):
+                    box = boxes.get(ref)
+                    if not box:
+                        continue
+                    try:
+                        x1, y1, x2, y2 = (int(box[k]) for k in ("x1", "y1", "x2", "y2"))
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    letters = decode_mask_value(box.get("letters_mask"))
+                    if (letters is None or letters.shape != (y2 - y1, x2 - x1)
+                            or not letters.any()):
+                        continue
+                    r0, r1 = max(0, y1 - ry1), min(ry2 - ry1, y2 - ry1)
+                    c0, c1 = max(0, x1 - rx1), min(rx2 - rx1, x2 - rx1)
+                    ar0, ac0 = r0 - (y1 - ry1), c0 - (x1 - rx1)
+                    union[r0:r1, c0:c1] |= letters[
+                        ar0:ar0 + (r1 - r0), ac0:ac0 + (c1 - c0)].astype(np.uint8)
+                    usable = True
+                if usable:
+                    obj["letters_mask"] = encode_mask(union)
         # The bubble interior follows the same boxes: an object over
         # several boxes gets the union of their interiors, so a double
         # bubble split into two objects keeps one lobe each.
@@ -429,7 +493,11 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
                 from app.detector.bubble_mask import shift_bubble_mask
 
                 update["bubble_mask"] = shift_bubble_mask(owner["bubble_mask"], 0, shift)
-            stale = [key for key in LETTERING_KEYS + ("letter_bounds", "bubble_mask") if key in obj and key not in update]
+            if owner.get("letters_mask"):
+                shifted_letters = _shifted_letters(owner["letters_mask"], shift)
+                if shifted_letters is not None:
+                    update["letters_mask"] = shifted_letters
+            stale = [key for key in LETTERING_KEYS + ("letter_bounds", "bubble_mask", "letters_mask") if key in obj and key not in update]
             if all(obj.get(key) == value for key, value in update.items()) and not stale and obj.get("region") == region:
                 continue
             obj.update(update)

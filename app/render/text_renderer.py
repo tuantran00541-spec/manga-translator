@@ -276,6 +276,8 @@ def render_text_in_box(
     stats: dict | None = None,
     size_band_hi_cap: int | None = None,
     bubble_mask: dict | None = None,
+    letters=None,
+    letters_box: tuple[int, int, int, int] | None = None,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -351,7 +353,8 @@ def render_text_in_box(
     # not the full rectangle. A mask makes the container label redundant:
     # an unlabelled bubble with a mask still lays out on the mask.
     _mask, _mask_source = _resolve_mask(image, (x1, y1, x2, y2), container,
-                                        source_letter_box, bubble_mask)
+                                        source_letter_box, bubble_mask,
+                                        letters, letters_box)
     curved = str(container or "").lower() in _CURVED_CONTAINERS or str(shape or "").lower() == "ellipse" \
         or (_mask is not None and _mask.get("kind") == "bubble")
     centred = h_align == "center" and v_align == "middle"
@@ -423,7 +426,8 @@ def render_text_in_box(
             curved=curved, image=image, centered=centred, container=container,
             source_letter_box=source_letter_box, centres_out=line_centres,
             stats_out=fit_stats, min_source_share=min_source_share,
-            size_ceiling_px=size_band_hi_cap, bubble_mask=_mask, spans_out=spans_holder)
+            size_ceiling_px=size_band_hi_cap, bubble_mask=_mask, spans_out=spans_holder,
+            letters=letters, letters_box=letters_box)
         raw_w, raw_h = x2 - x1, y2 - y1
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
@@ -622,7 +626,41 @@ def _lines_fit_spans(draw, lines, font, spans, stroke_w: int) -> bool:
         for line, (a, b) in zip(lines, spans))
 
 
-def _trim_mask_to_letters(mask, box, letter_box):
+def _mask_centroid(mask):
+    """The area centroid of ``mask``'s rows, slice coords.
+
+    The flood seed a mask carries is the letter centroid of the whole
+    bubble it was derived from; after a waist cut that seed can sit on
+    the waist, outside the lobe the text lives in. The lobe's own
+    centroid -- the mean of its rows weighted by their width -- is
+    where the block centres.
+    """
+    try:
+        x1, y1, x2, y2 = (int(v) for v in mask["bbox"])
+        rows = mask["rows"]
+    except (KeyError, TypeError, ValueError):
+        return None
+    height = max(1, y2 - y1)
+    total = 0
+    sum_x = 0.0
+    sum_y = 0.0
+    for i, row in enumerate(rows):
+        band_y1 = y1 + (i * height) // len(rows)
+        band_y2 = y1 + ((i + 1) * height) // len(rows)
+        cy = (band_y1 + band_y2) / 2
+        for a, b in row:
+            w = int(b) - int(a)
+            if w <= 0:
+                continue
+            sum_x += (x1 + (int(a) + int(b)) / 2) * w
+            sum_y += cy * w
+            total += w
+    if total <= 0:
+        return ((x1 + x2) // 2, (y1 + y2) // 2)
+    return (int(sum_x / total), int(sum_y / total))
+
+
+def _trim_mask_to_letters(mask, box, letter_box, letters=None, letters_box=None):
     """The lobe of ``mask`` holding the lettering, or ``mask`` whole.
 
     A waist-split mask is one lobe already; a union mask with a real
@@ -633,12 +671,25 @@ def _trim_mask_to_letters(mask, box, letter_box):
     With no letter box there is nothing to anchor the cut to — a
     spiky outline's own taper reads as a waist — so the whole mask
     stands and the detector's letter-based split owns the division.
+    ``letters`` is the letter bitmap framed on ``letters_box`` (the
+    detector's box, which the clean image no longer shows): with it
+    the waist detectors see the diagonal join the mask alone hides.
+    A cut piece's centre is its own centroid, not the union's seed:
+    the seed sits on the waist, and the block centres on the lobe.
     """
     if not isinstance(mask, dict) or mask.get("kind") != "bubble":
         return mask
     if letter_box is None:
         return mask
-    waist = find_waist(mask)
+    waist = None
+    if letters is not None and letters_box is not None:
+        arr = np.asarray(letters)
+        lb = tuple(int(v) for v in letters_box)
+        if (arr.ndim == 2 and arr.shape == (lb[3] - lb[1], lb[2] - lb[0])
+                and arr.any()):
+            waist = find_waist(mask, letters=arr, box=lb)
+    if waist is None:
+        waist = find_waist(mask)
     if waist is None:
         return mask
     pieces = split_bubble_mask(mask, waist)
@@ -655,6 +706,9 @@ def _trim_mask_to_letters(mask, box, letter_box):
             lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
             if not (px1 <= lx1 and ly1 >= py1 and lx2 <= px2 and ly2 <= py2):
                 continue
+        centroid = _mask_centroid(piece)
+        if centroid is not None:
+            piece["cx"], piece["cy"] = centroid
         return piece
     return mask
 
@@ -691,17 +745,21 @@ def _derived_mask(image, box, letter_box):
     return mask
 
 
-def _resolve_mask(image, box, container, letter_box, bubble_mask):
+def _resolve_mask(image, box, container, letter_box, bubble_mask,
+                  letters=None, letters_box=None):
     """The mask to lay out on: the object's own, else one derived from the image.
 
     Returns (mask, source) with source "object", "derived" or "none".
     Only bubble/spiky containers derive: free text and narration boxes
     have no bubble to find, and a derived mask there would be art, not
     outline. A mask with no closed outline ("rect") is no mask at all.
+    ``letters`` is the letter bitmap framed on ``letters_box``; the
+    trim needs it to see a diagonal waist, and the clean image cannot
+    supply it (its lettering is gone).
     """
     mask = bubble_mask if isinstance(bubble_mask, dict) else None
     if mask is not None:
-        return _trim_mask_to_letters(mask, box, letter_box), "object"
+        return _trim_mask_to_letters(mask, box, letter_box, letters, letters_box), "object"
     if image is None or str(container or "").lower() not in ("bubble", "spiky"):
         return None, "none"
     # A roomy attempt box floods the panel past its bubble, while the
@@ -716,7 +774,7 @@ def _resolve_mask(image, box, container, letter_box, bubble_mask):
     derived = _derived_mask(image, derive_box, letter_box)
     if not isinstance(derived, dict) or derived.get("kind") != "bubble":
         return None, "none"
-    return _trim_mask_to_letters(derived, box, letter_box), "derived"
+    return _trim_mask_to_letters(derived, box, letter_box, letters, letters_box), "derived"
 
 
 def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: int = RENDER_DEFAULT_PADDING,
@@ -725,7 +783,9 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
              container: str | None = None, source_letter_box: tuple[int, int, int, int] | None = None,
              centres_out: list | None = None, stats_out: dict | None = None,
              min_source_share: float = 0.0, size_ceiling_px: int | None = None,
-             bubble_mask: dict | None = None, spans_out: list | None = None):
+             bubble_mask: dict | None = None, spans_out: list | None = None,
+             letters=None,
+             letters_box: tuple[int, int, int, int] | None = None):
     """The auto font size, wrapped lines, whether it fits readably and the box it was fitted in.
 
     One size rule: the size is the smaller of the source-anchored ceiling
@@ -771,7 +831,8 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         floor = readable
 
     mask, mask_source = _resolve_mask(image, (x1, y1, x2, y2), container,
-                                      source_letter_box, bubble_mask)
+                                      source_letter_box, bubble_mask,
+                                      letters, letters_box)
     frame = (x1, y1, x2, y2)
     frame_source = "region_no_frame"
     fallbacks: list[str] = []

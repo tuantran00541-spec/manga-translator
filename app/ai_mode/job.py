@@ -1292,13 +1292,10 @@ class AIModeRunner:
         chapter_id = self.job.chapter_id
         self.report["blanks_settled"] = await asyncio.to_thread(self._settle_blanks)
         indices = self._active_pages()
-        # Each slice was rendered as it was translated, against the band
-        # of the slices translated so far; the last slices never saw the
-        # first ones' caps. The render signature covers one slice only,
-        # so it still calls those partial-band renders current. Drop
-        # them all: the final pass letters every slice against the
-        # finished chapter.
-        await asyncio.to_thread(self._invalidate_renders, indices)
+        # The render signature covers each slice's own objects, so a
+        # slice rendered as it was translated is still current now
+        # that the chapter is finished: the loop below renders only
+        # the slices that are not current yet.
         for done, page_index in enumerate(indices):
             self._check_cancel()
             self._progress(done, len(indices))

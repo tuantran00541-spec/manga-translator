@@ -176,6 +176,60 @@ def test_two_lobe_bubble_letters_only_the_source_lobe():
     assert box[3] <= 240, f"ink crossed the waist into the lower lobe: {box}"
 
 
+def test_stacked_second_block_uses_the_clipped_mask():
+    """A colliding second block stacks into the free part of its frame.
+
+    Both objects share one two-lobe bubble. The first letters the top
+    lobe; the second's lettering spans both lobes, so its frame is the
+    union, its block fills the frame, and no shift clears the first
+    block's ink -- so it stacks below it. The stacked attempt clips
+    the union mask to its sub-box instead of re-deriving the whole
+    bubble, so its ink stays inside the frame and clear of the first
+    block instead of colliding again.
+    """
+    image = _two_lobe_bubble()
+    mask = derive_bubble_mask(np.asarray(image)[:, :, ::-1].copy(),
+                              (40, 40, 360, 470), seed=(200, 140))
+    assert mask is not None and mask["kind"] == "bubble"
+    first = {"id": "a", "translation": "Vâng, vâng. Vậy họ nói gì?",
+             "region": {"x1": 40, "y1": 40, "x2": 360, "y2": 470},
+             "letter_bounds": {"x1": 90, "y1": 80, "x2": 310, "y2": 200},
+             "bubble_mask": mask,
+             "container": "bubble", "typography_role": "dialogue", "source_cap_px": 60,
+             "style": {"font": "dialogue.mac-dinh-3"}}
+    long_text = ("Họ cho ngươi ở lại Thiết Kiếm Các không? Ngươi có nghe rõ không? "
+                 "Ta đã bảo ngươi đừng gọi ta là Các Chủ.")
+    second = {"id": "b", "translation": long_text,
+              "region": {"x1": 40, "y1": 40, "x2": 360, "y2": 470},
+              "letter_bounds": {"x1": 90, "y1": 80, "x2": 310, "y2": 400},
+              "bubble_mask": mask,
+              "container": "bubble", "typography_role": "dialogue", "source_cap_px": 60,
+              "style": {"font": "dialogue.mac-dinh-3"}}
+    req = RenderRequest(chapter_id="c", page_index=0,
+                        translations={"a": first["translation"], "b": second["translation"]})
+    alone = image.copy()
+    render_text_objects(alone, RenderRequest(chapter_id="c", page_index=0,
+                                             translations={"a": first["translation"]}),
+                        [first], *({} for _ in range(10)))
+    first_ink = _ink_mask(image, alone)
+    assert first_ink is not None and first_ink.any()
+    verdicts: list = []
+    base = image.copy()
+    render_text_objects(image, req, [first, second], *({} for _ in range(10)),
+                        verdicts=verdicts)
+    by_id = {v["id"]: v for v in verdicts}
+    assert by_id["b"]["guard"] == "stacked", f"second block took {by_id['b']}"
+    both_ink = _ink_mask(base, image)
+    assert both_ink is not None
+    # The stacked ink stays inside the frame, below the first block.
+    second_ink = both_ink & ~first_ink
+    ys, xs = np.nonzero(second_ink)
+    assert len(xs) > 0, "second block lettered nothing"
+    assert 40 <= xs.min() and xs.max() <= 360 and 40 <= ys.min() and ys.max() <= 470
+    first_ys, _ = np.nonzero(first_ink)
+    assert ys.min() > first_ys.max(), "stacked ink overlaps the first block"
+
+
 def test_placeholder_translation_is_blank_not_lettered():
     content = json.dumps({"translations": [{"id": "a", "translated_text": "N/A"}]})
     assert parse_vision_translation(content, {"a"}) == {"a": ""}

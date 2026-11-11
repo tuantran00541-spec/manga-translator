@@ -1,4 +1,4 @@
-"""Render identity covers every per-object render input and the chapter size band."""
+"""Render identity covers every per-object render input, including the letter bitmap."""
 from pathlib import Path
 
 from PIL import Image
@@ -27,6 +27,7 @@ def test_signature_covers_the_objects_render_inputs(tmp_path):
         ("letter_bounds", {"x1": 1, "y1": 1, "x2": 8, "y2": 8}),
         ("bubble_mask", {"bbox": [0, 0, 10, 10], "cx": 5, "cy": 5,
                         "rows": [[[0, 10]] for _ in range(24)], "kind": "bubble"}),
+        ("letters_mask", "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAK"),
         ("source_cap_px", 38),
         ("typography_role", "shout"),
         ("role", "narration"),
@@ -39,7 +40,7 @@ def test_signature_covers_the_objects_render_inputs(tmp_path):
         before = after
 
 
-def _banded_pages() -> list[dict]:
+def _two_page_chapter() -> list[dict]:
     return [
         {"text_objects": [
             {"id": f"d{i}", "translation": "Lời thoại.", "source_cap_px": 38,
@@ -53,24 +54,30 @@ def _banded_pages() -> list[dict]:
     ]
 
 
-def test_sibling_edits_stale_a_render_when_the_chapter_band_changes(tmp_path):
-    pages = _banded_pages()
+def test_finishing_the_chapter_keeps_a_sibling_slice_current(tmp_path):
+    """Finishing the chapter does not stale a sibling slice's render.
+
+    The render signature covers only the page's own objects -- the
+    chapter band is dead -- so filling in the rest of the chapter
+    leaves a rendered slice current.
+    """
+    pages = _two_page_chapter()
     for obj in pages[0]["text_objects"]:
         obj["translation"] = ""
     manifest = _manifest(tmp_path, pages)
     before = render_input_signature(manifest, 1)
     for obj in pages[0]["text_objects"]:
         obj["translation"] = "Lời thoại."
-    assert render_input_signature(manifest, 1) != before, (
-        "finishing the chapter changes the band, so the sibling's render is stale")
+    assert render_input_signature(manifest, 1) == before, (
+        "a sibling's translation is not this page's render input")
 
 
-def test_sibling_edits_that_leave_the_band_alone_keep_the_render_current(tmp_path):
-    manifest = _manifest(tmp_path, _banded_pages())
+def test_sibling_edits_on_another_page_keep_the_render_current(tmp_path):
+    manifest = _manifest(tmp_path, _two_page_chapter())
     before = render_input_signature(manifest, 1)
     sibling = manifest["pages"][0]["text_objects"][0]
     sibling["style"] = {"color": "#ffffff"}
-    sibling["source_cap_px"] = 40  # the role median does not move
+    sibling["source_cap_px"] = 40  # a sibling's own inputs do not enter this page's signature
     assert render_input_signature(manifest, 1) == before
 
 

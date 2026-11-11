@@ -119,10 +119,10 @@ def _objects(pages: list) -> list[dict]:
 def _fit_metrics(obj: dict, page_width: int, bands: dict | None = None) -> dict:
     """Reproduce how the renderer sizes one object: the font size it draws at, the lines, and whether it fits.
 
-    ``bands`` is the chapter's size bands (app.render.size_bands): the
-    renderer clamps the measured cap into its role band and ceilings growth
-    at the band hi, so a reproduction that sizes from the raw cap describes
-    a render that never happened.
+    ``bands`` is accepted and ignored: the renderer no longer sizes
+    from the chapter band (the band is dead after the render rewrite),
+    so a reproduction that band-clamps the cap describes a render
+    that never happened.
 
     The ``font_px`` below is a reproduction, not the drawn size: it is a
     rectangle fit on a blank image, with no image, no bubble curve, no
@@ -133,8 +133,6 @@ def _fit_metrics(obj: dict, page_width: int, bands: dict | None = None) -> dict:
 
     from app.parameters import RENDER_AUTO_STROKE_WIDTH, RENDER_DEFAULT_PADDING, RENDER_PADDING_RATIO_MAX
     from app.render.page_renderer import _render_region_for_text_object, _resolve_ocr_style
-    from app.render.size_bands import banded_cap
-    from app.render.source_size import SIZE_SLACK, matching_font_px
     from app.render.text_renderer import _calc_line_height, _wrap_text, auto_fit, drawable, font_draws_text, get_font_object, get_font_path
 
     text = str(obj.get("translation") or "").strip()
@@ -164,20 +162,9 @@ def _fit_metrics(obj: dict, page_width: int, bands: dict | None = None) -> dict:
         source = "fit"
         bg = str(style.get("bgColor") or "transparent")
         cap = obj.get("source_cap_px")
-        ceiling = None
-        if bands and isinstance(cap, (int, float)) and cap > 0:
-            role = str(obj.get("typography_role") or "dialogue")
-            if role in bands:
-                lb = obj.get("letter_bounds")
-                letter_w = None
-                if isinstance(lb, dict) and all(k in lb for k in ("x1", "x2")):
-                    letter_w = lb["x2"] - lb["x1"]
-                cap = banded_cap(role, cap, bands, letter_w)
-                ceiling = int(matching_font_px(str(font_path), int(round(max(bands[role][1], cap)))) * SIZE_SLACK)
         size, lines, fits, _ = auto_fit(draw, text, (x1, y1, x2, y2), (page_width, 10 ** 6), str(font_path),
                                         source_cap_px=cap, enlarge=bool(obj.get("enlarge")),
-                                        opaque_caption=bg not in ("transparent", "none", ""),
-                                        size_ceiling_px=ceiling)
+                                        opaque_caption=bg not in ("transparent", "none", ""))
     return {"font_px": size, "font_px_at_800": round(size * 800 / max(1, page_width), 1), "size_source": source,
             "lines": len(lines), "wrapped": lines, "box_w": raw_w, "box_h": raw_h, "fits": fits,
             "missing_glyphs": missing_glyphs, "source_cap_px": obj.get("source_cap_px"),
@@ -363,8 +350,6 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001 - the pairs are a review aid, never a reason to lose the report
             report["pairs_error"] = repr(exc)[:300]
         (out / "objects.json").write_text(json.dumps(_objects(pages), ensure_ascii=False), encoding="utf-8")
-        from app.render.size_bands import chapter_size_bands
-        bands = chapter_size_bands(pages)
         report["lines"] = []
         for index, page in enumerate(pages):
             if page.get("skipped"):
@@ -379,14 +364,14 @@ def main() -> int:
                     "role": obj.get("typography_role"), "container": obj.get("container"),
                     "font": obj.get("font_ai_id") or (obj.get("style") or {}).get("font"),
                     "review": bool(obj.get("needs_review")), "page_width": width,
-                    **_fit_metrics(obj, width, bands),
+                    **_fit_metrics(obj, width),
                 })
     measured = [line for line in report.get("lines", []) if line.get("font_px")]
     if measured:
         sizes = sorted(line["font_px_at_800"] for line in measured)
         report["readability"] = {
             "rendered": len(measured),
-            # font_px is a band-clamped rectangle-fit reproduction on a
+            # font_px is a rectangle-fit reproduction on a
             # blank image, not the size the renderer drew: measure drawn
             # sizes from the rendered pages, never from this block.
             "font_px_basis": "reproduced rectangle fit (no image, no bubble curve, no container, no letter box)",

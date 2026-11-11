@@ -350,6 +350,77 @@ def test_two_texts_side_by_side_split_into_their_own_boxes():
     assert pieces[0].x2 <= 420 and pieces[1].x1 >= 300, "each text keeps to its own side of the gutter"
 
 
+def _union_mask(bbox=(60, 60, 560, 340)):
+    """The union of two circles, one interval per band (p038 geometry, scaled)."""
+    import math
+
+    x1, y1, x2, y2 = bbox
+    h = y2 - y1
+    rows = []
+    for i in range(24):
+        y = y1 + (i + 0.5) * h / 24
+        spans = []
+        for (cx, cy) in ((200, 150), (420, 250)):
+            dy = y - cy
+            if abs(dy) < 140:
+                dx = math.sqrt(140 * 140 - dy * dy)
+                spans.append((int(cx - dx), int(cx + dx)))
+        spans.sort()
+        merged = []
+        for a, b in spans:
+            if merged and a <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b])
+        rows.append([[a - x1, b - x1] for a, b in merged])
+    return {"bbox": list(bbox), "cx": 310, "cy": 200, "rows": rows, "kind": "bubble"}
+
+
+def _box(x1, y1, x2, y2, core, lines):
+    from app.detector.boxes import BubbleBox
+
+    letters = np.zeros((y2 - y1, x2 - x1), bool)
+    for (r1, r2, c1, c2) in lines:
+        letters[r1:r2, c1:c2] = True
+    return BubbleBox(x1=x1, y1=y1, x2=x2, y2=y2, confidence=0.9,
+                     letters=letters, bubble_mask=_union_mask(), core=core)
+
+
+def test_two_boxes_sharing_one_union_mask_get_their_own_lobes():
+    from app.detector.kiuyha_detector import _split_shared_union_masks
+
+    left = _box(100, 100, 300, 220, (110, 110, 290, 210),
+                [(20, 34, 10, 150), (60, 74, 10, 150)])
+    right = _box(300, 180, 520, 300, (310, 190, 510, 290),
+                 [(20, 34, 70, 200), (60, 74, 70, 200),
+                  (20, 34, 2, 8)])  # stray bar past the waist, left of the core
+    _split_shared_union_masks([left, right])
+    assert left.bubble_mask["bbox"][2] <= 330
+    assert right.bubble_mask["bbox"][0] >= 290
+    assert left.bubble_mask["bbox"] != right.bubble_mask["bbox"]
+    # The right box's stray bar sat on the left side of the cut, so the
+    # trim rewrote its letters to its own lobe only.
+    assert not np.asarray(right.letters)[:, :10].any()
+    assert np.asarray(right.letters)[:, 70:200].any()
+    # The left box's letters were all on its own side: untouched.
+    assert np.asarray(left.letters).sum() == 2 * 14 * 140
+
+
+def test_trim_rewrites_letters_to_the_kept_lobe():
+    from app.detector.kiuyha_detector import _trim_bubble_mask
+
+    # The full letters span both lobes (growth pulled the neighbour's
+    # lines in), but the core -- inside the raw detector rect -- holds
+    # only the left lobe's text, so the trim cuts to the left lobe.
+    box = _box(100, 100, 520, 300, (110, 110, 350, 290),
+               [(20, 34, 10, 150), (60, 74, 10, 150),
+                (20, 34, 260, 400), (60, 74, 260, 400)])
+    _trim_bubble_mask(box)
+    assert box.bubble_mask["bbox"][2] <= 400
+    assert not np.asarray(box.letters)[:, 260:].any()
+    assert np.asarray(box.letters)[:, :150].any()
+
+
 def test_one_wide_text_with_word_gaps_stays_whole():
     from app.detector.kiuyha_detector import _split_sideways
 

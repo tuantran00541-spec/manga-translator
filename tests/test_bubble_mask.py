@@ -307,6 +307,29 @@ def test_letter_gap_waist_fires_and_a_single_oval_does_not():
     assert find_waist(oval, letters=letters, box=(170, 60, 450, 340)) is None
 
 
+def test_row_gap_waist_fires_on_diagonal_double():
+    # Two lobes offset diagonally, text stacked in rows: every column
+    # is inked (the lobes overlap in x), so only the row gap sees the
+    # waist. The upper lines sit left, the lower lines right.
+    mask = _mask_from_circles((200, 150), (420, 250), 140, (60, 60, 560, 340))
+    letters = np.zeros((280, 500), bool)
+    letters[80:94, 100 - 60:400 - 60] = True    # upper lobe lines
+    letters[120:134, 100 - 60:400 - 60] = True
+    letters[180:194, 200 - 60:520 - 60] = True  # lower lobe lines
+    letters[220:234, 200 - 60:520 - 60] = True
+    waist = find_waist(mask, letters=letters, box=(60, 60, 560, 340))
+    assert waist is not None and waist["orientation"] == "horizontal"
+    assert 205 <= waist["cut_y"] <= 230
+    pieces = split_bubble_mask(mask, waist)
+    assert pieces is not None and len(pieces) == 2
+    assert pieces[0]["bbox"][3] <= waist["cut_y"] <= pieces[1]["bbox"][1]
+
+    # The same letters, but one line bridges the row gap: the gap left
+    # between the lines is ordinary line spacing, so no waist.
+    letters[150:164, 150 - 60:450 - 60] = True
+    assert find_waist(mask, letters=letters, box=(60, 60, 560, 340)) is None
+
+
 # ---------------------------------------------------------------- real crops
 # Fixtures are the bubble regions cut from the source slices (the rerun-5
 # QA instances); the letter bars are the line positions the detector
