@@ -82,13 +82,15 @@ def main() -> int:
     for number, page in enumerate(pages):
         if not page.get("clean"):
             continue
-        core = page.get("stitch_core") or {}
         original = read_image(Path(page["original"]))
         clean = read_image(Path(page["clean"]))
-        y0 = int(core.get("core_y1", 0))
-        y1 = int(core.get("core_y2", original.shape[0]))
-        before = np.ascontiguousarray(original[y0:y1])
-        after = np.ascontiguousarray(clean[y0:y1])
+        # Full slice, not the stitch core: the core excludes the slice-joint
+        # overlap, and that is exactly where half-cleaned bubbles hide
+        # (ch.337 clean_003_04's upper lobe sits above core_y1). A miss at a
+        # joint may be reported twice, once per adjacent slice; for triage
+        # that is better than missing it.
+        before = original
+        after = clean
         text = text_mask(before.shape[:2], detector.text_boxes(before))
         rest = text_mask(after.shape[:2], detector.text_boxes(after))
         count, labels = cv2.connectedComponents(
@@ -113,9 +115,9 @@ def main() -> int:
                 min(before.shape[1], int(xs.max()) + 40),
                 min(before.shape[0], int(ys.max()) + 40),
             )
-            # Box coordinates are slice-relative; the manifest boxes are
-            # page-relative, so shift by the core offset before comparing.
-            page_box = (box[0], box[1] + y0, box[2], box[3] + y0)
+            # Box coordinates are already page-relative (full slice, no crop),
+            # so they compare directly against the manifest boxes.
+            page_box = box
             kind = "inpaint_skip" if box_overlaps_block(page_box, rects) else "detector_miss"
             record = {"slice": number, "box": [int(v) for v in page_box],
                       "px": int(block.sum()), "kind": kind}
