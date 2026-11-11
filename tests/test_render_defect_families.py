@@ -147,7 +147,11 @@ def _two_lobe_bubble():
     image = Image.new("RGB", (400, 600), "black")
     draw = ImageDraw.Draw(image)
     draw.ellipse([40, 40, 360, 240], fill="white", outline=(0, 0, 0), width=3)
-    draw.ellipse([60, 300, 340, 470], fill="white", outline=(0, 0, 0), width=3)
+    # The lower lobe is roomy enough that a full-length second block fits
+    # it at a readable size on every platform's font metrics, so the
+    # stacking test exercises the clipped-mask path rather than the
+    # readable-floor boundary (which shifts between Linux and Windows).
+    draw.ellipse([50, 300, 350, 560], fill="white", outline=(0, 0, 0), width=3)
     draw.rectangle([194, 235, 206, 305], fill="white")
     return image
 
@@ -189,10 +193,10 @@ def test_stacked_second_block_uses_the_clipped_mask():
     """
     image = _two_lobe_bubble()
     mask = derive_bubble_mask(np.asarray(image)[:, :, ::-1].copy(),
-                              (40, 40, 360, 470), seed=(200, 140))
+                              (40, 40, 360, 560), seed=(200, 140))
     assert mask is not None and mask["kind"] == "bubble"
     first = {"id": "a", "translation": "Vâng, vâng. Vậy họ nói gì?",
-             "region": {"x1": 40, "y1": 40, "x2": 360, "y2": 470},
+             "region": {"x1": 40, "y1": 40, "x2": 360, "y2": 560},
              "letter_bounds": {"x1": 90, "y1": 80, "x2": 310, "y2": 200},
              "bubble_mask": mask,
              "container": "bubble", "typography_role": "dialogue", "source_cap_px": 60,
@@ -200,8 +204,8 @@ def test_stacked_second_block_uses_the_clipped_mask():
     long_text = ("Họ cho ngươi ở lại Thiết Kiếm Các không? Ngươi có nghe rõ không? "
                  "Ta đã bảo ngươi đừng gọi ta là Các Chủ.")
     second = {"id": "b", "translation": long_text,
-              "region": {"x1": 40, "y1": 40, "x2": 360, "y2": 470},
-              "letter_bounds": {"x1": 90, "y1": 80, "x2": 310, "y2": 400},
+              "region": {"x1": 40, "y1": 40, "x2": 360, "y2": 560},
+              "letter_bounds": {"x1": 90, "y1": 80, "x2": 310, "y2": 480},
               "bubble_mask": mask,
               "container": "bubble", "typography_role": "dialogue", "source_cap_px": 60,
               "style": {"font": "dialogue.mac-dinh-3"}}
@@ -225,7 +229,7 @@ def test_stacked_second_block_uses_the_clipped_mask():
     second_ink = both_ink & ~first_ink
     ys, xs = np.nonzero(second_ink)
     assert len(xs) > 0, "second block lettered nothing"
-    assert 40 <= xs.min() and xs.max() <= 360 and 40 <= ys.min() and ys.max() <= 470
+    assert 40 <= xs.min() and xs.max() <= 360 and 40 <= ys.min() and ys.max() <= 560
     first_ys, _ = np.nonzero(first_ink)
     assert ys.min() > first_ys.max(), "stacked ink overlaps the first block"
 

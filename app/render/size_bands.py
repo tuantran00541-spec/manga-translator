@@ -1,22 +1,22 @@
-"""Chapter-level size bands: one chapter's body lettering should read as one size.
+"""Chapter-level size bands: a reference for how uniform a chapter's body lettering is.
 
 The fit sizes each bubble on its own, from the source lettering measured in
 that bubble (``source_cap_px``). The measurement is noisy at the tails — dots
 read as 7 px caps, art strokes as 170 px — so a chapter's dialogue spans
 nearly 4x (run 3: 28.4–104.9 px at 800 wide) while the source lettering
 itself is nearly uniform: the middle half of dialogue caps sits within ±8%
-of the median, and rendered size tracks the measured cap (r=0.92) while
-ignoring box area (r=-0.03). The band therefore clamps the *measured cap*,
-not the finished size, toward the role median: the fit machinery below it
-still decides the size, so text that needs to shrink to fit still shrinks,
-and nothing is ever forced below readability.
+of the median. ``chapter_size_bands`` reports the per-role (lo, hi) band
+around that median.
+
+The mask-based render no longer clamps caps into the band: the fit's own
+floor (a share of what the box holds) already keeps a misread cap from
+shrinking text below readability, so the band is computed as a chapter
+reference only and the render path ignores it.
 
 Only the body roles are banded. SFX, titles, shouts and free text set their
 size from the art — a sound effect is big because the art is big — so a
 chapter median would be the wrong reference for them, and they stay
-unbanded. A body cap far above the band hi is still display lettering, not
-noise, when the lettering is as wide as it is tall — an art stroke that tall
-would be narrow — so it keeps its own cap instead of shrinking to the body size.
+unbanded.
 """
 from __future__ import annotations
 
@@ -63,22 +63,3 @@ def chapter_size_bands(pages) -> dict[str, tuple[float, float]]:
         median = statistics.median(values)
         bands[role] = (BAND_LO_FACTOR * median, BAND_HI_FACTOR * median)
     return bands
-
-
-def banded_cap(role: str, cap: float, bands: dict[str, tuple[float, float]] | None,
-               letter_w: float | None = None) -> float:
-    """The cap the fit should use: clamped into the role band, or untouched.
-
-    A cap far above the band hi, spanning lettering as wide as it is tall,
-    is display lettering, not a misread: an art stroke that tall would be
-    narrow. It keeps its own cap, so a shout does not shrink to the body size.
-    """
-    if not bands or cap is None:
-        return cap
-    band = bands.get(str(role or "dialogue"))
-    if band is None:
-        return cap
-    lo, hi = band
-    if letter_w is not None and cap > 2 * hi and letter_w >= 2 * cap:
-        return float(cap)
-    return min(max(float(cap), lo), hi)

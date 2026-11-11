@@ -7,7 +7,6 @@ from app.render.page_renderer import render_text_objects
 from app.render.size_bands import (
     BAND_HI_FACTOR,
     BAND_LO_FACTOR,
-    banded_cap,
     chapter_size_bands,
 )
 from app.render.source_size import SIZE_SLACK, matching_font_px
@@ -30,9 +29,6 @@ def test_bands_come_from_the_role_median_not_the_loudest_bubble():
     bands = chapter_size_bands(pages)
     assert bands["dialogue"] == pytest.approx(
         (BAND_LO_FACTOR * 38, BAND_HI_FACTOR * 38))
-    assert banded_cap("dialogue", 90, bands) == pytest.approx(BAND_HI_FACTOR * 38)
-    assert banded_cap("dialogue", 8, bands) == pytest.approx(BAND_LO_FACTOR * 38)
-    assert banded_cap("dialogue", 38, bands) == 38
 
 
 def test_bands_cover_only_body_roles_and_need_enough_caps():
