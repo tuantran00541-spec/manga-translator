@@ -289,6 +289,7 @@
     .settings-drawer { width: 100vw; }
     #toast-container { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
   }
+} /* @layer studio ends: review rules below must stay unlayered or the canvas collapses */
 
   body[data-app-stage="review"] {
     --app-header-height: 0px;
