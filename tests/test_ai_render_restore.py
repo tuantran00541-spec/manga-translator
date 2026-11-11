@@ -162,7 +162,10 @@ def test_render_stage_reletters_a_slice_rendered_against_a_partial_chapter_band(
     asyncio.run(runner.render())
 
     assert 1 in rendered_pages, "the render stage skipped a slice whose render predates the finished band"
-    assert dots_ink() > small, "the dots cap must be lifted toward the chapter median on the re-render"
+    # The band no longer sizes anything, so the re-render letters the dots
+    # exactly as before — the staleness detection above is what this test
+    # still pins, not a size lift.
+    assert dots_ink() == small, "the dots must render identically without the band"
 
 
 def test_render_stage_restores_an_unletterable_object_and_the_slice_exports(tmp_path: Path, monkeypatch):

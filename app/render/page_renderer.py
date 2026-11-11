@@ -5,8 +5,8 @@ from PIL import Image
 from fastapi import HTTPException
 
 from app.logging_config import logger
-from app.render.size_bands import banded_cap
-from app.render.text_renderer import _bubble_bands, render_text_in_box
+from app.detector.bubble_mask import shift_bubble_mask
+from app.render.text_renderer import render_text_in_box
 from app.schemas import RenderRequest
 from app.translation.vision import PLACEHOLDER_TRANSLATIONS, collapse_repeated_lines
 
@@ -243,7 +243,11 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
     pixels = np.asarray(image)
     pad = ((top, bottom), (0, 0)) + (((0, 0),) if pixels.ndim == 3 else ())
     canvas = Image.fromarray(np.pad(pixels, pad, mode="edge"), mode=image.mode)
-    canvas = render_text_in_box(canvas, text, (x1, box[1] + top, x2, box[3] + top), **style)
+    # The padded canvas sits `top` lower, so the mask's rows move with it.
+    padded_style = style
+    if top and isinstance(style.get("bubble_mask"), dict):
+        padded_style = {**style, "bubble_mask": shift_bubble_mask(style["bubble_mask"], dy=top)}
+    canvas = render_text_in_box(canvas, text, (x1, box[1] + top, x2, box[3] + top), **padded_style)
     # The canvas is padded, so the ink box the fit recorded sits `top`
     # lower than the slice it is cropped back onto — and ink past the
     # slice edge is cropped away, not visible, so it leaves the box.
@@ -582,45 +586,32 @@ def render_text_objects(
             source_cap_px=obj.get("source_cap_px"),
             container=obj.get("container"),
             enlarge=bool(obj.get("enlarge")),
+            bubble_mask=obj.get("bubble_mask"),
         )
         bounds = obj.get("letter_bounds")
         if _valid_region(bounds):
             style["source_letter_box"] = tuple(int(bounds[k]) for k in ("x1", "y1", "x2", "y2"))
-        # Chapter size band: clamp the measured source cap toward the
-        # role median, so one chapter's body lettering reads as one size.
-        # The ceiling also binds the 0.6-of-box-fit growth for a short
-        # block in a roomy bubble, even when the cap itself is in band.
-        # Enlarge and fixed-size objects keep their own sizing, and a
-        # band can only shrink the cap the fit sees, never refuse: the
-        # share and floor gates below are judged on the banded cap.
-        band_info = None
-        cap = obj.get("source_cap_px")
         fixed_size = ((isinstance(box_size, (int, float)) and box_size > 0)
                       or (isinstance(box_size, str) and box_size.isdigit()
                           and int(box_size) > 0))
-        if (size_bands and not style["enlarge"] and not fixed_size
-                and isinstance(cap, (int, float)) and cap > 0):
-            role = str(obj.get("typography_role") or obj.get("role") or "dialogue")
-            band = size_bands.get(role)
-            if band is not None:
-                letter_w = (bounds["x2"] - bounds["x1"]) if _valid_region(bounds) else None
-                eff_cap = banded_cap(role, cap, size_bands, letter_w)
-                style["source_cap_px"] = eff_cap
-                # An exempt display cap lifts its own ceiling too; a clamped
-                # cap keeps the band hi.
-                style["size_band_hi_cap"] = int(round(max(band[1], eff_cap)))
-                band_info = {"role": role, "cap": cap, "effective_cap": eff_cap}
         # The lettering goes where the source lettering was, then roomier
         # boxes; the attempt that letters fewest lines wins, ties largest.
+        # A bubble with a mask needs no ladder: the mask is the interior
+        # and the fit lays out on it, so every attempt would fit the same.
         attempts = fit_attempts(obj, coords)
-        if str(obj.get("container") or "").lower() in ("bubble", "spiky") and len(attempts) > 1:
-            waist: dict = {}
-            lb = obj.get("letter_bounds")
-            letter_box = tuple(int(lb[k]) for k in ("x1", "y1", "x2", "y2")) if isinstance(lb, dict) else None
-            _bubble_bands(image, coords, verdict=waist, letter_box=letter_box)
-            if waist.get("bands_split_waist"):
-                # Roomier attempts on a two-lobe region span the waist and letter across both outlines.
-                attempts = attempts[:1]
+        if isinstance(obj.get("bubble_mask"), dict) and obj["bubble_mask"].get("kind") == "bubble":
+            attempts = [coords]
+        # Without a persisted mask the fit derives one per attempt — and
+        # the derivation follows the box: a tight box finds the bubble,
+        # a roomy one floods the panel past it. Derive once on the
+        # tightest attempt and share it, so every attempt lays out on
+        # the same bubble instead of each on its own flood.
+        if (style.get("bubble_mask") is None
+                and str(obj.get("container") or "").lower() in ("bubble", "spiky")):
+            from app.render.text_renderer import _derived_mask
+            shared = _derived_mask(image, attempts[0], style.get("source_letter_box"))
+            if isinstance(shared, dict) and shared.get("kind") == "bubble":
+                style["bubble_mask"] = shared
         # Frameless text only: a stored break sized for a narrow box can
         # strand a wide line as two small ones. The joined line is tried
         # on the roomiest attempt at source share; it wins only when it
@@ -636,7 +627,6 @@ def render_text_objects(
             probe_stats: dict = {}
             try:
                 _render_in_region(image.copy(), joined, attempts[-1],
-                                  min_source_share=SOURCE_SIZE_SHARE,
                                   stats=probe_stats, **style)
             except ValueError:
                 probe_stats = {}
@@ -646,35 +636,16 @@ def render_text_objects(
             rendered = []
             last_error = None
             floor_only = True
-            ratio_only = True
             for attempt, box in enumerate(attempts):
-                share = SOURCE_SIZE_SHARE if attempt < len(attempts) - 1 else 0.0
                 attempt_stats: dict = {"attempt_box": box}
                 try:
                     candidate = _render_in_region(image.copy(), render_text, box,
-                                                  min_source_share=share, stats=attempt_stats, **style)
+                                                  stats=attempt_stats, **style)
                 except ValueError as exc:
-                    if "well below" in str(exc) and share:
-                        # A small fitting attempt beats no attempt at all;
-                        # it only wins when nothing at source share fits.
-                        attempt_stats["below_share"] = True
-                        try:
-                            candidate = _render_in_region(image.copy(), render_text, box,
-                                                          min_source_share=0.0, stats=attempt_stats, **style)
-                        except ValueError as exc2:
-                            if "minimum readable" not in str(exc2):
-                                floor_only = False
-                            if "source floor share" not in str(exc2):
-                                ratio_only = False
-                            last_error = exc2
-                            continue
-                    else:
-                        if "minimum readable" not in str(exc):
-                            floor_only = False
-                        if "source floor share" not in str(exc):
-                            ratio_only = False
-                        last_error = exc
-                        continue
+                    if "minimum readable" not in str(exc):
+                        floor_only = False
+                    last_error = exc
+                    continue
                 # Ink mostly outside the source lettering's spot is a
                 # misplacement, not a size win: a roomier attempt that
                 # letters onto paper or art must not outrank the tight
@@ -709,14 +680,6 @@ def render_text_objects(
                         verdicts.append({"id": oid, "guard": "below_readable_floor",
                                          "review": True})
                     continue
-                if ratio_only and last_error is not None:
-                    logger.warning(
-                        "Chapter {} page {} object {} below source floor share, left for review",
-                        req.chapter_id, req.page_index, oid)
-                    if verdicts is not None:
-                        verdicts.append({"id": oid, "guard": "below_source_floor",
-                                         "review": True})
-                    continue
                 if last_error is not None:
                     raise last_error
             else:
@@ -734,8 +697,6 @@ def render_text_objects(
                 painted = False
                 best = None
                 verdict: dict = {"id": oid}
-                if band_info is not None:
-                    verdict["size_band"] = band_info
                 if render_text != translation.strip():
                     verdict["joined_free"] = True
                 for item in _rank_renders(rendered):
@@ -863,14 +824,18 @@ def render_text_objects(
                                         continue
                                     sstats: dict = {"attempt_box": sbox}
                                     scandidate = None
-                                    for share in (SOURCE_SIZE_SHARE, 0.0):
-                                        try:
-                                            scandidate = _render_in_region(
-                                                image.copy(), render_text, sbox,
-                                                min_source_share=share, stats=sstats, **style)
-                                            break
-                                        except ValueError:
-                                            scandidate = None
+                                    # The sub-box is a slice of the frame, not
+                                    # the whole bubble: the full mask would
+                                    # refit the bubble and collide again, so
+                                    # this attempt fits the sub-box alone
+                                    # (deriving its own mask when it can).
+                                    stacked_style = {**style, "bubble_mask": None}
+                                    try:
+                                        scandidate = _render_in_region(
+                                            image.copy(), render_text, sbox,
+                                            stats=sstats, **stacked_style)
+                                    except ValueError:
+                                        scandidate = None
                                     if scandidate is None:
                                         continue
                                     smask = _ink_mask(image, scandidate)

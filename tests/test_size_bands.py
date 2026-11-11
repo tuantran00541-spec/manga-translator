@@ -57,28 +57,27 @@ def test_bands_skip_unrendered_and_capless_objects():
         (BAND_LO_FACTOR * 38, BAND_HI_FACTOR * 38))
 
 
-def test_a_ceiling_caps_growth_but_never_shrinks_a_fitting_text():
-    # Short text in a roomy box, source-matched far above the band: the
-    # fit grows to the ceiling, not to 60% of what the box could hold.
+def test_a_ceiling_param_no_longer_sizes_anything():
+    # The chapter band is dead in the render path: the size is the
+    # source-matched size, and the old ceiling parameter changes nothing.
     draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     font = str(DEFAULT_FONT)
     ceiling = int(matching_font_px(font, 57) * SIZE_SLACK)
     size, _lines, fits, _box = auto_fit(draw, "Khoan.", (0, 0, 800, 600), (900, 1000),
                                        font, source_cap_px=90, size_ceiling_px=ceiling)
-    assert fits and size == ceiling, f"grew to the ceiling, got {size}"
+    assert fits and size == matching_font_px(font, 90), f"size is source-matched, got {size}"
     size_free, _lines, _fits, _box = auto_fit(draw, "Khoan.", (0, 0, 800, 600),
                                              (900, 1000), font, source_cap_px=90)
-    assert size_free > ceiling, "without the band the same block grows past it"
+    assert size_free == size, "the ceiling parameter must not move the size"
 
 
-def test_a_ceiling_below_sixty_percent_of_the_box_fit_is_not_a_refusal():
-    # The old floor gate refused a fit below 0.6 x box-fit; a band ceiling
-    # holding a short block there is the band working, not a failure.
+def test_a_band_hi_cap_no_longer_sizes_anything():
+    # Same, through render_text_in_box: the band hi cap is accepted and ignored.
     page = Image.new("RGB", (900, 1000), "white")
     stats: dict = {}
     render_text_in_box(page.copy(), "Khoan.", (50, 50, 850, 650),
                        source_cap_px=90, size_band_hi_cap=57, stats=stats)
-    assert stats["size"] == int(matching_font_px(str(DEFAULT_FONT), 57) * SIZE_SLACK)
+    assert stats["size"] == matching_font_px(str(DEFAULT_FONT), 90)
 
 
 def test_a_cap_inside_its_band_renders_exactly_as_before():
@@ -104,7 +103,10 @@ def _render_one(obj, bands):
     return verdicts[0]
 
 
-def test_the_chapter_band_moves_only_the_outliers():
+def test_the_chapter_band_moves_nothing_any_more():
+    # The band module still computes bands, but the render path ignores
+    # them: every cap renders exactly as without bands, and no verdict
+    # carries a band any more.
     pages = [_page(*[_obj(38, oid=f"d{i}") for i in range(8)]),
              _page(_obj(90, oid="big"), _obj(8, oid="dots"))]
     bands = chapter_size_bands(pages)
@@ -113,15 +115,15 @@ def test_the_chapter_band_moves_only_the_outliers():
             "style": {"font": "dialogue.mac-dinh-3"}}
     big = _render_one({**base, "id": "big", "source_cap_px": 90}, bands)
     big_plain = _render_one({**base, "id": "big", "source_cap_px": 90}, None)
-    assert big["size"] < big_plain["size"], "the 90 px cap is pulled toward the chapter"
-    assert big["size_band"] == {"role": "dialogue", "cap": 90, "effective_cap": 57.0}
+    assert big["size"] == big_plain["size"], "the 90 px cap is no longer pulled toward the chapter"
+    assert "size_band" not in big
     dots = _render_one({**base, "id": "dots", "translation": ".......",
                         "region": {"x1": 100, "y1": 100, "x2": 282, "y2": 205},
                         "source_cap_px": 8}, bands)
     dots_plain = _render_one({**base, "id": "dots", "translation": ".......",
                               "region": {"x1": 100, "y1": 100, "x2": 282, "y2": 205},
                               "source_cap_px": 8}, None)
-    assert dots["size"] > dots_plain["size"], "the 8 px dots cap is lifted toward the chapter"
+    assert dots["size"] == dots_plain["size"], "the 8 px dots cap is no longer lifted toward the chapter"
     assert dots["size"] >= 24, "still readable, still inside its bubble"
     mid = _render_one({**base, "id": "mid", "source_cap_px": 38}, bands)
     mid_plain = _render_one({**base, "id": "mid", "source_cap_px": 38}, None)

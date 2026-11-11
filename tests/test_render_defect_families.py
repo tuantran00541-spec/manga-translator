@@ -5,8 +5,9 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from app.config import DEFAULT_FONT
+from app.detector.bubble_mask import derive_bubble_mask, find_waist
 from app.render.page_renderer import _ink_mask, _mask_bbox, render_text_objects
-from app.render.text_renderer import _bubble_bands, auto_fit
+from app.render.text_renderer import _trim_mask_to_letters, auto_fit
 from app.schemas import RenderRequest
 from app.translation.vision import parse_vision_translation
 
@@ -44,31 +45,34 @@ def test_fixed_size_too_tall_for_its_box_falls_back_to_the_fit():
     assert stats.get("fixed_size_height_fallback") is False
 
 
-def test_unlabelled_bubble_rendered_as_rectangle_is_flagged():
-    """Render N5, flag only: the container label gates all bubble geometry,
-    so a bubble with no label renders as a rectangle with no trace in the
-    verdict. The outline is probed for the flag only — the fit stays a
-    rectangle fit — and the flag rides the fallbacks list the verdict
-    already copies. A straight-sided box and a bare white page measure
-    constant band widths and are not flagged."""
+def test_unlabelled_bubble_with_a_mask_letters_on_the_mask():
+    """Render N5: the container label used to gate all bubble geometry,
+    so a bubble with no label rendered as a rectangle. The mask is the
+    bubble now, not the label: a persisted mask drives the fit even
+    with container=None, and without a mask there is nothing to drive
+    it — a bare page and a straight-sided box both stay rectangles."""
     from app.render.text_renderer import render_text_in_box
 
     image = _ellipse_bubble("white")
-    draw = ImageDraw.Draw(image)
+    mask = derive_bubble_mask(np.asarray(image)[:, :, ::-1].copy(),
+                              (60, 60, 640, 340), seed=(300, 200))
+    assert mask is not None and mask["kind"] == "bubble"
     stats: dict = {}
-    auto_fit(draw, "Ta đã bảo ngươi đừng gọi ta là Các Chủ.", (60, 60, 640, 340),
-             image.size, str(DEFAULT_FONT), source_cap_px=40, image=image,
-             container=None, centered=True,
-             source_letter_box=(200, 150, 400, 250), stats_out=stats)
-    assert "rectangle_rendered_closed_bubble" in stats["fallbacks"], \
-        f"unlabelled bubble must be flagged, got {stats['fallbacks']}"
+    render_text_in_box(image.copy(), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",
+                       (60, 60, 640, 340), font_name="dialogue.mac-dinh-3",
+                       source_letter_box=(200, 150, 400, 250),
+                       bubble_mask=mask, stats=stats)
+    assert stats["frame_source"] == "mask", f"mask must drive the fit, got {stats}"
+    assert stats["mask_source"] == "object"
+    assert stats["lobe"] == "mask"
 
     stats = {}
     render_text_in_box(image.copy(), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",
                        (60, 60, 640, 340), font_name="dialogue.mac-dinh-3",
                        source_letter_box=(200, 150, 400, 250), stats=stats)
-    assert "rectangle_rendered_closed_bubble" in stats["fallbacks"], \
-        "the flag must reach the render stats the verdict copies"
+    assert stats["frame_source"] == "region_no_frame", \
+        "an unlabelled bubble with no mask has nothing to lay out on"
+    assert stats["mask_source"] == "none"
 
     plain = Image.new("RGB", (700, 400), "white")
     stats = {}
@@ -76,8 +80,8 @@ def test_unlabelled_bubble_rendered_as_rectangle_is_flagged():
              (60, 60, 640, 340), plain.size, str(DEFAULT_FONT), source_cap_px=40,
              image=plain, container=None, centered=True,
              source_letter_box=(200, 150, 400, 250), stats_out=stats)
-    assert "rectangle_rendered_closed_bubble" not in stats["fallbacks"], \
-        "no outline means no closed bubble to flag"
+    assert stats["frame_source"] == "region_no_frame", \
+        "no outline means no mask to drive the fit"
 
     boxed = Image.new("RGB", (700, 400), "white")
     ImageDraw.Draw(boxed).rectangle([50, 50, 650, 350], fill="white",
@@ -87,17 +91,16 @@ def test_unlabelled_bubble_rendered_as_rectangle_is_flagged():
              (60, 60, 640, 340), boxed.size, str(DEFAULT_FONT), source_cap_px=40,
              image=boxed, container=None, centered=True,
              source_letter_box=(200, 150, 400, 250), stats_out=stats)
-    assert "rectangle_rendered_closed_bubble" not in stats["fallbacks"], \
+    assert stats["frame_source"] == "region_no_frame", \
         "a straight-sided box must not read as a bubble"
 
 
 def test_a_fixed_size_that_crosses_a_spiky_outline_falls_back_to_the_fit():
     """Rerun-4 ch79 p021: the top spiky bubble rendered at the OCR-measured
     fixed 52px, whose lines touch the outline at 0px, while the fit caps
-    at 45px with real gaps. A fixed size never saw the band machinery, so
-    its lines are validated against the measured (spiky-narrowed) bands
-    and fall back to the fit when they do not fit; a fixed size that
-    fits is left exactly alone."""
+    at 45px with real gaps. A fixed size never saw the fit, so its lines
+    are validated against the mask's rows and fall back to the fit when
+    they do not fit; a fixed size that fits is left exactly alone."""
     import math
 
     from app.render.text_renderer import render_text_in_box
@@ -123,16 +126,21 @@ def test_a_fixed_size_that_crosses_a_spiky_outline_falls_back_to_the_fit():
     assert stats["size"] == 24, f"a fitting fixed size must stay put, got {stats['size']}"
 
 
-def test_fragmented_bands_do_not_collapse_to_the_readable_floor(monkeypatch):
-    import app.render.text_renderer as tr
-    monkeypatch.setattr(tr, "_bubble_bands", lambda *a, **k: [[(10, 11)] for _ in range(24)])
+def test_fragmented_mask_falls_back_to_a_rectangle_fit():
+    # A mask whose rows are slivers is shading, not an interior: the
+    # fit falls back to a rectangle on the mask's bbox instead of
+    # collapsing onto the slivers.
     image = _ellipse_bubble("white")
     draw = ImageDraw.Draw(image)
-    size, _lines, _fits, _box = auto_fit(
+    fragmented = {"bbox": [60, 60, 640, 340], "cx": 350, "cy": 200,
+                  "rows": [[(10, 11)] for _ in range(24)], "kind": "bubble"}
+    stats: dict = {}
+    size, _lines, fits, _box = auto_fit(
         draw, "Ta đã bảo ngươi đừng gọi ta là Các Chủ.", (60, 60, 640, 340),
         image.size, str(DEFAULT_FONT), source_cap_px=40, curved=True, image=image,
-        container="bubble", centered=True)
-    assert size >= 24, f"fragmented bands collapsed the fit to {size}px"
+        container="bubble", centered=True, bubble_mask=fragmented, stats_out=stats)
+    assert fits and size >= 24, f"fragmented mask collapsed the fit to {size}px"
+    assert "mask_degenerate_rectangle" in stats["fallbacks"]
 
 
 def _two_lobe_bubble():
@@ -146,11 +154,15 @@ def _two_lobe_bubble():
 
 def test_two_lobe_bubble_letters_only_the_source_lobe():
     image = _two_lobe_bubble()
-    verdict: dict = {}
-    bands = _bubble_bands(image, (40, 40, 360, 470), verdict=verdict,
-                          letter_box=(90, 80, 310, 200))
-    assert bands is None and verdict.get("bands_split_waist"), \
-        "the column union bridged the waist instead of reporting the split"
+    # The union mask holds both lobes; the waist between them is real
+    # and the lettering sits in the top one, so the trim keeps the top.
+    mask = derive_bubble_mask(np.asarray(image)[:, :, ::-1].copy(),
+                              (40, 40, 360, 470), seed=(200, 140))
+    assert mask is not None and mask["kind"] == "bubble"
+    waist = find_waist(mask)
+    assert waist is not None and waist["orientation"] == "horizontal"
+    trimmed = _trim_mask_to_letters(mask, (40, 40, 360, 470), (90, 80, 310, 200))
+    assert trimmed["bbox"][3] <= waist["cut_y"] < mask["bbox"][3]
     base = image.copy()
     obj = {"id": "t", "translation": "Vâng, vâng. Vậy họ nói gì? Họ cho ngươi ở lại Thiết Kiếm Các không?",
            "region": {"x1": 40, "y1": 40, "x2": 360, "y2": 470},
