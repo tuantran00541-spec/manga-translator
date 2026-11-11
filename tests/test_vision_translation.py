@@ -463,6 +463,94 @@ def test_a_hangul_sfx_misread_as_latin_consonants_is_treated_as_untranslated():
     assert not _hangul_misread("푸르륵", "Chuyện đó có vấn đề gì không?")
 
 
+def test_mixed_vietnamese_and_english_splits_instead_of_passing():
+    """A diacritic in one line used to shield the whole value, so a
+    mixed return ("Anh ơi SENIOR BROTHER") passed the gate and rendered
+    in English. The check now runs per line: the English line goes, the
+    Vietnamese line stays, and the value blanks only if nothing stays."""
+    from app.translation.vision import _drop_foreign_script, _untranslated_english
+
+    assert _untranslated_english("Anh ơi SENIOR BROTHER")
+    assert _untranslated_english("Đúng vậy\nSENIOR BROTHER!")
+    # A lone function word that is also a Vietnamese word never counts.
+    assert not _untranslated_english("Tôi to lắm")
+    assert not _untranslated_english("Quả me to")
+
+    def filtered(value):
+        result = VisionTranslationResult({"a": value}, "m", {}, None)
+        data = {"translations": [{"id": "a", "translated_text": value}]}
+        kept, kept_data = _drop_foreign_script(result, data)
+        entry = kept_data["translations"][0] if kept_data["translations"] else None
+        return kept.translations["a"], entry["translated_text"] if entry else None
+
+    assert filtered("Anh ơi SENIOR BROTHER") == ("Anh ơi", "Anh ơi")
+    assert filtered("Đúng vậy\nSENIOR BROTHER!") == ("Đúng vậy", "Đúng vậy")
+    # Pure English still blanks outright, including a second line with
+    # no listed word in it.
+    assert filtered("SENIOR BROTHER!") == ("", None)
+    assert filtered("IS THE / A PROBI / WITH TH") == ("", None)
+    assert filtered("OF COURSE NOT / … ENDB / SUSPENSION.") == ("", None)
+    assert filtered("WITH ITS LIFELIKE AI,\nVAST OPEN WORLD,") == ("", None)
+    # Valid Vietnamese, kept grunts/titles and the diacritic scream
+    # (a different item) all still pass through untouched.
+    assert filtered("Tôi to lắm") == ("Tôi to lắm", "Tôi to lắm")
+    assert filtered("NGỦ") == ("NGỦ", "NGỦ")
+    assert filtered("MM!") == ("MM!", "MM!")
+    assert filtered("ENDB") == ("ENDB", "ENDB")
+    assert filtered("GAME OVER") == ("GAME OVER", "GAME OVER")
+    assert filtered("ÁÁÁÁA!!!") == ("ÁÁÁÁA!!!", "ÁÁÁÁA!!!")
+    assert filtered("Đúng vậy\nGAME OVER") == ("Đúng vậy\nGAME OVER", "Đúng vậy\nGAME OVER")
+
+
+def test_other_gates_also_judge_per_line_not_per_value():
+    """The same whole-value shield hid a noise/scream/misread line
+    behind a Vietnamese one; each gate now trips on its own line."""
+    from app.translation.vision import _bare_scream, _drop_foreign_script, _hangul_misread, _latin_noise
+
+    assert _latin_noise("Chào\n1/10")
+    assert _bare_scream("Chào\nAAAAA!!!")
+    assert _hangul_misread("푸르륵", "BÙM\nFFR")
+    assert not _latin_noise("Chào\nPHÙ...")
+    assert not _bare_scream("Chào\nHAHA!")
+    assert not _hangul_misread("푸르륵", "BÙM\nRẦM")
+
+    def filtered(value, source=""):
+        result = VisionTranslationResult({"a": value}, "m", {}, None)
+        data = {"translations": [{"id": "a", "source": source, "translated_text": value}]}
+        kept, _data = _drop_foreign_script(result, data)
+        return kept.translations["a"]
+
+    assert filtered("Chào\n1/10") == "Chào"
+    assert filtered("Chào\nAAAAA!!!") == "Chào"
+    assert filtered("BÙM\nFFR", "푸르륵") == "BÙM"
+    # The misread still needs its Hangul source; without one it stays.
+    assert filtered("FFR", "푸르륵") == ""
+    assert filtered("FFR") == "FFR"
+
+
+def test_translate_page_keeps_the_vietnamese_line_of_a_mixed_return(tmp_path, monkeypatch):
+    original = tmp_path / "original.png"
+    clean = tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "gray").save(clean)
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({
+                "translations": [{"id": "1", "translated_text": "Đúng vậy\nSENIOR BROTHER!"},
+                                 {"id": "2", "translated_text": "Anh ơi SENIOR BROTHER"}],
+            })}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
+    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, [item("a"), item("b")], api_key="k", source_lang="en", target_lang="vi")
+    assert result.translations == {"a": "Đúng vậy", "b": "Anh ơi"}
+    assert result.missing_ids == set()
+
+
 def test_recent_lines_keep_the_source_so_a_sentence_can_run_into_the_next_slice():
     from app.translation.context import ChapterMemory
 
