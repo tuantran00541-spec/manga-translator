@@ -166,6 +166,13 @@ class PageProcessingMixin:
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,
             ))
+        # A box whose letters span both lobes of its bubble mask is two
+        # texts, not one: split it before the records are built, so the
+        # pieces carry their own lobe masks (the fold above cannot
+        # split, only join, and a double bubble the fold refused -- its
+        # lobes' letter columns are disjoint -- still needs dividing).
+        from app.detector.kiuyha_detector import split_waist_boxes
+        detected = split_waist_boxes(detected)
         detect_ms = (time.perf_counter() - detect_started_at) * 1000.0
         screen_started_at = time.perf_counter()
         art = screen(image, detected) if screen is not None and detected else set()
@@ -177,6 +184,7 @@ class PageProcessingMixin:
                 "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
                 "confidence": b.confidence, "_mask_array": b.mask,
                 "_letters_array": _letters_u8(getattr(b, "letters", None)),
+                "bubble_mask": copy.deepcopy(getattr(b, "bubble_mask", None)),
                 "source_model": b.source_model, "class_id": b.class_id,
                 "class_name": b.class_name, "semantic_type": b.semantic_type,
                 "mask_source": b.mask_source, "safe_to_inpaint": bool(b.safe_to_inpaint),
@@ -208,6 +216,7 @@ class PageProcessingMixin:
                     # An overridden box moved: both masks belong to the old box.
                     record["_mask_array"] = None
                     record["_letters_array"] = None
+                    record["bubble_mask"] = None
                     record["safe_to_inpaint"] = False
                     record["ocr_eligible"] = True
                     record["needs_review"] = True

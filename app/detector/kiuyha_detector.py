@@ -10,6 +10,14 @@ import cv2
 import numpy as np
 
 from app.detector.boxes import BubbleBox
+from app.detector.bubble_mask import (
+    GAP_MIN_CONTAINMENT,
+    GAP_MIN_SIDE_SHARE,
+    _letters_inside_mask,
+    derive_bubble_mask,
+    find_waist,
+    split_bubble_mask,
+)
 from app.detector.ctd_mask import letter_mask, still_reads
 from app.knobs import knob
 from app.ort_utils import make_session
@@ -45,6 +53,206 @@ RESCUE_WORD_PAD = 8  # a rescued box is drawn round the ink it found, so it pads
 UNION_SHARE = knob("detect.union_share")
 SAME_LINE = knob("detect.same_line")
 SAME_LINE_X = knob("detect.same_line_x")
+
+
+def _waist_letter_shares(box: BubbleBox, waist: dict, letters=None) -> tuple[float, float]:
+    """Share of the letter pixels on each side of the waist cut."""
+    if letters is None:
+        letters = getattr(box, "letters", None)
+    if letters is None:
+        return (0.0, 0.0)
+    letters = np.asarray(letters)
+    if letters.size == 0 or not letters.any():
+        return (0.0, 0.0)
+    ys, xs = np.nonzero(letters)
+    if waist["orientation"] == "horizontal":
+        first = ys + box.y1 < int(waist["cut_y"])
+    else:
+        first = xs + box.x1 < int(waist["cut_x"])
+    total = len(xs)
+    return (float(first.sum()) / total, float((~first).sum()) / total)
+
+
+def _core_letters(box: BubbleBox):
+    """The box's letters inside its raw-detector core, same shape, rest zeroed.
+
+    The letter pass grows a box past its core and pulls a neighbour's
+    letters in with it (the p038 right box carries the left lobe's
+    text). The core is the box's own detection, so the letters inside
+    it are the box's own text -- the ones the waist trim and split
+    decide on. _merge_mask_evidence clips the same way.
+    """
+    letters = getattr(box, "letters", None)
+    if letters is None:
+        return None
+    letters = np.asarray(letters)
+    core = getattr(box, "core", None)
+    if core is None:
+        return letters
+    r0 = max(0, core[1] - box.y1)
+    r1 = min(letters.shape[0], core[3] - box.y1)
+    c0 = max(0, core[0] - box.x1)
+    c1 = min(letters.shape[1], core[2] - box.x1)
+    if r1 <= r0 or c1 <= c0:
+        return letters
+    clipped = np.zeros_like(letters)
+    clipped[r0:r1, c0:c1] = letters[r0:r1, c0:c1]
+    return clipped
+
+
+def _trim_bubble_mask(box: BubbleBox) -> None:
+    """Narrow a box's mask to the lobe holding (almost) all its letters.
+
+    A box's flood fills the whole double bubble it sits in, so a
+    single-lobe box carries the union mask. When the waist puts a
+    small share of the letters on one side, that side is a sliver of
+    another lobe (or stray art letters) and the mask is cut to the
+    side holding the text. When the letters genuinely span both
+    lobes, the mask stays the union: the post-fold waist split in
+    _process_page divides the box itself.
+    """
+    mask = getattr(box, "bubble_mask", None)
+    letters = getattr(box, "letters", None)
+    if (not isinstance(mask, dict) or mask.get("kind") != "bubble"
+            or letters is None or not np.asarray(letters).any()):
+        return
+    waist = find_waist(mask, letters=letters, box=(box.x1, box.y1, box.x2, box.y2))
+    if waist is None:
+        return
+    own = _core_letters(box)
+    first_share, second_share = _waist_letter_shares(box, waist, own)
+    if min(first_share, second_share) >= GAP_MIN_SIDE_SHARE:
+        return
+    pieces = split_bubble_mask(mask, waist)
+    if pieces is None:
+        return
+    keep = pieces[0] if first_share >= second_share else pieces[1]
+    if own is None:
+        return
+    ys, xs = np.nonzero(np.asarray(own))
+    if _letters_inside_mask(keep, xs + box.x1, ys + box.y1) < GAP_MIN_CONTAINMENT:
+        return
+    box.bubble_mask = keep
+
+
+def _attach_bubble_masks(image: np.ndarray, boxes: list[BubbleBox]) -> None:
+    """One bubble mask per final box, from the source slice, then trimmed to its lobe."""
+    for box in boxes:
+        box.bubble_mask = derive_bubble_mask(
+            image, (box.x1, box.y1, box.x2, box.y2),
+            letters=getattr(box, "letters", None))
+        _trim_bubble_mask(box)
+
+
+def _split_waist_box(box: BubbleBox) -> list[BubbleBox]:
+    """A box whose letters span both lobes of its mask, split in two.
+
+    The mask waist decides the cut; each piece takes the letters on
+    its side, its half of the mask, and a rect round its own letters
+    (the _split_sideways shape, clipped to its side of the cut).
+    A box with no waist, no letters, or letters on one side only
+    comes back whole.
+    """
+    from dataclasses import replace
+
+    mask = getattr(box, "bubble_mask", None)
+    letters = getattr(box, "letters", None)
+    if (not isinstance(mask, dict) or mask.get("kind") != "bubble"
+            or letters is None or not np.asarray(letters).any()):
+        return [box]
+    letters = np.asarray(letters)
+    waist = find_waist(mask, letters=letters, box=(box.x1, box.y1, box.x2, box.y2))
+    if waist is None:
+        return [box]
+    own = _core_letters(box)
+    if own is None:
+        return [box]
+    own = np.asarray(own)
+    first_share, second_share = _waist_letter_shares(box, waist, own)
+    if min(first_share, second_share) < GAP_MIN_SIDE_SHARE:
+        return [box]
+    # The pieces take the box's own letters (inside the core), not the
+    # neighbour's letters the growth pulled in past it.
+    letters = own
+    pieces = split_bubble_mask(mask, waist)
+    if pieces is None:
+        return [box]
+    # One line height of room round each piece's rect. Line runs
+    # merge when lines touch (a lobe's lines read as one tall run),
+    # so the height comes from the runs when they separate and falls
+    # back to a line's share of the lettering otherwise.
+    runs = _line_runs(letters.any(axis=1))
+    run_heights = [e - s for s, e in runs]
+    if len(run_heights) >= 2:
+        height = float(np.median(run_heights))
+    elif run_heights:
+        height = float(run_heights[0]) / 3.0
+    else:
+        height = 20.0
+    height = max(8.0, min(height, 60.0))
+    reach = int(height)
+    height_px, width_px = letters.shape
+    horizontal = waist["orientation"] == "horizontal"
+    cut_local = (int(waist["cut_y"]) if horizontal else int(waist["cut_x"])) \
+        - (box.y1 if horizontal else box.x1)
+    if cut_local <= 0 or cut_local >= (height_px if horizontal else width_px):
+        return [box]
+    parts = []
+    for first, piece_mask in ((True, pieces[0]), (False, pieces[1])):
+        # The side's letters, in box-local coords: rows split for a
+        # horizontal waist, columns for a vertical one.
+        if horizontal:
+            part_letters = letters[:cut_local] if first else letters[cut_local:]
+            row_offset = 0 if first else cut_local
+            col_offset = 0
+        else:
+            part_letters = letters[:, :cut_local] if first else letters[:, cut_local:]
+            row_offset = 0
+            col_offset = 0 if first else cut_local
+        if not part_letters.any():
+            return [box]
+        # The side's extent is its letter bbox, not its line runs: the
+        # runs merge when a lobe's lines touch, and a side that holds
+        # less than a line of lettering is a sliver, not a lobe.
+        part_rows = np.flatnonzero(part_letters.any(axis=1)) + row_offset
+        part_cols = np.flatnonzero(part_letters.any(axis=0)) + col_offset
+        top, bottom = int(part_rows[0]), int(part_rows[-1]) + 1
+        if bottom - top < reach:
+            return [box]
+        if horizontal:
+            y1 = max(0 if first else cut_local, int(top) - reach)
+            y2 = min(cut_local if first else height_px, int(bottom) + reach)
+            x1 = max(0, int(part_cols[0]) - reach)
+            x2 = min(width_px, int(part_cols[-1]) + 1 + reach)
+        else:
+            x1 = max(0 if first else cut_local, int(part_cols[0]) - reach)
+            x2 = min(cut_local if first else width_px, int(part_cols[-1]) + 1 + reach)
+            y1 = max(0, int(top) - reach)
+            y2 = min(height_px, int(bottom) + reach)
+        if x2 <= x1 or y2 <= y1:
+            return [box]
+        rect = (box.x1 + x1, box.y1 + y1, box.x1 + x2, box.y1 + y2)
+        sliced_mask = None
+        if box.mask is not None and np.asarray(box.mask).shape == letters.shape:
+            sliced_mask = np.ascontiguousarray(np.asarray(box.mask)[y1:y2, x1:x2])
+        parts.append(replace(
+            box, x1=rect[0], y1=rect[1], x2=rect[2], y2=rect[3],
+            mask=sliced_mask,
+            letters=np.ascontiguousarray(letters[y1:y2, x1:x2]),
+            core=_clip_core(box.core, rect),
+            bubble_mask=piece_mask,
+        ))
+    if len(parts) != 2:
+        return [box]
+    return parts
+
+
+def split_waist_boxes(boxes: list[BubbleBox]) -> list[BubbleBox]:
+    """Split every box whose letters span both lobes of its bubble mask (see _split_waist_box)."""
+    out: list[BubbleBox] = []
+    for box in boxes:
+        out.extend(_split_waist_box(box))
+    return out
 
 
 def _text_box(x1, y1, x2, y2, score, mask, source_model, letters=None, core=None) -> BubbleBox:
@@ -774,7 +982,14 @@ class KiuyhaTextDetector:
                 boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None, core=core))
                 cores.append(core)
         kept = [part for box in _join_grown(boxes, cores) for piece in _split_blocks(box) for part in _split_sideways(piece)]
-        return kept + self._rescue_boxes(image, kept)
+        final = kept + self._rescue_boxes(image, kept)
+        # One bubble mask per final box, from the source slice, trimmed
+        # to the lobe holding its letters (see _trim_bubble_mask). The
+        # masks are derived here, not in the letter pass: the letter
+        # splitters above may still cut a box in two, and each piece
+        # needs its own mask.
+        _attach_bubble_masks(image, final)
+        return final
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
         """First-pass boxes the letter model still reads after inpainting, masked by what is left of their strokes."""

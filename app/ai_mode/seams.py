@@ -99,6 +99,19 @@ def set_letter_bounds(page: dict) -> None:
                                     "x2": max(r[2] for r in use), "y2": max(r[3] for r in use)}
         # Otherwise keep whatever bounds the object already had: no usable
         # box must erase an extent proven earlier.
+        # The bubble interior follows the same boxes: an object over
+        # several boxes gets the union of their interiors, so a double
+        # bubble split into two objects keeps one lobe each.
+        from app.detector.bubble_mask import merge_bubble_masks
+
+        masks = [box.get("bubble_mask") for ref in source_box_ids(obj)
+                 if (box := boxes.get(ref)) is not None
+                 and isinstance(box.get("bubble_mask"), dict)]
+        merged = merge_bubble_masks(masks) if masks else None
+        if merged is not None:
+            obj["bubble_mask"] = merged
+        else:
+            obj.pop("bubble_mask", None)
 
 
 def _core(page: dict) -> tuple[int, int, int] | None:
@@ -400,7 +413,11 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
             # The copy letters in exactly the area the owner does, so the two halves line up.
             if isinstance(owner.get("letter_bounds"), dict):
                 update["letter_bounds"] = _shifted(owner["letter_bounds"], shift)
-            stale = [key for key in LETTERING_KEYS + ("letter_bounds",) if key in obj and key not in update]
+            if isinstance(owner.get("bubble_mask"), dict):
+                from app.detector.bubble_mask import shift_bubble_mask
+
+                update["bubble_mask"] = shift_bubble_mask(owner["bubble_mask"], 0, shift)
+            stale = [key for key in LETTERING_KEYS + ("letter_bounds", "bubble_mask") if key in obj and key not in update]
             if all(obj.get(key) == value for key, value in update.items()) and not stale and obj.get("region") == region:
                 continue
             obj.update(update)

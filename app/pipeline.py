@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from app.downloader.registry import download_chapter as fetch_chapter_images
 from app.downloader.slicer import OVERLAP_CONTEXT, slice_image
 from app.detector.boxes import BubbleBox, apply_final_nms
+from app.detector.bubble_mask import shift_bubble_mask
 from app.detector.kiuyha_detector import KiuyhaTextDetector
 from app.inpaint.lama_inpainter import Inpainter
 from app.inpaint.mask_geometry import geometry_dict, remap_local_mask_page_space
@@ -361,7 +362,10 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         core = getattr(box, "core", None)
         if core is not None:
             core = (core[0], core[1] + offset_y, core[2], core[3] + offset_y)
-        return replace(box, y1=box.y1 + offset_y, y2=box.y2 + offset_y, core=core)
+        # replace() carries the bubble mask as-is; its bbox and seed
+        # are slice coords, so they move with the box.
+        return replace(box, y1=box.y1 + offset_y, y2=box.y2 + offset_y, core=core,
+                       bubble_mask=shift_bubble_mask(getattr(box, "bubble_mask", None), 0, offset_y))
 
     def _shared_seam_detections(
         self, chapter_id: str, work_items: list[tuple]

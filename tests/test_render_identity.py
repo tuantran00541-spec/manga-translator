@@ -25,6 +25,8 @@ def test_signature_covers_the_objects_render_inputs(tmp_path):
         ("font_ai_id", "emphasis.bangers"),
         ("font_selection_mode", "user"),
         ("letter_bounds", {"x1": 1, "y1": 1, "x2": 8, "y2": 8}),
+        ("bubble_mask", {"bbox": [0, 0, 10, 10], "cx": 5, "cy": 5,
+                        "rows": [[[0, 10]] for _ in range(24)], "kind": "bubble"}),
         ("source_cap_px", 38),
         ("typography_role", "shout"),
         ("role", "narration"),

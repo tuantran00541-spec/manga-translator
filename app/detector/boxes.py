@@ -6,6 +6,7 @@ from dataclasses import dataclass, field, replace
 import cv2
 import numpy as np
 
+from app.detector.bubble_mask import merge_bubble_masks
 from app.parameters import DETECTOR_FINAL_NMS_IOU, DETECTOR_NMS_SCORE_FLOOR
 
 
@@ -33,6 +34,10 @@ class BubbleBox:
     # not survive dataclasses.replace, so this is a field: the seam and
     # shift paths rebuild boxes with replace and the fold below reads it.
     letters: np.ndarray | None = field(default=None, compare=False)
+    # The bubble interior the text is lettered into, as per-row
+    # x-intervals over the outline bbox (see app/detector/bubble_mask).
+    # A plain dict, so it survives dataclasses.replace and JSON.
+    bubble_mask: dict | None = field(default=None, compare=False)
     # The raw detector rect the box grew from, in the box's own frame.
     # Letters the growth pulled in past it belong to the neighbour the
     # growth reached, not this box, so coherence is judged inside it.
@@ -81,7 +86,13 @@ def _merge_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
         if cored:
             merged_core = (min(c[0] for c in cored), min(c[1] for c in cored),
                            max(c[2] for c in cored), max(c[3] for c in cored))
-        return replace(base, x1=x1, y1=y1, x2=x2, y2=y2, letters=None, core=merged_core)
+        # The rect grew, so the base's bubble alone no longer
+        # describes it -- but the union of the members' bubbles does,
+        # and the waist split needs it. (The erase masks are a
+        # different story: with none verified there is nothing to union.)
+        return replace(base, x1=x1, y1=y1, x2=x2, y2=y2, letters=None, core=merged_core,
+                       bubble_mask=merge_bubble_masks(
+                           [getattr(b, "bubble_mask", None) for b in boxes]))
     # The base's own rect joins the union even when the base has no
     # verified mask: the highest-confidence box is the merge's anchor,
     # and leaving its rect out shrinks the merged box away from it.
@@ -132,12 +143,16 @@ def _merge_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
         merged_core = (min(c[0] for c in cored), min(c[1] for c in cored),
                        max(c[2] for c in cored), max(c[3] for c in cored))
     mask_source = base.mask_source if base.verified_mask else max(evidence, key=lambda b: float(b.confidence)).mask_source
+    # The bubble masks union like the erase masks: the merged box's
+    # interior is the union of its members' interiors (a double bubble
+    # folded from two lobe boxes keeps both lobes, for the waist split).
+    merged_bubble_mask = merge_bubble_masks([getattr(b, "bubble_mask", None) for b in boxes])
     return replace(
         base, x1=x1, y1=y1, x2=x2, y2=y2, mask=merged, mask_source=mask_source,
         safe_to_inpaint=bool(np.any(merged > 0) and any(b.safe_to_inpaint for b in evidence)),
         ocr_eligible=any(b.ocr_eligible for b in boxes),
         needs_review=any(b.needs_review for b in boxes),
-        letters=merged_letters, core=merged_core,
+        letters=merged_letters, core=merged_core, bubble_mask=merged_bubble_mask,
     )
 
 

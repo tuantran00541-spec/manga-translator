@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -22,6 +23,8 @@ def _normalized_box(box: dict) -> dict:
         "x2": int(box.get("x2", 0)),
         "y2": int(box.get("y2", 0)),
         "removed": bool(box.get("removed", False)),
+        "bubble_mask": copy.deepcopy(box.get("bubble_mask"))
+        if isinstance(box.get("bubble_mask"), dict) else None,
     }
 
 
@@ -52,6 +55,8 @@ def _normalized_text_object(obj: dict) -> dict:
         "font_selection_mode": str(obj.get("font_selection_mode") or ""),
         "font_ai_id": str(obj.get("font_ai_id")) if obj.get("font_ai_id") else None,
         "letter_bounds": _normalized_optional_region(obj.get("letter_bounds")),
+        "bubble_mask": copy.deepcopy(obj.get("bubble_mask"))
+        if isinstance(obj.get("bubble_mask"), dict) else None,
         "source_cap_px": float(cap) if isinstance(cap, (int, float)) else None,
         "typography_role": str(obj.get("typography_role") or ""),
         "role": str(obj.get("role") or ""),
