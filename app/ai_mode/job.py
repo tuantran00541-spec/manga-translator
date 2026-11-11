@@ -838,6 +838,7 @@ class AIModeRunner:
         polish, so a dropped rewrite is never copied onto a mirror slice.
         Returns (committed ids, gate_dropped).
         """
+        from app.dependencies import pipeline
         from app.manifest_utils import invalidate_page_render
         from app.translation.vision import VisionTranslationResult, _drop_foreign_script, collapse_repeated_lines
 
@@ -846,6 +847,7 @@ class AIModeRunner:
         stats = self.report.get("polish") or {}
         committed: set[str] = set()
         dropped = 0
+        touched: set[int] = set()
         with get_manifest_lock(self.job.chapter_id):
             manifest = load_manifest_raw(self.job.chapter_id)
             for line in lines:
@@ -876,8 +878,13 @@ class AIModeRunner:
                 obj.setdefault("polished_from", obj.get("translation"))
                 obj["translation"] = obj["auto_translation"] = filtered
                 invalidate_page_render(manifest, line.page_index)
+                touched.add(line.page_index)
                 committed.add(line.id)
             save_manifest_raw(self.job.chapter_id, manifest)
+        # The manifest now says not-rendered for the touched pages: drop
+        # their stale files too (M2), like _invalidate_renders does.
+        if touched:
+            pipeline._sync_output_dir(self.job.chapter_id, manifest, sorted(touched))
         return (committed, dropped)
 
     async def _add_unboxed(self, page_index: int, boxes: list, source_lang: str) -> None:
@@ -980,6 +987,12 @@ class AIModeRunner:
                 return changed
 
         changed = await asyncio.to_thread(sync)
+        if changed:
+            # The sync invalidated these pages: drop their stale files too
+            # (M2), like _invalidate_renders does. The render stage
+            # re-renders them afterwards.
+            from app.dependencies import pipeline
+            pipeline._sync_output_dir(self.job.chapter_id, self._manifest(), changed)
         self.report["seam_copies"] = self.report.get("seam_copies", 0) + len(changed)
         return changed
 

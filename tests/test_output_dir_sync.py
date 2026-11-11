@@ -207,3 +207,84 @@ def test_original_image_endpoint_still_serves(monkeypatch, tmp_path):
     monkeypatch.setattr(image_router, "load_manifest_raw", lambda _: manifest)
     response = image_router.get_image(CHAPTER, 0, "original")
     assert response.status_code == 200
+
+
+# -- M2 residual: the other invalidation sites ---------------------------------
+# F's patch covered _invalidate_renders and the commit-failure path; the
+# same one-line sync belongs at every other site that invalidates a render
+# (_save_polished, _sync_seams, the automation ensure endpoint, and both
+# vision-translate invalidation sites in translation.py).
+
+
+def _sync_recorder(monkeypatch):
+    from app.dependencies import pipeline as pipeline_instance
+
+    synced = []
+    monkeypatch.setattr(
+        pipeline_instance, "_sync_output_dir",
+        lambda chapter_id, m, indices: synced.append((chapter_id, list(indices))),
+    )
+    return synced
+
+
+def _job_runner(monkeypatch, manifest):
+    saved = []
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda *_: nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda _: manifest)
+    monkeypatch.setattr(manifests, "save_manifest_raw", lambda *_a, **_k: saved.append(True))
+    job = ai_job.AIModeJob(
+        job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="polish",
+        cost_usd=None, stages={"polish": {"done": 0, "total": 0, "detail": ""}},
+    )
+    return AIModeRunner(job, PROVIDERS["openai"], "key"), saved
+
+
+def test_save_polished_syncs_touched_pages(monkeypatch):
+    import app.ai_mode.polish as polish
+
+    manifest = _manifest_with_pages([
+        {"text_objects": [{"id": "a", "translation": "Tôi đi đây."}]},
+    ])
+    runner, _saved = _job_runner(monkeypatch, manifest)
+    synced = _sync_recorder(monkeypatch)
+
+    committed, dropped = runner._save_polished(
+        [polish.Line(0, "a", "Get out!", "Chạy đi!")])
+
+    assert (committed, dropped) == ({"a"}, 0)
+    assert synced == [(CHAPTER, [0])], "a polish commit invalidates the render, so its stale file must go (M2)"
+
+
+def test_sync_seams_syncs_changed_pages(monkeypatch):
+    import asyncio
+
+    import app.ai_mode.seams as seams
+
+    manifest = _manifest_with_pages([{"text_objects": []}, {"text_objects": []}])
+    runner, _saved = _job_runner(monkeypatch, manifest)
+    synced = _sync_recorder(monkeypatch)
+    monkeypatch.setattr(seams, "drop_overlapping_letters", lambda m: [])
+    monkeypatch.setattr(seams, "sync_seam_mirrors", lambda m: [1])
+    monkeypatch.setattr(seams, "drop_duplicated_leading_text", lambda m: [])
+
+    changed = asyncio.run(runner._sync_seams())
+
+    assert changed == [1]
+    assert synced == [(CHAPTER, [1])], "a seam sync invalidates the render, so its stale file must go (M2)"
+
+
+def test_automation_ensure_syncs_changed_pages(monkeypatch):
+    import app.routers.automation as automation
+
+    manifest = {"chapter_id": CHAPTER, "pages": [{"skipped": False}]}
+    monkeypatch.setattr(automation, "get_manifest_lock", lambda *_: nullcontext())
+    monkeypatch.setattr(automation, "load_manifest_raw", lambda _: manifest)
+    monkeypatch.setattr(automation, "save_manifest_raw", lambda *_a, **_k: None)
+    monkeypatch.setattr(automation, "ensure_page_text_objects", lambda page: (0, True))
+    synced = _sync_recorder(monkeypatch)
+
+    result = automation.ensure_text_objects(
+        automation.EnsureTextObjectsRequest(chapter_id=CHAPTER, page_indices=[0]))
+
+    assert result["auto_text_objects"]["changed_pages"] == [0]
+    assert synced == [(CHAPTER, [0])], "ensuring objects invalidates the render, so its stale file must go (M2)"

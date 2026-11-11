@@ -357,6 +357,12 @@ async def translate_page_in_context(
         }
         page_number = req.page_index
 
+    if ensured:
+        # The render was invalidated above: drop its stale file too (M2),
+        # so a translate/render failure below leaves no stale PNG behind.
+        from app.dependencies import pipeline
+        pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
+
     if not candidates:
         result = urlify_manifest(manifest)
         result["translation_run"] = {
@@ -476,6 +482,13 @@ async def translate_page_in_context(
         if changed:
             invalidate_page_render(latest, page_number)
             save_manifest_raw(req.chapter_id, latest)
+
+    if changed:
+        # The render was invalidated above: drop its stale file too (M2)
+        # before the re-render below, so a render failure leaves no stale
+        # PNG behind.
+        from app.dependencies import pipeline
+        pipeline._sync_output_dir(req.chapter_id, latest, [page_number])
 
     rendered_pages: list[int] = []
     render_error = None

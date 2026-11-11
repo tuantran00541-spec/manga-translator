@@ -62,6 +62,12 @@ def ensure_text_objects(req: EnsureTextObjectsRequest) -> dict:
         if changed_pages:
             save_manifest_raw(req.chapter_id, manifest)
 
+    if changed_pages:
+        # The render is invalidated above: drop its stale file too (M2),
+        # so the output dir agrees with the manifest.
+        from app.dependencies import pipeline
+        pipeline._sync_output_dir(req.chapter_id, manifest, changed_pages)
+
     result = urlify_manifest(manifest)
     result["auto_text_objects"] = {
         "created": created,
