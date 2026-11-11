@@ -185,3 +185,63 @@ def test_text_kept_as_art_or_left_unchanged_is_not_inpainted_again(tmp_path):
     assert kept["processing_metrics"]["detector"]["second_pass_boxes"] == 0 and kept["_passes"] == 1
     stuck = _process(tmp_path, leftover, stubborn=True)
     assert stuck["processing_metrics"]["detector"]["second_pass_boxes"] == 1 and stuck["_passes"] == 2
+
+
+def _capture_warnings():
+    """A loguru sink collecting warning messages; returns (messages, remove)."""
+    from app.logging_config import logger
+
+    messages = []
+    sink_id = logger.add(lambda text: messages.append(text), format="{message}", level="WARNING")
+    return messages, lambda: logger.remove(sink_id)
+
+
+def test_skipping_an_unauthorized_box_says_its_mask_goes_too():
+    """N11: a skipped box with a mask loses the mask too, not just the
+    rectangle fallback; the warning says so."""
+    mask = np.full((21, 29), 255, dtype=np.uint8)
+    box = BubbleBox(20, 15, 49, 36, 0.9, mask, source_role="text_segmenter",
+                    source_model="kiuyha-tuned-1023.onnx", semantic_type="free_text",
+                    safe_to_inpaint=False)
+    messages, remove = _capture_warnings()
+    try:
+        page_mask = build_mask((60, 80), [box])
+    finally:
+        remove()
+    assert page_mask[15:36, 20:49].sum() == 0, "the mask is dropped with the box"
+    assert any("its segmentation mask is dropped with it" in text for text in messages)
+
+
+def test_mask_repair_without_a_crop_image_leaves_the_mask_standing():
+    """N12: with no image to read ink from, the repair cannot run and
+    the segmenter mask stands as-is — a warning, not a silent no-op."""
+    from app.detector.mask_builder import _repair_mask_from_ink
+
+    mask = np.zeros((20, 20), dtype=np.uint8)
+    mask[5:15, 5:15] = 255
+    messages, remove = _capture_warnings()
+    try:
+        repaired = _repair_mask_from_ink(mask, None, [(0, 0, 20, 20)])
+    finally:
+        remove()
+    assert np.array_equal(repaired, mask)
+    assert any("no crop image" in text for text in messages)
+
+
+def test_a_corrupt_page_artifact_journal_is_kept_and_skipped(tmp_path):
+    """S1: a journal that cannot be read is corruption worth a warning,
+    not a crash — and it is kept on disk as forensic evidence."""
+    import json
+
+    from app.manifest_utils import recover_page_artifact_transactions
+
+    journal = tmp_path / ".page-0.artifact-txn.json"
+    journal.write_text("{not json", encoding="utf-8")
+    messages, remove = _capture_warnings()
+    try:
+        recovered = recover_page_artifact_transactions(tmp_path)
+    finally:
+        remove()
+    assert recovered == 0
+    assert journal.is_file(), "the corrupt journal is kept, not deleted"
+    assert any("corrupt" in text.lower() or "invalid" in text.lower() for text in messages)

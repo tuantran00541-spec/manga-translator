@@ -93,7 +93,7 @@ def _snapshot_or_404(job_id: str) -> dict:
 
 def _cloud_finish_hook(job_token: str):
     def finish(job) -> None:
-        cloud.finish_job(job_token, job.status if job.status in {"completed", "cancelled"} else "failed")
+        cloud.finish_job(job_token, job.status if job.status in {"completed", "completed_with_blockers", "cancelled"} else "failed")
     return finish
 
 

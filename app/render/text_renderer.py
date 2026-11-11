@@ -6,6 +6,13 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from app.config import DEFAULT_FONT
+from app.detector.bubble_mask import (
+    derive_bubble_mask,
+    find_waist,
+    mask_inscribed_rect,
+    mask_row_spans,
+    split_bubble_mask,
+)
 from app.render.font_catalog import list_font_records, resolve_font_id
 from app.parameters import (
     FONT_CACHE_SIZE,
@@ -268,6 +275,9 @@ def render_text_in_box(
     source_letter_box: tuple[int, int, int, int] | None = None,
     stats: dict | None = None,
     size_band_hi_cap: int | None = None,
+    bubble_mask: dict | None = None,
+    letters=None,
+    letters_box: tuple[int, int, int, int] | None = None,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -299,14 +309,6 @@ def render_text_in_box(
     else:
         font_path = Path(font_path)
     font_path, text = drawable(font_path, text)
-
-    # A chapter band caps the size a short block may grow to in a roomy
-    # bubble. The ceiling is in font px, from the band's cap through this
-    # object's own font, so a narrow font keeps its own proportions.
-    size_ceiling_px = None
-    if size_band_hi_cap:
-        from app.render.source_size import SIZE_SLACK, matching_font_px
-        size_ceiling_px = int(matching_font_px(str(font_path), int(size_band_hi_cap)) * SIZE_SLACK)
 
     if fill is None or fill == "auto" or fill == "":
         text_color = auto_detect_text_color(image, box)
@@ -346,31 +348,65 @@ def render_text_in_box(
 
     font_path_str = str(font_path)
 
-    # A bubble or spiky outline narrows toward its top and bottom, so its lines
-    # must fit the measured interior, not the full rectangle. Spiky shares the
-    # bubble band machinery, but when bands fail the fallback is the inscribed
-    # ellipse, and spiky valleys cut inside it, so the fallback can cross the
-    # outline; nothing here validates spiky points or valleys.
-    curved = str(container or "").lower() in _CURVED_CONTAINERS or str(shape or "").lower() == "ellipse"
+    # The mask is the bubble's interior; a bubble or spiky outline narrows
+    # toward its top and bottom, so its lines must fit the mask's rows,
+    # not the full rectangle. A mask makes the container label redundant:
+    # an unlabelled bubble with a mask still lays out on the mask.
+    _mask, _mask_source = _resolve_mask(image, (x1, y1, x2, y2), container,
+                                        source_letter_box, bubble_mask,
+                                        letters, letters_box)
+    curved = str(container or "").lower() in _CURVED_CONTAINERS or str(shape or "").lower() == "ellipse" \
+        or (_mask is not None and _mask.get("kind") == "bubble")
     centred = h_align == "center" and v_align == "middle"
 
+    _fixed_height_fallback = False
     if target_size is not None and curved and centred:
         # A fixed size (usually the OCR-measured source size) never saw
-        # the band machinery, so its lines can cross a spiky outline
-        # even while the fit would have shrunk them (ch79 p021: 52px
-        # lines touching where the fit caps at 45). Validate the fixed
-        # lines against the measured bands — spiky-narrowed for spiky
-        # containers — and fall back to the fit when they do not fit; a
+        # the fit, so its lines can cross an outline even while the fit
+        # would have shrunk them. Validate the fixed lines against the
+        # mask's rows and fall back to the fit when they do not fit; a
         # fixed size that fits is untouched.
         _fixed_font = get_font_object(font_path_str, target_size)
         _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
-        _bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                               letter_box=source_letter_box,
-                               spiky=str(container or "").lower() == "spiky")
-        if _bands is not None and not _lines_fit_bands(
-                draw, _fixed_lines, _fixed_font, box_w, box_h, stroke_w, _bands):
-            target_size = None
+        if _mask is not None and _mask.get("kind") == "bubble":
+            _bands = _mask_bands(_mask, (x1 + pad, y1 + pad, x2 - pad, y2 - pad))
+            if _bands is not None:
+                _widest = max((b - a for band in _bands for a, b in band), default=0)
+                if _widest >= 0.4 * box_w:
+                    _lh = _calc_line_height(draw, _fixed_font, stroke_w=stroke_w)
+                    _anchor = int(_mask["cy"]) - (y1 + pad)
+                    _top = _anchored_top(box_h, _lh * len(_fixed_lines), _anchor)
+                    _limits = _band_line_widths(box_w, box_h, len(_fixed_lines), _lh, _bands, top=_top)
+                    if _limits is None or len(_limits) != len(_fixed_lines) or not all(
+                            draw.textbbox((0, 0), line, font=_fixed_font)[2] + 2 * stroke_w <= limit
+                            for line, limit in zip(_fixed_lines, _limits)):
+                        target_size = None
 
+    if target_size is not None:
+        # A fixed size whose wrapped lines are taller than the box aborts
+        # the whole page (render N3): page_renderer re-raises anything
+        # that is not floor-only, and _render_one retries the same
+        # failing size. Fall back to the fit on height overflow, as Fix K
+        # does for width — the fit sizes down, or refuses at the floor
+        # and the object is skipped and restored instead of aborting.
+        # The check mirrors the draw-time height below exactly (same wrap,
+        # same line height), so a size that passes here cannot overflow there.
+        _fixed_font = get_font_object(font_path_str, target_size)
+        _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
+        if (_calc_line_height(draw, _fixed_font, stroke_w=stroke_w)
+                * len(_fixed_lines) > box_h):
+            target_size = None
+            _fixed_height_fallback = True
+
+    if target_size is not None:
+        # A named size below the readable floor is drawn at the floor,
+        # not refused: the floor is the smallest readable lettering.
+        _readable_fixed = int(RENDER_MIN_READABLE_FONT_SIZE
+                              * max(1.0, image.size[0] / REFERENCE_PAGE_WIDTH))
+        if target_size < _readable_fixed:
+            target_size = _readable_fixed
+
+    block_top = None
     if target_size is not None:
         actual_size = target_size
         font = get_font_object(font_path_str, actual_size)
@@ -378,96 +414,63 @@ def render_text_in_box(
         line_centres = None
         lines_source = "fixed_size"
         draw_spans = None
+        fit_stats = {}
     else:
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
         line_centres = []
-        retry_adopted = False
-        fit_stats: dict = {}
+        spans_holder: list = []
+        fit_stats = {}
         actual_size, fitted_lines, fits_readably, (x1, y1, x2, y2) = auto_fit(
             draw, text, (x1, y1, x2, y2), image.size, font_path_str, padding=padding, stroke_w=stroke_w,
             source_cap_px=source_cap_px, enlarge=enlarge, opaque_caption=opaque_caption,
             curved=curved, image=image, centered=centred, container=container,
             source_letter_box=source_letter_box, centres_out=line_centres,
             stats_out=fit_stats, min_source_share=min_source_share,
-            size_ceiling_px=size_ceiling_px)
+            size_ceiling_px=size_band_hi_cap, bubble_mask=_mask, spans_out=spans_holder,
+            letters=letters, letters_box=letters_box)
         raw_w, raw_h = x2 - x1, y2 - y1
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
-        # A band fit that fails — outright, or below the source floor —
-        # while the rectangle fit holds it is a degenerate-bands failure,
-        # not a too-long-text failure; retry without bands before refusing.
-        # Slice 81's cleaned outline trips it on the readable floor (the
-        # waist check fires for the region box but not the trimmed one),
-        # so the retry covers both failures, not just the floor ratio.
-        # The retry is skipped for a roomy fallback attempt when a tight
-        # letter box exists: a rectangle fit there lands the text on the
-        # region, not the bubble, and the ranking prefers it over the
-        # tight attempt that placed the text correctly (slice 25's region
-        # attempt at 200px outranking the tight 28px one).
-        _letter_area = ((source_letter_box[2] - source_letter_box[0])
-                        * (source_letter_box[3] - source_letter_box[1])
-                        if source_letter_box is not None else None)
-        _retry_roomy = (_letter_area is not None
-                        and (x2 - x1) * (y2 - y1) > 4 * _letter_area)
-        if (curved and fit_stats.get("bands_used") and not _retry_roomy
-                and (not fits_readably
-                     or (source_cap_px and not enlarge and fit_stats.get("below_floor_ratio")))):
-            retry_stats: dict = {}
-            retry_centres: list = []
-            r_size, r_lines, r_fits, (rx1, ry1, rx2, ry2) = auto_fit(
-                draw, text, (x1, y1, x2, y2), image.size, font_path_str, padding=padding,
-                stroke_w=stroke_w, source_cap_px=source_cap_px, enlarge=enlarge,
-                opaque_caption=opaque_caption, curved=False, image=image, centered=centred,
-                container=container, source_letter_box=source_letter_box,
-                centres_out=retry_centres, stats_out=retry_stats,
-                min_source_share=min_source_share, size_ceiling_px=size_ceiling_px)
-            if r_fits and not retry_stats.get("below_floor_ratio"):
-                actual_size, fitted_lines, fits_readably = r_size, r_lines, r_fits
-                x1, y1, x2, y2 = rx1, ry1, rx2, ry2
-                line_centres = retry_centres
-                fit_stats = retry_stats
-                retry_adopted = True
-                raw_w, raw_h = x2 - x1, y2 - y1
-                pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
-                box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
         if not fits_readably:
             raise ValueError(
                 "Translation does not fit at the minimum readable font size; "
                 "shorten the translation or enlarge the text region."
             )
-        if source_cap_px and not enlarge and min_source_share and not fit_stats.get("share_ok", True):
-            raise ValueError("Translation fits only well below the source letter size")
-        if source_cap_px and not enlarge and fit_stats.get("below_floor_ratio"):
-            raise ValueError("Translation fits only below the source floor share of its box")
+        # The fit re-reports a mask passed in as "object"; the source
+        # resolved here — object or derived — is the honest one.
+        fit_stats["mask_source"] = _mask_source
+        block_top = fit_stats.get("block_top")
         font = get_font_object(font_path_str, actual_size)
         # The same number of lines, evened out so no word is left alone.
         # Which lines are drawn is recorded: the fit sized the greedy
-        # lines, so evened lines that leave the measured bands give way
+        # lines, so evened lines that leave the mask's rows give way
         # to them instead of being drawn over an outline.
         lines = _wrap_text(draw, text, font, box_w, balance=True)
         lines_source = "balanced"
-        draw_spans = None
-        if centred and curved and not retry_adopted:
-            bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                                  letter_box=source_letter_box,
-                                  spiky=str(container or "").lower() == "spiky")
-            if bands is not None:
-                # Evened lines can push a long line into a narrow band; the fitted lines stay inside.
-                if not _lines_fit_bands(draw, lines, font, box_w, box_h, stroke_w, bands):
-                    if _lines_fit_bands(draw, fitted_lines, font, box_w, box_h, stroke_w, bands):
-                        lines = fitted_lines
-                        lines_source = "fitted"
-                draw_spans = _band_line_spans(
-                    box_w, box_h, len(lines), _calc_line_height(draw, font, stroke_w=stroke_w), bands)
-            elif curved and not _lines_fit_ellipse(draw, lines, font, box_w, box_h, stroke_w):
+        draw_spans = spans_holder if spans_holder else None
+        if centred and curved:
+            if draw_spans is not None:
+                # Evened lines can push a long line into a narrow row; the fitted lines stay inside.
+                # An evened wrap that changes the line count was never
+                # sized against the mask's rows at all, so it gives way
+                # to the fitted lines unconditionally.
+                if len(lines) != len(draw_spans):
+                    lines = fitted_lines
+                    lines_source = "fitted"
+                elif (not _lines_fit_spans(draw, lines, font, draw_spans, stroke_w)
+                        and len(fitted_lines) == len(draw_spans)
+                        and _lines_fit_spans(draw, fitted_lines, font, draw_spans, stroke_w)):
+                    lines = fitted_lines
+                    lines_source = "fitted"
+            elif not _lines_fit_ellipse(draw, lines, font, box_w, box_h, stroke_w):
                 if _lines_fit_ellipse(draw, fitted_lines, font, box_w, box_h, stroke_w):
                     lines = fitted_lines
                     lines_source = "fitted"
-
     if stats is not None:
         stats["lines"] = len(lines)
         stats["size"] = actual_size
         stats["fit_box"] = (x1, y1, x2, y2)
+        stats["fixed_size_height_fallback"] = _fixed_height_fallback
         if h_align == "center":
             # Per-line centres only exist for a curved auto fit; every
             # other centred path centres on the box, and the flag says
@@ -482,6 +485,8 @@ def render_text_in_box(
             stats["band_narrowing"] = fit_stats.get("band_narrowing", {})
             stats["cap_relaxed"] = fit_stats.get("cap_relaxed", False)
             stats["size_ceiling_px"] = fit_stats.get("size_ceiling_px")
+            stats["mask_source"] = fit_stats.get("mask_source")
+            stats["floor_px"] = fit_stats.get("floor_px")
             stats["lines_source"] = lines_source
 
     shape = str(shape or "").lower()
@@ -499,27 +504,13 @@ def render_text_in_box(
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     total_h = line_height * len(lines)
 
-    if target_size is not None:
-        # A named size is still lettering in a box: below the readable
-        # floor, or taller than the box, it leaves the object for review
-        # instead of painting small or past the frame.
-        readable_fixed = int(RENDER_MIN_READABLE_FONT_SIZE
-                             * max(1.0, image.size[0] / REFERENCE_PAGE_WIDTH))
-        if target_size < readable_fixed:
-            raise ValueError(
-                "Translation does not fit at the minimum readable font size; "
-                "shorten the translation or enlarge the text region."
-            )
-        if total_h > box_h:
-            raise ValueError(
-                "Translation does not fit in its box at the requested font size; "
-                "shorten the translation or enlarge the text region."
-            )
-
     if v_align == "top":
         start_y = y1 + pad
     elif v_align == "bottom":
         start_y = y1 + pad + max(0, box_h - total_h)
+    elif block_top is not None:
+        # The fit centred the block on the mask's centroid; draw it there.
+        start_y = int(block_top)
     else:
         start_y = y1 + pad + max(0, (box_h - total_h) // 2)
 
@@ -600,64 +591,190 @@ def render_text_in_box(
     return image
 
 
-def _spiky_base_interval(mag, band_rows: int) -> list[tuple[int | None, int | None]]:
-    """Innermost strong stroke each side of the centre, per band row range.
+MASK_BAND_PAD = 4  # ink keeps this margin inside a mask row, off the outline
 
-    The flood leaks through the gaps between spikes to their tips, so a
-    spiky band overstates the interior by the spike depth. The base is
-    the innermost strong edge on each side; a median over the band's
-    rows keeps gap rows from setting it. A side with no stroke on most
-    rows reports None, so a softened outline narrows nothing.
+
+def _mask_bands(mask, box):
+    """Per-band interior intervals of ``mask`` over ``box``, box-local.
+
+    The mask stores 24 rows over its own bbox; each band of ``box``
+    takes the mask's intervals at the band's middle, so a line laid out
+    on ``box`` reads its width from the mask, never from the image.
+    The flood runs to the outline itself, so each interval is pulled
+    in by the pad: ink on the flood's edge crosses the outline.
     """
-    h, w = mag.shape
-    centre = w // 2
-    strong = mag > RAY_EDGE_THRESHOLD
-    lefts: list[int | None] = []
-    rights: list[int | None] = []
-    for r in range(h):
-        row = strong[r]
-        left_hits = np.flatnonzero(row[:centre])
-        lefts.append(int(left_hits[-1]) if len(left_hits) else None)
-        right_hits = np.flatnonzero(row[centre:])
-        rights.append(int(centre + right_hits[0]) if len(right_hits) else None)
-    out = []
-    for i in range(band_rows):
-        top = i * h // band_rows
-        bottom = (i + 1) * h // band_rows
-        ls = [v for v in lefts[top:bottom] if v is not None]
-        rs = [v for v in rights[top:bottom] if v is not None]
-        rows = max(1, bottom - top)
-        left = int(np.median(ls)) if len(ls) * 2 >= rows else None
-        right = int(np.median(rs)) if len(rs) * 2 >= rows else None
-        out.append((left, right))
-    return out
+    x1, y1, x2, y2 = (int(v) for v in box)
+    if x2 <= x1 or y2 <= y1:
+        return None
+    bands = []
+    for i in range(24):
+        mid = y1 + ((2 * i + 1) * (y2 - y1)) // 48
+        spans = mask_row_spans(mask, mid)
+        bands.append([(a - x1 + MASK_BAND_PAD, b - x1 - MASK_BAND_PAD)
+                      for a, b in spans if b - a > 2 * MASK_BAND_PAD])
+    return bands
 
 
-SPIKY_BASE_MAX_DEPTH = 64  # a spike leaks this far past its base at most; deeper is interior art
+def _lines_fit_spans(draw, lines, font, spans, stroke_w: int) -> bool:
+    """Whether every line's ink plus stroke stays inside its own span."""
+    if not lines:
+        return True
+    if spans is None or len(spans) != len(lines):
+        return False
+    return all(
+        draw.textbbox((0, 0), line, font=font)[2] + 2 * stroke_w <= b - a
+        for line, (a, b) in zip(lines, spans))
 
 
-def _narrow_to_spiky_base(bands, bases):
-    """Narrow spiky bands to the spike bases, or leave them unchanged.
+def _mask_centroid(mask):
+    """The area centroid of ``mask``'s rows, slice coords.
 
-    A side is narrowed only where most of its rows show a base stroke
-    sitting within spike depth of the band's edge, and never by more
-    than an eighth of the band's width: a stroke deeper inside is
-    interior art, not the outline, and narrowing onto it collapses
-    the fit. A softened outline shows no base stroke and narrows nothing.
+    The flood seed a mask carries is the letter centroid of the whole
+    bubble it was derived from; after a waist cut that seed can sit on
+    the waist, outside the lobe the text lives in. The lobe's own
+    centroid -- the mean of its rows weighted by their width -- is
+    where the block centres.
     """
-    out = []
-    for band, (base_left, base_right) in zip(bands, bases):
-        new_band = []
-        for a, b in band:
-            na, nb = a, b
-            eighth = max(0, (b - a) // 8)
-            if base_left is not None and base_left - a <= SPIKY_BASE_MAX_DEPTH:
-                na = max(a, min(base_left, a + eighth))
-            if base_right is not None and b - base_right <= SPIKY_BASE_MAX_DEPTH:
-                nb = min(b, max(base_right, b - eighth))
-            new_band.append((na, nb) if nb - na >= 8 else (a, b))
-        out.append(new_band)
-    return out
+    try:
+        x1, y1, x2, y2 = (int(v) for v in mask["bbox"])
+        rows = mask["rows"]
+    except (KeyError, TypeError, ValueError):
+        return None
+    height = max(1, y2 - y1)
+    total = 0
+    sum_x = 0.0
+    sum_y = 0.0
+    for i, row in enumerate(rows):
+        band_y1 = y1 + (i * height) // len(rows)
+        band_y2 = y1 + ((i + 1) * height) // len(rows)
+        cy = (band_y1 + band_y2) / 2
+        for a, b in row:
+            w = int(b) - int(a)
+            if w <= 0:
+                continue
+            sum_x += (x1 + (int(a) + int(b)) / 2) * w
+            sum_y += cy * w
+            total += w
+    if total <= 0:
+        return ((x1 + x2) // 2, (y1 + y2) // 2)
+    return (int(sum_x / total), int(sum_y / total))
+
+
+def _trim_mask_to_letters(mask, box, letter_box, letters=None, letters_box=None):
+    """The lobe of ``mask`` holding the lettering, or ``mask`` whole.
+
+    A waist-split mask is one lobe already; a union mask with a real
+    waist is cut, and the lobe holding the lettering is the text's
+    lobe. The letter box must sit whole inside that lobe: a box
+    spanning both lobes is one block for both, not one lobe's text.
+    No waist, or the lettering in neither lobe, keeps the whole mask.
+    With no letter box there is nothing to anchor the cut to — a
+    spiky outline's own taper reads as a waist — so the whole mask
+    stands and the detector's letter-based split owns the division.
+    ``letters`` is the letter bitmap framed on ``letters_box`` (the
+    detector's box, which the clean image no longer shows): with it
+    the waist detectors see the diagonal join the mask alone hides.
+    A cut piece's centre is its own centroid, not the union's seed:
+    the seed sits on the waist, and the block centres on the lobe.
+    """
+    if not isinstance(mask, dict) or mask.get("kind") != "bubble":
+        return mask
+    if letter_box is None:
+        return mask
+    waist = None
+    if letters is not None and letters_box is not None:
+        arr = np.asarray(letters)
+        lb = tuple(int(v) for v in letters_box)
+        if (arr.ndim == 2 and arr.shape == (lb[3] - lb[1], lb[2] - lb[0])
+                and arr.any()):
+            waist = find_waist(mask, letters=arr, box=lb)
+    if waist is None:
+        waist = find_waist(mask)
+    if waist is None:
+        return mask
+    pieces = split_bubble_mask(mask, waist)
+    if pieces is None:
+        return mask
+    anchor = letter_box if letter_box is not None else box
+    cx = (int(anchor[0]) + int(anchor[2])) // 2
+    cy = (int(anchor[1]) + int(anchor[3])) // 2
+    for piece in pieces:
+        px1, py1, px2, py2 = (int(v) for v in piece["bbox"])
+        if not (px1 <= cx < px2 and py1 <= cy < py2):
+            continue
+        if letter_box is not None:
+            lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
+            if not (px1 <= lx1 and ly1 >= py1 and lx2 <= px2 and ly2 <= py2):
+                continue
+        centroid = _mask_centroid(piece)
+        if centroid is not None:
+            piece["cx"], piece["cy"] = centroid
+        return piece
+    return mask
+
+
+_DERIVED_MASK_CACHE: dict = {}
+_DERIVED_MASK_CACHE_MAX = 64
+
+
+def _derived_mask(image, box, letter_box):
+    """A bubble mask derived from ``image`` for ``box``, cached.
+
+    The detector normally supplies the mask; derivation here is the
+    fallback for objects that predate it. The cache is keyed on the box
+    and a hash of the image, so copies of one image share it.
+    """
+    import hashlib
+
+    arr = np.asarray(image)
+    key = (tuple(int(v) for v in box),
+           tuple(int(v) for v in letter_box) if letter_box is not None else None,
+           arr.shape, hashlib.md5(arr.tobytes()).hexdigest())
+    hit = _DERIVED_MASK_CACHE.get(key)
+    if hit is not None:
+        return hit
+    bgr = arr[:, :, ::-1].copy() if arr.ndim == 3 else arr
+    seed = None
+    if letter_box is not None:
+        seed = ((int(letter_box[0]) + int(letter_box[2])) // 2,
+                (int(letter_box[1]) + int(letter_box[3])) // 2)
+    mask = derive_bubble_mask(bgr, tuple(int(v) for v in box), seed=seed)
+    if len(_DERIVED_MASK_CACHE) >= _DERIVED_MASK_CACHE_MAX:
+        _DERIVED_MASK_CACHE.pop(next(iter(_DERIVED_MASK_CACHE), None), None)
+    _DERIVED_MASK_CACHE[key] = mask
+    return mask
+
+
+def _resolve_mask(image, box, container, letter_box, bubble_mask,
+                  letters=None, letters_box=None):
+    """The mask to lay out on: the object's own, else one derived from the image.
+
+    Returns (mask, source) with source "object", "derived" or "none".
+    Only bubble/spiky containers derive: free text and narration boxes
+    have no bubble to find, and a derived mask there would be art, not
+    outline. A mask with no closed outline ("rect") is no mask at all.
+    ``letters`` is the letter bitmap framed on ``letters_box``; the
+    trim needs it to see a diagonal waist, and the clean image cannot
+    supply it (its lettering is gone).
+    """
+    mask = bubble_mask if isinstance(bubble_mask, dict) else None
+    if mask is not None:
+        return _trim_mask_to_letters(mask, box, letter_box, letters, letters_box), "object"
+    if image is None or str(container or "").lower() not in ("bubble", "spiky"):
+        return None, "none"
+    # A roomy attempt box floods the panel past its bubble, while the
+    # letter box sits inside the bubble: derive on the letter box when
+    # it lies inside the attempt box, so every attempt finds the same
+    # bubble instead of each its own flood.
+    derive_box = box
+    if letter_box is not None:
+        lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
+        if box[0] <= lx1 and box[1] <= ly1 and lx2 <= box[2] and ly2 <= box[3]:
+            derive_box = (lx1, ly1, lx2, ly2)
+    derived = _derived_mask(image, derive_box, letter_box)
+    if not isinstance(derived, dict) or derived.get("kind") != "bubble":
+        return None, "none"
+    return _trim_mask_to_letters(derived, box, letter_box, letters, letters_box), "derived"
 
 
 def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: int = RENDER_DEFAULT_PADDING,
@@ -665,56 +782,75 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
              opaque_caption: bool = False, curved: bool = False, image=None, centered: bool = True,
              container: str | None = None, source_letter_box: tuple[int, int, int, int] | None = None,
              centres_out: list | None = None, stats_out: dict | None = None,
-             min_source_share: float = 0.0, size_ceiling_px: int | None = None):
-    """The auto font size, wrapped lines, whether it fits readably and the box it was fitted in, as the renderer letters it.
+             min_source_share: float = 0.0, size_ceiling_px: int | None = None,
+             bubble_mask: dict | None = None, spans_out: list | None = None,
+             letters=None,
+             letters_box: tuple[int, int, int, int] | None = None):
+    """The auto font size, wrapped lines, whether it fits readably and the box it was fitted in.
 
-    One decision order, each stage feeding the next: the frame interior is
-    measured first and every later move stays inside it; the fit sizes
-    inside that frame; the caller ranks attempts and separates them. A
-    stage that cannot hold its constraint says so in ``stats_out``
-    instead of quietly re-deciding for an earlier stage.
-    The frame is a hard box only when measurement succeeds: on
-    ``frame_unmeasured``, ``bands_none_rectangle`` or ``region_no_frame``
-    the fit proceeds as a rectangle fit on a bubble, recorded in
-    ``fallbacks``, and the text can cross the outline.
+    One size rule: the size is the smaller of the source-anchored ceiling
+    and the largest size fitting the bubble, never below one floor. The
+    ceiling is the source lettering's own size, or six tenths of what the
+    box holds when that is bigger, so a short block in a roomy bubble may
+    grow past its source; the floor is the readable size or six tenths of
+    what the box holds at the default maximum, so a translation longer
+    than its source may shrink to fit, down to what its own box holds.
+    The bubble is the mask's
+    interior: lines are laid out from its centroid outward, each line's
+    width read from the mask's rows, never from the image. Without a mask
+    the fit is a rectangle, or the inscribed ellipse for a curved
+    container. A fit that fails its outline but holds at the floor inside
+    the mask's inscribed rectangle is drawn there instead of refused;
+    only a floor size that holds nowhere is refused.
+    ``min_source_share`` and ``size_ceiling_px`` are accepted and ignored:
+    the old share and chapter-band ceilings no longer size anything.
     """
     x1, y1, x2, y2 = (int(v) for v in box)
     raw_w, raw_h = x2 - x1, y2 - y1
     pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
     box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
-    # The frame interior is the hard box for everything below: the fit,
-    # the growths and the regrow move all stay inside it. What it is
-    # depends on the container; an unmeasured frame is recorded, not
-    # silently replaced by the region.
+    attempt_box = (x1, y1, x2, y2)
+
+    scale = max(1.0, image_size[0] / REFERENCE_PAGE_WIDTH)
+    readable = int(RENDER_MIN_READABLE_FONT_SIZE * scale)
+    maximum_size = int(MAX_FONT_SIZE * scale)
+    enlarged_min = int(ENLARGED_MIN_FONT_SIZE * scale)
+
+    source_match = None
+    if source_cap_px:
+        from app.render.source_size import matching_font_px
+        source_match = matching_font_px(font_path_str, int(source_cap_px))
+    # The floor is the readable size, or six tenths of what the box
+    # holds at the default maximum — the fit may shrink below the
+    # source size when the translation is longer than the source, but
+    # never far below what its own box holds. The probe inside search()
+    # sets the six-tenths term; enlarge keeps its own minimum.
+    if enlarge:
+        floor = max(readable, enlarged_min)
+    else:
+        floor = readable
+
+    mask, mask_source = _resolve_mask(image, (x1, y1, x2, y2), container,
+                                      source_letter_box, bubble_mask,
+                                      letters, letters_box)
     frame = (x1, y1, x2, y2)
     frame_source = "region_no_frame"
     fallbacks: list[str] = []
-    stages_skipped: list[str] = []
-    lobe_decision = None
-    band_verdict: dict = {}
-    cap_ceiling = None
-    cap_relaxed = False
-    box_fit = None
+    use_mask = False
+    if mask is not None and mask.get("kind") == "bubble":
+        mx1, my1, mx2, my2 = (int(v) for v in mask["bbox"])
+        mx1, my1 = max(0, mx1), max(0, my1)
+        mx2, my2 = min(image_size[0], mx2), min(image_size[1], my2)
+        if mx2 - mx1 >= 16 and my2 - my1 >= 16:
+            frame = (mx1, my1, mx2, my2)
+            frame_source = "mask"
+            x1, y1, x2, y2 = frame
+            use_mask = True
+            raw_w, raw_h = x2 - x1, y2 - y1
+            pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+            box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
 
-    def clamp_to_frame(bx1, by1, bx2, by2):
-        fx1, fy1, fx2, fy2 = frame
-        return (max(bx1, fx1), max(by1, fy1), min(bx2, fx2), min(by2, fy2))
-
-    attempt_box = (x1, y1, x2, y2)
-
-    def clamp_growth(bx1, by1, bx2, by2):
-        # Growth stays inside the measured frame; where no frame was
-        # measured, a container with an outline still bounds growth to
-        # the box it was given, since that box is the outline's guess.
-        # Only frameless text has nothing to cross, so it grows freely.
-        if frame_source != "region_no_frame":
-            return clamp_to_frame(bx1, by1, bx2, by2)
-        if curved or str(container or "").lower() == "box":
-            ax1, ay1, ax2, ay2 = attempt_box
-            return (max(bx1, ax1), max(by1, ay1), min(bx2, ax2), min(by2, ay2))
-        return (bx1, by1, bx2, by2)
-
-    if str(container or "").lower() == "screen":
+    if not use_mask and str(container or "").lower() == "screen":
         # A system window's detection region is its outer extent, so the
         # frame itself sits inside the fit box; lettering to the region
         # edge paints over the border. Hold the text inside the frame.
@@ -742,7 +878,7 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
 
-    if str(container or "").lower() == "box" and not curved and image is not None:
+    if not use_mask and str(container or "").lower() == "box" and not curved and image is not None:
         # A narration box has no curved measurement, so its fit box used
         # to be the detector region — wider than the frame it sits in.
         # Shrink the fit to the measured rules when they show.
@@ -757,146 +893,19 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         else:
             fallbacks.append("frame_unmeasured")
 
-    split_bubble = False
-    if curved and image is not None and centered:
-        # The region box is a guess at the bubble; lettering in the bubble
-        # itself, or its lobe, is what keeps text off outlines and panel
-        # edges. A rejected guess leaves the region box untouched.
-        mag = _edge_magnitude(image)
-        grey = np.asarray(image.convert("L"))
-        cut = _divider_cut(mag, (x1, y1, x2, y2))
-        import cv2
+    def clamp_growth(bx1, by1, bx2, by2):
+        # Growth stays inside the measured frame; where no frame was
+        # measured, a container with an outline still bounds growth to
+        # the box it was given, since that box is the outline's guess.
+        # Only frameless text has nothing to cross, so it grows freely.
+        if frame_source != "region_no_frame":
+            fx1, fy1, fx2, fy2 = frame
+            return (max(bx1, fx1), max(by1, fy1), min(bx2, fx2), min(by2, fy2))
+        if curved or str(container or "").lower() == "box":
+            ax1, ay1, ax2, ay2 = attempt_box
+            return (max(bx1, ax1), max(by1, ay1), min(bx2, ax2), min(by2, ay2))
+        return (bx1, by1, bx2, by2)
 
-        dist = cv2.distanceTransform((mag <= RAY_EDGE_THRESHOLD).astype(np.uint8),
-                                     cv2.DIST_L2, 5)
-        ray = None
-        cut_frame = False
-        if cut != (x1, y1, x2, y2):
-            # A bubble drawn over a panel edge is one text over two lobes,
-            # not a bubble on one side of a divider; rays on the uncut box
-            # recover it whole, while a box of art measures nothing.
-            ray = _ray_boxes(mag, grey, (x1, y1, x2, y2),
-                             _seed_points(mag, dist, (x1, y1, x2, y2)))
-            if ray is not None:
-                # A ray from inside one lobe stops at that lobe's outline:
-                # when the cut side's own flood proves two-lobed interior
-                # outside the ray frame, the ray is a lobe, not the bubble,
-                # so the cut box itself is the frame and its two-lobe
-                # handling below runs instead of the split path.
-                cut_bands = _bubble_bands(image, (cut[0] + pad, cut[1] + pad,
-                                                  cut[2] - pad, cut[3] - pad),
-                                            letter_box=source_letter_box)
-                if _ray_loses_lobe(cut_bands, cut, pad, ray):
-                    ray = None
-                    cut_frame = True
-                    frame = cut
-                    frame_source = "divider_cut"
-                    x1, y1, x2, y2 = cut
-                else:
-                    split_bubble = True
-                    frame = ray
-                    frame_source = "ray_outline"
-                    lobe_decision = "split_whole_bubble"
-                    stages_skipped.append("trim:whole_bubble_measured")
-                    stages_skipped.append("regrow:whole_bubble_measured")
-                    x1, y1, x2, y2 = ray
-            else:
-                x1, y1, x2, y2 = cut
-        if ray is None and not cut_frame:
-            ray = _ray_boxes(mag, grey, (x1, y1, x2, y2),
-                             _seed_points(mag, dist, (x1, y1, x2, y2)))
-        if ray is not None and not split_bubble:
-            frame = ray
-            frame_source = "ray_outline"
-            x1, y1, x2, y2 = ray
-        if not split_bubble and ray is None and not cut_frame:
-            fallbacks.append("frame_unmeasured")
-        raw_w, raw_h = x2 - x1, y2 - y1
-        pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
-        box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
-        if not split_bubble:
-            # Lobe selection is an explicit verdict, never a silent trim:
-            # when the measured bands hold two wide lobes, the block is
-            # fitted to the whole interior and split across them by its
-            # per-line centres, instead of one lobe being discarded.
-            probe = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                                  verdict=band_verdict, letter_box=source_letter_box)
-            if probe is not None and _two_lobes(probe, box_w,
-                                                frame_measured=(frame_source != "region_no_frame")):
-                lobe_decision = "two_lobes_full"
-                stages_skipped.append("trim:two_lobes_kept")
-            else:
-                x1, y1, x2, y2 = _trim_bubble_box(image, (x1, y1, x2, y2),
-                                                  letter_box=source_letter_box)
-                lobe_decision = "single_lobe_trim"
-        raw_w, raw_h = x2 - x1, y2 - y1
-        pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
-        box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
-        # The region box can be wider than the bubble body it holds: a
-        # bent balloon's lobes sit off the box centre, so lines centred on
-        # the box cross an edge long before they fill the lobe. Narrow the
-        # box to the middle band's interior when that interior is clearly
-        # narrower than the box yet still most of the widest band; a waist
-        # between two lobes is not a body, so it never earns the shrink.
-        # Its gate already refuses a waist, so it runs on the split path
-        # too; only the trim stays split-only.
-        centre_bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                                     verdict=band_verdict, letter_box=source_letter_box)
-        # A two-lobe fit already centres each line on its own lobe's band,
-        # so narrowing to the middle band would throw away the lobe
-        # interior the two-lobe verdict just kept.
-        if centre_bands and lobe_decision != "two_lobes_full":
-            mid = centre_bands[len(centre_bands) // 2]
-            centre = box_w / 2
-            holding = [iv for iv in mid if iv[0] <= centre <= iv[1]]
-            widest = max((iv[1] - iv[0] for band in centre_bands for iv in band), default=0)
-            if holding:
-                a, b = max(holding, key=lambda iv: iv[1] - iv[0])
-                if b - a < 0.9 * box_w and b - a >= 0.5 * widest and b - a >= 100:
-                    x1, x2 = x1 + a, x1 + b + 2 * pad
-                    raw_w, raw_h = x2 - x1, y2 - y1
-                    pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
-                    box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
-
-    def bands_for():
-        # Bands are measured on the box the lines are actually drawn in, so a grown
-        # box re-measures; only a curved outline is measured, so free text on art
-        # keeps the rectangle fit instead of a flood fill through the artwork.
-        if image is None or not centered or not curved:
-            return None
-        if frame_source == "region_no_frame" and source_letter_box is None:
-            # No measured outline and no lettering to anchor the flood: the
-            # narrowed bands would be unanchored, so a rectangle fit is the
-            # honest fallback.
-            return None
-        # The frame is only the gate here, not an input: the flood seeds
-        # from the lettering itself, and its gap-cut, vote and fragmented
-        # checks reject a leak the same way. A ray that fails on a
-        # LaMa-softened outline must not force the ellipse guess when the
-        # interior can still be measured.
-        bands = _bubble_bands(image, (x1 + pad, y1 + pad, x2 - pad, y2 - pad),
-                              verdict=band_verdict, letter_box=source_letter_box,
-                              spiky=str(container or "").lower() == "spiky")
-        if bands is not None:
-            if source_letter_box is not None:
-                ly1, ly2 = source_letter_box[1], source_letter_box[3]
-            else:
-                ly1, ly2 = y1 + pad + 0.25 * box_h, y1 + pad + 0.75 * box_h
-            n = len(bands)
-            rows = [band for i, band in enumerate(bands)
-                    if y1 + pad + (i + 1) * box_h / n > ly1 and y1 + pad + i * box_h / n < ly2]
-            widest = max((b - a for band in (rows or bands) for a, b in band), default=0)
-            if widest < 0.4 * box_w:
-                # A fragmented flood on the lettering rows is shading, not an interior; trusting it collapses the fit.
-                band_verdict["bands_fragmented"] = True
-                return None
-        return bands
-
-    # Size limits are set for an 800 px wide page and grow with wider pages.
-    scale = max(1.0, image_size[0] / REFERENCE_PAGE_WIDTH)
-    readable, maximum_size = int(RENDER_MIN_READABLE_FONT_SIZE * scale), int(MAX_FONT_SIZE * scale)
-    enlarged_min = int(ENLARGED_MIN_FONT_SIZE * scale)
-    # Auto size never letters bigger than the source did.
     if enlarge:
         # Text flagged too small to read grows its area and may exceed the source size.
         # Growth stays inside the frame: a framed text grows into its bubble,
@@ -909,304 +918,139 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         raw_w, raw_h = x2 - x1, y2 - y1
         pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
-    elif source_cap_px:
-        from app.render.source_size import SIZE_SLACK, matching_font_px
-        # A misread source size must not shrink the text far below what the box holds.
-        box_fit = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-                            minimum_size=readable, maximum_size=maximum_size, curved=curved,
-                            bands=bands_for())[0]
-        cap_ceiling = int(matching_font_px(font_path_str, int(source_cap_px)) * SIZE_SLACK)
-        maximum_size = max(readable, int(SOURCE_FLOOR_RATIO * box_fit), cap_ceiling)
-        if curved and source_letter_box is not None:
-            # Small source lettering in a much taller bubble: the cap alone
-            # strands a short block in a tall balloon. When the fitted box
-            # stands at least half again as tall as the source letters, the
-            # ceiling may rise to one and a half times itself, still bounded
-            # by what the box holds. This is the only relaxation of the cap.
-            letter_h = int(source_letter_box[3]) - int(source_letter_box[1])
-            if letter_h > 0 and box_h >= 1.5 * letter_h:
-                uncapped = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-                                     minimum_size=readable, maximum_size=SOURCE_MATCH_MAX_FONT_SIZE,
-                                     curved=curved, bands=bands_for())[0]
-                maximum_size = max(maximum_size, min(uncapped, int(cap_ceiling * 1.5)))
-                cap_relaxed = maximum_size > max(readable, int(SOURCE_FLOOR_RATIO * box_fit), cap_ceiling)
-    if size_ceiling_px:
-        # The band is a ceiling on growth, never a floor: a long text in
-        # a small box still shrinks below it to fit.
-        maximum_size = max(readable, min(maximum_size, int(size_ceiling_px)))
-    if not curved and frame_source == "region_no_frame" and box_h > 0:
-        # A frameless box shorter than one line at the readable floor can
-        # never hold text: the padding alone eats the line, so the insert
-        # fails and the original stays. Frameless text has no outline to
-        # keep off, so the margin yields to readability — shrink the pad
-        # until one floor line fits, instead of refusing the text.
-        floor_line = _calc_line_height(
-            draw, get_font_object(font_path_str, readable), stroke_w=stroke_w)
-        if box_h < floor_line:
-            pad = max(0, (raw_h - floor_line) // 2)
-            box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
-    fit_bands = bands_for()
-    if curved and centered and image is not None and fit_bands is None:
-        # The outline measurement failed, so the fit below is a rectangle
-        # fit on a bubble: recorded, not passed off as outline-aware.
-        fallbacks.append("bands_none_rectangle")
-    actual_size, lines, fits_readably = _fit_text(
-        draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-        minimum_size=enlarged_min if enlarge else readable, maximum_size=maximum_size, curved=curved,
-        bands=fit_bands,
-    )
-    if enlarge and not fits_readably:
-        actual_size, lines, fits_readably = _fit_text(
-            draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-            minimum_size=readable, maximum_size=maximum_size, curved=curved,
-            bands=bands_for(),
-        )
+
+    def search(fx1, fy1, fx2, fy2):
+        """The fit on one box: size, lines, fits, bands, anchor, padded box, ceiling, floor."""
+        fw, fh = fx2 - fx1, fy2 - fy1
+        fpad = max(2, min(padding, int(min(fw, fh) * RENDER_PADDING_RATIO_MAX)))
+        fbw, fbh = fw - fpad * 2, fh - fpad * 2
+        padded = (fx1 + fpad, fy1 + fpad, fx2 - fpad, fy2 - fpad)
+        if fbw <= 0 or fbh <= 0:
+            return floor, [], False, None, None, padded, floor, floor
+        bands = None
+        anchor_y = None
+        if use_mask and mask is not None:
+            bands = _mask_bands(mask, padded)
+            anchor_y = int(mask["cy"]) - padded[1]
+            if bands is not None:
+                widest = max((b - a for band in bands for a, b in band), default=0)
+                if widest < 0.4 * fbw:
+                    # A fragmented mask is shading, not an interior; the
+                    # rectangle fit below is the honest fallback.
+                    bands = None
+                    fallbacks.append("mask_degenerate_rectangle")
+        # The probe is the largest size that fits at the default maximum:
+        # the ceiling is at least six tenths of it, so a misread source
+        # size cannot shrink the text far below what the box holds — and
+        # the floor is the same six tenths, so a translation longer than
+        # its source may still shrink to fit, down to what its own box
+        # holds. Both bounds come from the box, not the source cap.
+        probe = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
+                          minimum_size=readable, maximum_size=maximum_size,
+                          curved=bool(bands is not None or curved), bands=bands)[0]
+        fit_floor = floor if enlarge else max(floor, int(SOURCE_FLOOR_RATIO * probe))
+        if enlarge:
+            ceiling = maximum_size
+        elif source_match:
+            ceiling = max(source_match, int(SOURCE_FLOOR_RATIO * probe))
+        else:
+            ceiling = maximum_size
+        ceiling = max(fit_floor, min(ceiling, SOURCE_MATCH_MAX_FONT_SIZE))
+        if bands is not None:
+            size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
+                                          minimum_size=fit_floor, maximum_size=ceiling,
+                                          curved=True, bands=bands, anchor_y=anchor_y)
+        elif curved:
+            size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
+                                          minimum_size=fit_floor, maximum_size=ceiling,
+                                          curved=True, bands=None)
+        else:
+            size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
+                                          minimum_size=fit_floor, maximum_size=ceiling,
+                                          curved=False, bands=None)
+        return size, lines, fits, bands, anchor_y, padded, ceiling, fit_floor
+
+    size, lines, fits_readably, bands, anchor_y, padded, ceiling, floor = search(x1, y1, x2, y2)
     if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
         grow_x = int(round(raw_w * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
         grow_y = int(round(raw_h * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
         image_w, image_h = image_size
-        x1, y1 = max(0, x1 - grow_x), max(0, y1 - grow_y)
-        x2, y2 = min(image_w, x2 + grow_x), min(image_h, y2 + grow_y)
-        x1, y1, x2, y2 = clamp_growth(x1, y1, x2, y2)
-        raw_w, raw_h = x2 - x1, y2 - y1
-        pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
-        box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
-        actual_size, lines, fits_readably = _fit_text(
-            draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-            minimum_size=readable, maximum_size=maximum_size, curved=curved,
-            bands=bands_for(),
-        )
-    # The recovery move stays available without a frame: a centred fit
-    # that fits nowhere is rescued by moving to fitting rows, and there
-    # is no centred placement to preserve. Only the regrow below is
-    # gated on a measured frame.
-    if (curved and centered and image is not None and not fits_readably and fit_bands is not None
-            and not split_bubble):
-        # Centred lines can land on rows where the region box holds no bubble
-        # interior at all — a tall region over a short bubble, or a bubble
-        # over the next panel — while wider rows above or below hold them.
-        # Move the block to the closest fitting rows instead of failing.
-        for size in _scan_sizes(maximum_size, readable - 1):
-            font_try = get_font_object(font_path_str, size)
-            lines_try = _wrap_text(draw, text, font_try, box_w)
-            if not lines_try or [w for line in lines_try for w in line.split()] != text.split():
-                continue
-            line_height_try = _calc_line_height(draw, font_try, stroke_w=stroke_w)
-            total_h_try = line_height_try * len(lines_try)
-            if total_h_try > box_h:
-                continue
-            top_try = _best_band_top(draw, lines_try, font_try, box_w, box_h, stroke_w, fit_bands)
-            if top_try is None:
-                continue
-            centred_top = max(0, (box_h - total_h_try) // 2)
-            delta = top_try - centred_top
-            new_y1, new_y2 = y1 + delta, y2 + delta
-            if frame_source != "region_no_frame":
-                new_y1 = max(new_y1, frame[1])
-                new_y2 = min(new_y2, frame[3])
-            if new_y1 < 0:
-                new_y2, new_y1 = new_y2 - new_y1, 0
-            if new_y2 > image_size[1]:
-                new_y1, new_y2 = new_y1 - (new_y2 - image_size[1]), image_size[1]
-            if new_y1 < 0:
-                new_y1, new_y2 = 0, new_y2 - new_y1
-            # A clamped move no longer lands on the rows the size was
-            # validated for, so it is refused and a smaller size is tried.
-            if (new_y1, new_y2) != (y1 + delta, y2 + delta):
-                continue
-            actual_size, lines = size, lines_try
-            fits_readably = True
-            y1, y2 = new_y1, new_y2
-            fallbacks.append("band_placement_move")
-            break
-    # Without a measured frame the regrow must not move the block onto
-    # the widest measured rows — those may be leaked paper, not bubble.
-    if (curved and centered and image is not None and fits_readably and actual_size < maximum_size
-            and not split_bubble and frame_source != "region_no_frame"):
-        bands = bands_for()
-        if bands is not None:
-            # Centred placement can strand a short block on a narrow waist
-            # while the lobe above or below holds far wider rows; regrow
-            # only when a larger size fits somewhere in the measured bands,
-            # and move the box so centred drawing lands on that spot.
-            # The move-and-rewrap form stays off the split path:
-            # re-compacting a whole bubble's block to one best band
-            # undoes the split it was kept whole for. The split path
-            # gets its own growth below, without a move or a re-wrap.
-            # The move stays inside the measured frame, never just on
-            # the canvas.
-            for size in _scan_sizes(maximum_size, actual_size):
-                font_try = get_font_object(font_path_str, size)
-                lines_try = _wrap_text(draw, text, font_try, box_w)
-                if not lines_try or [w for line in lines_try for w in line.split()] != text.split():
-                    continue
-                line_height_try = _calc_line_height(draw, font_try, stroke_w=stroke_w)
-                total_h_try = line_height_try * len(lines_try)
-                if total_h_try > box_h:
-                    continue
-                top_try = _best_band_top(draw, lines_try, font_try, box_w, box_h, stroke_w, bands)
-                if top_try is None:
-                    continue
-                # The block itself must stay inside the region it belongs
-                # to: bands measured past the region edge are paper, not
-                # bubble, and growing into them strands text over art.
-                if y1 + top_try < attempt_box[1] or y1 + top_try + total_h_try > attempt_box[3]:
-                    continue
-                centred_top = max(0, (box_h - total_h_try) // 2)
-                delta = top_try - centred_top
-                new_y1, new_y2 = y1 + delta, y2 + delta
-                if frame_source != "region_no_frame":
-                    new_y1 = max(new_y1, frame[1])
-                    new_y2 = min(new_y2, frame[3])
-                if new_y2 - new_y1 < y2 - y1:
-                    # The frame cannot hold the moved box whole, so this
-                    # size is refused and a smaller one is tried.
-                    continue
-                if new_y1 < 0:
-                    new_y2, new_y1 = new_y2 - new_y1, 0
-                if new_y2 > image_size[1]:
-                    new_y1, new_y2 = new_y1 - (new_y2 - image_size[1]), image_size[1]
-                if new_y1 < 0:
-                    new_y1, new_y2 = 0, new_y2 - new_y1
-                if (new_y1, new_y2) != (y1 + delta, y2 + delta):
-                    continue
-                actual_size, lines = size, lines_try
-                y1, y2 = new_y1, new_y2
-                break
-    if curved and centered and image is not None and fits_readably and actual_size < maximum_size and split_bubble:
-        bands = bands_for()
-        if bands is not None:
-            # A split block grows only as itself: re-wrapping it at a
-            # larger size compacts it into one lobe, which is the defect
-            # the split exists to avoid, and moving it to one best band
-            # does the same. Growth counts only when the split's own
-            # lines still fit their bands, at their centred height, at
-            # the larger size; otherwise the fitted size stands.
-            for size in range(maximum_size, actual_size, -1):
-                font_try = get_font_object(font_path_str, size)
-                line_height_try = _calc_line_height(draw, font_try, stroke_w=stroke_w)
-                if line_height_try * len(lines) > box_h:
-                    continue
-                if _lines_fit_bands(draw, lines, font_try, box_w, box_h, stroke_w, bands):
-                    actual_size = size
-                    # Growth happened, so the whole-bubble regrow skip
-                    # recorded at frame measurement no longer holds.
-                    if "regrow:whole_bubble_measured" in stages_skipped:
-                        stages_skipped.remove("regrow:whole_bubble_measured")
-                    break
-    if curved and centered and image is not None and fits_readably and lines:
-        # The fit above validated sizes against bands measured on earlier
-        # boxes; moves since then re-measure, so a validated size can still
-        # cross the outline where it is actually drawn. Re-check the drawn
-        # position — centred in the final box — and shrink until it holds,
-        # or give the object back for review instead of lettering over art.
-        final_bands = bands_for()
-        if final_bands is not None:
-            held = False
-            # The greedy check runs first, unchanged: its verdict is what
-            # the floor and the rectangle retry read, so it stands unless
-            # it fails outright or lands below the source floor — those
-            # are the cases where the old path gives the object back or
-            # hands it to the rectangle retry, and a narrower wrap of the
-            # same text at the fitted size is the better answer. A greedy
-            # wrap can strand one long line on narrow rows while a narrower
-            # wrap fits them, and shrinking to the greedy wrap strands the
-            # block far below what the bubble holds.
-            greedy_size = None
-            greedy_lines = None
-            for size in range(actual_size, readable - 1, -1):
-                font_try = get_font_object(font_path_str, size)
-                lines_try = _wrap_text(draw, text, font_try, box_w)
-                if not lines_try or [w for line in lines_try for w in line.split()] != text.split():
-                    continue
-                if _calc_line_height(draw, font_try, stroke_w=stroke_w) * len(lines_try) > box_h:
-                    continue
-                if _lines_fit_bands(draw, lines_try, font_try, box_w, box_h, stroke_w, final_bands):
-                    greedy_size, greedy_lines = size, lines_try
-                    break
-            floor_size = None
-            if box_fit is not None:
-                _floor_box = min(box_fit, size_ceiling_px) if size_ceiling_px else box_fit
-                floor_size = int(SOURCE_FLOOR_RATIO * _floor_box)
-            needs_rewrap = greedy_size is None or (floor_size is not None
-                                                   and greedy_size < floor_size)
-            if needs_rewrap:
-                # The re-wrap is trusted only where the bands are real
-                # interior: a fitted line sitting on a span narrower than
-                # two fifths of the box is sitting on a fragment — letters
-                # or a leak splitting the flood, not a lobe — so there the
-                # greedy verdict stands, and a fit that needs the re-wrap
-                # at every size fails here so the rectangle retry can
-                # rescue it instead of lettering small on a sliver.
-                font_try = get_font_object(font_path_str, actual_size)
-                lh_try = _calc_line_height(draw, font_try, stroke_w=stroke_w)
-                spans_try = _band_line_spans(box_w, box_h, len(lines), lh_try, final_bands)
-                rewrap_trusted = (spans_try is not None
-                                  and min(b - a for a, b in spans_try) >= 0.4 * box_w)
-                if rewrap_trusted:
-                    ok_try, lines_try = _fits(draw, text, box_w, box_h, font_path_str, actual_size,
-                                              stroke_w, curved=True, bands=final_bands)
-                    if ok_try:
-                        actual_size, lines = actual_size, lines_try
-                        held = True
-            if not held and greedy_size is not None and not (
-                    floor_size is not None and greedy_size < floor_size):
-                actual_size, lines = greedy_size, greedy_lines
-                held = True
-            if not held:
-                actual_size = readable
-                lines = _wrap_text(draw, text, get_font_object(font_path_str, readable), box_w)
-                fits_readably = False
-    if centres_out is not None and curved and centered and image is not None and fits_readably and lines:
+        gx1, gy1 = max(0, x1 - grow_x), max(0, y1 - grow_y)
+        gx2, gy2 = min(image_w, x2 + grow_x), min(image_h, y2 + grow_y)
+        gx1, gy1, gx2, gy2 = clamp_growth(gx1, gy1, gx2, gy2)
+        gsize, glines, gfits, gbands, ganchor, gpadded, gceiling, gfloor = search(gx1, gy1, gx2, gy2)
+        if gfits:
+            size, lines, fits_readably, bands, anchor_y, padded, ceiling, floor = \
+                gsize, glines, gfits, gbands, ganchor, gpadded, gceiling, gfloor
+            x1, y1, x2, y2 = gx1, gy1, gx2, gy2
+            raw_w, raw_h = x2 - x1, y2 - y1
+            pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+            box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+    if not fits_readably:
+        # The outline fit failed but the floor size holds inside a plain
+        # rectangle: draw there rather than refuse the block. For a mask
+        # that rectangle is its inscribed one, inside the bubble; without
+        # one it is the fit box itself.
+        if use_mask and mask is not None:
+            rx1, ry1, rx2, ry2 = mask_inscribed_rect(mask)
+        else:
+            rx1, ry1, rx2, ry2 = x1, y1, x2, y2
+        rw, rh = rx2 - rx1, ry2 - ry1
+        rpad = max(2, min(padding, int(min(rw, rh) * RENDER_PADDING_RATIO_MAX)))
+        rbw, rbh = rw - rpad * 2, rh - rpad * 2
+        if rbw > 0 and rbh > 0:
+            ok, flines = _fits(draw, text, rbw, rbh, font_path_str, floor, stroke_w,
+                               curved=False, bands=None)
+            if ok:
+                size, lines, fits_readably = floor, flines, True
+                x1, y1, x2, y2 = rx1, ry1, rx2, ry2
+                bands, anchor_y = None, None
+                padded = (rx1 + rpad, ry1 + rpad, rx2 - rpad, ry2 - rpad)
+                raw_w, raw_h = x2 - x1, y2 - y1
+                pad = rpad
+                box_w, box_h = rbw, rbh
+                fallbacks.append("outline_fit_failed_floor_rect")
+    block_top = None
+    if fits_readably and lines and bands is not None:
         # Each line is drawn on its own rows' interior centre, not the box
         # centre: the fit above already sized it against those intervals.
-        bands = bands_for()
-        if bands is not None:
-            font_c = get_font_object(font_path_str, actual_size)
-            line_height_c = _calc_line_height(draw, font_c, stroke_w=stroke_w)
-            total_c = line_height_c * len(lines)
-            if total_c <= box_h:
-                centres = _band_line_centres(box_w, box_h, len(lines), line_height_c, bands)
-                if centres is not None:
+        font_c = get_font_object(font_path_str, size)
+        line_height_c = _calc_line_height(draw, font_c, stroke_w=stroke_w)
+        total_c = line_height_c * len(lines)
+        if total_c <= box_h:
+            top_c = _anchored_top(box_h, total_c, anchor_y)
+            centres = _band_line_centres(box_w, box_h, len(lines), line_height_c, bands, top=top_c)
+            spans = _band_line_spans(box_w, box_h, len(lines), line_height_c, bands, top=top_c)
+            if centres is not None and spans is not None:
+                if centres_out is not None:
                     centres_out.extend(centres)
+                if spans_out is not None:
+                    spans_out.extend(spans)
+                block_top = y1 + pad + top_c
     if stats_out is not None:
-        # The share rule is a fit constraint, judged here where the size
-        # is known, not a post-hoc rejection: the caller retries at
-        # share 0.0 on this verdict, it does not re-run the fit to learn it.
         share_ok = True
-        if source_cap_px and not enlarge and min_source_share:
-            from app.render.source_size import matching_font_px
-            share_ok = actual_size >= min_source_share * matching_font_px(
-                font_path_str, int(source_cap_px))
-        # The floor share is a floor, not just a ceiling: a fit that
-        # only holds far below what the box holds leaves the object for
-        # review instead of lettering it small. The floor is judged
-        # against the size the band allows, not the raw box fit: a
-        # ceiling holding a short block below 60% of its roomy box is
-        # the band working, not a fit failure.
-        floor_box_fit = min(box_fit, size_ceiling_px) if size_ceiling_px else box_fit
-        below_floor_ratio = bool(
-            fits_readably and source_cap_px and not enlarge and box_fit is not None
-            and actual_size < int(SOURCE_FLOOR_RATIO * floor_box_fit))
+        if source_match and not enlarge:
+            share_ok = size >= int(SOURCE_FLOOR_RATIO * source_match)
         stats_out.update({
             "frame": frame,
             "frame_source": frame_source,
             "below_readable_floor": not fits_readably,
             "readable_floor_px": readable,
-            "bands_used": fit_bands is not None,
-            "lobe": lobe_decision,
+            "bands_used": bands is not None,
+            "lobe": "mask" if use_mask and bands is not None else None,
             "fallbacks": list(fallbacks),
-            "stages_skipped": list(stages_skipped),
-            "band_narrowing": dict(band_verdict),
-            "cap_ceiling": cap_ceiling,
-            "cap_relaxed": cap_relaxed,
-            "size_ceiling_px": size_ceiling_px,
+            "stages_skipped": [],
+            "band_narrowing": {},
+            "cap_ceiling": ceiling,
+            "cap_relaxed": False,
+            "size_ceiling_px": None,
             "share_ok": share_ok,
-            "below_floor_ratio": below_floor_ratio,
+            "below_floor_ratio": False,
+            "mask_source": mask_source,
+            "floor_px": floor,
+            "block_top": block_top,
         })
-    return actual_size, lines, fits_readably, (x1, y1, x2, y2)
-
-
+    return size, lines, fits_readably, (x1, y1, x2, y2)
 ENLARGE_GROW_RATIO = 0.25  # each side of a region flagged enlarge grows by this share
 ENLARGED_MIN_FONT_SIZE = 22
 SOURCE_FLOOR_RATIO = 0.6  # source-matched text never drops below this share of the box-fit size
@@ -1252,406 +1096,7 @@ def _lines_fit_ellipse(draw, lines, font, box_w: int, box_h: int, stroke_w: int)
         for line, limit in zip(lines, limits))
 
 
-BAND_COUNT = 24  # horizontal slices the measured bubble interior is split into
-BAND_EDGE_PAD = 4  # ink keeps this margin inside a band, off the outline
-BAND_FILL_TOLERANCE = 48  # grey levels a bubble interior may drift from its centre
-BAND_MIN_FILL = 0.5  # a fill smaller than this is art, not a bubble interior
-BUBBLE_BOX_EDGE_INSET = 8  # a bubble stays this far from the slice's left/right edges
-BUBBLE_BOX_AREA_MIN = 0.35  # a bubble box may not shrink far below its region box
-BUBBLE_BOX_AREA_MAX = 3.0  # nor grow far beyond it
-BUBBLE_BOX_CENTRE_SHARE = 0.35  # a bubble box's centre stays this close to its region box
-BUBBLE_BOX_PAPER_MIN = 0.65  # a bubble box is mostly paper, not art
-BUBBLE_TRIM_DEVIATION_SHARE = 0.08  # a band whose interior sits this far off-centre ends the lobe
-BUBBLE_TRIM_WIDTH_SHARE = 0.5  # a band narrower than this share of the widest ends the lobe
-BUBBLE_TRIM_JUMP_ROWS = 12  # a thin stroke crossing the bubble is jumped, not a lobe end
-BUBBLE_TRIM_HEIGHT_SHARE = 0.4  # a trim keeping less than this share of the height is no trim
-RAY_EDGE_THRESHOLD = 80  # a Sobel step this strong is an outline, not paper noise
-RAY_LOBE_SLACK = 16  # interior this far past a ray frame is a lost lobe, not edge width
 BOX_RULE_EXPAND = 64  # how far past a region a narration frame's rules are searched for
-DIVIDER_ROW_SHARE = 0.6  # a row this full of strong edge is a panel divider
-DIVIDER_KEEP_SHARE = 0.4  # a cut keeping less than this share of the height is no cut
-
-
-def _flood_seeds(w: int, h: int, letter_box: tuple[int, int, int, int] | None = None) -> list[tuple[int, int]]:
-    """Seed points for a paper flood, in crop coordinates.
-
-    Letters sit inside the bubble, so seeds sampled over the letter area
-    flood the interior; a seed on paper outside the bubble floods the
-    surroundings instead, and the union then calls that paper the bubble.
-    Without a letter area the old nine-point grid over the whole crop
-    stands, since a flood still needs a start.
-    """
-    if letter_box is not None:
-        lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
-        lx1, ly1 = max(0, lx1), max(0, ly1)
-        lx2, ly2 = min(w, lx2), min(h, ly2)
-        if lx2 - lx1 >= 4 and ly2 - ly1 >= 4:
-            # Most points land on the paper between letters; one good
-            # seed floods the whole interior, and fills grown from a
-            # seed on a dark letter are too small and grey-wrong to join
-            # the union.
-            return [(lx1 + (2 * i + 1) * (lx2 - lx1) // 10,
-                     ly1 + (2 * j + 1) * (ly2 - ly1) // 6)
-                    for j in range(3) for i in range(5)]
-    return [(w // 2, h // 2),
-            (w // 4, h // 4), (3 * w // 4, h // 4), (w // 4, 3 * h // 4), (3 * w // 4, 3 * h // 4),
-            (w // 2, h // 4), (w // 2, 3 * h // 4), (w // 4, h // 2), (3 * w // 4, h // 2)]
-
-
-def _paper_union(grey, seeds):
-    """Union of the flood fills sharing the largest fill's paper, or None.
-
-    A bubble split by a panel edge or a tail stroke floods in pieces; the
-    pieces share the paper, so their union is the interior, not just the
-    largest piece. The largest fill names the paper even when the centre
-    seed lands outside the bubble, so art fills in another grey stay out.
-    """
-    try:
-        import cv2
-    except ImportError:
-        return None
-    h, w = grey.shape
-    fills = []
-    for sx, sy in seeds:
-        mask = np.zeros((h + 2, w + 2), dtype=np.uint8)
-        canvas = grey.copy()
-        try:
-            # Bits 8-15 of the flags are the value written into the mask; without
-            # them the flood leaves the mask blank. FLOODFIXED_RANGE is 1<<16
-            # (this cv2 build does not expose the name).
-            cv2.floodFill(canvas, mask, (sx, sy), 0,
-                          BAND_FILL_TOLERANCE, BAND_FILL_TOLERANCE,
-                          4 | (1 << 16) | (255 << 8))
-        except Exception:
-            continue
-        fills.append((mask[1:-1, 1:-1] > 0, int(grey[sy, sx])))
-    if not fills:
-        return None
-    largest, paper_grey = max(fills, key=lambda item: float(item[0].mean()))
-    filled = None
-    for candidate, seed_grey in fills:
-        if abs(seed_grey - paper_grey) <= BAND_FILL_TOLERANCE:
-            filled = candidate if filled is None else (filled | candidate)
-    return filled
-
-
-def _row_runs(on):
-    """Maximal runs of True in a row, hairline cracks merged."""
-    cols = np.nonzero(on)[0]
-    if len(cols) == 0:
-        return []
-    runs = []
-    start = prev = int(cols[0])
-    for c in cols[1:]:
-        c = int(c)
-        if c - prev > 3:
-            runs.append((start, prev + 1))
-            start = c
-        prev = c
-    runs.append((start, prev + 1))
-    return runs
-
-
-def _outline_gap(mag_row, a: int, b: int):
-    """Gap between strong outlines holding the middle of ``(a, b)``.
-
-    A flood fill runs through a faint outline into same-grey surroundings,
-    so its interval overstates the interior; the outline loop itself is
-    still drawn, so the gap between its strokes is the interior that counts.
-    Returns None when the row holds no outline, False when its middle sits
-    on an outline stroke and the row says nothing about the interior.
-    """
-    cols = np.nonzero(mag_row[a:b] > RAY_EDGE_THRESHOLD)[0] + a
-    if len(cols) == 0:
-        return None
-    spans = []
-    start = prev = int(cols[0])
-    for c in cols[1:]:
-        c = int(c)
-        if c - prev > 2:
-            spans.append((start, prev + 1))
-            start = c
-        prev = c
-    spans.append((start, prev + 1))
-    if len(spans) > 6:
-        # Too many strong edges to be one outline loop bracketing the
-        # interior: diagonal shading (or other interior art) fragments
-        # the run into strips, and the gap holding the middle is one
-        # strip, not the bubble. Cutting to it strands the text in a
-        # sliver. A lobe waist or a leaked flood shows few spans — the
-        # outline loop itself — so those still cut below.
-        return None
-    mid = (a + b) // 2
-    left = a
-    for s, e in spans:
-        if s > left and left <= mid < s:
-            return (left, s)
-        left = max(left, e)
-    if left < b and left <= mid < b:
-        return (left, b)
-    return False
-
-
-def _bands_split_by_waist(bands, box_w: int) -> bool:
-    """Whether a near-empty waist splits the flood into two flooded parts.
-
-    Centred lines land on the waist and size to it, while the lobes above
-    and below hold far wider rows — the bands describe two regions, not
-    one bubble's interior. A bubble that simply ends partway down the box
-    leaves empty bands with flood on one side only, and is not split.
-    The run must be at least 3 bands: a 2-band dip is the narrowing step
-    misreading letter rows (slice 25's bands 1-2 collapse to 10/2 px
-    while the rows either side hold ~360), and the flood either side must
-    clear half the box. Calibrated on slice 81 (3-band waist, 0.57/0.99
-    flood) vs slice 25 (2-band dip, 0.47/0.45 flood).
-    """
-    if not bands or box_w <= 0:
-        return False
-    return _coverage_waist([sum(b - a for a, b in band) / box_w for band in bands])
-
-
-def _coverage_waist(cov) -> bool:
-    """Whether a >=3-row near-empty run separates two flooded halves."""
-    start = None
-    for i, c in enumerate(cov):
-        if c < 0.15:
-            if start is None:
-                start = i
-            continue
-        if start is not None and i - start >= 3:
-            if start > 0 and max(cov[:start]) > 0.5 and max(cov[i:]) > 0.5:
-                return True
-        start = None
-    return False
-
-
-_BANDS_CACHE: dict = {}
-_BANDS_CACHE_MAX = 128
-
-
-def _bubble_bands(image, box, band_count: int = BAND_COUNT, verdict: dict | None = None,
-                  letter_box: tuple[int, int, int, int] | None = None,
-                  spiky: bool = False):
-    """Per-band ink intervals of the bubble interior holding ``box``, or None.
-
-    The box sits inside its bubble, so flooding outward from several seeds on the
-    cleaned image stops at the bubble outline; each band's intervals are the widths
-    a centred line may use on those rows. A box the flood cannot cover — free text
-    on art, a box cut by a panel edge — falls back to the rectangle/ellipse fit.
-    When ``verdict`` is given, narrowing the flood leaves a trace there, so a
-    fit that shrank can be told apart from one that never narrowed.
-    ``letter_box`` seeds the flood from the letter area (absolute coordinates);
-    without it the seeds spread over the whole box and one on paper outside
-    the bubble can define the flood.
-    Bands are cached per (image, box): one fit measures them several times
-    on the same box, and the flood plus per-row gap analysis is the slow
-    part of the render. The cache holds the image so its id cannot be
-    reused by another image while an entry stands.
-    """
-    x1, y1, x2, y2 = (int(v) for v in box)
-    width, height = image.size
-    x1, y1 = max(0, x1), max(0, y1)
-    x2, y2 = min(width, x2), min(height, y2)
-    if x2 - x1 < 8 or y2 - y1 < 8:
-        return None
-    grey = np.asarray(image.convert("L"))[y1:y2, x1:x2]
-    if grey.size == 0:
-        return None
-    letter_key = tuple(int(v) for v in letter_box) if letter_box is not None else None
-    cache_key = (id(image), (x1, y1, x2, y2), band_count, letter_key, spiky)
-    hit = _BANDS_CACHE.get(cache_key)
-    if hit is not None:
-        _image_ref, bands, delta = hit
-        if verdict is not None:
-            for key, value in delta.items():
-                if isinstance(value, bool):
-                    verdict[key] = verdict.get(key, False) or value
-                else:
-                    verdict[key] = verdict.get(key, 0) + value
-        return [list(band) for band in bands] if bands is not None else None
-    h, w = grey.shape
-    crop_letter = None
-    if letter_box is not None:
-        lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
-        crop_letter = (lx1 - x1, ly1 - y1, lx2 - x1, ly2 - y1)
-    letter_seeded = (crop_letter is not None and crop_letter[2] - crop_letter[0] >= 4
-                     and crop_letter[3] - crop_letter[1] >= 4)
-    filled = _paper_union(grey, _flood_seeds(w, h, crop_letter))
-    delta: dict = {}
-    waist_rows = False
-    # A letter-seeded flood is the bubble the letters sit in, however
-    # small a share of the box that is; the half-box floor only judges
-    # grid-seeded floods, where a small fill is art, not a bubble.
-    min_fill = 0.02 if letter_seeded else BAND_MIN_FILL
-    if filled is None or float(filled.mean()) < min_fill:
-        delta["bands_none"] = True
-        if verdict is not None:
-            verdict["bands_none"] = True
-        _BANDS_CACHE[cache_key] = (image, None, delta)
-        if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
-            _BANDS_CACHE.pop(next(iter(_BANDS_CACHE), None), None)
-        return None
-    try:
-        import cv2
-
-        gx = cv2.Sobel(grey, cv2.CV_32F, 1, 0, ksize=3)
-        gy = cv2.Sobel(grey, cv2.CV_32F, 0, 1, ksize=3)
-        mag_crop = np.hypot(gx, gy)
-    except Exception:
-        mag_crop = None
-    bands = []
-    gap_cut_rows = 0
-    vote_bands = 0
-    rolled_back = 0
-    kept_narrowed = 0
-    for i in range(band_count):
-        top = i * h // band_count
-        bottom = (i + 1) * h // band_count
-        rows = filled[top:bottom]
-        if rows.size == 0:
-            bands.append([])
-            continue
-        if mag_crop is not None:
-            cut = np.zeros_like(rows)
-            centre = w // 2
-            for r in range(rows.shape[0]):
-                runs = _row_runs(rows[r])
-                centre_run = None
-                for a, b in runs:
-                    if a <= centre < b:
-                        centre_run = (a, b)
-                        break
-                for a, b in runs:
-                    # A run on paper outside the bubble: it reaches the
-                    # crop edge, the run holding the centre is a bounded
-                    # interior run, and a strong edge (the outline)
-                    # stands between the two. The gap-cut cannot see it
-                    # — a paper run holds no outline inside itself, so
-                    # the shave rule keeps it whole — and the cross-row
-                    # union then calls the paper the interior, so a line
-                    # clamped to the band crosses the outline where the
-                    # bubble pinches. Drop it; the centre run is the
-                    # interior that counts. Letter-seeded only: the
-                    # letter area anchors the flood to one bubble, so a
-                    # run reaching the crop edge is paper outside it.
-                    # Without that anchor a run reaching the edge can be
-                    # the interior itself (a bubble wider than its box),
-                    # or a letter fragment in an uncleaned image, and
-                    # dropping it shrinks healthy renders. A single-run
-                    # row has no other run to drop against, and a row
-                    # whose centre is not a bounded interior run is left
-                    # alone.
-                    # Boundedness is judged on the side facing the paper
-                    # run only: a bubble wider than its box lets its
-                    # interior run touch the far edge (ch42 p010 — the
-                    # interior reaches the right edge while paper on the
-                    # left survives), and that far touch says nothing
-                    # about the paper on this side.
-                    if (letter_seeded and centre_run is not None
-                            and (a, b) != centre_run
-                            and ((b <= centre_run[0] and centre_run[0] > 0)
-                                 or (a >= centre_run[1] and centre_run[1] < w))
-                            and (a == 0 or b == w)):
-                        lo, hi = ((b, centre_run[0]) if b <= centre_run[0]
-                                  else (centre_run[1], a))
-                        if lo < hi and bool(
-                                (mag_crop[top + r, lo:hi]
-                                 > RAY_EDGE_THRESHOLD).any()):
-                            continue
-                    gap = _outline_gap(mag_crop[top + r], a, b)
-                    if gap is False:
-                        continue
-                    if gap is not None and gap[1] - gap[0] >= 0.85 * (b - a):
-                        # A shave this small is the outline's own width, not
-                        # a leak; cutting it only re-wraps healthy renders.
-                        gap = None
-                    if gap is not None:
-                        gap_cut_rows += 1
-                    ga, gb = gap if gap is not None else (a, b)
-                    cut[r, ga:gb] = True
-            refined = cut if cut.any() else rows
-            waist_rows = _coverage_waist((refined.sum(axis=1) / max(1, w)).tolist())
-            counts = [len(_row_runs(refined[r])) for r in range(refined.shape[0])
-                      if refined[r].any()]
-            cols_any = refined.any(axis=0)
-            if (len(set(counts)) > 1
-                    or len(_row_runs(cols_any)) < (max(counts) if counts else 0)):
-                # Rows disagreeing about how many pieces the interior has
-                # are a leak arguing with the outline: one faint-outline
-                # row's merged run must not widen the whole band, so only
-                # columns most rows agree on count as interior. A union
-                # that merges pieces the rows keep separate is the same
-                # argument in a single run — the outline between the
-                # pieces drifts a few pixels row to row, so the union
-                # bridges it while no row does.
-                vote_bands += 1
-                votes = refined.sum(axis=0)
-                cols = votes > len(counts) // 2
-            else:
-                cols = cols_any
-        else:
-            cols = rows.any(axis=0)
-        merged = _row_runs(cols)
-        if mag_crop is not None:
-            # Narrowing is undone band by band where it removed no
-            # outline: columns the narrowers cut that hold no strong
-            # edge are true interior (a tapering lobe, not a leak), so
-            # the wider measurement stands. Columns cut past a strong
-            # edge stay cut — that edge is the leak's outline.
-            raw = _row_runs(rows.any(axis=0))
-            if raw != merged:
-                narrowed_set = set()
-                for a, b in merged:
-                    narrowed_set.update(range(a, b))
-                extra = [c for a, b in raw for c in range(a, b)
-                         if c not in narrowed_set]
-                if extra and not bool((mag_crop[top:bottom, extra] > RAY_EDGE_THRESHOLD).any()):
-                    merged = raw
-                    rolled_back += 1
-                else:
-                    kept_narrowed += 1
-        # Ink drawn to a band's edge touches the outline where the bubble
-        # narrows, so each band keeps a small margin inside its own width.
-        bands.append([(a + BAND_EDGE_PAD, b - BAND_EDGE_PAD) if b - a > 2 * BAND_EDGE_PAD else (a, b)
-                      for a, b in merged])
-    delta["gap_cut_rows"] = gap_cut_rows
-    delta["vote_bands"] = vote_bands
-    delta["bands_rolled_back"] = rolled_back
-    delta["bands_kept_narrowed"] = kept_narrowed
-    if gap_cut_rows or vote_bands:
-        delta["narrowed"] = True
-    if waist_rows or _bands_split_by_waist(bands, x2 - x1):
-        # A waist-split flood sizes centred lines to the waist while the
-        # lobes hold far wider rows; the rectangle/ellipse fit is the
-        # honest fallback, not a fit to the narrowest rows.
-        delta["bands_none"] = True
-        delta["bands_split_waist"] = True
-        if verdict is not None:
-            for key, value in delta.items():
-                if isinstance(value, bool):
-                    verdict[key] = verdict.get(key, False) or value
-                else:
-                    verdict[key] = verdict.get(key, 0) + value
-        _BANDS_CACHE[cache_key] = (image, None, delta)
-        if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
-            _BANDS_CACHE.pop(next(iter(_BANDS_CACHE), None), None)
-        return None
-    if verdict is not None:
-        for key, value in delta.items():
-            if isinstance(value, bool):
-                verdict[key] = verdict.get(key, False) or value
-            else:
-                verdict[key] = verdict.get(key, 0) + value
-    if spiky and mag_crop is not None:
-        # The flood leaks through the gaps between spikes to their
-        # tips, so spiky bands overstate the interior by the spike
-        # depth; the bases are the interior the lines must hold.
-        bases = _spiky_base_interval(mag_crop, band_count)
-        bands = _narrow_to_spiky_base(bands, bases)
-    _BANDS_CACHE[cache_key] = (image, [list(band) for band in bands], delta)
-    if len(_BANDS_CACHE) > _BANDS_CACHE_MAX:
-        _BANDS_CACHE.pop(next(iter(_BANDS_CACHE), None), None)
-    return bands
 
 
 def _box_frame(image: Image.Image, box):
@@ -1879,353 +1324,6 @@ def _screen_frame(image: Image.Image, box):
     return (fx1, fx2, fy1, fy2, measured_x, measured_y)
 
 
-def _two_lobes(bands, box_w: int, frame_measured: bool = True) -> bool:
-    """Whether the measured bands hold two wide lobes with drifting centres.
-
-    A tail is narrow, so it never counts as a lobe; only intervals at
-    least half the widest count, and only when such intervals sit in both
-    halves of the box with centres drifted apart. Every interval in a
-    band counts, not just its widest: lobes sitting side by side share
-    rows, so a band holding two wide intervals is two lobes, not one.
-    A single bent body drifts too, but its wide intervals share one
-    centre line; two lobes do not.
-    With no frame measured the bands themselves are unproven — a flood
-    leaked through a faint outline reads as two lobes — so the verdict
-    is withheld and the trim runs instead of being vetoed by it.
-    """
-    if not bands or box_w <= 0 or not frame_measured:
-        return False
-    widest = 0
-    for band in bands:
-        for a, b in band:
-            widest = max(widest, b - a)
-    if widest <= 0:
-        return False
-    wide = [(i, (a + b) / 2) for i, band in enumerate(bands)
-            for a, b in band if b - a >= 0.5 * widest]
-    if len(wide) < 2:
-        return False
-    centres = [c for _, c in wide]
-    if max(centres) - min(centres) <= 0.15 * box_w:
-        return False
-    half = len(bands) // 2
-    return any(i < half for i, _ in wide) and any(i >= half for i, _ in wide)
-
-
-def _edge_magnitude(image):
-    """Sobel strength per pixel, for outlines too grey to stop a flood fill."""
-    import cv2
-
-    grey = np.asarray(image.convert("L"))
-    gx = cv2.Sobel(grey, cv2.CV_32F, 1, 0, ksize=3)
-    gy = cv2.Sobel(grey, cv2.CV_32F, 0, 1, ksize=3)
-    return np.hypot(gx, gy)
-
-
-def _divider_cut(mag, box):
-    """The box cut at a panel divider, keeping the side holding its centre.
-
-    A bubble straddling a panel edge is lettered on the side its text came
-    from; the divider row itself is a strong edge spanning the box. A cut
-    that would keep too little, or a centre sitting on the divider, is no cut.
-    """
-    x1, y1, x2, y2 = (int(v) for v in box)
-    if x2 - x1 < 8 or y2 - y1 < 8:
-        return box
-    band = mag[y1:y2, x1:x2]
-    if band.size == 0:
-        return box
-    score = (band > RAY_EDGE_THRESHOLD).mean(axis=1)
-    rows = [i for i, s in enumerate(score) if s >= DIVIDER_ROW_SHARE]
-    if not rows:
-        return box
-    groups = [[rows[0]]]
-    for row in rows[1:]:
-        if row - groups[-1][-1] <= 2:
-            groups[-1].append(row)
-        else:
-            groups.append([row])
-    cy = (y1 + y2) // 2 - y1
-    for group in groups:
-        if abs(cy - group[0]) <= 10 or abs(cy - group[-1]) <= 10:
-            return box
-    top, bottom = 0, y2 - y1
-    for group in groups:
-        if group[-1] < cy:
-            top = max(top, group[-1] + 1)
-        elif group[0] > cy:
-            bottom = min(bottom, group[0])
-    if bottom - top < DIVIDER_KEEP_SHARE * (y2 - y1):
-        return box
-    return (x1, y1 + top, x2, y1 + bottom)
-
-
-def _seed_points(mag, dist, box):
-    """Flat, deep points spread over ``box``, for ray-casting its bubble.
-
-    One seed can sit on a hatched outline or a tapering tail, where rays
-    find the edge band instead of the bubble. Several seeds across the box
-    cover the bubble body; a seed on art or an outline is not flat or deep
-    enough to count.
-    """
-    x1, y1, x2, y2 = (int(v) for v in box)
-    if x2 - x1 < 8 or y2 - y1 < 8:
-        return []
-    bx, by = x2 - x1, y2 - y1
-    height, width = mag.shape
-    points = []
-    for sx, sy in [(x1 + bx // 2, y1 + by // 2),
-                   (x1 + bx // 4, y1 + by // 4), (x1 + 3 * bx // 4, y1 + by // 4),
-                   (x1 + bx // 4, y1 + 3 * by // 4), (x1 + 3 * bx // 4, y1 + 3 * by // 4),
-                   (x1 + bx // 2, y1 + by // 4), (x1 + bx // 2, y1 + 3 * by // 4),
-                   (x1 + bx // 4, y1 + by // 2), (x1 + 3 * bx // 4, y1 + by // 2)]:
-        if not (0 <= sx < width and 0 <= sy < height):
-            continue
-        if float(mag[sy, sx]) > RAY_EDGE_THRESHOLD:
-            continue
-        if float(dist[sy, sx]) < 20:
-            continue
-        points.append((sx, sy))
-    return points
-
-
-def _ray_loses_lobe(bands, box, pad, ray):
-    """True when a ray frame cuts off interior the cut side's flood proves.
-
-    A ray from inside one lobe stops at that lobe's outline, so a ray
-    frame can be one lobe of a double bubble while claiming the whole.
-    Only a two-lobed interior can lose a lobe, and only interior sticking
-    out of the ray frame counts, so a ray that genuinely recovers the
-    whole bubble is never rejected for it.
-    """
-    if not bands:
-        return False
-    cx1, cy1, cx2, cy2 = (int(v) for v in box)
-    if not _two_lobes(bands, cx2 - cx1 - 2 * pad):
-        return False
-    left = right = top = bottom = None
-    h = cy2 - cy1 - 2 * pad
-    for i, band in enumerate(bands):
-        if not band:
-            continue
-        if top is None:
-            top = cy1 + pad + i * h // len(bands)
-        bottom = cy1 + pad + (i + 1) * h // len(bands)
-        for a, b in band:
-            left = a if left is None else min(left, a)
-            right = b if right is None else max(right, b)
-    if left is None:
-        return False
-    left += cx1 + pad
-    right += cx1 + pad
-    return (left < ray[0] - RAY_LOBE_SLACK or right > ray[2] + RAY_LOBE_SLACK
-            or top < ray[1] - RAY_LOBE_SLACK or bottom > ray[3] + RAY_LOBE_SLACK)
-
-
-def _ray_boxes(mag, grey, box, seeds):
-    """Bounding box of the outline loop around ``box``, or None.
-
-    The detection region is a guess at the bubble: shifted, a subset, or
-    stretched past a panel edge. Casting rays from flat points inside it
-    to the first strong edge in each direction recovers the bubble itself —
-    or its lobe, since a ray from inside a lobe stops at that lobe's
-    outline. Each seed's box must look like this object's bubble on its
-    own; their union is the bubble's full extent. A box that is mostly art,
-    touches a slice edge like a panel leak, or sits far from the region is
-    not this object's bubble, so the caller keeps the region box.
-    """
-    x1, y1, x2, y2 = (int(v) for v in box)
-    height, width = mag.shape
-    if x2 - x1 < 8 or y2 - y1 < 8 or not seeds:
-        return None
-    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-    box_area = max(1, (x2 - x1) * (y2 - y1))
-
-    def first_edge(fixed, start, step, axis):
-        hits = []
-        for off in (-20, -10, 0, 10, 20):
-            pos = start + step * 2
-            line = fixed + off
-            if axis == 0:
-                if not (0 <= line < height):
-                    continue
-                row = mag[line, :]
-                bound = width
-            else:
-                if not (0 <= line < width):
-                    continue
-                row = mag[:, line]
-                bound = height
-            while 0 <= pos < bound:
-                if row[pos] > RAY_EDGE_THRESHOLD:
-                    hits.append(pos)
-                    break
-                pos += step
-        if len(hits) < 3:
-            return None
-        hits.sort()
-        return hits[len(hits) // 2]
-
-    def guards(rx1, ry1, rx2, ry2):
-        if rx1 < BUBBLE_BOX_EDGE_INSET or rx2 > width - BUBBLE_BOX_EDGE_INSET:
-            return False
-        fill_area = (rx2 - rx1) * (ry2 - ry1)
-        if not (BUBBLE_BOX_AREA_MIN * box_area <= fill_area <= BUBBLE_BOX_AREA_MAX * box_area):
-            return False
-        centre_dist = max(abs((rx1 + rx2) // 2 - cx), abs((ry1 + ry2) // 2 - cy))
-        if centre_dist > BUBBLE_BOX_CENTRE_SHARE * max(x2 - x1, y2 - y1):
-            return False
-        paper = float((grey[ry1:ry2, rx1:rx2] >= 180).mean()) if ry2 > ry1 and rx2 > rx1 else 0.0
-        return paper >= BUBBLE_BOX_PAPER_MIN
-
-    passing = []
-    for sx, sy in seeds:
-        rx1 = first_edge(sy, sx, -1, 0)
-        rx2 = first_edge(sy, sx, 1, 0)
-        ry1 = first_edge(sx, sy, -1, 1)
-        ry2 = first_edge(sx, sy, 1, 1)
-        if None in (rx1, rx2, ry1, ry2):
-            continue
-        if not guards(rx1, ry1, rx2, ry2):
-            continue
-        # A ray can run through a faded outline into the bubble above;
-        # the region box is the same object's detection, so the bubble
-        # cannot lie far beyond it in any direction. The guards run on
-        # the unclipped box first, so clipping cannot drag a neighbour's
-        # bubble into passing range.
-        cx1 = max(rx1, x1 - (x2 - x1) // 4)
-        cx2 = min(rx2, x2 + (x2 - x1) // 4)
-        cy1 = max(ry1, y1 - (y2 - y1) // 4)
-        cy2 = min(ry2, y2 + (y2 - y1) // 4)
-        if guards(cx1, cy1, cx2, cy2):
-            passing.append((cx1, cy1, cx2, cy2))
-    if not passing:
-        return None
-    ux1 = min(b[0] for b in passing)
-    uy1 = min(b[1] for b in passing)
-    ux2 = max(b[2] for b in passing)
-    uy2 = max(b[3] for b in passing)
-    if guards(ux1, uy1, ux2, uy2):
-        return (ux1, uy1, ux2, uy2)
-    passing.sort(key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True)
-    return passing[0]
-
-
-def _trim_bubble_box(image, bbox, letter_box: tuple[int, int, int, int] | None = None):
-    """The lobe of ``bbox`` holding its widest row, or ``bbox`` untrimmed.
-
-    Two lobes share one outline with an open junction, and a tail narrows
-    away from the body; lines centred in the whole balloon sit badly in
-    either. Walking out from the widest row while rows stay wide and
-    centred keeps the lobe the text belongs to. A thin stroke crossing the
-    bubble breaks the fill for a few rows and then the lobe resumes, so a
-    short bad run with a good row past it is jumped, not a lobe end; a
-    divider band never resumes, and neither does a lobe end. A trim that
-    would keep too little of the balloon is not a lobe, so the whole box
-    stands.
-    """
-    x1, y1, x2, y2 = (int(v) for v in bbox)
-    width, height = image.size
-    x1, y1 = max(0, x1), max(0, y1)
-    x2, y2 = min(width, x2), min(height, y2)
-    if x2 - x1 < 8 or y2 - y1 < 8:
-        return bbox
-    grey = np.asarray(image.convert("L"))[y1:y2, x1:x2]
-    if grey.size == 0:
-        return bbox
-    h, w = grey.shape
-    crop_letter = None
-    if letter_box is not None:
-        lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
-        crop_letter = (lx1 - x1, ly1 - y1, lx2 - x1, ly2 - y1)
-    filled = _paper_union(grey, _flood_seeds(w, h, crop_letter))
-    if filled is None or float(filled.mean()) < BAND_MIN_FILL:
-        return bbox
-    centre = w // 2
-
-    def holding(row):
-        cols = np.nonzero(row)[0]
-        if cols.size == 0:
-            return None
-        # Intervals of this row, merged over hairline cracks.
-        intervals = []
-        start = int(cols[0])
-        prev = int(cols[0])
-        for c in cols[1:]:
-            c = int(c)
-            if c - prev > 3:
-                intervals.append((start, prev + 1))
-                start = c
-            prev = c
-        intervals.append((start, prev + 1))
-        for a, b in intervals:
-            if a <= centre <= b:
-                return (a, b)
-        return None
-
-    held = [holding(filled[i]) for i in range(h)]
-    anchor = None
-    anchor_width = 0
-    for i, iv in enumerate(held):
-        if iv is not None and iv[1] - iv[0] > anchor_width:
-            anchor, anchor_width = i, iv[1] - iv[0]
-    if anchor is None or anchor_width <= 0:
-        return bbox
-
-    def good(iv):
-        if iv is None or iv[1] - iv[0] < BUBBLE_TRIM_WIDTH_SHARE * anchor_width:
-            return False
-        return abs((iv[0] + iv[1]) // 2 - centre) <= BUBBLE_TRIM_DEVIATION_SHARE * w
-
-    mag = None
-
-    def divider_like(rows):
-        # A panel divider is a continuous dark line across the box; a wash
-        # band crossing it is edge-dense but mid-grey, not dark, so edge
-        # strength alone cannot tell them apart — darkness can.
-        return all(float((grey[i] < 110).mean()) >= DIVIDER_ROW_SHARE for i in rows)
-
-    def jump_up(from_row):
-        for k in range(1, BUBBLE_TRIM_JUMP_ROWS + 1):
-            if from_row - k < 0:
-                return None
-            if good(held[from_row - k]):
-                return k
-        return None
-
-    def jump_down(from_row):
-        for k in range(1, BUBBLE_TRIM_JUMP_ROWS + 1):
-            if from_row + k >= h:
-                return None
-            if good(held[from_row + k]):
-                return k
-        return None
-
-    top = anchor
-    while top > 0:
-        if good(held[top - 1]):
-            top -= 1
-        else:
-            jump = jump_up(top)
-            if jump is not None and not divider_like(range(top - jump + 1, top)):
-                top -= jump
-            else:
-                break
-    bottom = anchor
-    while bottom < h - 1:
-        if good(held[bottom + 1]):
-            bottom += 1
-        else:
-            jump = jump_down(bottom)
-            if jump is not None and not divider_like(range(bottom + 1, bottom + jump)):
-                bottom += jump
-            else:
-                break
-    if bottom + 1 - top < BUBBLE_TRIM_HEIGHT_SHARE * h:
-        return bbox
-    return (x1, y1 + top, x2, y1 + bottom + 1)
-
-
 def _band_line_widths(box_w: int, box_h: int, line_count: int, line_height: int, bands, top: int | None = None) -> list[int] | None:
     """Widest ink each straight line may hold inside the measured bubble bands, or None.
 
@@ -2286,42 +1384,19 @@ def _band_line_centres(box_w: int, box_h: int, line_count: int, line_height: int
     return [(a + b) / 2 for a, b in spans]
 
 
-def _best_band_top(draw, lines, font, box_w: int, box_h: int, stroke_w: int, bands) -> int | None:
-    """Top offset where every line fits its bands, closest to centred, or None."""
-    if not lines:
-        return None
-    line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
-    total_h = line_height * len(lines)
-    if total_h > box_h:
-        return None
-    widths = [draw.textbbox((0, 0), line, font=font)[2] for line in lines]
-    centred = max(0, (box_h - total_h) // 2)
-    step = max(4, line_height // 4)
-    candidates = sorted(range(0, box_h - total_h + 1, step),
-                        key=lambda top: abs(top - centred))
-    for top in candidates:
-        limits = _band_line_widths(box_w, box_h, len(lines), line_height, bands, top=top)
-        if limits is not None and len(limits) == len(lines) and all(
-                w + 2 * stroke_w <= limit for w, limit in zip(widths, limits)):
-            return top
-    return None
+def _anchored_top(box_h: int, total_h: int, anchor_y: int | None) -> int:
+    """Top offset for a block of ``total_h`` in a box of ``box_h``.
 
-
-def _lines_fit_bands(draw, lines, font, box_w: int, box_h: int, stroke_w: int, bands) -> bool:
-    """Whether every line's ink plus stroke stays inside its measured bubble bands."""
-    if not lines:
-        return True
-    line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
-    limits = _band_line_widths(box_w, box_h, len(lines), line_height, bands)
-    if limits is None or len(limits) != len(lines):
-        return False
-    return all(
-        draw.textbbox((0, 0), line, font=font)[2] + 2 * stroke_w <= limit
-        for line, limit in zip(lines, limits))
+    Centred on ``anchor_y`` (box-local) when given, else centred in the
+    box; clamped so the block stays inside.
+    """
+    if anchor_y is None:
+        return max(0, (box_h - total_h) // 2)
+    return max(0, min(box_h - total_h, anchor_y - total_h // 2))
 
 
 def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int,
-          curved: bool = False, bands=None) -> tuple[bool, list[str]]:
+          curved: bool = False, bands=None, anchor_y: int | None = None) -> tuple[bool, list[str]]:
     font = get_font_object(font_path_str, size)
     lines = _wrap_text(draw, text, font, box_w)
     if not lines:
@@ -2338,7 +1413,8 @@ def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int
             # hold less; re-wrap at the narrowest span until the lines sit
             # inside their rows, or no narrower wrap helps.
             for _ in range(3):
-                spans = _band_line_spans(box_w, box_h, len(lines), line_height, bands)
+                top = _anchored_top(box_h, line_height * len(lines), anchor_y)
+                spans = _band_line_spans(box_w, box_h, len(lines), line_height, bands, top=top)
                 if spans is None:
                     fits = False
                     break
@@ -2398,6 +1474,7 @@ def _fit_text(
     maximum_size: int = MAX_FONT_SIZE,
     curved: bool = False,
     bands=None,
+    anchor_y: int | None = None,
 ) -> tuple[int, list[str], bool]:
     minimum_size = max(MIN_FONT_SIZE, int(minimum_size))
     lo, hi = minimum_size, max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
@@ -2433,7 +1510,7 @@ def _fit_text(
         # from the rectangle fit, which bounds every curved fit from above.
         for size in _scan_sizes(best_size, minimum_size - 1):
             ok, lines = _fits(draw, text, box_w, box_h, font_path_str, size, stroke_w,
-                              curved=curved, bands=bands)
+                              curved=curved, bands=bands, anchor_y=anchor_y)
             if ok:
                 return size, lines, True
         min_font = get_font_object(font_path_str, minimum_size)

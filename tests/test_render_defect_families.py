@@ -5,8 +5,9 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from app.config import DEFAULT_FONT
+from app.detector.bubble_mask import derive_bubble_mask, find_waist
 from app.render.page_renderer import _ink_mask, _mask_bbox, render_text_objects
-from app.render.text_renderer import _bubble_bands, auto_fit
+from app.render.text_renderer import _trim_mask_to_letters, auto_fit
 from app.schemas import RenderRequest
 from app.translation.vision import parse_vision_translation
 
@@ -18,13 +19,88 @@ def _ellipse_bubble(fill):
     return image
 
 
+def test_fixed_size_too_tall_for_its_box_falls_back_to_the_fit():
+    """Render N3: a fixed size whose wrapped lines are taller than the box
+    aborted the whole page — page_renderer re-raises anything that is not
+    floor/ratio-only, and _render_one retried the same failing size 3x.
+    The height overflow now falls back to the fit, as Fix K does for
+    width: the text letters smaller instead of raising, and a fixed size
+    that fits stays exactly put."""
+    from app.render.text_renderer import render_text_in_box
+
+    image = Image.new("RGB", (700, 400), "white")
+    long = "Anh đã nói với tôi rằng chuyện này không đơn giản như vậy đâu"
+    stats: dict = {}
+    render_text_in_box(image.copy(), long, (200, 60, 500, 140),
+                       font_name="dialogue.mac-dinh-3", font_size=40,
+                       stats=stats)
+    assert stats.get("fixed_size_height_fallback") is True, \
+        f"height overflow should fall back to the fit, got {stats}"
+    assert stats["size"] < 40, f"fallback should letter smaller than 40px, got {stats['size']}"
+    stats = {}
+    render_text_in_box(image.copy(), "Chuyện này đơn giản", (200, 60, 500, 140),
+                       font_name="dialogue.mac-dinh-3", font_size=24,
+                       stats=stats)
+    assert stats["size"] == 24, f"a fitting fixed size must stay put, got {stats['size']}"
+    assert stats.get("fixed_size_height_fallback") is False
+
+
+def test_unlabelled_bubble_with_a_mask_letters_on_the_mask():
+    """Render N5: the container label used to gate all bubble geometry,
+    so a bubble with no label rendered as a rectangle. The mask is the
+    bubble now, not the label: a persisted mask drives the fit even
+    with container=None, and without a mask there is nothing to drive
+    it — a bare page and a straight-sided box both stay rectangles."""
+    from app.render.text_renderer import render_text_in_box
+
+    image = _ellipse_bubble("white")
+    mask = derive_bubble_mask(np.asarray(image)[:, :, ::-1].copy(),
+                              (60, 60, 640, 340), seed=(300, 200))
+    assert mask is not None and mask["kind"] == "bubble"
+    stats: dict = {}
+    render_text_in_box(image.copy(), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",
+                       (60, 60, 640, 340), font_name="dialogue.mac-dinh-3",
+                       source_letter_box=(200, 150, 400, 250),
+                       bubble_mask=mask, stats=stats)
+    assert stats["frame_source"] == "mask", f"mask must drive the fit, got {stats}"
+    assert stats["mask_source"] == "object"
+    assert stats["lobe"] == "mask"
+
+    stats = {}
+    render_text_in_box(image.copy(), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",
+                       (60, 60, 640, 340), font_name="dialogue.mac-dinh-3",
+                       source_letter_box=(200, 150, 400, 250), stats=stats)
+    assert stats["frame_source"] == "region_no_frame", \
+        "an unlabelled bubble with no mask has nothing to lay out on"
+    assert stats["mask_source"] == "none"
+
+    plain = Image.new("RGB", (700, 400), "white")
+    stats = {}
+    auto_fit(ImageDraw.Draw(plain), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",
+             (60, 60, 640, 340), plain.size, str(DEFAULT_FONT), source_cap_px=40,
+             image=plain, container=None, centered=True,
+             source_letter_box=(200, 150, 400, 250), stats_out=stats)
+    assert stats["frame_source"] == "region_no_frame", \
+        "no outline means no mask to drive the fit"
+
+    boxed = Image.new("RGB", (700, 400), "white")
+    ImageDraw.Draw(boxed).rectangle([50, 50, 650, 350], fill="white",
+                                    outline=(0, 0, 0), width=4)
+    stats = {}
+    auto_fit(ImageDraw.Draw(boxed), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",
+             (60, 60, 640, 340), boxed.size, str(DEFAULT_FONT), source_cap_px=40,
+             image=boxed, container=None, centered=True,
+             source_letter_box=(200, 150, 400, 250), stats_out=stats)
+    assert stats["frame_source"] == "region_no_frame", \
+        "a straight-sided box must not read as a bubble"
+
+
 def test_a_fixed_size_that_crosses_a_spiky_outline_falls_back_to_the_fit():
     """Rerun-4 ch79 p021: the top spiky bubble rendered at the OCR-measured
     fixed 52px, whose lines touch the outline at 0px, while the fit caps
-    at 45px with real gaps. A fixed size never saw the band machinery, so
-    its lines are validated against the measured (spiky-narrowed) bands
-    and fall back to the fit when they do not fit; a fixed size that
-    fits is left exactly alone."""
+    at 45px with real gaps. A fixed size never saw the fit, so its lines
+    are validated against the mask's rows and fall back to the fit when
+    they do not fit; a fixed size that fits is left exactly alone."""
     import math
 
     from app.render.text_renderer import render_text_in_box
@@ -50,16 +126,21 @@ def test_a_fixed_size_that_crosses_a_spiky_outline_falls_back_to_the_fit():
     assert stats["size"] == 24, f"a fitting fixed size must stay put, got {stats['size']}"
 
 
-def test_fragmented_bands_do_not_collapse_to_the_readable_floor(monkeypatch):
-    import app.render.text_renderer as tr
-    monkeypatch.setattr(tr, "_bubble_bands", lambda *a, **k: [[(10, 11)] for _ in range(24)])
+def test_fragmented_mask_falls_back_to_a_rectangle_fit():
+    # A mask whose rows are slivers is shading, not an interior: the
+    # fit falls back to a rectangle on the mask's bbox instead of
+    # collapsing onto the slivers.
     image = _ellipse_bubble("white")
     draw = ImageDraw.Draw(image)
-    size, _lines, _fits, _box = auto_fit(
+    fragmented = {"bbox": [60, 60, 640, 340], "cx": 350, "cy": 200,
+                  "rows": [[(10, 11)] for _ in range(24)], "kind": "bubble"}
+    stats: dict = {}
+    size, _lines, fits, _box = auto_fit(
         draw, "Ta đã bảo ngươi đừng gọi ta là Các Chủ.", (60, 60, 640, 340),
         image.size, str(DEFAULT_FONT), source_cap_px=40, curved=True, image=image,
-        container="bubble", centered=True)
-    assert size >= 24, f"fragmented bands collapsed the fit to {size}px"
+        container="bubble", centered=True, bubble_mask=fragmented, stats_out=stats)
+    assert fits and size >= 24, f"fragmented mask collapsed the fit to {size}px"
+    assert "mask_degenerate_rectangle" in stats["fallbacks"]
 
 
 def _two_lobe_bubble():
@@ -73,11 +154,15 @@ def _two_lobe_bubble():
 
 def test_two_lobe_bubble_letters_only_the_source_lobe():
     image = _two_lobe_bubble()
-    verdict: dict = {}
-    bands = _bubble_bands(image, (40, 40, 360, 470), verdict=verdict,
-                          letter_box=(90, 80, 310, 200))
-    assert bands is None and verdict.get("bands_split_waist"), \
-        "the column union bridged the waist instead of reporting the split"
+    # The union mask holds both lobes; the waist between them is real
+    # and the lettering sits in the top one, so the trim keeps the top.
+    mask = derive_bubble_mask(np.asarray(image)[:, :, ::-1].copy(),
+                              (40, 40, 360, 470), seed=(200, 140))
+    assert mask is not None and mask["kind"] == "bubble"
+    waist = find_waist(mask)
+    assert waist is not None and waist["orientation"] == "horizontal"
+    trimmed = _trim_mask_to_letters(mask, (40, 40, 360, 470), (90, 80, 310, 200))
+    assert trimmed["bbox"][3] <= waist["cut_y"] < mask["bbox"][3]
     base = image.copy()
     obj = {"id": "t", "translation": "Vâng, vâng. Vậy họ nói gì? Họ cho ngươi ở lại Thiết Kiếm Các không?",
            "region": {"x1": 40, "y1": 40, "x2": 360, "y2": 470},
@@ -89,6 +174,60 @@ def test_two_lobe_bubble_letters_only_the_source_lobe():
     box = _mask_bbox(_ink_mask(base, image))
     assert box is not None
     assert box[3] <= 240, f"ink crossed the waist into the lower lobe: {box}"
+
+
+def test_stacked_second_block_uses_the_clipped_mask():
+    """A colliding second block stacks into the free part of its frame.
+
+    Both objects share one two-lobe bubble. The first letters the top
+    lobe; the second's lettering spans both lobes, so its frame is the
+    union, its block fills the frame, and no shift clears the first
+    block's ink -- so it stacks below it. The stacked attempt clips
+    the union mask to its sub-box instead of re-deriving the whole
+    bubble, so its ink stays inside the frame and clear of the first
+    block instead of colliding again.
+    """
+    image = _two_lobe_bubble()
+    mask = derive_bubble_mask(np.asarray(image)[:, :, ::-1].copy(),
+                              (40, 40, 360, 470), seed=(200, 140))
+    assert mask is not None and mask["kind"] == "bubble"
+    first = {"id": "a", "translation": "Vâng, vâng. Vậy họ nói gì?",
+             "region": {"x1": 40, "y1": 40, "x2": 360, "y2": 470},
+             "letter_bounds": {"x1": 90, "y1": 80, "x2": 310, "y2": 200},
+             "bubble_mask": mask,
+             "container": "bubble", "typography_role": "dialogue", "source_cap_px": 60,
+             "style": {"font": "dialogue.mac-dinh-3"}}
+    long_text = ("Họ cho ngươi ở lại Thiết Kiếm Các không? Ngươi có nghe rõ không? "
+                 "Ta đã bảo ngươi đừng gọi ta là Các Chủ.")
+    second = {"id": "b", "translation": long_text,
+              "region": {"x1": 40, "y1": 40, "x2": 360, "y2": 470},
+              "letter_bounds": {"x1": 90, "y1": 80, "x2": 310, "y2": 400},
+              "bubble_mask": mask,
+              "container": "bubble", "typography_role": "dialogue", "source_cap_px": 60,
+              "style": {"font": "dialogue.mac-dinh-3"}}
+    req = RenderRequest(chapter_id="c", page_index=0,
+                        translations={"a": first["translation"], "b": second["translation"]})
+    alone = image.copy()
+    render_text_objects(alone, RenderRequest(chapter_id="c", page_index=0,
+                                             translations={"a": first["translation"]}),
+                        [first], *({} for _ in range(10)))
+    first_ink = _ink_mask(image, alone)
+    assert first_ink is not None and first_ink.any()
+    verdicts: list = []
+    base = image.copy()
+    render_text_objects(image, req, [first, second], *({} for _ in range(10)),
+                        verdicts=verdicts)
+    by_id = {v["id"]: v for v in verdicts}
+    assert by_id["b"]["guard"] == "stacked", f"second block took {by_id['b']}"
+    both_ink = _ink_mask(base, image)
+    assert both_ink is not None
+    # The stacked ink stays inside the frame, below the first block.
+    second_ink = both_ink & ~first_ink
+    ys, xs = np.nonzero(second_ink)
+    assert len(xs) > 0, "second block lettered nothing"
+    assert 40 <= xs.min() and xs.max() <= 360 and 40 <= ys.min() and ys.max() <= 470
+    first_ys, _ = np.nonzero(first_ink)
+    assert ys.min() > first_ys.max(), "stacked ink overlaps the first block"
 
 
 def test_placeholder_translation_is_blank_not_lettered():

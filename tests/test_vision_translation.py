@@ -431,16 +431,18 @@ def test_a_vision_misread_of_korean_sfx_as_latin_noise_is_treated_as_untranslate
     assert not _latin_noise("12")
 
 
-def test_a_bare_scream_with_no_diacritics_is_treated_as_untranslated():
+def test_a_bare_scream_is_treated_as_untranslated():
     """Rerun-4 Mount Hua p075: the shout came back "AAAAA!!!" — brush
     H's misread as A's, no diacritics, and the re-translate passed the
     Latin through. No Vietnamese word is one letter repeated, so the
-    value is dropped and the object is retried on the image."""
+    value is dropped and the object is retried on the image. The same
+    shout with accented capitals ("ÁÁÁÁ!!!") is the same misread: the
+    diacritics are stripped before the check."""
     from app.translation.vision import _bare_scream
 
     assert _bare_scream("AAAAA!!!")
     assert _bare_scream("HHHHH...")
-    assert not _bare_scream("ÁÁÁÁ!!!")
+    assert _bare_scream("ÁÁÁÁ!!!")
     assert not _bare_scream("HAHA!")
     assert not _bare_scream("A!")
     assert not _bare_scream("AA!")
@@ -461,6 +463,128 @@ def test_a_hangul_sfx_misread_as_latin_consonants_is_treated_as_untranslated():
     assert not _hangul_misread("푸르륵", "PHÙ...")
     assert not _hangul_misread("HELLO", "FFR")
     assert not _hangul_misread("푸르륵", "Chuyện đó có vấn đề gì không?")
+
+
+def test_mixed_vietnamese_and_english_splits_instead_of_passing():
+    """A diacritic in one line used to shield the whole value, so a
+    mixed return ("Anh ơi SENIOR BROTHER") passed the gate and rendered
+    in English. The check now runs per line: the English line goes, the
+    Vietnamese line stays, and the value blanks only if nothing stays."""
+    from app.translation.vision import _drop_foreign_script, _untranslated_english
+
+    assert _untranslated_english("Anh ơi SENIOR BROTHER")
+    assert _untranslated_english("Đúng vậy\nSENIOR BROTHER!")
+    # A lone function word that is also a Vietnamese word never counts.
+    assert not _untranslated_english("Tôi to lắm")
+    assert not _untranslated_english("Quả me to")
+
+    def filtered(value):
+        result = VisionTranslationResult({"a": value}, "m", {}, None)
+        data = {"translations": [{"id": "a", "translated_text": value}]}
+        kept, kept_data = _drop_foreign_script(result, data)
+        entry = kept_data["translations"][0] if kept_data["translations"] else None
+        return kept.translations["a"], entry["translated_text"] if entry else None
+
+    assert filtered("Anh ơi SENIOR BROTHER") == ("Anh ơi", "Anh ơi")
+    assert filtered("Đúng vậy\nSENIOR BROTHER!") == ("Đúng vậy", "Đúng vậy")
+    # Pure English still blanks outright, including a second line with
+    # no listed word in it.
+    assert filtered("SENIOR BROTHER!") == ("", None)
+    assert filtered("IS THE / A PROBI / WITH TH") == ("", None)
+    assert filtered("OF COURSE NOT / … ENDB / SUSPENSION.") == ("", None)
+    assert filtered("WITH ITS LIFELIKE AI,\nVAST OPEN WORLD,") == ("", None)
+    # Valid Vietnamese and kept grunts/titles all still pass through untouched.
+    assert filtered("Tôi to lắm") == ("Tôi to lắm", "Tôi to lắm")
+    assert filtered("NGỦ") == ("NGỦ", "NGỦ")
+    assert filtered("MM!") == ("MM!", "MM!")
+    assert filtered("ENDB") == ("ENDB", "ENDB")
+    assert filtered("GAME OVER") == ("GAME OVER", "GAME OVER")
+    # A diacritic scream is a scream, not a Vietnamese line: the diacritics
+    # are stripped before the repeated-letter check.
+    assert filtered("ÁÁÁÁA!!!") == ("", None)
+    assert filtered("Đúng vậy\nGAME OVER") == ("Đúng vậy\nGAME OVER", "Đúng vậy\nGAME OVER")
+
+
+def test_a_diacritic_scream_beside_a_vietnamese_line_drops_only_the_scream():
+    """P1-3: the mixed-line branch drops a bare-scream line even when it
+    carries diacritics; the Vietnamese line stays."""
+    from app.translation.vision import _drop_foreign_script
+
+    def filtered(value):
+        result = VisionTranslationResult({"a": value}, "m", {}, None)
+        data = {"translations": [{"id": "a", "translated_text": value}]}
+        kept, kept_data = _drop_foreign_script(result, data)
+        entry = kept_data["translations"][0] if kept_data["translations"] else None
+        return kept.translations["a"], entry["translated_text"] if entry else None
+
+    assert filtered("Đúng vậy\nÁÁÁÁA!!!") == ("Đúng vậy", "Đúng vậy")
+    assert filtered("ÁÁÁÁA!!!\nĐi thôi") == ("Đi thôi", "Đi thôi")
+
+
+def test_english_names_are_dropped_from_memory_not_learned(tmp_path, monkeypatch):
+    """P2-3: a character or address name that is plain English (two words,
+    one listed) is a model slip, not a name to remember; a single-word
+    Vietnamese name still passes."""
+    from app.translation.vision import _drop_foreign_script
+
+    result = VisionTranslationResult({"a": "Chào"}, "m", {}, None)
+    data = {"translations": [{"id": "a", "translated_text": "Chào"}],
+            "characters": [{"name": "Senior Brother", "note": "x"},
+                           {"name": "Minh", "note": "y"}],
+            "address": [{"from": "Senior Brother", "to": "Little Sister", "self": "I", "other": "You"},
+                        {"from": "Minh", "to": "Lan", "self": "em", "other": "anh"}]}
+    _kept, kept_data = _drop_foreign_script(result, data)
+    assert [entry["name"] for entry in kept_data["characters"]] == ["Minh"]
+    assert [(entry["from"], entry["to"]) for entry in kept_data["address"]] == [("Minh", "Lan")]
+
+
+def test_other_gates_also_judge_per_line_not_per_value():
+    """The same whole-value shield hid a noise/scream/misread line
+    behind a Vietnamese one; each gate now trips on its own line."""
+    from app.translation.vision import _bare_scream, _drop_foreign_script, _hangul_misread, _latin_noise
+
+    assert _latin_noise("Chào\n1/10")
+    assert _bare_scream("Chào\nAAAAA!!!")
+    assert _hangul_misread("푸르륵", "BÙM\nFFR")
+    assert not _latin_noise("Chào\nPHÙ...")
+    assert not _bare_scream("Chào\nHAHA!")
+    assert not _hangul_misread("푸르륵", "BÙM\nRẦM")
+
+    def filtered(value, source=""):
+        result = VisionTranslationResult({"a": value}, "m", {}, None)
+        data = {"translations": [{"id": "a", "source": source, "translated_text": value}]}
+        kept, _data = _drop_foreign_script(result, data)
+        return kept.translations["a"]
+
+    assert filtered("Chào\n1/10") == "Chào"
+    assert filtered("Chào\nAAAAA!!!") == "Chào"
+    assert filtered("BÙM\nFFR", "푸르륵") == "BÙM"
+    # The misread still needs its Hangul source; without one it stays.
+    assert filtered("FFR", "푸르륵") == ""
+    assert filtered("FFR") == "FFR"
+
+
+def test_translate_page_keeps_the_vietnamese_line_of_a_mixed_return(tmp_path, monkeypatch):
+    original = tmp_path / "original.png"
+    clean = tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "gray").save(clean)
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({
+                "translations": [{"id": "1", "translated_text": "Đúng vậy\nSENIOR BROTHER!"},
+                                 {"id": "2", "translated_text": "Anh ơi SENIOR BROTHER"}],
+            })}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
+    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, [item("a"), item("b")], api_key="k", source_lang="en", target_lang="vi")
+    assert result.translations == {"a": "Đúng vậy", "b": "Anh ơi"}
+    assert result.missing_ids == set()
 
 
 def test_recent_lines_keep_the_source_so_a_sentence_can_run_into_the_next_slice():
@@ -717,3 +841,85 @@ def test_translate_prompt_lists_map_labels_and_place_signs_as_unboxed():
     assert "labels on a map or diagram" in prompt
     assert "a legible sign naming a place" in prompt
     assert "A sign is only scenery when it is illegible or purely decorative" in prompt
+
+
+def test_an_object_ids_request_on_a_101_object_page_is_not_rejected(saved_chapter, monkeypatch):
+    """N12: the 100-object cap guards the model batch, not the page; a
+    request naming one object on a 101-object page runs that object."""
+    _style, region, _output = saved_chapter
+    latest = manifests.load_manifest_raw(CHAPTER)
+    for i in range(2, 102):
+        latest["pages"][0]["text_objects"].append({
+            "id": f"obj_{i}", "shape": "rectangle",
+            "region": {"x1": 20, "y1": 110, "x2": 150, "y2": 180},
+            "style": _style, "ocr_text": "Hello", "translation": "",
+        })
+    manifests.save_manifest_raw(CHAPTER, latest)
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": "Xin chào"}, self.model, {}, None),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
+        source_lang="en", target_lang="vi", object_ids=["obj_1"],
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["translated"] == 1 and info["missing_ids"] == []
+
+
+def test_an_all_blank_page_still_saves_that_it_was_attempted(saved_chapter, monkeypatch):
+    """N9: a blank-only run changes nothing on the page, but the attempt
+    itself is state: without the save, the next run retries the same
+    blank forever."""
+    _style, region, _output = saved_chapter
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None,
+                                                       roles={"obj_1": "dialogue"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
+        source_lang="en", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["translated"] == 0 and info["blank_ids"] == ["obj_1"]
+    obj = manifests.load_manifest_raw(CHAPTER)["pages"][0]["text_objects"][0]
+    assert obj.get("translation_attempted") is True
+
+
+def test_a_retry_matching_an_already_committed_line_is_blanked_not_doubled(saved_chapter, monkeypatch):
+    """N15/P1-5: a retry that returns the line an earlier call already
+    committed is the same text read twice, not a second line to letter.
+    The duplicate is blank by decision, not by failure: it is never
+    retried (a retry would return the same line again) and dialogue is
+    never restored as art."""
+    _style, region, _output = saved_chapter
+    latest = manifests.load_manifest_raw(CHAPTER)
+    latest["pages"][0]["text_objects"][0].update({
+        "translation": "Chào bạn", "source_read": "Hello",
+    })
+    latest["pages"][0]["text_objects"].append({
+        "id": "obj_2", "shape": "rectangle",
+        "region": {"x1": 20, "y1": 110, "x2": 150, "y2": 180},
+        "style": _style, "ocr_text": "Hello", "translation": "",
+    })
+    manifests.save_manifest_raw(CHAPTER, latest)
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult(
+            {"obj_2": "Chào bạn"}, self.model, {}, None,
+            roles={"obj_2": "dialogue"}, sources={"obj_2": "Hello"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test",
+        source_lang="en", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_in_context(request))["translation_run"]
+    assert info["translated"] == 0
+    assert info["blank_ids"] == ["obj_2"] and info["story_blank_ids"] == []
+    assert info["art_regions"] == []
+    obj = manifests.load_manifest_raw(CHAPTER)["pages"][0]["text_objects"][1]
+    assert obj.get("translation_attempted") is True

@@ -8,8 +8,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.detector.boxes import BubbleBox, _merge_mask_evidence, apply_final_nms
+from app.detector.boxes import BubbleBox, _merge_mask_evidence, apply_final_nms, bubble_masks_are_separate_lobes
 from app.image_io import encode_mask, read_image, write_image
+from app.logging_config import logger
 from app.manifest_utils import assign_stable_detector_box_ids
 from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
 from app.mask_store import decode_mask_value
@@ -50,11 +51,19 @@ def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
                 mask |= box.mask[y1 - box.y1:y2 - box.y1, x1 - box.x1:x2 - box.x1]
             return
         ux1, uy1, ux2, uy2 = min(x1, box.x1), min(y1, box.y1), max(x2, box.x2), max(y2, box.y2)
+        if box.mask is None or box.mask.shape != (box.y2 - box.y1, box.x2 - box.x1):
+            # No mask to fold in: the union would crash on None (or read
+            # misaligned rows), so the record stays as it was.
+            logger.warning("Leftover box at ({}, {}) has no usable mask; leaving its record unfolded",
+                           box.x1, box.y1)
+            return
         grown = np.zeros((uy2 - uy1, ux2 - ux1), np.uint8)
         grown[y1 - uy1:y2 - uy1, x1 - ux1:x2 - ux1] = mask
         grown[box.y1 - uy1:box.y2 - uy1, box.x1 - ux1:box.x2 - ux1] |= box.mask
         record.update(x1=ux1, y1=uy1, x2=ux2, y2=uy2, _mask_array=grown)
         return
+    logger.warning("Leftover box at ({}, {}) matches no first-pass record; its mask stays as stored",
+                   box.x1, box.y1)
 
 
 LEFTOVER_PASSES = 3  # erase what the detector still sees after inpainting, up to this many times
@@ -100,7 +109,8 @@ def _fold_nested(boxes: list[BubbleBox]) -> list[BubbleBox]:
     groups: list[list[BubbleBox]] = []
     for box in sorted(boxes, key=lambda b: (b.x2 - b.x1) * (b.y2 - b.y1), reverse=True):
         home = next((group for group in groups
-                     if _contained(box, group[0]) and _coherent(box, group[0])), None)
+                     if _contained(box, group[0]) and _coherent(box, group[0])
+                     and not bubble_masks_are_separate_lobes(box.bubble_mask, group[0].bubble_mask)), None)
         if home is None:
             groups.append([box])
         else:
@@ -157,6 +167,13 @@ class PageProcessingMixin:
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,
             ))
+        # A box whose letters span both lobes of its bubble mask is two
+        # texts, not one: split it before the records are built, so the
+        # pieces carry their own lobe masks (the fold above cannot
+        # split, only join, and a double bubble the fold refused -- its
+        # lobes' letter columns are disjoint -- still needs dividing).
+        from app.detector.kiuyha_detector import split_waist_boxes
+        detected = split_waist_boxes(detected)
         detect_ms = (time.perf_counter() - detect_started_at) * 1000.0
         screen_started_at = time.perf_counter()
         art = screen(image, detected) if screen is not None and detected else set()
@@ -168,6 +185,7 @@ class PageProcessingMixin:
                 "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
                 "confidence": b.confidence, "_mask_array": b.mask,
                 "_letters_array": _letters_u8(getattr(b, "letters", None)),
+                "bubble_mask": copy.deepcopy(getattr(b, "bubble_mask", None)),
                 "source_model": b.source_model, "class_id": b.class_id,
                 "class_name": b.class_name, "semantic_type": b.semantic_type,
                 "mask_source": b.mask_source, "safe_to_inpaint": bool(b.safe_to_inpaint),
@@ -199,6 +217,7 @@ class PageProcessingMixin:
                     # An overridden box moved: both masks belong to the old box.
                     record["_mask_array"] = None
                     record["_letters_array"] = None
+                    record["bubble_mask"] = None
                     record["safe_to_inpaint"] = False
                     record["ocr_eligible"] = True
                     record["needs_review"] = True

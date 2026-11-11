@@ -120,6 +120,25 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
             obj["auto_ocr_text"] = box_text
             changed = True
         changed = _sync_ocr_metadata(obj, box) or changed
+    # The bubble interior follows the box: a geometry override nulled
+    # the box's mask, so the object drops its copy too.
+    if isinstance(box.get("bubble_mask"), dict):
+        value = copy.deepcopy(box["bubble_mask"])
+        if obj.get("bubble_mask") != value:
+            obj["bubble_mask"] = value
+            changed = True
+    elif obj.pop("bubble_mask", None) is not None:
+        changed = True
+    # The letter bitmap follows the box the same way: the render's trim
+    # needs it to see a diagonal waist, and the clean image cannot
+    # supply it. An overridden box has no letters to carry.
+    if box.get("letters_mask"):
+        value = copy.deepcopy(box["letters_mask"])
+        if obj.get("letters_mask") != value:
+            obj["letters_mask"] = value
+            changed = True
+    elif obj.pop("letters_mask", None) is not None:
+        changed = True
 
     if obj.pop("source_missing", None) is not None:
         changed = True
@@ -210,6 +229,10 @@ def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
         for key in OCR_METADATA_FIELDS:
             if key in box:
                 obj[key] = copy.deepcopy(box[key])
+        if isinstance(box.get("bubble_mask"), dict):
+            obj["bubble_mask"] = copy.deepcopy(box["bubble_mask"])
+        if box.get("letters_mask"):
+            obj["letters_mask"] = copy.deepcopy(box["letters_mask"])
         objects.append(obj)
         covered[box_id] = obj
         created += 1

@@ -12,6 +12,7 @@ from PIL import Image
 from app.config import OUTPUT_DIR
 from app.editorial_gate import editorial_preflight
 from app.export_pages import FORMATS, ExportOptions, finish_page
+from app.logging_config import logger
 from app.manifest_utils import atomic_replace, get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.routers.image import _current_rendered_path, _fallback_page_path
 from app.routers.render_commit import render_page
@@ -79,6 +80,21 @@ def _safe_int(value, fallback: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return int(fallback)
+
+
+def _export_source_page(page: dict, page_index: int) -> int:
+    """The page's source page for export grouping, or a sentinel that cannot
+    collide with a real one. A missing or unparseable source_page must not
+    fall back to the page index: page 0's real source_page is 0, so the
+    fallback would merge a malformed page into page 0's group. The sentinel
+    groups the page on its own."""
+    value = page.get("source_page")
+    if isinstance(value, bool):
+        value = None
+    try:
+        return int(value) if value is not None else -(page_index + 1)
+    except (TypeError, ValueError):
+        return -(page_index + 1)
 
 
 def _file_revision(path: Path) -> tuple[int, int, int]:
@@ -278,22 +294,34 @@ def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
     source_heights = [item.get("source_height") for item in items]
 
     if len(items) == 1 and source_metadata[0] is None and source_heights[0] is None:
+        if items[0].get("stitch_malformed"):
+            # A stitch_core key is present but unusable: the page was built
+            # with stitch metadata, so its absence is corruption, not a
+            # legacy chapter without any.
+            raise HTTPException(
+                409,
+                f"Source page {source_page + 1} has malformed stitch metadata (slice {int(items[0]['page_index']) + 1}).",
+            )
         return
     if any(value is None for value in source_metadata) or any(value is None for value in source_heights):
+        bad = [int(item["page_index"]) + 1 for item, meta, height in zip(items, source_metadata, source_heights)
+               if meta is None or height is None]
         raise HTTPException(
             409,
-            f"Source page {source_page + 1} is missing stitch ownership metadata.",
+            f"Source page {source_page + 1} is missing stitch ownership metadata (slices {bad}).",
         )
 
     heights = {int(value) for value in source_heights}
     if len(heights) != 1:
         raise HTTPException(
             409,
-            f"Source page {source_page + 1} has inconsistent source heights across slices.",
+            f"Source page {source_page + 1} has inconsistent source heights across slices "
+            f"{[int(item['page_index']) + 1 for item in items]}.",
         )
     source_height = heights.pop()
     if source_height <= 0:
-        raise HTTPException(409, f"Source page {source_page + 1} has invalid source height")
+        raise HTTPException(409, f"Source page {source_page + 1} has invalid source height "
+                                 f"(slices {[int(item['page_index']) + 1 for item in items]})")
 
     expected_source_y = 0
     for item in items:
@@ -303,20 +331,23 @@ def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
             raise HTTPException(
                 409,
                 f"Source page {source_page + 1} stitch ownership has a {relation} at "
-                f"y={expected_source_y}: next core is [{source_y1}, {source_y2}).",
+                f"y={expected_source_y}: next core is [{source_y1}, {source_y2}) "
+                f"(slice {int(item['page_index']) + 1}).",
             )
 
         physical_core = item.get("core_range")
         if physical_core is None:
             raise HTTPException(
                 409,
-                f"Source page {source_page + 1} is missing physical core metadata.",
+                f"Source page {source_page + 1} is missing physical core metadata "
+                f"(slice {int(item['page_index']) + 1}).",
             )
         core_y1, core_y2 = physical_core
         if core_y2 <= core_y1 or (core_y2 - core_y1) != (source_y2 - source_y1):
             raise HTTPException(
                 409,
-                f"Source page {source_page + 1} has inconsistent physical/source core lengths.",
+                f"Source page {source_page + 1} has inconsistent physical/source core lengths "
+                f"(slice {int(item['page_index']) + 1}).",
             )
         expected_source_y = source_y2
 
@@ -324,21 +355,23 @@ def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
         raise HTTPException(
             409,
             f"Source page {source_page + 1} stitch ownership ends at y={expected_source_y}, "
-            f"expected source height {source_height}.",
+            f"expected source height {source_height} "
+            f"(slices {[int(item['page_index']) + 1 for item in items]}).",
         )
 
 
 def _snapshot_export_inputs(chapter_id: str, force: bool = False) -> list[dict]:
     with get_manifest_lock(chapter_id):
         manifest = load_manifest_raw(chapter_id)
-        changed = False
+        # The ensured objects live in this in-memory manifest, which the
+        # gate and the snapshot below read; they are NOT saved here. This
+        # is a read path (export), and saving would mutate the chapter on
+        # every export. render_chapter is the write operation: it ensures
+        # and saves, because its render loop reloads the manifest per page.
         for page in manifest.get("pages", []):
             if not isinstance(page, dict) or page.get("skipped"):
                 continue
-            _, page_changed = ensure_page_text_objects(page)
-            changed = changed or page_changed
-        if changed:
-            save_manifest_raw(chapter_id, manifest)
+            ensure_page_text_objects(page)
         _editorial_gate_or_409(manifest, require_final_approval=True, force=force)
         snapshot: list[dict] = []
         for page_index, page in enumerate(manifest.get("pages", [])):
@@ -348,16 +381,25 @@ def _snapshot_export_inputs(chapter_id: str, force: bool = False) -> list[dict]:
             except OSError as exc:
                 raise HTTPException(409, f"Page {page_index + 1} changed before export started") from exc
             source_core_range, source_height = _source_core_metadata(page)
+            source_page = _export_source_page(page, page_index)
+            if source_page < 0:
+                logger.warning("Chapter {} page {} has no usable source_page; exporting it on its own",
+                               chapter_id, page_index + 1)
             snapshot.append(
                 {
                     "page_index": page_index,
-                    "source_page": _safe_int(page.get("source_page"), page_index),
+                    "source_page": source_page,
                     "slice_index": _safe_int(page.get("slice_index"), 0),
                     "path": path,
                     "revision": revision,
                     "core_range": _core_range(page),
                     "source_core_range": source_core_range,
                     "source_height": source_height,
+                    # A stitch_core key that parses to nothing is corruption,
+                    # not a legacy chapter: the single-slice early return in
+                    # the stitch check must 409 on it, not accept it.
+                    "stitch_malformed": ("stitch_core" in page
+                                         and source_core_range is None and source_height is None),
                 }
             )
         return snapshot
@@ -375,7 +417,7 @@ def _export_snapshot_is_current(chapter_id: str, snapshot: list[dict]) -> bool:
         page = pages[page_index]
         source_core_range, source_height = _source_core_metadata(page)
         if (
-            _safe_int(page.get("source_page"), page_index) != int(item["source_page"])
+            _export_source_page(page, page_index) != int(item["source_page"])
             or _safe_int(page.get("slice_index"), 0) != int(item["slice_index"])
             or _core_range(page) != item["core_range"]
             or source_core_range != item["source_core_range"]
@@ -400,6 +442,45 @@ def export_preflight(chapter_id: str) -> dict:
         return _preflight_copy(manifest)
 
 
+def _restore_skipped_and_rerender(
+    chapter_id: str, page_index: int, skipped: list[str]
+) -> tuple[int, list[str], str | None]:
+    """Restore the original pixels of floor-skipped objects, then re-render.
+
+    Mirrors the job flow (``AIModeRunner._render_one``): a skipped object
+    leaves its region clean-empty, so its region is preserved and
+    re-inpainted from the original, and the page is rendered again onto
+    the restored base — the preserved region excludes the object from the
+    second render. Returns (restored count, re-render skipped ids,
+    restore error or None). A restore failure leaves the hole in place
+    and is reported, not raised: one unrestorable page must not cost the
+    whole chapter render.
+    """
+    from app.dependencies import pipeline
+
+    with get_manifest_lock(chapter_id):
+        page = load_manifest_raw(chapter_id)["pages"][page_index]
+        regions = [
+            dict(item["region"])
+            for item in page.get("text_objects") or []
+            if isinstance(item, dict)
+            and str(item.get("id")) in skipped
+            and isinstance(item.get("region"), dict)
+        ]
+    if not regions:
+        return 0, [], None
+    try:
+        pipeline.preserve_and_reinpaint(chapter_id, page_index, regions)
+    except (ValueError, RuntimeError, OSError) as exc:
+        return 0, [], str(exc)[:150]
+    with get_manifest_lock(chapter_id):
+        page = load_manifest_raw(chapter_id)["pages"][page_index]
+        request = _render_request_from_page(chapter_id, page_index, page)
+    rerender = render_page(request)
+    rerender_skipped = [str(oid) for oid in (rerender.get("skipped_objects") or [])]
+    return len(regions), rerender_skipped, None
+
+
 @router.post("/render/chapter")
 def render_chapter(chapter_id: str, force: bool = False) -> dict:
     validate_chapter_id(chapter_id)
@@ -419,6 +500,9 @@ def render_chapter(chapter_id: str, force: bool = False) -> dict:
     rendered = 0
     reused = 0
     skipped = 0
+    restored_regions = 0
+    restore_failures: list[dict] = []
+    review_list: list[dict] = []
     for page_index in range(total):
         with get_manifest_lock(chapter_id):
             latest_page_manifest = load_manifest_raw(chapter_id)
@@ -437,8 +521,31 @@ def render_chapter(chapter_id: str, force: bool = False) -> dict:
                 reused += 1
                 continue
             request = _render_request_from_page(chapter_id, page_index, page)
-        render_page(request)
+        result = render_page(request)
         rendered += 1
+        # A floor-skipped object leaves its region clean-empty; without
+        # a restore the page keeps a white hole (render N6). The job flow
+        # restores it — this path ignored render_page's return value.
+        skipped_ids = [str(oid) for oid in (result.get("skipped_objects") or [])]
+        if skipped_ids:
+            restored, rerender_skipped, restore_error = _restore_skipped_and_rerender(
+                chapter_id, page_index, skipped_ids)
+            restored_regions += restored
+            if restore_error is not None:
+                restore_failures.append({
+                    "page": page_index + 1, "ids": skipped_ids, "reason": restore_error,
+                })
+            else:
+                for oid in skipped_ids:
+                    review_list.append({
+                        "page": page_index + 1, "id": oid,
+                        "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
+                    })
+            for oid in rerender_skipped:
+                review_list.append({
+                    "page": page_index + 1, "id": oid,
+                    "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
+                })
 
     latest = load_manifest_raw(chapter_id)
     result = urlify_manifest(latest)
@@ -447,6 +554,9 @@ def render_chapter(chapter_id: str, force: bool = False) -> dict:
         "reused": reused,
         "skipped": skipped,
         "total": len(latest.get("pages", [])),
+        "restored_regions": restored_regions,
+        "restore_failures": restore_failures,
+        "review_list": review_list,
         "download_url": f"/api/export/{chapter_id}.zip" + ("?force=true" if force else ""),
         "editorial_preflight": preflight,
     }

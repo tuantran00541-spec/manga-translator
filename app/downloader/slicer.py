@@ -5,6 +5,7 @@ import os
 
 import cv2
 import numpy as np
+from loguru import logger
 
 from app.parameters import (
     SLICE_BACKGROUND_DISTANCE,
@@ -36,7 +37,11 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata
         except OSError:
             pass
     if image is None:
-        return [image_path] if not return_metadata else [{"path": image_path}]
+        # Undecodable: the page contributes no slices, like the zip path's
+        # broken-image skip — returning the path itself would hand the
+        # pipeline an undecodable "page" to translate and render.
+        logger.warning("Skipping undecodable image {}", image_path)
+        return []
 
     h, w = image.shape[:2]
     ext = ".png"

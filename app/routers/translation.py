@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import difflib
 
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
@@ -210,53 +211,118 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
     return candidates
 
 
-def _rect_gap(a: list[int], b: list[int]) -> int:
-    """Gap between two [x1, y1, x2, y2] rects (0 when they touch or overlap)."""
-    dx = max(b[0] - a[2], a[0] - b[2], 0)
-    dy = max(b[1] - a[3], a[1] - b[3], 0)
-    return max(dx, dy)
-
-
 _SFX_LIKE_ROLES = frozenset({"sfx", "free_text"})
-_DUPLICATE_GAP_PX = 100  # two instances of one SFX in a panel nearly touch; separate panels are further apart
 
 
-def _duplicate_sfx_ids(candidates: list[dict], translated) -> set[str]:
-    """Ids of a sound effect drawn twice in one panel, to keep once as art.
+def _norm_text(value: str) -> str:
+    return " ".join(str(value or "").split()).lower()
+
+
+_DUPLICATE_SOURCE_SIMILARITY = 0.85  # normalised sources this alike are the same text read twice
+
+
+def _rects_overlap(a: list[int], b: list[int]) -> bool:
+    return min(a[2], b[2]) > max(a[0], b[0]) and min(a[3], b[3]) > max(a[1], b[1])
+
+
+def _duplicate_reason(value: str, source: str, rect: list[int],
+                      other_value: str, other_source: str, other_rect: list[int]) -> str | None:
+    """Why one translation is a double-read of another: "overlap" when the
+    letterings cover the same place, "source" when they read the same text
+    in different places. Translation alone never proves it — two bubbles
+    can each say "Của tôi" — so one of the two must hold as well."""
+    if _norm_text(value) != _norm_text(other_value) or not _norm_text(value):
+        return None
+    if _rects_overlap(rect, other_rect):
+        return "overlap"
+    a, b = _norm_text(source), _norm_text(other_source)
+    if a and a == b:
+        # The same text read twice, however short (a two-syllable SFX is a word).
+        return "source"
+    if len(a) >= 3 and len(b) >= 3 and difflib.SequenceMatcher(None, a, b).ratio() >= _DUPLICATE_SOURCE_SIMILARITY:
+        return "source"
+    return None
+
+
+def _duplicate_translation_ids(candidates: list[dict], translated) -> dict[str, str]:
+    """Ids of a text drawn twice, to keep once; the value is the reason ("overlap"/"source").
 
     The artist sometimes draws one SFX twice in a panel (ch111 p002: the
     cheer, top-left and mid-right); the detector correctly finds both, the
     model translates both to the same word, and the page shows the word
     twice. Keep the larger instance and leave the other as the artist
-    drew it. Scoped so it cannot fire on legitimate repeats: same source
-    read and same translation, both SFX-like roles, and the boxes near
-    each other (one panel). Dialogue that repeats in different bubbles
-    is another role and never matches.
+    drew it. The same double-read happens to dialogue — one bubble boxed
+    twice — so the check is role-agnostic: same translation, and either
+    the letterings overlap or the sources read the same. Dialogue that
+    repeats in different bubbles is never a duplicate on translation
+    alone: its sources differ.
     """
-    roles = getattr(translated, "roles", {}) or {}
     sources = getattr(translated, "sources", {}) or {}
     translations = getattr(translated, "translations", {}) or {}
-    by_key: dict[tuple[str, str], list[dict]] = {}
+    by_value: dict[str, list[dict]] = {}
     for candidate in candidates:
-        cid = str(candidate["id"])
-        if str(roles.get(cid) or "").strip().lower() not in _SFX_LIKE_ROLES:
-            continue
-        source = " ".join(str(sources.get(cid) or candidate.get("text") or "").split()).lower()
-        value = " ".join(str(translations.get(cid) or "").split()).lower()
-        if not source or not value:
-            continue
-        by_key.setdefault((source, value), []).append(candidate)
-    duplicates: set[str] = set()
-    for group in by_key.values():
+        value = _norm_text(translations.get(candidate["id"]))
+        if value:
+            by_value.setdefault(value, []).append(candidate)
+    duplicates: dict[str, str] = {}
+    for group in by_value.values():
         if len(group) < 2:
             continue
         group.sort(key=lambda c: -((c["region"][2] - c["region"][0])
                                     * (c["region"][3] - c["region"][1])))
-        keeper = group[0]
+        kept = [group[0]]
         for other in group[1:]:
-            if _rect_gap(keeper["region"], other["region"]) <= _DUPLICATE_GAP_PX:
-                duplicates.add(str(other["id"]))
+            other_source = str(sources.get(other["id"]) or other.get("text") or "")
+            other_rect = list(other.get("fit_region") or other["region"])
+            reason = None
+            for keeper in kept:
+                keeper_source = str(sources.get(keeper["id"]) or keeper.get("text") or "")
+                keeper_rect = list(keeper.get("fit_region") or keeper["region"])
+                reason = _duplicate_reason(
+                    str(translations.get(other["id"]) or ""), other_source, other_rect,
+                    str(translations.get(keeper["id"]) or ""), keeper_source, keeper_rect)
+                if reason is not None:
+                    break
+            if reason is not None:
+                duplicates[str(other["id"])] = reason
+            else:
+                kept.append(other)
     return duplicates
+
+
+def _committed_duplicate(page: dict, candidate: dict, value: str, source: str) -> str | None:
+    """The same double-read against objects a previous call already
+    translated: the batch dedupe only sees this call's candidates, so a
+    retry re-reading a bubble the first call translated would letter it
+    twice. The candidate's own object and untranslated objects are not
+    evidence."""
+    rect = list(candidate.get("fit_region") or candidate["region"])
+    for obj in page.get("text_objects") or []:
+        if (not isinstance(obj, dict) or str(obj.get("id")) == str(candidate["id"])
+                or obj.get("source_missing") or obj.get("joined_into") or obj.get("overlap_dropped")
+                or text_object_in_preserve_region(page, obj)):
+            continue
+        other_value = str(obj.get("translation") or "")
+        if not other_value.strip():
+            continue
+        other_rect = obj.get("letter_bounds")
+        if isinstance(other_rect, dict):
+            try:
+                other_rect = [int(other_rect[k]) for k in ("x1", "y1", "x2", "y2")]
+            except (KeyError, TypeError, ValueError):
+                other_rect = None
+        if other_rect is None:
+            region = obj.get("region")
+            other_rect = ([int(region[k]) for k in ("x1", "y1", "x2", "y2")]
+                          if isinstance(region, dict) else None)
+        if other_rect is None:
+            continue
+        reason = _duplicate_reason(
+            value, source, rect, other_value,
+            str(obj.get("source_read") or obj.get("ocr_text") or ""), other_rect)
+        if reason is not None:
+            return reason
+    return None
 
 
 def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
@@ -340,11 +406,13 @@ async def translate_page_in_context(
             mirrors = seam_mirror_ids(manifest, req.page_index)
             elsewhere = [candidate["region"] for candidate in candidates if candidate["id"] in mirrors]
             candidates = [candidate for candidate in candidates if candidate["id"] not in mirrors]
-        if len(candidates) > 100:
-            raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
         if req.object_ids is not None:
             wanted = set(req.object_ids)
             candidates = [candidate for candidate in candidates if candidate["id"] in wanted]
+        # The cap applies to what was actually asked for: a retry naming a
+        # few objects must not 400 because the slice holds more than 100.
+        if len(candidates) > 100:
+            raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
         total_candidates = len(candidates)
         if req.max_objects is not None:
             candidates = candidates[:req.max_objects]
@@ -356,6 +424,12 @@ async def translate_page_in_context(
                         "skipped", "process_required")
         }
         page_number = req.page_index
+
+    if ensured:
+        # The render was invalidated above: drop its stale file too (M2),
+        # so a translate/render failure below leaves no stale PNG behind.
+        from app.dependencies import pipeline
+        pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
 
     if not candidates:
         result = urlify_manifest(manifest)
@@ -389,7 +463,7 @@ async def translate_page_in_context(
     blank_ids: list[str] = []
     story_blank_ids: list[str] = []  # blanks the model left on a story box (any role but sfx)
     art_regions: list[dict] = []  # sound effects left as art get their original pixels back
-    duplicate_ids = _duplicate_sfx_ids(candidates, translated)
+    duplicate_ids = _duplicate_translation_ids(candidates, translated)
     with get_manifest_lock(req.chapter_id):
         latest = load_manifest_raw(req.chapter_id)
         pages = latest.get("pages", [])
@@ -419,8 +493,16 @@ async def translate_page_in_context(
             source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
             if role == "sfx" and drawn_in_art(source):
                 value = ""  # a sound effect the artist drew stays as drawn, whatever the model wrote
-            if candidate["id"] in duplicate_ids:
-                value = ""  # the same SFX drawn twice in one panel: keep one, leave this as art
+            duplicate_reason = duplicate_ids.get(candidate["id"])
+            if duplicate_reason is not None:
+                value = ""  # the same text read twice: keep one instance
+            elif value:
+                # The batch dedupe only sees this call's candidates; a
+                # retry re-reading a bubble the first call translated
+                # would otherwise letter it twice.
+                duplicate_reason = _committed_duplicate(page, candidate, value, source)
+                if duplicate_reason is not None:
+                    value = ""
             if not value:
                 unreadable += 1
                 if candidate["id"] not in getattr(translated, "missing_ids", ()):
@@ -432,12 +514,17 @@ async def translate_page_in_context(
                     # Only a sound effect the artist drew is art.
                     # A duplicate SFX is blank by decision, not by failure,
                     # so it is kept as art and never retried.
-                    if role != "sfx" and candidate["id"] not in duplicate_ids:
+                    if role != "sfx" and duplicate_reason is None:
                         story_blank_ids.append(candidate["id"])
                     # Only a sound effect the artist drew is art; a watermark or a review box around missed text stays erased.
+                    # A duplicate is restored as art only when it is a
+                    # separate instance of an SFX (the same text drawn
+                    # again): an overlapping duplicate shares the keeper's
+                    # lettering, so restoring it would paint the source
+                    # text back under the keeper's translation.
                     manual = {str(box.get("id")) for box in page.get("boxes") or []
                               if isinstance(box, dict) and box.get("manual")}
-                    if (candidate["id"] in duplicate_ids
+                    if ((duplicate_reason == "source" and str(role or "").strip().lower() in _SFX_LIKE_ROLES)
                             or (role == "sfx" and drawn_in_art(source)
                                 and not set(map(str, obj.get("source_boxes") or [])) & manual)):
                         art_regions.append(dict(obj["region"]))
@@ -476,6 +563,19 @@ async def translate_page_in_context(
         if changed:
             invalidate_page_render(latest, page_number)
             save_manifest_raw(req.chapter_id, latest)
+        elif blank_ids:
+            # A blank-only run still mutates the manifest
+            # (translation_attempted), and a crash before the next save
+            # would lose it — including the all-blank page, whose run
+            # would otherwise leave no trace at all.
+            save_manifest_raw(req.chapter_id, latest)
+
+    if changed:
+        # The render was invalidated above: drop its stale file too (M2)
+        # before the re-render below, so a render failure leaves no stale
+        # PNG behind.
+        from app.dependencies import pipeline
+        pipeline._sync_output_dir(req.chapter_id, latest, [page_number])
 
     rendered_pages: list[int] = []
     render_error = None

@@ -48,6 +48,54 @@ def test_a_bubble_only_one_slice_has_is_translated_there():
     assert seam_mirror_ids(manifest, 0) == set()
 
 
+def test_a_duplicate_far_from_the_keeper_keeps_its_own_region():
+    """N3: the keeper absorbs a dropped duplicate's region only when the
+    two regions touch. The dropped object's lettering overlaps the
+    keeper's (that is why it is dropped), but its region sits far away —
+    a stale box, not the keeper's bubble — so the keeper must not grow
+    to cover it."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    keeper = _obj("keeper", 100, 300, "Có khi cậu phải giết chúng đấy, nhóc.")
+    near = _obj("near", 120, 160, "Có khi cậu phải giết chúng")
+    far = _obj("far", 400, 460, "Có khi cậu phải giết chúng")
+    far["letter_bounds"] = {"x1": 100, "y1": 120, "x2": 500, "y2": 160}
+    manifest = {"pages": [{"text_objects": [keeper, near, far]}]}
+    assert drop_overlapping_letters(manifest) == [(0, "near"), (0, "far")]
+    assert keeper["region"] == {"x1": 100, "y1": 100, "x2": 500, "y2": 300}
+    assert far["region"] == {"x1": 100, "y1": 400, "x2": 500, "y2": 460}
+    assert far.get("overlap_dropped") is True
+
+
+def test_a_seam_owner_is_never_dropped_as_a_duplicate():
+    """N16: a seam mirror is a second lettering of the same text by
+    design; dropping it as a duplicate would erase the mirror copy."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    manifest = {"pages": [{"text_objects": [_obj("owner", 100, 300, "Chào bạn",
+                                                  seam_owner={"page": 1, "id": "b"}),
+                                            _obj("big", 100, 300, "Chào bạn")]}]}
+    assert drop_overlapping_letters(manifest) == []
+
+
+def test_sync_seam_mirrors_does_not_copy_an_untranslated_owner():
+    """P2-6: a mirror may only carry a translation the gate would keep;
+    an English owner stays untranslated on both slices."""
+    manifest = _chapter()
+    manifest["pages"][1]["text_objects"][0]["translation"] = "SENIOR BROTHER!"
+    assert sync_seam_mirrors(manifest) == []
+    assert manifest["pages"][0]["text_objects"][0]["translation"] == ""
+
+
+def test_sync_seam_mirrors_copies_the_gate_filtered_owner_text():
+    """P2-6: a mixed owner copies its Vietnamese line only, not the
+    English line the gate drops."""
+    manifest = _chapter()
+    manifest["pages"][1]["text_objects"][0]["translation"] = "Đi thôi\nSENIOR BROTHER!"
+    assert sync_seam_mirrors(manifest) == [0]
+    assert manifest["pages"][0]["text_objects"][0]["translation"] == "Đi thôi"
+
+
 def test_of_two_letterings_on_the_same_text_only_the_larger_stays():
     from app.ai_mode.seams import drop_overlapping_letters
 
@@ -592,6 +640,83 @@ def test_a_mirror_without_a_local_duplicate_keeps_its_owners_text():
     assert sync_seam_mirrors(manifest) == [0]
     assert drop_duplicated_leading_text(manifest) == []
     assert manifest["pages"][0]["text_objects"][0]["translation"] == "Mẹ tôi có tâm hồn thi sĩ."
+
+
+def test_distinct_short_dialogue_sharing_words_is_not_a_duplicate():
+    """Audit N2: a word *set* Jaccard >= 0.6 called all six of these
+    distinct pairs duplicates (3/5 words shared, or one a word-prefix
+    of the other). Manhwa dialogue is typically 2-5 words, exactly
+    where the set cannot tell a reworded duplicate from a different
+    sentence sharing function words. The sequence predicate keeps all
+    six; the text is lost if any of them drops."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    pairs = [
+        ("Tôi không muốn đi", "Tôi không muốn về"),   # Jaccard 3/5 = 0.6
+        ("Anh nói gì vậy?", "Anh nói gì cơ?"),       # Jaccard 3/4 = 0.75
+        ("Đi đi", "Đi đi mau"),                      # substring / word-prefix
+        ("Anh ta...", "Anh ta đến rồi"),             # substring / word-prefix
+        ("Đừng đi", "Đừng đi mà"),                   # substring / word-prefix
+        ("Của tôi", "Của tôi!"),                     # identical words, 2-word line
+    ]
+    for small_text, big_text in pairs:
+        manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, small_text),
+                                                _obj("big", 100, 300, big_text)]}]}
+        assert drop_overlapping_letters(manifest) == [], (small_text, big_text)
+        texts = {obj["id"]: obj["translation"] for obj in manifest["pages"][0]["text_objects"]}
+        assert texts == {"small": small_text, "big": big_text}
+
+
+def test_a_three_word_line_read_twice_still_drops():
+    """The sequence bar rises as the text shortens, but a 3-word line
+    read twice word-for-word is still one text, not two utterances."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, "Đi đi mau"),
+                                            _obj("big", 100, 300, "Đi đi mau")]}]}
+    assert drop_overlapping_letters(manifest) == [(0, "small")]
+
+
+def test_a_geometric_mirror_match_with_different_source_text_is_not_a_mirror():
+    """Audit N8: a small free-text box sitting mostly inside a big
+    bubble's rect matched at share 1.0 on geometry alone and was
+    translated as the neighbour's text. When both sides carry a source
+    read and they share no word, they are different texts."""
+    from app.ai_mode.seams import seam_mirror_ids, sync_seam_mirrors
+
+    manifest = _chapter()
+    manifest["pages"][0]["text_objects"][0]["ocr_text"] = "가지 마라"
+    manifest["pages"][1]["text_objects"][0]["ocr_text"] = "빨리 와라"
+    assert seam_mirror_ids(manifest, 0) == set()
+    assert sync_seam_mirrors(manifest) == []
+
+
+def test_a_geometric_mirror_match_with_the_same_source_text_still_mirrors():
+    from app.ai_mode.seams import seam_mirror_ids
+
+    manifest = _chapter()
+    manifest["pages"][0]["text_objects"][0]["ocr_text"] = "가지 마라"
+    manifest["pages"][1]["text_objects"][0]["ocr_text"] = "가지 마라"
+    assert seam_mirror_ids(manifest, 0) == {"a"}
+
+
+def test_a_geometric_mirror_match_without_source_text_still_mirrors():
+    """No source read on either side is no contradiction: geometry
+    alone still decides, as before."""
+    from app.ai_mode.seams import seam_mirror_ids
+
+    manifest = _chapter()
+    manifest["pages"][0]["text_objects"][0]["ocr_text"] = "가지 마라"
+    assert seam_mirror_ids(manifest, 0) == {"a"}
+
+
+def test_an_overlap_box_whose_source_differs_from_the_owner_gets_no_mirror():
+    from app.ai_mode.seams import create_seam_mirrors
+
+    manifest = _luna_21_22()
+    manifest["pages"][0]["boxes"][0]["ocr_text"] = "가지 마라"
+    manifest["pages"][1]["text_objects"][0]["ocr_text"] = "빨리 와라"
+    assert create_seam_mirrors(manifest) == []
 
 
 def test_overlapping_regions_with_separate_letters_both_stay():

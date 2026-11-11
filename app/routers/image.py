@@ -51,6 +51,7 @@ def _current_rendered_path(chapter_id: str, page_index: int, manifest: dict) -> 
     responses={
         400: {"description": "Invalid image request"},
         404: {"description": "Image not found"},
+        409: {"description": "Rendered output is stale or unavailable"},
         500: {"description": "Image could not be served"},
     },
 )
@@ -71,12 +72,13 @@ def get_image(chapter_id: str, page_index: int, kind: str):
         if kind == "rendered":
             path = _current_rendered_path(chapter_id, page_index, manifest)
             if path is None:
-                logger.warning(
-                    "Chapter {} page {} rendered artifact is stale or unavailable; serving current base image",
-                    chapter_id,
-                    page_index,
+                # No silent fallback to the base image: the review UI and
+                # QA must be able to tell "rendered" from "never rendered"
+                # (M3). The download endpoint already 409s on this state.
+                raise HTTPException(
+                    409,
+                    "Rendered output is stale or unavailable. Kết xuất lại trang trước khi xem.",
                 )
-                path = _fallback_page_path(chapter_id, page)
         else:
             path = _page_file_path(chapter_id, page, kind)
             if path is None:

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from pathlib import Path
-
-from app.render.size_bands import chapter_size_bands
 
 RENDER_IDENTITY_VERSION = "phase45-v3"
 
@@ -22,6 +21,8 @@ def _normalized_box(box: dict) -> dict:
         "x2": int(box.get("x2", 0)),
         "y2": int(box.get("y2", 0)),
         "removed": bool(box.get("removed", False)),
+        "bubble_mask": copy.deepcopy(box.get("bubble_mask"))
+        if isinstance(box.get("bubble_mask"), dict) else None,
     }
 
 
@@ -52,6 +53,11 @@ def _normalized_text_object(obj: dict) -> dict:
         "font_selection_mode": str(obj.get("font_selection_mode") or ""),
         "font_ai_id": str(obj.get("font_ai_id")) if obj.get("font_ai_id") else None,
         "letter_bounds": _normalized_optional_region(obj.get("letter_bounds")),
+        "bubble_mask": copy.deepcopy(obj.get("bubble_mask"))
+        if isinstance(obj.get("bubble_mask"), dict) else None,
+        # The letter bitmap is a render input: the trim reads it to see
+        # a diagonal waist, so a changed bitmap stales the render.
+        "letters_mask": copy.deepcopy(obj.get("letters_mask")),
         "source_cap_px": float(cap) if isinstance(cap, (int, float)) else None,
         "typography_role": str(obj.get("typography_role") or ""),
         "role": str(obj.get("role") or ""),
@@ -87,8 +93,6 @@ def render_input_signature(manifest: dict, page_index: int) -> str:
         render_content = {
             "mode": "text_objects",
             "objects": [_normalized_text_object(obj) for obj in text_objects],
-            # Bands draw on every page, so a sibling's edit must stale this render too.
-            "chapter_size_bands": chapter_size_bands(pages),
         }
     else:
         render_content = {

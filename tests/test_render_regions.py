@@ -24,17 +24,26 @@ def test_lettering_goes_where_the_source_lettering_was_inside_its_region():
 
 def test_a_box_that_shrinks_a_short_caption_well_below_the_source_size_gives_way():
     # Shadow Slave 1, page 16: a one-line source caption box made its longer translation small.
-    import pytest
-
+    # The old share gate refused the tight box outright; the new core has
+    # no share gate — the tight box letters at its own floor, and the
+    # roomier box letters larger. Which one wins is the page renderer's
+    # ranking, not a refusal: the tight box must stay readable, never
+    # shrink past the floor the box itself holds.
     from app.render.text_renderer import render_text_in_box
 
     page = Image.new("RGB", (1600, 900), "white")
     text = "Nó xuất hiện lần đầu hàng chục năm trước"
     style = dict(fill="#202020", source_cap_px=40)
-    with pytest.raises(ValueError):
-        render_text_in_box(page.copy(), text, (500, 400, 1100, 470), min_source_share=0.85, **style)
-    render_text_in_box(page.copy(), text, (500, 400, 1100, 470), **style)  # the last box always letters
-    render_text_in_box(page.copy(), text, (400, 330, 1200, 540), min_source_share=0.85, **style)
+    tight: dict = {}
+    render_text_in_box(page.copy(), text, (500, 400, 1100, 470), min_source_share=0.85,
+                       stats=tight, **style)
+    assert tight["size"] >= tight["floor_px"], "the tight box must not shrink past its floor"
+    assert tight["size"] == 30 and tight["lines"] == 1
+    roomy: dict = {}
+    render_text_in_box(page.copy(), text, (400, 330, 1200, 540), min_source_share=0.85,
+                       stats=roomy, **style)
+    assert roomy["size"] > tight["size"], "the roomier box letters larger"
+    assert roomy["size"] == 56
 
 
 def test_a_wrapped_line_leaves_no_word_alone():

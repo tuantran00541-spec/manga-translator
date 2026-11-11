@@ -73,7 +73,12 @@ def _repair_mask_from_ink(
     than a few pixels (a hat, a bubble outline), is art, not text,
     and stays out.
     """
-    if crop_img is None or not box_rects or not np.any(mask > 127):
+    if crop_img is None:
+        # No image to read ink from: the repair cannot run, and the
+        # segmenter mask stands as-is (Mount Hua p075's smear stays).
+        logger.warning("Skipping mask repair from ink: no crop image")
+        return mask
+    if not box_rects or not np.any(mask > 127):
         return mask
     gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY) if crop_img.ndim == 3 else crop_img
     if gray.shape[:2] != mask.shape[:2]:
@@ -117,6 +122,9 @@ def _component_in_box(x: int, y: int, w: int, h: int,
     return (w <= bx2 - bx1 and h <= by2 - by1
             and x >= bx1 - margin and y >= by1 - margin
             and x + w <= bx2 + margin and y + h <= by2 + margin)
+
+
+def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
     explicit = getattr(box, "allow_rectangle_fallback", None)
     if explicit is not None:
         return bool(explicit)
@@ -151,12 +159,17 @@ def build_mask(
             continue
 
         if not is_destructive_box_authorized(box):
+            # A skipped box with a mask loses the mask too, not just the
+            # rectangle fallback; today manual boxes carry confidence 1.0
+            # so the sentinel passes them, but a config change that lowers
+            # it would silently drop their masks.
             logger.warning(
-                "Skipping non-authorized destructive mask for box ({}, {}, {}, {})",
+                "Skipping non-authorized destructive mask for box ({}, {}, {}, {}){}",
                 box.x1,
                 box.y1,
                 box.x2,
                 box.y2,
+                " — its segmentation mask is dropped with it" if box.mask is not None else "",
             )
             continue
 

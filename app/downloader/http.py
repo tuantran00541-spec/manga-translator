@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 import uuid
 
 import requests
+from loguru import logger
 from requests.adapters import HTTPAdapter
 from urllib3.connection import HTTPConnection, HTTPSConnection
 from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
@@ -163,6 +164,10 @@ def _reject_oversized_content_length(response: requests.Response, limit_bytes: i
     try:
         value = int(raw)
     except (TypeError, ValueError):
+        # An unparseable length is treated as no limit, not as a rejection:
+        # some servers send odd headers, and the streamed reader still
+        # enforces the byte limit. The odd header is worth a warning.
+        logger.warning("Unparseable Content-Length {!r}; treating it as no limit", raw)
         return
     if value < 0:
         raise ValueError("Remote response has an invalid Content-Length")

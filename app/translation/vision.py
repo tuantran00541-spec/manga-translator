@@ -12,6 +12,7 @@ import requests
 from app.ai_mode.vision_json import request_vision_json, stage_headers
 from app.box_format import scaled_box
 from app.ai_providers import AIProvider, auth_headers
+from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
@@ -298,9 +299,66 @@ def _ascii_words(text: str) -> list[str]:
     return _ASCII_WORD.findall(unicodedata.normalize("NFKC", text or ""))
 
 
+# Maximal letter runs in any script: "Tôi" stays one word, where the
+# ASCII runs above would shred it into "T" and "i" and mistake the
+# pieces for English.
+_WORD = re.compile(r"[^\W\d_]+")
+
+
+def _letter_words(text: str) -> list[str]:
+    return _WORD.findall(text or "")
+
+
 def _has_non_ascii_letter(text: str) -> bool:
     """True when any letter carries a diacritic or another script."""
     return any(char.isalpha() and ord(char) > 127 for char in (text or ""))
+
+
+def _english_segment_spans(line: str) -> list[tuple[int, int]]:
+    """Char spans of the ASCII-word runs holding an English content word
+    ("SENIOR BROTHER" in "Anh ơi SENIOR BROTHER"). Runs are judged on
+    the normalised line, so full-width Latin counts; a lone function
+    word never counts, because "to", "in" and "me" are also Vietnamese
+    words ("Quả me to")."""
+    normalized = _normalize_for_script_check(line)
+    norm_words = [(match.group(0), match.start(), match.end())
+                  for match in _WORD.finditer(normalized)]
+    orig_words = [(match.group(0), match.start(), match.end())
+                  for match in _WORD.finditer(line)]
+    if len(norm_words) != len(orig_words):
+        return []
+    spans: list[tuple[int, int]] = []
+    run: list[int] = []
+
+    def flush() -> None:
+        nonlocal run
+        if run and any(norm_words[i][0].lower() in _ENGLISH_CONTENT_WORDS for i in run):
+            spans.append((orig_words[run[0]][1], orig_words[run[-1]][2]))
+        run = []
+
+    for index, (_word, _start, _end) in enumerate(orig_words):
+        if norm_words[index][0].isascii():
+            run.append(index)
+        else:
+            flush()
+    flush()
+    return spans
+
+
+def _strip_english_segments(line: str) -> str:
+    """Drop the English segments of a line that also carries Vietnamese
+    letters; punctuation trailing a dropped segment goes with it."""
+    spans = _english_segment_spans(line)
+    if not spans:
+        return line
+    out, pos = [], 0
+    for start, end in spans:
+        while end < len(line) and not line[end].isalnum() and not line[end].isspace():
+            end += 1
+        out.append(line[pos:start])
+        pos = end
+    out.append(line[pos:])
+    return re.sub(r"\s+", " ", "".join(out)).strip()
 
 
 def drawn_in_art(source: str) -> bool:
@@ -308,15 +366,32 @@ def drawn_in_art(source: str) -> bool:
     return bool(_FOREIGN_SCRIPT.search(source or ""))
 
 
-def _untranslated_english(text: str) -> bool:
-    """True for a line left in English: ASCII letters only, at least two words, one of them an English function word."""
-    text = _normalize_for_script_check(text)
-    if _has_non_ascii_letter(text):
+def _line_is_english(line: str) -> bool:
+    """True for one line left in English: at least two words and an
+    English word in them. A line carrying Vietnamese letters counts only
+    through an English segment — a lone "to", "in" or "me" is also a
+    Vietnamese word, so it never counts on its own."""
+    line = _normalize_for_script_check(line)
+    words = [word.lower() for word in _letter_words(line)]
+    if len(words) < 2:
         return False
-    words = [word.lower() for word in _ascii_words(text)]
-    return (len(words) >= 2
-            and (any(word in _ENGLISH_WORDS for word in words)
-                 or any(word in _ENGLISH_CONTENT_WORDS for word in words)))
+    if not _has_non_ascii_letter(line):
+        return any(word in _ENGLISH_WORDS or word in _ENGLISH_CONTENT_WORDS for word in words)
+    return bool(_english_segment_spans(line))
+
+
+def _untranslated_english(text: str) -> bool:
+    """True when any line of the value is left in English: ASCII letters
+    only, at least two words, one of them an English function or content
+    word. A diacritic in one line no longer shields the others."""
+    lines = str(text or "").splitlines()
+    if any(_line_is_english(line) for line in lines):
+        return True
+    # One word per line ("IS\nTHE"): no line trips on its own, but the
+    # value as a whole is still English.
+    if lines and not any(_has_non_ascii_letter(line) for line in lines):
+        return _line_is_english(" ".join(lines))
+    return False
 
 
 # Common Vietnamese words written without their diacritics.
@@ -337,36 +412,53 @@ def _missing_diacritics(text: str) -> bool:
 
 
 def _latin_noise(text: str) -> bool:
-    """True for a value that is not a translation at all but a vision
+    """True when any line of the value is not a translation at all but a vision
     misread of stylised Korean SFX as Latin look-alikes: no real word
     (no ASCII letter-run of two or more, no non-ASCII letter) and the
-    value is built from digits, slashes or single letters, e.g. "1/10"
+    line is built from digits, slashes or single letters, e.g. "1/10"
     for a swish SFX, "N/O/Z/N" for a nod. A bare ellipsis or a single
     grunt ("...", "A", "MM!") is not noise: it is a pause or a sound
     the model carried over, and blanking it would only manufacture a
     retry."""
-    words = _ascii_words(text)
-    if any(len(word) >= 2 for word in words) or _has_non_ascii_letter(text):
+    return any(_line_is_latin_noise(line) for line in str(text or "").splitlines())
+
+
+def _line_is_latin_noise(line: str) -> bool:
+    words = _ascii_words(line)
+    if any(len(word) >= 2 for word in words) or _has_non_ascii_letter(line):
         return False
-    normalized = _normalize_for_script_check(text)
+    normalized = _normalize_for_script_check(line)
     return "/" in normalized or len(words) >= 2
 
 
 def _bare_scream(text: str) -> bool:
-    """True for a shout that is one letter repeated, no diacritics,
+    """True when any line of the value is a shout that is one letter repeated, no diacritics,
     e.g. "AAAAA!!!": the model misread brush H's as A's and the
-    re-translate passed the Latin through. No Vietnamese word is a
-    single letter repeated, so this can never be a correct rendering;
+    re-translate passed the Latin through. The repeated letter may wear
+    diacritics ("ÁÁÁÁA"); it is stripped before the check. No Vietnamese
+    word is a single letter repeated, so this can never be a correct rendering;
     a one- or two-letter grunt ("A!", "AA!") is left alone."""
-    words = _ascii_words(text)
+    return any(_line_is_bare_scream(line) for line in str(text or "").splitlines())
+
+
+def _strip_diacritics(text: str) -> str:
+    """NFKD-strip diacritics, so a scream written with accented capitals ("ÁÁÁÁA") reads as its bare letters."""
+    return "".join(char for char in unicodedata.normalize("NFKD", text or "") if not unicodedata.combining(char))
+
+
+def _line_is_bare_scream(line: str) -> bool:
+    # The repeated letter may wear diacritics ("ÁÁÁÁA" for a brush H): strip
+    # them first, or _ascii_words sees one bare A and the scream passes.
+    line = _strip_diacritics(line)
+    words = _ascii_words(line)
     if len(words) != 1:
         return False
     word = words[0]
     if len(word) < 3 or len(set(word)) != 1:
         return False
-    if _has_non_ascii_letter(text):
+    if _has_non_ascii_letter(line):
         return False
-    rest = _normalize_for_script_check(text).replace(word, "", 1)
+    rest = _normalize_for_script_check(line).replace(word, "", 1)
     return all(not char.isalnum() for char in rest)
 
 
@@ -376,7 +468,7 @@ _VOWELS = frozenset("aeiou")
 
 
 def _hangul_misread(source: str, text: str) -> bool:
-    """True when a Korean SFX came back as Latin consonants: the model
+    """True when any line of the value is a Korean SFX come back as Latin consonants: the model
     read the Hangul strokes as look-alike letters (ㅍ as F, 르 as F,
     륵 as R → "FFR") and the pipeline rendered the nonsense in the
     source's own pink. A real Vietnamese rendering always has a vowel
@@ -385,11 +477,72 @@ def _hangul_misread(source: str, text: str) -> bool:
     the artist drew it, which is the standing SFX policy."""
     if not _HANGUL.search(source or ""):
         return False
-    if _has_non_ascii_letter(text):
+    return any(_line_is_hangul_misread(source, line) for line in str(text or "").splitlines())
+
+
+def _line_is_hangul_misread(source: str, line: str) -> bool:
+    if not _HANGUL.search(source or ""):
         return False
-    words = _ascii_words(text)
+    if _has_non_ascii_letter(line):
+        return False
+    words = _ascii_words(line)
     return bool(words) and not any(
         char.lower() in _VOWELS for word in words for char in word)
+
+
+def _filter_foreign_lines(value: str, source: str) -> str:
+    """Keep the Vietnamese lines of a translation, dropping the lines
+    (or, inside a Vietnamese line, the English segments) the gates trip
+    on; blank only when nothing remains. A wholly ASCII value keeps the
+    old whole-value verdict: one English line proves the value is
+    English, so a second line with no listed word ("VAST OPEN WORLD,")
+    cannot survive on its neighbour's words."""
+    lines = str(value or "").splitlines()
+    if not any(_has_non_ascii_letter(line) for line in lines):
+        if _untranslated_english(value):
+            return ""
+        kept = [line for line in lines
+                if not (_missing_diacritics(line) or _latin_noise(line)
+                        or _bare_scream(line) or _hangul_misread(source, line))]
+        return "\n".join(kept)
+    kept = []
+    ascii_lines = [line for line in lines if not _has_non_ascii_letter(line)]
+    # One word per line ("IS\nTHE"): no pure line trips on its own, but
+    # the pure lines together are still English.
+    ascii_group_english = (
+        bool(ascii_lines)
+        and not any(_untranslated_english(line) for line in ascii_lines)
+        and _untranslated_english("\n".join(ascii_lines)))
+    for line in lines:
+        if _FOREIGN_SCRIPT.search(line):
+            continue
+        if not _has_non_ascii_letter(line):
+            if (ascii_group_english or _untranslated_english(line) or _missing_diacritics(line)
+                    or _latin_noise(line) or _bare_scream(line)
+                    or _hangul_misread(source, line)):
+                continue
+            kept.append(line)
+        else:
+            # A diacritic line can still be a bare scream ("ÁÁÁÁA!!!"): the
+            # segment strip alone would keep it, so the scream check runs here too.
+            if _bare_scream(line):
+                continue
+            stripped = _strip_english_segments(line)
+            if stripped.strip():
+                kept.append(stripped)
+    return "\n".join(kept)
+
+
+def _memory_name_is_english(entry: dict, key: str) -> bool:
+    """True when a memory name field is untranslated English: a character
+    name, or an address from/to. Names keep their source spelling, so an
+    English name is not a name the model read — it is a translation the
+    model invented, and it would teach the next slices the wrong name.
+    Single-word names pass (one listed word is not proof of English),
+    and the self/other pronoun terms are single words by nature."""
+    fields = ("name",) if key == "characters" else ("from", "to")
+    return any(isinstance(entry, dict) and _untranslated_english(entry.get(field) or "")
+               for field in fields)
 
 
 def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[VisionTranslationResult, dict]:
@@ -397,20 +550,36 @@ def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[V
     sources = {str(entry.get("id")): str(entry.get("source") or "")
                for entry in data.get("translations") or []
                if isinstance(entry, dict)}
-    foreign = {key for key, value in result.translations.items()
-               if _FOREIGN_SCRIPT.search(value) or _untranslated_english(value) or _missing_diacritics(value)
-               or _latin_noise(value) or _bare_scream(value)
-               or _hangul_misread(sources.get(key, ""), value)}
+    foreign: set[str] = set()
+    kept: dict[str, str] = {}
+    for key, value in result.translations.items():
+        filtered = _filter_foreign_lines(value, sources.get(key, ""))
+        if filtered == "":
+            if value.strip():
+                foreign.add(key)
+        elif filtered != value:
+            kept[key] = filtered
     data = dict(data)
     if isinstance(data.get("translations"), list):
-        data["translations"] = [entry for entry in data["translations"]
-                                if not (isinstance(entry, dict) and str(entry.get("id")) in foreign)]
+        updated = []
+        for entry in data["translations"]:
+            if not isinstance(entry, dict):
+                updated.append(entry)
+                continue
+            entry_id = str(entry.get("id"))
+            if entry_id in foreign:
+                continue
+            if entry_id in kept:
+                entry = {**entry, "translated_text": kept[entry_id]}
+            updated.append(entry)
+        data["translations"] = updated
     for key in ("characters", "address"):
         if isinstance(data.get(key), list):
             data[key] = [entry for entry in data[key]
-                         if not _FOREIGN_SCRIPT.search(json.dumps(entry, ensure_ascii=False))]
-    if foreign:
-        result = replace(result, translations={key: "" if key in foreign else value
+                         if not _FOREIGN_SCRIPT.search(json.dumps(entry, ensure_ascii=False))
+                         and not _memory_name_is_english(entry, key)]
+    if foreign or kept:
+        result = replace(result, translations={key: ("" if key in foreign else kept.get(key, value))
                                                for key, value in result.translations.items()})
     return result, data
 
@@ -494,12 +663,19 @@ def retranslate_text(
     result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=max_tokens, stage="retranslate")
     expected = {i for i, _ in pairs}
     out = {}
-    for entry in (result.data.get("translations") or []):
+    translations = result.data.get("translations") or []
+    if isinstance(translations, dict):
+        # A model may answer the object map instead of the list, as the
+        # vision parse does; iterating the dict would only yield its keys.
+        translations = [{"id": key, "translated_text": value} for key, value in translations.items()]
+    for entry in translations:
         if not isinstance(entry, dict):
             continue
         key, value = str(entry.get("id") or ""), entry.get("translated_text")
         if key in expected and isinstance(value, str) and value.strip():
             out[key] = value
+    if pairs and not out:
+        logger.warning("Re-translate returned no translations for {} pairs; keeping the vision wording", len(pairs))
     return out, result.estimated_cost_usd, result.usage
 
 
@@ -622,12 +798,19 @@ class VisionPageTranslator:
                                    or str(item.get("text") or "").strip()))
                 for item in items
             ]
-            retold, retold_cost, retold_usage = retranslate_text(
-                self.translate_provider, self.translate_model, self.translate_api_key or "",
-                pairs, source_lang=source_lang, target_lang=target_lang,
-                memory_snapshot=memory.snapshot(settled=False) if memory is not None else None,
-                settled=memory.settled() if memory is not None else None,
-            )
+            retold, retold_cost, retold_usage = {}, None, {}
+            try:
+                retold, retold_cost, retold_usage = retranslate_text(
+                    self.translate_provider, self.translate_model, self.translate_api_key or "",
+                    pairs, source_lang=source_lang, target_lang=target_lang,
+                    memory_snapshot=memory.snapshot(settled=False) if memory is not None else None,
+                    settled=memory.settled() if memory is not None else None,
+                )
+            except (RuntimeError, ValueError, OSError) as exc:
+                # The second pass is a wording upgrade, not the translation:
+                # its failure keeps the vision wording instead of the slice.
+                logger.warning("Re-translate failed for slice {}: {}; keeping the vision wording",
+                               slice_number, str(exc)[:150])
             # The re-translate is billed separately, so its cost and usage join the vision read's.
             usage = dict(result.usage or {})
             for key, value in (retold_usage or {}).items():
@@ -644,6 +827,15 @@ class VisionPageTranslator:
                     if isinstance(entry, dict) and str(entry.get("id")) in retold:
                         entry["translated_text"] = retold[str(entry["id"])]
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
+            # Salvaged entries carry no source, so the gate below cannot see
+            # the Hangul behind a Latin misread; backfill it from the OCR
+            # text the candidates carried, as the re-translate pairs do.
+            for entry in data.get("translations") or []:
+                if isinstance(entry, dict) and not str(entry.get("source") or "").strip():
+                    ocr = next((str(item.get("text") or "")
+                                for item in items if str(item.get("id")) == str(entry.get("id"))), "")
+                    if ocr.strip():
+                        entry["source"] = ocr
             result, data = _drop_foreign_script(result, data)
         roles, containers, review, answered, enlarge, colors, sources = {}, {}, set(), set(), set(), {}, {}
         for entry in data.get("translations") or []:
@@ -662,12 +854,19 @@ class VisionPageTranslator:
                 enlarge.add(str(entry["id"]))
             if str(entry.get("id")) in read_sources:
                 sources[str(entry["id"])] = read_sources[str(entry["id"])]
+            elif str(entry.get("source") or "").strip():
+                # Backfilled from the candidate OCR text just before the gate.
+                sources[str(entry["id"])] = " ".join(str(entry["source"]).split())[:1000]
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
         fonts = {key: {"font_id": font_for(roles.get(key), containers.get(key), target_lang), "font_mode": "ai"}
                  for key in (result.font_choices or {})}
         if memory is not None:
-            memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
+            # A doubled line in memory teaches the next slices the
+            # repetition; collapse it before the update, as the commit does.
+            memory.update(slice_number or 0, data,
+                          {key: collapse_repeated_lines(value) for key, value in result.translations.items()},
+                          [str(item["id"]) for item in items])
         speakers = {str(k): " ".join(str(v).split())[:80] for k, v in (data.get("speakers") or {}).items()
                     if str(k) in ids and isinstance(v, str) and v.strip()} if isinstance(data.get("speakers"), dict) else {}
         unboxed = tuple(

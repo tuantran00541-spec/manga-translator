@@ -1,6 +1,8 @@
 import asyncio
+import contextlib
 import json
 
+import app.ai_mode.job as ai_job
 from app.ai_mode import polish
 from app.ai_mode.job import AIModeJob, AIModeRunner, AIModeSettings
 from app.ai_mode.vision_json import VisionJSONResult
@@ -74,6 +76,88 @@ def test_the_stage_does_nothing_when_off():
     runner = AIModeRunner(job, PROVIDERS["openai"], "k")
     asyncio.run(runner.polish())
     assert runner.report["polish"]["judged"] == 0 and job.stages["polish"]["detail"] == "Tắt"
+
+
+def _manifest_runner(monkeypatch, manifest):
+    job = AIModeJob("j", AIModeSettings(url="u", provider="openai", model="m", polish=True))
+    job.stages = {"polish": {}}
+    job.stage = "polish"
+    runner = AIModeRunner(job, PROVIDERS["openai"], "k")
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda chapter_id: contextlib.nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: manifest)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, data: None)
+    # The fixture has no chapter, so the M2 output-dir sync after the
+    # commit has nowhere to run; stub it (the sync itself is covered by
+    # the render/export suites).
+    import app.dependencies as deps
+    monkeypatch.setattr(deps.pipeline, "_sync_output_dir", lambda *a, **k: None)
+    return runner
+
+
+def test_save_polished_gates_rewrites_like_the_translate_commit(monkeypatch):
+    """A judge-approved rewrite is still a fresh model commit: English and
+    CJK rewrites are dropped with the original kept, a doubled rewrite is
+    collapsed, and only the committed one counts."""
+    manifest = {"pages": [{"text_objects": [
+        _obj("a", "Tôi đi đây."),
+        _obj("b", "Ngươi hãy ra khỏi nơi này lập tức!"),
+        _obj("c", "Không sao đâu."),
+    ]}]}
+    runner = _manifest_runner(monkeypatch, manifest)
+    lines = [
+        polish.Line(0, "a", "Get out of here now!", "SENIOR BROTHER!"),
+        polish.Line(0, "b", "Get out of here now!", "Cút khỏi đây ngay!\nCút khỏi đây ngay!"),
+        polish.Line(0, "c", "It is fine.", "你好世界"),
+        polish.Line(0, "zz", "Missing.", "Chạy đi!"),
+    ]
+    committed, dropped = runner._save_polished(lines)
+    assert (committed, dropped) == ({"b"}, 2)
+    objs = {obj["id"]: obj for obj in manifest["pages"][0]["text_objects"]}
+    assert objs["a"]["translation"] == "Tôi đi đây." and "polished_from" not in objs["a"]
+    assert lines[0].text == "Tôi đi đây.", "a dropped rewrite leaves the line on its original text"
+    assert objs["b"]["translation"] == "Cút khỏi đây ngay!" and objs["b"]["polished_from"] == (
+        "Ngươi hãy ra khỏi nơi này lập tức!")
+    assert objs["c"]["translation"] == "Không sao đâu."
+    stats = runner.report["polish"]
+    assert stats["gate_dropped"] == 2
+    assert [(item["id"], item["dropped"]) for item in stats["gate_dropped_samples"]] == [
+        ("a", "SENIOR BROTHER!"), ("c", "你好世界")]
+
+
+def test_save_polished_commits_the_gate_filtered_text_not_the_raw_rewrite(monkeypatch):
+    """A mixed rewrite (Vietnamese line + English line) commits only what
+    the gate kept: the translate commit writes the gate's filtered text,
+    and polish must not smuggle the dropped English line onto the page."""
+    manifest = {"pages": [{"text_objects": [_obj("d", "Đúng vậy.")] }]}
+    runner = _manifest_runner(monkeypatch, manifest)
+    lines = [polish.Line(0, "d", "That's right!", "Đúng vậy\nSENIOR BROTHER!")]
+    committed, dropped = runner._save_polished(lines)
+    assert (committed, dropped) == ({"d"}, 0)
+    assert manifest["pages"][0]["text_objects"][0]["translation"] == "Đúng vậy"
+    assert lines[0].text == "Đúng vậy"
+
+
+def test_the_stage_drops_a_judge_approved_rewrite_the_script_gate_trips(monkeypatch):
+    pages = [{"text_objects": [_obj("a", "Ngươi hãy ra khỏi nơi này lập tức!")]}]
+    manifest = {"pages": pages}
+    graded = {"Ngươi hãy ra khỏi nơi này lập tức!": {"natural": 1.0, "clear": 2.0, "faithful": 2.0},
+              "SENIOR BROTHER!": {"natural": 2.8, "clear": 2.0, "faithful": 2.0}}
+    monkeypatch.setattr(polish, "judge", lambda provider, key, state, asked: graded[state.split("\n")[1].split(": ", 1)[1]])
+    monkeypatch.setattr(polish, "rewrite", lambda *a: ({"a": "SENIOR BROTHER!"}, None))
+    runner = _manifest_runner(monkeypatch, manifest)
+    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0])
+
+    async def no_seams():
+        return []
+
+    monkeypatch.setattr(runner, "_sync_seams", no_seams)
+    asyncio.run(runner.polish())
+    assert pages[0]["text_objects"][0]["translation"] == "Ngươi hãy ra khỏi nơi này lập tức!"
+    stats = runner.report["polish"]
+    assert (stats["judged"], stats["flagged"], stats["rewritten"]) == (1, 1, 0)
+    assert stats["gate_dropped"] == 1 and stats["samples"] == []
+    assert [(item["id"], item["dropped"]) for item in stats["gate_dropped_samples"]] == [("a", "SENIOR BROTHER!")]
 
 
 def test_the_judge_reads_each_line_flat_and_ignores_noise_level_gains():

@@ -27,6 +27,7 @@ import app.routers.ai_mode as ai_mode_router
 import app.translation.vision as vision
 from app.ai_mode.vision_json import VisionJSONResult, stage_headers
 from app.cloud import cloud_provider
+from app.translation.context import ChapterMemory
 from app.translation.vision import VisionPageTranslator, VisionTranslationResult, retranslate_text
 
 CHAPTER_URL = "https://asurascans.com/comics/the-former-supreme-ab39de10/chapter/1"
@@ -304,3 +305,84 @@ def test_ai_cost_run_posts_the_retranslate_by_default():
         url="https://example.com/chapter/1", polish=True,
         translate_provider="", translate_model="")) == {
         "url": "https://example.com/chapter/1", "provider": "manga-cloud", "polish": True}
+
+
+def test_translate_batch_keeps_vision_wording_when_retranslate_fails(tmp_path, monkeypatch):
+    """P1-4: a re-translate crash must not lose the slice; the vision wording stands."""
+    original, clean = _slice_images(tmp_path)
+    _vision_answer(monkeypatch)
+
+    def boom(*_a, **_k):
+        raise RuntimeError("gateway down")
+
+    monkeypatch.setattr(vision, "retranslate_text", boom)
+    translator = VisionPageTranslator(
+        cloud_provider(), "deepseek/deepseek-v4.1-flash-1017",
+        translate_provider=cloud_provider(), translate_model=TRANSLATE_MODEL,
+translate_api_key="k"
+    )
+    answer = translator.translate_page(
+        original, clean, [{"id": "text_1", "text": "Hello", "region": [10, 20, 50, 40]}],
+        api_key="k", source_lang="en", target_lang="vi")
+    assert answer.translations == {"text_1": "vision wording"}
+
+
+def test_translate_batch_backfills_a_missing_source_so_a_misread_drops(tmp_path, monkeypatch):
+    """P1-2: a salvaged entry has no source, so the gate cannot see the
+    Hangul misread; the candidate OCR text is the source to check."""
+    original, clean = _slice_images(tmp_path)
+
+    def fake_openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
+        result = VisionTranslationResult({"1": "FFR"}, self.model, {}, None)
+        data = {"translations": [{"id": "1", "translated_text": "FFR",
+                                  "role": "dialogue", "container": "bubble"}]}
+        return result, data
+
+    monkeypatch.setattr(VisionPageTranslator, "_openai", fake_openai)
+    translator = VisionPageTranslator(cloud_provider(), "deepseek/deepseek-v4.1-flash-1017")
+    answer = translator.translate_page(
+        original, clean, [{"id": "text_1", "text": "\ud478\ub974\ub985", "region": [10, 20, 50, 40]}],
+        api_key="k", source_lang="ko", target_lang="vi")
+    assert answer.translations == {"text_1": ""}, "FFR is the model reading Hangul strokes as Latin"
+
+
+def test_translate_batch_collapses_doubled_lines_before_memory(tmp_path, monkeypatch):
+    """P2-3: a doubled line must not teach the next slice to double it too."""
+    original, clean = _slice_images(tmp_path)
+
+    def fake_openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
+        result = VisionTranslationResult({"1": "Cút đi!\nCút đi!"}, self.model, {}, None)
+        data = {"translations": [{"id": "1", "translated_text": "Cút đi!\nCút đi!",
+                                  "source": "Hello", "role": "dialogue", "container": "bubble"}]}
+        return result, data
+
+    monkeypatch.setattr(VisionPageTranslator, "_openai", fake_openai)
+    translator = VisionPageTranslator(cloud_provider(), "deepseek/deepseek-v4.1-flash-1017")
+    memory = ChapterMemory()
+    translator.translate_page(
+        original, clean, [{"id": "text_1", "text": "Hello", "region": [10, 20, 50, 40]}],
+        api_key="k", source_lang="en", target_lang="vi", memory=memory, slice_number=0)
+    recent = memory.snapshot(settled=False)["recent_lines"]
+    assert [entry["text"] for entry in recent] == ["Cút đi!"]
+
+
+def test_retranslate_text_accepts_a_dict_shaped_translation_list(monkeypatch):
+    """P2-2: the re-translate answers with the same shapes the vision read does."""
+    def fake_request(provider, model, api_key, prompt, images, **kwargs):
+        return VisionJSONResult({"translations": {"a": "Xin chào"}}, {"prompt_tokens": 5}, 0.01)
+
+    monkeypatch.setattr(vision, "request_vision_json", fake_request)
+    out, cost, usage = retranslate_text(cloud_provider(), TRANSLATE_MODEL, "job-token", [("a", "Hello")],
+                                        source_lang="en", target_lang="vi")
+    assert out == {"a": "Xin chào"} and cost == 0.01 and usage == {"prompt_tokens": 5}
+
+
+def test_retranslate_text_with_no_translations_keeps_the_vision_wording(monkeypatch):
+    """P2-2: an empty re-translate is a warning, not a crash; the caller keeps the vision wording."""
+    def fake_request(provider, model, api_key, prompt, images, **kwargs):
+        return VisionJSONResult({"translations": []}, {}, 0.01)
+
+    monkeypatch.setattr(vision, "request_vision_json", fake_request)
+    out, _, _ = retranslate_text(cloud_provider(), TRANSLATE_MODEL, "job-token", [("a", "Hello")],
+                                 source_lang="en", target_lang="vi")
+    assert out == {}

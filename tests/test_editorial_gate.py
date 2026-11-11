@@ -164,6 +164,25 @@ def test_active_story_source_without_translation_blocks_final_export_preflight()
     assert "untranslated_story_object" in _kinds(preflight)
 
 
+def test_overlap_dropped_duplicate_does_not_block_final_export_preflight():
+    """Audit N1: a correctly-dropped duplicate has source text and no
+    translation, which read as an untranslated story object — every
+    overlap drop blocked export without force=true. Its text is
+    lettered by the keeper it duplicated, so the drop itself is the
+    resolution, mirroring the seam-owner exemption."""
+    box = _root_box(
+        safe_to_inpaint=True,
+        needs_review=False,
+        deferred_reason=None,
+    )
+    obj = _object(translation="", overlap_dropped=True)
+
+    preflight = editorial_preflight(_manifest(box, [obj]))
+
+    assert preflight["status"] == "PASS"
+    assert preflight["blocker_count"] == 0
+
+
 def test_preserve_region_is_an_explicit_resolution_surface():
     manifest = _manifest()
     manifest["pages"][0]["preserve_regions"] = [

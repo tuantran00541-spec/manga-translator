@@ -130,5 +130,6 @@ jobs:
           name: ai-mode-chapter
           path: |
             data/output/
+            data/processed/*/manifest.json
             server.log
           if-no-files-found: warn

@@ -245,6 +245,33 @@ def _commit_render(
         return True, target_render_revision
 
 
+def _drop_stale_render_output(chapter_id: str, page_index: int, final_path: Path) -> None:
+    # A render that failed to commit leaves the previous file on disk
+    # while the manifest says not-rendered (M2): drop it, so the output
+    # dir does not claim a render exists. Kept when the manifest still
+    # says rendered -- a concurrent render may have committed a fresh
+    # file after this snapshot went stale, and that file must survive.
+    try:
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            pages = manifest.get("pages", [])
+            if 0 <= page_index < len(pages) and pages[page_index].get("rendered"):
+                return
+    except Exception as exc:
+        logger.warning(
+            "Chapter {} page {} could not verify render state; keeping output {}: {}",
+            chapter_id,
+            page_index,
+            final_path,
+            exc,
+        )
+        return
+    try:
+        final_path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("Could not remove stale output {}: {}", final_path, exc)
+
+
 @router.post(
     "/render",
     responses={
@@ -310,6 +337,7 @@ def render_page(req: RenderRequest) -> dict:
             req.chapter_id,
             req.page_index,
         )
+        _drop_stale_render_output(req.chapter_id, req.page_index, final_path)
         raise HTTPException(
             409,
             "Dữ liệu trang đã thay đổi trong lúc kết xuất. Vui lòng kết xuất lại.",

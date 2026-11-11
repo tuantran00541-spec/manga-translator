@@ -137,3 +137,86 @@ def test_fold_nested_still_merges_letter_rows_that_share_a_line():
 
     assert len(folded) == 1
     assert (folded[0].x1, folded[0].y1, folded[0].x2, folded[0].y2) == (0, 0, 500, 100)
+
+
+def test_unauthorized_box_without_safe_flag_reaches_the_fallback_check():
+    """Rerun-5 Helmut ch.70: the job died at translate 13/58 with
+    NameError _rectangle_fallback_allowed, deleted by round 9 while its
+    two call sites survived. The other runs never hit it because a
+    safe_to_inpaint box short-circuits the or; this box forces the
+    second operand, and the mask-less build forces the second call
+    site, so both must answer instead of raising."""
+    from app.detector.mask_builder import build_mask, is_destructive_box_authorized
+
+    box = BubbleBox(50, 50, 150, 150, 0.9, None, source_model="kiuyha",
+                    safe_to_inpaint=False)
+    assert is_destructive_box_authorized(box) is False
+    built = build_mask((300, 400), [box], None)
+    assert built.shape == (300, 400)
+    assert not np.any(built > 0), "an unauthorized box leaves no mask"
+    # The second call site: an authorized but mask-less box reaches the
+    # rectangle-fallback check itself, past the authorization gate.
+    authorised = BubbleBox(50, 50, 150, 150, 0.9, None, source_model="kiuyha",
+                           safe_to_inpaint=True)
+    assert is_destructive_box_authorized(authorised) is True
+    built = build_mask((300, 400), [authorised], None)
+    assert built.shape == (300, 400)
+    assert not np.any(built > 0), "a mask-less box with no fallback leaves no mask"
+
+
+def test_merge_mask_evidence_unions_rects_with_no_verified_mask():
+    """N15: with no verified mask anywhere, the merge still spans every
+    grouped box — otherwise it silently drops the rects it was meant to
+    fold in — and drops the letters, which would read against the
+    wrong rows in the wider rect."""
+    from app.detector.boxes import _merge_mask_evidence
+
+    base = BubbleBox(10, 10, 50, 30, 0.9, None)
+    other = BubbleBox(40, 20, 80, 40, 0.8, None)
+    merged = _merge_mask_evidence([base, other])
+    assert (merged.x1, merged.y1, merged.x2, merged.y2) == (10, 10, 80, 40)
+    assert merged.letters is None and merged.mask is None
+    assert merged.verified_mask is False
+
+
+def test_merge_mask_evidence_unions_rects_when_the_union_is_the_base():
+    """N15: when the union rect equals the base rect, the merge returns
+    the base unchanged instead of a wider box."""
+    from app.detector.boxes import _merge_mask_evidence
+
+    base = BubbleBox(10, 10, 50, 30, 0.9, None)
+    other = BubbleBox(20, 15, 40, 25, 0.8, None)
+    merged = _merge_mask_evidence([base, other])
+    assert (merged.x1, merged.y1, merged.x2, merged.y2) == (10, 10, 50, 30)
+
+
+def test_merge_mask_evidence_includes_the_base_rect():
+    """N15: the base's own rect joins the union even when the base has
+    no verified mask — leaving it out shrinks the merged box away
+    from its anchor."""
+    from app.detector.boxes import _merge_mask_evidence
+
+    base = BubbleBox(0, 0, 100, 100, 0.9, None)
+    evidence = BubbleBox(50, 50, 150, 150, 0.8, np.full((100, 100), 255, np.uint8))
+    merged = _merge_mask_evidence([base, evidence])
+    assert (merged.x1, merged.y1, merged.x2, merged.y2) == (0, 0, 150, 150)
+    assert merged.mask is not None and merged.mask.shape == (150, 150)
+
+
+def test_map_seam_detection_to_page_shrinks_the_box_to_a_short_mask():
+    """N14(b): mask rows are top-aligned with the box, so a mask shorter
+    than its box shrinks the box to the rows the mask actually covers
+    instead of dropping the whole box."""
+    mask = np.arange(1, 7, dtype=np.uint8).reshape(2, 3)
+    box = BubbleBox(1, 0, 4, 4, 1.0, mask.copy())
+
+    mapped = ChapterPipeline._map_seam_detection_to_page(
+        box,
+        seam_source_y1=10,
+        page_source_y1=10,
+        page_height=4,
+    )
+
+    assert mapped is not None
+    assert (mapped.y1, mapped.y2) == (0, 2)
+    assert mapped.mask is not None and mapped.mask.shape == (2, 3)

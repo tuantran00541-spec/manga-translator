@@ -1,5 +1,6 @@
 import copy
 import os
+import shutil
 import threading
 import time
 from dataclasses import replace
@@ -12,6 +13,7 @@ from fastapi import HTTPException
 from app.downloader.registry import download_chapter as fetch_chapter_images
 from app.downloader.slicer import OVERLAP_CONTEXT, slice_image
 from app.detector.boxes import BubbleBox, apply_final_nms
+from app.detector.bubble_mask import shift_bubble_mask
 from app.detector.kiuyha_detector import KiuyhaTextDetector
 from app.inpaint.lama_inpainter import Inpainter
 from app.inpaint.mask_geometry import geometry_dict, remap_local_mask_page_space
@@ -304,10 +306,19 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         clipped_mask = box.mask
         if clipped_mask is not None:
             mask_h = clipped_mask.shape[0]
-            mask_end = mask_h - clip_bottom if clip_bottom else mask_h
-            clipped_mask = clipped_mask[clip_top:mask_end, :].copy()
-            if clipped_mask.shape[0] != clipped_source_y2 - clipped_source_y1:
+            # Mask rows are top-aligned with the box: row 0 is the box's
+            # first source row. When the mask is shorter than the box (a
+            # mask from another frame), the box shrinks to the rows the
+            # mask actually covers instead of dropping the whole box; an
+            # empty intersection drops it.
+            row_start = max(0, clipped_source_y1 - source_y1)
+            row_end = min(mask_h, clipped_source_y2 - source_y1)
+            if row_end <= row_start:
                 return None
+            clipped_mask = clipped_mask[row_start:row_end, :].copy()
+            clip_top, clip_bottom = row_start, mask_h - row_end
+            clipped_source_y1 = source_y1 + row_start
+            clipped_source_y2 = source_y1 + row_end
 
         # The letters ride with the mask, clipped to the same rows; a
         # letters array that does not match the mask's shape belongs to
@@ -351,7 +362,10 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         core = getattr(box, "core", None)
         if core is not None:
             core = (core[0], core[1] + offset_y, core[2], core[3] + offset_y)
-        return replace(box, y1=box.y1 + offset_y, y2=box.y2 + offset_y, core=core)
+        # replace() carries the bubble mask as-is; its bbox and seed
+        # are slice coords, so they move with the box.
+        return replace(box, y1=box.y1 + offset_y, y2=box.y2 + offset_y, core=core,
+                       bubble_mask=shift_bubble_mask(getattr(box, "bubble_mask", None), 0, offset_y))
 
     def _shared_seam_detections(
         self, chapter_id: str, work_items: list[tuple]
@@ -826,7 +840,14 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
 
     @staticmethod
     def _sync_output_dir(chapter_id: str, manifest: dict, page_indices: list[int] | None = None) -> None:
+        # Sole owner of the output dir: a page's file on disk must agree
+        # with what the manifest claims about it. A skipped page ships in
+        # export as its clean-or-original fallback (M1), so the dir holds
+        # that same image instead of a hole; a page the manifest says is
+        # not rendered holds no file at all (M2), never a stale render.
         from app.config import OUTPUT_DIR
+        from app.routers.image import _fallback_page_path
+
         out_dir = OUTPUT_DIR / chapter_id
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -840,6 +861,25 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 continue
 
             target_path = out_dir / f"page_{i:03d}.png"
+            if page.get("skipped"):
+                try:
+                    source = _fallback_page_path(chapter_id, page)
+                except Exception as exc:
+                    logger.warning("Could not resolve fallback image for skipped page {}: {}", i, exc)
+                    source = None
+                if source is not None and source.exists():
+                    try:
+                        shutil.copyfile(source, target_path)
+                    except OSError as exc:
+                        logger.warning("Could not write fallback output {}: {}", target_path, exc)
+                else:
+                    try:
+                        if target_path.exists():
+                            target_path.unlink()
+                    except OSError as exc:
+                        logger.warning("Could not remove stale output {}: {}", target_path, exc)
+                continue
+
             try:
                 if target_path.exists():
                     target_path.unlink()

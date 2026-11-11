@@ -24,6 +24,15 @@ def test_only_minirouter_with_a_key_gets_a_screen():
     assert decider.screen_for(PROVIDERS["openai"], "k") is None
 
 
+def test_judge_status_names_the_provider_and_the_reason_it_cannot_judge():
+    minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
+    assert decider.judge_status(minirouter, "k") == {"available": True, "provider": "api.minirouter.sh", "reason": None}
+    assert decider.judge_status(minirouter, "")["available"] is False
+    status = decider.judge_status(PROVIDERS["openai"], "k")
+    assert status["available"] is False and status["provider"] == "api.openai.com"
+    assert "api.minirouter.sh" in status["reason"]
+
+
 def test_a_crop_of_a_huge_noisy_box_still_fits_one_request():
     image = np.random.default_rng(0).integers(0, 255, (3000, 1600, 3), dtype=np.uint8)
     url = decider.crop_url(image, _box(0, 0, 1600, 3000))
@@ -159,3 +168,11 @@ def test_the_judge_names_the_decider_only_on_minirouter(monkeypatch):
     polish.judge(PROVIDERS["openai"], "k", "s")
     assert "model" not in sent[-1][1]
     assert minirouter.public_capabilities()["judge"] and not PROVIDERS["openai"].public_capabilities()["judge"]
+
+
+def test_a_story_entry_without_a_probability_is_unjudged_not_storyless():
+    """S7: a model answer that names story but gives no probability never
+    scored the slice; defaulting to 0.0 would skip it."""
+    assert decider.story_chance({"kind": {"probabilities": [{"choice": "story"}]}}) is None
+    assert decider.story_chance({"kind": {"probabilities": [{"choice": "story", "probability": 0.2}]}}) == 0.2
+    assert decider.story_chance({"kind": {"probabilities": [{"choice": "credit", "probability": 0.9}]}}) is None

@@ -60,7 +60,7 @@ RENDER_RESTORE_ATTEMPTS = 3
 POLISH_ROUNDS = 2  # rewrites of one line before its best version stays
 POLISH_CONCURRENCY = 8  # judge calls in flight; each is one short text
 MAX_GRADED_KEPT = 400  # first grades kept in the report
-RENDER_FAILED_OBJECT = re.compile(r"\(vùng ([\w-]+)\)")
+RENDER_FAILED_OBJECT = re.compile(r"\(vùng ([^\s)]+)\)")
 POLL_SECONDS = 1.0
 # A.I calls wait on the network, so they get their own threads instead of queueing behind re-inpaints.
 _AI_CALLS = ThreadPoolExecutor(max_workers=16, thread_name_prefix="ai-mode-call")
@@ -75,6 +75,9 @@ def decide_skips(scan_credits, scan_textless, storyless, chances, active_count):
     the whole slice and its no_text bar is strict, while the decider reads
     small tiles and lumps watermarks and title logos in with credits. Either
     judge seeing text keeps the slice, so one flipped verdict cannot drop it.
+    When the decider never runs (storyless is None, e.g. a provider that
+    cannot reach the decision model), the scan decides alone: the skips it
+    makes are reported as single-judge decisions, not two-judge ones.
     """
     credits = sorted(scan_credits)
     textless = sorted(scan_textless)
@@ -96,7 +99,9 @@ def decide_skips(scan_credits, scan_textless, storyless, chances, active_count):
         textless = []
     return {"credits": credits, "textless": textless, "credit_rejected": credit_rejected,
             "textless_rejected": textless_rejected, "skip_kept": skip_kept,
-            "skip_unjudged": skip_unjudged, "skip_vetoed": skip_vetoed}
+            "skip_unjudged": skip_unjudged, "skip_vetoed": skip_vetoed,
+            "judge_available": storyless is not None,
+            "single_judge_skips": sorted(set(credits) | set(textless)) if storyless is None else []}
 
 
 class AIModeCancelled(Exception):
@@ -183,6 +188,13 @@ def _append(items: list, value) -> None:
         items.append(value)
 
 
+def _one_based(indices) -> list[int]:
+    """Report page numbers are 1-based (what a reader says); the pipeline
+    keeps 0-based indices internally, so the conversion happens only at the
+    report assignments. Historical reports stay 0-based."""
+    return [int(index) + 1 for index in indices]
+
+
 def pipeline_fix(chapter_id: str, page_index: int, rects: list) -> None:
     """Erase residue again in one re-inpaint of the slice."""
     from app.dependencies import pipeline
@@ -200,6 +212,9 @@ class AIModeRunner:
         self.settings = job.settings
         self.report = job.report
         self.report.update({
+            # Page numbers in this report are 1-based; reports written before
+            # this change listed 0-based indices in the same fields.
+            "page_numbering": "1-based",
             "credit_pages": [], "credit_rejected": [], "logo_regions": 0, "scan_errors": [],
             "repainted_regions": 0, "repaint_pages": [], "qc_flagged": 0, "qc_errors": [],
             "translated": 0, "unreadable": 0, "review_flags": 0, "translate_errors": [], "render_errors": [],
@@ -207,9 +222,12 @@ class AIModeRunner:
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
             "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [], "unboxed_pages": [],
             "repaint_retried": 0, "residue_left": [], "art_kept": 0, "skip_kept": [], "skip_unjudged": [],
-            "skip_vetoed": [],
-            "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "errors": [], "samples": []},
+            "skip_vetoed": [], "judge": {}, "single_judge_skips": [],
+            "polish": {"judged": 0, "flagged": 0, "rewritten": 0, "still_flagged": 0, "gate_dropped": 0,
+                       "errors": [], "samples": []},
         })
+        self._art_restore_reviewed: set[tuple[int, str]] = set()
+        self._report_page_counts: dict[tuple[int, int], int] = {}
         self._memory = None
         self._series: dict | None = None
         self._glossary_task: asyncio.Task | None = None
@@ -220,6 +238,18 @@ class AIModeRunner:
         # The lettering the scan read on each slice it answered for, as (who, text) lines.
         self._transcripts: dict[int, tuple[tuple[str, str], ...]] = {}
         self._slice_total: int | None = None
+
+    def _append_page_capped(self, items: list, value: dict) -> None:
+        """Append a per-page report entry, capped per page instead of per
+        chapter: a long chapter's late pages must not lose their review
+        entries to the first fifty pages' worth. The lists live in the
+        report for the job's lifetime, so (list id, page) never goes stale."""
+        page = int(value.get("page") or 0)
+        key = (id(items), page)
+        if self._report_page_counts.get(key, 0) >= MAX_REPORT_ITEMS:
+            return
+        self._report_page_counts[key] = self._report_page_counts.get(key, 0) + 1
+        items.append(value)
 
     # -- bookkeeping ---------------------------------------------------------
     def _check_cancel(self) -> None:
@@ -291,9 +321,16 @@ class AIModeRunner:
             return scan_slices(self.provider, self.settings.model, self.api_key, images)
 
         async def scan_images(batch: list[int]) -> None:
-            found, cost = await _ai_call(scan_call, batch)
+            found, cost, malformed = await _ai_call(scan_call, batch)
             self._add_cost(cost)
             scans.extend(found)
+            for bad in malformed:
+                slice_value = bad.get("slice")
+                _append(self.report["scan_errors"], {
+                    "pages": ([int(slice_value) + 1] if isinstance(slice_value, int)
+                              and not isinstance(slice_value, bool) else []),
+                    "error": f"Malformed scan entry (slice {slice_value!r}): {bad.get('reason')}",
+                })
 
         gate = asyncio.Semaphore(SCAN_CONCURRENCY)
         finished = 0
@@ -306,7 +343,7 @@ class AIModeRunner:
                 try:
                     await scan_images([index])
                 except (RuntimeError, ValueError, OSError) as exc:
-                    _append(self.report["scan_errors"], {"pages": [index], "error": _detail(exc)[:300]})
+                    _append(self.report["scan_errors"], {"pages": [index + 1], "error": _detail(exc)[:300]})
             finished += 1
             self._progress(finished, len(active))
 
@@ -320,7 +357,7 @@ class AIModeRunner:
                 except (RuntimeError, ValueError, OSError) as exc:
                     if len(batch) > 1:
                         return False
-                    _append(self.report["scan_errors"], {"pages": batch, "error": _detail(exc)[:300]})
+                    _append(self.report["scan_errors"], {"pages": _one_based(batch), "error": _detail(exc)[:300]})
             finished += len(batch)
             self._progress(finished, len(active))
             return True
@@ -329,9 +366,15 @@ class AIModeRunner:
             return read_image(validate_managed_path(pages[index]["original"], RAW_DIR / chapter_id))
 
         # The decision model judges which slices to skip while the chat model reads them.
+        # It is only served at api.minirouter.sh, so on any other provider the
+        # scan decides alone; that is reported, not silently assumed to be two judges.
+        judge_status = decider.judge_status(self.provider, self.api_key)
         judge = None
-        if decider.available(self.provider, self.api_key):
+        if judge_status["available"]:
             judge = asyncio.ensure_future(asyncio.to_thread(decider.storyless_slices, self.provider, self.api_key, active, load))
+        else:
+            logger.warning("Decider judge unavailable (provider {}: {}); the scan alone decides skips",
+                           judge_status["provider"], judge_status["reason"])
 
         # Probe with one batch; if it fails, scan slice by slice.
         self._progress(0, len(active))
@@ -354,21 +397,23 @@ class AIModeRunner:
             {scan.page_index for scan in scans if scan.no_text},
             storyless_set, chances, len(active),
         )
-        self.report["skip_kept"] = decision["skip_kept"]
-        self.report["skip_unjudged"] = decision["skip_unjudged"]
-        self.report["skip_vetoed"] = decision["skip_vetoed"]
-        self.report["credit_rejected"] = decision["credit_rejected"]
+        self.report["judge"] = {**judge_status, "single_judge_skips": _one_based(decision["single_judge_skips"])}
+        self.report["skip_kept"] = _one_based(decision["skip_kept"])
+        self.report["skip_unjudged"] = _one_based(decision["skip_unjudged"])
+        self.report["skip_vetoed"] = _one_based(decision["skip_vetoed"])
+        self.report["single_judge_skips"] = _one_based(decision["single_judge_skips"])
+        self.report["credit_rejected"] = _one_based(decision["credit_rejected"])
         credits = decision["credits"]
         if credits:
             await asyncio.to_thread(pipeline.mark_skipped, chapter_id, credits, True)
-        self.report["credit_pages"] = credits
+        self.report["credit_pages"] = _one_based(credits)
 
         # Textless slices are exported as they are; skipping them saves cleanup and translation.
         textless = decision["textless"]
-        self.report["textless_rejected"] = decision["textless_rejected"]
+        self.report["textless_rejected"] = _one_based(decision["textless_rejected"])
         if textless:
             await asyncio.to_thread(pipeline.mark_skipped, chapter_id, textless, True)
-        self.report["textless_pages"] = textless
+        self.report["textless_pages"] = _one_based(textless)
 
         logos = 0
         for scan in scans:
@@ -432,6 +477,10 @@ class AIModeRunner:
 
         screen = screen_for(self.provider, self.api_key)
         if screen is None:
+            status = decider.judge_status(self.provider, self.api_key)
+            logger.warning("Decider art screen unavailable (provider {}: {}); "
+                           "detector boxes are erased without the lettering check",
+                           status["provider"], status["reason"])
             return None
         lock = threading.Lock()
 
@@ -568,7 +617,7 @@ class AIModeRunner:
                         await asyncio.to_thread(self._free_logos_with_text, page_index, rects)
                     await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, rects)
                     self.report["repainted_regions"] += len(rects)
-                    _append(self.report["repaint_pages"], page_index)
+                    _append(self.report["repaint_pages"], page_index + 1)
                     await self._verify_repaint(page_index, rects)
                 except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
                     _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
@@ -590,7 +639,7 @@ class AIModeRunner:
             await asyncio.to_thread(pipeline_fix, self.job.chapter_id, page_index, left)
             left = await asyncio.to_thread(self._still_reading, page_index, left)
         for rect in left:
-            _append(self.report["residue_left"], {"page": page_index + 1, "rect": [int(v) for v in rect]})
+            self._append_page_capped(self.report["residue_left"], {"page": page_index + 1, "rect": [int(v) for v in rect]})
 
     def _free_logos_with_text(self, page_index: int, residue) -> None:
         """A scan logo region the review finds leftover text on was a watermark; it stops protecting that text."""
@@ -771,7 +820,7 @@ class AIModeRunner:
             if not flagged or self.job.cancel_requested:
                 break
             batches = [flagged[i:i + polish.REWRITE_BATCH] for i in range(0, len(flagged), polish.REWRITE_BATCH)]
-            kept = []
+            kept, approved = [], []
             for batch in batches:
                 try:
                     texts, cost = await _ai_call(polish.rewrite, self.provider, self.settings.model, self.api_key,
@@ -784,13 +833,23 @@ class AIModeRunner:
                 regraded = await asyncio.gather(*(grade(line, text) for line, text in candidates))
                 for (line, text), found in zip(candidates, regraded):
                     if found and polish.better(found, line.scores):
-                        _append(stats["samples"], {"page": line.page_index + 1, "source": line.source,
-                                                   "before": line.text, "after": text,
-                                                   "scores_before": line.scores, "scores_after": found})
+                        approved.append((line, text, line.text, line.scores, found))
                         line.text, line.scores = text, found
                         kept.append(line)
-            await asyncio.to_thread(self._save_polished, kept)
-            stats["rewritten"] += len(kept)
+            saved = await asyncio.to_thread(self._save_polished, kept)
+            if isinstance(saved, tuple):
+                committed_ids = saved[0]
+                stats["rewritten"] += len(committed_ids)
+            else:  # a stubbed save in tests: assume everything kept
+                committed_ids = {line.id for line in kept}
+                stats["rewritten"] += len(kept)
+            # Only a rewrite the gate actually committed is a sample; a
+            # gate-dropped one is reported under gate_dropped instead.
+            for line, text, before, scores_before, found in approved:
+                if line.id in committed_ids:
+                    _append(stats["samples"], {"page": line.page_index + 1, "source": line.source,
+                                               "before": before, "after": text,
+                                               "scores_before": scores_before, "scores_after": found})
             # A line still flagged, rewritten or not, gets one more try with its current text.
             pending = [line for line in flagged if polish.problems(line.scores)]
             self._progress(len(lines), len(lines))
@@ -799,11 +858,26 @@ class AIModeRunner:
             await self._sync_seams()
         self._progress(len(lines), len(lines), f"Chấm {stats['judged']} câu, sửa {stats['rewritten']}")
 
-    def _save_polished(self, lines) -> None:
+    def _save_polished(self, lines) -> tuple[set[str], int]:
+        """Commit judge-approved polish rewrites, gated like any other commit.
+
+        A rewrite is a fresh model commit, so it runs through the same
+        script gate and collapse as the translate commit before it is
+        written: a rewrite the gate trips is dropped and the original
+        translation stays. The gate runs here, before the seam sync after
+        polish, so a dropped rewrite is never copied onto a mirror slice.
+        Returns (committed ids, gate_dropped).
+        """
+        from app.dependencies import pipeline
         from app.manifest_utils import invalidate_page_render
+        from app.translation.vision import VisionTranslationResult, _drop_foreign_script, collapse_repeated_lines
 
         if not lines:
-            return
+            return (set(), 0)
+        stats = self.report.get("polish") or {}
+        committed: set[str] = set()
+        dropped = 0
+        touched: set[int] = set()
         with get_manifest_lock(self.job.chapter_id):
             manifest = load_manifest_raw(self.job.chapter_id)
             for line in lines:
@@ -812,10 +886,36 @@ class AIModeRunner:
                             if isinstance(o, dict) and str(o.get("id")) == line.id), None)
                 if obj is None:
                     continue
+                text = collapse_repeated_lines(line.text).strip()
+                probe = VisionTranslationResult(translations={line.id: text}, model="",
+                                                usage={}, estimated_cost_usd=None)
+                probe, _ = _drop_foreign_script(
+                    probe, {"translations": [{"id": line.id, "source": line.source}]})
+                filtered = (probe.translations.get(line.id) or "").strip()
+                if not filtered:
+                    line.text = str(obj.get("translation") or "")
+                    dropped += 1
+                    stats["gate_dropped"] = stats.get("gate_dropped", 0) + 1
+                    _append(stats.setdefault("gate_dropped_samples", []),
+                            {"page": line.page_index + 1, "id": line.id,
+                             "before": obj.get("translation"), "dropped": text})
+                    continue
+                # Commit what the gate kept, not the raw rewrite: the
+                # translate commit writes the gate's filtered text, and a
+                # mixed rewrite must not smuggle its English line onto the
+                # page through polish.
+                line.text = filtered
                 obj.setdefault("polished_from", obj.get("translation"))
-                obj["translation"] = obj["auto_translation"] = line.text
+                obj["translation"] = obj["auto_translation"] = filtered
                 invalidate_page_render(manifest, line.page_index)
+                touched.add(line.page_index)
+                committed.add(line.id)
             save_manifest_raw(self.job.chapter_id, manifest)
+        # The manifest now says not-rendered for the touched pages: drop
+        # their stale files too (M2), like _invalidate_renders does.
+        if touched:
+            pipeline._sync_output_dir(self.job.chapter_id, manifest, sorted(touched))
+        return (committed, dropped)
 
     async def _add_unboxed(self, page_index: int, boxes: list, source_lang: str) -> None:
         """Lines the translator saw outside every box are boxed, erased and translated like the rest."""
@@ -917,6 +1017,12 @@ class AIModeRunner:
                 return changed
 
         changed = await asyncio.to_thread(sync)
+        if changed:
+            # The sync invalidated these pages: drop their stale files too
+            # (M2), like _invalidate_renders does. The render stage
+            # re-renders them afterwards.
+            from app.dependencies import pipeline
+            pipeline._sync_output_dir(self.job.chapter_id, self._manifest(), changed)
         self.report["seam_copies"] = self.report.get("seam_copies", 0) + len(changed)
         return changed
 
@@ -942,40 +1048,104 @@ class AIModeRunner:
     async def _keep_art(self, page_index: int, run: dict) -> None:
         """Sound effects the model left as art get their original pixels back.
 
-        Blank-by-choice objects get the same treatment: the model read the
-        text and chose to leave it blank, so the text is art the clean
-        erased and nothing else restores it. Without this the region stays
-        a LaMa hole and the text is gone from the page entirely. A region
-        already in preserve_regions is skipped, so repeated calls — the
-        initial translate and every retry batch — restore each blank once.
-        A blank on a story box is NOT restored here: the model failed to
-        read it, so it is retried first, and only the retry's unresolved
-        path restores it (with a review entry) if it never translates.
+        A blank is art only when something besides the model's role says
+        so: the source the model or the detector read is CJK lettering
+        drawn into the art, or the box is lettered on the art (container
+        "free"). A role alone is not corroboration — a dialogue line the
+        model misroled as sfx would otherwise be restored as source art
+        and no later stage could ever see it again. An uncorroborated
+        blank is reclassified as a story blank, so it is retried, and
+        only the retry's unresolved path restores it (with a review entry)
+        if it never translates. Blanks already decided as art by the
+        commit — the art_regions, which carry the CJK check or a Fix-I
+        duplicate — are restored as before. Every restore gets one review
+        entry, so restored text is at least visible in the report.
+        A region already in preserve_regions is skipped, so repeated calls
+        — the initial translate and every retry batch — restore each blank once.
         """
         from app.dependencies import pipeline
         from app.region_policy import text_object_in_preserve_region
+        from app.translation.vision import drawn_in_art
+
+        def corroborated(obj: dict) -> bool:
+            """True when the blank looks like drawn art, not a misroled story line."""
+            source = str(obj.get("source_read") or obj.get("ocr_text") or "")
+            if drawn_in_art(source):
+                return True
+            return str(obj.get("container") or "").strip().lower() == "free"
 
         art_regions = list(run.get("art_regions") or [])
         regions = list(art_regions)
         story_blanks = set(run.get("story_blank_ids") or [])
         blank_ids = run.get("blank_ids") or []
-        if blank_ids:
+        restored: list[dict] = []
+        reclassified: list[str] = []
+
+        def region_key(region):
+            return tuple(sorted((str(k), v) for k, v in region.items())) if isinstance(region, dict) else None
+
+        manifest = None
+        if art_regions or blank_ids:
             manifest = self._manifest()
             page = manifest["pages"][page_index]
+            by_region = {region_key(obj["region"]): obj
+                         for obj in page.get("text_objects") or []
+                         if isinstance(obj, dict) and isinstance(obj.get("region"), dict)}
+            for region in art_regions:
+                obj = by_region.get(region_key(region))
+                if obj is not None:
+                    restored.append(obj)
+        if blank_ids:
             for obj in page.get("text_objects") or []:
                 if (isinstance(obj, dict) and str(obj.get("id")) in blank_ids
                         and str(obj.get("id")) not in story_blanks
                         and isinstance(obj.get("region"), dict)
                         and not text_object_in_preserve_region(page, obj)):
-                    regions.append(dict(obj["region"]))
+                    if corroborated(obj):
+                        regions.append(dict(obj["region"]))
+                        restored.append(obj)
+                    else:
+                        reclassified.append(str(obj["id"]))
+        if reclassified:
+            story = run.get("story_blank_ids")
+            if not isinstance(story, list):
+                story = list(story or [])
+                run["story_blank_ids"] = story
+            for obj_id in reclassified:
+                if obj_id not in story:
+                    story.append(obj_id)
         if not regions:
             return
+        seen: set[tuple] = set()
+        unique = []
+        for region in regions:
+            key = region_key(region)
+            if key not in seen:
+                seen.add(key)
+                unique.append(region)
+        regions = unique
+        art_unique = len({region_key(region) for region in art_regions})
         try:
             await asyncio.to_thread(pipeline.preserve_and_reinpaint, self.job.chapter_id, page_index, regions)
             self.report["sfx_kept"] += len(art_regions)
-            self.report["restored_regions"] += len(regions) - len(art_regions)
+            self.report["restored_regions"] += len(regions) - art_unique
+            for obj in restored:
+                key = (page_index, str(obj.get("id")))
+                if key not in self._art_restore_reviewed:
+                    self._art_restore_reviewed.add(key)
+                    self._append_page_capped(self.report["review_list"], {
+                        "page": page_index + 1, "id": obj.get("id"),
+                        "reason": "Model bỏ trống (SFX/nghệ thuật); đã giữ ảnh gốc",
+                    })
         except (ValueError, RuntimeError, OSError) as exc:
             _append(self.report["translate_errors"], f"Lát {page_index + 1}: giữ SFX thất bại: {_detail(exc)[:150]}")
+            # The restore failed, so the success entry must not be written:
+            # these objects keep their hole, and the reviewer sees that.
+            for obj in restored:
+                self._append_page_capped(self.report["review_list"], {
+                    "page": page_index + 1, "id": obj.get("id"),
+                    "reason": "Model bỏ trống (SFX/nghệ thuật); giữ ảnh gốc thất bại — vùng này vẫn trống",
+                })
 
     def _join_stacked_lines(self, indices: list[int]) -> None:
         from app.ai_mode.seams import join_stacked_lines, set_letter_bounds
@@ -1048,15 +1218,18 @@ class AIModeRunner:
         if not unresolved:
             return
         regions = [dict(obj["region"]) for obj in unresolved]
+        restored = True
         try:
             await asyncio.to_thread(pipeline.preserve_and_reinpaint, self.job.chapter_id, page_index, regions)
             self.report["restored_regions"] += len(regions)
         except (ValueError, RuntimeError, OSError) as exc:
+            restored = False
             _append(self.report["translate_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
         for obj in unresolved:
-            _append(self.report["review_list"], {
+            self._append_page_capped(self.report["review_list"], {
                 "page": page_index + 1, "id": obj["id"],
-                "reason": "AI không dịch được sau khi thử lại; đã giữ ảnh gốc",
+                "reason": ("AI không dịch được sau khi thử lại; đã giữ ảnh gốc" if restored
+                           else "AI không dịch được sau khi thử lại; giữ ảnh gốc thất bại — vùng này vẫn trống"),
             })
 
     def _settle_blanks(self) -> int:
@@ -1066,8 +1239,6 @@ class AIModeRunner:
 
         chapter_id = self.job.chapter_id
         settled = 0
-        report = getattr(self, "report", None) or {}
-        out_of_budget = bool(report.get("translate_out_of_budget"))
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             for page in manifest.get("pages") or []:
@@ -1083,14 +1254,14 @@ class AIModeRunner:
                         continue
                     if obj.get("translation_attempted"):
                         obj["editorial_disposition"], obj["editorial_reviewed"] = "non_story", True
-                    elif not _object_has_text_evidence(obj) and not out_of_budget:
+                    elif not _object_has_text_evidence(obj):
                         # No stage ever read a character here: no OCR text,
                         # nothing the vision model read, no role the model
                         # judged. The detector box alone is not text -- a
                         # strip of art boxed by mistake -- so there is
-                        # nothing untranslated to block on. When the run ran
-                        # out of budget, though, "never attempted" may mean
-                        # "never had the chance", so those still block.
+                        # nothing untranslated to block on, however the run
+                        # ended: an out-of-budget run never attempted it
+                        # either, but there was nothing to attempt.
                         obj["editorial_disposition"], obj["editorial_reviewed"] = "non_story", True
                     else:
                         # Left unreviewed on purpose: the gate blocks export on this disposition.
@@ -1101,6 +1272,7 @@ class AIModeRunner:
         return settled
 
     def _invalidate_renders(self, indices: list[int]) -> None:
+        from app.dependencies import pipeline
         from app.manifest_utils import invalidate_page_render, save_manifest_raw
 
         with get_manifest_lock(self.job.chapter_id):
@@ -1108,6 +1280,11 @@ class AIModeRunner:
             for page_index in indices:
                 invalidate_page_render(manifest, page_index)
             save_manifest_raw(self.job.chapter_id, manifest)
+        # The manifest now says not-rendered: drop the stale files too, so
+        # the output dir agrees (M2). The render loop below re-renders
+        # every active page; a page whose re-render then fails leaves no
+        # stale PNG behind for QA to count as present.
+        pipeline._sync_output_dir(self.job.chapter_id, manifest, indices)
 
     async def render(self) -> None:
         from app.routers.image import _current_rendered_path
@@ -1115,13 +1292,10 @@ class AIModeRunner:
         chapter_id = self.job.chapter_id
         self.report["blanks_settled"] = await asyncio.to_thread(self._settle_blanks)
         indices = self._active_pages()
-        # Each slice was rendered as it was translated, against the band
-        # of the slices translated so far; the last slices never saw the
-        # first ones' caps. The render signature covers one slice only,
-        # so it still calls those partial-band renders current. Drop
-        # them all: the final pass letters every slice against the
-        # finished chapter.
-        await asyncio.to_thread(self._invalidate_renders, indices)
+        # The render signature covers each slice's own objects, so a
+        # slice rendered as it was translated is still current now
+        # that the chapter is finished: the loop below renders only
+        # the slices that are not current yet.
         for done, page_index in enumerate(indices):
             self._check_cancel()
             self._progress(done, len(indices))
@@ -1171,18 +1345,31 @@ class AIModeRunner:
                     return
                 self.report["restored_regions"] += len(regions)
                 for obj in objs:
-                    _append(self.report["review_list"], {
+                    self._append_page_capped(self.report["review_list"], {
                         "page": page_index + 1, "id": obj["id"],
                         "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
                     })
-                page = self._manifest()["pages"][page_index]
-                rerender = await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
-                for oid in (rerender.get("skipped_objects") if isinstance(rerender, dict) else None) or []:
-                    _append(self.report["review_list"], {
-                        "page": page_index + 1, "id": str(oid),
-                        "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
-                    })
-                return
+                if attempt == RENDER_RESTORE_ATTEMPTS:
+                    # No loop left to re-render onto the restored base, so
+                    # render once more here: the restore deleted the stale
+                    # PNG, and leaving the page unrendered would cost the
+                    # export. What this render still skips was never
+                    # restored, so its entry says so instead of claiming it.
+                    page = self._manifest()["pages"][page_index]
+                    rerender = await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
+                    for oid in (rerender.get("skipped_objects") if isinstance(rerender, dict) else None) or []:
+                        self._append_page_capped(self.report["review_list"], {
+                            "page": page_index + 1, "id": str(oid),
+                            "reason": "Bản dịch không vừa vùng chữ; đã hết lần thử lại — chưa giữ ảnh gốc",
+                        })
+                    return
+                # Otherwise the next loop iteration re-renders onto the
+                # restored base, and any object still skipped there gets
+                # restored (and its entry) by that iteration. Continue
+                # explicitly: the restore below belongs to the failed-render
+                # path, and falling through to it would restore the same
+                # region a second time.
+                continue
             except HTTPException as exc:
                 detail = _detail(exc)
                 _append(self.report["render_errors"], f"Lát {page_index + 1}: {detail[:200]}")
@@ -1200,7 +1387,7 @@ class AIModeRunner:
                 _append(self.report["render_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
                 return
             self.report["restored_regions"] += 1
-            _append(self.report["review_list"], {
+            self._append_page_capped(self.report["review_list"], {
                 "page": page_index + 1, "id": obj["id"],
                 "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
             })
@@ -1232,6 +1419,10 @@ class AIModeRunner:
 
             series_memory.update(key, learn_current)
         report_path = OUTPUT_DIR / chapter_id / "ai_mode_report.json"
+        # The chapter manifest is what makes a QA finding provable after
+        # the run (per-page translation/attempt/source-read state); the run
+        # artifact uploads it alongside this report.
+        self.report["manifest"] = f"data/processed/{chapter_id}/manifest.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(self.report, ensure_ascii=False, indent=1), encoding="utf-8")
         self._progress(1, 1, "Xong")
@@ -1273,7 +1464,14 @@ class AIModeJobManager:
                 finally:
                     job.stages[key]["elapsed_s"] = round(time.time() - started, 1)
                 job.stages[key]["status"] = "done"
-            job.status = "completed"
+            # A run that finished with blockers (or out of budget) is not
+            # cleanly done: the chapter still needs a reviewer before export.
+            # The report lives on the runner's instance dict; a stub runner
+            # without one is a clean completion.
+            report = runner.__dict__.get("report") or {}
+            job.status = ("completed_with_blockers"
+                          if report.get("editorial_blockers") or report.get("translate_out_of_budget")
+                          else "completed")
         except AIModeCancelled:
             job.status = "cancelled"
             if job.stage:
