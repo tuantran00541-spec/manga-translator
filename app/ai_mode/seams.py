@@ -122,6 +122,36 @@ def _rect(obj: dict, offset: int) -> tuple[int, int, int, int] | None:
         return None
 
 
+def _source_words(obj: dict) -> list[str]:
+    """Words of the source text the object was read from, when known.
+
+    The vision model's read wins where it exists; the detector OCR is
+    the fallback. An object with neither carries no source evidence.
+    """
+    for key in ("source_read", "ocr_text", "auto_ocr_text"):
+        words = _norm_words(obj.get(key))
+        if words:
+            return words
+    return []
+
+
+def _source_texts_agree(a: dict, b: dict) -> bool:
+    """True when nothing known contradicts two objects being the same text.
+
+    Mirror matching is geometry-only today: a small free-text box sitting
+    mostly inside a big bubble's rect matches at share 1.0 and is then
+    translated as the neighbour's text, losing its own. When both sides
+    carry a source read and they share no word at all, they are different
+    texts -- geometry notwithstanding. When either side has no source
+    text there is nothing to contradict, so geometry alone still decides.
+    """
+    words_a = _source_words(a)
+    words_b = _source_words(b)
+    if not words_a or not words_b:
+        return True
+    return bool(set(words_a) & set(words_b))
+
+
 def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = False):
     """(page index, object) of the slice whose core holds the object's centre, when it has the same object."""
     page = pages[page_index]
@@ -146,6 +176,8 @@ def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = Fals
                     and (other_rect := _rect(candidate, other_core[0]))),
                    key=lambda item: _shared(rect, item[1]), default=None)
         if best is None or _shared(rect, best[1]) < OWNER_SHARE:
+            continue
+        if not _source_texts_agree(obj, best[0]):
             continue
         # Both slices judge by the same whole text, so exactly one of them owns it.
         center = (min(rect[1], best[1][1]) + max(rect[3], best[1][3])) / 2
@@ -192,7 +224,9 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
                 continue
             if region["x2"] <= region["x1"] or region["y2"] <= region["y1"]:
                 continue
-            found = _owner(pages, page_index, {"region": region}, skip_mirrors=True)
+            found = _owner(pages, page_index,
+                           {"region": region, "ocr_text": str(box.get("ocr_text") or "")},
+                           skip_mirrors=True)
             if found is None:
                 continue
             owner_page, owner = found
@@ -390,32 +424,53 @@ def _norm_words(text: str) -> list[str]:
     return folded.split()
 
 
+def _lcs_len(a: list[str], b: list[str]) -> int:
+    """Length of the longest common word subsequence, in order."""
+    # Dialogue is short; the quadratic table is cheaper than a fix-up.
+    previous = [0] * (len(b) + 1)
+    for word in a:
+        current = [0] * (len(b) + 1)
+        for j, other in enumerate(b, 1):
+            current[j] = previous[j - 1] + 1 if word == other else max(previous[j], current[j - 1])
+        previous = current
+    return previous[-1]
+
+
 def _translations_duplicate(a: str, b: str) -> bool:
-    """True when two translations say the same thing in different words.
+    """True when two translations are the same text read twice.
 
     Overlapping lettering is usually one text detected twice — but two
     bubbles can overlap on the page (a cloud tucked against an oval, a
     lobe against its double bubble) while holding different words, and
     dropping on geometry alone deletes the smaller bubble's text (ch42
     p008 "HE..." cloud, p012 lobe 1 "ANYHOW,"). The smaller object is
-    only a duplicate when its words are the larger one's words: an exact
-    match, a substring, or most words shared. A reworded duplicate
-    still shares most words; distinct content shares almost none.
+    only a duplicate when its words are the larger one's words *in the
+    same order*: an exact match, an ordered word-prefix, or most words
+    shared in sequence.
+
+    A word *set* cannot make that call on manhwa dialogue, typically
+    2-5 words: "Tôi không muốn đi" vs "Tôi không muốn về" share 3 of
+    5 words as a set but differ in the one word that matters. So the
+    bar rises as the text shortens — a 2-word line is cheap, two
+    bubbles can each say "Của tôi", so only a longer shared run proves
+    one text read twice.
     """
-    raw_a, raw_b = str(a or "").strip(), str(b or "").strip()
-    if not raw_a or not raw_b:
-        return False
-    if raw_a == raw_b:
-        return True
-    words_a, words_b = _norm_words(raw_a), _norm_words(raw_b)
+    words_a, words_b = _norm_words(a), _norm_words(b)
     if not words_a or not words_b:
         return False
-    joined_a, joined_b = " ".join(words_a), " ".join(words_b)
-    if joined_a in joined_b or joined_b in joined_a:
-        return True
-    shared = len(set(words_a) & set(words_b))
-    union = len(set(words_a) | set(words_b))
-    return union and shared / union >= 0.6
+    short, long = sorted((words_a, words_b), key=len)
+    n = len(short)
+    if short == long:
+        # Same words in the same order; below 3 words that is not
+        # proof of one text read twice ("Của tôi" vs "Của tôi!").
+        return n >= 3
+    if long[:n] == short:
+        # The shorter line is how the longer one starts: a truncated
+        # re-read — but only when the shared run is long enough to
+        # mean something. "Đi đi" starting "Đi đi mau" does not.
+        return n >= 4
+    shared = _lcs_len(short, long)
+    return shared >= 5 and shared / n >= 0.8
 
 
 def _union_rect(a: dict | None, b: dict | None) -> dict | None:

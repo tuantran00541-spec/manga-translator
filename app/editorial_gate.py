@@ -462,6 +462,8 @@ def editorial_preflight(
                 continue  # its line is lettered by the object it joined
             if obj.get("seam_owner"):
                 continue  # lettered by its owner; the owner carries the verdict
+            if obj.get("overlap_dropped"):
+                continue  # its text is lettered by the keeper it duplicated
             oid = str(obj.get("id") or "")
             if oid and oid in checked_objects:
                 continue

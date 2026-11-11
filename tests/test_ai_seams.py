@@ -594,6 +594,83 @@ def test_a_mirror_without_a_local_duplicate_keeps_its_owners_text():
     assert manifest["pages"][0]["text_objects"][0]["translation"] == "Mẹ tôi có tâm hồn thi sĩ."
 
 
+def test_distinct_short_dialogue_sharing_words_is_not_a_duplicate():
+    """Audit N2: a word *set* Jaccard >= 0.6 called all six of these
+    distinct pairs duplicates (3/5 words shared, or one a word-prefix
+    of the other). Manhwa dialogue is typically 2-5 words, exactly
+    where the set cannot tell a reworded duplicate from a different
+    sentence sharing function words. The sequence predicate keeps all
+    six; the text is lost if any of them drops."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    pairs = [
+        ("Tôi không muốn đi", "Tôi không muốn về"),   # Jaccard 3/5 = 0.6
+        ("Anh nói gì vậy?", "Anh nói gì cơ?"),       # Jaccard 3/4 = 0.75
+        ("Đi đi", "Đi đi mau"),                      # substring / word-prefix
+        ("Anh ta...", "Anh ta đến rồi"),             # substring / word-prefix
+        ("Đừng đi", "Đừng đi mà"),                   # substring / word-prefix
+        ("Của tôi", "Của tôi!"),                     # identical words, 2-word line
+    ]
+    for small_text, big_text in pairs:
+        manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, small_text),
+                                                _obj("big", 100, 300, big_text)]}]}
+        assert drop_overlapping_letters(manifest) == [], (small_text, big_text)
+        texts = {obj["id"]: obj["translation"] for obj in manifest["pages"][0]["text_objects"]}
+        assert texts == {"small": small_text, "big": big_text}
+
+
+def test_a_three_word_line_read_twice_still_drops():
+    """The sequence bar rises as the text shortens, but a 3-word line
+    read twice word-for-word is still one text, not two utterances."""
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, "Đi đi mau"),
+                                            _obj("big", 100, 300, "Đi đi mau")]}]}
+    assert drop_overlapping_letters(manifest) == [(0, "small")]
+
+
+def test_a_geometric_mirror_match_with_different_source_text_is_not_a_mirror():
+    """Audit N8: a small free-text box sitting mostly inside a big
+    bubble's rect matched at share 1.0 on geometry alone and was
+    translated as the neighbour's text. When both sides carry a source
+    read and they share no word, they are different texts."""
+    from app.ai_mode.seams import seam_mirror_ids, sync_seam_mirrors
+
+    manifest = _chapter()
+    manifest["pages"][0]["text_objects"][0]["ocr_text"] = "가지 마라"
+    manifest["pages"][1]["text_objects"][0]["ocr_text"] = "빨리 와라"
+    assert seam_mirror_ids(manifest, 0) == set()
+    assert sync_seam_mirrors(manifest) == []
+
+
+def test_a_geometric_mirror_match_with_the_same_source_text_still_mirrors():
+    from app.ai_mode.seams import seam_mirror_ids
+
+    manifest = _chapter()
+    manifest["pages"][0]["text_objects"][0]["ocr_text"] = "가지 마라"
+    manifest["pages"][1]["text_objects"][0]["ocr_text"] = "가지 마라"
+    assert seam_mirror_ids(manifest, 0) == {"a"}
+
+
+def test_a_geometric_mirror_match_without_source_text_still_mirrors():
+    """No source read on either side is no contradiction: geometry
+    alone still decides, as before."""
+    from app.ai_mode.seams import seam_mirror_ids
+
+    manifest = _chapter()
+    manifest["pages"][0]["text_objects"][0]["ocr_text"] = "가지 마라"
+    assert seam_mirror_ids(manifest, 0) == {"a"}
+
+
+def test_an_overlap_box_whose_source_differs_from_the_owner_gets_no_mirror():
+    from app.ai_mode.seams import create_seam_mirrors
+
+    manifest = _luna_21_22()
+    manifest["pages"][0]["boxes"][0]["ocr_text"] = "가지 마라"
+    manifest["pages"][1]["text_objects"][0]["ocr_text"] = "빨리 와라"
+    assert create_seam_mirrors(manifest) == []
+
+
 def test_overlapping_regions_with_separate_letters_both_stay():
     """Run 42539948198 slice 91: ANHUI's region overlaps SHAANXI's by
     0.65, so the region-only drop deleted a real map label — but ANHUI's
