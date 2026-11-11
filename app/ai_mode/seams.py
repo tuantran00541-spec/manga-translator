@@ -165,6 +165,18 @@ def _source_texts_agree(a: dict, b: dict) -> bool:
     return bool(set(words_a) & set(words_b))
 
 
+def _separate_lobes(a: dict, b: dict) -> bool:
+    """Two objects in different lobes of one waist are never one block.
+
+    The geometry and letter gates cannot tell a stacked double bubble
+    from one block's lines: the lobes sit centred and their lettering
+    flows on. The masks can -- the lobes' interiors are disjoint.
+    """
+    from app.detector.boxes import bubble_masks_are_separate_lobes
+
+    return bubble_masks_are_separate_lobes(a.get("bubble_mask"), b.get("bubble_mask"))
+
+
 def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = False):
     """(page index, object) of the slice whose core holds the object's centre, when it has the same object."""
     page = pages[page_index]
@@ -577,7 +589,10 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
                 # fit box grows to the union. A dropped object whose region
                 # sits apart is a different bubble that merely shares
                 # lettering, and the keeper must not absorb its region.
-                if _regions_touch(dup_of.get("region"), obj.get("region")):
+                # Nor may it absorb the other lobe of a waist: the two
+                # halves hold different texts, and the union would letter
+                # the keeper across the waist.
+                if _regions_touch(dup_of.get("region"), obj.get("region")) and not _separate_lobes(dup_of, obj):
                     dup_of["region"] = _union_rect(dup_of.get("region"), obj.get("region"))
                     dup_of["letter_bounds"] = _union_rect(dup_of.get("letter_bounds"),
                                                            obj.get("letter_bounds"))
@@ -661,7 +676,8 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
             for j in range(i + 1, len(lines)):
                 a, b = _rect(upper, 0), _rect(lines[j], 0)
                 pair = sorted(((a, upper), (b, lines[j])), key=lambda item: item[0][1])
-                if _stacked(pair[0][0], pair[1][0]) and _letters_continue(pair[0][1], pair[1][1]):
+                if (_stacked(pair[0][0], pair[1][0]) and _letters_continue(pair[0][1], pair[1][1])
+                        and not _separate_lobes(pair[0][1], pair[1][1])):
                     group[root(j)] = root(i)
         blocks: dict[int, list[dict]] = {}
         for i, obj in enumerate(lines):

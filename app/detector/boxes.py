@@ -6,8 +6,83 @@ from dataclasses import dataclass, field, replace
 import cv2
 import numpy as np
 
-from app.detector.bubble_mask import merge_bubble_masks
+from app.detector.bubble_mask import MASK_ROWS, merge_bubble_masks
 from app.parameters import DETECTOR_FINAL_NMS_IOU, DETECTOR_NMS_SCORE_FLOOR
+
+# Two bubble interiors may share this much of the smaller one and still
+# be separate lobes: split pieces touch at the cut, nothing more.
+SEPARATE_LOBE_MAX_SHARED = 0.10
+
+
+def _mask_spans(mask: dict) -> list[tuple[int, int, list[tuple[int, int]]]]:
+    """A stored mask as (y1, y2, [(x1, x2), ...]) spans in slice coords.
+
+    Rows are bbox-local half-open x-intervals, 24 bands over the bbox
+    height with integer band edges (see app/detector/bubble_mask).
+    """
+    x1, y1, _x2, y2 = (int(v) for v in mask["bbox"])
+    height = max(1, y2 - y1)
+    spans = []
+    for i, intervals in enumerate(mask["rows"]):
+        if not intervals:
+            continue
+        band_y1 = y1 + (i * height) // MASK_ROWS
+        band_y2 = y1 + ((i + 1) * height) // MASK_ROWS
+        spans.append((band_y1, band_y2,
+                      [(x1 + int(a), x1 + int(b)) for a, b in intervals]))
+    return spans
+
+
+def _spans_area(spans: list[tuple[int, int, list[tuple[int, int]]]]) -> int:
+    return sum((y2 - y1) * sum(b - a for a, b in xs) for y1, y2, xs in spans)
+
+
+def _intervals_overlap(xs: list[tuple[int, int]], ys: list[tuple[int, int]]) -> int:
+    """Shared width of two sorted, non-overlapping interval lists."""
+    shared = 0
+    j = 0
+    for a, b in xs:
+        while j < len(ys) and ys[j][1] <= a:
+            j += 1
+        k = j
+        while k < len(ys) and ys[k][0] < b:
+            shared += max(0, min(b, ys[k][1]) - max(a, ys[k][0]))
+            k += 1
+    return shared
+
+
+def _spans_overlap_area(
+    a: list[tuple[int, int, list[tuple[int, int]]]],
+    b: list[tuple[int, int, list[tuple[int, int]]]],
+) -> int:
+    shared = 0
+    for ay1, ay2, axs in a:
+        for by1, by2, bxs in b:
+            overlap_y = min(ay2, by2) - max(ay1, by1)
+            if overlap_y > 0:
+                shared += overlap_y * _intervals_overlap(axs, bxs)
+    return shared
+
+
+def bubble_masks_are_separate_lobes(a: dict | None, b: dict | None) -> bool:
+    """True when two masks are different lobes of one waist, not one bubble.
+
+    Two pieces of a waist split hold disjoint interiors; two boxes in the
+    same bubble hold the same interior twice. Only a closed outline counts:
+    a rect mask is the box itself, so two fragments of one free-text block
+    would read as disjoint and must never veto.
+    """
+    if not (isinstance(a, dict) and isinstance(b, dict)):
+        return False
+    if a.get("kind") != "bubble" or b.get("kind") != "bubble":
+        return False
+    spans_a, spans_b = _mask_spans(a), _mask_spans(b)
+    if not spans_a or not spans_b:
+        return False
+    smaller = min(_spans_area(spans_a), _spans_area(spans_b))
+    if smaller <= 0:
+        return False
+    return _spans_overlap_area(spans_a, spans_b) <= SEPARATE_LOBE_MAX_SHARED * smaller
 
 
 @dataclass
@@ -163,13 +238,21 @@ def _nms_group(members: list[BubbleBox], iou_threshold: float) -> list[BubbleBox
     if not kept or members[kept[0]].source_role != "text_segmenter":
         return [members[i] for i in kept]
     buckets = {index: [members[index]] for index in kept}
+    singles: list[BubbleBox] = []
     for index, box in enumerate(members):
         if index in buckets or not box.verified_mask:
             continue
         target = max(kept, key=lambda k: box_iou(box, members[k]))
         if box_iou(box, members[target]) > iou_threshold:
-            buckets[target].append(box)
-    return [_merge_mask_evidence(buckets[index]) for index in kept]
+            if bubble_masks_are_separate_lobes(box.bubble_mask, members[target].bubble_mask):
+                # A second lobe NMS read as the same detection twice: its
+                # rect overlaps the kept box, but its interior is the other
+                # lobe. Bucketing it would union the lobes and leave the
+                # waist split to recover them, so it stays its own box.
+                singles.append(box)
+            else:
+                buckets[target].append(box)
+    return [_merge_mask_evidence(buckets[index]) for index in kept] + singles
 
 
 def apply_final_nms(boxes: list[BubbleBox], iou_threshold: float = DETECTOR_FINAL_NMS_IOU) -> list[BubbleBox]:

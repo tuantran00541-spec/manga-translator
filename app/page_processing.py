@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.detector.boxes import BubbleBox, _merge_mask_evidence, apply_final_nms
+from app.detector.boxes import BubbleBox, _merge_mask_evidence, apply_final_nms, bubble_masks_are_separate_lobes
 from app.image_io import encode_mask, read_image, write_image
 from app.logging_config import logger
 from app.manifest_utils import assign_stable_detector_box_ids
@@ -109,7 +109,8 @@ def _fold_nested(boxes: list[BubbleBox]) -> list[BubbleBox]:
     groups: list[list[BubbleBox]] = []
     for box in sorted(boxes, key=lambda b: (b.x2 - b.x1) * (b.y2 - b.y1), reverse=True):
         home = next((group for group in groups
-                     if _contained(box, group[0]) and _coherent(box, group[0])), None)
+                     if _contained(box, group[0]) and _coherent(box, group[0])
+                     and not bubble_masks_are_separate_lobes(box.bubble_mask, group[0].bubble_mask)), None)
         if home is None:
             groups.append([box])
         else:
