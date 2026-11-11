@@ -1,0 +1,116 @@
+name: Nano clean matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag holding the chapter zips"
+        required: true
+        default: "nano-wave1"
+      chapter_start:
+        description: "First chapter number (inclusive)"
+        required: true
+        default: "1"
+      chapter_end:
+        description: "Last chapter number (inclusive)"
+        required: true
+        default: "50"
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.make.outputs.matrix }}
+    steps:
+      - id: make
+        run: |
+          python3 -c "
+          import json
+          start = int('${{ inputs.chapter_start }}')
+          end = int('${{ inputs.chapter_end }}')
+          chapters = [f'{i:03d}' for i in range(start, end + 1)]
+          with open('$GITHUB_OUTPUT', 'a') as f:
+              f.write('matrix=' + json.dumps({'chapter': chapters}) + '\n')
+          print(f'{len(chapters)} chapters')
+          "
+
+  clean:
+    needs: setup
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+      CHAPTER: ${{ matrix.chapter }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install processing runtime
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 \
+            beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 playwright-stealth==2.0.3 fastapi==0.115.0 \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.20
+          python -m playwright install --with-deps chromium
+
+      - name: Restore detector and inpaint models
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Use the committed Kiuyha, not the cached one
+        run: git checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx
+
+      - name: Download LaMa when the cache has expired
+        run: |
+          test -f models/lama-manga-dynamic.onnx || curl -fsSL -o models/lama-manga-dynamic.onnx \
+            https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/lama-manga-dynamic.onnx
+          echo "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9  models/lama-manga-dynamic.onnx" | sha256sum -c
+
+      - name: Build the CTD mask model
+        uses: ./.github/actions/build-ctd
+
+      - name: Check the models are there
+        run: |
+          ls -la models
+          test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha-tuned-1023.onnx
+
+      - name: Download chapter zip
+        run: |
+          URL="https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/nano-machine-ch${CHAPTER}.zip"
+          curl -fsSL -o "nano-machine-ch${CHAPTER}.zip" "$URL"
+          ls -la "nano-machine-ch${CHAPTER}.zip"
+
+      - name: Clean the chapter
+        run: python scripts/clean_chapter_zip.py --zip "nano-machine-ch${CHAPTER}.zip" --chapter-id "nano-ch${CHAPTER}" --out "audit-results/nano-clean/ch${CHAPTER}"
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/nano-clean/ch${{ matrix.chapter }}
+          message: "audit: nano clean ch${{ matrix.chapter }} (run ${{ github.run_id }})"
