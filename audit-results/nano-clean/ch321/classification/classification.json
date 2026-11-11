@@ -3,12 +3,12 @@
   "slices": 64,
   "cleaned": 64,
   "detector_misses": 1,
-  "inpaint_skips": 1,
+  "inpaint_skips": 2,
   "no_box_slices": [
     21,
     23
   ],
-  "seconds": 159.3,
+  "seconds": 153.1,
   "pages": [
     {
       "slice": 0,
@@ -302,7 +302,7 @@
       "boxes": 3,
       "min_conf": 0.816,
       "misses": 0,
-      "skips": 0
+      "skips": 1
     },
     {
       "slice": 42,
@@ -482,6 +482,17 @@
         1270
       ],
       "px": 11427,
+      "kind": "inpaint_skip"
+    },
+    {
+      "slice": 41,
+      "box": [
+        143,
+        4586,
+        509,
+        4807
+      ],
+      "px": 26128,
       "kind": "inpaint_skip"
     }
   ]
