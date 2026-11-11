@@ -264,6 +264,7 @@ def test_with_a_decider_only_agreement_skips_a_slice(monkeypatch):
     assert runner.report["credit_pages"] == [7] and runner.report["textless_pages"] == [4]
     assert runner.report["skip_kept"] == [2] and runner.report["skip_unjudged"] == [6]
     assert runner.report["skip_vetoed"] == [3]
+    assert runner.report["judge"]["available"] is True and runner.report["single_judge_skips"] == []
 
 
 def test_decide_skips_needs_both_judges_to_agree():
@@ -280,6 +281,29 @@ def test_decide_skips_needs_both_judges_to_agree():
                                    {i: 0.01 for i in (0, 82, 100, 103, 104)}, 105)
     assert decision["credits"] == [0, 104] and decision["textless"] == [100]
     assert decision["skip_vetoed"] == [82, 103]
+
+
+def test_decide_skips_reports_single_judge_decisions_when_the_decider_never_runs():
+    decision = ai_job.decide_skips({104}, {82, 100}, None, None, 105)
+    assert decision["judge_available"] is False
+    assert decision["credits"] == [104] and decision["textless"] == [82, 100]
+    assert decision["single_judge_skips"] == [82, 100, 104], (
+        "with no decider the scan alone skips, and the report must say so instead of "
+        "leaving skip_kept/skip_unjudged/skip_vetoed empty with no signal")
+    assert decision["skip_kept"] == [] and decision["skip_unjudged"] == [] and decision["skip_vetoed"] == []
+
+    decision = ai_job.decide_skips({104}, {82, 100}, {82, 100, 103}, {82: 0.01, 100: 0.01, 103: 0.01}, 105)
+    assert decision["judge_available"] is True and decision["single_judge_skips"] == []
+
+
+def test_scan_stage_reports_the_judge_unavailable_on_a_non_minirouter_provider(monkeypatch):
+    runner, skipped, _ = _scan_stage(monkeypatch, [
+        SliceScan(2, False, 0.0, (), no_text=True), SliceScan(5, False, 0.0, (), no_text=True),
+    ])
+    assert skipped == [2, 5]
+    assert runner.report["judge"]["available"] is False
+    assert runner.report["judge"]["provider"] == "api.deepseek.com"
+    assert runner.report["single_judge_skips"] == [2, 5]
 
 
 def test_scan_parse_requires_a_confident_textless_answer():
@@ -482,6 +506,8 @@ def test_keep_art_restores_a_blank_by_choice_object_once(monkeypatch):
     pixels back: the clean erased the text and nothing else restores it.
     The region is already in preserve_regions on the second call, so the
     same blank is not re-added; an SFX art region is still restored once.
+    The blank is corroborated as art here by its CJK source read — a blank
+    with no such corroboration is retried as a story blank instead.
     """
     from app.dependencies import pipeline
 
@@ -489,7 +515,7 @@ def test_keep_art_restores_a_blank_by_choice_object_once(monkeypatch):
     blank_region = {"x1": 100, "y1": 100, "x2": 150, "y2": 130}
     manifest = {"pages": [{"text_objects": [
         {"id": "sfx", "region": sfx_region},
-        {"id": "murmur", "region": blank_region},
+        {"id": "murmur", "region": blank_region, "ocr_text": "쿵"},
     ]}]}
     preserved = []
     monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
@@ -510,6 +536,51 @@ def test_keep_art_restores_a_blank_by_choice_object_once(monkeypatch):
     ], "a blank left on purpose is restored once, alongside the SFX art"
     assert runner.report["sfx_kept"] == 2
     assert runner.report["restored_regions"] == 1
+    assert [(item["id"], item["page"]) for item in runner.report["review_list"]] == [
+        ("sfx", 1), ("murmur", 1),
+    ], "every restore gets one review entry, and a repeated restore adds none"
+
+
+def test_keep_art_retries_an_uncorroborated_blank_instead_of_restoring_it(monkeypatch):
+    """A blank over Latin source text with no SFX-like container is not art
+    on the model's role alone: it is reclassified as a story blank, so the
+    retry/unresolved path handles it instead of silently restoring English
+    pixels no later stage can see."""
+    from app.dependencies import pipeline
+
+    latin_region = {"x1": 10, "y1": 10, "x2": 60, "y2": 40}
+    manifest = {"pages": [{"text_objects": [
+        {"id": "latin", "region": latin_region, "ocr_text": "BOOM"},
+    ]}]}
+    preserved = []
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
+                        lambda chapter, index, regions: preserved.append((index, list(regions))), raising=False)
+    runner = _runner(monkeypatch, "translate", manifest)
+    run = {"art_regions": [], "blank_ids": ["latin"]}
+    asyncio.run(runner._keep_art(0, run))
+    assert preserved == [], "an uncorroborated blank is not restored as art"
+    assert run["story_blank_ids"] == ["latin"], "it is retried as a story blank"
+    assert runner.report["review_list"] == []
+
+
+def test_keep_art_restores_a_free_container_blank_without_cjk_source(monkeypatch):
+    """A blank lettered on the art (container "free") is corroborated as
+    art even when the source the detector read is Latin."""
+    from app.dependencies import pipeline
+
+    region = {"x1": 10, "y1": 10, "x2": 60, "y2": 40}
+    manifest = {"pages": [{"text_objects": [
+        {"id": "sfx", "region": region, "ocr_text": "BOOM", "container": "free"},
+    ]}]}
+    preserved = []
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
+                        lambda chapter, index, regions: preserved.append((index, list(regions))), raising=False)
+    runner = _runner(monkeypatch, "translate", manifest)
+    run = {"art_regions": [], "blank_ids": ["sfx"]}
+    asyncio.run(runner._keep_art(0, run))
+    assert preserved == [(0, [region])]
+    assert run.get("story_blank_ids", []) == []
+    assert [item["id"] for item in runner.report["review_list"]] == ["sfx"]
 
 
 def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch):

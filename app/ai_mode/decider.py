@@ -30,8 +30,24 @@ STORY = {"kind": {"type": "choice", "instructions": "What lettering does this we
                                "none": "No lettering at all, or only sound effects drawn into the art"}}}
 
 
+def judge_status(provider, api_key: str) -> dict:
+    """Whether the decision model can judge for this provider, and why not.
+
+    The decision model is only served at DECIDER_HOST, so any other
+    provider runs without both the skip judge and the art screen. Callers
+    report this instead of silently deciding alone.
+    """
+    hostname = urlparse(str(provider.api_base)).hostname
+    if hostname != DECIDER_HOST:
+        return {"available": False, "provider": hostname,
+                "reason": f"decision model only served at {DECIDER_HOST}"}
+    if not api_key:
+        return {"available": False, "provider": hostname, "reason": "no api key"}
+    return {"available": True, "provider": hostname, "reason": None}
+
+
 def available(provider, api_key: str) -> bool:
-    return urlparse(str(provider.api_base)).hostname == DECIDER_HOST and bool(api_key)
+    return judge_status(provider, api_key)["available"]
 
 
 def data_url(image) -> str | None:

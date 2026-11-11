@@ -24,6 +24,15 @@ def test_only_minirouter_with_a_key_gets_a_screen():
     assert decider.screen_for(PROVIDERS["openai"], "k") is None
 
 
+def test_judge_status_names_the_provider_and_the_reason_it_cannot_judge():
+    minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
+    assert decider.judge_status(minirouter, "k") == {"available": True, "provider": "api.minirouter.sh", "reason": None}
+    assert decider.judge_status(minirouter, "")["available"] is False
+    status = decider.judge_status(PROVIDERS["openai"], "k")
+    assert status["available"] is False and status["provider"] == "api.openai.com"
+    assert "api.minirouter.sh" in status["reason"]
+
+
 def test_a_crop_of_a_huge_noisy_box_still_fits_one_request():
     image = np.random.default_rng(0).integers(0, 255, (3000, 1600, 3), dtype=np.uint8)
     url = decider.crop_url(image, _box(0, 0, 1600, 3000))
