@@ -107,7 +107,10 @@ jobs:
           ls -la "nano-machine-ch${CHAPTER}.zip"
 
       - name: Clean the chapter
-        run: python scripts/clean_chapter_zip.py --zip "nano-machine-ch${CHAPTER}.zip" --chapter-id "nano-ch${CHAPTER}" --out "audit-results/nano-clean/ch${CHAPTER}"
+        run: |
+          # The pipeline only accepts 8-hex chapter ids (app/security.py).
+          CID=$(printf "a%07x" "$((10#$CHAPTER))")
+          python scripts/clean_chapter_zip.py --zip "nano-machine-ch${CHAPTER}.zip" --chapter-id "$CID" --out "audit-results/nano-clean/ch${CHAPTER}"
 
       - name: Save evidence to audit-evidence
         if: always()
