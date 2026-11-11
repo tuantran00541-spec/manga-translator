@@ -40,7 +40,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-test.txt
-          python -m playwright install --with-deps chromium
+          # No --with-deps: its apt step dies on the runner's broken mirror
+          # DNS (azure.archive.ubuntu.com); the image already carries the
+          # browser libs, so plain install is enough.
+          python -m playwright install chromium
 
       - name: Check theme picker contract
         run: |
