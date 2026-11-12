@@ -12,6 +12,9 @@ LOGS_DIR = BASE_DIR / "logs"
 KIUYHA_TEXT_MODEL = MODELS_DIR / "kiuyha-tuned-1023.onnx"
 LAMA_MODEL = MODELS_DIR / "lama.onnx"
 LAMA_DYNAMIC_MODEL = MODELS_DIR / "lama-manga-dynamic.onnx"
+MIGAN_MODEL = MODELS_DIR / "migan_pipeline_v2.onnx"
+MIGAN_MODEL_URL = "https://huggingface.co/andraniksargsyan/migan/resolve/main/migan_pipeline_v2.onnx"
+MIGAN_MODEL_SHA256 = "6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b"
 CTD_MODEL = MODELS_DIR / "ctd_seg.onnx"
 
 REQUIRED_MODELS = [KIUYHA_TEXT_MODEL, CTD_MODEL]

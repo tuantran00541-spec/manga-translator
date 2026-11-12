@@ -66,6 +66,7 @@ def _env_float(
 
 
 USE_DYNAMIC_LAMA = _env_bool("MANGA_USE_DYNAMIC_LAMA", True)
+INPAINTER = os.getenv("MANGA_INPAINTER", "lama").strip().lower() or "lama"
 INPAINT_PRELOAD_ENABLED = _env_bool("MANGA_INPAINT_PRELOAD", True)
 FIXED_LAMA_CONCURRENT_INFERENCE = _env_bool(
     "MANGA_FIXED_LAMA_CONCURRENT_INFERENCE", False

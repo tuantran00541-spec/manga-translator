@@ -5,7 +5,12 @@ import time
 
 import numpy as np
 import cv2
-from app.config import LAMA_MODEL, LAMA_DYNAMIC_MODEL
+from app.config import (
+    LAMA_DYNAMIC_MODEL,
+    LAMA_MODEL,
+    MIGAN_MODEL,
+    MIGAN_MODEL_URL,
+)
 from app.detector.boxes import BubbleBox
 from app.inpaint.clustering import cluster_boxes, compute_crop_region, compute_manual_crop_region, split_oversized_cluster_area
 from app.detector.mask_builder import build_mask
@@ -25,6 +30,7 @@ from app.parameters import (
     INPAINT_NATIVE_TILE_ENABLED,
     INPAINT_NATIVE_TILE_MASK_AREA_MIN,
     INPAINT_SIZE,
+    INPAINTER,
     MANUAL_DILATION_SCALE,
     MANUAL_FEATHER_RADIUS,
     MANUAL_MAX_DILATION,
@@ -117,6 +123,11 @@ def _local_box(b: BubbleBox, cx1: int, cy1: int) -> BubbleBox:
 class Inpainter:
     def __init__(self):
         self._prefer_dynamic = USE_DYNAMIC_LAMA and LAMA_DYNAMIC_MODEL.is_file()
+        self._use_migan = INPAINTER == "migan"
+        self._migan_session = None
+        self._migan_image_input = None
+        self._migan_mask_input = None
+        self._migan_output_name = None
         self._session_lock = threading.RLock()
         self._session_state_lock = threading.Lock()
         self._metrics_local = threading.local()
@@ -144,6 +155,9 @@ class Inpainter:
             "lama_regions": 0,
             "lama_model_runs": 0,
             "lama_model_ms": 0,
+            "migan_regions": 0,
+            "migan_model_runs": 0,
+            "migan_model_ms": 0,
             "lama_native_single_regions": 0,
             "lama_tiled_regions": 0,
             "session_lock_wait_ms": 0,
@@ -183,6 +197,9 @@ class Inpainter:
             }
 
     def preload(self) -> None:
+        if self._use_migan:
+            self._ensure_migan_session()
+            return
         self._ensure_session()
 
     def _configure_loaded_session(
@@ -281,6 +298,37 @@ class Inpainter:
                 self.lama_model_path,
                 load_ms,
                 self.dynamic_lama,
+            )
+
+    def _ensure_migan_session(self) -> None:
+        if self._migan_session is not None:
+            return
+        with self._session_lock:
+            if self._migan_session is not None:
+                return
+            if not MIGAN_MODEL.is_file():
+                raise RuntimeError(
+                    "MI-GAN model missing: {} (download it from {})".format(
+                        MIGAN_MODEL, MIGAN_MODEL_URL
+                    )
+                )
+            load_started_at = time.perf_counter()
+            logger.info("Preparing inpaint model {}", MIGAN_MODEL)
+            session = make_session(
+                MIGAN_MODEL,
+                enable_cpu_mem_arena=True,
+                enable_mem_pattern=True,
+            )
+            inputs = {entry.name: entry for entry in session.get_inputs()}
+            outputs = session.get_outputs()
+            self._migan_image_input = inputs["image"].name
+            self._migan_mask_input = inputs["mask"].name
+            self._migan_output_name = outputs[0].name
+            self._migan_session = session
+            logger.info(
+                "Inpaint model {} ready in {:.1f} ms (migan)",
+                MIGAN_MODEL,
+                (time.perf_counter() - load_started_at) * 1000.0,
             )
 
     def _recycle_fixed_session_if_needed(self) -> None:
@@ -672,6 +720,8 @@ class Inpainter:
 
     def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple,
                    feather: bool = False, hole: np.ndarray | None = None) -> np.ndarray:
+        if self._use_migan:
+            return self._migan_fill(image, crop, local_mask, crop_box, feather=feather, hole=hole)
         self._ensure_session()
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
@@ -713,6 +763,30 @@ class Inpainter:
         else:
             painted = self._lama_fill_single(crop, fill_mask)
 
+        return self._blend_painted(image, painted, local_mask, crop_box, feather)
+
+    def _migan_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple,
+                    feather: bool = False, hole: np.ndarray | None = None) -> np.ndarray:
+        self._ensure_migan_session()
+        fill_mask = local_mask if hole is None else hole
+        started = time.perf_counter()
+        rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+        mask_u8 = np.where(fill_mask > 127, 0, 255).astype(np.uint8)
+        feed = {
+            self._migan_image_input: np.ascontiguousarray(rgb.transpose(2, 0, 1))[None],
+            self._migan_mask_input: mask_u8[None, None],
+        }
+        output = self._migan_session.run([self._migan_output_name], feed)[0]
+        painted = cv2.cvtColor(output[0].transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
+        self._metric_add("migan_regions")
+        self._metric_add("migan_model_runs")
+        self._metric_add("migan_model_ms", int((time.perf_counter() - started) * 1000))
+        return self._blend_painted(image, painted, local_mask, crop_box, feather)
+
+    @staticmethod
+    def _blend_painted(image: np.ndarray, painted: np.ndarray, local_mask: np.ndarray, crop_box: tuple,
+                       feather: bool) -> np.ndarray:
+        cx1, cy1, cx2, cy2 = crop_box
         original_crop = image[cy1:cy2, cx1:cx2]
         if feather:
             core = local_mask > 127

@@ -15,6 +15,10 @@ on:
         description: "Last chapter number (inclusive)"
         required: true
         default: "50"
+      inpainter:
+        description: "Inpaint model for the clean step (lama or migan)"
+        required: false
+        default: "lama"
 
 permissions:
   contents: write
@@ -50,6 +54,7 @@ jobs:
       PYTHONPATH: "."
       MANGA_PROCESSING_PIPELINE: fast
       MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_INPAINTER: ${{ inputs.inpainter }}
       MANGA_ORT_PROVIDER: openvino
       MANGA_ORT_REQUIRE_PROVIDER: "1"
       MANGA_ORT_OPENVINO_SCOPE: detectors
@@ -89,6 +94,13 @@ jobs:
           test -f models/lama-manga-dynamic.onnx || curl -fsSL -o models/lama-manga-dynamic.onnx \
             https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/lama-manga-dynamic.onnx
           echo "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9  models/lama-manga-dynamic.onnx" | sha256sum -c
+
+      - name: Download MI-GAN when selected
+        if: inputs.inpainter == 'migan'
+        run: |
+          test -f models/migan_pipeline_v2.onnx || curl -fsSL -o models/migan_pipeline_v2.onnx \
+            https://huggingface.co/andraniksargsyan/migan/resolve/main/migan_pipeline_v2.onnx
+          echo "6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b  models/migan_pipeline_v2.onnx" | sha256sum -c
 
       - name: Build the CTD mask model
         uses: ./.github/actions/build-ctd
