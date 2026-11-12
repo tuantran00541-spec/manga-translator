@@ -1,4 +1,3 @@
-"""Holds the TinyFish key for the bench and forwards only its search and fetch calls, so task containers never see the key."""
 import http.server
 import json
 import sys

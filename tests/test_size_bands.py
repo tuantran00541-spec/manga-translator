@@ -1,4 +1,3 @@
-"""Chapter size bands: one chapter's body lettering reads as one size."""
 import pytest
 from PIL import Image, ImageDraw
 

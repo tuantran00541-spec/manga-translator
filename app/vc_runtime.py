@@ -1,4 +1,3 @@
-"""The Microsoft Visual C++ runtime that onnxruntime and paddle load from Windows; standard library only."""
 from __future__ import annotations
 
 import ctypes
@@ -21,7 +20,6 @@ def system32() -> Path:
 
 
 def file_version(path: Path) -> tuple[int, ...] | None:
-    """The file version of a Windows DLL, or None when it cannot be read."""
     try:
         api = ctypes.windll.version
     except AttributeError:
@@ -40,7 +38,6 @@ def file_version(path: Path) -> tuple[int, ...] | None:
 
 
 def problems(folder: Path | None = None, version_of=file_version) -> list[str]:
-    """What is wrong with the runtime: missing DLLs, or one older than MIN_VERSION."""
     if os.environ.get("MANGA_VC_ASSUME_MISSING") == "1":
         return ["msvcp140.dll (giả lập thiếu)"]
     folder = folder or system32()
@@ -62,7 +59,6 @@ _SIGNATURE_PS = ("$s = Get-AuthenticodeSignature -LiteralPath $env:MANGA_VC_FILE
 
 
 def signed_by_microsoft(path: Path) -> bool:
-    """True only for a file with a valid Authenticode signature from Microsoft Corporation."""
     result = subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive", "-Command", _SIGNATURE_PS],
         capture_output=True, text=True, env={**os.environ, "MANGA_VC_FILE": str(path)},
@@ -72,7 +68,6 @@ def signed_by_microsoft(path: Path) -> bool:
 
 
 def install() -> str:
-    """Download, verify and run the official installer; returns a note for the user, raises RuntimeError on failure."""
     folder = Path(tempfile.mkdtemp(prefix="manga-vc-"))
     target = folder / "vc_redist.x64.exe"
     try:

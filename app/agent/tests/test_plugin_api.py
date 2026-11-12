@@ -1,4 +1,3 @@
-"""Plugin API v1: handlers get a ctx, not the session; config, state and events reach plugins."""
 import json
 import sys
 import time

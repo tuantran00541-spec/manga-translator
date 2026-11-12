@@ -1,4 +1,3 @@
-"""A.I mode: credit/logo scan parsing, job orchestration and the gate-free ZIP."""
 from __future__ import annotations
 
 import asyncio
@@ -147,8 +146,6 @@ def test_manager_cancel_before_first_stage():
 
 
 def test_manager_marks_a_run_with_blockers_as_completed_with_blockers():
-    """N13: a run that finished with editorial blockers is not cleanly
-    done; the chapter still needs a reviewer before export."""
 
     class BlockingRunner(RecordingRunner):
         def __init__(self, job, provider, api_key):
@@ -168,8 +165,6 @@ def test_manager_marks_a_run_with_blockers_as_completed_with_blockers():
 
 
 def test_review_entries_are_capped_per_page_not_per_chapter(monkeypatch):
-    """N10(b): a long chapter's late pages must not lose their review
-    entries to the first fifty pages' worth."""
     runner = _runner(monkeypatch, "render", {"pages": []})
     items = runner.report["review_list"]
     for page in (1, 2):
@@ -525,13 +520,6 @@ def test_clean_failure_cancels_and_awaits_the_glossary_read(monkeypatch):
 
 
 def test_keep_art_restores_a_blank_by_choice_object_once(monkeypatch):
-    """A model that reads text and leaves it blank on purpose still gets its
-    pixels back: the clean erased the text and nothing else restores it.
-    The region is already in preserve_regions on the second call, so the
-    same blank is not re-added; an SFX art region is still restored once.
-    The blank is corroborated as art here by its CJK source read — a blank
-    with no such corroboration is retried as a story blank instead.
-    """
     from app.dependencies import pipeline
 
     sfx_region = {"x1": 10, "y1": 10, "x2": 60, "y2": 40}
@@ -563,10 +551,6 @@ def test_keep_art_restores_a_blank_by_choice_object_once(monkeypatch):
 
 
 def test_keep_art_retries_an_uncorroborated_blank_instead_of_restoring_it(monkeypatch):
-    """A blank over Latin source text with no SFX-like container is not art
-    on the model's role alone: it is reclassified as a story blank, so the
-    retry/unresolved path handles it instead of silently restoring English
-    pixels no later stage can see."""
     from app.dependencies import pipeline
 
     latin_region = {"x1": 10, "y1": 10, "x2": 60, "y2": 40}
@@ -585,8 +569,6 @@ def test_keep_art_retries_an_uncorroborated_blank_instead_of_restoring_it(monkey
 
 
 def test_keep_art_restores_a_free_container_blank_without_cjk_source(monkeypatch):
-    """A blank lettered on the art (container "free") is corroborated as
-    art even when the source the detector read is Latin."""
     from app.dependencies import pipeline
 
     region = {"x1": 10, "y1": 10, "x2": 60, "y2": 40}
@@ -639,12 +621,6 @@ def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch
 
 
 def test_a_story_blank_that_never_translates_is_restored_with_a_review_entry(monkeypatch):
-    """Round 9: a story box the model blanks on every retry used to vanish
-    silently — the first blank put it in `blank`, which then excluded it
-    from both further retries and the unresolved restore, so no review
-    entry was ever written and the bubble stayed white. A blank left on
-    purpose (SFX, art) is still settled by the blank, not restored here.
-    """
     from app.dependencies import pipeline
 
     def obj(obj_id, translation=""):
@@ -751,9 +727,6 @@ def test_render_stage_restores_a_floor_skipped_object_without_raising(monkeypatc
 
 
 def test_render_stage_restores_again_when_the_rerender_skips_too(monkeypatch):
-    """N14: a skipped object is restored and the slice re-rendered; if the
-    re-render skips it again, it is restored again instead of the loop
-    leaving a hole or restoring twice in one attempt."""
     from app.dependencies import pipeline
     import app.routers.export as export_router
     import app.routers.image as image_router
@@ -1061,9 +1034,6 @@ def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
     assert "editorial_disposition" not in objects[0] and "editorial_disposition" not in objects[2]
 
 def test_a_no_evidence_blank_settles_even_when_the_run_ran_out_of_budget(monkeypatch):
-    """N17: a blank with no evidence of any text is a phantom, not a
-    line — it settles non_story however the run ended, even out of
-    budget."""
     region = {"x1": 0, "y1": 0, "x2": 50, "y2": 20}
     manifest = {"pages": [{"text_objects": [{"id": "phantom", "translation": "", "region": region}]}]}
     saved = []

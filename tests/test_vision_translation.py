@@ -400,11 +400,6 @@ def test_vietnamese_written_without_diacritics_is_treated_as_untranslated():
 
 
 def test_a_vision_misread_of_korean_sfx_as_latin_noise_is_treated_as_untranslated():
-    """Rerun-4 Former Supreme: the vision model read stylised Korean
-    onomatopoeia stroke-by-stroke as Latin look-alikes ("1/10" for a
-    swish, "N/O/Z/N" for a nod) and the page rendered the nonsense in
-    the render font. A value with no real word in it is not a
-    translation, so it is dropped and the object is retried."""
     from app.translation.vision import _latin_noise
 
     assert _latin_noise("1/10")
@@ -419,12 +414,6 @@ def test_a_vision_misread_of_korean_sfx_as_latin_noise_is_treated_as_untranslate
 
 
 def test_a_bare_scream_is_treated_as_untranslated():
-    """Rerun-4 Mount Hua p075: the shout came back "AAAAA!!!" — brush
-    H's misread as A's, no diacritics, and the re-translate passed the
-    Latin through. No Vietnamese word is one letter repeated, so the
-    value is dropped and the object is retried on the image. The same
-    shout with accented capitals ("ÁÁÁÁ!!!") is the same misread: the
-    diacritics are stripped before the check."""
     from app.translation.vision import _bare_scream
 
     assert _bare_scream("AAAAA!!!")
@@ -437,11 +426,6 @@ def test_a_bare_scream_is_treated_as_untranslated():
 
 
 def test_a_hangul_sfx_misread_as_latin_consonants_is_treated_as_untranslated():
-    """Rerun-4 ch79 p026: the vision model read the pink Korean SFX as
-    the Latin string "FFR" and the pipeline rendered it in the source's
-    own pink. A real Vietnamese rendering has a vowel in every syllable,
-    so a vowel-less Latin return for a Hangul source is a misread, and
-    dropping it leaves the SFX as the artist drew it."""
     from app.translation.vision import _hangul_misread
 
     assert _hangul_misread("푸르륵", "FFR")
@@ -453,10 +437,6 @@ def test_a_hangul_sfx_misread_as_latin_consonants_is_treated_as_untranslated():
 
 
 def test_mixed_vietnamese_and_english_splits_instead_of_passing():
-    """A diacritic in one line used to shield the whole value, so a
-    mixed return ("Anh ơi SENIOR BROTHER") passed the gate and rendered
-    in English. The check now runs per line: the English line goes, the
-    Vietnamese line stays, and the value blanks only if nothing stays."""
     from app.translation.vision import _drop_foreign_script, _untranslated_english
 
     assert _untranslated_english("Anh ơi SENIOR BROTHER")
@@ -487,8 +467,6 @@ def test_mixed_vietnamese_and_english_splits_instead_of_passing():
 
 
 def test_a_diacritic_scream_beside_a_vietnamese_line_drops_only_the_scream():
-    """P1-3: the mixed-line branch drops a bare-scream line even when it
-    carries diacritics; the Vietnamese line stays."""
     from app.translation.vision import _drop_foreign_script
 
     def filtered(value):
@@ -503,9 +481,6 @@ def test_a_diacritic_scream_beside_a_vietnamese_line_drops_only_the_scream():
 
 
 def test_english_names_are_dropped_from_memory_not_learned(tmp_path, monkeypatch):
-    """P2-3: a character or address name that is plain English (two words,
-    one listed) is a model slip, not a name to remember; a single-word
-    Vietnamese name still passes."""
     from app.translation.vision import _drop_foreign_script
 
     result = VisionTranslationResult({"a": "Chào"}, "m", {}, None)
@@ -520,8 +495,6 @@ def test_english_names_are_dropped_from_memory_not_learned(tmp_path, monkeypatch
 
 
 def test_other_gates_also_judge_per_line_not_per_value():
-    """The same whole-value shield hid a noise/scream/misread line
-    behind a Vietnamese one; each gate now trips on its own line."""
     from app.translation.vision import _bare_scream, _drop_foreign_script, _hangul_misread, _latin_noise
 
     assert _latin_noise("Chào\n1/10")
@@ -592,11 +565,6 @@ def test_the_font_follows_role_and_container_not_the_model():
 
 
 def test_a_sound_effect_drawn_twice_in_one_panel_is_translated_once(saved_chapter, monkeypatch):
-    """Rerun-4 ch111 p002: the cheer SFX is drawn twice in one panel;
-    the detector finds both and the model translates both to "CỔ VŨ".
-    The larger instance is translated and rendered; the smaller is left
-    as the artist drew it (its region restored), not retried — and a
-    repeated line in a different role is never deduped."""
     _style, region, _output = saved_chapter
     latest = manifests.load_manifest_raw(CHAPTER)
     latest["pages"][0]["text_objects"].append({
@@ -821,8 +789,6 @@ def test_translate_prompt_lists_map_labels_and_place_signs_as_unboxed():
 
 
 def test_an_object_ids_request_on_a_101_object_page_is_not_rejected(saved_chapter, monkeypatch):
-    """N12: the 100-object cap guards the model batch, not the page; a
-    request naming one object on a 101-object page runs that object."""
     _style, region, _output = saved_chapter
     latest = manifests.load_manifest_raw(CHAPTER)
     for i in range(2, 102):
@@ -846,9 +812,6 @@ def test_an_object_ids_request_on_a_101_object_page_is_not_rejected(saved_chapte
 
 
 def test_an_all_blank_page_still_saves_that_it_was_attempted(saved_chapter, monkeypatch):
-    """N9: a blank-only run changes nothing on the page, but the attempt
-    itself is state: without the save, the next run retries the same
-    blank forever."""
     _style, region, _output = saved_chapter
     monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
     monkeypatch.setattr(
@@ -867,11 +830,6 @@ def test_an_all_blank_page_still_saves_that_it_was_attempted(saved_chapter, monk
 
 
 def test_a_retry_matching_an_already_committed_line_is_blanked_not_doubled(saved_chapter, monkeypatch):
-    """N15/P1-5: a retry that returns the line an earlier call already
-    committed is the same text read twice, not a second line to letter.
-    The duplicate is blank by decision, not by failure: it is never
-    retried (a retry would return the same line again) and dialogue is
-    never restored as art."""
     _style, region, _output = saved_chapter
     latest = manifests.load_manifest_raw(CHAPTER)
     latest["pages"][0]["text_objects"][0].update({

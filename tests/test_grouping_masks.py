@@ -1,11 +1,3 @@
-"""Grouping respects bubble masks: two lobes of one waist stay two objects.
-
-The waist split (chunk 1) divides one double bubble into a box per lobe,
-each with its own lobe mask. Every later stage that joins boxes or objects
-back together must refuse the join when the two sides' bubble masks are
-different lobes -- otherwise the split is undone and render lays one block
-across the waist again (rerun-5 ch42 p038: one object, five lines).
-"""
 import numpy as np
 
 from app.detector.boxes import BubbleBox, apply_final_nms
@@ -19,7 +11,6 @@ def _separate(a, b):
 
 
 def _lobe_mask(bbox, lo, hi, kind="bubble"):
-    """A mask whose every band is one bbox-local interval [lo, hi]."""
     return {"bbox": list(bbox), "cx": (bbox[0] + bbox[2]) // 2,
             "cy": (bbox[1] + bbox[3]) // 2,
             "rows": [[[lo, hi]] for _ in range(24)], "kind": kind}

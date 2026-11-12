@@ -126,7 +126,6 @@ def usd(value_micros: int) -> float:
 
 
 def tombstone(email: str) -> str:
-    """What a deleted account keeps of its email: enough to return its balance, not the address."""
     return "deleted:" + _hash(email.strip().lower())
 
 
@@ -149,7 +148,6 @@ class Store:
         return float(self._clock())
 
     def price_micros(self, cost_usd: float) -> int:
-        """What an account pays for ``cost_usd`` of A.I."""
         return micros(max(0.0, cost_usd) * (1 + self.fee_rate))
 
     @contextmanager
@@ -228,7 +226,6 @@ class Store:
         return code
 
     def cancel_login(self, email: str) -> None:
-        """Forget an unsent code so the user can retry at once."""
         with self._write() as db:
             db.execute("UPDATE login_codes SET code_hash = '', expires_at = 0, sent_at = 0 WHERE email = ?", (email,))
 
@@ -265,7 +262,6 @@ class Store:
             return db.execute("DELETE FROM sessions WHERE account_id = ?", (account_id,)).rowcount
 
     def delete_account(self, account_id: str) -> None:
-        """Forget the email and sessions; the balance and history wait under a hash of the email."""
         with self._write() as db:
             row = db.execute("SELECT email FROM accounts WHERE id = ?", (account_id,)).fetchone()
             if row is None:
@@ -306,7 +302,6 @@ class Store:
         return self.account(row["account_id"])
 
     def _book(self, db, account_id: str, kind: str, delta: int, ref: str = "") -> int:
-        """Move ``delta`` micro-dollars on the balance and record it; returns the new balance."""
         db.execute("UPDATE accounts SET balance_micros = balance_micros + ? WHERE id = ?", (delta, account_id))
         balance = int(db.execute("SELECT balance_micros FROM accounts WHERE id = ?", (account_id,)).fetchone()[0])
         db.execute("INSERT INTO ledger (account_id, kind, delta_micros, balance_micros, ref, created_at) "
@@ -314,7 +309,6 @@ class Store:
         return balance
 
     def adjust(self, account_id: str, usd_amount: float, note: str) -> float:
-        """An admin credit or debit, recorded with its reason."""
         with self._write() as db:
             if db.execute("SELECT 1 FROM accounts WHERE id = ?", (account_id,)).fetchone() is None:
                 raise KeyError(account_id)
@@ -340,7 +334,6 @@ class Store:
         return payment_id
 
     def complete_payment(self, provider: str, external_id: str, amount: int) -> dict | None:
-        """Credit a paid top-up once; a payment of another amount is refused."""
         with self._write() as db:
             row = db.execute("SELECT * FROM payments WHERE provider = ? AND external_id = ?",
                              (provider, external_id)).fetchone()
@@ -356,7 +349,6 @@ class Store:
             return {"payment_id": row["id"], "applied": True, "balance_usd": usd(balance)}
 
     def refund_payment(self, provider: str, external_id: str) -> bool:
-        """Take back a refunded top-up; the balance may go below zero, which stops new chapters."""
         with self._write() as db:
             row = db.execute("SELECT * FROM payments WHERE provider = ? AND external_id = ?",
                              (provider, external_id)).fetchone()
@@ -383,7 +375,6 @@ class Store:
         return {"chapters": int(row["chapters"]), "charged_usd": usd(row["charged"])}
 
     def reserve_job(self, account_id: str, min_usd: float) -> tuple[str, str, float]:
-        """Open a job when the available balance covers ``min_usd``; its cap is what that balance can pay for."""
         now = self.now()
         job_id = uuid.uuid4().hex
         token = "mcj_" + secrets.token_urlsafe(32)
@@ -408,7 +399,6 @@ class Store:
         return row
 
     def begin_request(self, job_id: str, reserve_usd: float = 0.0) -> None:
-        """Hold what a request may cost on the job and the balance, so requests in flight together cannot overspend."""
         reserve_usd = max(0.0, reserve_usd)
         hold = self.price_micros(reserve_usd)
         with self._write() as db:
@@ -428,7 +418,6 @@ class Store:
 
     def add_cost(self, job_id: str, cost: float, prompt_tokens: int = 0, completion_tokens: int = 0,
                  released_usd: float = 0.0) -> float:
-        """Charge a finished request at cost plus the fee and free what it held; returns the job's A.I cost."""
         charge = self.price_micros(cost)
         release = self.price_micros(released_usd)
         with self._write() as db:
@@ -464,7 +453,6 @@ class Store:
         }
 
     def purge(self) -> dict:
-        """Drop spent sessions, codes and counters, and close jobs past their time."""
         now = self.now()
         with self._write() as db:
             stale = db.execute("SELECT * FROM jobs WHERE status = 'active' AND expires_at < ?", (now,)).fetchall()
@@ -481,7 +469,6 @@ class Store:
         return counts
 
     def backup(self, dest: Path | str) -> None:
-        """Copy the live database to ``dest`` safely while the gateway runs."""
         with self._connect() as db:
             target = sqlite3.connect(str(dest))
             try:
@@ -490,7 +477,6 @@ class Store:
                 target.close()
 
     def stats(self, days: int = 30) -> dict:
-        """Money in and out over the last ``days``: top-ups, what chapters were charged, and what the A.I cost."""
         since = self.now() - days * 86400
         with self._connect() as db:
             accounts = db.execute("SELECT COUNT(*), COALESCE(SUM(balance_micros), 0) FROM accounts "

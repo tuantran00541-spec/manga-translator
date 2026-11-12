@@ -173,7 +173,6 @@ def compute_manual_crop_region(x1: int, y1: int, x2: int, y2: int, img_w: int, i
 
 
 def compute_crop_region(x1: int, y1: int, x2: int, y2: int, img_w: int, img_h: int) -> tuple:
-    """The cluster with its context margin, cut to the image; the dynamic model needs no square."""
     return (
         int(max(0, x1 - INPAINT_CROP_PADDING)),
         int(max(0, y1 - INPAINT_CROP_PADDING)),

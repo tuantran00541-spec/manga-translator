@@ -1,4 +1,3 @@
-"""The text detector: Kiuyha/Manga-Bubble-YOLO boxes (ONNX) with comic-text-detector letter masks."""
 from __future__ import annotations
 
 import math
@@ -50,7 +49,6 @@ SAME_LINE_X = knob("detect.same_line_x")
 
 
 def _waist_letter_shares(box: BubbleBox, waist: dict, letters=None) -> tuple[float, float]:
-    """Share of the letter pixels on each side of the waist cut."""
     if letters is None:
         letters = getattr(box, "letters", None)
     if letters is None:
@@ -68,14 +66,6 @@ def _waist_letter_shares(box: BubbleBox, waist: dict, letters=None) -> tuple[flo
 
 
 def _core_letters(box: BubbleBox):
-    """The box's letters inside its raw-detector core, same shape, rest zeroed.
-
-    The letter pass grows a box past its core and pulls a neighbour's
-    letters in with it (the p038 right box carries the left lobe's
-    text). The core is the box's own detection, so the letters inside
-    it are the box's own text -- the ones the waist trim and split
-    decide on. _merge_mask_evidence clips the same way.
-    """
     letters = getattr(box, "letters", None)
     if letters is None:
         return None
@@ -95,13 +85,6 @@ def _core_letters(box: BubbleBox):
 
 
 def _clip_letters_to_cut(letters, box: BubbleBox, waist: dict, keep_first: bool):
-    """``letters`` with the far side of the waist cut zeroed, same shape.
-
-    A trim keeps one lobe's mask; the letters keep the same lobe's
-    text, so downstream reads of the array (OCR, translate, letter
-    bounds) see only this box's own lines, not the neighbour's the
-    growth pulled in.
-    """
     clipped = np.array(letters, copy=True)
     if waist["orientation"] == "horizontal":
         cut_local = min(max(int(waist["cut_y"]) - box.y1, 0), clipped.shape[0])
@@ -119,16 +102,6 @@ def _clip_letters_to_cut(letters, box: BubbleBox, waist: dict, keep_first: bool)
 
 
 def _trim_bubble_mask(box: BubbleBox) -> None:
-    """Narrow a box's mask to the lobe holding (almost) all its letters.
-
-    A box's flood fills the whole double bubble it sits in, so a
-    single-lobe box carries the union mask. When the waist puts a
-    small share of the letters on one side, that side is a sliver of
-    another lobe (or stray art letters) and the mask is cut to the
-    side holding the text. When the letters genuinely span both
-    lobes, the mask stays the union: the post-fold waist split in
-    _process_page divides the box itself.
-    """
     mask = getattr(box, "bubble_mask", None)
     letters = getattr(box, "letters", None)
     if (not isinstance(mask, dict) or mask.get("kind") != "bubble"
@@ -156,16 +129,6 @@ def _trim_bubble_mask(box: BubbleBox) -> None:
 
 
 def _split_shared_union_masks(boxes: list[BubbleBox]) -> None:
-    """Give each box sharing one union mask its own lobe's mask.
-
-    Two boxes in one double bubble each flood the whole union, so
-    neither box's own letters show a waist (each holds one cluster).
-    Pooled, their core letters do: the clusters sit on either side of
-    the waist, so the waist fires on the union of them, and each box
-    keeps the piece holding (almost) all its own core letters. A box
-    whose own letters genuinely span the waist keeps the union: the
-    post-fold waist split divides the box itself.
-    """
     groups: dict[tuple, list[BubbleBox]] = {}
     for box in boxes:
         mask = getattr(box, "bubble_mask", None)
@@ -215,7 +178,6 @@ def _split_shared_union_masks(boxes: list[BubbleBox]) -> None:
 
 
 def _attach_bubble_masks(image: np.ndarray, boxes: list[BubbleBox]) -> None:
-    """One bubble mask per final box, from the source slice, then trimmed to its lobe."""
     for box in boxes:
         box.bubble_mask = derive_bubble_mask(
             image, (box.x1, box.y1, box.x2, box.y2),
@@ -225,14 +187,6 @@ def _attach_bubble_masks(image: np.ndarray, boxes: list[BubbleBox]) -> None:
 
 
 def _split_waist_box(box: BubbleBox) -> list[BubbleBox]:
-    """A box whose letters span both lobes of its mask, split in two.
-
-    The mask waist decides the cut; each piece takes the letters on
-    its side, its half of the mask, and a rect round its own letters
-    (the _split_sideways shape, clipped to its side of the cut).
-    A box with no waist, no letters, or letters on one side only
-    comes back whole.
-    """
     from dataclasses import replace
 
     mask = getattr(box, "bubble_mask", None)
@@ -317,7 +271,6 @@ def _split_waist_box(box: BubbleBox) -> list[BubbleBox]:
 
 
 def split_waist_boxes(boxes: list[BubbleBox]) -> list[BubbleBox]:
-    """Split every box whose letters span both lobes of its bubble mask (see _split_waist_box)."""
     out: list[BubbleBox] = []
     for box in boxes:
         out.extend(_split_waist_box(box))
@@ -337,7 +290,6 @@ def _text_box(x1, y1, x2, y2, score, mask, source_model, letters=None, core=None
 
 
 def _overlaps(a: list, b: list) -> bool:
-    """Two rects hold pieces of one text by geometry alone: the same line, or mostly the same area."""
     ix = min(a[2], b[2]) - max(a[0], b[0])
     iy = min(a[3], b[3]) - max(a[1], b[1])
     smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
@@ -350,12 +302,6 @@ SAME_DETECTION_IOU = 0.85
 
 
 def _same_detection(a, b) -> bool:
-    """Two rects are the same detection twice (coarse + page pass), not two texts.
-
-    Near-identical rects only, judged by IoU: a small box sitting inside a
-    big one has a tiny IoU, so this never re-merges the tucked-under text
-    the letter-coherence guard un-joins.
-    """
     ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
     iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
     inter = ix * iy
@@ -364,14 +310,6 @@ def _same_detection(a, b) -> bool:
 
 
 def _unlettered_duplicate(a, b) -> bool:
-    """Two rects with no letter geometry at all, one nearly inside the other, are one detection seen twice.
-
-    With no letters anywhere there is nothing to contradict the geometry:
-    the coarse and page passes return differently-sized rects for the same
-    dark-on-dark text (the page pass reads it through a shrunken window),
-    so the near-identical IoU test is too strict. Containment alone never
-    joins a lettered pair — incoherent letters still veto.
-    """
     ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
     iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
     smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
@@ -383,11 +321,6 @@ JOIN_STACK_CENTRE = 0.15
 
 
 def _letter_geometry(box: BubbleBox, core: tuple[int, int, int, int] | None = None):
-    """A box's letter rows and letter bbox in slice coords, or None when it has no letters to judge by.
-
-    ``core`` is the raw detector rect the box grew from: letters the growth
-    pulled in past it belong to the neighbour the growth reached, not this box.
-    """
     letters = getattr(box, "letters", None)
     if letters is None or not letters.any():
         return None
@@ -408,7 +341,6 @@ def _letter_geometry(box: BubbleBox, core: tuple[int, int, int, int] | None = No
 
 
 def _merge_geometry(a, b):
-    """Letter geometry of two boxes joined into one: whatever either held."""
     if a is None:
         return b
     if b is None:
@@ -421,7 +353,6 @@ def _merge_geometry(a, b):
 
 
 def _union_core(a, b):
-    """The raw rects two joined boxes grew from, as one rect (either may be missing)."""
     if a is None:
         return b
     if b is None:
@@ -430,16 +361,6 @@ def _union_core(a, b):
 
 
 def _letters_coherent(a, b) -> bool:
-    """Two grown boxes hold one text: same-line fragments, or stacked and centre-aligned.
-
-    A small bubble tucking under a big one overlaps it once grown, but shares no
-    letter row with it and sits far off-centre, so geometry alone would fold it in.
-
-    Missing geometry is unknown, not agreement: a box the letter model never
-    read (maskless, ``letters=None``) or whose core-clipped letters are empty
-    must not fold into a lettered box on geometry alone. Two such boxes can
-    still join as the same detection twice (see ``_same_detection``).
-    """
     if a is None or b is None:
         return False
     rows_a, box_a = a
@@ -455,7 +376,6 @@ def _letters_coherent(a, b) -> bool:
 
 
 def _join_grown(boxes: list[BubbleBox], cores: list[tuple[int, int, int, int]] | None = None) -> list[BubbleBox]:
-    """Boxes that grew into each other while taking cut letters are one text; their masks are joined."""
     groups = [[[b.x1, b.y1, b.x2, b.y2, b.confidence],
                _letter_geometry(b, cores[i] if cores is not None else None),
                cores[i] if cores is not None else getattr(b, "core", None)]
@@ -506,7 +426,6 @@ BLOCK_LINE_SPREAD = knob("detect.block_line_spread")
 
 
 def _separate(mask: np.ndarray, upper: list, lower: list) -> bool:
-    """True when two groups of lines read as two texts rather than one spaced block."""
     def extent(group):
         cols = np.flatnonzero(mask[group[0][0]:group[-1][1]].any(axis=0))
         return float(cols[0]), float(cols[-1] + 1)
@@ -523,7 +442,6 @@ def _separate(mask: np.ndarray, upper: list, lower: list) -> bool:
 
 
 def _clip_core(core: tuple[int, int, int, int] | None, rect: tuple[int, int, int, int]):
-    """A box's raw-detector rect clipped to one of its pieces, or None when the piece holds none of it."""
     if core is None:
         return None
     x1, y1 = max(core[0], rect[0]), max(core[1], rect[1])
@@ -532,7 +450,6 @@ def _clip_core(core: tuple[int, int, int, int] | None, rect: tuple[int, int, int
 
 
 def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
-    """A box holding two texts stacked with a wide gap (two captions, a staircase of boxes) becomes one box per text."""
     letters = getattr(box, "letters", None)
     if letters is None or box.mask is None or not letters.any():
         return [box]
@@ -582,7 +499,6 @@ def _line_runs(profile: np.ndarray) -> list[tuple[int, int]]:
 
 
 def _split_sideways(box: BubbleBox) -> list[BubbleBox]:
-    """A box holding two texts side by side (two bubbles the passes joined) becomes one box per text."""
     letters = getattr(box, "letters", None)
     if letters is None or box.mask is None or not letters.any():
         return [box]
@@ -626,7 +542,6 @@ def _split_sideways(box: BubbleBox) -> list[BubbleBox]:
 
 
 def _rows(output: np.ndarray, conf_threshold: float) -> np.ndarray:
-    """Final ``x1, y1, x2, y2, score`` rows from either output layout."""
     output = np.asarray(output)
     if output.ndim == 3 and output.shape[-1] == 6:
         rows = output.reshape(-1, 6)
@@ -646,11 +561,6 @@ def _rows(output: np.ndarray, conf_threshold: float) -> np.ndarray:
 
 
 def _dark_pieces(image: np.ndarray, box: tuple[int, int, int, int]) -> int:
-    """Letter-sized dark pieces in a box: several separate letters, not one connected shape.
-
-    Dark lettering the segmenter misses still reads as ink against its own background; a lattice
-    or logo the box model scores is one big connected piece, and a speck is not a letter.
-    """
     x1, y1, x2, y2 = box
     crop = image[y1:y2, x1:x2]
     if crop.size == 0:
@@ -664,21 +574,6 @@ def _dark_pieces(image: np.ndarray, box: tuple[int, int, int, int]) -> int:
 
 
 def _has_letter_piece(image: np.ndarray, box: tuple[int, int, int, int], *, allow_wide: bool = False) -> bool:
-    """True when a letter-sized dark piece stands whole inside the box.
-
-    A rescued word is a word: its letters end inside the box, with
-    background around them. A stroke fragment of a much bigger shape
-    runs off the box's edges, so every piece in the crop touches an
-    edge and none counts. The height cap of the renderer's letter
-    measurement is left out on purpose: a tall rescued letter is still
-    a letter, and only the edge test tells a fragment from a word.
-
-    ``allow_wide`` is only for a box that came from ``_welded_words``: a
-    welded word is one component up to 80 wide x 12 tall, so the
-    ``w <= 3*h`` test kills exactly the words that path exists to rescue.
-    The shape was already checked there (width, height, area, fill), so
-    the width test adds nothing for them and is skipped.
-    """
     x1, y1, x2, y2 = box
     crop = image[y1:y2, x1:x2]
     if crop.size == 0 or min(crop.shape[:2]) < 8:
@@ -696,8 +591,6 @@ def _has_letter_piece(image: np.ndarray, box: tuple[int, int, int, int], *, allo
 
 
 def _stretch(image: np.ndarray) -> np.ndarray:
-    """The slice with its local contrast levelled: faint lettering the segmenter
-    reads at ~0.0 on the raw image reads at 0.75+ here, while the geometry stays put."""
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
     lightness, a, b = cv2.split(lab)
     lightness = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(lightness)
@@ -705,7 +598,6 @@ def _stretch(image: np.ndarray) -> np.ndarray:
 
 
 def _mask_coverage(shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarray:
-    """Every pixel a kept box already erases: a rescue must find new text, not the edge of kept text."""
     cov = np.zeros(shape, bool)
     for box in boxes:
         if box.mask is not None:
@@ -716,7 +608,6 @@ def _mask_coverage(shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarray
 
 
 def _word_blobs(binary: np.ndarray) -> list[tuple[tuple[int, int, int, int], np.ndarray]]:
-    """Letter pixels dilated into word blobs: one blob per word, with its pixels."""
     dil = cv2.dilate(binary.astype(np.uint8), np.ones((5, 17), np.uint8))
     n, labels, stats, _ = cv2.connectedComponentsWithStats(dil, 8)
     out = []
@@ -728,12 +619,6 @@ def _word_blobs(binary: np.ndarray) -> list[tuple[tuple[int, int, int, int], np.
 
 
 def _welded_words(image: np.ndarray, box: tuple[int, int, int, int]) -> list[tuple[tuple[int, int, int, int], np.ndarray]]:
-    """Single dark components shaped like a word: letters welded to each other
-    and to the art behind them read as one piece, so no letter count can find them.
-
-    Ink is judged against the local background, not the box median: a label on a
-    light patch of a mostly dark box is invisible to a box-wide threshold.
-    """
     x1, y1, x2, y2 = box
     crop = image[y1:y2, x1:x2]
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
@@ -750,15 +635,6 @@ def _welded_words(image: np.ndarray, box: tuple[int, int, int, int]) -> list[tup
 
 
 def _union_coherent(image: np.ndarray, boxes: list[tuple[int, int, int, int, float]]) -> list[tuple[int, int, int, int, float]]:
-    """Join raw rects of one text the way ``_join_grown`` joins grown boxes: geometry plus letter coherence.
-
-    The raw merges used to run here on geometry alone, before any letters
-    existed, so a small text sharing a line with a big one (or sitting
-    mostly inside it) was unioned into one rect and the splitters had to
-    recover it. Each rect is lettered first and two rects merge only when
-    their core-clipped letter rows cohere, or when they are the same
-    detection twice (coarse + page pass returning near-identical rects).
-    """
     groups = []
     for x1, y1, x2, y2, score in boxes:
         rect = (x1, y1, x2, y2)
@@ -804,7 +680,6 @@ class KiuyhaTextDetector:
         return int(math.ceil(height / STRIDE) * STRIDE), int(math.ceil(width / STRIDE) * STRIDE)
 
     def raw_boxes(self, image: np.ndarray, conf_threshold: float | None = None) -> list[tuple[int, int, int, int, float]]:
-        """Boxes (x1, y1, x2, y2, score) in ``image`` pixels from one letterboxed pass."""
         h, w = image.shape[:2]
         in_h, in_w = self._input_size(h, w)
         scale = min(in_w / w, in_h / h)
@@ -827,7 +702,6 @@ class KiuyhaTextDetector:
         return boxes
 
     def halves_plan(self, height: int, width: int) -> tuple[float, list[tuple[int, int]]] | None:
-        """Scale and overlapping halves for a static square input, or None if not worth it."""
         if self.fixed is None or self.fixed[0] != self.fixed[1]:
             return None
         size = self.fixed[0]
@@ -842,22 +716,18 @@ class KiuyhaTextDetector:
         return scale, [(0, half), (height - half, height)]
 
     def _raw_slice_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Raw rects from every pass, unmerged: merging them is a letter
-        judgement now (see ``_union_coherent``), not a geometry one."""
         found = self._coarse_boxes(image) + self.page_boxes(image)
         if not found:
             found = self._rotated_boxes(image)
         return found
 
     def detect_slice(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Padded text boxes for a slice: coarse and page-scale passes, pieces of one text merged on their letters."""
         h, w = image.shape[:2]
         found = _union_coherent(image, self._raw_slice_boxes(image))
         return [(max(0, x1 - BOX_PAD), max(0, y1 - BOX_PAD), min(w, x2 + BOX_PAD), min(h, y2 + BOX_PAD), score)
                 for x1, y1, x2, y2, score in found]
 
     def _rotated_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Boxes from the slice turned 90 degrees both ways, mapped back: vertical lettering the upright passes miss."""
         h, w = image.shape[:2]
         found = []
         for code, clockwise in ((cv2.ROTATE_90_CLOCKWISE, True), (cv2.ROTATE_90_COUNTERCLOCKWISE, False)):
@@ -875,7 +745,6 @@ class KiuyhaTextDetector:
         return found
 
     def _coarse_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Boxes from the whole slice at once, as two halves when that helps."""
         h, w = image.shape[:2]
         plan = self.halves_plan(h, w)
         if plan is None:
@@ -901,7 +770,6 @@ class KiuyhaTextDetector:
         return found
 
     def page_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Boxes from the slice shrunk to page scale, where the model reads big lettering best, packed as columns."""
         h, w = image.shape[:2]
         if self.fixed is None:
             return self.raw_boxes(image)
@@ -937,17 +805,6 @@ class KiuyhaTextDetector:
         return found
 
     def _rescue_boxes(self, image: np.ndarray, kept: list[BubbleBox]) -> list[BubbleBox]:
-        """Words in boxes the main pass dropped (score below its bar), re-read two ways.
-
-        The box model half-sees small map labels: one candidate spans four of
-        them at 0.12, so keeping the candidate whole would translate four
-        labels as one object. Each word is split out instead, and only words
-        no kept box already erases. The raw letter pass is left out on purpose:
-        it reads window lattice as letters with high confidence, while the
-        stretched pass reads nothing there and still reads the faint words.
-        Runs after the join/split pipeline, so a rescued word is never folded
-        back into the neighbour whose rectangle it sits inside.
-        """
         h, w = image.shape[:2]
         cov = _mask_coverage(image.shape[:2], kept)
         dilated = cv2.dilate(cov.astype(np.uint8), np.ones((17, 17), np.uint8)) > 0
@@ -1003,7 +860,6 @@ class KiuyhaTextDetector:
         return boxes
 
     def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
-        """Detected text blocks with letter masks, ready for inpainting and OCR."""
         boxes = []
         cores = []
         for x1, y1, x2, y2, score in self._raw_slice_boxes(image):
@@ -1024,7 +880,6 @@ class KiuyhaTextDetector:
         return final
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
-        """First-pass boxes the letter model still reads after inpainting, masked by what is left of their strokes."""
         boxes = []
         for t in targets:
             if still_reads(clean, (t.x1, t.y1, t.x2, t.y2)):
@@ -1034,7 +889,6 @@ class KiuyhaTextDetector:
         return boxes
 
     def detect(self, image: np.ndarray) -> list[BubbleBox]:
-        """Text boxes for the pipeline, timing kept for ``last_metrics``."""
         started = time.perf_counter()
         boxes = self.text_boxes(image)
         self._metrics.value = {"text_model_ms": (time.perf_counter() - started) * 1000.0, "result_boxes": len(boxes)}

@@ -58,7 +58,6 @@ def _resolve_configured_provider(provider_id: str):
 
 
 def _answers_models(provider, api_key: str) -> bool:
-    """True when this root serves an OpenAI-style /models, or refuses the key there."""
     headers = {"Accept": "application/json", **auth_headers(provider, api_key)}
     try:
         response = safe_get(provider.models_url, headers=headers, timeout=(5, 15), stream=False, max_redirects=0)
@@ -76,7 +75,6 @@ def _answers_models(provider, api_key: str) -> bool:
 
 
 def _discover_api_base(provider, api_key: str):
-    """The first candidate root that answers like an OpenAI-compatible API; the pasted one when none does."""
     candidates = api_base_candidates(provider.api_base)
     if len(candidates) == 1:
         return provider

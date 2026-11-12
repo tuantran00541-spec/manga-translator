@@ -1,10 +1,8 @@
-"""A stand-in for the comic-text-detector mask model: ink darker or lighter than set limits is letters."""
 import cv2
 import numpy as np
 
 
 class InkModel:
-    """Reads near-black (or near-white) strokes as letters, like the real model reads letter bodies but not outlines."""
 
     def __init__(self, dark_below=30, light_above=None):
         self.dark_below, self.light_above = dark_below, light_above

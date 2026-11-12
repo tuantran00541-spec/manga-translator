@@ -1,4 +1,3 @@
-"""Small stand-ins for common commands a task's machine may lack; the shell reaches them only where the real one is missing."""
 import argparse
 import os
 import sys
@@ -10,7 +9,6 @@ NOTE = "[{name}: not installed here; this is the harness's small stand-in with t
 
 
 def _note(name: str) -> None:
-    """Say once per session that a stand-in answered, so it is never mistaken for the machine's own tool."""
     mark = os.path.join(os.environ.get("AGENT_STATE") or os.environ.get("TMPDIR") or "/tmp", f".fallback-{name}")
     if not os.path.exists(mark):
         try:
@@ -31,7 +29,6 @@ ELF_MACHINE = {3: "Intel 80386", 8: "MIPS", 20: "PowerPC", 40: "ARM", 62: "x86-6
 
 
 def describe(path: str) -> str:
-    """What a file is, from its first bytes."""
     if os.path.isdir(path):
         return "directory"
     if os.path.islink(path):
@@ -70,7 +67,6 @@ def describe(path: str) -> str:
 
 
 def cmd_file(args: list[str]) -> int:
-    """file: what each path is."""
     parser = argparse.ArgumentParser(prog="file")
     parser.add_argument("-b", "--brief", action="store_true")
     parser.add_argument("-L", "--dereference", action="store_true")
@@ -87,7 +83,6 @@ def cmd_file(args: list[str]) -> int:
 
 
 def cmd_xxd(args: list[str]) -> int:
-    """xxd: a hex dump, plain hex with -p, or back to bytes with -r."""
     parser = argparse.ArgumentParser(prog="xxd")
     parser.add_argument("-l", type=lambda v: int(v, 0))
     parser.add_argument("-s", type=lambda v: int(v, 0), default=0)
@@ -126,7 +121,6 @@ def cmd_xxd(args: list[str]) -> int:
 
 
 def cmd_strings(args: list[str]) -> int:
-    """strings: runs of printable characters."""
     parser = argparse.ArgumentParser(prog="strings")
     parser.add_argument("-n", "--bytes", type=int, default=4)
     parser.add_argument("-a", "--all", action="store_true")
@@ -150,7 +144,6 @@ def cmd_strings(args: list[str]) -> int:
 
 
 def _processes() -> list[dict]:
-    """Every process from /proc: pid, parent, state, user id and command line."""
     rows = []
     for pid in sorted((p for p in os.listdir("/proc") if p.isdigit()), key=int):
         try:
@@ -166,7 +159,6 @@ def _processes() -> list[dict]:
 
 
 def cmd_ps(args: list[str]) -> int:
-    """ps: every process; any option shows full command lines."""
     rows = _processes()
     print(f"{'UID':>6} {'PID':>7} {'PPID':>7} S CMD")
     for row in rows:
@@ -175,7 +167,6 @@ def cmd_ps(args: list[str]) -> int:
 
 
 def cmd_pgrep(args: list[str]) -> int:
-    """pgrep: ids of processes whose name, or command line with -f, matches."""
     parser = argparse.ArgumentParser(prog="pgrep")
     parser.add_argument("-f", action="store_true")
     parser.add_argument("-l", action="store_true")
@@ -190,7 +181,6 @@ def cmd_pgrep(args: list[str]) -> int:
 
 
 def cmd_free(args: list[str]) -> int:
-    """free: memory from /proc/meminfo."""
     info = {}
     for line in open("/proc/meminfo"):
         key, value = line.split(":", 1)
@@ -216,7 +206,6 @@ def cmd_free(args: list[str]) -> int:
 
 
 def cmd_uptime(args: list[str]) -> int:
-    """uptime: time up and load average."""
     up = float(open("/proc/uptime").read().split()[0])
     load = open("/proc/loadavg").read().split()[:3]
     print(f" {time.strftime('%H:%M:%S')} up {int(up // 86400)} days, {int(up % 86400 // 3600)}:{int(up % 3600 // 60):02d},  load average: {', '.join(load)}")
@@ -224,7 +213,6 @@ def cmd_uptime(args: list[str]) -> int:
 
 
 def cmd_curl(args: list[str]) -> int:
-    """curl: one HTTP request with the options scripts use most."""
     parser = argparse.ArgumentParser(prog="curl", add_help=False)
     for short, long in (("-s", "--silent"), ("-S", "--show-error"), ("-L", "--location"), ("-f", "--fail"), ("-k", "--insecure"),
                         ("-i", "--include"), ("-I", "--head"), ("-v", "--verbose"), ("-O", "--remote-name")):
@@ -292,7 +280,6 @@ def cmd_curl(args: list[str]) -> int:
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Stops at a redirect, as curl does without -L."""
 
     def redirect_request(self, *args, **kwargs):
         return None
@@ -303,7 +290,6 @@ COMMANDS = {"file": cmd_file, "xxd": cmd_xxd, "strings": cmd_strings, "ps": cmd_
 
 
 def main(argv: list[str]) -> int:
-    """Run one stand-in by name."""
     name, args = argv[0], argv[1:]
     _note(name)
     try:

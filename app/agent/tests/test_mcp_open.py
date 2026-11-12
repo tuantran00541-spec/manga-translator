@@ -1,4 +1,3 @@
-"""Open MCP: tool filters and kinds, prompts as commands, resources, images, changed tool lists and a restart."""
 from __future__ import annotations
 
 import base64

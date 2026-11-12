@@ -1,4 +1,3 @@
-"""Text crossing a slice cut belongs to one slice; its neighbour letters an exact copy so the stitched page is seamless."""
 from __future__ import annotations
 
 import copy
@@ -18,13 +17,6 @@ def _shifted(rect: dict, shift: int) -> dict:
 
 
 def _shifted_letters(value, shift: int):
-    """A letter bitmap moved ``shift`` rows down (negative: up), same frame.
-
-    A seam mirror letters the owner's text on the neighbouring slice, so
-    its bitmap moves with its region; rows shifted off the frame are
-    lost, and the vacated rows are empty. An undecodable value stays
-    undecodable -- the mirror keeps no bitmap rather than a wrong one.
-    """
     import numpy as np
 
     from app.image_io import encode_mask
@@ -44,12 +36,6 @@ def _shifted_letters(value, shift: int):
 
 
 def _top_letter_group(letters: np.ndarray, x1: int, y1: int) -> tuple[int, int, int, int] | None:
-    """BBox of the topmost text in a letters mask holding two texts stacked with a wide gap.
-
-    Row runs part where the empty band between them is at least BLOCK_GAP line
-    heights; one run, or runs with only narrow gaps, is a single text, so None
-    keeps the caller's mask-extent behaviour for ordinary boxes.
-    """
     import numpy as np
 
     from app.knobs import knob
@@ -80,7 +66,6 @@ def _top_letter_group(letters: np.ndarray, x1: int, y1: int) -> tuple[int, int, 
 
 
 def set_letter_bounds(page: dict) -> None:
-    """Give each object the extent of the source lettering its boxes erase, where the translation is lettered."""
     from app.mask_store import decode_mask_value
     from app.text_objects import source_box_ids
 
@@ -160,7 +145,6 @@ def set_letter_bounds(page: dict) -> None:
 
 
 def _core(page: dict) -> tuple[int, int, int] | None:
-    """(source offset of the slice, core start, core end) in source-page pixels."""
     core = page.get("stitch_core")
     if not isinstance(core, dict):
         return None
@@ -181,11 +165,6 @@ def _rect(obj: dict, offset: int) -> tuple[int, int, int, int] | None:
 
 
 def _source_words(obj: dict) -> list[str]:
-    """Words of the source text the object was read from, when known.
-
-    The vision model's read wins where it exists; the detector OCR is
-    the fallback. An object with neither carries no source evidence.
-    """
     for key in ("source_read", "ocr_text", "auto_ocr_text"):
         words = _fold_words(obj.get(key))
         if words:
@@ -194,15 +173,6 @@ def _source_words(obj: dict) -> list[str]:
 
 
 def _source_texts_agree(a: dict, b: dict) -> bool:
-    """True when nothing known contradicts two objects being the same text.
-
-    Mirror matching is geometry-only today: a small free-text box sitting
-    mostly inside a big bubble's rect matches at share 1.0 and is then
-    translated as the neighbour's text, losing its own. When both sides
-    carry a source read and they share no word at all, they are different
-    texts -- geometry notwithstanding. When either side has no source
-    text there is nothing to contradict, so geometry alone still decides.
-    """
     words_a = _source_words(a)
     words_b = _source_words(b)
     if not words_a or not words_b:
@@ -211,19 +181,12 @@ def _source_texts_agree(a: dict, b: dict) -> bool:
 
 
 def _separate_lobes(a: dict, b: dict) -> bool:
-    """Two objects in different lobes of one waist are never one block.
-
-    The geometry and letter gates cannot tell a stacked double bubble
-    from one block's lines: the lobes sit centred and their lettering
-    flows on. The masks can -- the lobes' interiors are disjoint.
-    """
     from app.detector.boxes import bubble_masks_are_separate_lobes
 
     return bubble_masks_are_separate_lobes(a.get("bubble_mask"), b.get("bubble_mask"))
 
 
 def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = False):
-    """(page index, object) of the slice whose core holds the object's centre, when it has the same object."""
     page = pages[page_index]
     core = _core(page)
     rect = _rect(obj, core[0]) if core else None
@@ -252,18 +215,6 @@ def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = Fals
 
 
 def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
-    """Give each overlap-context box its own mirror object; returns what was created.
-
-    A detector box lying entirely outside its slice's stitch core is kept
-    only as context: clean never erases it and ``ensure_page_text_objects``
-    makes no object for it, so the text it holds stays in English on that
-    slice even though the neighbouring slice translates it. The mirror
-    anchors the fragment here with the owner's id; the translate step
-    already skips such mirrors (``lettered_elsewhere``) and the existing
-    seam sync then letters each one exactly as its owning slice does.
-    A box with no matching neighbour object gets nothing: with no owner
-    there is no lettering to copy.
-    """
     from app.text_objects import DEFAULT_TEXT_OBJECT_STYLE, _auto_object_id, source_box_ids
 
     pages = manifest.get("pages") or []
@@ -329,13 +280,11 @@ _WORD_SEPARATORS = ".,;:!?\"'“”‘’…()[]{}—–-"
 
 
 def _norm_words(text: str) -> list[str]:
-    """Words of a translation, punctuation and case aside, for prefix comparison."""
     lowered = " ".join(str(text or "").split()).lower()
     return lowered.translate(str.maketrans({c: " " for c in _WORD_SEPARATORS})).split()
 
 
 def _trim_leading_words(text: str, count: int) -> str:
-    """``text`` without its first ``count`` words; the continuation becomes sentence-initial."""
     matches = list(re.finditer(r"[^\s" + re.escape(_WORD_SEPARATORS) + r"]+", text))
     if len(matches) <= count:
         return ""
@@ -347,13 +296,6 @@ def _trim_leading_words(text: str, count: int) -> str:
 
 
 def _dup_stacked(upper_rect, lower_rect) -> bool:
-    """True when ``lower`` sits directly under ``upper``, as fragments of one stepped box do.
-
-    The centre rule of :func:`_stacked` is left out on purpose: a stepped
-    box's fragments are offset sideways by the step, which is exactly why
-    they were never joined. The verbatim word match below is the real gate;
-    geometry only confirms the two are neighbours.
-    """
     h = min(upper_rect[3] - upper_rect[1], lower_rect[3] - lower_rect[1])
     if h <= 0:
         return False
@@ -364,16 +306,6 @@ def _dup_stacked(upper_rect, lower_rect) -> bool:
 
 
 def drop_duplicated_leading_text(manifest: dict) -> list[int]:
-    """Strip a sentence a lower stacked fragment repeats from the fragment above it.
-
-    A stepped box split into two fragments is translated twice: the upper
-    fragment carries its own sentence, while the lower fragment's
-    translation re-reads the whole box and repeats it. The repeat is
-    verbatim, so only an exact word-prefix match trims, and only between
-    stacked neighbours; mirrors and owners alike are trimmed, since the
-    sync has already copied the owner's wording onto its mirror. Returns
-    the slices that changed.
-    """
     pages = manifest.get("pages") or []
     changed: list[int] = []
     for page_index, page in enumerate(pages):
@@ -411,7 +343,6 @@ def drop_duplicated_leading_text(manifest: dict) -> list[int]:
 
 
 def seam_mirror_ids(manifest: dict, page_index: int) -> set[str]:
-    """Objects of this slice that another slice owns and letters."""
     pages = manifest.get("pages") or []
     if not 0 <= page_index < len(pages):
         return set()
@@ -421,7 +352,6 @@ def seam_mirror_ids(manifest: dict, page_index: int) -> set[str]:
 
 
 def sync_seam_mirrors(manifest: dict) -> list[int]:
-    """Copy each owner's lettering and region onto its mirror; returns the slices that changed."""
     pages = manifest.get("pages") or []
     changed: list[int] = []
     for page_index, page in enumerate(pages):
@@ -481,14 +411,6 @@ OVERLAP_KEEP = 0.5
 
 
 def _letter_rect(obj: dict) -> tuple[int, int, int, int] | None:
-    """The object's lettering extent when known, else its region.
-
-    Detector regions are loose — two map labels' boxes can overlap by
-    more than half while their letters sit in different places (slice
-    91: ANHUI's box overlaps SHAANXI's by 0.65, but ANHUI's letters are
-    below SHAANXI's). Dropping on the region alone deletes a real label.
-    Letter bounds are set by set_letter_bounds before the sync runs.
-    """
     bounds = obj.get("letter_bounds")
     if isinstance(bounds, dict):
         try:
@@ -501,14 +423,12 @@ def _letter_rect(obj: dict) -> tuple[int, int, int, int] | None:
 
 
 def _fold_words(text: str) -> list[str]:
-    """Words of a translation, case- and punctuation-folded, for comparison."""
     folded = unicodedata.normalize("NFKC", str(text or "")).lower()
     folded = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in folded)
     return folded.split()
 
 
 def _lcs_len(a: list[str], b: list[str]) -> int:
-    """Length of the longest common word subsequence, in order."""
     previous = [0] * (len(b) + 1)
     for word in a:
         current = [0] * (len(b) + 1)
@@ -519,24 +439,6 @@ def _lcs_len(a: list[str], b: list[str]) -> int:
 
 
 def _translations_duplicate(a: str, b: str) -> bool:
-    """True when two translations are the same text read twice.
-
-    Overlapping lettering is usually one text detected twice — but two
-    bubbles can overlap on the page (a cloud tucked against an oval, a
-    lobe against its double bubble) while holding different words, and
-    dropping on geometry alone deletes the smaller bubble's text (ch42
-    p008 "HE..." cloud, p012 lobe 1 "ANYHOW,"). The smaller object is
-    only a duplicate when its words are the larger one's words *in the
-    same order*: an exact match, an ordered word-prefix, or most words
-    shared in sequence.
-
-    A word *set* cannot make that call on manhwa dialogue, typically
-    2-5 words: "Tôi không muốn đi" vs "Tôi không muốn về" share 3 of
-    5 words as a set but differ in the one word that matters. So the
-    bar rises as the text shortens — a 2-word line is cheap, two
-    bubbles can each say "Của tôi", so only a longer shared run proves
-    one text read twice.
-    """
     words_a, words_b = _fold_words(a), _fold_words(b)
     if not words_a or not words_b:
         return False
@@ -551,7 +453,6 @@ def _translations_duplicate(a: str, b: str) -> bool:
 
 
 def _union_rect(a: dict | None, b: dict | None) -> dict | None:
-    """Bounding-box union of two {x1,y1,x2,y2} dicts, or the one that exists."""
     if not isinstance(a, dict):
         return dict(b) if isinstance(b, dict) else None
     if not isinstance(b, dict):
@@ -564,10 +465,6 @@ def _union_rect(a: dict | None, b: dict | None) -> dict | None:
 
 
 def _regions_touch(a: dict | None, b: dict | None, gap_px: int = 8) -> bool:
-    """True when two region rects overlap or sit within a few pixels of each
-    other: the halves of one bubble the detector split. A dropped object
-    whose region sits apart is a different bubble that merely shares
-    lettering, and the keeper must not absorb its region."""
     if not (isinstance(a, dict) and isinstance(b, dict)):
         return False
     try:
@@ -581,18 +478,6 @@ def _regions_touch(a: dict | None, b: dict | None, gap_px: int = 8) -> bool:
 
 
 def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
-    """Of two translated objects on one slice that mostly overlap, keep the larger; returns what was dropped.
-
-    Only a duplicate is dropped: the smaller object keeps its translation
-    when it says something the larger one does not, however much their
-    lettering overlaps. And a dropped duplicate is not just deleted —
-    the detector often splits one bubble into two overlapping halves
-    (ch42 p010: the bubble's left and right halves), so the keeper
-    absorbs the dropped half's region and lettering, and the survivor
-    is fitted to the whole bubble instead of the half it happened to be.
-    A seam mirror is never dropped here, nor a keeper: its text is owned
-    by another slice, and the sync, not the drop, decides what it says.
-    """
     dropped = []
     for page_index, page in enumerate(manifest.get("pages") or []):
         objects = [obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)
@@ -638,11 +523,6 @@ STACK_LETTER_GAP = 0.75
 
 
 def _letters_continue(upper: dict, lower: dict) -> bool:
-    """One block's lettering flows on; a second bubble restarts after the band holding both outlines.
-
-    Box geometry alone cannot tell the two apart when the bubbles are the same width and
-    centred, so the letter extents decide where they are known.
-    """
     a, b = upper.get("letter_bounds"), lower.get("letter_bounds")
     if not (isinstance(a, dict) and isinstance(b, dict)):
         return True
@@ -655,7 +535,6 @@ def _letters_continue(upper: dict, lower: dict) -> bool:
 
 
 def _stacked(upper, lower) -> bool:
-    """True when ``lower`` continues the block ``upper`` is part of."""
     h = min(upper[3] - upper[1], lower[3] - lower[1])
     if h <= 0:
         return False
@@ -668,10 +547,6 @@ def _stacked(upper, lower) -> bool:
 
 
 def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
-    """Lines the detector split from one block become one object before translation, so no word is dropped.
-
-    Lines in the overlap with a neighbour join too: both slices then hold the same block and one of them owns it.
-    """
     pages = manifest.get("pages") or []
     joined = 0
     for page_index in page_indices:

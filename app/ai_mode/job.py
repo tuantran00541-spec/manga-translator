@@ -1,10 +1,3 @@
-"""A.I mode job: URL -> four A.I checkpoints (scan, clean, review, translate) -> a lettered chapter.
-
-Every stage reuses the same endpoint functions the editor calls, so locking,
-revision checks and manifest bookkeeping are identical to manual work. The
-chapter stays a normal chapter afterwards: it opens in the editor, where it
-can be fixed by hand and exported.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -63,16 +56,6 @@ MAX_REPORT_ITEMS = 50
 
 
 def decide_skips(scan_credits, scan_textless, storyless, chances, active_count):
-    """Which slices the scan stage skips, and which skips each judge vetoed.
-
-    Both judges must agree a slice holds no story text: the scan model reads
-    the whole slice and its no_text bar is strict, while the decider reads
-    small tiles and lumps watermarks and title logos in with credits. Either
-    judge seeing text keeps the slice, so one flipped verdict cannot drop it.
-    When the decider never runs (storyless is None, e.g. a provider that
-    cannot reach the decision model), the scan decides alone: the skips it
-    makes are reported as single-judge decisions, not two-judge ones.
-    """
     credits = sorted(scan_credits)
     textless = sorted(scan_textless)
     skip_kept, skip_unjudged, skip_vetoed = [], [], []
@@ -147,12 +130,10 @@ def _detail(exc: Exception) -> str:
 
 
 async def _ai_call(fn, *args):
-    """Run a blocking A.I call on the A.I thread pool."""
     return await asyncio.get_running_loop().run_in_executor(_AI_CALLS, functools.partial(fn, *args))
 
 
 async def _cancel_and_wait(task: asyncio.Task | None) -> None:
-    """Stop a background A.I task and wait for it, so no billed call outlives the job."""
     if task is None:
         return
     task.cancel()
@@ -163,9 +144,6 @@ async def _cancel_and_wait(task: asyncio.Task | None) -> None:
 
 
 def _object_has_text_evidence(obj: dict) -> bool:
-    """True when some stage read text in this object: OCR text, the source
-    the vision model read off the image, or a role/container the model
-    judged. A detector box alone is not evidence -- art gets boxed too."""
     if str(obj.get("ocr_text") or "").strip():
         return True
     if str(obj.get("source_read") or "").strip():
@@ -181,21 +159,16 @@ def _append(items: list, value) -> None:
 
 
 def _one_based(indices) -> list[int]:
-    """Report page numbers are 1-based (what a reader says); the pipeline
-    keeps 0-based indices internally, so the conversion happens only at the
-    report assignments. Historical reports stay 0-based."""
     return [int(index) + 1 for index in indices]
 
 
 def pipeline_fix(chapter_id: str, page_index: int, rects: list) -> None:
-    """Erase residue again in one re-inpaint of the slice."""
     from app.dependencies import pipeline
 
     pipeline.apply_review_fixes(chapter_id, page_index, repaint=list(rects))
 
 
 class AIModeRunner:
-    """Owns the stage logic. Kept separate from the manager so tests can stub stages."""
 
     def __init__(self, job: AIModeJob, provider, api_key: str):
         self.job = job
@@ -228,10 +201,6 @@ class AIModeRunner:
         self._slice_total: int | None = None
 
     def _append_page_capped(self, items: list, value: dict) -> None:
-        """Append a per-page report entry, capped per page instead of per
-        chapter: a long chapter's late pages must not lose their review
-        entries to the first fifty pages' worth. The lists live in the
-        report for the job's lifetime, so (list id, page) never goes stale."""
         page = int(value.get("page") or 0)
         key = (id(items), page)
         if self._report_page_counts.get(key, 0) >= MAX_REPORT_ITEMS:
@@ -450,7 +419,6 @@ class AIModeRunner:
         self._review_queue.put_nowait(None)
 
     def _art_screen(self):
-        """The art screen for this provider, counting the boxes it keeps as drawn."""
         from app.ai_mode.decider import screen_for
 
         screen = screen_for(self.provider, self.api_key)
@@ -470,7 +438,6 @@ class AIModeRunner:
         return counted
 
     async def _read_glossary(self, indices: list[int]) -> dict:
-        """Names, terms and forms of address for the whole chapter; empty when the read fails."""
         from app.ai_mode.glossary import merge_glossaries, read_glossary, read_glossary_text
         from app.translation.cost import language_name
 
@@ -513,7 +480,6 @@ class AIModeRunner:
         return glossary
 
     def _images(self, page_index: int, second_key: str, second_root) -> tuple:
-        """The raw slice and one derived image (clean or rendered) of a page."""
         page = self._manifest()["pages"][page_index]
         chapter_id = self.job.chapter_id
         original = read_image(validate_managed_path(page["original"], RAW_DIR / chapter_id))
@@ -521,7 +487,6 @@ class AIModeRunner:
         return original, other
 
     def _in_core(self, page_index: int, boxes) -> tuple:
-        """Boxes whose centre is in the part of the slice that is exported."""
         core = self._manifest()["pages"][page_index].get("stitch_core")
         if not isinstance(core, dict):
             return tuple(boxes)
@@ -532,18 +497,15 @@ class AIModeRunner:
         return tuple(box for box in boxes if top <= (box[1] + box[3]) / 2 < bottom)
 
     def _page_boxes(self, page_index: int) -> list[tuple[int, int, int, int]]:
-        """Pixel rectangles of the page's active text boxes."""
         boxes = self._manifest()["pages"][page_index].get("boxes") or []
         return [(int(b["x1"]), int(b["y1"]), int(b["x2"]), int(b["y2"])) for b in boxes
                 if isinstance(b, dict) and not b.get("removed") and all(k in b for k in ("x1", "y1", "x2", "y2"))]
 
     def _start_review(self, total: int) -> None:
-        """Start checkpoint 3 as a queue: each slice put on it is checked; None ends it."""
         self._review_queue = asyncio.Queue()
         self._review_task = asyncio.create_task(self._review_stream(total))
 
     async def _review_stream(self, total: int) -> None:
-        """Collect crops round the erased places of each slice as it is clean; None sends them on a few sheets."""
         from app.ai_mode import checkpoints
 
         crops: list = []
@@ -601,14 +563,12 @@ class AIModeRunner:
         await asyncio.gather(*(repaint(page_index, rects) for page_index, rects in sorted(by_page.items())))
 
     def _still_reading(self, page_index: int, rects: list) -> list:
-        """The repainted rectangles where the letter model still reads text on the clean slice."""
         from app.detector.ctd_mask import still_reads
 
         clean = self._images(page_index, "clean", PROCESSED_DIR)[1]
         return [rect for rect in rects if still_reads(clean, tuple(int(v) for v in rect))]
 
     async def _verify_repaint(self, page_index: int, rects: list) -> None:
-        """Read each repainted place again on the CPU; text still there gets one more pass, then goes to the reviewer."""
         left = await asyncio.to_thread(self._still_reading, page_index, rects)
         if left:
             self.report["repaint_retried"] += len(left)
@@ -618,7 +578,6 @@ class AIModeRunner:
             self._append_page_capped(self.report["residue_left"], {"page": page_index + 1, "rect": [int(v) for v in rect]})
 
     def _free_logos_with_text(self, page_index: int, residue) -> None:
-        """A scan logo region the review finds leftover text on was a watermark; it stops protecting that text."""
         freed = [logo for logo in self._scan_logos[page_index] if _covered(logo, list(residue))]
         if not freed:
             return
@@ -634,7 +593,6 @@ class AIModeRunner:
         self.report["logos_freed"] = self.report.get("logos_freed", 0) + len(freed)
 
     async def review(self) -> None:
-        """Checkpoint 3: the model checks crops round every erased place; residue it finds is erased again."""
         indices = self._active_pages()
         if self._review_task is None:
             self._start_review(len(indices))
@@ -743,7 +701,6 @@ class AIModeRunner:
         self._progress(len(indices), len(indices), f"Dịch {self.report['translated']} vùng")
 
     async def polish(self) -> None:
-        """Advanced: the judge grades each translated line; weak lines are rewritten and kept only when graded better."""
         from app.ai_mode import polish
 
         stats = self.report["polish"]
@@ -830,15 +787,6 @@ class AIModeRunner:
         self._progress(len(lines), len(lines), f"Chấm {stats['judged']} câu, sửa {stats['rewritten']}")
 
     def _save_polished(self, lines) -> tuple[set[str], int]:
-        """Commit judge-approved polish rewrites, gated like any other commit.
-
-        A rewrite is a fresh model commit, so it runs through the same
-        script gate and collapse as the translate commit before it is
-        written: a rewrite the gate trips is dropped and the original
-        translation stays. The gate runs here, before the seam sync after
-        polish, so a dropped rewrite is never copied onto a mirror slice.
-        Returns (committed ids, gate_dropped).
-        """
         from app.dependencies import pipeline
         from app.manifest_utils import invalidate_page_render
         from app.translation.vision import VisionTranslationResult, _drop_foreign_script, collapse_repeated_lines
@@ -883,7 +831,6 @@ class AIModeRunner:
         return (committed, dropped)
 
     async def _add_unboxed(self, page_index: int, boxes: list, source_lang: str) -> None:
-        """Lines the translator saw outside every box are boxed, erased and translated like the rest."""
         from app.ai_mode.checkpoints import MARGIN_PX, MAX_AREA_RATIO, MIN_SIDE_PX
         from app.dependencies import pipeline
 
@@ -916,14 +863,6 @@ class AIModeRunner:
             await self._retry_untranslated(page_index, source_lang, now - before)
 
     async def _create_seam_mirrors(self) -> list[tuple[int, str]]:
-        """Mirror overlap-context fragments onto their slice, erased and ready to letter.
-
-        Runs after clean (boxes exist) and before translate: each new mirror
-        anchors a fragment the owning slice translates, and the English
-        under it is re-inpainted now, so the render later has a clean
-        surface. The translate step skips mirrors as ``lettered_elsewhere``
-        and the seam sync letters them from their owners.
-        """
         from app.ai_mode.seams import create_seam_mirrors
         from app.manifest_utils import save_manifest_raw
 
@@ -956,7 +895,6 @@ class AIModeRunner:
         return created
 
     async def _sync_seams(self) -> list[int]:
-        """Letter every text crossing a slice cut exactly as its owning slice does."""
         from app.ai_mode.seams import drop_duplicated_leading_text, drop_overlapping_letters, sync_seam_mirrors
         from app.manifest_utils import invalidate_page_render, save_manifest_raw
 
@@ -1003,29 +941,11 @@ class AIModeRunner:
         return run
 
     async def _keep_art(self, page_index: int, run: dict) -> None:
-        """Sound effects the model left as art get their original pixels back.
-
-        A blank is art only when something besides the model's role says
-        so: the source the model or the detector read is CJK lettering
-        drawn into the art, or the box is lettered on the art (container
-        "free"). A role alone is not corroboration — a dialogue line the
-        model misroled as sfx would otherwise be restored as source art
-        and no later stage could ever see it again. An uncorroborated
-        blank is reclassified as a story blank, so it is retried, and
-        only the retry's unresolved path restores it (with a review entry)
-        if it never translates. Blanks already decided as art by the
-        commit — the art_regions, which carry the CJK check or a Fix-I
-        duplicate — are restored as before. Every restore gets one review
-        entry, so restored text is at least visible in the report.
-        A region already in preserve_regions is skipped, so repeated calls
-        — the initial translate and every retry batch — restore each blank once.
-        """
         from app.dependencies import pipeline
         from app.region_policy import text_object_in_preserve_region
         from app.translation.vision import drawn_in_art
 
         def corroborated(obj: dict) -> bool:
-            """True when the blank looks like drawn art, not a misroled story line."""
             source = str(obj.get("source_read") or obj.get("ocr_text") or "")
             if drawn_in_art(source):
                 return True
@@ -1143,7 +1063,6 @@ class AIModeRunner:
         ]
 
     async def _retry_untranslated(self, page_index: int, source_lang: str, only: set[str] | None) -> None:
-        """Retry untranslated objects in small batches; what never translates keeps its original pixels."""
         from app.dependencies import pipeline
 
         await asyncio.to_thread(self._ensure_objects, page_index)
@@ -1184,7 +1103,6 @@ class AIModeRunner:
             })
 
     def _settle_blanks(self) -> int:
-        """Split blanks by evidence, not guesswork: attempted blanks are reviewed non-story text, never-attempted ones block export."""
         from app.editorial_gate import UNTRANSLATED_DISPOSITION
         from app.region_policy import text_object_in_preserve_region
 
@@ -1240,11 +1158,6 @@ class AIModeRunner:
         self._progress(len(indices), len(indices))
 
     async def _render_one(self, page_index: int) -> None:
-        """Render a slice; an object that cannot be lettered gets its original pixels back.
-
-        Export needs every active slice rendered, so one translation too long for
-        its region must not cost the whole chapter.
-        """
         from app.dependencies import pipeline
         from app.routers.export import _render_request_from_page
         from app.routers.render_commit import render_page
@@ -1311,7 +1224,6 @@ class AIModeRunner:
             })
 
     async def finish(self) -> None:
-        """Report what a reviewer would still see and leave the chapter open in the editor."""
         from app.routers.export import _preflight_copy
 
         chapter_id = self.job.chapter_id

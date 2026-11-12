@@ -11,9 +11,6 @@ def test_row_spread_matches_numpy_on_a_tall_page():
 
 
 def test_an_undecodable_image_yields_no_slices(tmp_path):
-    """N13: a broken download contributes no slices, like the zip path's
-    broken-image skip — returning the path itself would hand the
-    pipeline an undecodable page to translate and render."""
     from app.downloader.slicer import slice_image
 
     bad = tmp_path / "bad.png"

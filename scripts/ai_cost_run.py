@@ -37,7 +37,6 @@ def _wait(url: str, proc: subprocess.Popen, timeout: float = 180) -> None:
 
 
 def _pages(archive_path: Path, out: Path, max_width: int = 800) -> int:
-    """Save every rendered page, so readability can be checked on the whole chapter."""
     pages = out / "pages"
     pages.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive_path) as archive:
@@ -56,7 +55,6 @@ def _pages(archive_path: Path, out: Path, max_width: int = 800) -> int:
 
 
 def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
-    """Save each active slice as original | final side by side for a close review."""
     from app.routers.image import _rendered_file_path
 
     folder = out / "pairs"
@@ -84,7 +82,6 @@ def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
 
 
 def _clean_timing(pages: list) -> dict:
-    """Summed cleanup time per step over the chapter, to see which one the stage waits on."""
     totals: dict[str, float] = {}
     for page in pages:
         metrics = page.get("processing_metrics") or {}
@@ -99,7 +96,6 @@ def _clean_timing(pages: list) -> dict:
 
 
 def _objects(pages: list) -> list[dict]:
-    """Every slice's boxes and text objects with coordinates, to trace a defect back to where it began."""
     keys = ("x1", "y1", "x2", "y2")
     return [{
         "slice": index + 1, "skipped": bool(page.get("skipped")), "stitch_core": page.get("stitch_core"),
@@ -117,18 +113,6 @@ def _objects(pages: list) -> list[dict]:
 
 
 def _fit_metrics(obj: dict, page_width: int, bands: dict | None = None) -> dict:
-    """Reproduce how the renderer sizes one object: the font size it draws at, the lines, and whether it fits.
-
-    ``bands`` is accepted and ignored: the renderer no longer sizes
-    from the chapter band (the band is dead after the render rewrite),
-    so a reproduction that band-clamps the cap describes a render
-    that never happened.
-
-    The ``font_px`` below is a reproduction, not the drawn size: it is a
-    rectangle fit on a blank image, with no image, no bubble curve, no
-    container and no letter box. Quote it as a fit estimate, never as the
-    size the renderer drew.
-    """
     from PIL import Image, ImageDraw
 
     from app.parameters import RENDER_AUTO_STROKE_WIDTH, RENDER_DEFAULT_PADDING, RENDER_PADDING_RATIO_MAX
@@ -182,7 +166,6 @@ def _slice_width(chapter_id: str, index: int) -> int:
 
 
 def _transport(path: Path) -> dict:
-    """Per stage: requests, latency, payload size, tokens and retries from the gateway trace."""
     if not path.is_file():
         return {}
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -212,7 +195,6 @@ def _transport(path: Path) -> dict:
 
 
 def _scorecard(pages: list, report: dict, out: Path) -> dict:
-    """Score the chapter and save each place the cleanup left text or a ghost, original beside clean."""
     from scripts.scorecard import score_chapter
     from app.config import KIUYHA_TEXT_MODEL
     from app.detector.kiuyha_detector import KiuyhaTextDetector
@@ -246,7 +228,6 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _start_payload(args) -> dict:
-    """What POST /api/ai_mode/start gets: the re-translate rides along, so the vision model's wording is re-read by the text model."""
     payload: dict = {"url": args.url, "provider": "manga-cloud", "polish": args.polish}
     if args.translate_provider and args.translate_model:
         payload["translate_provider"] = args.translate_provider

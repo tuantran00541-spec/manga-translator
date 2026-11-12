@@ -1,4 +1,3 @@
-"""A command may not change a repository's hooks or config: they run later outside the sandbox, so changes are undone."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,7 +25,6 @@ def snapshot(root: Path) -> dict[str, bytes]:
 
 
 def restore(root: Path, before: dict[str, bytes]) -> list[str]:
-    """Put back what a command changed; returns what it touched."""
     if not (root / ".git").is_dir():
         return []
     after, touched = _watched(root), []

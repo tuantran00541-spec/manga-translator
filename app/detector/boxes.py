@@ -1,4 +1,3 @@
-"""Detected text boxes and the NMS that merges overlapping ones."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
@@ -13,11 +12,6 @@ SEPARATE_LOBE_MAX_SHARED = 0.10
 
 
 def _mask_spans(mask: dict) -> list[tuple[int, int, list[tuple[int, int]]]]:
-    """A stored mask as (y1, y2, [(x1, x2), ...]) spans in slice coords.
-
-    Rows are bbox-local half-open x-intervals, 24 bands over the bbox
-    height with integer band edges (see app/detector/bubble_mask).
-    """
     x1, y1, _x2, y2 = (int(v) for v in mask["bbox"])
     height = max(1, y2 - y1)
     spans = []
@@ -36,7 +30,6 @@ def _spans_area(spans: list[tuple[int, int, list[tuple[int, int]]]]) -> int:
 
 
 def _intervals_overlap(xs: list[tuple[int, int]], ys: list[tuple[int, int]]) -> int:
-    """Shared width of two sorted, non-overlapping interval lists."""
     shared = 0
     j = 0
     for a, b in xs:
@@ -63,13 +56,6 @@ def _spans_overlap_area(
 
 
 def bubble_masks_are_separate_lobes(a: dict | None, b: dict | None) -> bool:
-    """True when two masks are different lobes of one waist, not one bubble.
-
-    Two pieces of a waist split hold disjoint interiors; two boxes in the
-    same bubble hold the same interior twice. Only a closed outline counts:
-    a rect mask is the box itself, so two fragments of one free-text block
-    would read as disjoint and must never veto.
-    """
     if not (isinstance(a, dict) and isinstance(b, dict)):
         return False
     if a.get("kind") != "bubble" or b.get("kind") != "bubble":
@@ -130,7 +116,6 @@ def box_iou(a: BubbleBox, b: BubbleBox) -> float:
 
 
 def _merge_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
-    """One box whose mask is the union of every overlapping box's mask."""
     base = max(boxes, key=lambda box: float(box.confidence))
     evidence = [box for box in boxes if box.verified_mask]
     if not evidence:
@@ -216,7 +201,6 @@ def _nms_group(members: list[BubbleBox], iou_threshold: float) -> list[BubbleBox
 
 
 def apply_final_nms(boxes: list[BubbleBox], iou_threshold: float = DETECTOR_FINAL_NMS_IOU) -> list[BubbleBox]:
-    """Drop duplicate boxes per model and type, keeping the masks of the ones folded in."""
     groups: dict[tuple[str, str], list[BubbleBox]] = {}
     for b in boxes:
         groups.setdefault((b.source_model, b.semantic_type), []).append(b)

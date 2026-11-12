@@ -1,4 +1,3 @@
-"""The Windows low-integrity sandbox and the Docker engine, each tested on a machine that has it."""
 from __future__ import annotations
 
 from pathlib import Path

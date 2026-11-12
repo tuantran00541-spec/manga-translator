@@ -1,13 +1,3 @@
-"""Family F: the text re-translate must actually run on the Manga Cloud path.
-
-Run 42492185657 (Luna re-run 3) shows the break: every one of its 98
-``translate`` gateway rows carries one image, and a re-translate call carries
-none, so the re-translate never ran and Luna's vision wording stood everywhere.
-Three gaps chained to cause it: the cost-run script never sent
-translate_provider/translate_model, the cloud branch of /api/ai_mode/start
-dropped them even when sent, and the gateway routed the re-translate under the
-same "translate" stage as the vision read, so no second model could answer it.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -87,7 +77,6 @@ def _slice_images(tmp_path):
 
 
 def _vision_answer(monkeypatch):
-    """The vision read answers with its own wording, role and container."""
 
     def fake_openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
         result = VisionTranslationResult({"1": "vision wording"}, self.model, {}, None)
@@ -124,7 +113,6 @@ def test_translate_batch_retranslates_each_batch(tmp_path, monkeypatch):
 
 
 def test_translate_batch_adds_the_retranslate_cost_and_usage(tmp_path, monkeypatch):
-    """The text re-translate is a second billed pass; its cost and usage must reach the budget."""
     original, clean = _slice_images(tmp_path)
 
     def fake_openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
@@ -165,8 +153,6 @@ def test_translate_batch_without_a_text_model_keeps_vision_wording(tmp_path, mon
 
 
 def test_translate_batch_retranslates_the_vision_read_source_without_ocr_text(tmp_path, monkeypatch):
-    """Run 42505427459: A.I mode candidates carry no OCR text, so the pairs
-    must come from the ``source`` the vision reply echoes, not from the item."""
     original, clean = _slice_images(tmp_path)
     _vision_answer(monkeypatch)
     retold = {}
@@ -192,8 +178,6 @@ def test_translate_batch_retranslates_the_vision_read_source_without_ocr_text(tm
 
 
 def test_translate_batch_without_a_vision_source_or_ocr_text_cannot_retranslate(tmp_path, monkeypatch):
-    """No source anywhere means nothing to re-translate: no request leaves,
-    but only when the vision reply really echoed nothing."""
     original, clean = _slice_images(tmp_path)
 
     def fake_openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
@@ -220,7 +204,6 @@ def test_translate_batch_without_a_vision_source_or_ocr_text_cannot_retranslate(
 
 
 def test_retry_passes_the_retranslate_into_the_request(monkeypatch):
-    """A retry re-translates too: it goes through the same request as the first pass."""
     from types import SimpleNamespace
 
     import app.routers.translation as translation_router
@@ -306,7 +289,6 @@ def test_ai_cost_run_posts_the_retranslate_by_default():
 
 
 def test_translate_batch_keeps_vision_wording_when_retranslate_fails(tmp_path, monkeypatch):
-    """P1-4: a re-translate crash must not lose the slice; the vision wording stands."""
     original, clean = _slice_images(tmp_path)
     _vision_answer(monkeypatch)
 
@@ -326,8 +308,6 @@ translate_api_key="k"
 
 
 def test_translate_batch_backfills_a_missing_source_so_a_misread_drops(tmp_path, monkeypatch):
-    """P1-2: a salvaged entry has no source, so the gate cannot see the
-    Hangul misread; the candidate OCR text is the source to check."""
     original, clean = _slice_images(tmp_path)
 
     def fake_openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
@@ -345,7 +325,6 @@ def test_translate_batch_backfills_a_missing_source_so_a_misread_drops(tmp_path,
 
 
 def test_translate_batch_collapses_doubled_lines_before_memory(tmp_path, monkeypatch):
-    """P2-3: a doubled line must not teach the next slice to double it too."""
     original, clean = _slice_images(tmp_path)
 
     def fake_openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
@@ -365,7 +344,6 @@ def test_translate_batch_collapses_doubled_lines_before_memory(tmp_path, monkeyp
 
 
 def test_retranslate_text_accepts_a_dict_shaped_translation_list(monkeypatch):
-    """P2-2: the re-translate answers with the same shapes the vision read does."""
     def fake_request(provider, model, api_key, prompt, images, **kwargs):
         return VisionJSONResult({"translations": {"a": "Xin chào"}}, {"prompt_tokens": 5}, 0.01)
 
@@ -376,7 +354,6 @@ def test_retranslate_text_accepts_a_dict_shaped_translation_list(monkeypatch):
 
 
 def test_retranslate_text_with_no_translations_keeps_the_vision_wording(monkeypatch):
-    """P2-2: an empty re-translate is a warning, not a crash; the caller keeps the vision wording."""
     def fake_request(provider, model, api_key, prompt, images, **kwargs):
         return VisionJSONResult({"translations": []}, {}, 0.01)
 

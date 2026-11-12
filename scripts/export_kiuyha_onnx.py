@@ -1,4 +1,3 @@
-"""Export Kiuyha/Manga-Bubble-YOLO to ONNX and check its boxes against the .pt model."""
 from __future__ import annotations
 
 import argparse

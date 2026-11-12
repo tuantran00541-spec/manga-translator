@@ -1,4 +1,3 @@
-"""Web search for the agent: TinyFish, then Tavily when their keys are set in the environment, then DuckDuckGo's plain HTML page; the next one answers when one fails or finds nothing."""
 from __future__ import annotations
 
 import os
@@ -32,7 +31,6 @@ MINUTES = {"day": 1440, "week": 10080, "month": 43200, "year": 525600}
 
 
 def _tinyfish(query: str, count: int, key: str, recency: str = "") -> list[tuple[str, str, str]]:
-    """TinyFish takes the site: words as domain lists and a recency in minutes, so the engine itself does the filtering."""
     wanted = constraints(query)
     params = {"query": re.sub(r"(?<!\S)-?site:\S+", "", query).strip() or query, "num_results": count}
     if wanted["sites"]:
@@ -84,7 +82,6 @@ def _duckduckgo(query: str, count: int, recency: str = "") -> list[tuple[str, st
 
 
 def constraints(query: str) -> dict:
-    """The site:, -site: and filetype: words of a query; a search engine may ignore them, so the results are checked against them too (from omp)."""
     found = {"sites": [], "not_sites": [], "types": []}
     for sign, word, value in re.findall(r"(?<!\S)(-?)(site|filetype|ext):([^\s]+)", query, re.I):
         value = value.lower().strip("\"'")
@@ -94,7 +91,6 @@ def constraints(query: str) -> dict:
 
 
 def _on_site(url: str, site: str) -> bool:
-    """The host (or a subdomain of it) matches, and the path starts with the site's own path when it has one."""
     host, _, path = site.partition("/")
     parts = urlparse(url)
     name = parts.netloc.lower().removeprefix("www.")
@@ -102,7 +98,6 @@ def _on_site(url: str, site: str) -> bool:
 
 
 def filter_results(results: list[tuple[str, str, str]], wanted: dict) -> tuple[list[tuple[str, str, str]], list[str]]:
-    """Keep what matches each constraint; a constraint that would leave nothing is dropped and named, not applied."""
     dropped = []
     checks = (("sites", "site:", lambda url, values: any(_on_site(url, v) for v in values)),
               ("not_sites", "-site:", lambda url, values: not any(_on_site(url, v) for v in values)),
@@ -123,7 +118,7 @@ LABELS = {"tinyfish": "TinyFish", "tavily": "Tavily", "duckduckgo": "DuckDuckGo"
 
 
 class NotConfigured(SearchError):
-    """A provider missing its key is skipped without counting as a failure."""
+    pass
 
 
 def _default_providers() -> list[tuple[str, Callable]]:
@@ -138,7 +133,6 @@ def _default_providers() -> list[tuple[str, Callable]]:
 
 
 def search(query: str, count: int = 8, recency: str = "", providers: list[tuple[str, Callable]] | None = None) -> str:
-    """Results from the first provider that answers, each provider called as fn(query, count, recency)."""
     query = " ".join(str(query).split())[:300]
     if not query:
         raise SearchError("query is empty")

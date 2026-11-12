@@ -1,4 +1,3 @@
-"""Tools the agent works with: files inside one workspace, sandboxed commands and web pages."""
 from __future__ import annotations
 
 import ast
@@ -96,7 +95,7 @@ SPECS = [
 
 
 class ToolError(Exception):
-    """A tool call the agent made wrongly; its message goes back to the model."""
+    pass
 
 
 LOOSE = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-", "\u00a0": " "})
@@ -108,7 +107,6 @@ def _loose(line: str, level: int) -> str:
 
 
 def _replace(text: str, old: str, new: str, replace_all: bool, where: str = "") -> tuple[str, int]:
-    """One replacement: exact first, then whole lines compared loosely (trailing spaces, quotes, then indentation), as Codex and pi do."""
     count = text.count(old) if old else 0
     if count == 1 or (count > 1 and replace_all):
         return text.replace(old, new), count
@@ -132,7 +130,6 @@ def _replace(text: str, old: str, new: str, replace_all: bool, where: str = "") 
 
 
 def _closest(lines: list[str], want: list[str]) -> str:
-    """Where the file has text most like what the model was looking for, so it can copy the real lines."""
     if not want or len(lines) > 20_000:
         return ""
     size, target, best = len(want), "\n".join(line.strip() for line in want), (0.0, 0)
@@ -192,7 +189,6 @@ def _path_glob(rel: str, pattern: str) -> bool:
 
 
 class Workspace:
-    """A folder the agent may read and, as its sandbox policy allows, change and run commands in."""
 
     def __init__(self, root: str | Path, policy: sandbox.Policy | None = None, read_roots: list[Path] | None = None):
         root = Path(root).expanduser().resolve()
@@ -222,7 +218,6 @@ class Workspace:
         return target
 
     def missing(self, path: str, what: str = "file") -> ToolError:
-        """A not-found error that names the closest real paths, so a wrong guess costs one call, not a search."""
         want = str(path or "").replace("\\", "/").strip("/").lower()
         name = want.rsplit("/", 1)[-1]
         found = []
@@ -273,7 +268,6 @@ class Workspace:
 
     @staticmethod
     def _coerce(name: str, args: dict) -> dict:
-        """Models often send an array, number or flag as a JSON string; read it as the type the tool declares."""
         spec = next((s for s in SPECS if s["name"] == name), None)
         props = (spec or {}).get("parameters", {}).get("properties", {})
         fixed = dict(args)
@@ -290,7 +284,6 @@ class Workspace:
         return fixed
 
     def targets(self, name: str, args: dict) -> list[Path]:
-        """The files an edit tool call is about to change."""
         try:
             if name in ("write_file", "edit_file", "web_download", "delete_file"):
                 return [self.resolve(args.get("path"), write=True)]
@@ -311,7 +304,6 @@ class Workspace:
             self.seen.pop(path, None)
 
     def _fresh(self, target: Path, shown: str, overwrite: bool = False) -> None:
-        """Refuse to change a file that was never read (when overwriting) or that changed after the agent last saw it."""
         if not target.is_file():
             return
         if target not in self.seen:
@@ -322,7 +314,6 @@ class Workspace:
             raise ToolError(f"{shown} changed since you last read it; read it again before changing it")
 
     def diagnose(self, paths: list[Path]) -> str:
-        """Syntax errors in changed Python, JSON, TOML and YAML files, so the model sees them at once."""
         rows = []
         for path in paths:
             check = CHECKERS.get(path.suffix)
@@ -407,7 +398,6 @@ class Workspace:
         return "\n".join(hits) or "No definitions found"
 
     def _outline(self, file: Path, flat: bool = False) -> list[str]:
-        """Definitions in a file as 'line kind name'; indented by nesting unless flat."""
         try:
             data = file.read_bytes()
         except OSError:
@@ -546,7 +536,6 @@ class Workspace:
         return rx, replacement
 
     def _replace_plan(self, pattern: str, replacement: str, path: str, glob: str | None, regex: bool, ignore_case: bool):
-        """Each text file that would change, with its new text and how many places changed."""
         rx, repl = self._replacer(pattern, replacement, regex, ignore_case)
         plan = []
         for file in self._files(self.resolve(path, write=True), glob):

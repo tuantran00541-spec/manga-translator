@@ -1,4 +1,3 @@
-"""Per-turn file snapshots, named marks, pinned files and abandoned attempts, so edits can be reviewed and undone."""
 from __future__ import annotations
 
 import hashlib
@@ -33,7 +32,6 @@ class Checkpoints:
             self._keep(lambda m: m["turn"] >= self.first)
 
     def save(self, path: Path) -> None:
-        """Remember a file as it was before this turn first changed it."""
         if not self.turns or str(path) in self.turns[-1]:
             return
         try:
@@ -46,16 +44,13 @@ class Checkpoints:
             pass
 
     def remember(self, path: Path, data: bytes | None) -> None:
-        """Record a file's contents from before a change seen after the fact, unless this turn already has it."""
         if self.turns and str(path) not in self.turns[-1]:
             self.turns[-1][str(path)] = data
 
     def current(self) -> dict[str, bytes | None]:
-        """Each file the edit tools changed in this request, as it was before the first change (None: it did not exist)."""
         return dict(self.turns[-1]) if self.turns else {}
 
     def undo(self) -> list[str]:
-        """Put the last turn's files back; returns what was restored or removed."""
         while self.turns and not self.turns[-1]:
             self.turns.pop()
         if not self.turns:
@@ -68,16 +63,13 @@ class Checkpoints:
         return done
 
     def note_ran(self, step: str) -> None:
-        """Log a step a restore cannot undo, such as a command or a call to an outside server."""
         self.ran = (self.ran + [step])[-MAX_RAN:]
         self.ran_total += 1
 
     def ran_since(self, name: str) -> list[str]:
-        """The logged steps since a mark, oldest first."""
         return self.ran[max(0, len(self.ran) - (self.ran_total - self.marks[name]["ran"])):]
 
     def mark(self, name: str, note: str = "", auto: bool = False) -> int:
-        """Name the state of every file changed so far in this request; returns how many files it holds."""
         if not self.turns:
             self.begin()
         files = {}
@@ -94,7 +86,6 @@ class Checkpoints:
         return len(files)
 
     def at(self, name: str) -> dict[str, bytes | None]:
-        """Each file changed since the mark, as it was at the mark (None: it did not exist)."""
         mark = self.marks[name]
         state: dict[str, bytes | None] = {}
         for turn in self.turns[mark["turn"] - self.first:]:
@@ -105,7 +96,6 @@ class Checkpoints:
         return state
 
     def restore(self, state: dict[str, bytes | None], only: str = "") -> list[str]:
-        """Write files back to the given contents, keeping this turn's undo point first; returns what changed."""
         done = []
         for name, data in state.items():
             if only and name != only:
@@ -119,7 +109,6 @@ class Checkpoints:
         return done
 
     def drop(self, name: str, why: str) -> None:
-        """Keep why an attempt was abandoned, so the next try does not repeat it."""
         self.dropped = (self.dropped + [{"mark": name, "why": why}])[-MAX_DROPPED:]
 
     def _blob(self, data: bytes) -> str:
@@ -128,7 +117,6 @@ class Checkpoints:
         return key
 
     def _keep(self, alive) -> None:
-        """Drop the marks that no longer apply and every stored content no mark still holds."""
         self.marks = {n: m for n, m in self.marks.items() if alive(m)}
         held = {h for m in self.marks.values() for h in m["files"].values() if h}
         self.blobs = {h: d for h, d in self.blobs.items() if h in held}

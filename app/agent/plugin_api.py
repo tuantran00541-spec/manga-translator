@@ -1,4 +1,3 @@
-"""The fixed API a register(api) plugin gets, and the ctx its handlers get, instead of the raw session."""
 from __future__ import annotations
 
 import json
@@ -14,7 +13,6 @@ VERSION = 1
 
 
 class State:
-    """A plugin's own JSON store, kept across sessions."""
 
     def __init__(self, path: Path):
         self.path = path
@@ -41,7 +39,6 @@ class State:
 
 
 class Context:
-    """What a plugin handler sees of a session: the workspace, gated actions and its events; no key, mode or registry."""
 
     def __init__(self, session, plugin: str):
         self._session = session
@@ -64,11 +61,9 @@ class Context:
         return json.loads(json.dumps(self._session.history, default=str))
 
     def read(self, path: str) -> str:
-        """Read a file the sandbox lets the agent read."""
         return self._session.workspace.resolve(str(path)).read_text(encoding="utf-8", errors="replace")
 
     def call(self, tool: str, args: dict) -> tuple[str, bool]:
-        """Call any tool as the model would: the same approval, hooks and sandbox apply."""
         return self._session._run_call({"id": f"plugin-{self.plugin}-{uuid.uuid4().hex[:8]}", "name": tool, "args": dict(args)})
 
     def run(self, command: str) -> tuple[str, bool]:
@@ -100,7 +95,6 @@ class Context:
 
 
 class API:
-    """What register(api) receives: the slots one plugin fills, each handler called with a ctx."""
 
     version = VERSION
 
@@ -117,27 +111,21 @@ class API:
         return lambda session, *args: fn(Context(session, name), *args)
 
     def tool(self, spec: dict, handler: Callable, kind: str = "exec", always_ask: bool = False) -> None:
-        """handler(ctx, args) returns the text the model reads; kind is read, edit, exec or net."""
         self._reg.tool(spec, self._wrap(handler), kind, always_ask=always_ask)
 
     def command(self, name: str, description: str, handler: Callable) -> None:
-        """handler(ctx, args) for /name returns a message."""
         self._reg.command(name, description, self._wrap(handler))
 
     def on(self, event: str, fn: Callable) -> None:
-        """pre_tool(ctx, call) returns a reason to block; post_tool(ctx, call, output) returns text to append; the rest only observe."""
         self._reg.hook(event, self._wrap(fn))
 
     def prompt(self, fn: Callable) -> None:
-        """fn(ctx) returns text added to the system prompt."""
         self._reg.prompt(self._wrap(fn))
 
     def loop(self, name: str, fn: Callable) -> None:
-        """fn(ctx, max_steps) replaces the step loop when profile.json sets "loop" to this name."""
         self._reg.loop(name, self._wrap(fn))
 
     def provider(self, name: str, adapter: Callable) -> None:
-        """adapter(ctx, request) returns {"text", "calls", "usage"} for a model that does not speak OpenAI chat."""
         self._reg.provider(name, self._wrap(adapter))
 
     def log(self, message: str) -> None:

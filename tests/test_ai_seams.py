@@ -48,11 +48,6 @@ def test_a_bubble_only_one_slice_has_is_translated_there():
 
 
 def test_a_duplicate_far_from_the_keeper_keeps_its_own_region():
-    """N3: the keeper absorbs a dropped duplicate's region only when the
-    two regions touch. The dropped object's lettering overlaps the
-    keeper's (that is why it is dropped), but its region sits far away —
-    a stale box, not the keeper's bubble — so the keeper must not grow
-    to cover it."""
     from app.ai_mode.seams import drop_overlapping_letters
 
     keeper = _obj("keeper", 100, 300, "Có khi cậu phải giết chúng đấy, nhóc.")
@@ -67,8 +62,6 @@ def test_a_duplicate_far_from_the_keeper_keeps_its_own_region():
 
 
 def test_a_seam_owner_is_never_dropped_as_a_duplicate():
-    """N16: a seam mirror is a second lettering of the same text by
-    design; dropping it as a duplicate would erase the mirror copy."""
     from app.ai_mode.seams import drop_overlapping_letters
 
     manifest = {"pages": [{"text_objects": [_obj("owner", 100, 300, "Chào bạn",
@@ -78,8 +71,6 @@ def test_a_seam_owner_is_never_dropped_as_a_duplicate():
 
 
 def test_sync_seam_mirrors_does_not_copy_an_untranslated_owner():
-    """P2-6: a mirror may only carry a translation the gate would keep;
-    an English owner stays untranslated on both slices."""
     manifest = _chapter()
     manifest["pages"][1]["text_objects"][0]["translation"] = "SENIOR BROTHER!"
     assert sync_seam_mirrors(manifest) == []
@@ -87,8 +78,6 @@ def test_sync_seam_mirrors_does_not_copy_an_untranslated_owner():
 
 
 def test_sync_seam_mirrors_copies_the_gate_filtered_owner_text():
-    """P2-6: a mixed owner copies its Vietnamese line only, not the
-    English line the gate drops."""
     manifest = _chapter()
     manifest["pages"][1]["text_objects"][0]["translation"] = "Đi thôi\nSENIOR BROTHER!"
     assert sync_seam_mirrors(manifest) == [0]
@@ -107,9 +96,6 @@ def test_of_two_letterings_on_the_same_text_only_the_larger_stays():
 
 
 def test_overlapping_lettering_with_different_words_both_stay():
-    """Rerun-4 ch42 p012: lobe 1's "ANYHOW," lettering sits 91% inside
-    the double bubble's lettering, but it is different words, not the
-    same text twice — dropping on geometry alone emptied lobe 1."""
     from app.ai_mode.seams import drop_overlapping_letters
 
     big = {"id": "bubble", "region": {"x1": 196, "y1": 366, "x2": 719, "y2": 648},
@@ -126,9 +112,6 @@ def test_overlapping_lettering_with_different_words_both_stay():
 
 
 def test_overlapping_cloud_against_its_oval_both_stay():
-    """Rerun-4 ch42 p008: the "HE..." cloud tucks against the big oval,
-    so its lettering shares 0.59 with the oval's — different words, so
-    both stay."""
     from app.ai_mode.seams import drop_overlapping_letters
 
     big = {"id": "oval", "region": {"x1": 134, "y1": 1346, "x2": 644, "y2": 1677},
@@ -144,8 +127,6 @@ def test_overlapping_cloud_against_its_oval_both_stay():
 
 
 def test_a_reworded_duplicate_still_drops():
-    """Same text read twice need not come back word-identical; most
-    words shared is still a duplicate."""
     from app.ai_mode.seams import drop_overlapping_letters
 
     manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, "Chuyện đó có gì không ổn?"),
@@ -156,10 +137,6 @@ def test_a_reworded_duplicate_still_drops():
 
 
 def test_a_dropped_duplicate_lends_its_geometry_to_the_keeper():
-    """Rerun-4 ch42 p010: the detector split one bubble into left and
-    right halves; dropping the twin must not shrink the survivor to its
-    half — the keeper's region and lettering grow to the union, so the
-    text is fitted to the whole bubble."""
     from app.ai_mode.seams import drop_overlapping_letters
 
     left = {"id": "left", "region": {"x1": 78, "y1": 36, "x2": 395, "y2": 352},
@@ -464,11 +441,6 @@ def test_a_found_box_grown_over_most_of_the_slice_keeps_its_own_rectangle(monkey
 
 
 def _luna_21_22():
-    """Former Supreme 1, slices 21-22: the narration box spans the cut.
-
-    Slice 21 (page 20) holds only the bottom sliver as an overlap-context
-    box; slice 22 (page 21) holds the whole box and translates it.
-    """
     top = _slice(0, 0, 2103, [])
     top["boxes"] = [{"id": "box_89", "x1": 89, "y1": 2698, "x2": 779, "y2": 2871,
                      "overlap_context_only": True}]
@@ -551,12 +523,6 @@ def test_a_seam_mirror_does_not_block_export_on_its_own():
 
 
 def _stepped_narration():
-    """Run 4, slices 22/23: one stepped narration box split by the cut.
-
-    The upper fragment carries the first sentence; the lower fragment's
-    translation re-reads the whole box and repeats it. Mirrors start
-    unlettered, as the sync leaves them.
-    """
     upper = {"id": "upper", "region": {"x1": 31, "y1": 4414, "x2": 662, "y2": 4733},
              "translation": "Lý Diệp chưa từng thấy mặt\nCác Chủ Ẩn Các."}
     lower = {"id": "lower", "region": {"x1": 187, "y1": 765, "x2": 833, "y2": 1154},
@@ -624,12 +590,6 @@ def test_a_mirror_without_a_local_duplicate_keeps_its_owners_text():
 
 
 def test_distinct_short_dialogue_sharing_words_is_not_a_duplicate():
-    """Audit N2: a word *set* Jaccard >= 0.6 called all six of these
-    distinct pairs duplicates (3/5 words shared, or one a word-prefix
-    of the other). Manhwa dialogue is typically 2-5 words, exactly
-    where the set cannot tell a reworded duplicate from a different
-    sentence sharing function words. The sequence predicate keeps all
-    six; the text is lost if any of them drops."""
     from app.ai_mode.seams import drop_overlapping_letters
 
     pairs = [
@@ -649,8 +609,6 @@ def test_distinct_short_dialogue_sharing_words_is_not_a_duplicate():
 
 
 def test_a_three_word_line_read_twice_still_drops():
-    """The sequence bar rises as the text shortens, but a 3-word line
-    read twice word-for-word is still one text, not two utterances."""
     from app.ai_mode.seams import drop_overlapping_letters
 
     manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, "Đi đi mau"),
@@ -659,10 +617,6 @@ def test_a_three_word_line_read_twice_still_drops():
 
 
 def test_a_geometric_mirror_match_with_different_source_text_is_not_a_mirror():
-    """Audit N8: a small free-text box sitting mostly inside a big
-    bubble's rect matched at share 1.0 on geometry alone and was
-    translated as the neighbour's text. When both sides carry a source
-    read and they share no word, they are different texts."""
     from app.ai_mode.seams import seam_mirror_ids, sync_seam_mirrors
 
     manifest = _chapter()
@@ -682,8 +636,6 @@ def test_a_geometric_mirror_match_with_the_same_source_text_still_mirrors():
 
 
 def test_a_geometric_mirror_match_without_source_text_still_mirrors():
-    """No source read on either side is no contradiction: geometry
-    alone still decides, as before."""
     from app.ai_mode.seams import seam_mirror_ids
 
     manifest = _chapter()
@@ -701,10 +653,6 @@ def test_an_overlap_box_whose_source_differs_from_the_owner_gets_no_mirror():
 
 
 def test_overlapping_regions_with_separate_letters_both_stay():
-    """Run 42539948198 slice 91: ANHUI's region overlaps SHAANXI's by
-    0.65, so the region-only drop deleted a real map label — but ANHUI's
-    letters sit below SHAANXI's, in different places. The drop must
-    compare the lettering extent, not the loose detector boxes."""
     from app.ai_mode.seams import drop_overlapping_letters
 
     shaanxi = {"id": "shaanxi", "region": {"x1": 742, "y1": 1269, "x2": 873, "y2": 1360},

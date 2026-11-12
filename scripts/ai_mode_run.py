@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""Start one AI-mode chapter job on the local app server and wait for it.
-
-POSTs /api/ai_mode/start, then polls /api/ai_mode/jobs/<id> until the job
-completes, fails, or is cancelled. Exits 0 only on completion.
-"""
 import argparse
 import json
 import os
@@ -26,7 +21,6 @@ def _req(method, path, payload=None):
 
 
 def _upload_zip(path: str) -> str:
-    """POST one chapter zip to /api/chapter/upload; return its chapter_id."""
     boundary = uuid.uuid4().hex
     with open(path, "rb") as handle:
         data = handle.read()

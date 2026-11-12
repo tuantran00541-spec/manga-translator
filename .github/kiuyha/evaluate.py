@@ -1,4 +1,3 @@
-"""Score the old and tuned Kiuyha on the held-out checks at the app's settings (1280, conf 0.25) and draw side-by-side samples."""
 import json
 import sys
 import time
@@ -24,7 +23,6 @@ def iou(a, b):
 
 
 def covered(g, preds, w, h):
-    """Share of a true box covered by any predicted box, which forgives a block split into lines or words."""
     mask = np.zeros((h, w), bool)
     for p in preds:
         mask[int(max(0, p[1])):int(p[3]), int(max(0, p[0])):int(p[2])] = True
@@ -53,7 +51,6 @@ def score(model, folder):
 
 
 def samples(folder, old, new, out, count=12):
-    """Old boxes red, tuned boxes green, on the images where the two differ most."""
     out.mkdir(parents=True, exist_ok=True)
     ranked = sorted(old, key=lambda k: -abs(len(old[k]) - len(new[k])))[:count]
     for name in ranked:

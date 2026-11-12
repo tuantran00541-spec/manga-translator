@@ -35,7 +35,6 @@ class SecretStoreUnavailable(RuntimeError):
 
 
 class _GuardedKeyring:
-    """Keyring whose backend crashes (a Rust panic is a BaseException) surface as KeyringError."""
 
     def __init__(self, keyring, error):
         self._keyring, self._error = keyring, error
@@ -61,7 +60,6 @@ def _secrets_file() -> Path:
 
 
 class _FileKeyring:
-    """Keys in a file only this user can read, for machines without an OS secret store (headless Linux, WSL, servers)."""
 
     def __init__(self, error):
         self._error = error
@@ -103,7 +101,6 @@ _os_store_works: bool | None = None
 
 
 def _os_store_usable(keyring) -> bool:
-    """False when keyring found no backend, or its backend crashes while being picked."""
     global _os_store_works
     if _os_store_works is None:
         try:
@@ -236,7 +233,6 @@ MAX_KEYS = 10
 
 
 def split_keys(raw: str | None) -> list[str]:
-    """Stored keys in order: a JSON list, or one plain key."""
     raw = (raw or "").strip()
     if raw.startswith("["):
         try:
@@ -265,13 +261,11 @@ def get_provider_api_keys(provider_id: str, *, provider_label: str | None = None
 
 
 def get_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> str | None:
-    """The first stored key; agent mode is the one place that moves on to the others."""
     keys = get_provider_api_keys(provider_id, provider_label=provider_label)
     return keys[0] if keys else None
 
 
 def set_provider_api_key(provider_id: str, value: str, *, provider_label: str | None = None, append: bool = False) -> int:
-    """Store one key, or add it after the stored ones; returns how many keys are stored."""
     provider_id, _env_names, label = _provider_meta(provider_id, provider_label)
     account = {
         "gemini": _GEMINI_ACCOUNT,

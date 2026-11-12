@@ -49,7 +49,6 @@ def _health(url: str) -> dict | None:
 
 
 def _is_ours(url: str) -> bool:
-    """True when this app answers at ``url``, even degraded by missing models, not some other program on the port."""
     body = _health(url)
     return bool(body) and body.get("status") in ("ok", "degraded") and "models_missing" in body
 
@@ -64,7 +63,6 @@ def _port_free(port: int) -> bool:
 
 
 def _pick_port() -> int | None:
-    """The configured port, or the next free one when another program holds it; None when this app already runs."""
     for port in range(PORT, PORT + 20):
         if _is_ours(_url(port)):
             return None
@@ -81,7 +79,6 @@ def _running_port() -> int | None:
 
 
 def _launch_dir() -> Path | None:
-    """The folder `manga` was typed in, for the Agent tab; None from an icon, home, a drive root or the app's own folder."""
     if not (sys.stdin and sys.stdin.isatty()):
         return None
     try:
@@ -94,7 +91,6 @@ def _launch_dir() -> Path | None:
 
 
 def _page(url: str) -> str:
-    """The app URL, carrying the launch folder for the Agent tab when there is one."""
     folder = _launch_dir()
     return f"{url}/?workspace={urllib.parse.quote(str(folder))}" if folder else url
 
@@ -112,7 +108,6 @@ def _print_link(url: str) -> None:
 
 
 def _quiet_console() -> None:
-    """Only warnings and errors reach the console; everything still goes to logs/app.log."""
     logger.remove(CONSOLE)
     logger.add(sys.stderr, level="WARNING", format="{message}", diagnose=False)
     os.environ["PYTHONWARNINGS"] = "ignore"
@@ -128,7 +123,6 @@ def _install_info() -> dict:
 
 
 def _run_installer(source: Path, info: dict) -> None:
-    """Run the installer of ``source`` on this folder with the same uv and home as the first install."""
     uv = info.get("uv") if info.get("uv") and Path(info["uv"]).is_file() else shutil.which("uv")
     env = {**os.environ, "MANGA_REF": str(info.get("ref") or "main"), "MANGA_CHANNEL": str(info.get("channel") or "ref")}
     if info.get("home"):
@@ -156,7 +150,6 @@ def _sha256_file(path: Path) -> str:
 
 
 def _update_pin(info: dict) -> str | None:
-    """Pinned SHA-256 for the update ZIP: MANGA_UPDATE_SHA256 wins, then the install marker's update_sha256."""
     for raw in (os.environ.get("MANGA_UPDATE_SHA256"), info.get("update_sha256")):
         pin = str(raw or "").strip().lower()
         if not pin:
@@ -168,7 +161,6 @@ def _update_pin(info: dict) -> str | None:
 
 
 def _verify_archive(archive: Path, ref: str, info: dict) -> None:
-    """Refuse the update ZIP when a pinned SHA-256 is set and does not match."""
     pin = _update_pin(info)
     if pin is None:
         return
@@ -181,7 +173,6 @@ def _verify_archive(archive: Path, ref: str, info: dict) -> None:
 
 
 def _latest_release() -> str | None:
-    """The newest release named like V0.4.0, skipping drafts, pre-releases and data releases."""
     url = f"https://api.github.com/repos/{REPO}/releases?per_page=30"
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"}), timeout=30) as response:
@@ -193,8 +184,6 @@ def _latest_release() -> str | None:
 
 
 def _ensure_temp_dir() -> None:
-    """Fall back to a folder inside the install when the system offers no usable temp dir,
-    so a deleted or unwritable Windows Temp folder cannot block an update."""
     try:
         tempfile.gettempdir()
         return
@@ -208,7 +197,6 @@ def _ensure_temp_dir() -> None:
 
 
 def _update() -> None:
-    """Get the latest code and rerun the installer, which keeps models, chapters and the environment."""
     _ensure_temp_dir()
     if _running_port() is not None:
         raise SystemExit("Manga Translator đang chạy; tắt cửa sổ đang chạy nó rồi gõ lại `manga update`.")
@@ -231,7 +219,6 @@ def _update() -> None:
 
 
 def _safe_console() -> None:
-    """Vietnamese messages must not crash when Windows sends output to a cp1252 pipe or file."""
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
@@ -269,7 +256,6 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _check_vc_runtime() -> None:
-    """On Windows, fix a missing or old Visual C++ runtime before onnxruntime or paddle fails with a cryptic WinError 126."""
     if os.name != "nt":
         return
     from app import vc_runtime
@@ -291,7 +277,6 @@ Manga Translator</b><p>Đang khởi động…</p></div></body>"""
 
 
 def _show_window(url: str, on_ready=None) -> bool:
-    """Show ``url`` in a native window until it is closed; False when this system cannot open one."""
     try:
         import webview
     except ImportError:
@@ -314,7 +299,6 @@ def _show_window(url: str, on_ready=None) -> bool:
 
 
 def _serve_in_window(port: int) -> None:
-    """The server in the background and the app in its own window; closing the window stops the server."""
     import uvicorn
 
     _prepare()
@@ -336,7 +320,6 @@ def _serve_in_window(port: int) -> None:
 
 
 def _prepare() -> None:
-    """Checks every start makes before the server runs."""
     _check_vc_runtime()
     import cv2
 

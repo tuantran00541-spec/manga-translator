@@ -1,4 +1,3 @@
-"""How a stitched page leaves the app: its format, width, page height and file names, as a scanlation group asks for them."""
 from __future__ import annotations
 
 import io
@@ -47,7 +46,6 @@ class ExportOptions:
 
     @property
     def key(self) -> str:
-        """A short name for these options, so each set of options keeps its own cached archive."""
         return f"{self.fmt}{self.quality}-w{self.width}-s{self.split}-{self.prefix or 'none'}"
 
     @property
@@ -56,7 +54,6 @@ class ExportOptions:
 
 
 def split_rows(image: np.ndarray, limit: int) -> list[int]:
-    """Rows to cut a tall page at, each at the quietest band just above the height limit."""
     height = image.shape[0]
     if height <= limit:
         return []
@@ -72,7 +69,6 @@ def split_rows(image: np.ndarray, limit: int) -> list[int]:
 
 
 def finish_page(image: Image.Image, options: ExportOptions) -> list[bytes]:
-    """The page as one or more encoded files, resized and cut as the options ask."""
     image = image.convert("RGB")
     if options.width and image.width != options.width:
         image = image.resize((options.width, max(1, round(image.height * options.width / image.width))), Image.LANCZOS)

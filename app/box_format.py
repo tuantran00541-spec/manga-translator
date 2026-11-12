@@ -1,4 +1,3 @@
-"""Boxes a vision model returns: four named corners on a 0-1000 grid."""
 from __future__ import annotations
 
 import math
@@ -9,7 +8,6 @@ BOX_KEYS = ("x1", "y1", "x2", "y2")
 
 
 def scaled_box(raw, width: int, height: int) -> tuple[float, float, float, float] | None:
-    """Pixel corners of a named 0-1000 box, or None when a corner is missing, unreadable or out of order."""
     if not isinstance(raw, dict):
         return None
     try:

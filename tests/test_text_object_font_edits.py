@@ -1,4 +1,3 @@
-"""Font picks sent by the editor must persist through update_text_object, and an explicit null clears them."""
 from __future__ import annotations
 
 from pathlib import Path

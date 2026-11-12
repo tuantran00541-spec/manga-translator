@@ -1,4 +1,3 @@
-"""One overlap measure shared by the review, the editor and the export gate."""
 from app.region_policy import overlap_share
 
 

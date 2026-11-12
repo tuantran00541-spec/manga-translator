@@ -1,4 +1,3 @@
-"""The decision model keeps art from being erased and decides which slices hold no story text."""
 import asyncio
 import base64
 
@@ -171,8 +170,6 @@ def test_the_judge_names_the_decider_only_on_minirouter(monkeypatch):
 
 
 def test_a_story_entry_without_a_probability_is_unjudged_not_storyless():
-    """S7: a model answer that names story but gives no probability never
-    scored the slice; defaulting to 0.0 would skip it."""
     assert decider.story_chance({"kind": {"probabilities": [{"choice": "story"}]}}) is None
     assert decider.story_chance({"kind": {"probabilities": [{"choice": "story", "probability": 0.2}]}}) == 0.2
     assert decider.story_chance({"kind": {"probabilities": [{"choice": "credit", "probability": 0.9}]}}) is None

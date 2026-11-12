@@ -128,7 +128,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         total_bytes = 0
 
         def keep(filename: str, data: bytes, from_zip: bool) -> None:
-            """Write one checked image as the next raw page, so archive pages never pile up in memory."""
             nonlocal taken, total_bytes
             taken += 1
             total_bytes += len(data)

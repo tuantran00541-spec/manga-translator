@@ -1,4 +1,3 @@
-"""Reading a web page for the agent: HTML as Markdown that keeps headings, links and code, GitHub pages as raw files, and a word to search inside the page (ideas from omp's fetch and codex's find)."""
 from __future__ import annotations
 
 import json
@@ -18,7 +17,6 @@ GITHUB_PAGES = {"trending", "topics", "collections", "explore", "search", "marke
 
 
 def rewrite(url: str) -> str:
-    """A GitHub file or repository page is read from its raw text, not its HTML shell."""
     parts = urlparse(url)
     if parts.netloc.lower() not in ("github.com", "www.github.com"):
         return url
@@ -83,7 +81,6 @@ def _walk(node, out: list[str], base: str) -> None:
 
 
 def low_quality(text: str) -> bool:
-    """A page that needs JavaScript, or is mostly menu: what came back is not the page's content."""
     lower = text.lower()
     if len(text) < 1024 and any(word in lower for word in JS_GATED):
         return True
@@ -92,7 +89,6 @@ def low_quality(text: str) -> bool:
 
 
 def readable(body: bytes, kind: str, encoding: str | None, base: str) -> tuple[str, list[str]]:
-    """The page as text and notes on what was done to it."""
     text = body.decode(encoding or "utf-8", errors="replace")
     notes: list[str] = []
     if "json" in kind:
@@ -108,7 +104,6 @@ def readable(body: bytes, kind: str, encoding: str | None, base: str) -> tuple[s
 
 
 def find(text: str, pattern: str, context: int = 2, limit: int = 40) -> str:
-    """Lines of the page that match, each with a little around it, so a long page does not have to be read in full."""
     try:
         rx = re.compile(pattern, re.I)
     except re.error:
@@ -131,7 +126,6 @@ def find(text: str, pattern: str, context: int = 2, limit: int = 40) -> str:
 
 
 def browsed(url: str, key: str) -> str:
-    """The page as TinyFish's real browser sees it, for a page whose own HTML needs JavaScript; empty when it has nothing."""
     reply = requests.post(os.environ.get("TINYFISH_FETCH_URL") or "https://api.fetch.tinyfish.ai", json={"urls": [url], "format": "markdown"}, timeout=(10, 60),
                           headers={"X-API-Key": key, "Content-Type": "application/json", "Accept": "application/json"})
     reply.raise_for_status()

@@ -1,4 +1,3 @@
-"""Regression tests for the three render defect families found on real chapter art."""
 import json
 
 import numpy as np
@@ -20,12 +19,6 @@ def _ellipse_bubble(fill):
 
 
 def test_fixed_size_too_tall_for_its_box_falls_back_to_the_fit():
-    """Render N3: a fixed size whose wrapped lines are taller than the box
-    aborted the whole page — page_renderer re-raises anything that is not
-    floor/ratio-only, and _render_one retried the same failing size 3x.
-    The height overflow now falls back to the fit, as Fix K does for
-    width: the text letters smaller instead of raising, and a fixed size
-    that fits stays exactly put."""
     from app.render.text_renderer import render_text_in_box
 
     image = Image.new("RGB", (700, 400), "white")
@@ -46,11 +39,6 @@ def test_fixed_size_too_tall_for_its_box_falls_back_to_the_fit():
 
 
 def test_unlabelled_bubble_with_a_mask_letters_on_the_mask():
-    """Render N5: the container label used to gate all bubble geometry,
-    so a bubble with no label rendered as a rectangle. The mask is the
-    bubble now, not the label: a persisted mask drives the fit even
-    with container=None, and without a mask there is nothing to drive
-    it — a bare page and a straight-sided box both stay rectangles."""
     from app.render.text_renderer import render_text_in_box
 
     image = _ellipse_bubble("white")
@@ -96,11 +84,6 @@ def test_unlabelled_bubble_with_a_mask_letters_on_the_mask():
 
 
 def test_a_fixed_size_that_crosses_a_spiky_outline_falls_back_to_the_fit():
-    """Rerun-4 ch79 p021: the top spiky bubble rendered at the OCR-measured
-    fixed 52px, whose lines touch the outline at 0px, while the fit caps
-    at 45px with real gaps. A fixed size never saw the fit, so its lines
-    are validated against the mask's rows and fall back to the fit when
-    they do not fit; a fixed size that fits is left exactly alone."""
     import math
 
     from app.render.text_renderer import render_text_in_box
@@ -172,16 +155,6 @@ def test_two_lobe_bubble_letters_only_the_source_lobe():
 
 
 def test_stacked_second_block_uses_the_clipped_mask():
-    """A colliding second block stacks into the free part of its frame.
-
-    Both objects share one two-lobe bubble. The first letters the top
-    lobe; the second's lettering spans both lobes, so its frame is the
-    union, its block fills the frame, and no shift clears the first
-    block's ink -- so it stacks below it. The stacked attempt clips
-    the union mask to its sub-box instead of re-deriving the whole
-    bubble, so its ink stays inside the frame and clear of the first
-    block instead of colliding again.
-    """
     image = _two_lobe_bubble()
     mask = derive_bubble_mask(np.asarray(image)[:, :, ::-1].copy(),
                               (40, 40, 360, 560), seed=(200, 140))

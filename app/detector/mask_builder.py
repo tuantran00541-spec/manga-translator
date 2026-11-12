@@ -60,19 +60,6 @@ def _repair_mask_from_ink(
     crop_img: np.ndarray | None,
     box_rects: list[tuple[int, int, int, int]],
 ) -> np.ndarray:
-    """Union the ink the segmenter mask only partly covers.
-
-    A letter model reads the middle of a stroke and misses its ends,
-    so the mask covers a giant SFX at a third and the clean pass leaves
-    most of it smeared on the page (Mount Hua p075: 47% of the SFX ink
-    survived). Dark-ink components that touch the mask are the same
-    text the mask partly covers, so they join it, dilated the same
-    ~10px. A component joins only when it is a box's own ink: inside
-    the box bar a small cut the box model made, and no bigger than the
-    box — a shape bigger than the box, or sticking out of it by more
-    than a few pixels (a hat, a bubble outline), is art, not text,
-    and stays out.
-    """
     if crop_img is None:
         logger.warning("Skipping mask repair from ink: no crop image")
         return mask
@@ -106,9 +93,6 @@ def _repair_mask_from_ink(
 
 def _component_in_box(x: int, y: int, w: int, h: int,
                       rect: tuple[int, int, int, int]) -> bool:
-    """True when a component is a box's own ink: inside the box bar a
-    small cut (3% of the box's shorter side), and no bigger than the box
-    in either dimension."""
     bx1, by1, bx2, by2 = rect
     margin = 0.03 * min(bx2 - bx1, by2 - by1)
     return (w <= bx2 - bx1 and h <= by2 - by1

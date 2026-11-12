@@ -205,7 +205,6 @@ def list_series_memory() -> list[dict]:
 
 @router.post("/series/read")
 def read_series_memory(req: SeriesMemoryRequest) -> dict:
-    """What the series behind a chapter URL has settled, as the lines the user edits."""
     key = _series_key(req.url)
     data = series_memory.load(key)
     return {"key": key, "text": series_memory.to_text(data), "notes": data["notes"], "chapters": len(data["chapters"])}

@@ -1,5 +1,3 @@
-"""The chapter's setting is detected once and only that world's address
-register rides along with each translation, instead of the whole table."""
 from app.translation import context
 from app.translation.context import (SETTING_REGISTERS, parse_setting, setting_question,
                                      system_prompt, text_system_prompt)

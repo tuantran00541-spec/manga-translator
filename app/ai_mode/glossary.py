@@ -1,4 +1,3 @@
-"""Read the whole chapter once for names, terms and forms of address, so every slice uses the same ones."""
 from __future__ import annotations
 
 import difflib
@@ -50,7 +49,6 @@ def _prompt(target_name: str, target_lang: str, source: str, basis: str) -> str:
 
 def read_glossary(provider, model: str, api_key: str, target_name: str, target_lang: str,
                   slices: list[tuple[int, np.ndarray]]) -> tuple[dict, float | None]:
-    """One request over a batch of original slices."""
     prompt = _prompt(target_name, target_lang, _IMAGES, "what the images show")
     images = [(f"SLICE {index + 1}", image) for index, image in slices]
     result = request_vision_json(provider, model, api_key, prompt, images, max_tokens=1000000, stage="glossary")
@@ -58,14 +56,12 @@ def read_glossary(provider, model: str, api_key: str, target_name: str, target_l
 
 
 def transcript(lines: dict[int, tuple[tuple[str, str], ...]]) -> str:
-    """The lettering the scan read, slice by slice in order."""
     return "\n".join(f"SLICE {index + 1}\n" + "\n".join(f"[{who or 'unknown'}] {text}" for who, text in rows)
                      for index, rows in sorted(lines.items()) if rows)
 
 
 def read_glossary_text(provider, model: str, api_key: str, target_name: str, target_lang: str,
                        lines: dict[int, tuple[tuple[str, str], ...]]) -> tuple[dict, float | None]:
-    """One text-only request over the scan's transcript of a run of slices."""
     source = _TRANSCRIPT.replace("{lines}", transcript(lines))
     prompt = _prompt(target_name, target_lang, source, "how the transcript describes the look")
     result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=1000000, stage="glossary")
@@ -77,7 +73,6 @@ def _winner(counter: Counter) -> str:
 
 
 def merge_glossaries(parts: list[dict]) -> dict:
-    """Majority vote across batches; a rare spelling close to a frequent one is dropped as a misread."""
     names: dict[str, dict] = {}
     terms: dict[str, Counter] = {}
     address: dict[tuple[str, str], dict[str, Counter]] = {}

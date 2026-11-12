@@ -309,11 +309,6 @@ def check_duplicate_api_routes() -> None:
 
 
 def _defined_names(tree: ast.AST) -> set[str]:
-    """Every name a module defines textually: assignments, arguments,
-    imports, defs/classes, except/match bindings. A name used but never
-    defined anywhere in its module is undefined (the ch70 class:
-    `_rectangle_fallback_allowed` was called at two sites after round 9
-    deleted its `def`)."""
     defined: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
@@ -365,9 +360,6 @@ _TERMINATORS = (ast.Return, ast.Raise, ast.Break, ast.Continue)
 
 
 def check_dead_code_after_terminator() -> None:
-    """Any statement after a return/raise/break/continue in the same
-    block can never run. At the round-9 head the deleted function's body
-    survived exactly like this (mask_builder.py:120-127)."""
     failures: list[str] = []
 
     def scan_block(body: list[ast.stmt], path: Path) -> None:

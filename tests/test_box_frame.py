@@ -1,12 +1,3 @@
-"""Narration-box frame measurement (``_box_frame``).
-
-Family B (Luna re-run 3, pairs 007/022/023): a detector region is not
-the frame it sits in — it can stop just past a rule, or straddle a
-stepped frame's rules — so the fit centred text on the region and the
-widest line's first glyph crossed the real left rule. These tests pin
-the measurement on synthetic boxes: rules drawn as black lines on
-white, regions offset from them the way the detector leaves them.
-"""
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -14,8 +5,6 @@ from app.render.text_renderer import _box_frame
 
 
 def _box_image(w, h, rules, bg="white"):
-    """White image with black rules; ``rules`` is a list of
-    (x1, y1, x2, y2, width) line segments in absolute coordinates."""
     img = Image.new("RGB", (w, h), bg)
     draw = ImageDraw.Draw(img)
     for x1, y1, x2, y2, wd in rules:

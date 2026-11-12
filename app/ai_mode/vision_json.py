@@ -1,9 +1,3 @@
-"""Send labelled images plus a prompt to a vision provider and parse JSON back.
-
-Reuses the provider contracts, image encoding and error redaction already used
-by visual QC and vision translation, for both the Gemini interactions API and
-OpenAI-compatible chat completions.
-"""
 from __future__ import annotations
 
 import json
@@ -63,7 +57,6 @@ def request_vision_json(
     reasoning_effort: str | None = None,
     stage: str | None = None,
 ) -> VisionJSONResult:
-    """Return the model's JSON object for ``prompt`` and labelled ``images``; ``stage`` names the checkpoint."""
     key = str(api_key or "").strip()
     if not key:
         raise ValueError(f"{provider.label} API key is not configured")
@@ -75,7 +68,6 @@ def request_vision_json(
 
 
 def stage_headers(provider: AIProvider, stage: str | None) -> dict:
-    """Manga Cloud picks a model per checkpoint from this header."""
     return {"X-MT-Stage": stage} if stage and provider.id == CLOUD_PROVIDER_ID else {}
 
 

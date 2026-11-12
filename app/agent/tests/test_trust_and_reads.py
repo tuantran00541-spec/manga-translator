@@ -1,4 +1,3 @@
-"""User plugins trusted by their bytes, look-only commands that write or run, MCP reads after untrusted content, nested .env files."""
 import sys
 from pathlib import Path
 

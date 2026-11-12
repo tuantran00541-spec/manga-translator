@@ -1,4 +1,3 @@
-"""Runs the Chaos harness on one instruction without the page, for Terminal-Bench, and writes its events as JSON lines."""
 import argparse
 import dataclasses
 import json

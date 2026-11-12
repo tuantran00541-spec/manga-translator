@@ -1,4 +1,3 @@
-"""Model roles: named models on any configured provider that chains can call, each with a daily budget and a fallback."""
 from __future__ import annotations
 
 import json
@@ -18,7 +17,6 @@ _GOOD: dict[str, dict] = {}
 
 
 def parse(raw) -> dict[str, dict]:
-    """The valid roles of a profile's model_roles: a model plus an app provider id, or a base_url with the env variable holding its key."""
     roles = {}
     for name, cfg in (raw.items() if isinstance(raw, dict) else []):
         if not ROLE_NAME.fullmatch(str(name)) or not isinstance(cfg, dict) or not isinstance(cfg.get("model"), str) or not cfg["model"].strip():
@@ -37,7 +35,6 @@ def parse(raw) -> dict[str, dict]:
 
 
 def parse_sources(raw) -> dict[str, dict]:
-    """The valid model_sources of a profile: a base_url and the env variable holding its key, with optional daily budgets."""
     sources = {}
     for name, cfg in (raw.items() if isinstance(raw, dict) else []):
         if not ROLE_NAME.fullmatch(str(name)) or not isinstance(cfg, dict) or not isinstance(cfg.get("base_url"), str) or not isinstance(cfg.get("key_env"), str):
@@ -50,7 +47,6 @@ def parse_sources(raw) -> dict[str, dict]:
 
 
 def _read(home: Path) -> dict | None:
-    """Usage data, or None when nothing trustworthy exists; a corrupt file never resets a budget."""
     main, backup = home / USAGE, home / _BACKUP
     if not main.exists() and not backup.exists():
         return {}
@@ -67,7 +63,6 @@ def _read(home: Path) -> dict | None:
 
 
 def _backup_good(path: Path, home: Path) -> None:
-    """Keep the previous parsable state as the fallback a fail-closed read uses."""
     try:
         raw = path.read_text(encoding="utf-8")
         json.loads(raw)
@@ -80,7 +75,6 @@ def _backup_good(path: Path, home: Path) -> None:
 
 
 def today(home: Path) -> dict[str, dict]:
-    """Requests and tokens each role used today (local date)."""
     data = _read(home)
     if not isinstance(data, dict):
         return {}
@@ -89,11 +83,6 @@ def today(home: Path) -> dict[str, dict]:
 
 
 def within(home: Path, name: str, cfg: dict) -> bool:
-    """Whether a role still has today's request and token budget.
-
-    A corrupt file fails closed (False). Hold ``_LOCK`` across a within()->add() pair,
-    or pass ``cfg`` to add() for one atomic check-and-count.
-    """
     with _LOCK:
         data = _read(home)
         if data is None:
@@ -105,11 +94,6 @@ def within(home: Path, name: str, cfg: dict) -> bool:
 
 
 def add(home: Path, name: str, requests_made: int, tokens: int, cfg: dict | None = None) -> bool:
-    """Count a role's use toward today's budget; only the last week of days is kept.
-
-    Writes are atomic so a crash never leaves a torn file. With ``cfg`` given, the check
-    and the increment are one atomic step: over budget -> nothing is counted, False returns.
-    """
     with _LOCK:
         data = _read(home) or {}
         days = data.get("days") if isinstance(data.get("days"), dict) else {}
@@ -135,7 +119,6 @@ def add(home: Path, name: str, requests_made: int, tokens: int, cfg: dict | None
 
 
 def price(row: dict) -> dict:
-    """Dollars per million tokens from a /models row, in whichever form the provider gives them."""
     found = {}
     pricing = row.get("pricing") if isinstance(row.get("pricing"), dict) else {}
     for ours, names in (("in", ("input", "prompt")), ("out", ("output", "completion")), ("cached", ("input_cache_read",))):
@@ -153,7 +136,6 @@ def price(row: dict) -> dict:
 
 
 def catalog(base_url: str, headers: dict, query: str = "", limit: int = 40) -> list[dict]:
-    """A provider's models matching query, with price per million tokens, context and whether they read images, cheapest first."""
     response = requests.get(f"{base_url.rstrip('/')}/models", headers={"Accept": "application/json", **headers}, timeout=30)
     response.raise_for_status()
     data = response.json()

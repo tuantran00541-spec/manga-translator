@@ -32,7 +32,6 @@ def agent_enabled() -> bool:
 
 
 def guard(request: Request, x_manga_agent: str | None = Header(default=None)) -> None:
-    """Agent calls change files and run commands, so they need the switch on, this machine, and a header a foreign page cannot send without a preflight."""
     if not agent_enabled():
         raise HTTPException(404, "Chaos đang tắt (MANGA_AGENT_MODE=0).")
     if not is_loopback(request.client.host if request.client else ""):
@@ -46,13 +45,11 @@ agent_sessions = AgentSessionManager(BASE_DIR / "data" / "agent")
 
 
 def _find_provider(provider_id: str):
-    """A configured provider and its keys by id, for model roles that name one."""
     provider = _resolve_configured_provider(provider_id)
     return provider, get_provider_api_keys(provider.id, provider_label=provider.label)
 
 
 def _list_providers() -> list[tuple[str, str]]:
-    """(id, label) of every built-in and custom provider that has a key, which the agent may pick models from."""
     found = [(p.id, p.label) for p in PROVIDERS.values()]
     try:
         found += [(str(c.get("id") or ""), str(c.get("label") or c.get("id") or "")) for c in list_provider_configs()]
@@ -156,7 +153,6 @@ def agent_config() -> dict:
 
 @router.post("/sandbox/engine")
 def set_engine(req: EngineChoice) -> dict:
-    """Choose where commands run: the OS sandbox (auto) or a Docker container."""
     try:
         sandbox.save_settings(req.engine, req.image.strip())
     except ValueError as exc:
@@ -178,7 +174,6 @@ def _skills_changed(names: list[str]) -> dict:
 
 @router.get("/skills")
 def list_skills(workspace: str = "") -> dict:
-    """Every skill the agent can load here: the project's, the user's, then the bundled ones."""
     home, root = _skill_home(), Path(workspace.strip() or BASE_DIR)
     found = skills.discover(root, agent_sessions.home)
     mine = skill_install.user_dir(home).resolve()
@@ -297,13 +292,11 @@ def _mcp_changed() -> None:
 
 @router.get("/mcp")
 def list_mcp(workspace: str = "") -> dict:
-    """Every MCP server the agent would start here, from all the files it reads; values of secrets are hidden."""
     return _mcp_rows(workspace)
 
 
 @router.post("/mcp")
 async def add_mcp(req: McpServer, workspace: str = "") -> dict:
-    """Add servers to ~/.manga-agent/mcp.json from the form or from pasted JSON, then load them into open sessions."""
     try:
         servers = mcp.parse_pasted(req.pasted, req.name) if req.pasted.strip() else {req.name.strip(): mcp.clean_config(req.config or {})}
         if not all(mcp.NAME_RE.fullmatch(n) for n in servers):
@@ -319,7 +312,6 @@ async def add_mcp(req: McpServer, workspace: str = "") -> dict:
 
 @router.post("/mcp/{name}/test")
 async def test_mcp(name: str, workspace: str = "") -> dict:
-    """Start one of your own servers, list its tools and stop it, so a typo shows up before the agent needs it."""
     root = Path(workspace.strip() or BASE_DIR)
     row = next((r for r in mcp.configured(root, agent_sessions.home) if r["name"] == name), None)
     if row is None:
@@ -347,7 +339,6 @@ async def switch_mcp(name: str, req: McpSwitch, workspace: str = "") -> dict:
 
 @router.post("/mcp/{name}/tools/{tool}")
 async def switch_mcp_tool(name: str, tool: str, req: McpSwitch, workspace: str = "") -> dict:
-    """Offer one tool of your own server to the agent, or hold it back."""
     try:
         await run_in_threadpool(mcp.set_user_tool, _skill_home(), name, tool, req.enabled)
     except KeyError as exc:

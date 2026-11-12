@@ -1,4 +1,3 @@
-"""Checkpoint 3: raw | clean crop pairs round every erased place, packed onto a few sheets, checked for residue."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -41,7 +40,6 @@ class Crop:
 
 
 def crops_for(page_index: int, original: np.ndarray, clean: np.ndarray, boxes) -> list[Crop]:
-    """One raw | clean pair round each erased box."""
     h, w = clean.shape[:2]
     out = []
     for n, (x1, y1, x2, y2) in enumerate(boxes):
@@ -59,7 +57,6 @@ def crops_for(page_index: int, original: np.ndarray, clean: np.ndarray, boxes) -
 
 
 def pack(crops: list[Crop]) -> list[tuple[np.ndarray, list[Crop]]]:
-    """Crops in rows on white sheets no bigger than SHEET_SIDE, each under a black tag with its id."""
     sheets, placed, rows = [], [], []
     x = y = row_h = 0
 
@@ -93,12 +90,10 @@ def pack(crops: list[Crop]) -> list[tuple[np.ndarray, list[Crop]]]:
 
 
 def _covered(box, others) -> bool:
-    """True when ``box`` and one of ``others`` share at least OVERLAP of the smaller one's area."""
     return any(overlap_share(box, other) >= OVERLAP for other in others)
 
 
 def review_sheet(provider, model: str, api_key: str, sheet: np.ndarray, crops: list[Crop]) -> tuple[list[Crop], float | None]:
-    """Checkpoint 3: one request per sheet; returns the crops with residue left."""
     result = request_vision_json(provider, model, api_key, CLEAN_REVIEW_PROMPT, [("SHEET OF CROPS", sheet)],
                                  max_tokens=1000000, reasoning_effort=CLEAN_REVIEW_EFFORT, stage="review")
     flagged = {str(item) for item in result.data.get("residue") or [] if isinstance(item, (str, int, float))}

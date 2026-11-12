@@ -1,15 +1,3 @@
-"""Fetch the hard-case training set (Total-Text hard shards + webtoon + AnimeText
-hard) and append it to an existing kiuyha-data directory as extra training data.
-
-The zip holds images/ and labels/ in YOLO format (class 0 = text), the same
-label format build.py writes. Filenames carry distinct prefixes (tt-hard-,
-wt-, at_), so nothing collides with the base set.
-
-Usage:
-    python .github/kiuyha/fetch_hard.py kiuyha-data
-
-Needs nothing beyond the stdlib (urllib + zipfile).
-"""
 import json
 import sys
 import urllib.request

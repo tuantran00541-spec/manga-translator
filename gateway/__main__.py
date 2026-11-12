@@ -9,7 +9,6 @@ from gateway.store import Store
 
 
 def main(argv: list[str]) -> None:
-    """Serve the gateway, or ``backup <file>`` to copy its database safely while it runs."""
     if argv[:1] == ["backup"] and len(argv) == 2:
         Store(Path(os.getenv("GATEWAY_DB", "gateway-data/gateway.sqlite"))).backup(argv[1])
         return

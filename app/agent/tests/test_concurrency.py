@@ -1,9 +1,3 @@
-"""Concurrency-fix tests for app/agent/session.py.
-
-Each fix has a regression test using forced interleaving (fails on the
-unfixed code, passes on the fixed code) plus a normal-operation test
-proving the fixed path still works.
-"""
 from __future__ import annotations
 
 import inspect
@@ -58,7 +52,6 @@ def _wait_until(cond, timeout=10.0, interval=0.05):
 
 
 def _quiet_thread_errors():
-    """Swallow expected tracebacks from threads that die on a forced race."""
     errors = []
     old = threading.excepthook
 
@@ -70,7 +63,6 @@ def _quiet_thread_errors():
 
 
 def test_h5_save_survives_nonserializable(mgr, ws):
-    """an event carrying a non-JSON value must not break save()."""
     s = _make_session(mgr, ws, "0101020304050607")
     s.history.append({"role": "user", "content": "hi"})
     s.emit("custom", payload=object())
@@ -81,7 +73,6 @@ def test_h5_save_survives_nonserializable(mgr, ws):
 
 
 def test_h5_poisoned_turn_does_not_wedge(mgr, ws):
-    """Normal flow: a turn poisoned mid-flight ends idle and takes new work."""
     def blocking_complete(provider, key, model, messages, tools=None, **kw):
         time.sleep(2)
         return {"text": "done", "calls": [], "reasoning": "",
@@ -100,7 +91,6 @@ def test_h5_poisoned_turn_does_not_wedge(mgr, ws):
 
 
 def test_h6_concurrent_save_no_tear(mgr, ws):
-    """writers hammering save() while readers parse must tear nothing."""
     s = _make_session(mgr, ws, "0301020304050607")
     s.history = [{"role": "user", "content": "x" * 20000} for _ in range(80)]
     s.events = [{"seq": i, "type": "tool", "name": "read_file", "ok": True, "output": "y" * 500}
@@ -139,7 +129,6 @@ def test_h6_concurrent_save_no_tear(mgr, ws):
 
 
 def test_h6_save_roundtrip(mgr, ws):
-    """Normal flow: sequential saves leave a valid session file and meta card."""
     s = _make_session(mgr, ws, "0302020304050607")
     s.title = "hello"
     s.save()
@@ -154,7 +143,6 @@ def test_h6_save_roundtrip(mgr, ws):
 
 
 def test_h7_start_scheduler_single_thread(mgr, ws):
-    """two callers entering the check together start exactly one thread."""
     s = _make_session(mgr, ws, "0701020304050607")
     s.schedules = [{"id": "keep", "prompt": "later", "next_at": time.time() + 3600, "every": 60}]
     s.closed = False
@@ -187,7 +175,6 @@ def test_h7_start_scheduler_single_thread(mgr, ws):
 
 
 def test_h7_tick_fires_each_schedule_once(mgr, ws):
-    """Normal flow: one _tick fires each due schedule exactly once."""
     s = _make_session(mgr, ws, "0702020304050607")
     sends = []
     s.send = lambda text, **k: sends.append(text) or True
@@ -206,12 +193,10 @@ def test_h7_tick_fires_each_schedule_once(mgr, ws):
 
 
 def test_m5_concurrent_start_no_orphan(mgr, ws):
-    """two racing starts must not orphan a job neither can stop."""
     s = _make_session(mgr, ws, "0501020304050607")
     old_hook, errors = _quiet_thread_errors()
 
     class RacyDict(dict):
-        """Timing control only: both threads observe the dict before either assigns."""
         barrier = threading.Barrier(2)
 
         def __contains__(self, key):
@@ -252,7 +237,6 @@ def test_m5_concurrent_start_no_orphan(mgr, ws):
 
 
 def test_m5_start_stop_job_normal(mgr, ws):
-    """Normal flow: a job starts, stops, and another can start after it."""
     s = _make_session(mgr, ws, "0502020304050607")
     msg = s._start_job({"command": "echo hello", "background": True})
     assert "job1" in msg and "job1" in s.jobs
@@ -270,8 +254,6 @@ class _NeverJob:
 
 
 def test_m6_shutdown_answers_pending_req(mgr, ws, tmp_path):
-    """a .req the server never got to still gets a .res on shutdown,
-    so a polling worker wakes up instead of spinning forever."""
     import shutil as _shutil
 
     s = _make_session(mgr, ws, "0601020304050607")
@@ -314,7 +296,6 @@ def test_m6_shutdown_answers_pending_req(mgr, ws, tmp_path):
 
 
 def test_m6_worker_call_eventually_times_out(tmp_path):
-    """The worker side of the RPC gives up instead of polling forever."""
     rpc = tmp_path / "rpcB"
     rpc.mkdir(parents=True)
 
@@ -350,7 +331,6 @@ def test_m6_worker_call_eventually_times_out(tmp_path):
 
 
 def test_m6_rpc_roundtrip(mgr, ws, tmp_path):
-    """Normal flow: a worker's tool call is answered through a live _serve_chain."""
     s = _make_session(mgr, ws, "0602020304050607")
     rpc = tmp_path / "rpcC"
     rpc.mkdir(parents=True)
@@ -372,7 +352,6 @@ def test_m6_rpc_roundtrip(mgr, ws, tmp_path):
 
 
 def test_m7_stop_catches_concurrent_register(tmp_path):
-    """a job registered as stop() runs is still stopped, never leaked."""
     s = AgentSession.__new__(AgentSession)
     s._usage_lock = threading.Lock()
     s._lock = threading.Condition()
@@ -388,7 +367,6 @@ def test_m7_stop_catches_concurrent_register(tmp_path):
     s.workspace = type("W", (), {"root": root})()
 
     class GateDict(dict):
-        """Block __setitem__ until the stopper thread is parked on the lock."""
         gate = threading.Event()
 
         def __setitem__(self, k, v):
@@ -434,7 +412,6 @@ def test_m7_stop_catches_concurrent_register(tmp_path):
 
 
 def test_m7_stop_stops_background_jobs(mgr, ws):
-    """Normal flow: stop() stops every background job and empties the dict."""
     s = _make_session(mgr, ws, "0802020304050607")
     s._start_job({"command": "sleep 60", "background": True})
     assert len(s.jobs) == 1
@@ -463,14 +440,12 @@ class _FakeServer:
 
 
 def _prep_mcp_session(s):
-    """A session whose _ensure_mcp runs against fake servers."""
     s._mcp_ready = False
     s.mcp_servers = {}
     s.mcp_status = {}
 
 
 def test_m10_ensure_mcp_no_duplicate_start(mgr, ws, tmp_path):
-    """two callers racing through the check start each server once."""
     _write_mcp_json(tmp_path / "home")
     s = _make_session(mgr, ws, "1301020304050607")
     _prep_mcp_session(s)
@@ -520,7 +495,6 @@ def test_m10_ensure_mcp_no_duplicate_start(mgr, ws, tmp_path):
 
 
 def test_m10_ensure_mcp_idempotent(mgr, ws, tmp_path):
-    """Normal flow: repeated _ensure_mcp calls start each server exactly once."""
     _write_mcp_json(tmp_path / "home")
     s = _make_session(mgr, ws, "1302020304050607")
     _prep_mcp_session(s)
@@ -538,7 +512,6 @@ def test_m10_ensure_mcp_idempotent(mgr, ws, tmp_path):
 
 
 def test_m11_jobstop_frees_slots(mgr, ws):
-    """stopping all jobs frees every MAX_JOBS slot immediately."""
     from app.agent.tools import ToolError
 
     s = _make_session(mgr, ws, "1501020304050607")
@@ -559,7 +532,6 @@ def test_m11_jobstop_frees_slots(mgr, ws):
 
 
 def test_l6_delete_during_turn_stays_deleted(mgr, ws):
-    """the orphaned turn thread's save() must not resurrect the file."""
     def blocking_complete(provider, key, model, messages, tools=None, **kw):
         time.sleep(3)
         return {"text": "done", "calls": [], "reasoning": "",
@@ -577,7 +549,6 @@ def test_l6_delete_during_turn_stays_deleted(mgr, ws):
 
 
 def test_l6_close_idle_session(mgr, ws):
-    """Normal flow: closing an idle session is prompt and keeps its file."""
     s = _make_session(mgr, ws, "1602020304050607")
     s.save()
     assert s.store.is_file()
@@ -588,8 +559,6 @@ def test_l6_close_idle_session(mgr, ws):
 
 
 def test_m8_count_role_atomic_budget(mgr, ws, tmp_path):
-    """_count_role passes the role's cfg to roles.add: a spend that would push
-    past the daily budget is atomically refused instead of racing past it."""
     from app.agent import roles as _roles
 
     s = _make_session(mgr, ws, "1701020304050607")
@@ -610,7 +579,6 @@ def test_m8_count_role_atomic_budget(mgr, ws, tmp_path):
 
 
 def test_m8_count_role_without_cfg_still_counts(mgr, ws, tmp_path):
-    """Names with no budget cfg (e.g. '<source>:<model>' picks) count as before."""
     from app.agent import roles as _roles
 
     s = _make_session(mgr, ws, "1702020304050607")

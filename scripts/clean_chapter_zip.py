@@ -1,9 +1,3 @@
-"""Clean one chapter from a zip of page images (no download, no API).
-
-Ingests the zip through the pipeline's upload path, then runs the local
-detect + inpaint clean over every slice. Writes the chapter manifest and a
-small summary JSON to --out for the evidence step.
-"""
 from __future__ import annotations
 
 import argparse

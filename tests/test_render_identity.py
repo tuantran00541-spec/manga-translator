@@ -1,4 +1,3 @@
-"""Render identity covers every per-object render input, including the letter bitmap."""
 from pathlib import Path
 
 from PIL import Image
@@ -55,12 +54,6 @@ def _two_page_chapter() -> list[dict]:
 
 
 def test_finishing_the_chapter_keeps_a_sibling_slice_current(tmp_path):
-    """Finishing the chapter does not stale a sibling slice's render.
-
-    The render signature covers only the page's own objects -- the
-    chapter band is dead -- so filling in the rest of the chapter
-    leaves a rendered slice current.
-    """
     pages = _two_page_chapter()
     for obj in pages[0]["text_objects"]:
         obj["translation"] = ""

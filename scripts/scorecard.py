@@ -1,7 +1,3 @@
-"""Score a finished chapter, so each change to A.I mode is measured against the last run.
-
-``python -m scripts.scorecard BASE.json NEW.json`` prints what got better and what got worse.
-"""
 from __future__ import annotations
 
 import json
@@ -23,20 +19,17 @@ LOWER_IS_BETTER = {
 
 
 def _slice_view(page: dict) -> tuple[int, int]:
-    """Rows of a slice that are exported, so text in an overlap is counted once."""
     core = page.get("stitch_core") if isinstance(page.get("stitch_core"), dict) else {}
     return int(core.get("core_y1", 0)), int(core.get("core_y2", 1 << 30))
 
 
 def _overlap_share(box, other) -> float:
-    """Share of ``box`` covered by ``other``."""
     ix = max(0, min(box[2], other[2]) - max(box[0], other[0]))
     iy = max(0, min(box[3], other[3]) - max(box[1], other[1]))
     return ix * iy / max(1, (box[2] - box[0]) * (box[3] - box[1]))
 
 
 def clean_score(pages: list[dict], detector) -> dict:
-    """Text and ghosts the cleanup left on each exported slice, found by the detector models."""
     items = []
     checked = 0
     for index, page in enumerate(pages):
@@ -77,7 +70,6 @@ def clean_score(pages: list[dict], detector) -> dict:
 
 
 def text_score(pages: list[dict]) -> dict:
-    """How many text objects were translated, left blank, flagged or given back their original pixels."""
     counts = {"objects": 0, "translated": 0, "untranslated": 0, "needs_review": 0, "kept_original": 0}
     for page in pages:
         if page.get("skipped"):
@@ -98,7 +90,6 @@ def text_score(pages: list[dict]) -> dict:
 
 
 def spend_score(run: dict) -> dict:
-    """What the run cost, from the A.I cost report: money, requests, tokens, images and time per stage."""
     stages = run.get("transport") or {}
     gateway = run.get("gateway_job") or {}
     return {
@@ -114,7 +105,6 @@ def spend_score(run: dict) -> dict:
 
 
 def score_chapter(pages: list[dict], detector, run: dict | None = None) -> dict:
-    """The whole scorecard of one chapter; ``run`` is the A.I cost report when there is one."""
     card = {"clean": clean_score(pages, detector), "text": text_score(pages)}
     if run:
         card["spend"] = spend_score(run)
@@ -135,7 +125,6 @@ def _flat(card: dict) -> dict[str, float]:
 
 
 def compare(base: dict, new: dict) -> list[str]:
-    """One line per metric that changed, marked better or worse."""
     old, now = _flat(base), _flat(new)
     lines = []
     for key in sorted(set(old) & set(now)):

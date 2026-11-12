@@ -1,9 +1,3 @@
-"""Tests for the plugin-registry security fixes.
-
-Per fix: (a) the old attack is blocked (evil plugin cannot flip mode /
-read the key / mount an unpinned plugins.json / swap a file between
-digest and load / clobber a skill); (b) the legitimate flow still works.
-"""
 import io
 import sys
 import zipfile
@@ -53,7 +47,6 @@ def _plugin_home(home: Path) -> Path:
 
 
 def test_c4_user_scope_py_needs_trust(home, wsroot):
-    """A bare ~/.manga-agent/plugins/evil.py does not run until the user trusts it."""
     _plugin_home(home).joinpath("evil.py").write_text(
         "def register(api):\n    api.tool({'name': 'evil_tool'}, lambda s, a: 'pwned')\n", encoding="utf-8")
     s = _make_session(home, wsroot)
@@ -63,7 +56,6 @@ def test_c4_user_scope_py_needs_trust(home, wsroot):
 
 
 def test_c4_user_scope_py_loads_once_pinned(home, wsroot):
-    """After the user's explicit trust_plugins(), the plugin loads."""
     _plugin_home(home).joinpath("good.py").write_text(
         "def register(api):\n    api.tool({'name': 'good_tool'}, lambda s, a: 'ok', kind='read')\n", encoding="utf-8")
     trust = context.TrustStore(None)
@@ -74,7 +66,6 @@ def test_c4_user_scope_py_loads_once_pinned(home, wsroot):
 
 
 def test_c4_user_scope_change_invalidates_pin(home, wsroot):
-    """Editing a pinned user plugin breaks the pin: next build refuses to execute it."""
     plugdir = _plugin_home(home)
     plugdir.joinpath("w.py").write_text("def register(api):\n    api.tool({'name': 'w_tool'}, lambda s, a: 'v1')\n", encoding="utf-8")
     trust = context.TrustStore(None)
@@ -90,7 +81,6 @@ def test_c4_user_scope_change_invalidates_pin(home, wsroot):
 
 
 def test_h8_digest_comes_from_single_read(home, wsroot):
-    """The digest reflects the bytes read once, not whatever is on disk later."""
     plugdir = wsroot / ".agents" / "plugins"
     plugdir.mkdir(parents=True)
     target = plugdir / "victim.py"
@@ -105,7 +95,6 @@ def test_h8_digest_comes_from_single_read(home, wsroot):
 
 
 def test_h8_load_module_bytes_executes_read_bytes(home, wsroot):
-    """load_module_bytes runs the given bytes even if the file changed afterwards."""
     plugdir = wsroot / ".agents" / "plugins"
     plugdir.mkdir(parents=True)
     target = plugdir / "victim.py"
@@ -117,7 +106,6 @@ def test_h8_load_module_bytes_executes_read_bytes(home, wsroot):
 
 
 def test_h8_load_plugins_fail_closed_on_change(home, wsroot):
-    """PoC r4-09 shape, deterministic: file changed after pinning -> untrusted, never executed."""
     plugdir = wsroot / ".agents" / "plugins"
     plugdir.mkdir(parents=True)
     (plugdir / "w.py").write_text("def register(api):\n    api.tool({'name': 'h8_v1'}, lambda c, a: 'v1')\n", encoding="utf-8")
@@ -133,7 +121,6 @@ def test_h8_load_plugins_fail_closed_on_change(home, wsroot):
 
 
 def test_h8_load_plugins_unchanged_still_loads(home, wsroot):
-    """Legit flow: pinned and unchanged workspace plugin loads and runs."""
     plugdir = wsroot / ".agents" / "plugins"
     plugdir.mkdir(parents=True)
     (plugdir / "w.py").write_text("def register(api):\n    api.tool({'name': 'h8_v1'}, lambda c, a: 'v1')\n", encoding="utf-8")
@@ -166,7 +153,6 @@ def _seed_skill(home: Path, name: str, marker: str) -> Path:
 
 
 def test_h15_install_zip_refuses_clobber(home):
-    """PoC r6-03 arm B replay: same-named skill in a zip no longer silently rmtree'd."""
     legit = _seed_skill(home, "deploy-notes", "LEGIT-CONTENT\n")
     evil = _zip({"deploy-notes/SKILL.md": _SKILL.format(name="deploy-notes") + "ATTACKER-CONTENT\n"})
     with pytest.raises(ValueError, match="deploy-notes"):
@@ -189,7 +175,6 @@ def test_h15_install_zip_new_skill_still_works(home):
 
 
 def test_h15_install_zip_partial_clash_writes_nothing(home):
-    """A clash in one skill of a multi-skill zip fails before anything is written."""
     evil = _zip({
         "deploy-notes/SKILL.md": _SKILL.format(name="deploy-notes") + "ATTACKER\n",
         "fresh-skill/SKILL.md": _SKILL.format(name="fresh-skill"),

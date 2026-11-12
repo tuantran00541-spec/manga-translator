@@ -1,4 +1,3 @@
-"""A relay on the runner that adds the API key itself, so the containers under test never hold it."""
 import json
 import os
 import sys
@@ -28,7 +27,6 @@ def flush() -> None:
 
 
 def without_refused(body: bytes) -> bytes:
-    """Drops optional fields some providers refuse: tools[].function.strict and prompt_cache_key, both only hints."""
     try:
         data = json.loads(body)
     except ValueError:
@@ -44,7 +42,6 @@ def without_refused(body: bytes) -> bytes:
 
 
 def full_model(body: bytes) -> bytes:
-    """Sends the request under the run's model id."""
     try:
         data = json.loads(body)
     except ValueError:
@@ -56,7 +53,6 @@ def full_model(body: bytes) -> bytes:
 
 
 def forced(body: bytes) -> bytes:
-    """Sets the run's forced request fields, so a bridge cannot change the reasoning effort the run asked for."""
     try:
         data = json.loads(body)
     except ValueError:
@@ -102,7 +98,6 @@ class Relay(BaseHTTPRequestHandler):
             self.forward(body)
 
     def wait_for_budget(self):
-        """Holds the request while the last minute already used the token allowance."""
         cap = int(LIMITS.get("tokens_per_minute") or 0)
         while cap:
             with lock:

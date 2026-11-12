@@ -464,7 +464,6 @@ def _until(check, what: str, timeout: float = 6.0):
 
 
 def _exercise_editing(page: Page, base_url: str, artifacts: Path) -> None:
-    """Undo/redo, keyboard proofreading, the proofing panel and style presets against the saved chapter."""
     def obj(page_index: int, match) -> dict | None:
         return next((o for o in _server_objects(base_url, page_index) if match(o)), None)
 

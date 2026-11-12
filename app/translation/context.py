@@ -147,7 +147,6 @@ Every id appears once in translations.
 
 def text_system_prompt(target_name: str, target_lang: str, settled: dict | None = None,
                        setting: str | None = None) -> str:
-    """The vision system prompt's conventions, rewritten for a text-only re-translate: no image, no roles."""
     parts = [_TEXT_TASK.format(target=target_name)]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE.replace("@@REGISTER@@", setting_register(setting)))
@@ -173,7 +172,6 @@ class ChapterMemory:
         self._lock = threading.Lock()
 
     def settled(self) -> dict:
-        """The glossary and story notes, fixed for the whole chapter."""
         return {**({"glossary": self.glossary} if self.glossary else {}), **({"story_notes": self.notes} if self.notes else {})}
 
     def snapshot(self, settled: bool = True) -> dict:

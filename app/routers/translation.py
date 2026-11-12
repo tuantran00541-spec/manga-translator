@@ -155,7 +155,6 @@ def _resolve_vision_provider(provider_id: str):
 
 
 def _resolve_text_provider(provider_id: str):
-    """A chat provider for text-only work; unlike vision it need not take images."""
     normalized = normalize_provider_id(provider_id)
     cloud = cloud_job_provider(normalized)
     if cloud is not None:
@@ -223,10 +222,6 @@ def _rects_overlap(a: list[int], b: list[int]) -> bool:
 
 def _duplicate_reason(value: str, source: str, rect: list[int],
                       other_value: str, other_source: str, other_rect: list[int]) -> str | None:
-    """Why one translation is a double-read of another: "overlap" when the
-    letterings cover the same place, "source" when they read the same text
-    in different places. Translation alone never proves it — two bubbles
-    can each say "Của tôi" — so one of the two must hold as well."""
     if _norm_text(value) != _norm_text(other_value) or not _norm_text(value):
         return None
     if _rects_overlap(rect, other_rect):
@@ -240,18 +235,6 @@ def _duplicate_reason(value: str, source: str, rect: list[int],
 
 
 def _duplicate_translation_ids(candidates: list[dict], translated) -> dict[str, str]:
-    """Ids of a text drawn twice, to keep once; the value is the reason ("overlap"/"source").
-
-    The artist sometimes draws one SFX twice in a panel (ch111 p002: the
-    cheer, top-left and mid-right); the detector correctly finds both, the
-    model translates both to the same word, and the page shows the word
-    twice. Keep the larger instance and leave the other as the artist
-    drew it. The same double-read happens to dialogue — one bubble boxed
-    twice — so the check is role-agnostic: same translation, and either
-    the letterings overlap or the sources read the same. Dialogue that
-    repeats in different bubbles is never a duplicate on translation
-    alone: its sources differ.
-    """
     sources = getattr(translated, "sources", {}) or {}
     translations = getattr(translated, "translations", {}) or {}
     by_value: dict[str, list[dict]] = {}
@@ -286,11 +269,6 @@ def _duplicate_translation_ids(candidates: list[dict], translated) -> dict[str, 
 
 
 def _committed_duplicate(page: dict, candidate: dict, value: str, source: str) -> str | None:
-    """The same double-read against objects a previous call already
-    translated: the batch dedupe only sees this call's candidates, so a
-    retry re-reading a bubble the first call translated would letter it
-    twice. The candidate's own object and untranslated objects are not
-    evidence."""
     rect = list(candidate.get("fit_region") or candidate["region"])
     for obj in page.get("text_objects") or []:
         if (not isinstance(obj, dict) or str(obj.get("id")) == str(candidate["id"])
@@ -321,7 +299,6 @@ def _committed_duplicate(page: dict, candidate: dict, value: str, source: str) -
 
 
 def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
-    """Measure each region's source letter size and the characters that fit it at that size."""
     from app.render.font_catalog import resolve_font_id
     from app.render.font_guide import DEFAULT_LETTERING_FONT
     from app.render.source_size import char_budget, source_cap_px, source_ink_hex

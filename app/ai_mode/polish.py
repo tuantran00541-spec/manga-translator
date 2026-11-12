@@ -1,4 +1,3 @@
-"""Advanced A.I mode: a decision model grades each translated line, and weak lines go back to the translator."""
 from __future__ import annotations
 
 import json
@@ -51,7 +50,6 @@ PROBLEMS = {
 }
 
 def in_language(value, language: str):
-    """``value`` with Vietnamese, the language the questions were written and calibrated in, swapped for ``language``."""
     if isinstance(value, str):
         return value.replace("Vietnamese", language)
     if isinstance(value, dict):
@@ -87,7 +85,6 @@ class Line:
 
 
 def collect_lines(pages: list[dict], indices: list[int]) -> list[Line]:
-    """Translated speech and narration with the source the translator read, in reading order with neighbours."""
     ordered = []
     for page_index in indices:
         page = pages[page_index]
@@ -119,7 +116,6 @@ _SECOND_PERSON = re.compile(r"\b(you|you're|you've|you'll|you'd|your|yours|yours
 
 
 def settled(line: Line, memory: dict | None) -> tuple[list[str], list[str]]:
-    """The speaker's settled forms of address and the glossary entries whose source is in the line."""
     memory = memory or {}
     glossary = memory.get("glossary") or {}
     pairs = {}
@@ -141,7 +137,6 @@ def settled(line: Line, memory: dict | None) -> tuple[list[str], list[str]]:
 
 
 def line_state(line: Line, text: str | None = None, memory: dict | None = None, language: str = "Vietnamese") -> str:
-    """What the judge reads: the source, one translation, the lines around it and what the chapter settled."""
     state = (f"SOURCE: {_flat(line.source)}\nTRANSLATION ({language}): {_flat(text or line.text)}\n"
              f"LINE BEFORE: {_flat(line.before) or '(none)'}\nLINE AFTER: {_flat(line.after) or '(none)'}")
     address, terms = settled(line, memory)
@@ -155,7 +150,6 @@ def line_state(line: Line, text: str | None = None, memory: dict | None = None, 
 
 
 def questions(line: Line, memory: dict | None, language: str = "Vietnamese") -> dict:
-    """The three quality questions, plus the settled one when the chapter settled something for this line."""
     return in_language({**QUESTIONS, "settled": SETTLED} if any(settled(line, memory)) else QUESTIONS, language)
 
 
@@ -164,7 +158,6 @@ def evaluate_url(provider) -> str:
 
 
 def judge(provider, api_key: str, state: str, asked: dict = QUESTIONS) -> dict[str, float]:
-    """One judge call; returns each question's score, missing ones left out."""
     response = requests.post(
         evaluate_url(provider), headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         json={**({"model": decider.DECIDER_MODEL} if decider.available(provider, api_key) else {}),
@@ -187,20 +180,17 @@ def problems(scores: dict[str, float]) -> list[str]:
 
 
 def better(new: dict[str, float], old: dict[str, float]) -> bool:
-    """True when the judge grades a rewrite clearly better overall and no less natural or faithful."""
     kept = all(new.get(key, 0.0) >= old.get(key, 0.0) - MAX_LOSS for key in ("natural", "faithful"))
     return kept and quality(new) >= quality(old) + MIN_GAIN
 
 
 def quality(scores: dict[str, float]) -> float:
-    """All scores on one 0-1 scale, so a rewrite is kept only when the judge likes it better overall."""
     asked = {**QUESTIONS, **({"settled": SETTLED} if "settled" in scores else {})}
     return sum(scores.get(key, 0.0) / (len(q["criteria"]) - 1) for key, q in asked.items()) / len(asked)
 
 
 def rewrite(provider, model: str, api_key: str, lines: list[Line], memory: dict,
             language: str = "Vietnamese") -> tuple[dict[str, str], float | None]:
-    """Ask the translator to rewrite flagged lines, with what the judge found and the chapter memory."""
     items = [{"id": line.id, **({"speaker": line.speaker} if line.speaker else {}), "source": line.source, "translation": line.text, "before": line.before,
               "after": line.after, "problem": in_language("; ".join(problems(line.scores)), language),
               **({"max_chars": line.max_chars} if line.max_chars else {})} for line in lines]

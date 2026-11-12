@@ -1,4 +1,3 @@
-"""Install Agent Skills from GitHub, a zip or a SKILL.md into the user's skills folder, and write new ones."""
 from __future__ import annotations
 
 import io
@@ -19,7 +18,6 @@ MAX_SKILLS = 40
 
 
 def parse(spec: str) -> tuple[str, str, str, str]:
-    """owner/repo, optionally @ref and /folder inside it, such as obra/superpowers@main/skills."""
     match = SPEC_RE.match(spec.strip().removeprefix("https://github.com/").strip("/"))
     if not match:
         raise ValueError("dùng dạng CHỦ/REPO, CHỦ/REPO@nhánh hoặc CHỦ/REPO/thư-mục")
@@ -45,13 +43,11 @@ def user_dir(home: Path) -> Path:
 
 
 def install(spec: str, home: Path, replace: bool = False) -> list[str]:
-    """Copy every skill folder found under the repo path; returns their names."""
     owner, repo, ref, sub = parse(spec)
     return _install_archive(_fetch(owner, repo, ref), sub, home, spec, replace=replace)
 
 
 def install_zip(data: bytes, home: Path, replace: bool = False) -> list[str]:
-    """Every skill folder inside an uploaded zip, wherever it sits."""
     if len(data) > MAX_ZIP_BYTES:
         raise ValueError("file zip quá lớn (tối đa 40 MB)")
     try:
@@ -62,7 +58,6 @@ def install_zip(data: bytes, home: Path, replace: bool = False) -> list[str]:
 
 
 def install_file(text: str, home: Path, replace: bool = False) -> str:
-    """A lone SKILL.md becomes a skill folder named by its front matter."""
     head, _ = frontmatter(text[:20_000])
     name = head.get("name", "")
     if not NAME_RE.match(name) or not head.get("description"):
@@ -74,7 +69,6 @@ def install_file(text: str, home: Path, replace: bool = False) -> str:
 
 
 def create(home: Path, name: str, description: str, body: str, replace: bool = False) -> str:
-    """Write a new SKILL.md from a name, a one-paragraph description and its instructions."""
     name, description, body = name.strip(), " ".join(description.split()), body.strip()
     if not NAME_RE.match(name):
         raise ValueError("tên skill chỉ gồm chữ thường, số và gạch ngang, tối đa 64 ký tự")
@@ -112,7 +106,6 @@ def _write(home: Path, name: str, text: str) -> None:
 
 def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str, wrapped: bool = True,
                    replace: bool = False) -> list[str]:
-    """Copy the skill folders of an archive; GitHub zips wrap everything in one top folder."""
     entries = [i for i in archive.infolist() if not i.is_dir()]
     root = entries[0].filename.split("/", 1)[0] if entries and wrapped else ""
     prefix = "/".join(p for p in (root, sub) if p) + "/" if root or sub else ""

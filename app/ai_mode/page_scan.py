@@ -1,9 +1,3 @@
-"""Ask a vision model which slices are credit pages or textless and where series logos are.
-
-Runs on the ORIGINAL slices before cleanup, so credit and textless slices can be
-skipped (no cleanup time spent on them; they are exported as the original) and
-logo artwork can be stored as preserve regions before inpainting touches it.
-"""
 from __future__ import annotations
 
 import math
@@ -108,7 +102,6 @@ def _confidence(value) -> float:
 
 
 def _lines(raw) -> tuple[tuple[str, str], ...]:
-    """The slice's lettering as (who, text) pairs, dropping empty and malformed lines."""
     lines = []
     for item in raw if isinstance(raw, list) else []:
         if isinstance(item, dict) and (text := " ".join(str(item.get("text") or "").split())[:MAX_LINE]):
@@ -136,14 +129,6 @@ def _logo_box(raw, width: int, height: int) -> tuple[int, int, int, int] | None:
 
 
 def parse_scan(data: dict, sizes: dict[int, tuple[int, int]], *, errors: list | None = None) -> list[SliceScan]:
-    """Map the model answer onto the requested slices; unknown slices are ignored.
-
-    ``sizes`` maps page index to the ORIGINAL slice (width, height). A slice the
-    model did not answer for is reported as neither credit nor logo-bearing.
-    Malformed entries (not an object, a non-integer slice, a duplicate slice)
-    are recorded in ``errors`` when given, instead of vanishing silently:
-    a systematically malformed scan response must show up in the report.
-    """
     answers: dict[int, dict] = {}
     for entry in (data or {}).get("slices") or []:
         if not isinstance(entry, dict):
@@ -200,11 +185,6 @@ def scan_slices(
     api_key: str,
     slices: list[tuple[int, np.ndarray]],
 ) -> tuple[list[SliceScan], float | None, list[dict]]:
-    """Scan one batch of (page_index, original image) with a single request.
-
-    Returns (scans, cost, malformed): the malformed scan entries the model
-    returned, for the report — a slice whose entry was malformed is scanned
-    as unjudged, never skipped."""
     if not slices:
         return [], 0.0, []
     sizes = {index: (image.shape[1], image.shape[0]) for index, image in slices}

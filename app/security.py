@@ -105,7 +105,6 @@ def validate_url(url: str) -> str:
 
 
 def public_address(hostname: str, port: int | None) -> str:
-    """One public address of ``hostname``, checked now; raises when any address it resolves to is private."""
     addresses = _url_addresses(hostname, port)
     for ip_obj in addresses:
         _check_ip(ip_obj, hostname)

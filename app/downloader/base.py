@@ -16,7 +16,6 @@ from app.parameters import (
 
 
 def _retry_delay(exc: requests.RequestException, attempt: int) -> float:
-    """Seconds to wait before retrying; a site saying "too many requests" gets real slack."""
     response = getattr(exc, "response", None)
     if response is not None and response.status_code == 429:
         try:

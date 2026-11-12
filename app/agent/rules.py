@@ -1,4 +1,3 @@
-"""Allow, ask or deny rules for tool calls, matched by glob with the last matching rule winning."""
 from __future__ import annotations
 
 import fnmatch
@@ -36,11 +35,6 @@ _PROC_ENVIRON = re.compile(r"/proc/(?:self|\d+|\$\$)/environ")
 
 
 def _mask_quotes(command: str) -> str:
-    """Copy of command with single/double-quoted spans (and backslash escapes) blanked out.
-
-    Operators inside quotes are literal text to the shell, so operator scans must ignore them;
-    `$(...)` and backticks still execute inside double quotes and are scanned separately on the raw text.
-    """
     out: list[str] = []
     i, n, quote = 0, len(command), ""
     while i < n:
@@ -63,12 +57,10 @@ def _mask_quotes(command: str) -> str:
 
 
 def _dequote(text: str) -> str:
-    """Strip shell quote characters so `.e''nv` scans as `.env`."""
     return text.replace("'", "").replace('"', "")
 
 
 def _shell_parts(command: str) -> list[str]:
-    """Split a command on shell operators, ignoring operators inside quotes (original text kept)."""
     masked = _mask_quotes(command)
     parts, start = [], 0
     for m in SPLIT.finditer(masked):
@@ -103,11 +95,6 @@ def _from_claude(table: dict, scope: str) -> list[Rule]:
 
 
 def load(workspace: Path, home: Path) -> list[Rule]:
-    """Defaults, then user rules, then workspace rules; a layer can only tighten, never loosen.
-
-    Loosening is enforced again at verdict time (_verdict): a deny anywhere wins, so a
-    workspace (or user) rule can never weaken an earlier deny to ask/allow.
-    """
     rows: list[Rule] = [("default", *r) for r in DEFAULT]
     for scope, base in (("user", home), ("workspace", workspace)):
         for name in SETTINGS[scope]:
@@ -142,13 +129,6 @@ def _match(category: str, pattern: str, subject: str) -> bool:
 
 
 def _verdict(rules: list[Rule], category: str, subject: str) -> str | None:
-    """Last matching rule wins, with one exception: a deny sticks across layers.
-
-    A deny from an earlier (more trusted) layer can never be weakened to ask/allow by a
-    later layer — this is what makes "only tighten" real. The only carve-out is an
-    explicit allow later in the SAME layer (e.g. DEFAULT denies `.env.*` but allows
-    `.env.example`), which is that layer's own deliberate exception, not a weakening.
-    """
     found = None
     denied = False
     denied_scope: str | None = None
@@ -172,10 +152,6 @@ WRITERS = {"cp", "mv", "rm", "ln", "touch", "tee", "chmod", "chown", "install", 
 
 
 def _names_denied_path(rules: list[Rule], command: str) -> bool:
-    """Best effort: a command naming a path a read rule denies, or writing one an edit rule denies, is denied too; the sandbox is the real wall.
-
-    Tokens are dequoted before scanning so `.e''nv` still matches the `.env` deny rules.
-    """
     specific = [r for r in rules if r[2] not in ("*", "**")]
     for part in _shell_parts(command):
         masked = _mask_quotes(part)
@@ -189,7 +165,6 @@ def _names_denied_path(rules: list[Rule], command: str) -> bool:
 
 
 def subjects(name: str, args: dict, path_of) -> list[str]:
-    """What the rules for this call match against: commands, paths, URLs or names."""
     if name == "run_command":
         return [part.strip() for part in _shell_parts(str(args.get("command") or "")) if part.strip()]
     if name in ("read_file", "list_dir", "search", "glob", "write_file", "edit_file", "replace_in_files", "delete_file"):
@@ -208,7 +183,6 @@ def subjects(name: str, args: dict, path_of) -> list[str]:
 
 
 def check(rules: list[Rule], name: str, args: dict, path_of) -> str | None:
-    """deny, ask or allow when the rules decide this call, else None."""
     category = "mcp" if name.startswith("mcp__") else CATEGORY.get(name)
     if category is None:
         return None
@@ -229,7 +203,6 @@ def check(rules: list[Rule], name: str, args: dict, path_of) -> str | None:
 
 
 def safe_readonly(command: str) -> bool:
-    """True for a command that only reads: plain calls of look-only programs, no redirects, substitutions or compound tricks beyond pipes."""
     if _SUBST_TRICKS.search(command) or _REDIRECT_OPS.search(_mask_quotes(command)):
         return False
     if _PROC_ENVIRON.search(_dequote(command)):
@@ -250,7 +223,6 @@ _OUTPUT_FLAG = {"sort": "o", "tree": "o"}
 
 
 def _writes_or_runs(words: list[str]) -> bool:
-    """rg --pre runs a program, sort -o and tree -o write a file, uniq IN OUT writes OUT and date -s sets the clock."""
     name, rest = words[0], [_dequote(w) for w in words[1:]]
     if name == "rg" and any(w.startswith("--pre") for w in rest):
         return True
@@ -262,7 +234,6 @@ def _writes_or_runs(words: list[str]) -> bool:
 
 
 def remembered(name: str, args: dict, verdict: str | None) -> tuple[str, str] | None:
-    """The (category, pattern) an 'always allow' would save for this call, or None when it must be asked each time."""
     if verdict in ("ask", "deny") or not isinstance(args, dict):
         return None
     if name == "run_command":
@@ -283,7 +254,6 @@ def remembered(name: str, args: dict, verdict: str | None) -> tuple[str, str] | 
 
 
 def save_allow(home: Path, category: str, pattern: str) -> None:
-    """Add an allow rule to the user's own settings file."""
     path = home / SETTINGS["user"][0]
     try:
         data = json.loads(path.read_text(encoding="utf-8"))

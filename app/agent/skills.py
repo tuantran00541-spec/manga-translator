@@ -1,4 +1,3 @@
-"""Agent Skills (SKILL.md folders) found in the workspace and the user's home, loaded on demand."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,7 +27,6 @@ class Skill:
 
 
 def frontmatter(text: str) -> tuple[dict[str, str], str]:
-    """The YAML front matter's top-level scalar fields and the body after it."""
     if not text.startswith("---"):
         return {}, text
     end = text.find("\n---", 3)
@@ -77,7 +75,6 @@ def discover(workspace: Path, home: Path | None = None) -> dict[str, Skill]:
 
 
 def catalog(found: dict[str, Skill], paths: bool = False) -> str:
-    """The skills the model may load itself, by tool or (with paths) by reading the file; manual ones are only for the user's /commands."""
     shown = [s for s in found.values() if not s.manual]
     if not shown:
         return ""
@@ -97,13 +94,11 @@ def _short(text: str, limit: int = 160) -> str:
 
 
 def active(found: dict[str, Skill], names: list[str]) -> str:
-    """The full instructions of the skills the user turned on."""
     shown = [load(found[n]) for n in names if n in found]
     return "Skills the user turned on (follow them for this whole session):\n\n" + "\n\n---\n\n".join(shown) if shown else ""
 
 
 def load(skill: Skill) -> str:
-    """The skill's instructions with the files it ships, for the model to read next."""
     _, body = frontmatter(skill.file.read_text(encoding="utf-8", errors="replace"))
     extras = sorted(str(p.relative_to(skill.folder)) for p in skill.folder.rglob("*")
                     if p.is_file() and p.name != "SKILL.md")[:100]

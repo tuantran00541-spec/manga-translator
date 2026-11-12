@@ -1,4 +1,3 @@
-"""Draw text blocks in many styles onto comic tiles and return their exact boxes, to teach Kiuyha text it rarely saw."""
 import random
 from pathlib import Path
 
@@ -16,7 +15,6 @@ SYSTEM = ["[SYSTEM]", "[Quest Complete]", "STR +5", "HP 1200/1200", "Lv. 99", "[
 
 
 def _text():
-    """A line set: dialogue, a sound effect or a game-system notice."""
     kind = random.random()
     if kind < 0.25:
         return [random.choice(SFX)], "sfx"
@@ -37,7 +35,6 @@ def _colour(light):
 
 
 def _render(lines, kind, scale):
-    """One text block on a transparent canvas, with stroke, glow, shadow, colour and slant chosen at random."""
     size = int(scale * (random.uniform(1.6, 3.5) if kind == "sfx" else random.uniform(0.7, 1.4)))
     font = ImageFont.truetype(str(random.choice(FONTS)), max(10, size))
     light = random.random() < 0.3
@@ -87,7 +84,6 @@ def _free(box, taken):
 
 
 def draw_blocks(image, taken, count):
-    """Paste up to count blocks where no labelled text is; returns the image and the new boxes (x1, y1, x2, y2)."""
     image = image.convert("RGB")
     w, h = image.size
     added = []

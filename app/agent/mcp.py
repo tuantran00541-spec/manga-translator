@@ -1,4 +1,3 @@
-"""Model Context Protocol client: stdio and streamable HTTP servers, their tools offered to the agent."""
 from __future__ import annotations
 
 import base64
@@ -44,22 +43,15 @@ _READONLY_NAMES = frozenset({"get", "list", "read", "fetch", "search", "describe
 
 
 def harness_read_only(tool: str) -> bool:
-    """True when the harness itself judges an MCP tool read-only from its name.
-
-    The server's readOnlyHint annotation is deliberately NOT consulted here:
-    a server controls its annotations, so a destructive tool may self-certify
-    as read-only and would otherwise run approval-free in auto/edits mode.
-    """
     name = str(tool or "").strip().lower()
     return name in _READONLY_NAMES or name.startswith(_READONLY_NAME_PREFIXES)
 
 
 class MCPError(RuntimeError):
-    """A server that failed to start or answered with an error."""
+    pass
 
 
 def _expand(value):
-    """${VAR} and ${VAR:-default} in config strings, as Claude Code's .mcp.json allows."""
     if isinstance(value, str):
         return _ENV_RE.sub(lambda m: os.environ.get(m.group(1), m.group(2) or ""), value)
     if isinstance(value, list):
@@ -99,11 +91,6 @@ def _pairs(value, what: str) -> dict[str, str]:
 
 
 def clean_config(config) -> dict:
-    """One server's settings checked and reduced to what the client uses: a command with args and env, or a URL with headers.
-
-    ``env_allowlist`` names host variables a stdio server genuinely needs (e.g. its own API key);
-    they are restored after the harness process env is scrubbed (see _StdioTransport).
-    """
     if not isinstance(config, dict):
         raise ValueError("a server's settings must be a JSON object")
     kind = str(config.get("type") or config.get("transport") or ("http" if config.get("url") else "stdio")).lower()
@@ -146,7 +133,6 @@ def clean_config(config) -> dict:
 
 
 def client_settings(config: dict) -> dict:
-    """What the harness itself reads from a server's settings: which tools to offer, their kinds and a timeout."""
     out: dict = {}
     tools = config.get("tools")
     if isinstance(tools, dict):
@@ -163,14 +149,12 @@ def client_settings(config: dict) -> dict:
 
 
 def offered(config: dict, tool: str) -> bool:
-    """True when the server's allow and deny lists let the harness offer this tool."""
     lists = config.get("tools") if isinstance(config.get("tools"), dict) else {}
     allow, deny = lists.get("allow"), lists.get("deny") or []
     return tool not in deny and (not allow or tool in allow)
 
 
 def set_user_tool(home: Path, server: str, tool: str, on: bool) -> None:
-    """Switch one tool of a server in ~/.manga-agent/mcp.json by its deny list."""
     data = _read_user(home)
     table = data.get("mcpServers") if isinstance(data.get("mcpServers"), dict) else {}
     if server not in table or not isinstance(table[server], dict):
@@ -184,7 +168,6 @@ def set_user_tool(home: Path, server: str, tool: str, on: bool) -> None:
 
 
 def parse_pasted(text: str, name: str = "") -> dict[str, dict]:
-    """Servers from JSON as MCP docs show it: {"mcpServers": {...}}, VS Code's {"servers": {...}}, a bare {"name": {...}} or one server's settings."""
     text = (text or "").strip()
     try:
         data = json.loads(text)
@@ -233,7 +216,6 @@ def _write_user(home: Path, data: dict) -> None:
 
 
 def save_user(home: Path, servers: dict[str, dict]) -> None:
-    """Add or replace servers in ~/.manga-agent/mcp.json, keeping everything else in it."""
     data = _read_user(home)
     table = data.setdefault("mcpServers", {})
     if not isinstance(table, dict):
@@ -265,7 +247,6 @@ def set_user_enabled(home: Path, name: str, enabled: bool) -> None:
 
 
 def public(row: dict) -> dict:
-    """A configured server as the page may show it: values of env and headers are hidden unless they only name a variable."""
     config = row["config"]
     hide = lambda pairs: {k: (v if SECRET_VALUE.match(str(v)) else "•••") for k, v in (pairs or {}).items()} if isinstance(pairs, dict) else {}
     kind = "http" if config.get("url") else "stdio"
@@ -276,7 +257,6 @@ def public(row: dict) -> dict:
 
 
 def probe(name: str, config: dict, cwd: Path) -> list[str]:
-    """Start the server, list its tools and stop it again; raises MCPError with the server's own words when it fails."""
     server = Server(name, config, cwd)
     try:
         return [str(t["name"]) for t in server.tools]
@@ -285,7 +265,6 @@ def probe(name: str, config: dict, cwd: Path) -> list[str]:
 
 
 def configured(workspace: Path, home: Path | None = None) -> list[dict]:
-    """Every configured server with where it came from; workspace ones need the user's trust before they start."""
     home = home if home is not None else Path.home()
     rows: dict[str, dict] = {}
 
@@ -478,7 +457,6 @@ class _HttpTransport:
 
 
 class Server:
-    """One running MCP server: its tools (as its allow and deny lists leave them), prompts and resources."""
 
     def __init__(self, name: str, config: dict, cwd: Path):
         self.name, self.cwd = name, cwd
@@ -530,7 +508,6 @@ class Server:
         return [t for t in self.all_tools if offered(self.config, str(t["name"]))]
 
     def refresh_tools(self) -> None:
-        """Read the tool list again after the server said it changed."""
         self.tools_stale = False
         self.tools = self._list_tools()
 
@@ -541,7 +518,6 @@ class Server:
         return reply.get("result") or {}
 
     def _call_alive(self, method: str, params: dict) -> dict:
-        """A call to a server found stopped starts it again first; a call that fails midway is never sent twice."""
         if not self.transport.alive() and self.restarts < MAX_RESTARTS:
             self.restarts += 1
             logger.info("MCP server {} stopped; starting it again", self.name)
@@ -607,6 +583,5 @@ class Server:
 
 
 def tool_name(server: str, tool: str) -> str:
-    """The name the model sees: mcp__server__tool, kept to the 64 characters most APIs allow."""
     clean = re.sub(r"[^A-Za-z0-9_-]", "_", f"mcp__{server}__{tool}")
     return clean[:64]

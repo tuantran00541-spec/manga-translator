@@ -20,7 +20,6 @@ class ExtensionHello(BaseModel):
 
 
 def version() -> str:
-    """The extension version on disk, which Chrome only picks up when the user reloads it."""
     return json.loads((EXTENSION_DIR / "manifest.json").read_text(encoding="utf-8"))["version"]
 
 

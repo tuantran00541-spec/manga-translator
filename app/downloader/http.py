@@ -22,7 +22,6 @@ from app.security import (
 
 
 class _PinnedMixin:
-    """Connects to the address checked at connect time, so DNS cannot swap in a private one afterwards."""
 
     def _new_conn(self):
         if self.proxy is not None:

@@ -83,11 +83,6 @@ def _safe_int(value, fallback: int) -> int:
 
 
 def _export_source_page(page: dict, page_index: int) -> int:
-    """The page's source page for export grouping, or a sentinel that cannot
-    collide with a real one. A missing or unparseable source_page must not
-    fall back to the page index: page 0's real source_page is 0, so the
-    fallback would merge a malformed page into page 0's group. The sentinel
-    groups the page on its own."""
     value = page.get("source_page")
     if isinstance(value, bool):
         value = None
@@ -433,17 +428,6 @@ def export_preflight(chapter_id: str) -> dict:
 def _restore_skipped_and_rerender(
     chapter_id: str, page_index: int, skipped: list[str]
 ) -> tuple[int, list[str], str | None]:
-    """Restore the original pixels of floor-skipped objects, then re-render.
-
-    Mirrors the job flow (``AIModeRunner._render_one``): a skipped object
-    leaves its region clean-empty, so its region is preserved and
-    re-inpainted from the original, and the page is rendered again onto
-    the restored base — the preserved region excludes the object from the
-    second render. Returns (restored count, re-render skipped ids,
-    restore error or None). A restore failure leaves the hole in place
-    and is reported, not raised: one unrestorable page must not cost the
-    whole chapter render.
-    """
     from app.dependencies import pipeline
 
     with get_manifest_lock(chapter_id):
@@ -568,7 +552,6 @@ def export_chapter(chapter_id: str, force: bool = False, format: str = "png", qu
 
 
 def write_chapter_archive(chapter_id: str, force: bool = False, options: ExportOptions = ExportOptions()) -> Path:
-    """Stitch every current page into a ZIP and return its path."""
     out_dir = OUTPUT_DIR / chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
     final_archive = out_dir / (f"chapter_{chapter_id}.zip" if options.default

@@ -48,7 +48,6 @@ def _valid_region(region: object) -> bool:
 
 
 def _rank_renders(rendered: list) -> list:
-    """Attempts best first, by the chooser's rule below."""
     def stats_of(item):
         return item[3] if len(item) > 3 and isinstance(item[3], dict) else {}
 
@@ -72,13 +71,11 @@ def _rank_renders(rendered: list) -> list:
 
 
 def _ink_mask(base: Image.Image, candidate: Image.Image):
-    """Pixels where a candidate differs from the image it would paint onto."""
     return (np.abs(np.asarray(candidate).astype(int)
                    - np.asarray(base).astype(int)).max(axis=2) > 0)
 
 
 def _mask_bbox(mask):
-    """Exclusive-end bbox of a mask, or None when it holds no ink."""
     ys, xs = np.nonzero(mask)
     if len(xs) == 0:
         return None
@@ -91,17 +88,6 @@ INK_SHIFT_CAP = 64
 
 def _clearing_shift(cand_box, placed_boxes, height: int, frame=None, anchor_box=None,
                     placed_tops=None, cand_top=None):
-    """Smallest vertical move taking an ink box clear of placed ink, or None.
-
-    A move counts only when the moved box clears every placed box, not just
-    the one it collided with, and stays on the canvas; a move that trades
-    one collision for another is no move. It must also stay inside the
-    object's frame — judged on the fit box, the unit the fit decided —
-    and must not carry the block's top past a neighbour's top: a shift
-    that inverts which block reads first trades an overlap for a
-    reading-order break. Without a frame the canvas check alone stands,
-    and the caller records that.
-    """
     def clears(box):
         return not any(px1 < box[2] and box[0] < px2 and py1 < box[3] and box[1] < py2
                        for px1, py1, px2, py2 in placed_boxes)
@@ -144,7 +130,6 @@ def _clearing_shift(cand_box, placed_boxes, height: int, frame=None, anchor_box=
 
 
 def _frame_iou(a, b) -> float:
-    """Overlap share of two frame boxes, for same-frame identity."""
     if a is None or b is None:
         return 0.0
     ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
@@ -176,7 +161,6 @@ SOURCE_SIZE_SHARE = 0.85
 
 
 def letter_box(obj: dict, region: tuple[int, int, int, int]) -> tuple[int, int, int, int] | None:
-    """Where the source lettering was, with some room, inside the region; None when unknown."""
     bounds = obj.get("letter_bounds")
     if not _valid_region(bounds):
         return None
@@ -188,15 +172,6 @@ def letter_box(obj: dict, region: tuple[int, int, int, int]) -> tuple[int, int, 
 
 
 def fit_attempts(obj: dict, coords: tuple[int, int, int, int]) -> list:
-    """Boxes tried for an object's lettering: the source lettering's spot, then roomier.
-
-    A bubble gives room downward before it gives any sideways, so the
-    tall attempt keeps the lettering's width and takes the region's
-    height. Wider attempts are pulled in on each side: a box flush with
-    the region edge letters onto the outline where the interior narrows.
-    The frame is still measured first inside each attempt, so this ladder
-    only chooses starting boxes, never the frame itself.
-    """
     tight = letter_box(obj, coords)
     if not tight:
         return [coords]
@@ -217,11 +192,6 @@ def fit_attempts(obj: dict, coords: tuple[int, int, int, int]) -> list:
 
 
 def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, int], **style) -> Image.Image:
-    """Letter ``box`` even where it runs past the top or bottom of the slice, clipped to the slice.
-
-    A text crossing a slice cut is lettered by both slices; each lays it out in the
-    whole box, so the two halves meet exactly.
-    """
     width, height = image.size
     x1, x2 = max(0, box[0]), min(width, box[2])
     top, bottom = max(0, -box[1]), max(0, box[3] - height)
@@ -417,16 +387,6 @@ def render_text_objects(
     verdicts: list | None = None,
     size_bands: dict | None = None,
 ) -> int:
-    """Paint ``text_objects`` onto ``image`` in one decision order.
-
-    Frame first (measured in the fit), then fit inside it, then rank
-    attempts by fit and readability, then separate by pixel ink, then
-    paint. Each stage consumes the previous stage's output: the fit
-    never re-decides the frame, the ranking never re-decides the fit,
-    and the guard vetoes colliding attempts in ranked order instead of
-    re-ranking them. Every fallback a stage takes is recorded in
-    ``verdicts`` when given, one entry per object.
-    """
     rendered_count = 0
     img_w, img_h = image.size
     seen_keys = set()

@@ -1,4 +1,3 @@
-"""Process a whole chapter through the app pipeline and report speed and text left behind."""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +24,6 @@ def text_mask(shape: tuple[int, int], boxes) -> np.ndarray:
 
 
 def cpu_model() -> str:
-    """The runner's CPU, as float results of the models can differ between CPU types."""
     try:
         for line in Path("/proc/cpuinfo").read_text().splitlines():
             if line.startswith("model name"):
@@ -36,7 +34,6 @@ def cpu_model() -> str:
 
 
 def stage_seconds(manifest: dict) -> dict:
-    """Seconds each processing stage took, summed over the slices, with the shared seam pass and the run's wall time."""
     totals: dict[str, float] = {}
 
     def add(name: str, value) -> None:

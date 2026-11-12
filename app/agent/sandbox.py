@@ -1,4 +1,3 @@
-"""Where agent commands may write and whether they reach the network, enforced by the OS where it can."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -37,12 +36,10 @@ DROP_ENV = {"SSH_AUTH_SOCK", "DBUS_SESSION_BUS_ADDRESS", "GPG_AGENT_INFO", "GNOM
 
 
 def clean_env() -> dict[str, str]:
-    """The environment a confined command gets: no API keys, tokens or agent sockets."""
     return {k: v for k, v in os.environ.items() if k not in DROP_ENV and not SECRET_NAME.search(k)}
 
 
 def secret_paths() -> list[str]:
-    """Existing credential folders and files, as real paths."""
     home = Path.home()
     found = [home / name for name in HOME_SECRETS] + [Path(p) for p in SYSTEM_SECRETS] + [Path(p) for p in EXTRA_DENY]
     return sorted({os.path.realpath(p) for p in found if p.exists()})
@@ -52,8 +49,6 @@ DOTENV_PUBLIC = {".env.example", ".env.sample"}
 
 
 def workspace_secrets(root: Path) -> list[str]:
-    """Workspace dotenv files (.env, .env.local, ...), as real paths: denied read at the
-    sandbox layer too, so a quote-evasion that slips past the rule scan still cannot read them."""
     hits, top = [], str(root)
     for folder, dirs, names in os.walk(top):
         if folder[len(top):].count(os.sep) >= ENV_DEPTH:
@@ -95,7 +90,6 @@ class Policy:
 
 
 def settings() -> dict:
-    """The user's engine choice (auto or docker) and container image, from ~/.manga-agent/sandbox.json or MANGA_AGENT_SANDBOX."""
     data = {}
     try:
         data = json.loads((Path.home() / ".manga-agent" / "sandbox.json").read_text(encoding="utf-8"))
@@ -131,7 +125,6 @@ def save_settings(engine: str, image: str = "") -> dict:
 
 
 def docker_ready() -> bool:
-    """True when a Docker daemon running Linux containers answers; checked at most once a minute."""
     if time.time() - _docker_seen[0] < DOCKER_CHECK_S:
         return _docker_seen[1]
     ok = False
@@ -146,14 +139,12 @@ def docker_ready() -> bool:
 
 
 def backend() -> str:
-    """The mechanism that confines commands here: the chosen container engine when it answers, else the OS's own, or 'none'."""
     if settings()["engine"] == "docker" and docker_ready():
         return "docker"
     return _os_backend()
 
 
 def full() -> bool:
-    """True when commands are kept from secrets and the network, not only from writing."""
     return backend() in FULL
 
 
@@ -172,7 +163,6 @@ def _os_backend() -> str:
 
 
 def writable_roots(policy: Policy, root: Path, scratch: str) -> list[str]:
-    """Folders a confined command may write: its own scratch folder and /dev, plus the workspace and temp when allowed."""
     roots = [scratch, "/dev"]
     if policy.mode == "workspace-write":
         roots = [str(root), os.path.realpath(tempfile.gettempdir())] + roots
@@ -194,7 +184,6 @@ BASH = shutil.which("bash") if os.name == "posix" else None
 
 
 def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[str] | str, bool]:
-    """The process to start for a shell command under the policy, and whether it goes through a shell string."""
     kind = backend()
     if policy.mode == "full-access" or kind == "none":
         return ([BASH, "-c", command], False) if BASH else (command, True)
@@ -240,7 +229,6 @@ def _env_for(policy: Policy, scratch: str) -> dict | None:
 
 
 class Job:
-    """A command left running in the background, under the same policy as any other."""
 
     def __init__(self, command: str, policy: Policy, root: Path, tty: bool = False, scratch: str | None = None, env: dict | None = None):
         self.command, self.started, self.outside, self.tty = command, time.time(), policy.mode == "full-access", tty and os.name == "posix"
@@ -265,7 +253,6 @@ class Job:
         self.cursor = 0
 
     def close_input(self) -> None:
-        """End the job's input, so a program that asks a question (a password, a y/n) gets end-of-file instead of waiting forever."""
         if self.tty or self.stdin is None:
             return
         try:
@@ -275,7 +262,6 @@ class Job:
         self.stdin = None
 
     def write(self, text: str) -> None:
-        """Send text to the job's input, as if typed."""
         if self.stdin is None:
             raise OSError("this command's input was closed when it started; start it with start_job to type into it")
         try:
@@ -285,7 +271,6 @@ class Job:
             raise OSError("the job no longer reads input") from exc
 
     def read(self) -> str:
-        """Output produced since the last read."""
         data = bytes(self.out.data[self.cursor:])
         self.cursor += len(data)
         return data.decode("utf-8", errors="replace")
@@ -296,11 +281,9 @@ class Job:
 
     @property
     def alive(self) -> bool:
-        """Whether the command, or anything it started such as a server, is still running."""
         return self.proc.poll() is None or (os.name == "posix" and _group_alive(self.proc.pid))
 
     def detach(self) -> None:
-        """Leave the job running after this process exits, its output drained so a later write cannot kill it."""
         if os.name == "posix":
             subprocess.Popen(["cat"], stdin=self.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
@@ -320,7 +303,6 @@ class Job:
 
 def run(command: str, policy: Policy, root: Path, timeout: int, stdin: str | None = None,
         split: bool = False) -> tuple[int | None, str]:
-    """Run a shell command under the policy; a None exit code means it timed out, and split returns stderr alone."""
     scratch = tempfile.mkdtemp(prefix="agent-run-")
     try:
         target, shell = wrap(command, policy, root, os.path.realpath(scratch))
@@ -330,7 +312,6 @@ def run(command: str, policy: Policy, root: Path, timeout: int, stdin: str | Non
 
 
 class _Capture(threading.Thread):
-    """Reads a pipe to the end, keeping at most MAX_OUTPUT_BYTES and noting how much was dropped."""
 
     def __init__(self, stream, on_runaway):
         super().__init__(daemon=True)
@@ -358,7 +339,6 @@ class _Capture(threading.Thread):
 
 
 def _group_alive(pgid: int) -> bool:
-    """Whether a process group has a member that is not a zombie; a container with no init to reap them keeps zombies around."""
     procs = Path("/proc")
     if not procs.is_dir():
         try:

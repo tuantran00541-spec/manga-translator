@@ -1,4 +1,3 @@
-"""Install or update: sync the code, a Python 3.12 environment, the dependencies, the models and a `manga` command."""
 from __future__ import annotations
 
 import argparse
@@ -29,7 +28,6 @@ FREE_GB_NEEDED = 5
 
 
 def _colour_ok() -> bool:
-    """Colour only on a real terminal that can show it, and never with NO_COLOR set."""
     if os.environ.get("NO_COLOR") or os.environ.get("TERM") == "dumb" or not sys.stdout.isatty():
         return False
     if not WINDOWS:
@@ -61,7 +59,6 @@ def note(message: str) -> None:
 
 
 class Steps:
-    """Numbered step headers, each closed with the time it took."""
 
     def __init__(self, total: int):
         self.total, self.number, self.began, self.step_began = total, 0, time.monotonic(), None
@@ -88,7 +85,6 @@ def app_version(target: Path) -> str:
 
 
 def default_home() -> Path:
-    """One folder for uv, Python and the command; a path with accents breaks PaddleOCR, so it falls back."""
     if os.environ.get("MANGA_HOME"):
         return Path(os.environ["MANGA_HOME"])
     if WINDOWS:
@@ -119,7 +115,6 @@ def sha256(path: Path) -> str:
 
 
 def download(url: str, path: Path, expected: str | None, attempts: int = 4) -> None:
-    """Fetch ``url`` to ``path`` unless a file is there, resuming broken downloads and refusing a wrong hash."""
     if path.is_file():
         return
     if not url.startswith("https://"):
@@ -147,7 +142,6 @@ def download(url: str, path: Path, expected: str | None, attempts: int = 4) -> N
 
 
 def sync_code(source: Path, target: Path) -> None:
-    """Make ``target`` hold the code of ``source`` while keeping the user's environment, models and chapters."""
     if target.exists() and any(target.iterdir()) and not (target / MARKER).is_file():
         raise SystemExit(f"{target} đã có dữ liệu không phải của bộ cài; chọn thư mục khác bằng MANGA_HOME.")
     target.mkdir(parents=True, exist_ok=True)
@@ -172,7 +166,6 @@ def sync_code(source: Path, target: Path) -> None:
 
 
 def write_marker(target: Path, home: Path, uv: str | None, done: bool) -> None:
-    """Mark ``target`` as installed by this tool, so a rerun or update may replace its code."""
     (target / MARKER).write_text(json.dumps({
         "mode": "clone" if (target / ".git").exists() else "download",
         "ref": os.environ.get("MANGA_REF", "main"),
@@ -192,7 +185,6 @@ def check_disk(target: Path) -> None:
 
 
 def vc_runtime_problems() -> list[str]:
-    """What is missing or too old in the Microsoft Visual C++ runtime that onnxruntime and paddle need."""
     if not WINDOWS:
         return []
     sys.path.insert(0, str(ROOT))
@@ -202,7 +194,6 @@ def vc_runtime_problems() -> list[str]:
 
 
 def ensure_vc_runtime(found: list[str]) -> None:
-    """Install or update the Microsoft Visual C++ runtime; Windows asks for admin once."""
     from app import vc_runtime
 
     note(f"cần: {', '.join(found)}; Windows sẽ hỏi quyền admin")
@@ -252,7 +243,6 @@ def install_packages(python: Path, target: Path, uv: str | None, exact: bool) ->
 
 
 def remove_old_caches() -> None:
-    """Delete the manga-ocr model that versions before 0.3 downloaded; nothing uses it now."""
     old = Path.home() / ".cache" / "huggingface" / "hub" / "models--kha-white--manga-ocr-base"
     if old.is_dir():
         note("xóa model manga-ocr cũ không còn dùng")
@@ -260,7 +250,6 @@ def remove_old_caches() -> None:
 
 
 def build_ctd(target: Path, uv: str | None) -> None:
-    """Fetch the prebuilt models/ctd_seg.onnx, or export it in a throwaway environment when that fails."""
     model = target / "models" / "ctd_seg.onnx"
     if model.is_file():
         return
@@ -290,7 +279,6 @@ def build_ctd(target: Path, uv: str | None) -> None:
 
 
 def with_dir(path_value: str, folder: str) -> str:
-    """PATH with ``folder`` added once, in front."""
     parts = [p for p in path_value.split(os.pathsep) if p]
     if any(os.path.normcase(p.rstrip("\\/")) == os.path.normcase(folder.rstrip("\\/")) for p in parts):
         return path_value
@@ -298,7 +286,6 @@ def with_dir(path_value: str, folder: str) -> str:
 
 
 def launcher_text(python: Path, entry: Path, windows: bool = WINDOWS, local_appdata: str | None = None) -> str:
-    """The `manga` shim: runs the app's Python on run.py; on Windows it copes with paths that have accents."""
     if not windows:
         return f'#!/bin/sh\nexec "{python}" "{entry}" --link "$@"\n'
     python_s, entry_s = str(python), str(entry)
@@ -333,7 +320,6 @@ PRIMARY_RC = {"zsh": ".zshrc", "fish": ".config/fish/config.fish",
 
 
 def add_to_shell_path(folder: Path, home: Path | None = None) -> list[Path]:
-    """Add ``folder`` to PATH once, in the user's shell start-up file and in ~/.profile when it exists."""
     home = home or Path.home()
     primary = PRIMARY_RC.get(os.path.basename(os.environ.get("SHELL", "")), ".profile")
     files = [home / primary] + [home / name for name in (".bashrc", ".bash_profile", ".zshrc", ".profile")
@@ -352,7 +338,6 @@ def add_to_shell_path(folder: Path, home: Path | None = None) -> list[Path]:
 
 
 def shortcut_script(pythonw: Path, entry: Path, icon: Path) -> str:
-    """PowerShell that puts a Manga Translator icon on the desktop and in the Start menu, opening the app window."""
     def quoted(value) -> str:
         return "'" + str(value).replace("'", "''") + "'"
 
@@ -371,7 +356,6 @@ def shortcut_script(pythonw: Path, entry: Path, icon: Path) -> str:
 
 
 def add_shortcuts_windows(python: Path, target: Path) -> None:
-    """Desktop and Start menu icons; the script goes as UTF-16 so a user name with accents survives."""
     import base64
 
     pythonw = python.with_name("pythonw.exe")

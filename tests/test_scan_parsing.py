@@ -29,8 +29,6 @@ def test_parse_vision_translation_fills_omitted_ids_when_allowed():
 
 
 def test_parse_scan_reports_malformed_entries_instead_of_silently_dropping_them():
-    """S8: a scan answer that is not a well-formed slice list is a model
-    error worth a review entry, not a quiet empty chapter."""
     errors = []
     data = {"slices": ["not an object",
                        {"slice": "x", "is_credit": False, "credit_confidence": 0.0},

@@ -1,4 +1,3 @@
-"""Agent sessions: the tool loop, approvals, hooks, skills, MCP tools, sub-agents, compaction and saved state."""
 from __future__ import annotations
 
 import atexit
@@ -112,7 +111,6 @@ MAX_PARALLEL = 3
 
 CREATED_NAME = re.compile(r"[a-z][a-z0-9_]{0,40}")
 def _as_function(name: str, code: str) -> str:
-    """Code written as a function body (a top-level return) becomes def <name>(**args), as DeepSeek Harness's run_code takes it."""
     import ast
     try:
         compile(code, f"{name}.py", "exec")
@@ -130,7 +128,6 @@ def _as_function(name: str, code: str) -> str:
 
 
 def _signature(name: str, code: str) -> tuple[str, str, dict]:
-    """The called function's signature, docstring first line and JSON schema, so a created tool describes itself."""
     import ast
     tree = ast.parse(code)
     fns = [n for n in tree.body if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")]
@@ -580,7 +577,6 @@ INIT_PROMPT = ("Read this repository and write AGENTS.md at its root with only w
 
 
 def _harden_process() -> None:
-    """Other processes of this user, including a confined command, cannot read this process's memory or environment."""
     if platform.system() == "Linux":
         try:
             ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)
@@ -589,7 +585,6 @@ def _harden_process() -> None:
 
 
 class _Keyed:
-    """The session's model function, asking to move to the next key when one is limited; other attributes pass through."""
 
     def __init__(self, session: "AgentSession", raw):
         self.session, self.raw = session, raw
@@ -602,7 +597,6 @@ class _Keyed:
 
 
 class AgentSession:
-    """One conversation with one model in one workspace."""
 
     def __init__(self, session_id: str, provider, api_key: str, model: str, workspace: Workspace, mode: str, *,
                  complete=client.complete, store: Path | None = None, trust: context.TrustStore | None = None,
@@ -756,7 +750,6 @@ class AgentSession:
         self.registry = self._build_registry(home_path)
 
     def _tools_command(self, args: str) -> str:
-        """/tools lists the tools the model created; show, rm, trust and export act on them."""
         verb, _, name = args.strip().partition(" ")
         created, name = self._root().created, name.strip()
         if verb == "trust":
@@ -777,7 +770,6 @@ class AgentSession:
         return "\n".join(["Tool đã tạo:"] + rows) if rows else "Chưa có tool nào; model tạo tool bằng create."
 
     def _export_tool(self, tool: dict) -> str:
-        """Write a created tool as a stand-alone stdio MCP server, for other agents."""
         if re.search(r"\btools\.", tool["code"]):
             return "Tool này gọi tool khác qua tools.…, nên chỉ chạy được trong Chaos; chưa xuất được ra MCP."
         folder = self._outputs_dir() / "mcp"
@@ -789,7 +781,6 @@ class AgentSession:
                 + json.dumps({"mcpServers": {tool["name"]: {"command": "python3", "args": [str(path)]}}}, indent=1))
 
     def _plugins_command(self, args: str) -> str:
-        """/plugins lists the plugin files; /plugins reload loads them again."""
         parts = args.split()
         if parts[:1] == ["reload"]:
             home_path = self.home if self.home is not None else Path.home()
@@ -802,7 +793,6 @@ class AgentSession:
         return self._plugins_report()
 
     def _plugin_write(self, args: dict) -> str:
-        """Write a plugin the user just approved, trust exactly those bytes and load it, so the model sees whether it works."""
         name = str(args.get("name") or "").strip()
         if not registry.NAME_RE.match(name):
             raise ToolError("name must be lower_case letters, digits and _, starting with a letter")
@@ -856,7 +846,6 @@ class AgentSession:
             return ""
 
     def _fire(self, event: str, *args) -> None:
-        """Tell the plugins that watch an event; what they return is ignored."""
         for fn in self.registry.hooks[event]:
             self._hook_call(fn, *copy.deepcopy(args))
 
@@ -869,7 +858,6 @@ class AgentSession:
             self._lock.notify_all()
 
     def _info(self) -> dict:
-        """What the page shows beside the conversation; it changes rarely, so a poll that already has it gets only its revision."""
         return {"disabled": sorted(self.disabled), "plugins": {"rows": self.registry.plugins,
                                                                 "needs_trust": any(p["state"] == "untrusted" for p in self.registry.plugins)},
                 "agents": [{"name": a.name, "description": a.description} for a in self.agents.values()],
@@ -906,7 +894,6 @@ class AgentSession:
         return {"text": live["text"][-1500:], "reasoning": live["reasoning"][-600:], "tools": live["tools"]}
 
     def _spent(self) -> int:
-        """Tokens used so far; ones served from the provider's cache are not counted again."""
         return self.usage["prompt_tokens"] - self.usage["cached_tokens"] + self.usage["completion_tokens"]
 
     def _stats(self) -> dict:
@@ -966,13 +953,11 @@ class AgentSession:
         self._tainted_files = {str(p) for p in (data.get("tainted_files") or []) if isinstance(p, str)}
 
     def set_model(self, model: str) -> None:
-        """Switch the model; its prompt quirks come with it."""
         self.model = model
         self.quirks = models.quirks(model, self.profile["models"])
         self._apply_caps()
 
     def _apply_caps(self) -> None:
-        """What profile.json says this model can do: its window, reply size and whether it takes native tool calls."""
         window = self.quirks.get("context_window")
         if isinstance(window, int) and 4_000 <= window <= 10_000_000:
             self.compact_at = int(window * WINDOW_SHARE)
@@ -982,7 +967,6 @@ class AgentSession:
             self.text_tools = self.quirks["tools"] == "text"
 
     def set_effort(self, effort: str) -> None:
-        """How hard the model thinks from the next request on; "" leaves it to the model and profile.json."""
         effort = EFFORT_WORDS.get(effort.strip().lower(), effort.strip().lower())
         if effort not in EFFORTS:
             raise ValueError("effort must be one of: default, low, medium, high, xhigh")
@@ -1004,7 +988,6 @@ class AgentSession:
             return str(path)
 
     def _references(self, text: str) -> tuple[str, list[str]]:
-        """Files and folders the user named with @path, attached to the message."""
         blocks, names = [], []
         for raw in REF.findall(text):
             name = raw.rstrip(".,;:!?)]}\"'")
@@ -1026,7 +1009,6 @@ class AgentSession:
         return ("\n\n" + "\n".join(blocks)) if blocks else "", names
 
     def send(self, text: str, scheduled: bool = False) -> bool:
-        """Start a turn, or queue the message for the running turn; returns True when it was queued."""
         extra, names = self._references(text)
         with self._lock:
             queued = self.status in ("running", "waiting")
@@ -1048,7 +1030,6 @@ class AgentSession:
         return False
 
     def _new_request(self, text: str, scheduled: bool = False) -> None:
-        """Per-request state starts fresh: the undo point, nudges, budgets and which hosts the user named."""
         if not self.depth:
             self.checkpoints.begin()
         if not any(item.get("tainted") for item in self.history) and not self._inherit_taint and not self._taint_latch:
@@ -1075,7 +1056,6 @@ class AgentSession:
         self._last_request = text
 
     def command(self, text: str) -> dict:
-        """A slash command: built-ins act at once, custom ones become a message to the agent."""
         name, _, args = text.strip()[1:].partition(" ")
         args = args.strip()
         if registry.COMMAND_GROUPS.get(name) in self.disabled:
@@ -1202,7 +1182,6 @@ class AgentSession:
             raise ToolError(f"MCP {server.name}: {exc}") from exc
 
     def _mcp_prompts(self) -> dict[str, tuple[str, dict]]:
-        """Each running MCP server's prompts as /mcp:server:prompt commands."""
         return {f"mcp:{name}:{p['name']}": (name, p) for name, server in self.mcp_servers.items() for p in getattr(server, "prompts", [])}
 
     def _mcp_prompt(self, command: str, args: str) -> str:
@@ -1221,12 +1200,10 @@ class AgentSession:
             raise ValueError(f"MCP {server}: {exc}") from exc
 
     def reload_skills(self) -> None:
-        """Pick up skills added, written or removed since the session started; the model sees the change on its next turn."""
         self.skills = skills.discover(self.workspace.root, self.home)
         self._set_read_roots()
 
     def _activate_skill(self, name: str, args: str) -> dict:
-        """Turn a skill on: its instructions go to the model now and into the system prompt from the next context window on."""
         if name in self.active_skills:
             if args:
                 self.send(args)
@@ -1268,7 +1245,6 @@ class AgentSession:
 
     @staticmethod
     def _decision_key(call: dict) -> str:
-        """Slot key for one approval: the call id, so nested approvals never share a decision."""
         return str(call.get("id") or id(call))
 
     def decide(self, decision: str, note: str = "") -> None:
@@ -1283,11 +1259,9 @@ class AgentSession:
 
     @property
     def _base_complete(self):
-        """The model function underneath the key handling."""
         return self.complete.raw if isinstance(self.complete, _Keyed) else self.complete
 
     def _complete_keyed(self, provider, api_key, *args, **kwargs):
-        """The model call; when a spare key exists, a key limit asks the user whether to move to the next key."""
         root = self._root()
         while True:
             key = root.api_key if api_key in root.api_keys else api_key
@@ -1306,7 +1280,6 @@ class AgentSession:
                 client.ASK_ON_LIMIT.reset(token)
 
     def _adapter(self, provider):
-        """A plugin's model protocol for this provider: by the provider's id, or as profile.json "adapters" names it."""
         name = self.profile["adapters"].get(provider.id, provider.id)
         return self.registry.providers.get(name)
 
@@ -1321,7 +1294,6 @@ class AgentSession:
                            "args": c.get("args") if isinstance(c.get("args"), dict) else {}} for c in calls]}
 
     def _request_fields(self) -> dict:
-        """Extra request fields for this model; with a clock, late_request takes over in the last third (say, less reasoning when time runs short)."""
         fields = dict(self.quirks.get("request")) if isinstance(self.quirks.get("request"), dict) else {}
         if self._root().effort:
             fields["reasoning_effort"] = self._root().effort
@@ -1331,7 +1303,6 @@ class AgentSession:
         return fields
 
     def _ask_next_key(self, key: str, detail: str) -> bool:
-        """Waits for the user's answer; True once a different key is in use."""
         with self._key_lock:
             if key != self.api_key:
                 return True
@@ -1395,12 +1366,6 @@ class AgentSession:
         self.mcp_servers.clear()
 
     def _join_turn(self, timeout: float = 30.0) -> None:
-        """Wait for the turn thread to finish before state is deleted.
-
-        _loop's finally block saves; without the join, delete() can unlink the
-        session file while the orphaned turn thread is still running, and its
-        late save() then resurrects the supposedly deleted session.
-        """
         me = threading.current_thread()
         for thread in threading.enumerate():
             if thread is not me and thread.name == f"agent-{self.id}":
@@ -1409,16 +1374,13 @@ class AgentSession:
 
     @property
     def replaced(self) -> dict[str, str]:
-        """Built-in tools served by a connected MCP tool, from "replace" in profile.json; an unconnected one falls back to ours."""
         tools = self._root().mcp_tools
         return {name: target for name, target in self.profile["replace"].items() if target in tools}
 
     def _role(self, name: str) -> str | None:
-        """The role a profile gives an MCP tool (read, edit, exec, net), which decides approvals like a built-in of that kind."""
         return self.profile["roles"].get(name) or self._root().mcp_kinds.get(name)
 
     def _ensure_mcp(self) -> None:
-        """Start every configured MCP server that is switched on and trusted, side by side, and offer their tools."""
         with self._mcp_lock:
             if self._mcp_ready:
                 return
@@ -1452,7 +1414,6 @@ class AgentSession:
         status.update(state="running", tools=len(server.tools), prompts=len(server.prompts), error="")
 
     def _offer_mcp_tools(self, name: str, scope: str) -> None:
-        """Offer a running server's tools (again), with the kinds the user's own config gives them."""
         server = self.mcp_servers[name]
         for tool_name in [n for n, (s, _) in self.mcp_tools.items() if s == name]:
             self.mcp_tools.pop(tool_name, None)
@@ -1465,7 +1426,6 @@ class AgentSession:
                 self.mcp_kinds[full] = kinds[tool["name"]]
 
     def _sync_mcp_tools(self) -> None:
-        """Read again the tool lists of servers that said theirs changed."""
         for name, server in list(self.mcp_servers.items()):
             if not getattr(server, "tools_stale", False):
                 continue
@@ -1489,7 +1449,6 @@ class AgentSession:
             server.close()
 
     def reload_mcp(self) -> None:
-        """Pick up servers the user added or removed: now when idle, otherwise when the next request starts."""
         with self._lock:
             busy = self.status != "idle"
             self._mcp_stale = busy
@@ -1529,7 +1488,6 @@ class AgentSession:
             self.trust.allow(self.workspace.root, "hooks", mcp.config_hash(workspace))
 
     def _run_hooks(self, event: str, call: dict, output: str | None = None) -> tuple[bool, str]:
-        """Matching hooks for one call; a PreToolUse hook exiting 2 blocks the call with its message."""
         rows = list((self.hooks.get("user") or {}).get(event, []))
         if self._hook_summary()["workspace_trusted"]:
             rows += (self.hooks.get("workspace") or {}).get(event, [])
@@ -1575,7 +1533,6 @@ class AgentSession:
         return self._lean_specs()
 
     def _lean_specs(self) -> list[dict]:
-        """The model's own tools: read, edit, run, create and skill, plus the tools the model made, and whatever a running job or a mode needs."""
         rows = [s for s in SPECS if s["name"] in (("read_file",) if self.plan_mode else LEAN_TOOLS)]
         if self.workspace.policy.mode != "read-only":
             rows.append(SESSION_SPECS["create"])
@@ -1596,7 +1553,6 @@ class AgentSession:
         return rows
 
     def library_specs(self) -> list[dict]:
-        """Every other tool, reached as tools.<name> from code run with create and served by the MCP server; in plan mode only those that look."""
         listing = agents.catalog(self.agents)
         task, spawn, fan = (({**SESSION_SPECS[n], "description": SESSION_SPECS[n]["description"].format(
             agents=listing if n == "task" else "the same as for task.")}) for n in ("task", "spawn_agent", "fan_out"))
@@ -1674,7 +1630,6 @@ class AgentSession:
         return False
 
     def _typing_outside(self, call: dict) -> bool:
-        """Input to a job running outside the sandbox is a new command there, so it asks like one."""
         job = self.jobs.get(str(call["args"].get("id") or "").strip().lower()) if call["name"] == "job_input" else None
         return bool(job and job.outside and self.workspace.policy.mode != "full-access")
 
@@ -1688,7 +1643,6 @@ class AgentSession:
         return [h["content"] for h in root.history if h["role"] == "user" and not h["content"].startswith(("[", "<"))]
 
     def _receipts(self) -> str:
-        """What this session actually did, one line each: files changed, commands run, pages fetched and what was approved."""
         calls = {c["id"]: c for e in self.events if e["type"] == "assistant" for c in e.get("calls") or []}
         rows = []
         for e in self.events:
@@ -1752,7 +1706,6 @@ class AgentSession:
         return h.hexdigest()
 
     def _load_created(self) -> dict[str, dict]:
-        """Tools the model wrote with create, kept across sessions; a project's own run only once the user trusts their exact contents."""
         found = {}
         self.untrusted_tools: list[str] = []
         trusted = self.trust.trusted(self.workspace.root, "tools", self._workspace_tools_digest())
@@ -1776,7 +1729,6 @@ class AgentSession:
         self._root().created.update(self._load_created())
 
     def _create(self, args: dict) -> str:
-        """Write, replace or (with empty code) delete a tool the model defines in its own function-calling form."""
         asked = str(args.get("name") or "").strip()
         name = re.sub(r"[^a-z0-9_]+", "_", asked.lower()).strip("_")[:41]
         if name and not name[0].isalpha():
@@ -1825,11 +1777,9 @@ class AgentSession:
                 f"it runs {how} and is kept {where}.{loose}" + (f" The name {asked!r} was not valid, so it is {name}." if asked != name else ""))
 
     def _confined(self) -> bool:
-        """True when the sandbox really enforces a read-only run, so a read tool may skip approval."""
         return sandbox.backend() != "none" and self.workspace.policy.mode != "full-access"
 
     def _looks_only(self, name: str) -> bool:
-        """A tool a read tool's code may reach: one whose kind is read."""
         plugin = self.registry.tools.get(name)
         if plugin is not None:
             return plugin.kind == "read"
@@ -1838,7 +1788,6 @@ class AgentSession:
         return name in LOOK_ONLY or KIND.get(name) == "read" or name in ("skill", "_search", "_describe", "_source", "_intent", "_chain", "_long")
 
     def _run_created(self, call: dict) -> str:
-        """A created tool runs as a sandboxed Python process; past CREATED_TIMEOUT it goes on in the background, and the files it changes are tracked."""
         tool = self._root().created[call["name"]]
         args = call["args"] if isinstance(call["args"], dict) else {}
         problems = chaincheck.check(self._with_callees(tool["code"]), self._chain_arguments())
@@ -1889,7 +1838,6 @@ class AgentSession:
         return note + output + (f"\n[changed: {', '.join(changed[:30])}{' …' if len(changed) > 30 else ''}]" if changed else "") + check
 
     def _write_library(self, state: Path) -> None:
-        """Write agent_tools.py, the library through which Python the agent runs calls created and reachable tools in one process."""
         (state / "lib").mkdir(parents=True, exist_ok=True)
         sources = {n: t["code"] for n, t in self._root().created.items()}
         part = state / "lib" / f"agent_tools.{uuid.uuid4().hex[:8]}.part"
@@ -1908,7 +1856,6 @@ class AgentSession:
         self._write_fallbacks(state)
 
     def _write_fallbacks(self, state: Path) -> None:
-        """Stand-ins for common commands the machine lacks, Python first; a real command of the same name always wins."""
         if os.name == "nt" or getattr(self, "_fallbacks", None) == state:
             return
         from app.agent import fallbacks
@@ -1931,7 +1878,6 @@ class AgentSession:
         self._fallbacks = state
 
     def _write_shims(self, bin_dir: Path) -> None:
-        """Make each reachable tool a shell command of its own name; a plugin, MCP or created tool gives way to a real command of that name."""
         own = {s["name"] for s in self.specs() + self.specs(self.library_specs())} | {"agent", "think", "vote", "models", "skill", "branch", "adopt"}
         names = {n for n in self._chain_targets() | set(self._root().created) | {"branch", "adopt"} if SHIM_NAME.fullmatch(n)} - {"run_command"}
         names = {n for n in names if n in own or not shutil.which(n)}
@@ -1950,7 +1896,6 @@ class AgentSession:
         self._shims = (bin_dir, names)
 
     def _command_job(self, command: str, policy: "sandbox.Policy", tty: bool = False) -> "sandbox.Job":
-        """Start a run_command job that reaches the library as created tools do: agent-tool from the shell, agent_tools from Python."""
         if not self._bridged(policy):
             return sandbox.Job(command, policy, self.workspace.root, tty=tty)
         state = self._outputs_dir() / "state"
@@ -1963,11 +1908,9 @@ class AgentSession:
         return job
 
     def _bridged(self, policy: "sandbox.Policy") -> bool:
-        """Whether Python run by run_command can import agent_tools; a Docker sandbox does not get the host's environment."""
         return sandbox.backend() != "docker" or policy.mode == "full-access"
 
     def _chain_arguments(self) -> dict[str, set[str] | None]:
-        """Every tool a chain can call with its argument names, or None where any are accepted."""
         known: dict[str, set[str] | None] = {}
         created = self._root().created
         for name in self._chain_targets() | set(created):
@@ -1982,7 +1925,6 @@ class AgentSession:
         return known
 
     def _intent(self, write: bool = True) -> str:
-        """The request as the model pictures it, in intent.md; written once per request by the root session and built on the last one."""
         root = self._root()
         path = root._outputs_dir() / "state" / "intent.md"
         current = path.read_text(encoding="utf-8") if path.exists() else ""
@@ -2007,14 +1949,12 @@ class AgentSession:
         return text
 
     def _chain_targets(self) -> set[str]:
-        """What a created tool's code may reach through the agent: the user's plugin and MCP tools, and skills."""
         names = {n for n in self.registry.tools if n not in registry.GROUPS} | set(self._root().mcp_tools) | {"agent", "create", "think"}
         names |= {s["name"] for s in self.specs() + self.specs(self.library_specs())} - {"exit_plan_mode", "goal_done"} - set(self._root().created)
         names |= {"vote", "models"} if self.profile["model_roles"] or self._sources() else set()
         return names | ({"skill"} if self.skills else set())
 
     def _serve_chain(self, folder: Path, job: "sandbox.Job", ws: Workspace | None = None, looks: bool = False, origin: str = "chain-") -> None:
-        """Answer the requests a running created tool leaves in its rpc folder, each through the same rules and approvals as the model's own calls; a branch's workspace tools run on its copy."""
         targets = self._chain_targets()
 
         def answer(request: Path, data: dict) -> None:
@@ -2085,7 +2025,6 @@ class AgentSession:
 
     @staticmethod
     def _refuse_pending(folder: Path) -> None:
-        """Answer each unanswered .req left in an RPC folder with a shutdown error."""
         for request in sorted(folder.glob("*.req")):
             try:
                 reply = folder / request.name.replace(".req", ".res")
@@ -2098,7 +2037,6 @@ class AgentSession:
                 pass
 
     def _run_branch_tool(self, ws: Workspace, name: str, args: dict) -> tuple[str, bool]:
-        """A branch's workspace tool through the same rules, approvals, hooks and taint as the model's own calls; it just executes against the branch's workspace copy instead of the real one."""
         call = {"id": f"chain-{uuid.uuid4().hex[:8]}", "name": name, "args": args}
         lock = self.__dict__.setdefault("_branch_ws_lock", threading.Lock())
         with lock:
@@ -2111,7 +2049,6 @@ class AgentSession:
 
     @staticmethod
     def _write_private(path: Path, text: str) -> None:
-        """Write a state file readable only by this user: tool outputs and call args routinely carry secrets."""
         part = path.with_name(f"{path.name}.part-{os.getpid()}-{threading.get_ident()}")
         part.write_text(text, encoding="utf-8")
         os.chmod(part, 0o600)
@@ -2122,7 +2059,6 @@ class AgentSession:
         return call["name"] + json.dumps(call["args"], sort_keys=True, default=str)
 
     def _redone(self, call: dict, output: str, ok: bool) -> str:
-        """A note when a call after a compaction repeats one from before it with the same result; the guard ends after POST_SUMMARY_WINDOW calls."""
         self._after_summary += 1
         same = ok and self._before_summary.get(self._signature(call)) == hashlib.sha1(output.encode()).hexdigest()
         if self._after_summary >= POST_SUMMARY_WINDOW:
@@ -2134,7 +2070,6 @@ class AgentSession:
                 "before redoing more work.]")
 
     def _on_copy(self, value, copy: Path):
-        """Arguments with the real workspace's absolute path turned into the branch copy's."""
         if isinstance(value, str):
             return value.replace(str(self.workspace.root), str(copy))
         if isinstance(value, dict):
@@ -2144,7 +2079,6 @@ class AgentSession:
         return value
 
     def _branch(self, args: dict) -> tuple[str, bool]:
-        """Run each piece of code in its own copy of the workspace at once, then the check in each; the table goes back and nothing is applied."""
         if sandbox.backend() == "docker" and self.workspace.policy.mode != "full-access":
             return "tools.branch needs the local sandbox", False
         branches, check = args.get("branches"), str(args.get("check") or "")
@@ -2172,7 +2106,6 @@ class AgentSession:
                 "the one to keep or write new attempts, and run the check again on the real workspace before you finish."), True
 
     def _branch_run(self, ws: Workspace, code: str) -> str:
-        """One piece of branch code as a sandboxed script whose workspace tools act on the branch's copy."""
         state = self._outputs_dir() / "state"
         (state / "lib").mkdir(parents=True, exist_ok=True)
         sources = {n: t["code"] for n, t in self._root().created.items()}
@@ -2203,7 +2136,6 @@ class AgentSession:
         return f"{output}\n[{f'exit code {code_}' if finished else f'stopped after {BRANCH_TIMEOUT} s'}]"
 
     def _branch_diff(self, copy: Path, base: dict[str, str]) -> str:
-        """What a branch changed against the real workspace, as a short unified diff."""
         now = {p.relative_to(copy).as_posix() for p in isolate._files(copy)}
         rows = []
         for rel in sorted(now | set(base)):
@@ -2222,7 +2154,6 @@ class AgentSession:
         return clip("\n".join(rows), 6000)
 
     def _adopt(self, args: dict) -> tuple[str, bool]:
-        """Merge the chosen branch's copy into the real workspace and drop every copy."""
         name = str(args.get("name") or "")
         if name not in self._branches:
             return f"no branch {name!r}; open branches: {', '.join(self._branches) or 'none, run tools.branch first'}", False
@@ -2234,7 +2165,6 @@ class AgentSession:
         return f"Adopted branch {name}: {', '.join(applied) or 'no file changes'}{kept}. Run the check on the real workspace before you finish.", True
 
     def _log_outside(self, call: dict) -> None:
-        """Note a step whose effects reach past the workspace files, so a restore can say it was not undone."""
         name, args = call["name"], call["args"] if isinstance(call["args"], dict) else {}
         if name == "run_command" and not rules.safe_readonly(str(args.get("command") or "")):
             self.checkpoints.note_ran(f"run_command: {clip(str(args.get('command') or ''), 200)}")
@@ -2242,7 +2172,6 @@ class AgentSession:
             self.checkpoints.note_ran(f"{name}({clip(json.dumps(args, ensure_ascii=False, default=str), 160)})")
 
     def _auto_mark(self, label: str) -> None:
-        """A mark the harness saves at a junction, numbered so later ones do not replace it."""
         self.checkpoints.auto_no += 1
         self.checkpoints.mark(f"{self.checkpoints.auto_no}-{label}", auto=True)
 
@@ -2252,7 +2181,6 @@ class AgentSession:
         self._branches = {}
 
     def _target_spec(self, name: str) -> dict | None:
-        """The description and parameters of a tool a chain can reach, wherever it comes from."""
         root = self._root()
         if name in root.created:
             return {k: root.created[name][k] for k in ("name", "description", "parameters")}
@@ -2271,7 +2199,6 @@ class AgentSession:
         return next((dict(s) for s in [*SPECS, *SESSION_SPECS.values()] if s["name"] == name), None)
 
     def _find_tools(self, kind: str, args: dict, targets: set[str]) -> tuple[str, bool]:
-        """tools.search ranks reachable tools by the query's words; tools.describe gives one tool's schema."""
         names = sorted(targets | set(self._root().created))
         if kind == "_describe":
             name = str(args.get("name") or "")
@@ -2293,7 +2220,6 @@ class AgentSession:
         return json.dumps([{"name": n, "description": d} for _, n, d in rows[:limit]], ensure_ascii=False), True
 
     def _note_one_off(self, name: str, tool: dict, output: str) -> str:
-        """A one-off chain that ends cleanly is remembered; the same one ending cleanly twice becomes a kept tool."""
         if not tool or "[exit code 0]" not in output.removesuffix("\n" + INTENT_CHECK)[-200:]:
             return ""
         key = hashlib.sha1(tool["code"].encode()).hexdigest()
@@ -2306,7 +2232,6 @@ class AgentSession:
         return f"\n[this one-off ran cleanly twice, so it is now kept as the tool {name}]"
 
     def _spend_chain(self, kind: str) -> tuple[str, bool]:
-        """Take one chain, long chain or helper from this request's budget, shared by the whole session tree."""
         root = self._root()
         limit, label = {"_chain": (MAX_CHAINS, "chains"), "_long": (MAX_LONG_CHAINS, "chains of more than 10 steps"),
                         "agent": (MAX_CHAIN_AGENTS, "helper agents started from chains")}[kind]
@@ -2317,7 +2242,6 @@ class AgentSession:
         return "ok", True
 
     def _role_target(self, name: str, seen: tuple = ()) -> tuple[str, object, str, str]:
-        """(role used, provider, key, model) for a model role, moving to its fallback once today's budget is spent."""
         table = self.profile["model_roles"]
         cfg = table.get(name)
         if cfg is None and ":" in name:
@@ -2342,7 +2266,6 @@ class AgentSession:
         return name, provider, key, cfg["model"]
 
     def _sources(self) -> dict[str, str]:
-        """Model sources by name with a label: the profile's model_sources and the app's providers that have a key, looked up once a minute."""
         root = self._root()
         cached = getattr(root, "_source_cache", None)
         if cached is not None and time.time() - cached[0] < 60:
@@ -2357,7 +2280,6 @@ class AgentSession:
         return found
 
     def _source(self, source: str) -> tuple[object, str, dict]:
-        """(provider, key, profile row or {}) for a model source, from model_sources or the app's providers."""
         cfg = self.profile["model_sources"].get(source)
         if cfg is not None:
             provider = resolve_provider(f"source-{source}", label=source, protocol="openai", api_base=cfg["base_url"])
@@ -2373,7 +2295,6 @@ class AgentSession:
         return provider, key, cfg or {}
 
     def _pick(self, spec: str) -> tuple[str, object, str, str]:
-        """(source used, provider, key, model) for a '<source>:<model id>' the model chose itself, within the source's daily budget."""
         source, _, model = spec.partition(":")
         if not model.strip():
             raise ToolError(f"name a model as '<source>:<model id>', not {spec!r}")
@@ -2384,7 +2305,6 @@ class AgentSession:
         return source, provider, key, model.strip()
 
     def _price_gate(self, source: str, model: str) -> None:
-        """A model the agent picks itself above PRICE_CAP needs the user's yes once per session; unknown prices pass."""
         root = self._root()
         spec = f"{source}:{model}"
         if spec in root._paid_models:
@@ -2403,7 +2323,6 @@ class AgentSession:
         root._paid_models.add(spec)
 
     def _models(self, source: str = "", query: str = "") -> str:
-        """The sources and roles a chain can use, or one source's models matching query with prices, as JSON."""
         if not source:
             used = roles.today(self.home if self.home is not None else Path.home())
             return json.dumps({"sources": self._sources(), "roles": {n: {"model": c["model"], "note": c["note"], "today": used.get(n, {})}
@@ -2433,7 +2352,6 @@ class AgentSession:
             row["tokens"] += tokens
 
     def _vote(self, args: dict) -> str:
-        """Ask several model roles the same question side by side; returns each answer and whether they agree."""
         question, answer = str(args.get("question") or ""), str(args.get("answer") or "")
         names = [str(m) for m in args.get("models") or []][:5] if isinstance(args.get("models"), list) else []
         if len(names) < 2:
@@ -2450,7 +2368,6 @@ class AgentSession:
         return json.dumps({"answers": answers, "agree": len(plain) == 1 and len(plain) > 0}, ensure_ascii=False)
 
     def _think(self, question: str, answer: str = "", model: str = "") -> str:
-        """One question from a running chain to the session's model, or to a model role, answered without tools."""
         if not question.strip():
             raise ToolError("think needs a question")
         shape = f" in this form: {answer}" if answer else ""
@@ -2469,12 +2386,10 @@ class AgentSession:
         return reply["text"].strip()
 
     def _repair(self, args: dict) -> tuple[str, bool]:
-        """Repair a failed created tool once."""
         code, ok = self._repair_once(args)
         return code, ok
 
     def _repair_once(self, args: dict) -> tuple[str, bool]:
-        """The model rewrites a created tool that just failed inside a running chain; the fix is kept."""
         name = str(args.get("name") or "")
         tool = self._root().created.get(name)
         if tool is None:
@@ -2500,7 +2415,6 @@ class AgentSession:
         return code, True
 
     def _with_callees(self, code: str) -> str:
-        """A created tool's code followed by the code of every created tool it calls, directly or through another."""
         created, seen, todo, parts = self._root().created, set(), [code], [code]
         while todo:
             for name in re.findall(r"\btools\.([a-z][a-z0-9_]*)", todo.pop()):
@@ -2511,7 +2425,6 @@ class AgentSession:
         return "\n\n".join(parts)
 
     def _record_changes(self) -> list[str]:
-        """Note files a created tool or its background job changed, so /undo and the check-your-work reminder still see them."""
         if not self._watch.ready:
             return []
         changed = []
@@ -2646,7 +2559,6 @@ class AgentSession:
         return self._subagent(str(args.get("description") or "task"), str(args.get("prompt") or ""), str(args.get("agent") or "explore"))
 
     def _run_script(self, args: dict, policy: "sandbox.Policy | None" = None) -> str:
-        """Code mode: the script's tool calls go through the same rules and approvals as the model's own."""
         code = str(args.get("code") or "")
         if not code.strip():
             raise ToolError("code is empty")
@@ -2670,7 +2582,6 @@ class AgentSession:
         return clip(f"{output.strip()}\n{status} [{calls} tool call{'s' if calls != 1 else ''}]", 400_000)
 
     def _run_foreground(self, args: dict) -> str:
-        """A command that outlives its timeout keeps running as a background job instead of being killed (Kimi Code)."""
         command = str(args.get("command") or "").strip()
         if not command:
             raise ToolError("command is empty")
@@ -2687,7 +2598,6 @@ class AgentSession:
         return self._await_job(job, limit, guard)
 
     def _await_job(self, job: "sandbox.Job", limit: int, guard) -> str:
-        """Wait up to limit for a started job; one still running then moves to the background instead of being killed."""
         root = self.workspace.root
         end, paused = time.time() + limit, self._root().asked_s
         while job.code is None and (time.time() < end + self._root().asked_s - paused or self._root().status == "waiting") and not self._stop:
@@ -2766,7 +2676,6 @@ class AgentSession:
         return f"[{name} {state}]\n{clip(text, 20000) if text else '(no new output)'}"
 
     def _diff(self, before: dict[str, bytes | None], only: str = "") -> str:
-        """A unified diff from the given earlier contents to the files as they are now, file by file."""
         if only:
             target = str(self.workspace.resolve(only))
             before = {k: v for k, v in before.items() if k == target}
@@ -2788,7 +2697,6 @@ class AgentSession:
         return clip("\n".join(blocks), 60_000)
 
     def _checkpoint(self, args: dict) -> str:
-        """Show, save, pin or restore: the one tool for looking back at edits and undoing them."""
         cp, action = self.checkpoints, str(args.get("action") or "show")
         name, path = str(args.get("name") or "").strip(), str(args.get("path") or "")
         if name and action in ("show", "restore") and name not in cp.marks:
@@ -2858,7 +2766,6 @@ class AgentSession:
         return clip("\n\n".join(parts), 60_000)
 
     def _diff_stat(self, before: dict[str, bytes | None]) -> str:
-        """One line per changed file with its added and removed line counts."""
         rows = []
         for name, old in sorted(before.items()):
             path = Path(name)
@@ -2916,7 +2823,6 @@ class AgentSession:
         return (text or (errors[-1] if errors else "The agent finished without a report.")) + child.merge_note
 
     def _collect(self, child: "AgentSession") -> None:
-        """Fold a finished helper's tokens into this session once and tell the page it is done."""
         if child.reported or child.status != "idle" or child.held is not None:
             return
         child.reported = True
@@ -2930,7 +2836,6 @@ class AgentSession:
                   state="done", tools=sum(1 for e in child.events if e["type"] == "tool"))
 
     def _merge_copy(self, child: "AgentSession") -> None:
-        """Bring a helper's private copy back into the project and describe the result for the model."""
         if child.copy is None:
             return
         applied, conflicts = isolate.merge(self.workspace.root, child.copy, child.base or {}, child.nick, before=self.checkpoints.save)
@@ -3000,7 +2905,6 @@ class AgentSession:
         return nick
 
     def _start_queued(self) -> None:
-        """Starts the next held-back editing helper once no other editing helper is working."""
         if any(c.mutating and c.held is None and c.status != "idle" and not c.closed for c in self.children.values()):
             return
         for child in self.children.values():
@@ -3010,7 +2914,6 @@ class AgentSession:
                 return
 
     def _fan_out(self, jobs, agent_name: str, schema: dict | None = None, as_data: bool = False) -> str:
-        """Start the jobs as helpers, six at a time, and return every report in the order the jobs were given."""
         if not isinstance(jobs, list) or not jobs:
             raise ToolError("jobs must be a non-empty list of {description, prompt}")
         todo = [(i, str(j.get("description") or f"job {i + 1}")[:60], str(j.get("prompt") or j.get("message") or ""))
@@ -3085,7 +2988,6 @@ class AgentSession:
         return "\n\n".join(rows) + ("\n\n[timed out; call wait_agent again to keep waiting]" if waiting else "")
 
     def _notifications(self) -> None:
-        """Tell the model about helpers and background jobs that finished on their own, as Codex does with a notification message."""
         self._start_queued()
         for name, job in list(self.jobs.items()):
             if not _alive(job) and not getattr(job, "announced", False):
@@ -3100,7 +3002,6 @@ class AgentSession:
                 self.history.append({"role": "user", "content": f"<subagent_notification>{json.dumps(note, ensure_ascii=False)}</subagent_notification>"})
 
     def _subagent(self, description: str, prompt: str, agent_name: str = "explore", role: str = "") -> str:
-        """One job, started and waited for at once (on a model role when one is named); the helper is closed afterwards."""
         nick = self._spawn(prompt, agent_name, dedupe=False, role=role)
         child = self.children[nick]
         while self._state(child) in ("running", "queued") and not self._stop:
@@ -3249,7 +3150,6 @@ class AgentSession:
         return output, ok
 
     def _offload(self, call: dict, output: str) -> str:
-        """A long output goes to a file the model can read in pieces, instead of losing its middle."""
         if len(output) <= OFFLOAD_AT:
             return output
         folder = self._outputs_dir()
@@ -3293,7 +3193,6 @@ class AgentSession:
         return "\n\n".join(p for p in parts if p)
 
     def _volatile(self) -> dict[str, str]:
-        """The parts of the system prompt that files on disk can change: read once and kept, so the cached prefix stays the same."""
         home = self.home if self.home is not None else Path.home()
         rows = {"Skills": skills.catalog(self.skills, paths=not self.depth)}
         if not self.depth:
@@ -3303,7 +3202,6 @@ class AgentSession:
         return rows
 
     def _context_update(self) -> str:
-        """Changes to instructions, memory or skills since the model last saw them, as one appended message instead of a new system prompt."""
         if self._pinned is None:
             return ""
         fresh, blocks = self._volatile(), []
@@ -3317,7 +3215,6 @@ class AgentSession:
         return "<context_update>\n" + "\n\n".join(blocks) + "\n</context_update>" if blocks else ""
 
     def _header(self) -> tuple[str, list[dict]]:
-        """The system prompt and tools for this request; every change to them, which costs the provider's prompt cache, is counted with its cause."""
         system, specs = self.system_prompt(), self.specs()
         names = [s["name"] for s in specs]
         if self._last_header is not None and (system, names) != self._last_header[:2] or (self._last_header and json.dumps(specs) != self._last_header[2]):
@@ -3331,7 +3228,6 @@ class AgentSession:
         return system, specs
 
     def _match_rule(self, live: dict) -> dict | None:
-        """A stream rule the reply being written has just run into, if any; each fires a limited number of times per user message."""
         if live.get("arg_chars", 0) > self.profile["max_output_tokens"] * 3 and self._fired.get("long_call", 0) < 3:
             return {"name": "long_call", "message": LONG_CALL}
         for rule in self.profile["stream_rules"]:
@@ -3409,14 +3305,12 @@ class AgentSession:
         return turn
 
     def _learn_window(self, message: str) -> None:
-        """A context error often names the model's real window; the auto-compaction mark moves under it so the next overflow does not happen."""
         window = client.context_window(message)
         if self.compact_at and 4_000 <= window <= 10_000_000 and int(window * WINDOW_SHARE) < self.compact_at:
             self.compact_at = int(window * WINDOW_SHARE)
             self.emit("notice", text=f"Ngữ cảnh {window:,} token, tự tóm gọn từ {self.compact_at:,} token.")
 
     def set_deadline(self, seconds: float) -> None:
-        """A run with a clock (the CLI's --timeout-min): the agent is warned, then asked for its report before the clock stops it (omp's forced final report)."""
         grace = min(TIME_GRACE_S, seconds * 0.1)
         self._clock = (time.time(), float(seconds))
         self._deadline = time.time() + seconds - grace
@@ -3438,7 +3332,6 @@ class AgentSession:
         return clip("\n\n".join(rows), 200_000)
 
     def _archive(self, items: list[dict], instead_of: str) -> str:
-        """Save the part of the conversation about to be replaced, so a detail the summary lacks can still be searched and read (as dsh keeps its raw log)."""
         folder = self._outputs_dir()
         path = folder / f"history-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.json"
         try:
@@ -3450,7 +3343,6 @@ class AgentSession:
         return f" The whole earlier conversation is saved in {path}; search or read it only for a detail {instead_of} lacks."
 
     def _roll_over(self) -> None:
-        """A fresh context window built from the notebook, the user's request and the last few messages; the old one is saved to a file."""
         self._rollover = False
         saved = self._archive(self.history, "the notebook")
         request = self._last_request
@@ -3467,7 +3359,6 @@ class AgentSession:
         self.emit("notice", text="Đã mở ngữ cảnh mới từ ghi chú.")
 
     def _cut_point(self, keep: int | None) -> int:
-        """Where the kept recent part starts: about `keep` characters from the end, at a user or assistant message, never inside a call's results."""
         if keep is None:
             return max((i for i, item in enumerate(self.history) if item["role"] == "user"), default=0)
         total = 0
@@ -3481,7 +3372,6 @@ class AgentSession:
         return 0
 
     def _file_lists(self, head: list[dict]) -> str:
-        """Files read and changed in the part being summarised, carried over from earlier summaries too."""
         read, changed = set(), set()
         for item in head:
             if item["role"] == "user":
@@ -3498,7 +3388,6 @@ class AgentSession:
         return "".join(f"\n\n<{tag}-files>\n" + "\n".join(sorted(names)[:80]) + f"\n</{tag}-files>" for tag, names in (("read", read), ("modified", changed)) if names)
 
     def compact(self, focus: str = "", keep: int | None = None) -> bool:
-        """Replace the older part of the conversation with a summary the model writes; keep=None summarises up to the latest user message."""
         cut = self._cut_point(keep)
         head, tail = self.history[:cut], self.history[cut:]
         if not head:
@@ -3527,7 +3416,6 @@ class AgentSession:
         return True
 
     def _compact_auto(self, rest: list[str]) -> str:
-        """/compact auto [off|900k|1m]: the context size at which the conversation is summarised by itself."""
         if not rest:
             return f"Tự tóm gọn khi ngữ cảnh gần {self.compact_at:,} token." if self.compact_at else "Tự tóm gọn đang tắt."
         word = rest[0].lower().replace("_", "").replace(",", "")
@@ -3557,7 +3445,6 @@ class AgentSession:
             self.save()
 
     def _mask_old(self) -> None:
-        """Older tool outputs are dropped in batches, keeping the recent ones; cheaper than summaries and as good."""
         big = [i for i, item in enumerate(self.history) if item["role"] == "tool" and not item.get("masked") and len(item["content"]) > 300]
         old = big[:-MASK_KEEP] if len(big) > MASK_KEEP else []
         if len(old) < MASK_BATCH:
@@ -3570,7 +3457,6 @@ class AgentSession:
         self.cache_log["older outputs masked"] += 1
 
     def _make_room(self) -> int:
-        """Mask, compact or trim so the next request fits; returns the history's size in characters afterwards."""
         self._mask_old()
         size = self._size()
         if self._should_compact(size):
@@ -3594,7 +3480,6 @@ class AgentSession:
         return size
 
     def context_tokens(self, size: int | None = None) -> int:
-        """The context size now: the provider's own count from the last request plus an estimate for what was added since."""
         used, size_then = self._last_prompt
         size = self._size() if size is None else size
         if used and size >= size_then:
@@ -3608,7 +3493,6 @@ class AgentSession:
         return not self._after_compact or size > self._after_compact * COMPACT_REARM
 
     def _keep_chars(self) -> int:
-        """How much recent conversation stays verbatim: a sixth of the window the trigger implies, never less than 60k characters."""
         return max(min(KEEP_RECENT_CHARS, int(self.compact_at * CHARS_PER_TOKEN / 3)), int(self.compact_at * CHARS_PER_TOKEN / 6))
 
     def _drain(self) -> None:
@@ -3619,7 +3503,6 @@ class AgentSession:
         self._notifications()
 
     def _advance_prewalk(self) -> None:
-        """Prewalk: the strong model explores and plans, and the session's own model takes over at the first edit (from omp)."""
         if not self._prewalk:
             return
         if self._edited and self._plan_nudged:
@@ -3631,7 +3514,6 @@ class AgentSession:
             self.history.append({"role": "user", "content": PREWALK_PLAN})
 
     def _schedule(self, name: str, args: dict) -> str:
-        """Prompts the session sends itself later (Kimi Code's cron tools, with minutes instead of cron fields)."""
         if name == "schedule_list":
             now = time.time()
             return "\n".join(f"{t['id']}: in {max(0, int((t['next_at'] - now) / 60))} min" + (f", every {t['every'] // 60} min" if t["every"] else ", once") + f" - {t['prompt'][:80]}"
@@ -3668,7 +3550,6 @@ class AgentSession:
             time.sleep(1.0)
 
     def _tick(self) -> None:
-        """Send every prompt that is due; a recurring one waits a full period after a missed time instead of firing in a burst."""
         now = time.time()
         due = [t for t in self.schedules if t["next_at"] <= now]
         for task in due:
@@ -3680,7 +3561,6 @@ class AgentSession:
             self.save()
 
     def _models_command(self, args: str) -> str:
-        """/models lists the model sources and roles with today's use; /models SOURCE [words] lists that source's models with prices."""
         table, sources = self.profile["model_roles"], self._sources()
         name, _, query = args.strip().partition(" ")
         if not name:
@@ -3704,7 +3584,6 @@ class AgentSession:
                          + (f" · {r['context']:,} ctx" if isinstance(r["context"], int) else "") + (" · ảnh" if r["vision"] else "") for r in found) or "Không có model nào khớp."
 
     def _unchecked(self) -> str:
-        """The nudge for autonomous work that ends on a recent failed check or no passing one, once per request and not when time is short."""
         if self.depth or self.mode != "bypass" or self._check_nudged or (self._deadline and not self._notice_at) or not (self._edited or self._last_command is not None):
             return ""
         recent = [command for command, at in self._failing.items() if at > self._commands - RECENT_COMMANDS]
@@ -3714,17 +3593,14 @@ class AgentSession:
         return "" if "[exit code 0]" in last[-400:] or re.search(r"^PASS\b", last, re.M) else CHECK_NUDGE
 
     def _out_ceiling(self) -> int:
-        """The most a reply may be raised to: the soft ceiling, or the provider's cap once it named one."""
         return min(MAX_OUT_CEILING, client.output_cap(self.provider, self.model) or MAX_OUT_CEILING)
 
     def _handed_off(self, text: str) -> bool:
-        """Whether autonomous work ends on a report that leaves steps for the reader, once per request."""
         if self.depth or self.mode != "bypass" or self._handoff_nudged or (self._deadline and not self._notice_at):
             return False
         return bool(HANDOFF.search(text.strip()[-300:]))
 
     def _more_work(self) -> bool:
-        """True when a queued message or an unfinished goal means the turn should go on."""
         with self._lock:
             if self.queue or self._stop:
                 return bool(self.queue)
@@ -3751,7 +3627,6 @@ class AgentSession:
         return False
 
     def _tainted_write_paths(self, call: dict) -> list[str]:
-        """Absolute paths a call wrote, for provenance taint."""
         args = call.get("args") if isinstance(call.get("args"), dict) else {}
         try:
             return [str(p) for p in self.workspace.targets(call["name"], args)]
@@ -3759,7 +3634,6 @@ class AgentSession:
             return []
 
     def _read_path_tainted(self, raw: object) -> bool:
-        """Whether a read_file target was written from a tainted source."""
         try:
             return str(self.workspace.resolve(str(raw or ""))) in self._tainted_files
         except (KeyError, ToolError):
@@ -3810,7 +3684,6 @@ class AgentSession:
 
     @staticmethod
     def _footprint(call: dict) -> tuple[frozenset, frozenset] | None:
-        """(paths read, paths written) for a call that touches only files, or None when it must run alone."""
         name, args = call["name"], call["args"] if isinstance(call["args"], dict) else {}
         path = os.path.normpath(str(args.get("path") or ".")).lstrip("/")
         if name in PARALLEL_CALLS:
@@ -3823,13 +3696,11 @@ class AgentSession:
 
     @staticmethod
     def _conflict(a: tuple[frozenset, frozenset], b: tuple[frozenset, frozenset]) -> bool:
-        """True when one side writes a path the other reads or writes, a folder counting as everything inside it."""
         def overlap(x: frozenset, y: frozenset) -> bool:
             return any(i == j or i == "." or j == "." or i.startswith(j + "/") or j.startswith(i + "/") for i in x for j in y)
         return overlap(a[1], b[0] | b[1]) or overlap(b[1], a[0])
 
     def _wrap_up(self, limit: str = "token budget") -> None:
-        """One last reply without tools, so work already done is reported instead of lost."""
         self.history.append({"role": "user", "content": WRAP_UP.format(limit=limit)})
         try:
             turn = self._call_model(client.render(self.history, self.system_prompt(), self.text_tools, [], reasoning=self.echo_reasoning), None)
@@ -3842,7 +3713,6 @@ class AgentSession:
         self.emit("assistant", text=turn["text"], reasoning="", calls=[])
 
     def _show_images(self) -> None:
-        """Images the agent asked to see go in as one user message after its tool results; only the latest few stay."""
         images, self.workspace.new_images = self.workspace.new_images, []
         if not images:
             return
@@ -3852,7 +3722,6 @@ class AgentSession:
                              "images": [url for _, url in images]})
 
     def _steps(self, max_steps: int) -> None:
-        """The default step loop: ask the model, run its calls, repeat until it answers without calls."""
         broken = empties = cuts = 0
         for _ in range(max_steps):
             if self._stop:
@@ -3947,7 +3816,6 @@ class AgentSession:
                 self._wrap_up("step limit")
 
     def _handoff(self, start: int) -> None:
-        """When a turn dies after doing work (the provider gave out), what it changed and what is left, so nothing has to be guessed before going on."""
         part = self.history[start:] if start <= len(self.history) else self.history
         files = FILE_BLOCK.findall(self._file_lists(part))
         changed = next((body.splitlines() for kind, body in files if kind == "modified"), [])
@@ -3998,18 +3866,15 @@ class AgentSession:
 
 
 def _failed(output: str) -> bool:
-    """Whether a command's output shows it failed: a non-zero exit, a Python traceback or failed tests."""
     code = re.findall(r"\[exit code (-?\d+)", output[-400:])
     return bool(code and code[-1] != "0") or "Traceback (most recent call last)" in output[-3000:] or bool(re.search(r"\b\d+ failed\b|^FAILED ", output[-3000:], re.M))
 
 
 def _alive(job) -> bool:
-    """Whether a job or anything it started still runs."""
     return job.alive if hasattr(job, "alive") else job.code is None
 
 
 class AgentSessionManager:
-    """Live sessions by id, saved under a folder so they can be reopened after a restart."""
 
     def __init__(self, store_dir: Path | None = None, trust: context.TrustStore | None = None, home: Path | None = None):
         self.store_dir, self.home = store_dir, home

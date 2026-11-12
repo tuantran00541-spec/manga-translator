@@ -1,4 +1,3 @@
-"""Build the Kiuyha fine-tune set: our chapters (old boxes kept), drawn text on them, colour webtoon text, and held-out checks."""
 import io
 import json
 import random
@@ -19,7 +18,6 @@ TILE = 1024
 
 
 def save(root, split, name, image, boxes):
-    """Writes one image and its YOLO label file (class 0 = text)."""
     (root / "images" / split).mkdir(parents=True, exist_ok=True)
     (root / "labels" / split).mkdir(parents=True, exist_ok=True)
     image.convert("RGB").save(root / "images" / split / f"{name}.jpg", quality=random.randint(70, 95))
@@ -30,13 +28,11 @@ def save(root, split, name, image, boxes):
 
 
 def old_boxes(model, image, conf):
-    """The current Kiuyha's boxes, kept as labels so the tuned model does not forget them."""
     result = model.predict(image, imgsz=1280, conf=conf, verbose=False)[0]
     return [tuple(int(v) for v in b) for b in result.boxes.xyxy.tolist()]
 
 
 def tiles(image):
-    """Square windows down a tall slice, skipping near-blank ones."""
     w, h = image.size
     side = min(w, TILE * 2)
     step = int(side * 0.75)
@@ -47,7 +43,6 @@ def tiles(image):
 
 
 def chapters(model, root, plan, stats):
-    """Our chapters: each tile kept as is, plus a copy with drawn text; held-out series go to the checks."""
     from app.processing_pipeline_factory import build_processing_pipeline
     pipeline = build_processing_pipeline()
     for n, (url, split) in enumerate(plan):
@@ -72,7 +67,6 @@ def chapters(model, root, plan, stats):
 
 
 def webtoon(model, root, shard, split, limit, stats):
-    """Colour webtoon panels with one drawn word each and its true box (jhc90/webtoon_text_inpainting_data)."""
     import pyarrow.parquet as pq
     url = f"{HF}/jhc90/webtoon_text_inpainting_data/resolve/main/data/train-{shard:05d}-of-00050.parquet"
     local = Path(f"/tmp/webtoon-{shard}.parquet")
@@ -94,7 +88,6 @@ def webtoon(model, root, shard, split, limit, stats):
 
 
 def totaltext(root, stats):
-    """Total-Text test photos of curved and artistic words, a check only: their boxes are per word, not per block."""
     base = f"{HF}/yunusserhat/Total-Text-Dataset/resolve/main"
     names = json.load(urllib.request.urlopen("https://huggingface.co/api/datasets/yunusserhat/Total-Text-Dataset"))["siblings"]
     for item in names:

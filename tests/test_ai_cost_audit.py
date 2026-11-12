@@ -1,9 +1,3 @@
-"""The cost-run audit reproduces renderer sizing, so it must not apply the chapter band.
-
-The renderer no longer sizes from the chapter band (the band is dead
-after the render rewrite), so an audit that band-clamps the cap
-describes a render that never happened. Banded and raw caps must agree.
-"""
 from scripts.ai_cost_run import _fit_metrics
 from app.render.size_bands import chapter_size_bands
 

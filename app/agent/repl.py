@@ -1,4 +1,3 @@
-"""A long-lived sandboxed Python process that runs created tools one after another, so imports and the memo dict last the session."""
 from __future__ import annotations
 
 import json
@@ -59,7 +58,6 @@ while True:
 
 
 class _Out:
-    """A run's output file read the way sandbox.Job's capture is read."""
 
     def __init__(self, path: Path):
         self.path = path
@@ -89,7 +87,6 @@ class _Out:
 
 
 class Run:
-    """One created-tool call inside the kernel, shaped like a sandbox.Job so waiting, backgrounding and stopping work the same."""
 
     def __init__(self, kernel: "Kernel", folder: Path, run_id: str, note: str):
         self.kernel, self.started, self.cursor, self.note = kernel, time.time(), 0, note
@@ -133,7 +130,6 @@ class Run:
 
 
 class Kernel:
-    """The session's Python process for created tools; it restarts, with memo cleared, when it dies or the sandbox policy changes."""
 
     def __init__(self, state: Path):
         self.state, self.folder = state, state / "kernel"
@@ -143,7 +139,6 @@ class Kernel:
         self.lock = threading.RLock()
 
     def start(self, run_id: str, script: str, policy: sandbox.Policy, root: Path, where: str, docker: bool) -> Run | None:
-        """Hand one script to the kernel; None when a call is still running there, so the caller starts a fresh process instead."""
         with self.lock:
             if self.current is not None and self.current.code is None:
                 return None

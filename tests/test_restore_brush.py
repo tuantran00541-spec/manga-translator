@@ -9,7 +9,6 @@ from app.optimized_pipeline import OptimizedChapterPipeline
 
 
 class _Inpainter:
-    """Auto clean paints 100, a manual repaint paints 220."""
 
     def inpaint(self, image, boxes, *, protected_regions=None):
         return np.full_like(image, 100)
@@ -22,7 +21,6 @@ class _Inpainter:
 
 
 class _Transaction:
-    """The artifact journal is tested elsewhere; here it only has to stay out of the way."""
 
     def __enter__(self):
         return self

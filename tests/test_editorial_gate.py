@@ -165,11 +165,6 @@ def test_active_story_source_without_translation_blocks_final_export_preflight()
 
 
 def test_overlap_dropped_duplicate_does_not_block_final_export_preflight():
-    """Audit N1: a correctly-dropped duplicate has source text and no
-    translation, which read as an untranslated story object — every
-    overlap drop blocked export without force=true. Its text is
-    lettered by the keeper it duplicated, so the drop itself is the
-    resolution, mirroring the seam-owner exemption."""
     box = _root_box(
         safe_to_inpaint=True,
         needs_review=False,

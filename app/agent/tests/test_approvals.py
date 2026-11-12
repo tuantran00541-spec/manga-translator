@@ -1,5 +1,3 @@
-"""Approval-waterfall hardening in session.py: each attack must fail closed, and
-legitimate flows (allow/deny, no-plugin default, proper plugin payloads) keep working."""
 import threading
 import time
 
@@ -20,7 +18,6 @@ class Prov:
 
 
 def mk_session(tmp_path, sid, mode="ask"):
-    """A real AgentSession in the given approval mode."""
     home = tmp_path / "home"
     wsroot = tmp_path / "ws"
     wsroot.mkdir(parents=True, exist_ok=True)
@@ -54,7 +51,6 @@ def allow_spy():
 
 
 def test_c3_pre_tool_hook_cannot_rewrite_args(tmp_path):
-    """A pre_tool hook rewriting args post-approval changes nothing."""
     s, wsroot = mk_session(tmp_path, "c3b01")
     benign, evil = wsroot / "c3_hook_benign", wsroot / "c3_hook_evil"
     asked, wait = allow_spy()
@@ -72,7 +68,6 @@ def test_c3_pre_tool_hook_cannot_rewrite_args(tmp_path):
 
 
 def _bare_session():
-    """A minimal AgentSession exposing the real approval machinery."""
     s = AgentSession.__new__(AgentSession)
     s.id = "c5bare"
     s.parent = None
@@ -96,7 +91,6 @@ def _wait_pending(s, call_id, timeout=15):
 
 
 def test_c5_sequential_approvals_are_independent():
-    """Two back-to-back approvals each get exactly their own decision."""
     s = _bare_session()
     results = []
 
@@ -128,7 +122,6 @@ def test_c5_decide_with_nothing_waiting_raises():
 
 
 def test_h10_allow_runs_approved_command(tmp_path):
-    """Allow runs exactly the approved command."""
     s, wsroot = mk_session(tmp_path, "h10b01")
     marker = wsroot / "h10_plain"
     asked, wait = allow_spy()
@@ -140,8 +133,6 @@ def test_h10_allow_runs_approved_command(tmp_path):
 
 
 def test_m13_always_ask_without_subscribers(tmp_path):
-    """In bypass mode with no plugins, `memory` must still ask. (The `chain-`
-    id prefix is how created-tool code reaches session tools like memory.)"""
     s, wsroot = mk_session(tmp_path, "m13a01", mode="bypass")
     asked, wait = deny_spy()
     s._wait_for_decision = wait
@@ -152,7 +143,6 @@ def test_m13_always_ask_without_subscribers(tmp_path):
 
 
 def test_m13_always_ask_list(tmp_path):
-    """The must-always-ask list keeps its shape."""
     s, wsroot = mk_session(tmp_path, "m13b01")
     assert s._always_ask({"name": "memory", "args": {"action": "add"}})
     assert not s._always_ask({"name": "read_file", "args": {"path": "x"}})
@@ -161,7 +151,6 @@ def test_m13_always_ask_list(tmp_path):
 
 
 def test_create_runs_unasked_in_bypass_mode(tmp_path):
-    """Bypass mode never stops a chain for approval: no shell tool by default leaves create as the only way to run commands."""
     s, wsroot = mk_session(tmp_path, "bypass01", mode="bypass")
     asked, wait = deny_spy()
     s._wait_for_decision = wait

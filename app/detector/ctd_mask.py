@@ -1,4 +1,3 @@
-"""Erase masks from comic-text-detector letters, grown into outline and glow that differ from the background."""
 from __future__ import annotations
 
 import threading
@@ -59,12 +58,10 @@ def _prob(img: np.ndarray, scale: float) -> np.ndarray:
 
 
 def probability(img: np.ndarray) -> np.ndarray:
-    """How sure the model is that each pixel is a letter, the higher of full and half size."""
     return np.max([_prob(img, s) for s in SCALES], axis=0)
 
 
 def text_size(part: np.ndarray, prob: np.ndarray | None = None) -> int:
-    """Letter height: the median line height of the model's surest pixels, else the median letter of a mask."""
     if prob is not None and prob.shape == part.shape:
         ink = (prob > CORE).sum(axis=1)
         rows = ink > LINE_GAP * ink.max()
@@ -79,7 +76,6 @@ def text_size(part: np.ndarray, prob: np.ndarray | None = None) -> int:
 
 
 def _centres(bg: np.ndarray, count: int = 4) -> np.ndarray:
-    """Up to `count` Lab colours of the background round a crop."""
     cv2.setRNGSeed(KMEANS_SEED)
     _, _, centers = cv2.kmeans(bg.astype(np.float32), min(count, len(bg)), None,
                                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0), 2, cv2.KMEANS_PP_CENTERS)
@@ -87,7 +83,6 @@ def _centres(bg: np.ndarray, count: int = 4) -> np.ndarray:
 
 
 def _distance(a: np.ndarray, centers: np.ndarray) -> np.ndarray:
-    """Lab distance of each pixel to the nearest background colour, one centre at a time to spare memory."""
     nearest = None
     for centre in centers:
         diff = a - centre
@@ -98,7 +93,6 @@ def _distance(a: np.ndarray, centers: np.ndarray) -> np.ndarray:
 
 def _plate(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, bg: np.ndarray, size: int,
            inner: tuple[bool, bool, bool, bool]):
-    """A dark one-line plate the letters sit on, such as a scanlator badge, closed inside the crop; None for bubbles and art."""
     if len(bg) < 20 or not seed.any() or size < 4:
         return None
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
@@ -133,7 +127,6 @@ def _plate(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, bg: np.ndarray,
 
 
 def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.ndarray:
-    """Letters grown by an outline, then into smooth pixels unlike the background colours; growth that runs off is art."""
     if reach < 1 or not seed.any() or len(bg) < 20:
         return seed
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
@@ -175,7 +168,6 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
 
 
 def _fringe(lab: np.ndarray, seed: np.ndarray, region: np.ndarray, reach: int) -> np.ndarray:
-    """A soft shadow or blur fading from the letters into one flat background joins the mask, so LaMa never redraws it."""
     width = max(3, int(reach * FRINGE_NEAR))
     far = max(width, int(reach * FRINGE))
 
@@ -221,7 +213,6 @@ DOT = knob("mask.dot")
 
 
 def _parts(seed: np.ndarray):
-    """Component labels of the letters, and which of them are letter-sized rather than specks."""
     n, labels, stats, _ = cv2.connectedComponentsWithStats(seed.astype(np.uint8))
     size = text_size(seed)
     big = np.zeros(n, bool)
@@ -230,7 +221,6 @@ def _parts(seed: np.ndarray):
 
 
 def _chained(seed: np.ndarray, inside: np.ndarray) -> np.ndarray:
-    """Letters in the first box, letter-sized ones linked to them by gaps under CHAIN letter heights, and specks beside those."""
     labels, big, size = _parts(seed)
     if len(big) <= 1:
         return seed
@@ -261,7 +251,6 @@ def _chained(seed: np.ndarray, inside: np.ndarray) -> np.ndarray:
 
 
 def _cut(seed: np.ndarray) -> tuple[bool, bool, bool, bool]:
-    """Which sides of the crop cut a letter-sized letter: left, top, right, bottom."""
     labels, big, _ = _parts(seed)
     edge = {side: np.unique(part) for side, part in
             (("l", labels[:, :2]), ("t", labels[:2]), ("r", labels[:, -2:]), ("b", labels[-2:]))}
@@ -269,7 +258,6 @@ def _cut(seed: np.ndarray) -> tuple[bool, bool, bool, bool]:
 
 
 def _reach_cut_letters(image: np.ndarray, first: tuple[int, int, int, int], step: int):
-    """Grow the crop while its edge cuts letters, keeping only the text the first box holds; returns crop, seed and probability."""
     h, w = image.shape[:2]
     bx1, by1, bx2, by2 = first
     prob = probability(image[by1:by2, bx1:bx2])
@@ -301,7 +289,6 @@ def _reach_cut_letters(image: np.ndarray, first: tuple[int, int, int, int], step
 
 
 def _faint_letters(seed: np.ndarray, prob: np.ndarray) -> np.ndarray:
-    """Faintly read marks on the text's own lines and within a letter gap of it, like a thin blurred '!', join the letters."""
     if not seed.any():
         return seed
     size = text_size(seed, prob)
@@ -326,7 +313,6 @@ LINE_DARK = 0.4
 
 
 def _line_art(around: np.ndarray, seed: np.ndarray, at: tuple[int, int]) -> np.ndarray:
-    """Seed parts the model read on a balloon outline or panel border, which is one ink stroke round the whole text."""
     if not seed.any():
         return seed
     gray = cv2.cvtColor(around, cv2.COLOR_BGR2GRAY) if around.ndim == 3 else around
@@ -356,7 +342,6 @@ def _line_art(around: np.ndarray, seed: np.ndarray, at: tuple[int, int]) -> np.n
 
 def _edge_fragments(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, size: int,
                     at_edge: tuple[bool, bool]) -> np.ndarray:
-    """Letter parts cut by the top or bottom of the image, too short for the model to read, join the mask."""
     if size < 4 or not seed.any() or not any(at_edge):
         return grown
     depth = max(3, size // 2)
@@ -385,10 +370,6 @@ def _edge_fragments(img: np.ndarray, seed: np.ndarray, grown: np.ndarray, size: 
 
 
 def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_letters: bool = False):
-    """Padded box, grown over letters its edge cuts, and the erase mask of its letters, outline and glow.
-
-    ``with_letters`` also returns the letters alone, which show where the lines of text are.
-    """
     x1, y1, x2, y2 = box
     h, w = image.shape[:2]
     pad = max(8, int((y2 - y1) * PAD_SHARE))
@@ -414,7 +395,6 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int], *, with_lette
 
 
 def still_reads(clean: np.ndarray, box: tuple[int, int, int, int]) -> bool:
-    """Letters the model still reads inside an erased block."""
     x1, y1, x2, y2 = box
     crop = clean[max(0, y1):y2, max(0, x1):x2]
     if min(crop.shape[:2]) < 8:

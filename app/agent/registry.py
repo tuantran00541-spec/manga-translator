@@ -1,4 +1,3 @@
-"""What the agent is built from: feature groups that can be switched off, and plugins that add tools, commands, hooks and loops."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,7 +34,6 @@ def group_of(tool: str) -> str | None:
 
 
 def load_profile(workspace: Path, home: Path) -> dict:
-    """User profile first; a workspace profile may only switch more features off."""
     profile: dict = {"disable": [], "loop": "default", "echo_reasoning": None, "keep_jobs": False, "subagent_model": "",
                      "compact_model": "", "untrusted_guard": True, "intent": True, "token_budget": 10_000_000, "max_steps": 300,
                      "models": {}, "prices": {}, "vision": None, "isolate_writers": True, "max_output_tokens": 8192, "goal_turns": 8, "stream_rules": [], "notes_context": False,
@@ -125,7 +123,6 @@ class ToolDef:
 
 
 class Registry:
-    """The slots a plugin fills: tools, slash commands, hooks, prompt text and the step loop."""
 
     def __init__(self, reserved: set[str]):
         self.reserved = reserved
@@ -139,7 +136,6 @@ class Registry:
         self._current = ""
 
     def tool(self, spec: dict, handler: Callable, kind: str = "exec", group: str | None = None, always_ask: bool = False) -> None:
-        """handler(session, args) returns the text the model reads; kind is read, edit, exec or net."""
         name = str(spec.get("name") or "")
         kind = spec.get("kind", kind) if kind == "exec" else kind
         if not NAME_RE.match(name):
@@ -157,13 +153,11 @@ class Registry:
         self.tools[name] = ToolDef(clean, handler, kind, group or self._current or name, always_ask)
 
     def command(self, name: str, description: str, handler: Callable) -> None:
-        """handler(session, args) returns a message string or a dict like command() does."""
         if not NAME_RE.match(name):
             raise ValueError(f"command {name!r} cannot be registered")
         self.commands[name] = (description, handler)
 
     def hook(self, event: str, fn: Callable) -> None:
-        """pre_tool returns a message to block the call; post_tool returns text to append; the other events only observe."""
         if event not in EVENTS:
             raise ValueError(f"hook event must be one of {', '.join(EVENTS)}")
         self.hooks[event].append(fn)
@@ -172,18 +166,15 @@ class Registry:
         self.prompts.append(fn)
 
     def loop(self, name: str, fn: Callable) -> None:
-        """fn(session, max_steps) replaces the step loop; the session API (_turn, _run_calls, history, emit) does the work."""
         self.loops[name] = fn
 
     def provider(self, name: str, adapter: Callable) -> None:
-        """adapter(session, request) answers a model call for a protocol other than OpenAI chat."""
         if not NAME_RE.match(name.replace("-", "_")) or not callable(adapter):
             raise ValueError(f"model adapter {name!r} cannot be registered")
         self.providers[name] = adapter
 
 
 def load_module_bytes(source: bytes, label: str, filename: str = "<plugin>"):
-    """Run plugin source from bytes already read, so the trusted digest covers exactly what runs."""
     spec = importlib.util.spec_from_file_location(label, filename)
     module = importlib.util.module_from_spec(spec)
     exec(compile(source, filename, "exec"), module.__dict__)
@@ -199,12 +190,6 @@ def plugin_files(workspace: Path, home: Path) -> list[tuple[str, Path]]:
 
 
 def plugin_sources(workspace: Path, home: Path) -> list[tuple[str, Path, bytes | None]]:
-    """Every plugin file's bytes, read exactly once.
-
-    The trust digest and the executed code both come from these same bytes, so
-    a writer swapping a file between the digest and the load cannot slip
-    untrusted code under a trusted digest.
-    """
     out: list[tuple[str, Path, bytes | None]] = []
     for scope, path in plugin_files(workspace, home):
         try:
@@ -215,7 +200,6 @@ def plugin_sources(workspace: Path, home: Path) -> list[tuple[str, Path, bytes |
 
 
 def sources_digest(sources: list[tuple[str, Path, bytes | None]]) -> str:
-    """Digest of the exact workspace plugin bytes load_plugins is about to execute."""
     h = hashlib.sha256()
     for scope, path, data in sources:
         if scope == "workspace" and data is not None:
@@ -224,7 +208,6 @@ def sources_digest(sources: list[tuple[str, Path, bytes | None]]) -> str:
 
 
 def user_trusted(trust: context.TrustStore, home: Path, path: Path, data: bytes) -> bool:
-    """A user plugin is trusted file by file, for every workspace, by the digest of its exact bytes."""
     return trust.trusted(home, f"plugin-user:{path.name}", hashlib.sha256(data).hexdigest())
 
 
@@ -233,13 +216,6 @@ def trust_user_plugin(trust: context.TrustStore, home: Path, path: Path, data: b
 
 
 def load_plugins(reg: Registry, workspace: Path, home: Path, trust: context.TrustStore, config: dict | None = None) -> None:
-    """Python files that define register(api); a workspace's own plugins run only once the user trusts their exact contents.
-
-    User-scope plugins need the same explicit trust: an unpinned or changed
-    file is reported as "untrusted" and never executed (default-deny, like the
-    fixed (g)/(h) flow). The UI surfaces this via needs_trust; trust_plugins()
-    pins both scopes.
-    """
     sources = plugin_sources(workspace, home)
     trusted_workspace = trust.trusted(workspace, "plugins", sources_digest(sources))
     for scope, path, data in sources:

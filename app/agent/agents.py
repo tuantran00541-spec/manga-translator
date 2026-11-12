@@ -1,4 +1,3 @@
-"""Sub-agent definitions: built-in explore, plan and coder, plus Markdown files with front matter."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -51,7 +50,6 @@ def _names(value: str) -> set[str]:
 
 
 def discover(workspace: Path, home: Path) -> dict[str, Agent]:
-    """Built-ins, overridden by agent files; workspace files win over user ones."""
     found = dict(BUILTIN)
     seen: set[str] = set()
     for folder in [workspace / d for d in WORKSPACE_DIRS] + [home / d for d in HOME_DIRS]:

@@ -1,4 +1,3 @@
-"""A cheap decision model answers yes/no and pick-one questions about images, so the chat model only reads and translates."""
 from __future__ import annotations
 
 import base64
@@ -28,12 +27,6 @@ STORY = {"kind": {"type": "choice", "instructions": "What lettering does this we
 
 
 def judge_status(provider, api_key: str) -> dict:
-    """Whether the decision model can judge for this provider, and why not.
-
-    The decision model is only served at DECIDER_HOST, so any other
-    provider runs without both the skip judge and the art screen. Callers
-    report this instead of silently deciding alone.
-    """
     hostname = urlparse(str(provider.api_base)).hostname
     if hostname != DECIDER_HOST:
         return {"available": False, "provider": hostname,
@@ -48,7 +41,6 @@ def available(provider, api_key: str) -> bool:
 
 
 def data_url(image) -> str | None:
-    """The image as a JPEG data URL small enough for one request, or None when even a small copy is too big."""
     side, quality = MAX_SIDE, 80
     while side >= MIN_SIDE:
         scale = min(1.0, side / max(image.shape[:2]))
@@ -61,7 +53,6 @@ def data_url(image) -> str | None:
 
 
 def ask(api_base: str, api_key: str, url: str, questions: dict) -> dict | None:
-    """The answers to questions about one image, or None when the model could not answer."""
     try:
         response = requests.post(
             f"{api_base}/evaluate", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -82,14 +73,12 @@ def _all(api_base: str, api_key: str, urls: list, questions: dict) -> list:
 
 
 def screen_for(provider, api_key: str):
-    """The art screen for this provider, or None when it cannot reach the decision model."""
     if not available(provider, api_key):
         return None
     return functools.partial(art_boxes, str(provider.api_base).rstrip("/"), api_key)
 
 
 def crop_url(image, box) -> str | None:
-    """The box with some surrounding art, as a data URL."""
     height, width = image.shape[:2]
     pad = max(16, min(96, int(0.3 * max(box.x2 - box.x1, box.y2 - box.y1))))
     crop = image[max(0, box.y1 - pad):min(height, box.y2 + pad), max(0, box.x1 - pad):min(width, box.x2 + pad)]
@@ -102,7 +91,6 @@ def lettering_chance(answers: dict | None) -> float | None:
 
 
 def art_boxes(api_base: str, api_key: str, image, boxes) -> set[int]:
-    """Indices of boxes the model is sure hold no lettering; any box it could not judge is kept."""
     chances = [lettering_chance(a) for a in _all(api_base, api_key, [crop_url(image, box) for box in boxes], LETTERING)]
     failed = sum(chance is None for chance in chances)
     if failed:
@@ -111,7 +99,6 @@ def art_boxes(api_base: str, api_key: str, image, boxes) -> set[int]:
 
 
 def tile_urls(image) -> list:
-    """Square tiles down the slice, so small lettering survives the shrink; a tile too big to send is None."""
     height, width = image.shape[:2]
     return [data_url(image[y:min(height, y + width + 60)]) for y in range(0, height, width)]
 
@@ -132,7 +119,6 @@ def story_chance(answers: dict | None) -> float | None:
 
 
 def slice_story(api_base: str, api_key: str, image) -> float | None:
-    """The slice's highest tile chance of story text, stopping at the first tile that has some; None when a tile goes unanswered."""
     best = 0.0
     for url in tile_urls(image):
         chance = story_chance(ask(api_base, api_key, url, STORY)) if url else None
@@ -145,7 +131,6 @@ def slice_story(api_base: str, api_key: str, image) -> float | None:
 
 
 def storyless_slices(provider, api_key: str, indices: list[int], load) -> tuple[list[int], dict[int, float | None]]:
-    """Slices the model is sure hold no story text, and each slice's chance; a slice it could not judge is kept."""
     api_base = str(provider.api_base).rstrip("/")
 
     def judge(index: int) -> float | None:

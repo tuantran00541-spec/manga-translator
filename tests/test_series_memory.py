@@ -1,4 +1,3 @@
-"""Series memory: what earlier chapters settled reaches the next one, and the user can edit it."""
 import asyncio
 
 from app import series_memory

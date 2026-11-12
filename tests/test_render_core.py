@@ -1,4 +1,3 @@
-"""The new render core: mask layout, centroid anchor, single cap, floor, graceful fallback."""
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -21,7 +20,6 @@ def _ink(image, base):
 
 
 def test_mask_layout_uses_row_spans_not_the_rectangle():
-    """Text laid out on the mask stays inside the ellipse, not just its bbox."""
     image = _ellipse_bubble()
     base = image.copy()
     stats: dict = {}
@@ -39,7 +37,6 @@ def test_mask_layout_uses_row_spans_not_the_rectangle():
 
 
 def test_block_centres_on_the_mask_centroid_not_the_box():
-    """A bubble low in its region centres the block on the mask, not the region."""
     image = Image.new("RGB", (700, 400), "white")
     ImageDraw.Draw(image).ellipse([100, 200, 600, 340], fill="white",
                                   outline=(0, 0, 0), width=4)
@@ -63,7 +60,6 @@ def test_block_centres_on_the_mask_centroid_not_the_box():
 
 
 def test_single_cap_source_anchors_the_size():
-    """One cap: the source-matched size; the old ceiling and share parameters change nothing."""
     draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     font = str(DEFAULT_FONT)
     expected = matching_font_px(font, 90)
@@ -77,7 +73,6 @@ def test_single_cap_source_anchors_the_size():
 
 
 def test_floor_is_six_tenths_of_what_the_box_holds():
-    """A misread tiny cap does not shrink the text far below what its box holds."""
     def ink_height(cap):
         image = render_text_in_box(Image.new("RGB", (500, 300), "white"), "Thả ra ngay!",
                                    (0, 0, 500, 300), fill="#000000",
@@ -94,13 +89,6 @@ def test_floor_is_six_tenths_of_what_the_box_holds():
 
 
 def test_graceful_degradation_draws_at_the_floor_in_the_inscribed_rectangle():
-    """A band fit that fails at the floor still draws at the floor inside
-    the inscribed rectangle instead of refusing the block.
-
-    The hourglass mask is wide in both lobes and narrow at its centroid
-    waist, so the block's lines land on the waist and the band fit fails
-    — while the inscribed rectangle of one lobe holds them at the floor.
-    """
     rows = ([[(110, 290)] for _ in range(9)] + [[(190, 210)] for _ in range(6)]
             + [[(110, 290)] for _ in range(9)])
     mask = {"bbox": [100, 100, 300, 300], "cx": 200, "cy": 200,
@@ -118,7 +106,6 @@ def test_graceful_degradation_draws_at_the_floor_in_the_inscribed_rectangle():
 
 
 def test_refusal_when_even_the_floor_holds_nowhere():
-    """A block the floor size cannot hold anywhere is refused, not drawn tiny."""
     draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     _size, _lines, fits, _box = auto_fit(
         draw, "Một hai ba bốn năm sáu bảy tám chín mười", (0, 0, 20, 10),
@@ -127,7 +114,6 @@ def test_refusal_when_even_the_floor_holds_nowhere():
 
 
 def test_bubble_without_a_mask_derives_one_on_the_fly():
-    """A bubble container with no persisted mask derives the mask from the image."""
     image = _ellipse_bubble()
     stats: dict = {}
     render_text_in_box(image.copy(), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",
@@ -139,7 +125,6 @@ def test_bubble_without_a_mask_derives_one_on_the_fly():
 
 
 def test_free_text_falls_back_to_the_box_rectangle():
-    """Free text has no bubble to find: the fit is the box rectangle."""
     image = Image.new("RGB", (700, 400), "white")
     stats: dict = {}
     render_text_in_box(image.copy(), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",

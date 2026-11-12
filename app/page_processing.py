@@ -21,7 +21,6 @@ from app.parameters import (
 
 
 def _letters_u8(letters) -> np.ndarray | None:
-    """The letters alone as a PNG-ready mask; the detector keeps none for some boxes."""
     if letters is None:
         return None
     array = np.asarray(letters)
@@ -34,7 +33,6 @@ LEFTOVER_OUTLINE_RATIO = 1.5
 
 
 def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
-    """Grow the first-pass record holding ``box`` so a later re-inpaint erases it too."""
     cx, cy = (box.x1 + box.x2) / 2, (box.y1 + box.y2) / 2
     for record in records:
         mask = record.get("_mask_array")
@@ -68,21 +66,12 @@ SEAM_CONTAINED = 0.5
 
 
 def _contained(box: BubbleBox, seam: BubbleBox) -> bool:
-    """True when at least SEAM_CONTAINED of ``box`` lies inside ``seam``."""
     ix = max(0, min(box.x2, seam.x2) - max(box.x1, seam.x1))
     iy = max(0, min(box.y2, seam.y2) - max(box.y1, seam.y1))
     return ix * iy >= SEAM_CONTAINED * max(1, (box.x2 - box.x1) * (box.y2 - box.y1))
 
 
 def _fold_nested(boxes: list[BubbleBox]) -> list[BubbleBox]:
-    """A box mostly inside a larger one is the same text, so its mask joins the larger box.
-
-    Containment alone also folds a small bubble tucking under a big one:
-    the detector kept them apart because their letter rows, inside their
-    own cores, never meet. The fold asks the same question before joining,
-    and only joins when the letters cannot tell them apart. A box with no
-    letter geometry to judge by still folds: the detector never lettered it.
-    """
     from app.detector.kiuyha_detector import _letter_geometry, _letters_coherent
 
     def _coherent(box: BubbleBox, head: BubbleBox) -> bool:

@@ -1,12 +1,3 @@
-"""Bubble masks: the detector's outline, not the detection region.
-
-The old band/ray/divider machinery measured the outline from the
-cleaned image on every render; the new core lays out on the mask the
-detector derived once. These tests pin the mask behaviour the render
-relies on: a shifted region still finds the bubble, art claims no
-bubble, a dark line splits the flood, a waist trims to the lettering's
-lobe, and shading does not collapse the interior.
-"""
 from pathlib import Path
 
 import cv2
@@ -20,7 +11,6 @@ FIXTURES = Path(__file__).parent / "fixtures" / "bubble_mask"
 
 
 def _bubble_image():
-    """White oval on black, plus a white panel strip below a divider."""
     image = Image.new("RGB", (400, 500), "black")
     draw = ImageDraw.Draw(image)
     draw.ellipse([50, 50, 350, 300], fill="white", outline=(0, 0, 0), width=3)
@@ -34,7 +24,6 @@ def _bgr(image):
 
 
 def test_mask_derives_the_bubble_from_a_shifted_region():
-    """A region shifted off the bubble still finds the bubble itself."""
     mask = derive_bubble_mask(_bgr(_bubble_image()), (100, 80, 320, 280))
     assert mask is not None and mask["kind"] == "bubble"
     assert 40 <= mask["bbox"][0] <= 60 and 40 <= mask["bbox"][1] <= 60
@@ -42,13 +31,11 @@ def test_mask_derives_the_bubble_from_a_shifted_region():
 
 
 def test_mask_rejects_a_box_on_art():
-    """A box on black art claims no bubble: the render falls back to a rectangle."""
     mask = derive_bubble_mask(_bgr(_bubble_image()), (10, 320, 90, 390))
     assert mask is None or mask["kind"] != "bubble"
 
 
 def test_mask_splits_a_bubble_on_a_dark_line():
-    """A dark line across the oval floods one piece: the mask is that piece, inside the oval."""
     image = Image.new("RGB", (400, 500), "black")
     draw = ImageDraw.Draw(image)
     draw.ellipse([50, 50, 350, 300], fill="white", outline=(0, 0, 0), width=3)
@@ -61,13 +48,11 @@ def test_mask_splits_a_bubble_on_a_dark_line():
 
 
 def test_mask_straddling_a_divider_claims_no_bubble():
-    """A box across the panel divider is no closed bubble, so no bubble is claimed."""
     mask = derive_bubble_mask(_bgr(_bubble_image()), (50, 300, 350, 450))
     assert mask is None or mask["kind"] != "bubble"
 
 
 def test_trim_mask_keeps_the_lobe_holding_the_lettering():
-    """MH p068's stacked double bubble trims to the lettering's lobe."""
     img = cv2.imread(str(FIXTURES / "mh068-stacked.png"))
     box = (106, 64, 436, 263)
     mask = derive_bubble_mask(img, box)
@@ -85,7 +70,6 @@ def test_trim_mask_keeps_the_lobe_holding_the_lettering():
 
 
 def _union_mask_from_circles(bbox=(60, 60, 560, 340)):
-    """The union of two diagonal circles, one interval per band."""
     import math
 
     x1, y1, x2, y2 = bbox
@@ -111,13 +95,6 @@ def _union_mask_from_circles(bbox=(60, 60, 560, 340)):
 
 
 def test_trim_with_letters_cuts_a_diagonal_waist():
-    """The letter bitmap sees the diagonal waist the mask alone hides.
-
-    One object's letters span both lobes (left lines and right lines
-    with a clean column gap between them), while its letter box sits
-    whole in the left lobe: the trim cuts the union and returns the
-    left lobe. Without the bitmap the same mask has no waist at all.
-    """
     from app.render.text_renderer import _mask_centroid
 
     mask = _union_mask_from_circles()
@@ -140,12 +117,6 @@ def test_trim_with_letters_cuts_a_diagonal_waist():
 
 
 def test_mask_rows_keep_the_interior_under_diagonal_shading():
-    """A grey bubble with diagonal shading keeps wide rows, like slice 45's bubble.
-
-    The shading lines are interior art, not the outline loop: the mask's
-    widest row still spans most of the bubble, so the fit does not
-    collapse onto a shading strip.
-    """
     image = Image.new("RGB", (700, 400), "white")
     draw = ImageDraw.Draw(image)
     draw.ellipse([50, 50, 650, 350], fill=(150, 150, 150), outline=(0, 0, 0), width=4)

@@ -1,15 +1,3 @@
-"""Fetch the Total-Text TRAIN split (curved / artistic words) and append it to an
-existing kiuyha-data directory as extra training data.
-
-Polygons are converted to axis-aligned YOLO boxes (class 0 = text), the same
-label format build.py writes. Never touches the Test split: that is the
-held-out art check used by evaluate.py.
-
-Usage:
-    python .github/kiuyha/fetch_art.py kiuyha-data [limit]
-
-Needs Pillow (present once ultralytics is installed).
-"""
 import io
 import json
 import random
@@ -33,7 +21,6 @@ def fetch(url):
 
 
 def parse_boxes(gt_text):
-    """poly_gt lines -> (xmin, ymin, xmax, ymax); skips '#' don't-care regions."""
     boxes = []
     for line in gt_text.splitlines():
         xs = [int(v) for v in re.findall(r"-?\d+", (re.search(r"x: \[\[(.*?)\]\]", line) or [None, ""])[1])]

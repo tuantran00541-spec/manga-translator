@@ -1,4 +1,3 @@
-"""Language names and DeepSeek token pricing for translation calls."""
 from __future__ import annotations
 
 import json
@@ -36,7 +35,6 @@ def language_name(code: str) -> str:
 
 
 def usage_cost_usd(usage: dict, provider_id: str = "deepseek") -> float | None:
-    """The call's cost at DeepSeek prices; None for another provider, whose prices are not DeepSeek's."""
     if provider_id != "deepseek":
         return None
     prompt = max(0, int(usage.get("prompt_tokens") or 0))
@@ -77,7 +75,6 @@ def _configured_price_usd(usage: dict, model: str) -> float | None:
 
 
 def response_cost_usd(usage: dict, provider_id: str, model: str, headers) -> float | None:
-    """One call's actual USD cost: DeepSeek's token price, then the gateway's settled charge, then a user-configured model price."""
     cost = usage_cost_usd(usage, provider_id)
     if cost is not None:
         return cost

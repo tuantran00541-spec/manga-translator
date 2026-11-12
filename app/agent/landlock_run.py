@@ -1,4 +1,3 @@
-"""Run one command under a Landlock policy: writes only beneath given folders, no network sockets, some folders unreadable."""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +24,6 @@ _libc.syscall.restype = ctypes.c_long
 
 
 def abi() -> int:
-    """The kernel's Landlock ABI version, or 0 when Landlock is off."""
     try:
         return max(0, int(_libc.syscall(CREATE_RULESET, None, 0, VERSION_FLAG)))
     except (AttributeError, OSError):
@@ -42,7 +40,6 @@ def write_access(version: int) -> int:
 
 
 def _allowed_siblings(denied: list[str]) -> list[str]:
-    """Every path to leave readable so that exactly the denied ones are not: the siblings along the way to each of them."""
     tree: dict = {}
     for path in denied:
         node = tree
@@ -125,7 +122,6 @@ SECCOMP_RET_KILL_PROCESS, SECCOMP_RET_ALLOW, SECCOMP_RET_EPERM = 0x80000000, 0x7
 
 
 def _program(arch: int, socket_nr: int) -> list[tuple[int, int, int, int]]:
-    """A seccomp filter: socket() for the blocked domains and io_uring_setup() fail with EPERM; a foreign ABI or x32 call is killed."""
     steps: list = [("ld", 4), ("jeq", arch, "arch_ok", "kill"), ("label", "kill"), ("ret", SECCOMP_RET_KILL_PROCESS), ("label", "arch_ok"),
                    ("ld", 0), ("jge", 0x40000000, "kill_x32", "nr_ok"), ("label", "nr_ok"), ("jeq", socket_nr, "is_socket", "not_socket"), ("label", "not_socket"), ("jeq", IO_URING_SETUP, "deny", "allow"),
                    ("label", "is_socket"), ("ld", 16)]
@@ -156,7 +152,6 @@ def _program(arch: int, socket_nr: int) -> list[tuple[int, int, int, int]]:
 
 
 def block_sockets() -> bool:
-    """Network sockets and io_uring are refused for this process and its children; false where the CPU is not supported."""
     arch = ARCHES.get(platform.machine())
     if arch is None:
         return False

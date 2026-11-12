@@ -1,4 +1,3 @@
-"""A small JSON Schema check and a JSON extractor, so a helper's report can be required to have a shape (from dsh's workflow agent())."""
 from __future__ import annotations
 
 import json
@@ -7,7 +6,6 @@ TYPES = {"string": str, "boolean": bool, "array": list, "object": dict}
 
 
 def extract(text: str):
-    """The last top-level JSON object in the text, or None."""
     decoder, found, at = json.JSONDecoder(), None, 0
     while (start := text.find("{", at)) != -1:
         try:
@@ -19,7 +17,6 @@ def extract(text: str):
 
 
 def check(value, schema: dict, path: str = "report") -> str | None:
-    """The first way the value breaks the schema (type, required, properties, items, enum, const), or None."""
     if "const" in schema and value != schema["const"]:
         return f"{path} must be {schema['const']!r}"
     if "enum" in schema and value not in schema["enum"]:
@@ -48,7 +45,6 @@ def check(value, schema: dict, path: str = "report") -> str | None:
 
 
 def report(text: str, schema: dict) -> tuple[dict | None, str | None]:
-    """(object, None) when the text ends with a JSON object that fits the schema, else (None, why)."""
     value = extract(text)
     if value is None:
         return None, "the reply holds no JSON object"

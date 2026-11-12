@@ -1,9 +1,3 @@
-"""Bubble masks: derivation, waist split, and persistence.
-
-The synthetic images are drawn with thin (2px) outlines and text-line
-bars, like real scanlation pages -- a solid filled shape would flood
-as its own outline and prove nothing about the edge flood.
-"""
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -33,12 +27,6 @@ def _paper(w=800, h=600):
 
 
 def _text_lines(img, lines, thickness=2):
-    """Dark bars, one per text line (x1, y1, x2, y2) in image coords.
-
-    Dashed, like real lettering: a solid bar would seal the bubble
-    interior into bands and the flood would fill only one of them,
-    while real glyphs leave gaps the flood flows through.
-    """
     for (x1, y1, x2, y2) in lines:
         mid = (y1 + y2) // 2
         x = x1
@@ -56,7 +44,6 @@ def _circle(w=800, h=600, centre=(400, 300), radius=140, lines=((260, 250, 540, 
 
 
 def _double_side():
-    """Two overlapping circles, text in each lobe."""
     img = _paper()
     cv2.circle(img, (200, 200), 140, (20, 20, 20), 2)
     cv2.circle(img, (420, 200), 140, (20, 20, 20), 2)
@@ -66,7 +53,6 @@ def _double_side():
 
 
 def _double_stacked(gap):
-    """Two circles stacked, centres `gap` apart; text in each lobe."""
     img = _paper()
     cy = 300 - gap // 2
     cv2.circle(img, (400, cy), 140, (20, 20, 20), 2)
@@ -102,7 +88,6 @@ def _free_text():
 
 
 def _letters_for(img, lines):
-    """A letters array for a box, one ink bar per text line, dashed like the drawn lines."""
     letters = np.zeros(img.shape[:2], bool)
     for (x1, y1, x2, y2) in lines:
         x = x1
@@ -114,7 +99,6 @@ def _letters_for(img, lines):
 
 
 def _mask_from_widths(widths, bbox=(100, 100, 500, 340)):
-    """A mask dict with one centred interval per band (bbox-local)."""
     x1, y1, x2, y2 = bbox
     centre = (x2 - x1) // 2
     rows = []
@@ -124,7 +108,6 @@ def _mask_from_widths(widths, bbox=(100, 100, 500, 340)):
 
 
 def _mask_from_circles(c1, c2, r, bbox):
-    """The union of two circles, one interval per band (for the letter-gap tests)."""
     x1, y1, x2, y2 = bbox
     h = y2 - y1
     rows = []
@@ -309,7 +292,6 @@ def test_row_gap_waist_fires_on_diagonal_double():
 
 
 def _fixture_lines(shape, lines):
-    """A letters array with one ink bar per text line (fixture coords)."""
     letters = np.zeros(shape, bool)
     for (x1, y1, x2, y2) in lines:
         h = y2 - y1
@@ -390,7 +372,6 @@ def test_split_waist_boxes_splits_the_ch111_fixture_box():
 
 
 class _Session:
-    """One detection where the input has dark pixels (end-to-end head)."""
 
     def __init__(self, shape=(1, 3, 1280, 1280)):
         self.shape = shape

@@ -1,12 +1,3 @@
-"""Triage a cleaned chapter: find text the clean left behind, and split it
-into detector misses (no box ever covered it: fine-tune material) versus
-inpaint skips (a box existed, the eraser skipped it: pipeline issue).
-
-Reuses the leftover test from scripts/chapter_run.py (re-detect text on the
-clean image, connected components on the original mask, 30% remains) and
-adds one step: overlap each leftover block against the manifest boxes.
-No vision model beyond the detector, no eyeballing thousands of images.
-"""
 from __future__ import annotations
 
 import argparse
@@ -51,7 +42,6 @@ def pair(original: np.ndarray, clean: np.ndarray, box, path: Path) -> None:
 
 
 def box_overlaps_block(box: tuple[int, int, int, int], rects) -> bool:
-    """True when a leftover block overlaps any manifest box rectangle."""
     x1, y1, x2, y2 = box
     area = max(1, (x2 - x1) * (y2 - y1))
     for r in rects:

@@ -172,7 +172,6 @@ class RequestSizeLimitMiddleware:
 
 
 def allowed_hosts() -> set[str]:
-    """Hosts the app answers to: loopback, the bound host and MANGA_ALLOWED_HOSTS."""
     hosts = {"127.0.0.1", "localhost", "::1"}
     if HOST not in ("0.0.0.0", "::", ""):
         hosts.add(HOST.lower())
@@ -188,7 +187,6 @@ def _host_name(value: str) -> str:
 
 
 class LocalHostOnlyMiddleware:
-    """Refuse requests naming another host, so a web page rebinding its domain to this machine gets nothing."""
 
     def __init__(self, app, hosts: set[str] | None = None):
         self.app = app

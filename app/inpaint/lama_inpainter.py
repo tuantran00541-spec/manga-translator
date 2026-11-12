@@ -102,7 +102,6 @@ def _should_recycle_fixed_session() -> bool:
 
 
 def _local_box(b: BubbleBox, cx1: int, cy1: int) -> BubbleBox:
-    """``b`` in crop coordinates."""
     local = BubbleBox(
         b.x1 - cx1, b.y1 - cy1, b.x2 - cx1, b.y2 - cy1, b.confidence, b.mask,
         source_model=b.source_model, class_id=b.class_id, class_name=b.class_name,
@@ -552,7 +551,6 @@ class Inpainter:
 
     @staticmethod
     def _ring_fill_color(crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray | None:
-        """Median colour of a hole whose nearest pixels all agree and that no drawn line enters, else None."""
         hole = local_mask > 127
         if crop.ndim != 3 or not hole.any():
             return None

@@ -1,4 +1,3 @@
-"""Runs one shell command on Windows at low integrity, so it can write only where a folder is labelled low."""
 from __future__ import annotations
 
 import ctypes
@@ -47,7 +46,6 @@ def _check(ok, what: str):
 
 
 def label(path: str) -> None:
-    """Label a folder (and what it holds) low, so commands may write there."""
     advapi, kernel = ctypes.WinDLL("advapi32", use_last_error=True), ctypes.WinDLL("kernel32", use_last_error=True)
     descriptor, sacl = ctypes.c_void_p(), ctypes.c_void_p()
     present, defaulted = wt.BOOL(), wt.BOOL()
@@ -63,7 +61,6 @@ def label(path: str) -> None:
 
 
 def launch(command: str) -> int:
-    """Start the command through cmd.exe with a lowered token inside a kill-on-close job, and return its exit code."""
     advapi, kernel = ctypes.WinDLL("advapi32", use_last_error=True), ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.GetCurrentProcess.restype = wt.HANDLE
     kernel.CreateJobObjectW.restype = wt.HANDLE

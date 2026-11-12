@@ -1,12 +1,3 @@
-"""Audit §8.14 (M1+M2+M3): the render-output dir must agree with the manifest.
-
-M1: a skipped page ships in export as its clean-or-original fallback, so
-    _sync_output_dir must materialize that same image in the output dir.
-M2: invalidating a render (AI-mode _invalidate_renders, render-commit
-    failure) must drop the stale file, not just flip the manifest flag.
-M3: GET /api/image/.../rendered must 409 on a stale/missing render like
-    download_page does, never silently serve the base image.
-"""
 from __future__ import annotations
 
 from contextlib import nullcontext

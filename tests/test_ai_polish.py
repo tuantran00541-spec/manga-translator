@@ -92,9 +92,6 @@ def _manifest_runner(monkeypatch, manifest):
 
 
 def test_save_polished_gates_rewrites_like_the_translate_commit(monkeypatch):
-    """A judge-approved rewrite is still a fresh model commit: English and
-    CJK rewrites are dropped with the original kept, a doubled rewrite is
-    collapsed, and only the committed one counts."""
     manifest = {"pages": [{"text_objects": [
         _obj("a", "Tôi đi đây."),
         _obj("b", "Ngươi hãy ra khỏi nơi này lập tức!"),
@@ -122,9 +119,6 @@ def test_save_polished_gates_rewrites_like_the_translate_commit(monkeypatch):
 
 
 def test_save_polished_commits_the_gate_filtered_text_not_the_raw_rewrite(monkeypatch):
-    """A mixed rewrite (Vietnamese line + English line) commits only what
-    the gate kept: the translate commit writes the gate's filtered text,
-    and polish must not smuggle the dropped English line onto the page."""
     manifest = {"pages": [{"text_objects": [_obj("d", "Đúng vậy.")] }]}
     runner = _manifest_runner(monkeypatch, manifest)
     lines = [polish.Line(0, "d", "That's right!", "Đúng vậy\nSENIOR BROTHER!")]

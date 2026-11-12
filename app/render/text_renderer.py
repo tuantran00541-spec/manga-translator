@@ -70,7 +70,6 @@ def _plain_punctuation(font_path, text: str) -> str:
 
 
 def drawable(font_path, text: str) -> tuple[Path, str]:
-    """The font and text that are actually drawn: punctuation the font lacks is replaced, else the default font."""
     font_path = Path(font_path)
     if font_draws_text(font_path, text):
         return font_path, text
@@ -83,7 +82,6 @@ def drawable(font_path, text: str) -> tuple[Path, str]:
 
 
 def font_draws_text(font_path, text: str) -> bool:
-    """False when some character would come out as the font's missing-glyph box."""
     font_path_str = str(font_path)
     return all(_draws_char(font_path_str, char) for char in set(str(text or "")) if not char.isspace())
 
@@ -139,18 +137,11 @@ def _luminance(rgb) -> float:
 
 
 def _contrast(a, b) -> float:
-    """WCAG contrast ratio between two RGB colours."""
     la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
     return (la + 0.05) / (lb + 0.05)
 
 
 def _light_background_grey(image: Image.Image, box) -> float:
-    """75th-percentile grey of the box: the paper the glyphs will touch.
-
-    A box mean mixes the bubble paper with dark art around it, so black
-    text on a light bubble reads low-contrast and gets a thick outline
-    it does not need. The lightest quarter is the paper, not the art.
-    """
     grey = np.asarray(image.convert("L").crop(tuple(int(v) for v in box)))
     if grey.size == 0:
         return 255.0
@@ -226,15 +217,6 @@ def _calc_line_height(draw, font, stroke_w: int = 0) -> int:
 
 def _line_start_x(draw, line, font, *, x1, pad, box_w, h_align, centred, curved,
                   line_centres, draw_spans, i, line_count):
-    """Left edge of ``line`` as drawn, on its own band when it has one.
-
-    The band interval, not the box edge, is the clamp: a line whose
-    centre sits near the box edge would otherwise be pulled back onto
-    the outline the band centre was avoiding.
-    Per-line centres exist only for curved, centred, auto-fit text
-    that fits; otherwise the line centres on the box, recorded in
-    render stats as ``line_centring`` (``per_line`` or ``box_centre``).
-    """
     line_w = draw.textbbox((0, 0), line, font=font)[2]
     if h_align == "left":
         return x1 + pad, line_w
@@ -548,14 +530,6 @@ MASK_BAND_PAD = 4
 
 
 def _mask_bands(mask, box):
-    """Per-band interior intervals of ``mask`` over ``box``, box-local.
-
-    The mask stores 24 rows over its own bbox; each band of ``box``
-    takes the mask's intervals at the band's middle, so a line laid out
-    on ``box`` reads its width from the mask, never from the image.
-    The flood runs to the outline itself, so each interval is pulled
-    in by the pad: ink on the flood's edge crosses the outline.
-    """
     x1, y1, x2, y2 = (int(v) for v in box)
     if x2 <= x1 or y2 <= y1:
         return None
@@ -569,7 +543,6 @@ def _mask_bands(mask, box):
 
 
 def _lines_fit_spans(draw, lines, font, spans, stroke_w: int) -> bool:
-    """Whether every line's ink plus stroke stays inside its own span."""
     if not lines:
         return True
     if spans is None or len(spans) != len(lines):
@@ -580,14 +553,6 @@ def _lines_fit_spans(draw, lines, font, spans, stroke_w: int) -> bool:
 
 
 def _mask_centroid(mask):
-    """The area centroid of ``mask``'s rows, slice coords.
-
-    The flood seed a mask carries is the letter centroid of the whole
-    bubble it was derived from; after a waist cut that seed can sit on
-    the waist, outside the lobe the text lives in. The lobe's own
-    centroid -- the mean of its rows weighted by their width -- is
-    where the block centres.
-    """
     try:
         x1, y1, x2, y2 = (int(v) for v in mask["bbox"])
         rows = mask["rows"]
@@ -614,22 +579,6 @@ def _mask_centroid(mask):
 
 
 def _trim_mask_to_letters(mask, box, letter_box, letters=None, letters_box=None):
-    """The lobe of ``mask`` holding the lettering, or ``mask`` whole.
-
-    A waist-split mask is one lobe already; a union mask with a real
-    waist is cut, and the lobe holding the lettering is the text's
-    lobe. The letter box must sit whole inside that lobe: a box
-    spanning both lobes is one block for both, not one lobe's text.
-    No waist, or the lettering in neither lobe, keeps the whole mask.
-    With no letter box there is nothing to anchor the cut to — a
-    spiky outline's own taper reads as a waist — so the whole mask
-    stands and the detector's letter-based split owns the division.
-    ``letters`` is the letter bitmap framed on ``letters_box`` (the
-    detector's box, which the clean image no longer shows): with it
-    the waist detectors see the diagonal join the mask alone hides.
-    A cut piece's centre is its own centroid, not the union's seed:
-    the seed sits on the waist, and the block centres on the lobe.
-    """
     if not isinstance(mask, dict) or mask.get("kind") != "bubble":
         return mask
     if letter_box is None:
@@ -671,12 +620,6 @@ _DERIVED_MASK_CACHE_MAX = 64
 
 
 def _derived_mask(image, box, letter_box):
-    """A bubble mask derived from ``image`` for ``box``, cached.
-
-    The detector normally supplies the mask; derivation here is the
-    fallback for objects that predate it. The cache is keyed on the box
-    and a hash of the image, so copies of one image share it.
-    """
     import hashlib
 
     arr = np.asarray(image)
@@ -700,16 +643,6 @@ def _derived_mask(image, box, letter_box):
 
 def _resolve_mask(image, box, container, letter_box, bubble_mask,
                   letters=None, letters_box=None):
-    """The mask to lay out on: the object's own, else one derived from the image.
-
-    Returns (mask, source) with source "object", "derived" or "none".
-    Only bubble/spiky containers derive: free text and narration boxes
-    have no bubble to find, and a derived mask there would be art, not
-    outline. A mask with no closed outline ("rect") is no mask at all.
-    ``letters`` is the letter bitmap framed on ``letters_box``; the
-    trim needs it to see a diagonal waist, and the clean image cannot
-    supply it (its lettering is gone).
-    """
     mask = bubble_mask if isinstance(bubble_mask, dict) else None
     if mask is not None:
         return _trim_mask_to_letters(mask, box, letter_box, letters, letters_box), "object"
@@ -735,25 +668,6 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
              bubble_mask: dict | None = None, spans_out: list | None = None,
              letters=None,
              letters_box: tuple[int, int, int, int] | None = None):
-    """The auto font size, wrapped lines, whether it fits readably and the box it was fitted in.
-
-    One size rule: the size is the smaller of the source-anchored ceiling
-    and the largest size fitting the bubble, never below one floor. The
-    ceiling is the source lettering's own size, or six tenths of what the
-    box holds when that is bigger, so a short block in a roomy bubble may
-    grow past its source; the floor is the readable size or six tenths of
-    what the box holds at the default maximum, so a translation longer
-    than its source may shrink to fit, down to what its own box holds.
-    The bubble is the mask's
-    interior: lines are laid out from its centroid outward, each line's
-    width read from the mask's rows, never from the image. Without a mask
-    the fit is a rectangle, or the inscribed ellipse for a curved
-    container. A fit that fails its outline but holds at the floor inside
-    the mask's inscribed rectangle is drawn there instead of refused;
-    only a floor size that holds nowhere is refused.
-    ``min_source_share`` and ``size_ceiling_px`` are accepted and ignored:
-    the old share and chapter-band ceilings no longer size anything.
-    """
     x1, y1, x2, y2 = (int(v) for v in box)
     raw_w, raw_h = x2 - x1, y2 - y1
     pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
@@ -849,7 +763,6 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
 
     def search(fx1, fy1, fx2, fy2):
-        """The fit on one box: size, lines, fits, bands, anchor, padded box, ceiling, floor."""
         fw, fh = fx2 - fx1, fy2 - fy1
         fpad = max(2, min(padding, int(min(fw, fh) * RENDER_PADDING_RATIO_MAX)))
         fbw, fbh = fw - fpad * 2, fh - fpad * 2
@@ -974,11 +887,6 @@ SOURCE_MATCH_MAX_FONT_SIZE = 200
 
 
 def _ellipse_line_widths(box_w: int, box_h: int, line_count: int, line_height: int) -> list[float]:
-    """Widest ink each centered line may hold inside the ellipse inscribed in the box.
-
-    A bubble's usable width narrows toward its top and bottom, so a line's limit is the
-    chord at the band edge farthest from the middle, not the full box width.
-    """
     if line_count <= 0 or box_w <= 0 or box_h <= 0 or line_height <= 0:
         return []
     import math
@@ -999,7 +907,6 @@ _CURVED_CONTAINERS = frozenset({"bubble", "spiky"})
 
 
 def _lines_fit_ellipse(draw, lines, font, box_w: int, box_h: int, stroke_w: int) -> bool:
-    """Whether every line's ink plus stroke stays inside its chord of the inscribed ellipse."""
     if not lines:
         return True
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
@@ -1015,14 +922,6 @@ BOX_RULE_EXPAND = 64
 
 
 def _box_frame(image: Image.Image, box):
-    """Frame interior of a narration box, from its own rules, or None.
-
-    A narration frame is drawn as long dark rules; on the cleaned image
-    the interior is paper, so a column (or row) dark over most of the
-    box can only be a rule. One dimension is measured only when its two
-    rules both show; a missing dimension keeps the region edge, and no
-    rules at all means the frame is unmeasured, not guessed.
-    """
     x1, y1, x2, y2 = (int(v) for v in box)
     width, height = image.size
     cx1, cy1 = max(0, x1), max(0, y1)
@@ -1131,17 +1030,6 @@ def _box_frame(image: Image.Image, box):
 
 
 def _screen_frame(image: Image.Image, box):
-    """Interior of a system window, from its bright border lines, per dimension.
-
-    A window's border is a bright line with a glow halo, not a dark rule,
-    so it is found by brightness, not darkness: a thin column (or row)
-    bright over most of the window's middle is a border side. A dimension
-    is measured only when both its sides show such a line reaching into
-    the region; a saturated stretch of bright art, a border cut off by
-    the region edge, and a window bigger than its region all fail that
-    gate and keep the inset for that dimension instead of guessing.
-    Returns ``(fx1, fx2, fy1, fy2, measured_x, measured_y)``.
-    """
     x1, y1, x2, y2 = (int(v) for v in box)
     width, height = image.size
     grey = np.asarray(image.convert("L"))
@@ -1165,12 +1053,6 @@ def _screen_frame(image: Image.Image, box):
         return [(a, b) for a, b in out if b - a <= 24]
 
     def side(share, lo, edge: int, from_start: bool):
-        """Inner edge of the border line nearest ``edge``, or None.
-
-        ``share`` runs over image coordinates starting at ``lo``; the
-        line must reach into the region (a line entirely outside it is
-        art beside the window, or a window bigger than its region).
-        """
         found = None
         for a, b in groups(share):
             ga, gb = lo + a, lo + b
@@ -1202,15 +1084,6 @@ def _screen_frame(image: Image.Image, box):
 
 
 def _band_line_widths(box_w: int, box_h: int, line_count: int, line_height: int, bands, top: int | None = None) -> list[int] | None:
-    """Widest ink each straight line may hold inside the measured bubble bands, or None.
-
-    A line's ink spans every row it covers, so it must sit inside the
-    intersection of its rows' interiors, not just inside each row on its
-    own: a bent balloon's lobes drift sideways, and a line centred on the
-    box crosses an edge long before it fills any one lobe. A line whose
-    rows' interiors never overlap cannot stay inside the bubble at all
-    and the caller falls back.
-    """
     spans = _band_line_spans(box_w, box_h, line_count, line_height, bands, top=top)
     if spans is None:
         return None
@@ -1218,7 +1091,6 @@ def _band_line_widths(box_w: int, box_h: int, line_count: int, line_height: int,
 
 
 def _band_line_spans(box_w: int, box_h: int, line_count: int, line_height: int, bands, top: int | None = None) -> list[tuple[int, int]] | None:
-    """Per-line interior interval a straight line may use, or None."""
     if line_count <= 0 or box_w <= 0 or box_h <= 0 or line_height <= 0 or not bands:
         return None
     total_h = line_height * line_count
@@ -1254,7 +1126,6 @@ def _band_line_spans(box_w: int, box_h: int, line_count: int, line_height: int, 
 
 
 def _band_line_centres(box_w: int, box_h: int, line_count: int, line_height: int, bands, top: int | None = None) -> list[float] | None:
-    """Centre of each line's interior interval, for drawing on the lobe, or None."""
     spans = _band_line_spans(box_w, box_h, line_count, line_height, bands, top=top)
     if spans is None:
         return None
@@ -1262,11 +1133,6 @@ def _band_line_centres(box_w: int, box_h: int, line_count: int, line_height: int
 
 
 def _anchored_top(box_h: int, total_h: int, anchor_y: int | None) -> int:
-    """Top offset for a block of ``total_h`` in a box of ``box_h``.
-
-    Centred on ``anchor_y`` (box-local) when given, else centred in the
-    box; clamped so the block stays inside.
-    """
     if anchor_y is None:
         return max(0, (box_h - total_h) // 2)
     return max(0, min(box_h - total_h, anchor_y - total_h // 2))
@@ -1317,12 +1183,6 @@ def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int
 
 
 def _scan_sizes(hi: int, lo: int, limit: int = 200):
-    """Sizes from hi down to lo + 1, largest first.
-
-    Exact when the range is short; a coarse grid when it is long, so a
-    bogus cap cannot make the fit scan hundreds of sizes. The smallest
-    size is always tried, since a fit there is the last resort.
-    """
     span = hi - lo
     if span <= limit:
         yield from range(hi, lo, -1)
@@ -1390,7 +1250,6 @@ def _fit_text(
 
 
 def _greedy_groups(draw, words: list[str], font, width: int) -> list[list[str]]:
-    """Words filled into lines no wider than ``width``, kept as word lists."""
     groups, current = [], []
     for word in words:
         candidate = " ".join(current + [word])
@@ -1405,7 +1264,6 @@ def _greedy_groups(draw, words: list[str], font, width: int) -> list[list[str]]:
 
 
 def _greedy_lines(draw, words: list[str], font, width: int) -> list[str]:
-    """Words filled into lines no wider than ``width``."""
     return [" ".join(group) for group in _greedy_groups(draw, words, font, width)]
 
 
@@ -1415,7 +1273,6 @@ _SYLLABLE = re.compile(r"(\W*)(\w+)(\W*)")
 
 @lru_cache(maxsize=1)
 def _vi_words() -> frozenset[str]:
-    """Vietnamese words of two to four syllables, lower case."""
     try:
         return frozenset(line for line in _VI_WORDS.read_text(encoding="utf-8").splitlines() if line)
     except OSError:
@@ -1423,7 +1280,6 @@ def _vi_words() -> frozenset[str]:
 
 
 def _word_units(words: list[str]) -> list[str]:
-    """Syllables joined into the longest known Vietnamese words, so a word such as "huấn luyện" stays on one line."""
     known, units, i = _vi_words(), [], 0
     while i < len(words):
         for n in (4, 3, 2, 1):
@@ -1442,8 +1298,6 @@ def _word_units(words: list[str]) -> list[str]:
 
 
 def _balanced_lines(draw, words: list[str], font, box_w: int) -> list[str]:
-    """As few lines as fit ``box_w``, made as even as those lines allow, with a lone last word pulled down
-    from the previous line when it still fits."""
     lines = _greedy_lines(draw, words, font, box_w)
     if len(lines) < 2:
         return lines
@@ -1471,7 +1325,6 @@ def _balanced_lines(draw, words: list[str], font, box_w: int) -> list[str]:
 
 def _wrap_text(draw, text: str, font, box_w: int, *, balance: bool = False,
                join_lines: bool = False) -> list[str]:
-    """Lines of ``text`` no wider than ``box_w``; ``balance`` evens each wrapped line at the size finally drawn."""
     if join_lines:
         text = " ".join(text.split())
     raw_lines = text.splitlines()

@@ -1,4 +1,3 @@
-"""Local checks of a cleaned slice with the detector models: text or ghosts an erase left behind."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,7 +28,6 @@ class Leftover:
 
 
 def text_mask(shape: tuple[int, int], boxes) -> np.ndarray:
-    """The letter pixels of detected text boxes on one image."""
     mask = np.zeros(shape, bool)
     for box in boxes:
         if box.mask is not None and box.mask.shape == (box.y2 - box.y1, box.x2 - box.x1):
@@ -55,7 +53,6 @@ def _kept(box: tuple[int, int, int, int], keep) -> bool:
 
 
 def _covered_by(rect: tuple[int, int, int, int], rects) -> bool:
-    """True when one of ``rects`` overlaps at least a quarter of ``rect``."""
     x1, y1, x2, y2 = rect
     area = max(1, (x2 - x1) * (y2 - y1))
     for ax1, ay1, ax2, ay2 in rects:
@@ -67,13 +64,6 @@ def _covered_by(rect: tuple[int, int, int, int], rects) -> bool:
 
 
 def leftovers(original: np.ndarray, clean: np.ndarray, letters: np.ndarray, keep=(), raw_boxes=()) -> list[Leftover]:
-    """Blocks of the original's letters that still read as text, or as a faint ghost, on the clean image.
-
-    ``letters`` marks the original's letters; blocks centred in a ``keep`` box (logos, art) are left alone.
-    ``raw_boxes`` are detector boxes that produced no letters (the letter model is blind to dark-on-dark
-    lettering): a box whose interior the cleanup left alone still holds its text, and the letter blocks
-    above can never see it, so it is checked by comparing original with clean instead.
-    """
     h, w = letters.shape
     found = []
     rects = []

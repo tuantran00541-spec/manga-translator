@@ -80,7 +80,6 @@ class BillingConfig:
         return bool(self.ls_api_key and self.ls_store_id and self.ls_variant and self.ls_webhook_secret)
 
     def quote(self, provider: str, amount) -> dict:
-        """What a top-up of ``amount`` (VND for payOS, USD for cards) credits and what the user pays for it."""
         if provider == "payos":
             credit = int(amount)
             if not (min(self.topups_vnd) <= credit <= 10 * max(self.topups_vnd)) or credit % 1000:
@@ -128,7 +127,6 @@ class Billing:
         self.config = config
 
     def chapter_price_usd(self) -> float:
-        """What a typical chapter takes from the balance, fee included."""
         return usd(self.store.price_micros(self.config.chapter_estimate_usd))
 
     def public(self) -> dict:

@@ -1,12 +1,3 @@
-"""Regression for the Nano Machine ch337 slice-012 mislettering.
-
-A goodbye bubble straddles the slice2/slice3 core boundary while a double
-bubble sits lower on slice3 (top lobe owned here, bottom lobe owned by
-slice4). The straddling goodbye must be lettered as a mirror of its slice2
-owner -- never with the double bubble's wording -- and each double-bubble
-lobe must keep its own text. Geometry taken from the real chapter manifest
-(source page 004, slice offsets 4112 / 4964 / 6447).
-"""
 from app.ai_mode.seams import seam_mirror_ids, sync_seam_mirrors
 
 GOODBYE = "Vĩnh biệt\nngươi nhé."

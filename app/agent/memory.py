@@ -1,4 +1,3 @@
-"""Notes the agent keeps between sessions: one file per project and one for the user."""
 from __future__ import annotations
 
 import hashlib
@@ -16,7 +15,6 @@ SECRET_LIKE = re.compile(r"\b(sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|x
 
 
 def has_secret(text: str) -> bool:
-    """True when text looks like a key or holds the value of a secret environment variable."""
     values = [v for k, v in os.environ.items() if v and len(v) >= 8 and sandbox.SECRET_NAME.search(k)]
     return bool(SECRET_LIKE.search(text)) or any(v in text for v in values)
 

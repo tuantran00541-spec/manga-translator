@@ -1,4 +1,3 @@
-"""What a workspace tells the agent: instructions, hooks, custom slash commands, and which of them the user trusts."""
 from __future__ import annotations
 
 import json
@@ -36,7 +35,6 @@ def instructions(workspace: Path, home: Path | None = None) -> str:
 
 
 def _hooks(path: Path) -> dict[str, list[dict]]:
-    """Hooks from a settings file, in either the flat form or Claude Code's nested form."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -57,7 +55,6 @@ def _hooks(path: Path) -> dict[str, list[dict]]:
 
 
 def hooks(workspace: Path, home: Path | None = None) -> dict[str, dict[str, list[dict]]]:
-    """Hooks by scope; workspace hooks run only once the user trusts them."""
     home = home if home is not None else Path.home()
     out = {"user": {}, "workspace": {}}
     for scope, paths in (("user", [home / p for p in HOME_SETTINGS]), ("workspace", [workspace / p for p in WORKSPACE_SETTINGS])):
@@ -77,7 +74,6 @@ def hook_matches(matcher: str, tool: str) -> bool:
 
 
 def commands(workspace: Path, home: Path | None = None) -> dict[str, dict]:
-    """Custom slash commands: Markdown prompt templates, workspace ones first."""
     home = home if home is not None else Path.home()
     found: dict[str, dict] = {}
     for folder in [workspace / p for p in WORKSPACE_COMMANDS] + [home / p for p in HOME_COMMANDS]:
@@ -103,7 +99,6 @@ def expand_command(template: str, arguments: str) -> str:
 
 
 class TrustStore:
-    """What the user allowed to start in each workspace: MCP servers and hooks, pinned to their exact config."""
 
     def __init__(self, path: Path | None):
         self.path, self._memory = path, {}

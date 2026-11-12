@@ -1,4 +1,3 @@
-"""Response helpers shared by the OpenAI-compatible vision clients."""
 from __future__ import annotations
 
 import os

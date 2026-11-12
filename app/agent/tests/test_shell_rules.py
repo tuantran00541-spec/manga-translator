@@ -1,7 +1,3 @@
-"""Shell-rule hardening: operator splitting, environ/deny handling, and rule merges.
-
-Run: python -m pytest app/agent/tests/test_shell_rules.py -v
-"""
 import ast
 import json
 import os
@@ -24,7 +20,6 @@ def check(ruleset, command):
 
 
 def _footprint():
-    """The real _footprint staticmethod, extracted from session.py."""
     src = Path(AGENT, "session.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     node = next(
@@ -52,7 +47,6 @@ def fp(command):
 
 
 class TestH1Ampersand:
-    """`echo ok & rm -rf …` must not classify as look-only."""
 
     def test_safe_readonly_rejects_ampersand_chain(self):
         assert rules.safe_readonly("echo ok & rm -rf /tmp/victim") is False
@@ -90,7 +84,6 @@ class TestH1Ampersand:
 
 
 class TestH1Redirect:
-    """Redirects under an `echo *` allow-rule must still ask."""
 
     def test_bare_redirect_under_prefix_allow_now_asks(self):
         assert check(ALLOW_ECHO_LS, "echo pwned > /tmp/r2_redir_proof") == "ask"
@@ -114,7 +107,6 @@ class TestH1Redirect:
 
 
 class TestH3ProcEnviron:
-    """`cat /proc/self/environ` must not be look-only."""
 
     def test_safe_readonly_rejects_environ(self):
         assert rules.safe_readonly("cat /proc/self/environ") is False
@@ -137,7 +129,6 @@ class TestH3ProcEnviron:
 
 
 class TestH4QuoteEvasion:
-    """`cat .e''nv` must hit the .env deny."""
 
     def test_dequoted_token_denied(self):
         assert check(DEFAULT_RULES, "cat .e''nv") == "deny"
@@ -181,7 +172,6 @@ def write_settings(base: Path, name: str, permission: dict):
 
 
 class TestM1OnlyTighten:
-    """A workspace/user setting may never weaken a deny to ask/allow."""
 
     def test_workspace_cannot_downgrade_default_env_deny(self):
         rows = DEFAULT_RULES + [("workspace", "read", "*", "ask")]

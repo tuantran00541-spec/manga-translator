@@ -1,4 +1,3 @@
-"""Code mode: a Python script runs in the sandbox and calls the agent's read-only tools as functions, so one step can do many lookups."""
 from __future__ import annotations
 
 import json
@@ -39,7 +38,6 @@ MAX_CALLS = 200
 
 
 def run(code: str, policy: sandbox.Policy, root: Path, timeout: int, call_tool) -> tuple[int | None, str, int]:
-    """(exit code or None on timeout, output, tool calls made); call_tool(name, args) returns (output, ok)."""
     if policy.mode != "full-access" and sandbox.backend() in ("docker", "low-integrity"):
         return _run_plain(code, policy, root, timeout)
     scratch = tempfile.mkdtemp(prefix="agent-script-")
@@ -104,7 +102,6 @@ tools = _Tools()
 
 
 def _run_plain(code: str, policy: sandbox.Policy, root: Path, timeout: int) -> tuple[int | None, str, int]:
-    """Run the script without the tool bridge, for sandboxes that cannot pass it pipes."""
     scratch = os.path.realpath(tempfile.mkdtemp(prefix="agent-script-"))
     try:
         Path(scratch, "script.py").write_text(PLAIN + code, encoding="utf-8")

@@ -1,4 +1,3 @@
-"""Build models/ctd_seg.onnx: the released comic-text-detector made fast, any-size and mask-only."""
 from __future__ import annotations
 
 import tempfile
@@ -20,7 +19,6 @@ MODEL = ROOT / "models" / "ctd_seg.onnx"
 
 
 class Poly(nn.Module):
-    """A stride-2 k4 p1 transposed conv rewritten exactly as a 3x3 conv into 4 phases and a pixel shuffle."""
 
     def __init__(self, ct: nn.ConvTranspose2d):
         super().__init__()

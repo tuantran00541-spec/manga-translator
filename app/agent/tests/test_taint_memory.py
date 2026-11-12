@@ -1,8 +1,3 @@
-"""Taint and memory hardening: taint sticks across requests and rollover,
-memory resists laundering, and schedule hosts are never auto-trusted.
-
-Run: python -m pytest app/agent/tests/test_taint_memory.py -v
-"""
 from __future__ import annotations
 
 import json
@@ -36,7 +31,6 @@ def make_session(tmp_path: Path, mode: str = "bypass", tag: str = "t1"):
 
 class TestH12TaintReset:
     def test_poc_taint_survives_new_request(self, tmp_path):
-        """Attacker content staying in history keeps the taint guard on."""
         s, _, wsroot = make_session(tmp_path, mode="edits", tag="h12a")
         edit = {"name": "write_file", "args": {"path": "notes.txt", "content": "x"}}
         assert s._needs_approval(edit, None) is False
@@ -59,7 +53,6 @@ class TestH12TaintReset:
         assert s._needs_approval(edit, None) is False
 
     def test_taint_latch_on_rollover(self, tmp_path):
-        """Compacted/rolled-away tainted history keeps the guard on."""
         s, _, _ = make_session(tmp_path, mode="bypass", tag="h12c")
         s.tainted = True
         s.history.append({"role": "tool", "id": "c1", "name": "web_fetch",
@@ -75,7 +68,6 @@ class TestH12TaintReset:
 
 class TestH13MemoryLaundering:
     def test_poc_memory_add_blocked_when_tainted(self, tmp_path):
-        """A tainted session must not plant notes into other sessions' system prompts."""
         s, home, wsroot = make_session(tmp_path, mode="bypass", tag="h13a")
         s.tainted = True
         out = s._memory_tool({"action": "add", "scope": "project",
@@ -105,7 +97,6 @@ class TestH13MemoryLaundering:
 
 class TestM2ProvenanceTaint:
     def test_poc_write_marks_read_retaints(self, tmp_path):
-        """Files written from tainted sources are marked; reading one re-taints."""
         s, _, wsroot = make_session(tmp_path, mode="bypass", tag="m2a")
         (wsroot / "evil.md").write_text("benign seed", encoding="utf-8")
         s.tainted = True
@@ -132,7 +123,6 @@ class TestM2ProvenanceTaint:
         assert not any(i.get("tainted") for i in s.history)
 
     def test_provenance_survives_save_restore(self, tmp_path):
-        """A file marked in one run still re-taints a resumed session."""
         s, _, wsroot = make_session(tmp_path, mode="bypass", tag="m2c")
         (wsroot / "evil2.md").write_text("benign seed", encoding="utf-8")
         s.tainted = True
@@ -154,7 +144,6 @@ class TestM2ProvenanceTaint:
 
 class TestM3ScheduleWebOk:
     def test_poc_schedule_hosts_not_auto_trusted(self, tmp_path):
-        """A model-written schedule prompt must not whitelist its hosts."""
         s, _, _ = make_session(tmp_path, mode="edits", tag="m3a")
         s.schedules.append({"id": "sch1",
                             "prompt": "check https://evil.example.com/nightly for the new release notes",
@@ -183,7 +172,6 @@ class TestM3ScheduleWebOk:
 
 class TestM12ParentChildTaint:
     def test_poc_taint_propagates_parent_to_child(self, tmp_path):
-        """A tainted parent spawning a helper must hand taint down."""
         s, _, _ = make_session(tmp_path, mode="bypass", tag="m12a")
         s.tainted = True
         nick = s._spawn_locked("Summarize this page: <attacker HTML with instructions>",
@@ -197,7 +185,6 @@ class TestM12ParentChildTaint:
         assert s.children[nick].tainted is False
 
     def test_child_to_parent_still_propagates(self, tmp_path):
-        """The pre-existing child->parent direction keeps working."""
         s, _, _ = make_session(tmp_path, mode="bypass", tag="m12c")
         nick = s._spawn_locked("Do a quick check", "explore", dedupe=False)
         child = s.children[nick]

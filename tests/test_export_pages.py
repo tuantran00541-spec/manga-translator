@@ -1,4 +1,3 @@
-"""Export options: format, width, page height and names as a scanlation group asks for them."""
 import io
 
 import numpy as np

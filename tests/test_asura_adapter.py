@@ -1,8 +1,3 @@
-"""Audit §8.16 (S2): the Asura static adapter must not silently truncate a
-chapter at the first gap in "Page N" numbering. A gap fails loudly so the
-registry falls through to the JS adapter (DOM order) instead of shipping a
-short chapter with no error.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -44,8 +39,6 @@ def test_ordered_reader_urls_keeps_first_duplicate_and_ignores_non_assets():
 
 
 def test_registry_falls_through_to_js_adapter_on_static_gap(monkeypatch, tmp_path):
-    """A gapped static list must not win the registry's len>=2 preference:
-    the static attempt fails, so the JS adapter's DOM-order list is used."""
     monkeypatch.setattr("app.security.validate_url", lambda url: url)
     monkeypatch.setattr(registry, "is_asura_chapter_page", lambda url: True)
 

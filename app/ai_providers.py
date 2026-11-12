@@ -215,7 +215,6 @@ def is_azure_host(host: str | None) -> bool:
 
 
 def normalize_api_base(value: str | None) -> str:
-    """The API root from whatever the user pasted: a bare host, a docs URL or a full endpoint."""
     raw = (value or "").strip()
     if raw and "://" not in raw:
         raw = "https://" + raw
@@ -243,7 +242,6 @@ def normalize_api_base(value: str | None) -> str:
 
 
 def api_base_candidates(api_base: str) -> list[str]:
-    """Roots to try, in order, when a host is not one we know."""
     base = api_base.rstrip("/")
     host = (urlparse(base).hostname or "").lower()
     if host in KNOWN_API_BASES or is_azure_host(host) or _VERSION_TAIL.search(base):
@@ -252,7 +250,6 @@ def api_base_candidates(api_base: str) -> list[str]:
 
 
 def auth_headers(provider: "AIProvider", api_key: str) -> dict:
-    """Bearer auth, plus the api-key header Azure expects."""
     key = (api_key or "").strip()
     headers = {"Authorization": f"Bearer {key}"}
     if is_azure_host(urlparse(provider.api_base).hostname):

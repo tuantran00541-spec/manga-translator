@@ -34,7 +34,6 @@ def test_unknown_font_id_is_rejected():
 
 
 def test_vietnamese_flag_matches_each_fonts_character_map():
-    """A font marked Vietnamese must map every Vietnamese letter, or the AI may pick it and print boxes."""
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))

@@ -1,4 +1,3 @@
-"""Lightweight connection handling for MCP servers."""
 
 from abc import ABC, abstractmethod
 from contextlib import AsyncExitStack
@@ -11,7 +10,6 @@ from mcp.client.streamable_http import streamablehttp_client
 
 
 class MCPConnection(ABC):
-    """Base class for MCP server connections."""
 
     def __init__(self):
         self.session = None
@@ -19,10 +17,9 @@ class MCPConnection(ABC):
 
     @abstractmethod
     def _create_context(self):
-        """Create the connection context based on connection type."""
+        pass
 
     async def __aenter__(self):
-        """Initialize MCP server connection."""
         self._stack = AsyncExitStack()
         await self._stack.__aenter__()
 
@@ -46,14 +43,12 @@ class MCPConnection(ABC):
             raise
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Clean up MCP server connection resources."""
         if self._stack:
             await self._stack.__aexit__(exc_type, exc_val, exc_tb)
         self.session = None
         self._stack = None
 
     async def list_tools(self) -> list[dict[str, Any]]:
-        """Retrieve available tools from the MCP server."""
         response = await self.session.list_tools()
         return [
             {
@@ -65,13 +60,11 @@ class MCPConnection(ABC):
         ]
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
-        """Call a tool on the MCP server with provided arguments."""
         result = await self.session.call_tool(tool_name, arguments=arguments)
         return result.content
 
 
 class MCPConnectionStdio(MCPConnection):
-    """MCP connection using standard input/output."""
 
     def __init__(self, command: str, args: list[str] = None, env: dict[str, str] = None):
         super().__init__()
@@ -86,7 +79,6 @@ class MCPConnectionStdio(MCPConnection):
 
 
 class MCPConnectionSSE(MCPConnection):
-    """MCP connection using Server-Sent Events."""
 
     def __init__(self, url: str, headers: dict[str, str] = None):
         super().__init__()
@@ -98,7 +90,6 @@ class MCPConnectionSSE(MCPConnection):
 
 
 class MCPConnectionHTTP(MCPConnection):
-    """MCP connection using Streamable HTTP."""
 
     def __init__(self, url: str, headers: dict[str, str] = None):
         super().__init__()
@@ -117,19 +108,6 @@ def create_connection(
     url: str = None,
     headers: dict[str, str] = None,
 ) -> MCPConnection:
-    """Factory function to create the appropriate MCP connection.
-
-    Args:
-        transport: Connection type ("stdio", "sse", or "http")
-        command: Command to run (stdio only)
-        args: Command arguments (stdio only)
-        env: Environment variables (stdio only)
-        url: Server URL (sse and http only)
-        headers: HTTP headers (sse and http only)
-
-    Returns:
-        MCPConnection instance
-    """
     transport = transport.lower()
 
     if transport == "stdio":

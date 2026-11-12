@@ -1,7 +1,3 @@
-"""MCP Server Evaluation Harness
-
-This script evaluates MCP servers by running test questions against them using Claude.
-"""
 
 import argparse
 import asyncio
@@ -54,7 +50,6 @@ Response Requirements:
 
 
 def parse_evaluation_file(file_path: Path) -> list[dict[str, Any]]:
-    """Parse XML evaluation file with qa_pair elements."""
     try:
         tree = ET.parse(file_path)
         root = tree.getroot()
@@ -77,7 +72,6 @@ def parse_evaluation_file(file_path: Path) -> list[dict[str, Any]]:
 
 
 def extract_xml_content(text: str, tag: str) -> str | None:
-    """Extract content from XML tags."""
     pattern = rf"<{tag}>(.*?)</{tag}>"
     matches = re.findall(pattern, text, re.DOTALL)
     return matches[-1].strip() if matches else None
@@ -90,7 +84,6 @@ async def agent_loop(
     tools: list[dict[str, Any]],
     connection: Any,
 ) -> tuple[str, dict[str, Any]]:
-    """Run the agent loop with MCP tools."""
     messages = [{"role": "user", "content": question}]
 
     response = await asyncio.to_thread(
@@ -159,7 +152,6 @@ async def evaluate_single_task(
     connection: Any,
     task_index: int,
 ) -> dict[str, Any]:
-    """Evaluate a single QA pair with the given tools."""
     start_time = time.time()
 
     print(f"Task {task_index + 1}: Running task with question: {qa_pair['question']}")
@@ -222,7 +214,6 @@ async def run_evaluation(
     connection: Any,
     model: str = "claude-3-7-sonnet-20250219",
 ) -> str:
-    """Run evaluation with MCP server tools."""
     print("🚀 Starting Evaluation")
 
     client = Anthropic()
@@ -273,7 +264,6 @@ async def run_evaluation(
 
 
 def parse_headers(header_list: list[str]) -> dict[str, str]:
-    """Parse header strings in format 'Key: Value' into a dictionary."""
     headers = {}
     if not header_list:
         return headers
@@ -288,7 +278,6 @@ def parse_headers(header_list: list[str]) -> dict[str, str]:
 
 
 def parse_env_vars(env_list: list[str]) -> dict[str, str]:
-    """Parse environment variable strings in format 'KEY=VALUE' into a dictionary."""
     env = {}
     if not env_list:
         return env

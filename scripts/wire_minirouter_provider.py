@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""Register the MiniRouter provider from the MINIROUTER_API_KEY env var.
-
-Runs on a CI runner where the real key comes from the repo secret. Prints
-only whether the provider is configured, never the key.
-"""
 import os
 import sys
 

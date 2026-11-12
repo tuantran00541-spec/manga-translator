@@ -1,4 +1,3 @@
-"""Names, terms, forms of address and characters kept per series, so each new chapter starts from what earlier ones settled."""
 from __future__ import annotations
 
 import json
@@ -26,7 +25,6 @@ _CHAPTER_PART = re.compile(r"^(chapter|chap|ch|episode|ep|c)[-_]?\d|^\d+([.-]\d+
 
 
 def series_key(url: str) -> str | None:
-    """A file-safe key for the series a chapter URL belongs to, or None when the URL names no series."""
     parsed = urlparse(str(url or "").strip())
     parts = [part for part in parsed.path.split("/") if part]
     while parts and (_CHAPTER_PART.match(parts[-1]) or parts[-1].lower() in {"chapter", "chapters", "episode"}):
@@ -64,7 +62,6 @@ def load(key: str | None) -> dict:
 
 
 def _write(key: str, data: dict) -> dict:
-    """Replace the series file atomically; the caller holds its lock."""
     path = _path(key)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {**clean(data), "updated_at": time.time()}
@@ -81,7 +78,6 @@ def save(key: str, data: dict) -> dict:
 
 
 def update(key: str, mutate: Callable[[dict], dict]) -> dict:
-    """Load, mutate and save under one lock so concurrent writers keep each other's edits."""
     with FileLock(str(_path(key)) + ".lock"):
         return _write(key, mutate(load(key)))
 
@@ -98,7 +94,6 @@ def list_series() -> list[dict]:
 
 
 def clean(data: dict) -> dict:
-    """Only well-formed, bounded entries, one per source name, term or speaker pair."""
     data = data if isinstance(data, dict) else {}
     out = empty()
     seen: set = set()
@@ -135,14 +130,12 @@ def clean(data: dict) -> dict:
 
 
 def settled_glossary(series: dict, chapter: dict) -> dict:
-    """The chapter's glossary under the series one: what the series settled wins, the chapter adds what is new."""
     merged = clean({key: (series.get(key) or []) + (chapter.get(key) or []) for key in ("names", "terms", "address")})
     return {key: merged[key] for key in ("names", "terms", "address")}
 
 
 def learn(series: dict, chapter_glossary: dict, characters: list[dict], address: list[dict], url: str,
           notes: str = "") -> dict:
-    """The series memory after one more chapter: earlier entries stay as they are, new ones are added."""
     merged = {key: (series.get(key) or []) + (chapter_glossary.get(key) or []) for key in ("names", "terms", "address")}
     merged["address"] = merged["address"] + list(address)
     merged["characters"] = (series.get("characters") or []) + list(characters)
@@ -152,7 +145,6 @@ def learn(series: dict, chapter_glossary: dict, characters: list[dict], address:
 
 
 def to_text(data: dict) -> str:
-    """One entry per line: 'Name = Tên', 'term: source = target', 'A -> B: self / other', 'char: Name | note'."""
     lines = [f"{e['source']} = {e['target']}" + (f"  # {e['note']}" if e.get("note") else "") for e in data["names"]]
     lines += [f"term: {e['source']} = {e['target']}" for e in data["terms"]]
     lines += [f"{e['from']} -> {e['to']}: {e.get('self', '')} / {e.get('other', '')}" for e in data["address"]]
@@ -161,7 +153,6 @@ def to_text(data: dict) -> str:
 
 
 def from_text(text: str, keep: dict) -> dict:
-    """The memory the edited text describes; notes and the chapter list are kept from ``keep``."""
     data = {**empty(), "notes": keep.get("notes", ""), "chapters": keep.get("chapters", [])}
     for raw in str(text or "").splitlines():
         line = raw.strip()

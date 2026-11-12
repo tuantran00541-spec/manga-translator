@@ -1,4 +1,3 @@
-"""Which workspace files a created tool changed, with their old contents kept so /undo still works."""
 from __future__ import annotations
 
 import os
@@ -19,7 +18,6 @@ class Watch:
         self.ready = False
 
     def scan(self) -> dict[str, tuple[int, int]]:
-        """(mtime, size) of each file under the root, skipping caches and dependency folders."""
         found: dict[str, tuple[int, int]] = {}
         stack = [self.root]
         while stack and len(found) < MAX_FILES:
@@ -40,7 +38,6 @@ class Watch:
         return found
 
     def refresh(self) -> None:
-        """Take the current files as the baseline, keeping the contents of small ones."""
         self.known, self.content, total = self.scan(), {}, 0
         for path, (_, size) in self.known.items():
             if size <= MAX_FILE_BYTES and total + size <= MAX_TOTAL_BYTES:
@@ -52,7 +49,6 @@ class Watch:
         self.ready = True
 
     def changes(self) -> list[tuple[Path, object]]:
-        """Each file changed since the baseline with its old bytes (None: it is new, UNKNOWN: too big to have kept); the baseline moves on."""
         now, done = self.scan(), []
         for path in sorted(set(now) | set(self.known)):
             if now.get(path) == self.known.get(path):
@@ -70,7 +66,6 @@ class Watch:
         return done
 
     def _cap_content(self) -> None:
-        """Evict the oldest-kept contents first until the total is back under MAX_TOTAL_BYTES."""
         total = sum(len(b) for b in self.content.values())
         if total <= MAX_TOTAL_BYTES:
             return

@@ -1,4 +1,3 @@
-"""Image helpers shared by the vision translators."""
 from __future__ import annotations
 
 import base64

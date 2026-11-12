@@ -1,5 +1,3 @@
-"""sandbox.py hardening: clean_env() scrubs secret-ish names with suffixes or
-embedded keywords, and describe() is honest about the 'none' backend."""
 from pathlib import Path
 import sys
 
@@ -47,7 +45,6 @@ def test_h2_benign_vars_preserved():
 
 
 def test_h2_leaky_names_do_not_reach_confined_command(tmp_path):
-    """End to end: a confined command's environment has none of these names."""
     code, out = sandbox.run("env", sandbox.Policy("workspace-write", False), tmp_path, 30)
     assert code == 0, f"confined 'env' failed: {out[:200]}"
     leaked = [n for n in POC_LEAKY + POC_CONTROLS if f"{n}={CANARY}" in out]
@@ -55,7 +52,6 @@ def test_h2_leaky_names_do_not_reach_confined_command(tmp_path):
 
 
 def test_m4_none_backend_describe_says_unsandboxed(monkeypatch):
-    """Backend 'none' must be reported honestly, not as a sandbox."""
     monkeypatch.setattr(sandbox, "backend", lambda: "none")
     desc = sandbox.Policy("workspace-write", False).describe(Path("/tmp"))
     assert "unsandboxed" in desc.lower(), f"none-backend describe() not honest: {desc!r}"
@@ -70,15 +66,12 @@ def test_m4_real_backends_do_not_claim_unsandboxed(monkeypatch, kind):
 
 
 def test_m4_full_access_describe_unchanged(monkeypatch):
-    """The explicit full-access message stays honest."""
     monkeypatch.setattr(sandbox, "backend", lambda: "none")
     desc = sandbox.Policy("full-access", False).describe(Path("/tmp"))
     assert "without a sandbox" in desc
 
 
 def test_save_settings_retries_past_a_locked_file(tmp_path, monkeypatch):
-    """A target Windows refuses to replace at first (read-only flag, a sync
-    tool holding it) must not fail the save: the replace is retried."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     real_replace, attempts = sandbox.os.replace, []

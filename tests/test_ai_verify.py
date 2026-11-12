@@ -50,7 +50,6 @@ def test_the_scorecard_counts_objects_and_marks_better_and_worse():
 
 
 def _label_page():
-    """A dark label on a textured map: the letter model cannot read it, the box model can."""
     original = np.full((400, 900, 3), (210, 190, 170), np.uint8)
     cv2.putText(original, "SHANDONG", (100, 200), cv2.FONT_HERSHEY_DUPLEX, 1.6, (40, 30, 25), 4)
     return original
@@ -111,9 +110,6 @@ def test_clean_score_flags_a_box_the_manifest_never_held(tmp_path):
 
 
 def test_clean_score_flags_a_fallback_box_with_no_letters(tmp_path):
-    """A box the detector kept whole because the segmenter was blind there must be
-    judged by the raw-box path, not hidden by its own whole-box mask: the mask would
-    cover the raw box and let the text escape both paths."""
     from scripts.scorecard import clean_score
     import cv2 as _cv2
     import numpy as np

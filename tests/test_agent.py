@@ -233,7 +233,6 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
 
 
 def scripted(*turns):
-    """A fake model that plays the given turns in order and records what it was sent."""
     seen = []
 
     def complete(provider, key, model, messages, *, tools):
@@ -253,7 +252,6 @@ MODEL_TOOLS = {"read_file", "edit_file", "run_command", "create", "exit_plan_mod
 
 
 def call(tool, **args):
-    """A model's call, or for a library tool the call code run with create makes (the chain- id)."""
     return {"id": f"{'' if tool in MODEL_TOOLS else 'chain-'}{tool}-{len(args)}", "name": tool, "args": args}
 
 
@@ -942,7 +940,6 @@ def test_rules_also_catch_shell_commands_that_name_a_denied_path():
 
 
 def routed(parent_turns, child_reply):
-    """One fake model for a session and its helpers: helpers are told apart by having no create tool."""
     state = {"parent": 0}
     lock = __import__("threading").Lock()
 
@@ -1144,7 +1141,6 @@ def write_plugin(folder, name, code):
 
 
 def tool_names(session):
-    """What the agent can reach: its own tools and the library inside create."""
     return {s["name"] for s in session.specs() + session.specs(session.library_specs())}
 
 
@@ -2073,7 +2069,6 @@ def test_a_background_job_takes_typed_input_on_a_pipe_or_a_terminal(ws, home):
 
 
 def advised(agent_turns, advice):
-    """A fake model that records which model each agent step asked."""
     state, models, lock = {"agent": 0}, [], __import__("threading").Lock()
 
     def complete(provider, key, model, messages, *, tools):

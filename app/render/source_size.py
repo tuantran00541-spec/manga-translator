@@ -1,4 +1,3 @@
-"""Letter size of the source lettering, and how much translated text fits a box at that size."""
 from __future__ import annotations
 
 from functools import lru_cache
@@ -15,7 +14,6 @@ _SAMPLE = "Nhưng tôi không thể bỏ cuộc dễ dàng như vậy"
 
 
 def _letter_pieces(ink: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Labels of the ink and the stats of its pieces shaped like letters, not outlines or art reaching the crop edge."""
     count, labels, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
     height, width = ink.shape[:2]
     x, y, w, h, area = (stats[:, i] for i in range(5))
@@ -26,12 +24,6 @@ def _letter_pieces(ink: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> int | None:
-    """Median letter height in ``rect`` of the raw slice, or None when fewer than ``min_pieces`` letters stand out.
-
-    When ``bounds`` is given, only ink inside it counts: a region may hold
-    art strokes far taller than the lettering, and measuring over the whole
-    region lets one art stroke set the cap for the whole object.
-    """
     x1, y1, x2, y2 = (int(v) for v in rect)
     if bounds is not None:
         bx1, by1, bx2, by2 = (int(v) for v in bounds)
@@ -77,7 +69,6 @@ def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> in
 
 
 def source_ink_hex(raw: np.ndarray, rect) -> str | None:
-    """Median colour of the source letters in ``rect`` as #rrggbb, or None when no letters stand out."""
     x1, y1, x2, y2 = (int(v) for v in rect)
     crop = raw[max(0, y1):y2, max(0, x1):x2]
     if crop.ndim != 3 or crop.size == 0 or min(crop.shape[:2]) < 8:
@@ -97,7 +88,6 @@ def source_ink_hex(raw: np.ndarray, rect) -> str | None:
 
 @lru_cache(maxsize=32)
 def _metrics(font_path: str) -> tuple[float, float, float]:
-    """Cap height, mean character width and line height of a font, per pixel of font size."""
     from app.render.text_renderer import _calc_line_height, get_font_object
 
     font = get_font_object(font_path, 100)
@@ -108,12 +98,10 @@ def _metrics(font_path: str) -> tuple[float, float, float]:
 
 
 def matching_font_px(font_path, cap_px: int) -> int:
-    """Font size whose capitals are as tall as ``cap_px``."""
     return max(1, round(cap_px / max(0.3, _metrics(str(font_path))[0])))
 
 
 def char_budget(font_path, rect, cap_px: int) -> int:
-    """Characters that fit the box when lettered at the source size."""
     x1, y1, x2, y2 = (int(v) for v in rect)
     raw_w, raw_h = x2 - x1, y2 - y1
     pad = max(2, min(RENDER_DEFAULT_PADDING, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))

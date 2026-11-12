@@ -14,7 +14,6 @@ def page_preserve_regions(page: dict | None) -> list[dict]:
 
 
 def overlap_share(a, b) -> float:
-    """Shared area of two boxes (dicts with x1..y2 or 4-sequences) over the smaller box's area; 0 for a malformed box."""
     try:
         ax1, ay1, ax2, ay2 = (float(a[k]) for k in ("x1", "y1", "x2", "y2")) if isinstance(a, dict) else map(float, a[:4])
         bx1, by1, bx2, by2 = (float(b[k]) for k in ("x1", "y1", "x2", "y2")) if isinstance(b, dict) else map(float, b[:4])

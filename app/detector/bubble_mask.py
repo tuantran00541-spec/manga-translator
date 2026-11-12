@@ -1,30 +1,3 @@
-"""One bubble mask per text block, derived once from the source slice.
-
-A bubble mask is the interior a translation may be lettered into, as
-per-row x-intervals over the bubble outline's bbox -- the shape render
-needs, without re-measuring the image at render time::
-
-    {"bbox": [x1, y1, x2, y2],   # outline bbox, slice coords (may exceed the detector box)
-     "cx": 123, "cy": 456,       # flood seed actually used (line layout grows from here)
-     "rows": [[[a, b], ...], ...]  # 24 rows over the bbox height, bbox-local half-open
-     "kind": "bubble"}           # "bubble" | "rect" | "none"
-
-Derivation adapts the BallonsTranslator / manga-image-translator
-``extract_ballon_region`` algorithm (Gaussian blur, Canny, flood-fill
-from a centre seed) to this codebase's cv2/numpy stack -- with one
-change the references do not need: the flood runs on the Canny edge
-image itself, not behind one drawn contour at a time, because on real
-pages the bubble outline touches panel borders and art lines and its
-edges form one connected network, so no single contour is the outline.
-no closed contour (free text, open shapes) gives ``kind: "rect"`` whose
-rows describe the box rectangle; a box derivation cannot run on at all
-gives ``kind: "none"``.
-
-The mask is derived from the SOURCE slice, never the LaMa-cleaned
-image: the clean image's softened outlines are what the old band/ray
-machinery misread. A 4px interior inset (``MASK_INSET_PX``) is applied
-at derivation, so render does no re-measurement.
-"""
 from __future__ import annotations
 
 import copy
@@ -68,7 +41,6 @@ def _empty_rows() -> list[list[list[int]]]:
 
 
 def _none_mask(box: tuple[int, int, int, int]) -> dict:
-    """Derivation could not run: the box itself is degenerate."""
     x1, y1, x2, y2 = (int(v) for v in box)
     return {
         "bbox": [x1, y1, x2, y2],
@@ -80,7 +52,6 @@ def _none_mask(box: tuple[int, int, int, int]) -> dict:
 
 
 def _rect_mask(box: tuple[int, int, int, int]) -> dict:
-    """No closed outline: the mask is the box rectangle itself."""
     x1, y1, x2, y2 = (int(v) for v in box)
     w = max(0, x2 - x1)
     a = min(MASK_INSET_PX, w // 2)
@@ -96,12 +67,6 @@ def _rect_mask(box: tuple[int, int, int, int]) -> dict:
 
 def _rows_from_spans(spans: list[tuple[int, int, list[tuple[int, int]]]],
                      bbox: tuple[int, int, int, int]) -> list[list[list[int]]]:
-    """Quantize (y1, y2, [(x1, x2), ...]) spans in slice coords into 24 rows.
-
-    Each row band takes the union of the spans overlapping it, so a row
-    is the widest the interior is anywhere in that band. Intervals are
-    inset by MASK_INSET_PX and returned bbox-local.
-    """
     bx1, by1, bx2, by2 = bbox
     height = max(1, by2 - by1)
     rows: list[list[list[int]]] = []
@@ -133,7 +98,6 @@ def _rows_from_spans(spans: list[tuple[int, int, list[tuple[int, int]]]],
 
 
 def _mask_spans(mask: dict) -> list[tuple[int, int, list[tuple[int, int]]]]:
-    """A stored mask back as (y1, y2, [(x1, x2), ...]) spans in slice coords."""
     x1, y1, x2, y2 = (int(v) for v in mask["bbox"])
     height = max(1, y2 - y1)
     spans = []
@@ -148,7 +112,6 @@ def _mask_spans(mask: dict) -> list[tuple[int, int, list[tuple[int, int]]]]:
 
 
 def _seed_for(box: tuple[int, int, int, int], seed, letters) -> tuple[int, int]:
-    """The flood seed in slice coords: explicit seed, else the letter centroid, else the box centre."""
     x1, y1, x2, y2 = box
     if seed is not None:
         return int(seed[0]), int(seed[1])
@@ -161,7 +124,6 @@ def _seed_for(box: tuple[int, int, int, int], seed, letters) -> tuple[int, int]:
 
 
 def _flood_seed(mask: np.ndarray, seed: tuple[int, int]) -> tuple[int, int] | None:
-    """A background pixel at or near ``seed``: the flood must start off an edge pixel."""
     h, w = mask.shape[:2]
     sx, sy = seed
     if 0 <= sx < w and 0 <= sy < h and mask[sy, sx] == 0:
@@ -178,12 +140,6 @@ def _flood_seed(mask: np.ndarray, seed: tuple[int, int]) -> tuple[int, int] | No
 
 
 def derive_bubble_mask(image, box, *, seed=None, letters=None) -> dict:
-    """Derive one bubble mask for ``box`` (x1, y1, x2, y2) from the source slice ``image`` (BGR).
-
-    ``letters`` is the box-local letter mask when known (it seeds the
-    flood at the letter centroid); ``seed`` overrides it in slice coords.
-    The returned dict is plain ints/lists, safe to store as JSON.
-    """
     if image is None or getattr(image, "ndim", 0) < 2:
         return _none_mask(tuple(box))
     x1, y1, x2, y2 = (int(v) for v in box)
@@ -210,13 +166,6 @@ def derive_bubble_mask(image, box, *, seed=None, letters=None) -> dict:
 
 def _seed_candidates(box: tuple[int, int, int, int],
                      seed: tuple[int, int]) -> list[tuple[int, int]]:
-    """Flood starts to try, in order: the seed, the box centre, a grid over the box.
-
-    A seed can land inside a letter loop (``O``, ``D``) or on a text
-    bar, where the flood fills only the loop or the bar; each base
-    point is therefore followed by four small offsets, which usually
-    land between the lines.
-    """
     x1, y1, x2, y2 = box
     base = [seed, ((x1 + x2) // 2, (y1 + y2) // 2)]
     for fy in (0.25, 0.5, 0.75):
@@ -232,24 +181,6 @@ def _seed_candidates(box: tuple[int, int, int, int],
 
 
 def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -> dict | None:
-    """One attempt at the bubble mask over ``crop`` (default: 3x the box).
-
-    Returns None when no flood from the seed holds a bubble interior --
-    the caller falls back to ``kind: "rect"`` (or retries wider).
-
-    The flood runs on the Canny edge image itself (dilated by 1px to
-    close hairline gaps), not behind one drawn contour at a time: on
-    real pages the bubble outline touches panel borders and art lines,
-    so its edges form one connected network and no single contour is
-    the outline. The flood fills the background region around the seed
-    bounded by that network -- the bubble interior, with the letters
-    as islands inside it. A flood is accepted only when it is big
-    enough to hold the lettering, small enough not to be the whole
-    panel, mostly light inside, holds (nearly) all the letters, and
-    does not run out to an interior crop border (a gap in the outline
-    lets it escape; a bubble cut by the slice edge only ever touches
-    the slice border) or to three image borders at once.
-    """
     x1, y1, x2, y2 = box
     height, width = image.shape[:2]
     if crop is None:
@@ -361,12 +292,6 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
 
 
 def _band_index(y1: int, height: int, y: int) -> int:
-    """The row band holding ``y``, inverting the integer quantisation.
-
-    A plain floor of (y - y1) * 24 / height can land one band low at
-    a boundary (the rows were built with y1 + (i * height) // 24),
-    so step up while the next band has already started.
-    """
     index = min(MASK_ROWS - 1, (int(y) - y1) * MASK_ROWS // height)
     while index + 1 < MASK_ROWS and int(y) >= y1 + ((index + 1) * height) // MASK_ROWS:
         index += 1
@@ -374,7 +299,6 @@ def _band_index(y1: int, height: int, y: int) -> int:
 
 
 def mask_row_spans(mask: dict | None, y: int) -> list[list[int]]:
-    """The mask's x-intervals (slice coords) on the row holding ``y``; [] outside the mask."""
     if not isinstance(mask, dict) or mask.get("kind") == "none":
         return []
     try:
@@ -396,13 +320,6 @@ def _widest_interval(row: list[list[int]]) -> tuple[int, int] | None:
 
 
 def mask_inscribed_rect(mask: dict | None) -> tuple[int, int, int, int]:
-    """The largest axis-aligned rectangle inside the mask rows, slice coords.
-
-    Each candidate spans a run of rows and takes, per row, the widest
-    interval; the rectangle is the intersection across its rows. A
-    side-by-side double bubble yields the wider lobe's rectangle -- the
-    largest single rectangle, not a union.
-    """
     if not isinstance(mask, dict):
         return (0, 0, 0, 0)
     try:
@@ -441,32 +358,6 @@ def mask_inscribed_rect(mask: dict | None) -> tuple[int, int, int, int]:
 
 
 def find_waist(mask: dict | None, letters=None, box=None) -> dict | None:
-    """A clear waist between two lobes in ``mask``, or None.
-
-    Three shapes, tried in order:
-
-    - ``vertical`` (lobes side by side, rows split in two): a run of
-      rows each holds two substantial intervals with a gap between
-      them. ``cut_x`` is the median gap midpoint.
-    - ``vertical`` (lobes offset diagonally, rows still one interval):
-      the letter columns have a clean gap between two clusters, and
-      each side's letters sit inside its own half of the mask without
-      the half reaching far past them. Needs ``letters`` (box-local)
-      and ``box``; skipped without them. ``cut_x`` is the gap midpoint.
-    - ``horizontal`` (lobes offset diagonally, stacked): the letter
-      rows have a clean gap between two clusters whose columns are
-      offset sideways, and the width profile corroborates two lobes.
-      Needs ``letters`` and ``box``; skipped without them. ``cut_y``
-      is the gap midpoint.
-    - ``horizontal`` (lobes stacked): the row-width profile dips to a
-      narrow band between two wide lobes. ``cut_y`` is the middle of
-      the dip; the lobes are the rows above and below it.
-
-    The numbers are the explicit criteria (see the WAIST_*/SPLIT_*
-    constants): a dip or a gap that does not clear them is a taper or
-    a tail, not a waist, and returns None. The caller gates the split
-    on letter rows on both sides of the cut.
-    """
     if not isinstance(mask, dict) or mask.get("kind") != "bubble":
         return None
     try:
@@ -505,7 +396,6 @@ def find_waist(mask: dict | None, letters=None, box=None) -> dict | None:
 
 def _profile_waist(widths: list[int], height: int, width: int,
                    row_h: float, y1: int) -> dict | None:
-    """The narrowest middle run of the width profile, when it is a real dip."""
     min_waist_rows = max(1, int(WAIST_MIN_HEIGHT_SHARE * MASK_ROWS))
     min_lobe_rows = max(1, int(LOBE_MIN_HEIGHT_SHARE * MASK_ROWS))
     best = None
@@ -544,7 +434,6 @@ def _profile_waist(widths: list[int], height: int, width: int,
 
 def _interval_waist(rows: list, height: int, width: int, row_h: float,
                     x1: int, y1: int) -> dict | None:
-    """A run of rows split into two substantial intervals by a gap."""
     split_rows = []
     for i, row in enumerate(rows):
         if len(row) < 2:
@@ -596,7 +485,6 @@ def _interval_waist(rows: list, height: int, width: int, row_h: float,
 
 
 def _letters_inside_mask(mask: dict, xs, ys) -> float:
-    """Share of the letter points (slice coords) inside ``mask``'s rows."""
     if len(xs) == 0:
         return 0.0
     x1, y1, x2, y2 = (int(v) for v in mask["bbox"])
@@ -617,23 +505,10 @@ def _letters_inside_mask(mask: dict, xs, ys) -> float:
 
 
 def _mask_row_width_sum(mask: dict) -> int:
-    """Total row width, from the stored rows (bbox-local intervals).
-
-    A width sum, not an area: the row height is the same for every
-    mask, so the ratio between two masks is the same either way, and
-    the sum is what the piece-share test compares.
-    """
     return sum(int(b) - int(a) for row in mask["rows"] for a, b in row)
 
 
 def _rows_split_in_both_caps(rows: list[list[list[int]]]) -> bool:
-    """Two substantial intervals in the top half and in the bottom half.
-
-    Two lobes side by side at the same height have a smooth width
-    profile (no step, no dip) -- but their caps split into two
-    intervals, top and bottom, where the circles stop overlapping. A
-    single oval never splits a row at all.
-    """
     def splits(band):
         if len(band) < 2:
             return False
@@ -645,17 +520,6 @@ def _rows_split_in_both_caps(rows: list[list[list[int]]]) -> bool:
 
 
 def _profile_corroborates(widths: list[int], rows: list[list[list[int]]] | None = None) -> bool:
-    """The width profile shows two lobes, not one smooth oval.
-
-    A second lobe either steps the profile up (a jump between adjacent
-    middle bands, sustained for two more bands -- ch111 p005) or dips
-    it and rises again (ch42 p038), or splits the rows in both caps
-    (two lobes side by side at the same height, whose profile is a
-    single smooth hump). The caps and tails (the outer three bands at
-    the top, four at the bottom) are excluded from the step/dip test:
-    a spike neck steps up too, but a spike is not a lobe. A single
-    oval's middle bands change by a few percent and its rows never split.
-    """
     middle = widths[3:20]
     if len(middle) >= 3:
         for i in range(len(middle) - 2):
@@ -673,18 +537,6 @@ def _profile_corroborates(widths: list[int], rows: list[list[list[int]]] | None 
 
 
 def _letter_gap_waist(mask: dict, letters, box) -> dict | None:
-    """A vertical waist from a clean gap in the letter columns.
-
-    Two lobes offset diagonally still share one row interval (their
-    x-ranges overlap), so neither the row split nor the width dip sees
-    them -- but the lettering does not cross the waist: the columns
-    between the two clusters are empty. A gap counts only when both
-    clusters hold real lettering, each side's letters sit inside its
-    own half of the mask, neither half reaches far past its letters,
-    and the width profile corroborates two lobes (a step or a dip and
-    a rise in the middle bands -- a single oval cut through staggered
-    lines has a smooth middle profile and fails that last test).
-    """
     letters = np.asarray(letters)
     if letters.size == 0 or not letters.any():
         return None
@@ -779,29 +631,6 @@ def _letter_gap_waist(mask: dict, letters, box) -> dict | None:
 
 
 def _row_gap_waist(mask: dict, letters, box) -> dict | None:
-    """A horizontal waist from a clean gap in the letter rows.
-
-    The mirror of ``_letter_gap_waist`` for lobes offset diagonally
-    the other way: the clusters sit one above the other, sharing
-    columns, so no column gap exists -- but their rows do not meet,
-    and their columns are offset sideways. A gap counts only when
-    both clusters hold real lettering, each side's letters sit inside
-    its own half of the mask, and two corroborations hold: the
-    clusters' column centres are offset (two lines of one oval sit
-    over each other, two lobes do not), and the width profile shows
-    two lobes (a step or a dip and a rise in the middle bands -- a
-    single oval's profile is smooth, so a row gap alone never splits
-    it). The clusters' columns must also overlap: a line that flows
-    across the waist -- reaching from one cluster's columns into the
-    other's -- ties the two together, and column-disjoint clusters are
-    side-by-side texts, not stacked lobes. And the gap must be the
-    widest vertical whitespace in the letters: the gap between two
-    lines of one text is ordinary line spacing, so a narrower gap is
-    a line break, not a waist. There is no extension test
-    here: the upper half reaches across the diagonal join into the
-    lower lobe's top, so it always extends past its own letters -- the
-    offset is what tells the two apart, not the reach.
-    """
     letters = np.asarray(letters)
     if letters.size == 0 or not letters.any():
         return None
@@ -888,7 +717,6 @@ def _row_gap_waist(mask: dict, letters, box) -> dict | None:
 
 
 def split_bubble_mask(mask: dict, waist: dict) -> tuple[dict, dict] | None:
-    """Two masks, one per lobe, cut at ``waist`` (from find_waist)."""
     if not isinstance(mask, dict) or mask.get("kind") != "bubble":
         return None
     spans = _mask_spans(mask)
@@ -931,7 +759,6 @@ def _mask_from_spans(spans: list[tuple[int, int, list[tuple[int, int]]]],
 
 
 def shift_bubble_mask(mask: dict | None, dx: int = 0, dy: int = 0) -> dict | None:
-    """A copy of ``mask`` moved by (dx, dy): bbox and seed move, rows do not (bbox-local)."""
     if not isinstance(mask, dict):
         return None
     shifted = copy.deepcopy(mask)
@@ -946,13 +773,6 @@ def shift_bubble_mask(mask: dict | None, dx: int = 0, dy: int = 0) -> dict | Non
 
 
 def clip_bubble_mask(mask: dict | None, box: tuple[int, int, int, int]) -> dict | None:
-    """The part of ``mask`` inside ``box``, as a mask, or None when nothing holds.
-
-    A sub-box of a bubble is a slice of its interior, not a bubble of
-    its own: the rows are the mask's rows cut to the box, re-quantized
-    onto the part that remains. Spans outside the box's rows are
-    dropped; the rest are clipped to its columns.
-    """
     if not isinstance(mask, dict) or mask.get("kind") != "bubble":
         return None
     try:
@@ -981,13 +801,6 @@ def clip_bubble_mask(mask: dict | None, box: tuple[int, int, int, int]) -> dict 
 
 
 def merge_bubble_masks(masks: list[dict | None]) -> dict | None:
-    """The union of several masks, as one mask over the union bbox.
-
-    Row runs union after re-quantizing each member's spans onto the
-    shared bbox -- the same union ``_merge_mask_evidence`` applies to
-    erase masks and letters when boxes fold together. Members without
-    a usable mask are skipped; with none usable the merge has no mask.
-    """
     usable = [m for m in masks
               if isinstance(m, dict) and m.get("kind") in ("bubble", "rect")
               and isinstance(m.get("rows"), list) and len(m["rows"]) == MASK_ROWS]

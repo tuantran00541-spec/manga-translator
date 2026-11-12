@@ -66,9 +66,6 @@ def test_image_download_does_not_retry_validation_errors(monkeypatch, tmp_path):
 
 
 def test_an_unparseable_content_length_is_treated_as_no_limit():
-    """S6: some servers send odd Content-Length headers; the streamed
-    reader still enforces the byte limit, so the header is a warning,
-    not a rejection."""
     from app.downloader.http import _reject_oversized_content_length
 
     response = requests.Response()

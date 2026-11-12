@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""
-Start one or more servers, wait for them to be ready, run a command, then clean up.
-
-Usage:
-    # Single server
-    python scripts/with_server.py --server "npm run dev" --port 5173 -- python automation.py
-    python scripts/with_server.py --server "npm start" --port 3000 -- python test.py
-
-    # Multiple servers
-    python scripts/with_server.py \
-      --server "cd backend && python server.py" --port 3000 \
-      --server "cd frontend && npm run dev" --port 5173 \
-      -- python test.py
-"""
 
 import subprocess
 import socket
@@ -21,7 +7,6 @@ import sys
 import argparse
 
 def is_server_ready(port, timeout=30):
-    """Wait for server to be ready by polling the port."""
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:

@@ -1,4 +1,3 @@
-"""Private copies of the workspace for helpers that edit at the same time, and a file-level three-way merge of their work."""
 from __future__ import annotations
 
 import hashlib
@@ -31,7 +30,6 @@ def _hash(path: Path) -> str | None:
 
 
 def snapshot(root: Path, dest: Path) -> dict[str, str] | None:
-    """Copy the workspace into dest and return each copied file's hash, or None when it is too big to copy."""
     base: dict[str, str] = {}
     total = 0
     for path in _files(root):
@@ -53,7 +51,6 @@ def snapshot(root: Path, dest: Path) -> dict[str, str] | None:
 
 
 def merge(root: Path, copy: Path, base: dict[str, str], nick: str, before=None) -> tuple[list[str], list[str]]:
-    """Bring the copy's changes into root; a file that changed on both sides is left alone and kept under .agent-conflicts."""
     seen, applied, conflicts = set(), [], []
     now = {p.relative_to(copy).as_posix(): p for p in _files(copy)}
 

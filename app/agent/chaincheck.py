@@ -1,4 +1,3 @@
-"""Reads a chain's code before it runs: tools.<name>(...) calls that cannot work."""
 from __future__ import annotations
 
 import ast
@@ -8,10 +7,6 @@ LIBRARY = frozenset({"search", "describe", "intent", "branch", "adopt"})
 
 
 def check(code: str, known: dict[str, set[str] | None], fixes=lambda name, args: False) -> list[str]:
-    """Problems found, one line each; known maps every reachable tool to its argument names, or None when any are accepted.
-
-    fixes(name, argument names) says whether the harness renames such a call into one that works, as it does for other harnesses' names.
-    """
     try:
         tree = ast.parse(code)
     except SyntaxError:

@@ -188,7 +188,6 @@ def test_text_kept_as_art_or_left_unchanged_is_not_inpainted_again(tmp_path):
 
 
 def _capture_warnings():
-    """A loguru sink collecting warning messages; returns (messages, remove)."""
     from app.logging_config import logger
 
     messages = []
@@ -197,8 +196,6 @@ def _capture_warnings():
 
 
 def test_skipping_an_unauthorized_box_says_its_mask_goes_too():
-    """N11: a skipped box with a mask loses the mask too, not just the
-    rectangle fallback; the warning says so."""
     mask = np.full((21, 29), 255, dtype=np.uint8)
     box = BubbleBox(20, 15, 49, 36, 0.9, mask, source_role="text_segmenter",
                     source_model="kiuyha-tuned-1023.onnx", semantic_type="free_text",
@@ -213,8 +210,6 @@ def test_skipping_an_unauthorized_box_says_its_mask_goes_too():
 
 
 def test_mask_repair_without_a_crop_image_leaves_the_mask_standing():
-    """N12: with no image to read ink from, the repair cannot run and
-    the segmenter mask stands as-is — a warning, not a silent no-op."""
     from app.detector.mask_builder import _repair_mask_from_ink
 
     mask = np.zeros((20, 20), dtype=np.uint8)
@@ -229,8 +224,6 @@ def test_mask_repair_without_a_crop_image_leaves_the_mask_standing():
 
 
 def test_a_corrupt_page_artifact_journal_is_kept_and_skipped(tmp_path):
-    """S1: a journal that cannot be read is corruption worth a warning,
-    not a crash — and it is kept on disk as forensic evidence."""
     import json
 
     from app.manifest_utils import recover_page_artifact_transactions

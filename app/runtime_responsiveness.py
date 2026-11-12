@@ -43,7 +43,6 @@ MAX_WORKERS = 8
 
 
 def recommended_workers(cpu_count: int | None = None) -> int:
-    """A slice worker per core, as single-threaded workers clean a chapter faster than fewer multi-threaded ones."""
     return min(MAX_WORKERS, max(1, int(cpu_count or visible_cpu_count())))
 
 

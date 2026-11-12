@@ -1,4 +1,3 @@
-"""What is known about particular models: prompt advice for their quirks, prices, whether they can see images."""
 from __future__ import annotations
 
 import re

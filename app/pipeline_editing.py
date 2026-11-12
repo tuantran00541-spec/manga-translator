@@ -80,17 +80,6 @@ def _paint_residue(
     rect: tuple[int, int, int, int],
     original: np.ndarray | None = None,
 ) -> None:
-    """Mark the leftover strokes in ``rect`` of the cleaned slice.
-
-    When the letter model sees no strokes left, the rectangle used to be
-    repainted whole — which on a coloured bubble erases the bubble's own
-    fill with it (LaMa over the full box bleaches a mid-grey gradient to
-    flat near-white). With the original slice available, only ink the
-    clean still carries where the original had letters can be leftover
-    text, so only those letter shapes are marked and a fully cleaned
-    bubble is left alone. Without an original there is nothing to compare
-    against, so the whole rectangle is repainted as before.
-    """
     from app.detector.kiuyha_detector import letter_mask
 
     if clean is not None and clean.shape[:2] == mask.shape:
@@ -138,7 +127,6 @@ COVERED_SHARE = 0.3
 
 
 def _stroke_box(image: np.ndarray, rect: tuple[int, int, int, int]) -> dict:
-    """A manual box masked by the letters inside it; a rectangle only when no letters stand out."""
     from app.detector.kiuyha_detector import letter_mask
     from app.image_io import encode_mask
 
@@ -155,7 +143,6 @@ class PipelineEditingMixin:
         return self.add_manual_boxes(chapter_id, page_index, [(x1, y1, x2, y2)])
 
     def add_manual_boxes(self, chapter_id: str, page_index: int, rects: list[tuple[int, int, int, int]]) -> dict:
-        """Add several manual boxes with a single re-inpaint of the page."""
         processed_dir = PROCESSED_DIR / chapter_id
 
         with get_page_lock(chapter_id, page_index):
@@ -338,7 +325,6 @@ class PipelineEditingMixin:
             return manifest
 
     def preserve_and_reinpaint(self, chapter_id: str, page_index: int, regions: list[dict]) -> dict:
-        """Add preserve regions and re-inpaint without re-detecting the page."""
         processed_dir = PROCESSED_DIR / chapter_id
         added = [
             {key: int(region[key]) for key in ("x1", "y1", "x2", "y2")}
@@ -400,7 +386,6 @@ class PipelineEditingMixin:
         repaint: list[tuple[int, int, int, int]] = (),
         skip_covered: bool = False,
     ) -> dict:
-        """Add preserve regions, manual boxes and repaint areas with one re-inpaint of the page."""
         processed_dir = PROCESSED_DIR / chapter_id
         with get_page_lock(chapter_id, page_index):
             with get_manifest_lock(chapter_id):
@@ -725,7 +710,6 @@ class PipelineEditingMixin:
             return manifest
 
     def restore_mask(self, chapter_id: str, page_index: int, mask: np.ndarray) -> dict:
-        """Put the original pixels back under ``mask`` and keep them there through later repaints."""
         processed_dir = PROCESSED_DIR / chapter_id
 
         with get_page_lock(chapter_id, page_index):
@@ -1030,7 +1014,6 @@ class PipelineEditingMixin:
         return processed_dir / f"restore_mask_{img_path.name}"
 
     def _apply_restore_mask(self, clean: np.ndarray, original: np.ndarray, processed_dir: Path, img_path: Path) -> bool:
-        """Put the original pixels back where the restore brush painted; True when any were."""
         mask = self._read_manual_mask(self._restore_mask_path(processed_dir, img_path), clean.shape[:2])
         if mask is None:
             return False

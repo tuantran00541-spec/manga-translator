@@ -1,4 +1,3 @@
-"""One chat call to any configured provider, with native tool calls or a plain-text fallback."""
 from __future__ import annotations
 
 import hashlib
@@ -57,11 +56,11 @@ CUT_OFF = ("Your reply reached the output limit and this call was cut off before
 
 
 class TransientError(RuntimeError):
-    """A failure worth asking again: a timeout, a dropped connection or a 5xx from the provider."""
+    pass
 
 
 class KeyLimited(RuntimeError):
-    """The key is rate limited or out of quota and the provider named no wait; another key may help."""
+    pass
 
 
 ASK_ON_LIMIT: ContextVar[bool] = ContextVar("ask_on_limit", default=False)
@@ -70,7 +69,7 @@ _REFUSED_EXTRA: set[tuple[str, str]] = set()
 
 
 class ToolsUnsupported(RuntimeError):
-    """The provider refused the native tools field, so the session falls back to text tool calls."""
+    pass
 
 
 def chat_url(provider: AIProvider) -> str:
@@ -83,7 +82,6 @@ _FOUND_PATH: dict[str, str] = {}
 
 
 def chat_candidates(provider: AIProvider) -> list[str]:
-    """Where servers that speak the OpenAI chat format put it, for a root that gave 404."""
     base = provider.api_base.rstrip("/")
     root = re.sub(r"/v\d+[a-z0-9]*$", "", base)
     tails = [f"{base}/chat/completions", f"{base}/v1/chat/completions", f"{root}/v1/chat/completions", f"{root}/chat/completions",
@@ -107,7 +105,6 @@ UNESCAPES = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\", "/": "/"}
 
 
 def _lenient_args(raw: str, params: list[str], required: list[str]) -> dict | None:
-    """Arguments from a call whose JSON broke on long text: split at the known parameter names and unescape each value."""
     start = raw.find('"arguments"')
     body = raw[raw.find("{", start) + 1:] if start >= 0 else raw
     body = re.sub(r'\s*\}\s*\}?\s*$', "", body.rstrip())
@@ -133,7 +130,6 @@ def _lenient_args(raw: str, params: list[str], required: list[str]) -> dict | No
 
 
 def _read_call(raw: str, schemas: dict | None = None) -> tuple[str, dict] | None:
-    """A call from JSON, from Qwen's <function=...><parameter=...> form, or from the last JSON object in a mangled block."""
     try:
         data = json.loads(raw, strict=False)
         args = data.get("arguments", data.get("args", {}))
@@ -160,13 +156,11 @@ def _read_call(raw: str, schemas: dict | None = None) -> tuple[str, dict] | None
 
 
 def schemas_of(tools: list[dict] | None) -> dict:
-    """Each tool's parameter names and required ones, for reading calls whose JSON is broken."""
     return {t["name"]: (list((t.get("parameters") or {}).get("properties") or {}), list((t.get("parameters") or {}).get("required") or []))
             for t in tools or []}
 
 
 def parse_text_calls(text: str, tools: list[dict] | None = None) -> tuple[str, list[dict]]:
-    """Tool calls written as <tool_call> blocks or <invoke> XML, and the reply with them taken out."""
     calls = []
     schemas = schemas_of(tools)
     for raw in TOOL_CALL_RE.findall(text or ""):
@@ -186,7 +180,6 @@ def parse_text_calls(text: str, tools: list[dict] | None = None) -> tuple[str, l
 
 
 def _invokes(raw: str) -> list[dict]:
-    """Each <invoke> call in raw, with JSON-looking values read as JSON."""
     def value(text: str):
         text = text.strip()
         if text[:1] in ("{", "["):
@@ -200,7 +193,6 @@ def _invokes(raw: str) -> list[dict]:
 
 
 def render(history: list[dict], system: str, text_mode: bool, specs: list[dict], *, reasoning: bool | str = False) -> list[dict]:
-    """The neutral history as chat messages, with tool calls native or written as text."""
     messages = [{"role": "system", "content": system + ("\n\n" + text_tools_prompt(specs) if text_mode and specs else "")}]
     last_user = max((i for i, item in enumerate(history) if item["role"] == "user"), default=-1)
     for index, item in enumerate(history):
@@ -240,7 +232,6 @@ def render(history: list[dict], system: str, text_mode: bool, specs: list[dict],
 
 
 def usage_of(raw: dict | None) -> dict:
-    """Token counts from any OpenAI-style usage block, including how much of the prompt came from the provider's cache."""
     raw = raw or {}
     cached = ((raw.get("prompt_tokens_details") or {}).get("cached_tokens") or raw.get("prompt_cache_hit_tokens")
               or raw.get("cache_read_input_tokens") or 0)
@@ -253,7 +244,6 @@ def is_overflow(message: str) -> bool:
 
 
 def context_window(message: str) -> int:
-    """The model's window in tokens when the error names it, else 0."""
     for pattern in WINDOW_PATTERNS:
         found = pattern.search(message)
         if found:
@@ -262,7 +252,6 @@ def context_window(message: str) -> int:
 
 
 def _retry_after(response: requests.Response) -> float:
-    """Seconds the server asked to wait: retry-after-ms, retry-after as seconds, or retry-after as a date."""
     try:
         millis = response.headers.get("retry-after-ms")
         if millis:
@@ -277,7 +266,6 @@ def _retry_after(response: requests.Response) -> float:
 
 
 def _hinted_wait(text: str) -> float:
-    """Seconds the provider's own words ask to wait ("try again in 20s", "try again after 05:18:33"), or 0."""
     found = IN_RE.search(text)
     if found:
         unit = found.group(2).lower()
@@ -292,7 +280,6 @@ def _hinted_wait(text: str) -> float:
 
 
 def _pace_hint(text: str) -> float:
-    """Seconds between requests when the provider names a pace, or 0."""
     found = PACE_RE.search(text)
     if not found or int(found.group(1)) == 0:
         return 0.0
@@ -302,7 +289,6 @@ def _pace_hint(text: str) -> float:
 
 
 def slot(provider: AIProvider, api_key: str) -> str:
-    """Limits belong to a key, so the cooldown and pace are kept per provider and key."""
     return f"{provider.id}:{hashlib.sha256((api_key or '').encode()).hexdigest()[:12]}"
 
 
@@ -337,7 +323,6 @@ def _note_rate_limit(provider: AIProvider, response: requests.Response, wait: fl
 
 
 def _post(provider: AIProvider, api_key: str, payload: dict, stream: bool) -> requests.Response:
-    """The request, with the shared 429 cooldown and retries; a custom provider whose path gives 404 is tried at the usual others."""
     response = _post_to(chat_url(provider), provider, api_key, payload, stream)
     if response.status_code not in (404, 405) or provider.builtin or provider.protocol != "openai" or provider.api_base.rstrip("/") in _FOUND_PATH:
         return response
@@ -395,7 +380,6 @@ def _post_to(url: str, provider: AIProvider, api_key: str, payload: dict, stream
 
 
 def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, bool]:
-    """Assemble the streamed message; on_delta(live) is called as it grows and returns True to stop early."""
     text, reasoning, usage, calls, stopped = "", "", {}, {}, False
     finish, other = "", {}
     response.encoding = "utf-8"
@@ -440,7 +424,6 @@ THINK = re.compile(r"<think>(.*?)</think>", re.S)
 
 
 def split_thinking(text: str) -> tuple[str, str]:
-    """Reasoning some models write into the reply itself (<think>…</think>, or only the closing tag) is moved out of it."""
     thought = "\n".join(part.strip() for part in THINK.findall(text))
     text = THINK.sub("", text)
     if "</think>" in text:
@@ -450,7 +433,6 @@ def split_thinking(text: str) -> tuple[str, str]:
 
 
 def loads_args(raw: str):
-    """Tool arguments as JSON, after the repairs models most often need (pi's repairJson): code fences, stray backslashes, trailing commas."""
     try:
         return json.loads(raw or "{}", strict=False)
     except ValueError:
@@ -509,13 +491,11 @@ OUTPUT_CAPS: dict[tuple[str, str], int] = {}
 
 
 def output_cap(provider: AIProvider, model: str) -> int | None:
-    """The reply limit this provider is known to enforce for the model, if one was learned."""
     return OUTPUT_CAPS.get((provider.api_base, model))
 
 
 def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None,
              max_tokens: int | None = None) -> dict:
-    """One assistant turn: its text, tool calls, reasoning and token usage; streamed when on_delta is given. Transient failures are retried."""
     for attempt in range(NETWORK_RETRIES + 1):
         try:
             return _complete_once(provider, api_key, model, messages, tools=tools, on_delta=on_delta, max_tokens=max_tokens)

@@ -150,12 +150,10 @@ def _find_cut_rows(
 
 
 def _content(gray: np.ndarray) -> np.ndarray:
-    """255 where a pixel is further than the background distance from both white and black."""
     return cv2.inRange(gray, SLICE_BACKGROUND_DISTANCE + 1, 254 - SLICE_BACKGROUND_DISTANCE)
 
 
 def _row_std(gray: np.ndarray, chunk: int = 1024) -> np.ndarray:
-    """Each row's standard deviation from exact integer sums, in row chunks so no float copy of the page is made."""
     h, w = gray.shape
     sums = np.empty(h, np.int64)
     squares = np.empty(h, np.int64)

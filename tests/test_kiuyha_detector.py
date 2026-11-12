@@ -16,8 +16,6 @@ def ink_model(monkeypatch):
 
 
 class _Session:
-    """One detection where the input has dark pixels, as an end-to-end head
-    (``[1, 300, 6]``) or as a raw head (``[1, 5, anchors]``, duplicates included)."""
 
     def __init__(self, shape, raw=False):
         self.shape = shape
@@ -105,7 +103,6 @@ def test_tall_slice_runs_coarse_and_page_scale_passes_and_masks_letters_with_out
 
 
 class _BlobSession(_Session):
-    """Raw head: one box per ink blob on the (static 1280) input."""
 
     def __init__(self):
         super().__init__([1, 3, 1280, 1280], raw=True)
@@ -178,9 +175,6 @@ def test_pieces_of_one_text_from_different_passes_become_one_box():
 
 
 def test_two_texts_sharing_a_line_are_not_merged_before_letters():
-    """N1: the raw merges unioned same-line boxes on geometry alone, before
-    any letters existed. Two texts on one line whose letter rows never meet
-    are two texts, even though their rects overlap on the same line."""
     from app.detector.kiuyha_detector import _union_coherent
 
     image = np.full((300, 800, 3), 255, np.uint8)
@@ -191,11 +185,6 @@ def test_two_texts_sharing_a_line_are_not_merged_before_letters():
 
 
 def test_a_rescued_word_needs_a_letter_standing_inside_its_box():
-    """Rerun-4 Mount Hua p021: a stroke fragment of the giant kept SFX
-    was rescued as a word and rendered "TẦM NHÌN" at 12px on top of the
-    SFX it came from. A word's letters end inside its box; a fragment of
-    a bigger shape runs off the box's edges, so no letter piece stands
-    in it."""
     from app.detector.kiuyha_detector import _has_letter_piece
 
     word = np.full((200, 300, 3), 255, np.uint8)
@@ -209,7 +198,6 @@ def test_a_rescued_word_needs_a_letter_standing_inside_its_box():
 
 
 class _NestedSession(_Session):
-    """A block box with a line box inside it, as the model returns for one bubble."""
 
     def __init__(self):
         super().__init__([1, 3, 1280, 1280])
@@ -244,7 +232,6 @@ def test_a_line_box_inside_a_block_box_is_not_a_second_text():
 
 
 class _WholeSession(_Session):
-    """One box over the whole of the given rectangle, as the model returns for a staircase of captions."""
 
     def __init__(self, rect):
         super().__init__([1, 3, 1280, 1280])
@@ -343,7 +330,6 @@ def test_two_texts_side_by_side_split_into_their_own_boxes():
 
 
 def _union_mask(bbox=(60, 60, 560, 340)):
-    """The union of two circles, one interval per band (p038 geometry, scaled)."""
     import math
 
     x1, y1, x2, y2 = bbox
@@ -419,7 +405,6 @@ def test_one_wide_text_with_word_gaps_stays_whole():
 
 
 class _FixedSession(_Session):
-    """End-to-end head returning exactly the boxes given, at the scores given."""
 
     def __init__(self, boxes):
         super().__init__([1, 3, 1280, 1280])
@@ -434,7 +419,6 @@ class _FixedSession(_Session):
 
 
 def _blind_ctd(monkeypatch):
-    """The letter model reads nothing: dark-on-dark lettering it is blind to."""
     monkeypatch.setattr(ctd_mask, "_session", InkModel(dark_below=0))
 
 
@@ -499,7 +483,6 @@ def test_sideways_boxes_below_the_page_bar_are_not_kept(monkeypatch):
 
 
 class _GivenSession(_Session):
-    """End-to-end head returning exactly the boxes given, at any input size."""
 
     def __init__(self, boxes):
         super().__init__([1, 3, "height", "width"])
@@ -566,12 +549,6 @@ def test_welded_words_takes_a_fat_word_and_not_a_wide_panel():
 
 
 def test_a_welded_word_passes_the_rescue_gate():
-    """N3: Fix G's gate killed wide welded words — _has_letter_piece
-    requires w <= 3*h, but _welded_words emits one component up to 80
-    wide x 12 tall. A welded word is exempt from the width test: its
-    shape was already checked where it was found, and the width test
-    exists to catch fragments of a bigger shape, which a welded word
-    is not."""
     from app.detector.kiuyha_detector import _has_letter_piece
 
     word = np.full((100, 200, 3), 255, np.uint8)
@@ -581,10 +558,6 @@ def test_a_welded_word_passes_the_rescue_gate():
 
 
 def test_a_welded_word_in_a_low_box_is_rescued(monkeypatch):
-    """N3 end to end: a short wide welded word (JIANGXI, 64x19, ratio 3.4)
-    scores 0.15, under the bar, and the letter model is blind here, so only
-    _welded_words can find it — and only the width exemption lets it through
-    the gate (64 > 3*19)."""
     _blind_ctd(monkeypatch)
     image = np.full((1280, 1280, 3), (250, 235, 220), np.uint8)
     cv2.putText(image, "HELLO", (100, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (40, 30, 25), 4)
@@ -602,9 +575,6 @@ def test_a_welded_word_in_a_low_box_is_rescued(monkeypatch):
 
 
 def test_missing_letter_geometry_is_unknown_not_coherent():
-    """N5: _letters_coherent returned True when either geometry was None,
-    so maskless boxes and boxes whose core-clipped letters are empty always
-    joined — including the case the D4 guard was built for."""
     from app.detector.kiuyha_detector import _letters_coherent
 
     geometry = (set(range(10, 30)), (10, 10, 190, 30))
@@ -615,8 +585,6 @@ def test_missing_letter_geometry_is_unknown_not_coherent():
 
 
 def test_join_grown_does_not_fold_a_maskless_box_into_a_lettered_one():
-    """N5: a maskless box overlapping a lettered one on the same line used
-    to join on geometry alone (None counted as coherent)."""
     from app.detector.kiuyha_detector import _join_grown
 
     letters = np.zeros((100, 200), bool)
@@ -629,8 +597,6 @@ def test_join_grown_does_not_fold_a_maskless_box_into_a_lettered_one():
 
 
 def test_join_grown_still_dedupes_a_maskless_box_seen_twice():
-    """The N5 change must not un-dedupe: two near-identical maskless rects
-    are one detection seen by two passes, not two texts."""
     from app.detector.kiuyha_detector import _join_grown
 
     first = _text_box(0, 0, 200, 100, 0.9, np.full((100, 200), 255, np.uint8), "kiuyha",
@@ -644,8 +610,6 @@ def test_join_grown_still_dedupes_a_maskless_box_seen_twice():
 
 
 def test_join_grown_keeps_the_core_of_the_boxes_it_joins():
-    """N4: the _join_grown rebuild dropped ``core``, so _fold_nested judged
-    coherence on unclipped, growth-contaminated letters downstream."""
     from app.detector.kiuyha_detector import _join_grown, _letter_geometry
 
     letters = np.zeros((100, 400), bool)
@@ -661,8 +625,6 @@ def test_join_grown_keeps_the_core_of_the_boxes_it_joins():
 
 
 def test_split_blocks_keeps_a_core_clipped_to_each_piece():
-    """N4: split pieces dropped ``core`` too, so their letters were judged
-    unclipped downstream."""
     from app.detector.kiuyha_detector import _letter_geometry
 
     letters = np.zeros((200, 300), bool)
@@ -681,8 +643,6 @@ def test_split_blocks_keeps_a_core_clipped_to_each_piece():
 
 
 def test_split_sideways_keeps_a_core_clipped_to_each_piece():
-    """N4, sideways: same as _split_blocks — the pieces carry the part of
-    the raw rect they came from, clipped to their own rect."""
     from app.detector.kiuyha_detector import _letter_geometry, _split_sideways
 
     letters = np.zeros((140, 700), bool)
@@ -700,12 +660,6 @@ def test_split_sideways_keeps_a_core_clipped_to_each_piece():
 
 
 def test_a_box_cut_by_an_inner_window_edge_is_kept_in_page_boxes():
-    """N6: a box cut by an inner window edge is NOT dropped on the
-    assumption the next window sees it whole — tall text is cut by
-    every window edge, so it is never seen whole anywhere, and the
-    union step reassembles the partial window rects. Only a centre in
-    the blank letterbox gap is dropped (the coarse pass is its
-    backstop)."""
     image = np.full((1200, 400, 3), 255, np.uint8)
     image[400:500, 100:300] = 0
     image[900:1000, 100:300] = 0
@@ -717,9 +671,6 @@ def test_a_box_cut_by_an_inner_window_edge_is_kept_in_page_boxes():
 
 
 def test_a_small_box_with_no_letter_mask_is_kept_not_dropped(monkeypatch):
-    """N9: the letter model is blind to light-on-dark text, not the box
-    model; a small box with no letter mask is kept whole so the text is
-    still erased and read, while a big one with no dark pieces is not."""
     from app.detector import kiuyha_detector as kd
 
     image = np.full((600, 800, 3), 255, np.uint8)
@@ -739,8 +690,6 @@ def test_a_small_box_with_no_letter_mask_is_kept_not_dropped(monkeypatch):
 
 
 def test_a_leftover_without_a_usable_mask_leaves_its_record_unfolded():
-    """N10: folding a maskless leftover into its record would crash on
-    None (or read misaligned rows); the record stays as it was."""
     from app.detector.boxes import BubbleBox
     from app.page_processing import _fold_leftover
 
@@ -751,8 +700,6 @@ def test_a_leftover_without_a_usable_mask_leaves_its_record_unfolded():
 
 
 def test_a_leftover_matching_no_record_is_left_as_stored():
-    """N10: a leftover whose centre sits in no first-pass record has
-    nowhere to fold into; it stays as stored instead of crashing."""
     from app.detector.boxes import BubbleBox
     from app.page_processing import _fold_leftover
 

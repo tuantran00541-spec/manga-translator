@@ -1,4 +1,3 @@
-"""Every number that decides how text is found, erased and filled, in one place with the range it may be tuned in."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,7 +13,6 @@ class Knob:
 
     @property
     def stage(self) -> str:
-        """``detect``, ``mask`` or ``fill``: the step the knob belongs to."""
         return self.name.split(".", 1)[0]
 
 
@@ -65,6 +63,5 @@ KNOBS: dict[str, Knob] = {knob.name: knob for knob in _ALL}
 
 
 def knob(name: str) -> float | int:
-    """The default value of a knob."""
     return KNOBS[name].default
 

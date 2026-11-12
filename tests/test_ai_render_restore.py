@@ -16,10 +16,6 @@ class _FakeInpainter:
 
 
 def test_render_chapter_restores_an_unletterable_object(tmp_path: Path, monkeypatch):
-    """Render N6: render_chapter called render_page and ignored the returned
-    skipped_objects, so a floor-skipped object kept a cleaned-white hole.
-    It now restores the skipped regions and re-renders, as the job flow
-    does — the output shows the original pixels, not the clean image."""
     import app.config as config
     import app.dependencies as deps
     import app.manifest_utils as manifests
@@ -73,13 +69,6 @@ def test_render_chapter_restores_an_unletterable_object(tmp_path: Path, monkeypa
 
 
 def test_render_stage_leaves_a_slice_rendered_before_the_chapter_finishes_alone(tmp_path: Path, monkeypatch):
-    """A slice rendered while the chapter was unfinished stays current once it finishes.
-
-    The render signature covers only the page's own objects -- the
-    chapter band is dead -- so finishing the chapter does not stale
-    an early slice's render, and the render stage does not letter it
-    again.
-    """
     import app.config as config
     import app.dependencies as deps
     import app.manifest_utils as manifests
@@ -218,9 +207,6 @@ def test_render_stage_restores_an_unletterable_object_and_the_slice_exports(tmp_
 
 
 def test_export_snapshot_does_not_save_the_manifest(tmp_path, monkeypatch):
-    """M6: export is a read path — the ensured objects live in the
-    in-memory manifest the gate and snapshot read, and saving here
-    would mutate the chapter on every export."""
     import app.config as config
     import app.manifest_utils as manifests
     import app.routers.export as export_router

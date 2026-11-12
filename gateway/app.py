@@ -37,7 +37,6 @@ MAX_JUDGE_QUESTIONS = 8
 
 @dataclass(frozen=True)
 class Route:
-    """One upstream model and its prices in USD per million tokens."""
     model: str
     input_usd_per_m: float
     output_usd_per_m: float
@@ -79,7 +78,6 @@ class Upstream:
         return Route(self.model, self.input_usd_per_m, self.output_usd_per_m, self.cached_usd_per_m)
 
     def chain(self, stage: str | None) -> list[Route]:
-        """The step's models in order, or the default model and the general fallbacks."""
         if self.stages.get(stage):
             return list(self.stages[stage])
         return [self.default] + [route for route in self.fallbacks if route.model != self.model]
@@ -93,7 +91,6 @@ class Upstream:
 
     def send(self, payload: dict, trace: dict | None = None, models: list | None = None,
              path: str = "chat/completions") -> tuple[int, dict]:
-        """POST upstream, retrying transient failures on the next model (a name or Route) in ``models``; ``trace`` records attempts."""
         models = models or [payload.get("model")]
         for attempt in range(self.retries + 1):
             last = attempt == self.retries
@@ -161,7 +158,6 @@ def _retry_after(response) -> float | None:
 
 
 def _request_shape(payload: dict) -> dict:
-    """What a request carries: the opening words of its prompt, its images and size."""
     head, images = "", 0
     for message in payload.get("messages") or []:
         content = message.get("content") if isinstance(message, dict) else None
@@ -180,7 +176,6 @@ IMAGE_TOKENS_HELD = 3000
 
 
 def _held_usd(upstream: Route, payload: dict, max_tokens: int) -> float:
-    """Most a request is expected to cost: its text and images in, its whole token budget out."""
     chars, images = 0, 0
     for message in payload.get("messages") or []:
         content = message.get("content") if isinstance(message, dict) else None
@@ -205,7 +200,6 @@ def _trace_line(path: str, entry: dict) -> None:
 
 
 def _routes_from_env(name: str) -> list[tuple[str | None, Route]]:
-    """Routes from a JSON list of {"stage"?, "model", "price": [input, output, cached?], "effort"?, "base"?, "key_env"?}."""
     raw = os.getenv(name, "").strip()
     if not raw:
         return []
@@ -295,7 +289,6 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
 
 
 def _messages_problem(messages) -> str | None:
-    """Why a chat request's messages cannot be forwarded, or None."""
     if not isinstance(messages, list) or not messages:
         return "messages must be a non-empty list"
     images = 0
@@ -321,7 +314,6 @@ def _messages_problem(messages) -> str | None:
 
 
 def client_ip(request: Request) -> str:
-    """The caller's address; run uvicorn with --proxy-headers behind a trusted proxy so this is the real one."""
     return request.client.host if request.client else ""
 
 
