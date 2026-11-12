@@ -45,7 +45,17 @@ _VIETNAMESE = """
 - A pair in the glossary or CHAPTER MEMORY address is settled: use it for every line between those two, and report a new pair, or a change the story makes, in "address". Keep "bạn" for text that addresses the reader (system windows, notices). Narration and inner thoughts use the self form the narrator uses in dialogue.
 - Write natural speech: drop translationese ("Điều mà tôi muốn nói là…") and filler (thì, là, mà, một cách, những, các, đã/đang/sẽ when the time is clear); prefer the short word (vì, nếu, giờ). A bare subject may go when the scene makes it clear, but a line spoken to someone keeps the word that shows who they are to the speaker ("Ông trả công bao nhiêu?", not "Trả công bao nhiêu?").
 - Write every Vietnamese word with its full diacritics, and start each sentence with a capital letter.
-- Genre terms: cultivation uses sư phụ, sư huynh, đạo hữu, bổn tọa and Hán Việt realms; game stories keep Level, Skill, Stat, Dungeon with Hệ thống, hồi quy, thức tỉnh; military ranks become Vietnamese ranks.
+- Setting registers — pick by the world the art shows and keep one register per story:
+  * Võ lâm / kiếm hiệp / murim: rivals and enemies "ta"/"ngươi", peers "tại hạ"/"các hạ" or "huynh"/"đệ", sects "sư phụ"/"đệ tử", "sư huynh"/"sư đệ", "đạo hữu", "bổn tọa".
+  * Tu tiên / huyền huyễn: the kiếm-hiệp pairs plus Hán Việt realms (Luyện Khí, Trúc Cơ, Kim Đan…); immortals "bổn tọa"/"ngươi".
+  * Cổ trang / cung đình Á Đông: king "trẫm"/"khanh", subject "thần"/"bệ hạ", officials "hạ quan"/"đại nhân", servants "nô tài"/"nô tì".
+  * Trung cổ / quý tộc phương Tây (knights, lords): nobles "ta"/"ngươi" or "tôi"/"ngài", knight to lord "thần"/"đức ngài"/"bệ hạ", commoner to noble "tôi"/"ngài" or "cháu"/"lão gia".
+  * Hiện đại (đời thường, công sở, học đường, y khoa, cảnh sát): "tôi"/"cậu", "tớ"/"cậu", "anh"/"em", "chú"/"cháu", boss–staff "tôi"/"sếp", doctor–patient "tôi"/"bác sĩ"; close friends "tao"/"mày" only here.
+  * Game / litRPG / hệ thống (tower, dungeon, hồi quy): keep Level, Skill, Stat, Dungeon, Hệ thống, thức tỉnh; players use the register of the world they are in; system windows address the reader as "bạn".
+  * Sci-fi / tận thế / cơ giáp: soldiers "ta"/"ngươi" or "tôi"/"cậu" by tone; AI/system "tôi"/"bạn".
+  * Quân đội: Vietnamese ranks, "thủ trưởng"/"tôi", "tôi"/"đồng chí", "thưa ngài".
+  * Kinh dị / tâm linh: exorcist "thầy"/"con", spirits "ta"/"ngươi", ordinary people "tôi"/"cậu".
+  * Gia đình / lãng mạn: "anh"/"em", "bố"/"mẹ"/"con", "tớ"/"cậu".
 </vietnamese>
 """.strip()
 
