@@ -584,10 +584,17 @@ class VisionPageTranslator:
 
     def detect_setting(self, original_path: Path, api_key: str) -> str | None:
         image = _read_image(Path(original_path))
-        result = request_vision_json(self.provider, self.model, api_key, setting_question(),
-                                     [("page", image)], max_tokens=2048, reasoning_effort="low",
-                                     stage="setting")
-        setting = parse_setting((result.data or {}).get("setting"))
+        setting = None
+        for budget in (4096, 8192):
+            try:
+                result = request_vision_json(self.provider, self.model, api_key, setting_question(),
+                                             [("page", image)], max_tokens=budget, reasoning_effort="low",
+                                             stage="setting")
+            except RuntimeError:
+                continue
+            setting = parse_setting((result.data or {}).get("setting"))
+            if setting:
+                break
         logger.info("Chapter setting detected: {}", setting or "unknown (general register)")
         return setting
 

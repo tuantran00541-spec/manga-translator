@@ -85,4 +85,31 @@ def test_detect_setting_parses_the_model_answer(monkeypatch):
     assert translator.detect_setting("page.png", "key") == "murim"
     assert seen["prompt"] == setting_question()
     assert len(seen["images"]) == 1
-    assert seen["max_tokens"] <= 2048
+    assert seen["max_tokens"] <= 8192
+
+
+def test_detect_setting_retries_when_reasoning_truncates_the_json(monkeypatch):
+    from app.translation import vision
+
+    class Result:
+        data = {"setting": "murim"}
+
+    calls = []
+
+    def fake(provider, model, api_key, prompt, images, **kw):
+        calls.append(kw.get("max_tokens"))
+        if len(calls) == 1:
+            raise RuntimeError("Vision model returned invalid JSON")
+        return Result()
+
+    monkeypatch.setattr(vision, "request_vision_json", fake)
+
+    class Provider:
+        label = "x"
+        supports_visual_qc = True
+
+    translator = vision.VisionPageTranslator(Provider(), "m")
+    import numpy as np
+    monkeypatch.setattr(vision, "_read_image", lambda p: np.zeros((8, 8, 3), dtype=np.uint8))
+    assert translator.detect_setting("page.png", "key") == "murim"
+    assert len(calls) == 2 and calls[1] > calls[0], "a truncated answer must retry with more headroom"
