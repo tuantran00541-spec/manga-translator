@@ -16,7 +16,7 @@ env:
   PYTHONPATH: "."
   PYTHONUNBUFFERED: "1"
   DATA_RUN: "38535523379"
-  START_RUN: ""
+  START_RUN: "40340455331"
 
 jobs:
   tune:
@@ -59,6 +59,8 @@ jobs:
           python -m pip install --only-binary :all: ultralytics==8.4.164 onnx==1.23.2 onnxslim==0.1.98
       - name: Add hard-case data (Total-Text hard + webtoon + AnimeText hard)
         run: python .github/kiuyha/fetch_hard.py kiuyha-data
+      - name: Add Nano missed-text cases (round 2)
+        run: python .github/kiuyha/fetch_nano_misses.py kiuyha-data
       - name: Tune
         run: |
           sed -i "s#^path: .*#path: $PWD/kiuyha-data#" kiuyha-data/data.yaml
