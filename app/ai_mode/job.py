@@ -681,6 +681,24 @@ class AIModeRunner:
         source_lang = manifest.get("source_lang") or site_language_hint(manifest.get("source_url")) or "auto"
         self.report["source_lang"] = source_lang
         indices = self._active_pages()
+        # One cheap call per chapter picks the story world; every slice then
+        # carries only that world's address register instead of the whole table.
+        if indices and not manifest.get("setting"):
+            try:
+                from app.translation.vision import VisionPageTranslator
+                original = validate_managed_path(manifest["pages"][indices[0]]["original"],
+                                                 RAW_DIR / self.job.chapter_id)
+                probe = VisionPageTranslator(self.provider, self.settings.model)
+                setting = await asyncio.to_thread(probe.detect_setting, original, self.api_key)
+                if setting:
+                    with get_manifest_lock(self.job.chapter_id):
+                        stored = load_manifest_raw(self.job.chapter_id)
+                        stored["setting"] = setting
+                        save_manifest_raw(self.job.chapter_id, stored)
+                    manifest["setting"] = setting
+                    self.report["setting"] = setting
+            except Exception as exc:
+                logger.warning("Setting detection failed; using the general register: {}", _detail(exc)[:150])
         try:
             glossary = await self._glossary_task if self._glossary_task else {}
         except Exception as exc:  # the glossary only helps; translation goes on without it

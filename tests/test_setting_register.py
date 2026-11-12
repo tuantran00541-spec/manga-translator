@@ -1,0 +1,71 @@
+"""The chapter's setting is detected once and only that world's address
+register rides along with each translation, instead of the whole table."""
+from app.translation import context
+from app.translation.context import (SETTING_REGISTERS, parse_setting, setting_question,
+                                     system_prompt, text_system_prompt)
+
+
+def test_only_the_chosen_register_is_sent():
+    prompt = system_prompt("Vietnamese", "vi", setting="murim")
+    assert "@@REGISTER@@" not in prompt
+    assert SETTING_REGISTERS["murim"] in prompt
+    for key, register in SETTING_REGISTERS.items():
+        if key != "murim":
+            assert register not in prompt, f"leaked register {key}"
+
+
+def test_unknown_setting_falls_back_to_the_general_rule():
+    prompt = system_prompt("Vietnamese", "vi", setting=None)
+    assert "@@REGISTER@@" not in prompt
+    assert "match the setting" in prompt
+    assert parse_setting("nonsense") is None
+    assert parse_setting(" MURIM ") == "murim"
+
+
+def test_one_register_is_cheaper_than_the_whole_table():
+    one = system_prompt("Vietnamese", "vi", setting="court")
+    whole = system_prompt("Vietnamese", "vi", setting=None).replace(
+        "match the setting", " ".join(SETTING_REGISTERS.values()))
+    assert len(one) < len(whole)
+
+
+def test_text_retranslate_gets_the_same_single_register():
+    prompt = text_system_prompt("Vietnamese", "vi", setting="court")
+    assert SETTING_REGISTERS["court"] in prompt
+    assert SETTING_REGISTERS["modern"] not in prompt
+
+
+def test_setting_question_lists_every_world():
+    question = setting_question()
+    for key in SETTING_REGISTERS:
+        assert f"- {key}:" in question
+    assert '{"setting"' in question
+
+
+def test_detect_setting_parses_the_model_answer(monkeypatch):
+    from app.translation import vision
+
+    class Result:
+        data = {"setting": "murim"}
+
+    seen = {}
+
+    def fake(provider, model, api_key, prompt, images, **kw):
+        seen["prompt"] = prompt
+        seen["images"] = images
+        seen["max_tokens"] = kw.get("max_tokens")
+        return Result()
+
+    monkeypatch.setattr(vision, "request_vision_json", fake)
+
+    class Provider:
+        label = "x"
+        supports_visual_qc = True
+
+    translator = vision.VisionPageTranslator(Provider(), "m")
+    import numpy as np
+    monkeypatch.setattr(vision, "_read_image", lambda p: np.zeros((8, 8, 3), dtype=np.uint8))
+    assert translator.detect_setting("page.png", "key") == "murim"
+    assert seen["prompt"] == setting_question()
+    assert len(seen["images"]) == 1
+    assert seen["max_tokens"] <= 200

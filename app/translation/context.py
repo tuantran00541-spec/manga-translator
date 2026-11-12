@@ -45,19 +45,57 @@ _VIETNAMESE = """
 - A pair in the glossary or CHAPTER MEMORY address is settled: use it for every line between those two, and report a new pair, or a change the story makes, in "address". Keep "bạn" for text that addresses the reader (system windows, notices). Narration and inner thoughts use the self form the narrator uses in dialogue.
 - Write natural speech: drop translationese ("Điều mà tôi muốn nói là…") and filler (thì, là, mà, một cách, những, các, đã/đang/sẽ when the time is clear); prefer the short word (vì, nếu, giờ). A bare subject may go when the scene makes it clear, but a line spoken to someone keeps the word that shows who they are to the speaker ("Ông trả công bao nhiêu?", not "Trả công bao nhiêu?").
 - Write every Vietnamese word with its full diacritics, and start each sentence with a capital letter.
-- Setting registers — pick by the world the art shows and keep one register per story:
-  * Võ lâm / kiếm hiệp / murim: rivals and enemies "ta"/"ngươi", peers "tại hạ"/"các hạ" or "huynh"/"đệ", sects "sư phụ"/"đệ tử", "sư huynh"/"sư đệ", "đạo hữu", "bổn tọa".
-  * Tu tiên / huyền huyễn: the kiếm-hiệp pairs plus Hán Việt realms (Luyện Khí, Trúc Cơ, Kim Đan…); immortals "bổn tọa"/"ngươi".
-  * Cổ trang / cung đình Á Đông: king "trẫm"/"khanh", subject "thần"/"bệ hạ", officials "hạ quan"/"đại nhân", servants "nô tài"/"nô tì".
-  * Trung cổ / quý tộc phương Tây (knights, lords): nobles "ta"/"ngươi" or "tôi"/"ngài", knight to lord "thần"/"đức ngài"/"bệ hạ", commoner to noble "tôi"/"ngài" or "cháu"/"lão gia".
-  * Hiện đại (đời thường, công sở, học đường, y khoa, cảnh sát): "tôi"/"cậu", "tớ"/"cậu", "anh"/"em", "chú"/"cháu", boss–staff "tôi"/"sếp", doctor–patient "tôi"/"bác sĩ"; close friends "tao"/"mày" only here.
-  * Game / litRPG / hệ thống (tower, dungeon, hồi quy): keep Level, Skill, Stat, Dungeon, Hệ thống, thức tỉnh; players use the register of the world they are in; system windows address the reader as "bạn".
-  * Sci-fi / tận thế / cơ giáp: soldiers "ta"/"ngươi" or "tôi"/"cậu" by tone; AI/system "tôi"/"bạn".
-  * Quân đội: Vietnamese ranks, "thủ trưởng"/"tôi", "tôi"/"đồng chí", "thưa ngài".
-  * Kinh dị / tâm linh: exorcist "thầy"/"con", spirits "ta"/"ngươi", ordinary people "tôi"/"cậu".
-  * Gia đình / lãng mạn: "anh"/"em", "bố"/"mẹ"/"con", "tớ"/"cậu".
+- Setting register for this chapter: @@REGISTER@@
 </vietnamese>
 """.strip()
+
+# One register per story world. The chapter's setting is detected once (see
+# setting_question) and only that world's line is sent with each translation,
+# instead of the whole table, to keep the cached system prompt small.
+SETTING_REGISTERS = {
+    "murim": 'Võ lâm / kiếm hiệp / murim: rivals and enemies "ta"/"ngươi", peers "tại hạ"/"các hạ" or "huynh"/"đệ", sects "sư phụ"/"đệ tử", "sư huynh"/"sư đệ", "đạo hữu", "bổn tọa"; never modern "tao"/"mày".',
+    "cultivation": 'Tu tiên / huyền huyễn: the kiếm-hiệp pairs (ta/ngươi, sư phụ/đệ tử, đạo hữu, bổn tọa) plus Hán Việt realms (Luyện Khí, Trúc Cơ, Kim Đan…); immortals "bổn tọa"/"ngươi".',
+    "court": 'Cổ trang / cung đình Á Đông: king "trẫm"/"khanh", subject "thần"/"bệ hạ", officials "hạ quan"/"đại nhân", servants "nô tài"/"nô tì".',
+    "western": 'Trung cổ / quý tộc phương Tây (knights, lords): nobles "ta"/"ngươi" or "tôi"/"ngài", knight to lord "thần"/"đức ngài"/"bệ hạ", commoner to noble "tôi"/"ngài" or "cháu"/"lão gia".',
+    "modern": 'Hiện đại (đời thường, công sở, học đường, y khoa, cảnh sát): "tôi"/"cậu", "tớ"/"cậu", "anh"/"em", "chú"/"cháu", boss–staff "tôi"/"sếp", doctor–patient "tôi"/"bác sĩ"; close friends "tao"/"mày" only here.',
+    "game": 'Game / litRPG / hệ thống (tower, dungeon, hồi quy): keep Level, Skill, Stat, Dungeon, Hệ thống, thức tỉnh; players use the register of the world they are in; system windows address the reader as "bạn".',
+    "scifi": 'Sci-fi / tận thế / cơ giáp: soldiers "ta"/"ngươi" or "tôi"/"cậu" by tone; AI/system "tôi"/"bạn".',
+    "military": 'Quân đội: Vietnamese ranks, "thủ trưởng"/"tôi", "tôi"/"đồng chí", "thưa ngài".',
+    "horror": 'Kinh dị / tâm linh: exorcist "thầy"/"con", spirits "ta"/"ngươi", ordinary people "tôi"/"cậu".',
+    "family": 'Gia đình / lãng mạn: "anh"/"em", "bố"/"mẹ"/"con", "tớ"/"cậu".',
+}
+DEFAULT_SETTING = "modern"
+_GENERAL_REGISTER = ('match the setting: martial-arts/historical worlds use "ta"/"ngươi" (king "trẫm", subject "thần"/"bệ hạ"), '
+                     'modern worlds use "tôi"/"cậu" or "tớ"/"cậu"; never mix registers.')
+
+
+def setting_register(setting: str | None) -> str:
+    return SETTING_REGISTERS.get(str(setting or "").strip().lower(), _GENERAL_REGISTER)
+
+
+def parse_setting(value) -> str | None:
+    key = str(value or "").strip().lower()
+    return key if key in SETTING_REGISTERS else None
+
+
+def setting_question() -> str:
+    options = "\n".join(f"- {key}: {desc}" for key, desc in SETTING_DESCRIPTIONS.items())
+    return ("Look at the page and classify the story's setting. Answer with JSON only: "
+            '{"setting":"<one key>"}.\nKeys:\n' + options)
+
+
+SETTING_DESCRIPTIONS = {
+    "murim": "martial-arts / wuxia / murim world (swords, sects, robes, inner energy)",
+    "cultivation": "cultivation / xianxia (realms, immortals, dao)",
+    "court": "eastern historical court (king, mandarins, palace)",
+    "western": "western medieval / fantasy nobility (knights, lords, castles)",
+    "modern": "modern day (city, school, office, hospital, police)",
+    "game": "game / litRPG / system (levels, skills, dungeons, tower)",
+    "scifi": "sci-fi / apocalypse / mecha (space, machines, future)",
+    "military": "army / war (soldiers, ranks, battlefield)",
+    "horror": "horror / spiritual (ghosts, exorcists)",
+    "family": "family / romance / slice of life",
+}
 
 _OUTPUT = """
 <output>
@@ -72,10 +110,11 @@ Every id appears once in translations. characters and address hold only what is 
 """.strip()
 
 
-def system_prompt(target_name: str, target_lang: str, settled: dict | None = None) -> str:
+def system_prompt(target_name: str, target_lang: str, settled: dict | None = None,
+                  setting: str | None = None) -> str:
     parts = [_TASK.format(target=target_name)]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
-        parts.append(_VIETNAMESE)
+        parts.append(_VIETNAMESE.replace("@@REGISTER@@", setting_register(setting)))
     parts.append(_OUTPUT.format())
     if settled:
         # What the chapter settled before translating sits in the system text, which the provider caches.
@@ -108,11 +147,12 @@ Every id appears once in translations.
 """.strip()
 
 
-def text_system_prompt(target_name: str, target_lang: str, settled: dict | None = None) -> str:
+def text_system_prompt(target_name: str, target_lang: str, settled: dict | None = None,
+                       setting: str | None = None) -> str:
     """The vision system prompt's conventions, rewritten for a text-only re-translate: no image, no roles."""
     parts = [_TEXT_TASK.format(target=target_name)]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
-        parts.append(_VIETNAMESE)
+        parts.append(_VIETNAMESE.replace("@@REGISTER@@", setting_register(setting)))
     parts.append(_TEXT_OUTPUT.format())
     if settled:
         parts.append("<chapter_glossary>\n" + json.dumps(settled, ensure_ascii=False, separators=(",", ":"))

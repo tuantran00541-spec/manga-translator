@@ -453,6 +453,7 @@ async def translate_page_in_context(
             translator.translate_page, original_path, clean_path, candidates,
             api_key=api_key, source_lang=req.source_lang, target_lang=req.target_lang,
             memory=memory, slice_number=req.page_index + 1, slice_total=slice_total, elsewhere=elsewhere,
+            setting=manifest.get("setting"),
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

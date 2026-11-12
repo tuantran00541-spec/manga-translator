@@ -16,7 +16,7 @@ from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.render.font_guide import DEFAULT_LETTERING_FONT, font_for
-from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt, text_system_prompt
+from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt, text_system_prompt, setting_question, parse_setting
 from app.translation.cost import language_name, response_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini, _read_image
@@ -629,7 +629,7 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
 def retranslate_text(
     provider: AIProvider, model: str, api_key: str, pairs: list[tuple[str, str]],
     *, source_lang: str, target_lang: str, memory_snapshot: dict | None = None,
-    settled: dict | None = None, max_tokens: int = 65536,
+    settled: dict | None = None, setting: str | None = None, max_tokens: int = 65536,
 ) -> tuple[dict[str, str], float | None, dict]:
     """Re-translate (id, source-text) pairs with a text-only model.
 
@@ -649,7 +649,7 @@ def retranslate_text(
     # The same conventions the vision call translates under; without them the text
     # model writes literal, unidiomatic Vietnamese (a bare "translate this" prompt).
     prompt = (
-        text_system_prompt(language_name(target_lang), target_lang, settled)
+        text_system_prompt(language_name(target_lang), target_lang, settled, setting=setting)
         + "\n\n"
         + (f"CHAPTER MEMORY (context from earlier slices, not to be copied into the answer): "
            f"{json.dumps(memory_snapshot, ensure_ascii=False, separators=(',', ':'))}\n\n"
@@ -691,11 +691,19 @@ class VisionPageTranslator:
             translate_provider, translate_model, translate_api_key,
         )
 
+    def detect_setting(self, original_path: Path, api_key: str) -> str | None:
+        """One cheap call per chapter: ask the model which story world this is,
+        so each translation then carries only that world's address register."""
+        image = _read_image(Path(original_path))
+        result = request_vision_json(self.provider, self.model, api_key, setting_question(),
+                                     [("page", image)], max_tokens=200, stage="setting")
+        return parse_setting((result.data or {}).get("setting"))
+
     def translate_page(
         self, original_path: Path, cleaned_path: Path, items: list[dict],
         *, api_key: str, source_lang: str, target_lang: str,
         memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
-        elsewhere: list | tuple = (), _max_tokens: int = 1000000,
+        elsewhere: list | tuple = (), setting: str | None = None, _max_tokens: int = 1000000,
     ) -> VisionTranslationResult:
         if not api_key.strip():
             raise ValueError(f"{self.provider.label} API key is not configured")
@@ -705,7 +713,7 @@ class VisionPageTranslator:
             return self._translate_batch(
                 original_path, cleaned_path, items, api_key=api_key, source_lang=source_lang,
                 target_lang=target_lang, memory=memory, slice_number=slice_number,
-                slice_total=slice_total, elsewhere=elsewhere, max_tokens=_max_tokens,
+                slice_total=slice_total, elsewhere=elsewhere, setting=setting, max_tokens=_max_tokens,
             )
         except RuntimeError as exc:
             if "finish_reason=length" not in str(exc):
@@ -717,12 +725,12 @@ class VisionPageTranslator:
                 first = self.translate_page(
                     original_path, cleaned_path, items[:mid], api_key=api_key, source_lang=source_lang,
                     target_lang=target_lang, memory=memory, slice_number=slice_number,
-                    slice_total=slice_total, elsewhere=elsewhere, _max_tokens=_max_tokens,
+                    slice_total=slice_total, elsewhere=elsewhere, setting=setting, _max_tokens=_max_tokens,
                 )
                 second = self.translate_page(
                     original_path, cleaned_path, items[mid:], api_key=api_key, source_lang=source_lang,
                     target_lang=target_lang, memory=memory, slice_number=slice_number,
-                    slice_total=slice_total, elsewhere=elsewhere, _max_tokens=_max_tokens,
+                    slice_total=slice_total, elsewhere=elsewhere, setting=setting, _max_tokens=_max_tokens,
                 )
                 return _merge_translation_results(first, second)
             if _max_tokens < 16384:
@@ -731,7 +739,7 @@ class VisionPageTranslator:
                 return self.translate_page(
                     original_path, cleaned_path, items, api_key=api_key, source_lang=source_lang,
                     target_lang=target_lang, memory=memory, slice_number=slice_number,
-                    slice_total=slice_total, elsewhere=elsewhere,
+                    slice_total=slice_total, elsewhere=elsewhere, setting=setting,
                     _max_tokens=min(16384, _max_tokens * 2),
                 )
             raise
@@ -740,7 +748,7 @@ class VisionPageTranslator:
         self, original_path: Path, cleaned_path: Path, items: list[dict],
         *, api_key: str, source_lang: str, target_lang: str,
         memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
-        elsewhere: list | tuple = (), max_tokens: int = 1000000,
+        elsewhere: list | tuple = (), setting: str | None = None, max_tokens: int = 1000000,
     ) -> VisionTranslationResult:
         original, cleaned = _read_image(original_path), _read_image(cleaned_path)
         if original.shape[:2] != cleaned.shape[:2]:
@@ -756,7 +764,8 @@ class VisionPageTranslator:
             if str(source_lang or "").lower() in {"", "auto"}
             else language_name(source_lang)
         )
-        system = system_prompt(language_name(target_lang), target_lang, memory.settled() if memory is not None else None)
+        system = system_prompt(language_name(target_lang), target_lang, memory.settled() if memory is not None else None,
+                               setting=setting)
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
             (f"CHAPTER MEMORY (context from earlier slices, not to be copied into the answer): "
@@ -805,6 +814,7 @@ class VisionPageTranslator:
                     pairs, source_lang=source_lang, target_lang=target_lang,
                     memory_snapshot=memory.snapshot(settled=False) if memory is not None else None,
                     settled=memory.settled() if memory is not None else None,
+                    setting=setting,
                 )
             except (RuntimeError, ValueError, OSError) as exc:
                 # The second pass is a wording upgrade, not the translation:
