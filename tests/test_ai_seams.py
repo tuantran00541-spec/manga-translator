@@ -47,6 +47,15 @@ def test_a_bubble_only_one_slice_has_is_translated_there():
     assert seam_mirror_ids(manifest, 0) == set()
 
 
+def test_separate_lobes_of_a_double_bubble_are_not_mirrored(monkeypatch):
+    from app.ai_mode import seams
+
+    manifest = _chapter()
+    assert seam_mirror_ids(manifest, 0) == {"a"}
+    monkeypatch.setattr(seams, "_separate_lobes", lambda a, b: True)
+    assert seam_mirror_ids(manifest, 0) == set(), "two lobes of one waist must not letter each other"
+
+
 def test_a_duplicate_far_from_the_keeper_keeps_its_own_region():
     from app.ai_mode.seams import drop_overlapping_letters
 

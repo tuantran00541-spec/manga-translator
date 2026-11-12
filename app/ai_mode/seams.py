@@ -208,6 +208,8 @@ def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = Fals
             continue
         if not _source_texts_agree(obj, best[0]):
             continue
+        if _separate_lobes(obj, best[0]):
+            continue
         center = (min(rect[1], best[1][1]) + max(rect[3], best[1][3])) / 2
         if other_core[1] <= center < other_core[2]:
             return other_index, best[0]
