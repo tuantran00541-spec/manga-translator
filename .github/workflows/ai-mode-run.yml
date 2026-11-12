@@ -97,6 +97,12 @@ jobs:
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
         run: python scripts/wire_minirouter_provider.py
 
+      - name: Wire the Gemini provider from the repo secret
+        if: inputs.translate_provider == 'gemini'
+        env:
+          GEMINI_API_KEY: ${{ secrets.gemini }}
+        run: python scripts/wire_gemini_provider.py
+
       - name: Start the app server
         run: |
           nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &

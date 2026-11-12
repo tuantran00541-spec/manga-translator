@@ -118,6 +118,10 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
     return VisionJSONResult(parse_json_object(answer), usage, cost)
 
 
+def _thinking_level(model: str) -> str:
+    return "minimal" if str(model or "").lower().startswith("gemma-") else "low"
+
+
 def _gemini(model, api_key, prompt, encoded, *, schema, max_tokens) -> VisionJSONResult:
     inputs: list[dict] = [{"type": "text", "text": prompt}]
     for label, data in encoded:
@@ -131,7 +135,7 @@ def _gemini(model, api_key, prompt, encoded, *, schema, max_tokens) -> VisionJSO
         "store": False,
         "input": inputs,
         "response_format": response_format,
-        "generation_config": {"thinking_level": "low", "max_output_tokens": max_tokens},
+        "generation_config": {"thinking_level": _thinking_level(model), "max_output_tokens": max_tokens},
     }
     try:
         response = requests.post(

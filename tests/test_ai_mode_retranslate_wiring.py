@@ -361,3 +361,30 @@ def test_retranslate_text_with_no_translations_keeps_the_vision_wording(monkeypa
     out, _, _ = retranslate_text(cloud_provider(), TRANSLATE_MODEL, "job-token", [("a", "Hello")],
                                  source_lang="en", target_lang="vi")
     assert out == {}
+
+
+def test_gemini_retranslate_uses_minimal_thinking_for_gemma(monkeypatch):
+    import app.ai_mode.vision_json as vision_json
+    from app.ai_providers import PROVIDERS
+    from app.ai_mode.vision_json import request_vision_json
+
+    seen = {}
+
+    class FakeResponse:
+        ok = True
+
+        def json(self):
+            return {"steps": [{"type": "model_output",
+                               "content": [{"type": "text", "text": '{"translations": []}' }]}],
+                    "usage": {}}
+
+    def fake_post(url, *, headers, json, timeout, allow_redirects):
+        seen.update(url=url, payload=json)
+        return FakeResponse()
+
+    monkeypatch.setattr(vision_json.requests, "post", fake_post)
+    request_vision_json(PROVIDERS["gemini"], "gemma-4-31b-it", "k", "prompt", [], max_tokens=2048)
+    assert seen["url"] == "https://generativelanguage.googleapis.com/v1beta/interactions"
+    assert seen["payload"]["generation_config"]["thinking_level"] == "minimal"
+    request_vision_json(PROVIDERS["gemini"], "gemini-3.7-flash", "k", "prompt", [], max_tokens=2048)
+    assert seen["payload"]["generation_config"]["thinking_level"] == "low"
