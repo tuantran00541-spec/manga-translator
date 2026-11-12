@@ -11,10 +11,14 @@ on:
         description: "Repo-relative path to a chapter zip of page images (exactly one of chapter_url and chapter_zip)"
         required: false
         default: ""
+      provider:
+        description: "Vision provider (reads the images)"
+        required: false
+        default: "gemini"
       model:
         description: "Model id (vision: reads the images, judges role/container for font choice)"
         required: false
-        default: "nvidia/nemotron-3.5-super-vl-120b-a12b"
+        default: "gemma-4-31b-it"
       translate_provider:
         description: "Second provider that re-translates the source lines (unset = vision model's wording stands)"
         required: false
@@ -98,12 +102,15 @@ jobs:
         run: python scripts/wire_minirouter_provider.py
 
       - name: Wire the Gemini provider from the repo secret
-        if: inputs.translate_provider == 'gemini'
+        if: inputs.provider == 'gemini' || inputs.translate_provider == 'gemini'
         env:
           GEMINI_API_KEY: ${{ secrets.gemini }}
         run: python scripts/wire_gemini_provider.py
 
       - name: Start the app server
+        env:
+          PROVIDER: ${{ inputs.provider }}
+          TRANSLATE_PROVIDER: ${{ inputs.translate_provider }}
         run: |
           nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
           for i in $(seq 1 60); do
@@ -111,11 +118,12 @@ jobs:
             sleep 5
           done
           curl -fsS http://127.0.0.1:8000/api/visual_qc/settings | python -c "
-          import sys, json
+          import sys, json, os
           d = json.load(sys.stdin)
-          ok = d['providers']['nvidia']['configured'] and d['providers']['minirouter']['configured']
-          print('nvidia configured:', d['providers']['nvidia']['configured'])
-          print('minirouter configured:', d['providers']['minirouter']['configured'])
+          prov = os.environ['PROVIDER']; tr = os.environ['TRANSLATE_PROVIDER']
+          ok = d['providers'][prov]['configured'] and (not tr or d['providers'][tr]['configured'])
+          print(prov, 'configured:', d['providers'][prov]['configured'])
+          print(tr, 'configured:', d['providers'][tr]['configured'] if tr else 'n/a')
           sys.exit(0 if ok else 1)
           "
 
@@ -123,6 +131,7 @@ jobs:
         env:
           CHAPTER_ZIP: ${{ inputs.chapter_zip }}
           CHAPTER_URL: ${{ inputs.chapter_url }}
+          PROVIDER: ${{ inputs.provider }}
           MODEL: ${{ inputs.model }}
           TARGET_LANG: ${{ inputs.target_lang }}
           BUDGET_USD: ${{ inputs.budget_usd }}
@@ -135,7 +144,7 @@ jobs:
           else
             SRC_ARGS=(--url "$CHAPTER_URL")
           fi
-          python scripts/ai_mode_run.py "${SRC_ARGS[@]}" --provider nvidia --model "$MODEL" --target-lang "$TARGET_LANG" --budget-usd "$BUDGET_USD" --images-per-request "$IMAGES_PER_REQUEST" --translate-provider "$TRANSLATE_PROVIDER" --translate-model "$TRANSLATE_MODEL"
+          python scripts/ai_mode_run.py "${SRC_ARGS[@]}" --provider "$PROVIDER" --model "$MODEL" --target-lang "$TARGET_LANG" --budget-usd "$BUDGET_USD" --images-per-request "$IMAGES_PER_REQUEST" --translate-provider "$TRANSLATE_PROVIDER" --translate-model "$TRANSLATE_MODEL"
 
       - name: Upload rendered chapter
         if: always()
