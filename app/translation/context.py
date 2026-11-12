@@ -45,6 +45,8 @@ _VIETNAMESE = """
 - A pair in the glossary or CHAPTER MEMORY address is settled: use it for every line between those two, and report a new pair, or a change the story makes, in "address". Keep "bạn" for text that addresses the reader (system windows, notices) — except in martial-arts / cultivation worlds, where the reader is addressed as "ngươi", never "bạn". Narration and inner thoughts use the self form the narrator uses in dialogue.
 - Write natural speech: drop translationese ("Điều mà tôi muốn nói là…") and filler (thì, là, mà, một cách, những, các, đã/đang/sẽ when the time is clear); prefer the short word (vì, nếu, giờ). A bare subject may go when the scene makes it clear, but a line spoken to someone keeps the word that shows who they are to the speaker ("Ông trả công bao nhiêu?", not "Trả công bao nhiêu?").
 - Write every Vietnamese word with its full diacritics, and start each sentence with a capital letter.
+- One name per character, one reading per term: never add a second glossary/character entry for the same person or technique under another language or spelling — reuse the settled entry. Keep sword="kiếm", saber/blade="đao" consistent, and a single translation per source term across the chapter.
+- Titles, skill names and free text must stay legible: when the source art lettering is small, letter them at a readable display size (set enlarge), not at the tiny source size.
 - Setting register for this chapter: @@REGISTER@@
 </vietnamese>
 """.strip()

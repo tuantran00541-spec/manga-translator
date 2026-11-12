@@ -182,3 +182,14 @@ def test_map_seam_detection_to_page_shrinks_the_box_to_a_short_mask():
     assert mapped is not None
     assert (mapped.y1, mapped.y2) == (0, 2)
     assert mapped.mask is not None and mapped.mask.shape == (2, 3)
+
+
+def test_ink_component_cut_by_the_box_is_still_repaired():
+    from app.detector.mask_builder import _component_in_box
+
+    rect = (100, 100, 200, 200)
+    assert _component_in_box(100, 100, 100, 100, rect)
+    # a stroke the box cut by a few pixels (within the 3% margin) is the box's own ink
+    assert _component_in_box(98, 98, 104, 104, rect)
+    # a shape far larger than the box is art, not a letter
+    assert not _component_in_box(50, 50, 300, 300, rect)

@@ -95,7 +95,7 @@ def _component_in_box(x: int, y: int, w: int, h: int,
                       rect: tuple[int, int, int, int]) -> bool:
     bx1, by1, bx2, by2 = rect
     margin = 0.03 * min(bx2 - bx1, by2 - by1)
-    return (w <= bx2 - bx1 and h <= by2 - by1
+    return (w <= (bx2 - bx1) + 2 * margin and h <= (by2 - by1) + 2 * margin
             and x >= bx1 - margin and y >= by1 - margin
             and x + w <= bx2 + margin and y + h <= by2 + margin)
 
