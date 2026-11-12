@@ -43,6 +43,18 @@ def test_murim_and_cultivation_letter_names_in_han_viet():
     assert "Hán Việt" not in SETTING_REGISTERS["modern"]
 
 
+def test_murim_cultivation_and_general_ban_modern_pronouns():
+    # murim / xianxia worlds never use bạn/tôi/cậu/tớ, not even to an AI/system
+    for key in ("murim", "cultivation"):
+        register = SETTING_REGISTERS[key]
+        for word in ("bạn", "tôi", "cậu", "tớ"):
+            assert word in register, f"{key} register must ban {word}"
+    assert "bạn" in context._GENERAL_REGISTER
+    assert "tôi" in context._GENERAL_REGISTER
+    prompt = system_prompt("Vietnamese", "vi", setting="murim")
+    assert "not even when speaking to an AI" in prompt
+
+
 def test_setting_question_lists_every_world():
     question = setting_question()
     for key in SETTING_REGISTERS:
