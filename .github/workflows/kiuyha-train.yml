@@ -15,11 +15,11 @@ env:
   OUT: audit-results/kiuyha-train/run-${{ github.run_id }}
   PYTHONPATH: "."
   PYTHONUNBUFFERED: "1"
-  DATA_RUN: "38535523379"
+  DATA_RELEASE: "kiuyha-data-full-v1"
 
 jobs:
   data:
-    if: true
+    if: false
     runs-on: ubuntu-22.04
     timeout-minutes: 150
     steps:
@@ -66,12 +66,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: actions/download-artifact@v4
-        with:
-          name: kiuyha-data
-          path: .
-          run-id: ${{ env.DATA_RUN }}
-          github-token: ${{ github.token }}
+      - name: Fetch the full kiuyha-data set (release parts)
+        run: |
+          for i in 00 01 02 03 04 05; do
+            curl --proto '=https' --tlsv1.2 -sSfL -o "kiuyha-data-full-v1.zip.$i" "https://github.com/tuantran00541-spec/manga-translator/releases/download/${{ env.DATA_RELEASE }}/kiuyha-data-full-v1.zip.$i"
+          done
+          cat kiuyha-data-full-v1.zip.0* > kiuyha-data-full-v1.zip
+          echo "89f86a91ee1707f3e3fe132c054bba4fe88939a41daea0354308d56119b79293  kiuyha-data-full-v1.zip" | sha256sum -c -
+          unzip -q kiuyha-data-full-v1.zip
+          rm kiuyha-data-full-v1.zip*
+          test -f kiuyha-data/data.yaml
+          python -c "import json; s=json.load(open('kiuyha-data/stats.json')); print(s); assert s['train'] >= 8000, s"
       - uses: actions/download-artifact@v4
         with:
           name: kiuyha-tuned-all
