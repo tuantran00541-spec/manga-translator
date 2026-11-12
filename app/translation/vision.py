@@ -695,9 +695,14 @@ class VisionPageTranslator:
         """One cheap call per chapter: ask the model which story world this is,
         so each translation then carries only that world's address register."""
         image = _read_image(Path(original_path))
+        # Reasoning vision models spend tokens thinking before the JSON; a tiny
+        # cap truncates the answer, so give headroom and keep reasoning low.
         result = request_vision_json(self.provider, self.model, api_key, setting_question(),
-                                     [("page", image)], max_tokens=200, stage="setting")
-        return parse_setting((result.data or {}).get("setting"))
+                                     [("page", image)], max_tokens=2048, reasoning_effort="low",
+                                     stage="setting")
+        setting = parse_setting((result.data or {}).get("setting"))
+        logger.info("Chapter setting detected: {}", setting or "unknown (general register)")
+        return setting
 
     def translate_page(
         self, original_path: Path, cleaned_path: Path, items: list[dict],

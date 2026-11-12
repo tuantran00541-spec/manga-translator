@@ -76,4 +76,4 @@ def test_detect_setting_parses_the_model_answer(monkeypatch):
     assert translator.detect_setting("page.png", "key") == "murim"
     assert seen["prompt"] == setting_question()
     assert len(seen["images"]) == 1
-    assert seen["max_tokens"] <= 200
+    assert seen["max_tokens"] <= 2048
