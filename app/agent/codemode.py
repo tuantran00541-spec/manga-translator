@@ -41,7 +41,6 @@ MAX_CALLS = 200
 def run(code: str, policy: sandbox.Policy, root: Path, timeout: int, call_tool) -> tuple[int | None, str, int]:
     """(exit code or None on timeout, output, tool calls made); call_tool(name, args) returns (output, ok)."""
     if policy.mode != "full-access" and sandbox.backend() in ("docker", "low-integrity"):
-        # The script talks to the agent over inherited pipes, which a container or a Windows token switch does not carry.
         return _run_plain(code, policy, root, timeout)
     scratch = tempfile.mkdtemp(prefix="agent-script-")
     try:
@@ -110,7 +109,6 @@ def _run_plain(code: str, policy: sandbox.Policy, root: Path, timeout: int) -> t
     try:
         Path(scratch, "script.py").write_text(PLAIN + code, encoding="utf-8")
         docker = sandbox.backend() == "docker"
-        # Inside the container the scratch folder is /tmp and the image brings its own Python.
         command = "python3 /tmp/script.py" if docker else subprocess.list2cmdline([sys.executable, str(Path(scratch, "script.py"))])
         target, shell = sandbox.wrap(command, policy, root, scratch)
         proc = subprocess.Popen(target, shell=shell, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,

@@ -19,7 +19,6 @@ def _inpainter(dynamic: bool):
 
 @pytest.mark.parametrize("dynamic", [True, False])
 def test_padding_marks_text_cut_by_the_crop_edge_as_masked(dynamic):
-    # White text touching the top edge, as in a slice cut through an SFX.
     crop = np.full((45, 61, 3), 30, np.uint8)
     crop[:10, 20:40] = 255
     mask = np.zeros((45, 61), np.uint8)
@@ -36,7 +35,6 @@ def test_padding_marks_text_cut_by_the_crop_edge_as_masked(dynamic):
 
 @pytest.mark.parametrize("size", [(600, 216), (700, 250), (45, 61), (512, 200)])
 def test_the_dynamic_model_only_sees_sides_that_are_multiples_of_16(size):
-    # A 600x216 crop became a 184-wide canvas and the model raised on it, failing the whole page.
     inpainter, seen = _inpainter(True)
     crop = np.full((*size, 3), 90, np.uint8)
     mask = np.zeros(size, np.uint8)

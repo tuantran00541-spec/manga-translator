@@ -46,7 +46,7 @@ async function finishSuccessfulProcessing(chapterId) {
   if (chapterId !== currentChapterId) return;
   if (document.body?.dataset?.appStage === "preview") {
     renderReview();
-    // New users found empty source text after processing; reading it starts right away.
+    
     window.startChapterOCR?.({ auto: true });
   }
 }
@@ -72,9 +72,9 @@ async function finishFailedProcessing(chapterId, snapshot, { reconnect = false }
 let monitoredProcessingJobId = null;
 async function monitorProcessingJob(initialSnapshot, chapterId, options = {}) {
   const jobId = initialSnapshot?.job_id ?? null;
-  // One monitor per job: a resume/reconnect while the original monitor is
-  // still polling must not start a second loop that double-finishes (and
-  // double-starts OCR) when the job completes.
+  
+  
+  
   if (jobId && monitoredProcessingJobId === jobId) return initialSnapshot;
   monitoredProcessingJobId = jobId;
   try {

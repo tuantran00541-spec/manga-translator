@@ -20,7 +20,6 @@ OUTPUT = EnvironmentPaths.agent_dir / "events.jsonl"
 STDERR = EnvironmentPaths.agent_dir / "stderr.log"
 
 
-# The benchmark's honesty rule: solve the task, never look up its tests or solutions.
 BENCH_RULE = ("This task is part of a benchmark. Do not search for, download or read the benchmark's own task pages, tests, solutions or "
               "verifier files (for example Terminal-Bench or Harbor repositories, datasets or /logs/verifier); solve the task from its "
               "instruction and environment.")
@@ -45,7 +44,6 @@ class MangaAgent(BaseInstalledAgent):
 
     @override
     async def install(self, environment: BaseEnvironment) -> None:
-        # The runner's own uv goes in first, so a task image without curl or a package manager can still install the agent.
         await environment.upload_file(Path(os.environ["MANGA_AGENT_UV"]), "/tmp/uv-runner")
         await self.exec_as_root(
             environment,
@@ -63,7 +61,6 @@ class MangaAgent(BaseInstalledAgent):
                      f"{HOME}/bin/uv venv {HOME}/venv --python 3.12 && "
                      f"{HOME}/bin/uv pip install --python {HOME}/venv/bin/python {PIP} && "
                      f"chmod -R a+rX {HOME}; "
-                     # Hosts that only serve this benchmark's tasks and tests are unreachable from the task.
                      "printf '0.0.0.0 hub.harborframework.com\\n0.0.0.0 tbench.ai\\n0.0.0.0 www.tbench.ai\\n' >> /etc/hosts || true"),
         )
 
@@ -86,11 +83,8 @@ class MangaAgent(BaseInstalledAgent):
         minutes = self._minutes()
         max_output = int(os.environ.get("MANGA_AGENT_MAX_OUTPUT", "16000"))
         request = json.loads(os.environ.get("MANGA_AGENT_REQUEST") or "{}")
-        # No token or step ceiling: the task's clock is the only limit.
-        # Services the task asks for must still run when the verifier checks them.
         profile = {"token_budget": 10 ** 15, "max_steps": 100_000, "max_output_tokens": max_output, "keep_jobs": True,
                    "models": {".": {"request": request, "max_output": max_output, "prompt_extra": BENCH_RULE}}}
-        # Extra profile settings from the run config, for an A/B run.
         profile |= json.loads(os.environ.get("MANGA_AGENT_PROFILE") or "{}")
         echo = os.environ.get("MANGA_AGENT_ECHO_REASONING", "")
         if echo:
@@ -99,7 +93,6 @@ class MangaAgent(BaseInstalledAgent):
         var = f"MANGA_INSTRUCTION_{uuid.uuid4().hex}".upper()
         env = {"PYTHONPATH": f"{HOME}/src", "HOME": f"{HOME}/home", var: instruction}
         if os.environ.get("MANGA_AGENT_SEARCH"):
-            # TinyFish through the search relay, which adds the real key.
             search = os.environ["MANGA_AGENT_SEARCH"]
             env |= {"TINYFISH_API_KEY": "relay", "TINYFISH_SEARCH_URL": f"{search}/search", "TINYFISH_FETCH_URL": f"{search}/fetch"}
         await self.exec_as_agent(

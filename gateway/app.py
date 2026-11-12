@@ -22,18 +22,16 @@ from gateway.store import InvalidToken, LoginRejected, QuotaExceeded, Store
 
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,63}$")
 MAX_OUTPUT_TOKENS = 8192
-MAX_BODY_BYTES = 32 * 1024 * 1024  # a request carries at most a few JPEG slices
+MAX_BODY_BYTES = 32 * 1024 * 1024
 MAX_IMAGES = 24
 PURGE_EVERY_S = 6 * 3600
-# Only these fields reach the upstream; tools, logprobs and the like would add cost or reach beyond the job.
 FORWARDED_FIELDS = frozenset({"messages", "max_tokens", "response_format", "temperature", "top_p", "seed", "stop"})
 ROLES = frozenset({"system", "user", "assistant"})
-# A client may ask for more thinking on one request; the gateway adds room for it.
 REASONING_BUDGETS = {"none": 0, "minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}
 
 
-STAGES = frozenset({"scan", "glossary", "review", "translate", "retranslate", "polish"})  # A.I mode checkpoints a client may name
-MAX_JUDGE_STATE_CHARS = 8000  # one translated line with its neighbours and notes
+STAGES = frozenset({"scan", "glossary", "review", "translate", "retranslate", "polish"})
+MAX_JUDGE_STATE_CHARS = 8000
 MAX_JUDGE_QUESTIONS = 8
 
 
@@ -44,9 +42,9 @@ class Route:
     input_usd_per_m: float
     output_usd_per_m: float
     cached_usd_per_m: float | None = None
-    reasoning_effort: str | None = None  # this model's thinking level, whatever the request asked
-    base: str | None = None  # another provider's API base for this model; None uses the upstream's
-    api_key: str = field(default="", repr=False)  # that provider's key, read from the env var the route names
+    reasoning_effort: str | None = None
+    base: str | None = None
+    api_key: str = field(default="", repr=False)
 
     def cost(self, usage: dict) -> float:
         prompt = max(0, int(usage.get("prompt_tokens") or 0))
@@ -65,18 +63,16 @@ class Upstream:
     input_usd_per_m: float
     output_usd_per_m: float
     reasoning_tokens: int = 0
-    reasoning_effort: str = ""  # "low", "medium" or "high"; empty leaves the model's default
-    cached_usd_per_m: float | None = None  # price of cache-hit prompt tokens; None bills them as input
-    # Extra attempts after a dropped connection, a timeout, 429 or 5xx.
+    reasoning_effort: str = ""
+    cached_usd_per_m: float | None = None
     retries: int = 2
     retry_wait_s: float = 2.0
-    # Step name -> Routes tried in order; a later one answers when an earlier one is overloaded or failing.
     stages: dict = field(default_factory=dict)
-    fallbacks: tuple = ()  # the same for requests that name no step
-    judge_model: str = ""  # a decision model that grades translated lines; empty turns /v1/evaluate off
-    judge_usd_per_m: float = 0.0  # its price per million input tokens; its answers are free
-    auth: str = "bearer"  # "api-key" sends the key in an api-key header, as Azure OpenAI keys go
-    max_tokens_field: str = "max_tokens"  # newer OpenAI and Azure models take max_completion_tokens instead
+    fallbacks: tuple = ()
+    judge_model: str = ""
+    judge_usd_per_m: float = 0.0
+    auth: str = "bearer"
+    max_tokens_field: str = "max_tokens"
 
     @property
     def default(self) -> Route:
@@ -101,7 +97,6 @@ class Upstream:
         models = models or [payload.get("model")]
         for attempt in range(self.retries + 1):
             last = attempt == self.retries
-            # An overloaded model is not waited on while another one can answer.
             route = models[min(attempt, len(models) - 1)]
             base, api_key = self.base, self.api_key
             if isinstance(route, Route):
@@ -140,7 +135,6 @@ class Upstream:
                 continue
             if trace is not None:
                 trace.setdefault("statuses", []).append(response.status_code)
-            # Another provider refusing the request (a dead key, a limit it has) hands it to the next model.
             refused = (400 <= response.status_code < 500 and isinstance(route, Route) and route.base is not None
                        and attempt + 1 < len(models))
             if (response.status_code in RETRY_STATUSES or refused) and not last:
@@ -182,7 +176,7 @@ def _request_shape(payload: dict) -> dict:
     return {"prompt_head": " ".join(head.split())[:80], "images": images}
 
 
-IMAGE_TOKENS_HELD = 3000  # held per image before the upstream reports the real count
+IMAGE_TOKENS_HELD = 3000
 
 
 def _held_usd(upstream: Route, payload: dict, max_tokens: int) -> float:
@@ -225,7 +219,6 @@ def _routes_from_env(name: str) -> list[tuple[str | None, Route]]:
             raise ValueError(f"{name}: unknown effort {effort!r}")
         base, key = item.get("base"), ""
         if base is not None:
-            # A route on another provider names the env var holding its key, so no key sits in the JSON.
             if not str(base).startswith("https://"):
                 raise ValueError(f"{name}: base must be https, got {base!r}")
             key = os.getenv(str(item.get("key_env") or ""), "").strip()
@@ -354,7 +347,6 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         finally:
             task.cancel()
 
-    # No generated API docs: the gateway is not a public API to browse.
     app = FastAPI(title="Manga Cloud gateway", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     mailer = mailer or Mailer(api_key="", sender="", dev_mode=True)
 
@@ -369,7 +361,6 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         return await call_next(request)
 
     payments = Billing(store, billing or BillingConfig())
-    # GATEWAY_TRACE_PATH: append a JSON line per upstream request (timing, size, tokens).
     trace_path = os.getenv("GATEWAY_TRACE_PATH", "")
 
     def account(authorization: str | None = Header(default=None)):
@@ -449,7 +440,6 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
 
     @app.delete("/v1/me")
     def delete_me(row=Depends(account)):
-        # The balance is kept under a hash of the email and returns if the same email signs in again.
         store.delete_account(row["id"])
         return {"ok": True}
 
@@ -506,7 +496,6 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         problem = _messages_problem(payload.get("messages"))
         if problem:
             return _error(400, "bad_request", problem)
-        # One answer per request from the model the gateway picks for the checkpoint; anything else is dropped.
         stage = x_mt_stage if x_mt_stage in STAGES else None
         chain = upstream.chain(stage)
         forwarded = {key: payload[key] for key in FORWARDED_FIELDS if key in payload}
@@ -515,7 +504,6 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             requested = int(payload.get("max_tokens") or MAX_OUTPUT_TOKENS)
         except (TypeError, ValueError):
             requested = MAX_OUTPUT_TOKENS
-        # Add the reasoning budget on top of the client's answer budget.
         extra = upstream.reasoning_tokens
         asked = str(payload.get("reasoning_effort") or "").strip().lower()
         forwarded.pop("reasoning_effort", None)
@@ -546,7 +534,6 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             raise
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
         if trace_path:
-            # One line per request: where the time and tokens of an A.I run go.
             prompt_details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
             completion_details = (usage.get("completion_tokens_details")
                                   if isinstance(usage.get("completion_tokens_details"), dict) else {})
@@ -600,7 +587,6 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             store.add_cost(row["id"], 0.0, released_usd=held)
             raise
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
-        # Routers name the input count differently; a missing count is estimated from the request size.
         tokens = next((int(usage[key]) for key in ("inputTokens", "input_tokens", "prompt_tokens")
                        if isinstance(usage.get(key), (int, float))), round(len(json.dumps(forwarded)) / 4))
         total = store.add_cost(row["id"], tokens * upstream.judge_usd_per_m / 1_000_000, tokens, 0, released_usd=held)

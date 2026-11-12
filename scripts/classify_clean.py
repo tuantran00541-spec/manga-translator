@@ -22,13 +22,9 @@ from app.detector.kiuyha_detector import KiuyhaTextDetector
 from app.image_io import read_image
 from app.manifest_utils import load_manifest_raw
 
-# Same cutoffs as chapter_run.py's leftover test.
 MIN_BLOCK_PX = 150
 REMAIN_FRAC = 0.30
 DILATE_KERNEL = np.ones((15, 15), np.uint8)
-# A leftover block counts as covered by a box when the overlap is at least
-# this share of the block: a real skip sits inside its box, a real miss
-# sits nowhere near one.
 BOX_OVERLAP_FRAC = 0.20
 MAX_CROPS_PER_KIND = 8
 
@@ -84,11 +80,6 @@ def main() -> int:
             continue
         original = read_image(Path(page["original"]))
         clean = read_image(Path(page["clean"]))
-        # Full slice, not the stitch core: the core excludes the slice-joint
-        # overlap, and that is exactly where half-cleaned bubbles hide
-        # (ch.337 clean_003_04's upper lobe sits above core_y1). A miss at a
-        # joint may be reported twice, once per adjacent slice; for triage
-        # that is better than missing it.
         before = original
         after = clean
         text = text_mask(before.shape[:2], detector.text_boxes(before))
@@ -115,8 +106,6 @@ def main() -> int:
                 min(before.shape[1], int(xs.max()) + 40),
                 min(before.shape[0], int(ys.max()) + 40),
             )
-            # Box coordinates are already page-relative (full slice, no crop),
-            # so they compare directly against the manifest boxes.
             page_box = box
             kind = "inpaint_skip" if box_overlaps_block(page_box, rects) else "detector_miss"
             record = {"slice": number, "box": [int(v) for v in page_box],

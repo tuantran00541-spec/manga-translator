@@ -25,7 +25,6 @@ CHAPTER = "a1b2c3d5"
 SETTINGS = AIModeSettings(url="https://example.com/c/1", provider="openai", model="vision-test")
 
 
-# -- scan parsing -------------------------------------------------------------
 
 def test_scan_marks_only_confident_credit_slices_and_maps_logo_boxes():
     sizes = {0: (800, 2000), 1: (800, 2000), 2: (800, 2000), 3: (800, 1000)}
@@ -92,7 +91,6 @@ def test_scan_sends_every_slice_as_a_labelled_image(monkeypatch):
     assert cost is None, "OpenAI does not report priced usage"
 
 
-# -- orchestration ------------------------------------------------------------
 
 class RecordingRunner:
     calls: list[str] = []
@@ -194,7 +192,6 @@ def test_manager_allows_one_active_job():
     asyncio.run(scenario())
 
 
-# -- scan stage ---------------------------------------------------------------
 
 def _scan_stage(monkeypatch, scans, pages=8, provider=None):
     from app.dependencies import pipeline
@@ -211,7 +208,6 @@ def _scan_stage(monkeypatch, scans, pages=8, provider=None):
     monkeypatch.setattr(chapters, "_set_page_preserve_regions",
                         lambda chapter_id, index, regions: preserved.__setitem__(index, regions))
 
-    # Four slices a request: the batching logic, whatever the user's limit.
     job = ai_job.AIModeJob(job_id="j", settings=replace(SETTINGS, images_per_request=4), chapter_id=CHAPTER,
                            stage="scan", stages={"scan": {"done": 0, "total": 0, "detail": ""}})
     runner = AIModeRunner(job, provider or PROVIDERS["deepseek"], "key")
@@ -303,15 +299,10 @@ def test_with_a_decider_only_agreement_skips_a_slice(monkeypatch):
 
 
 def test_decide_skips_needs_both_judges_to_agree():
-    # Live verdicts on the former-supreme chapter: the scan read a watermark on
-    # slice 104 but the decider called it storyless, so only the blank slices skip.
     decision = ai_job.decide_skips({104}, {82, 100}, {82, 100, 103}, {82: 0.01, 100: 0.01, 103: 0.01}, 105)
     assert decision["credits"] == [] and decision["textless"] == [82, 100]
     assert decision["skip_vetoed"] == [103] and decision["skip_kept"] == [104]
 
-    # Run-4 verdicts as recorded: the scan called the title page credit and the
-    # decider agreed, so the rule alone does not save it — the prompt and the
-    # decider wording have to stop the verdicts themselves.
     decision = ai_job.decide_skips({0, 104}, {100}, {0, 82, 100, 103, 104},
                                    {i: 0.01 for i in (0, 82, 100, 103, 104)}, 105)
     assert decision["credits"] == [0, 104] and decision["textless"] == [100]
@@ -363,7 +354,6 @@ def _runner(monkeypatch, stage, manifest):
 
     monkeypatch.setattr(runner, "_sync_seams", no_seams)
     monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
-    # The letter model that checks repaints is stubbed: by default every repaint comes out clean.
     monkeypatch.setattr(runner, "_still_reading", lambda page_index, rects: [])
     return runner
 
@@ -424,7 +414,7 @@ def test_a_repaint_the_letter_model_still_reads_gets_one_more_pass_then_goes_to_
 
     def still_reading(page_index, rects):
         reads[page_index] = reads.get(page_index, 0) + 1
-        stubborn = (0, 0, 50, 50)  # only this one keeps its letters through both passes
+        stubborn = (0, 0, 50, 50)
         if reads[page_index] == 1:
             return list(rects)
         return [rect for rect in rects if rect == stubborn]
@@ -441,7 +431,6 @@ def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeyp
 
     from app.ai_mode import checkpoints
 
-    # Shadow Slave 1, slice 135: the scan boxed the "Read at ASURASCANS.COM" watermark as a logo.
     watermark, kept = (323, 2825, 752, 3107), {"x1": 10, "y1": 10, "x2": 200, "y2": 100}
     stored = {"pages": [{"preserve_regions": [dict(zip(("x1", "y1", "x2", "y2"), watermark)), kept],
                          "boxes": [{"x1": 330, "y1": 2830, "x2": 740, "y2": 3100}]}]}
@@ -475,7 +464,6 @@ def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
 
     monkeypatch.setattr(runner, "_read_glossary", no_glossary)
     monkeypatch.setattr(ai_job, "POLL_SECONDS", 0)
-    # Slice 2 is clean first; the cleanup of 0 and 1 only goes on once slice 2 has been reviewed.
     state = {"done": [2], "status": "running", "polls": 0}
     reviewed_while_cleaning = []
 
@@ -559,8 +547,6 @@ def test_keep_art_restores_a_blank_by_choice_object_once(monkeypatch):
 
     async def scenario():
         await runner._keep_art(0, {"art_regions": [sfx_region], "blank_ids": ["murmur"]})
-        # The restore above wrote the blank region into preserve_regions,
-        # so the next batch skips it and only the SFX is re-added.
         manifest["pages"][0]["preserve_regions"] = [blank_region]
         await runner._keep_art(0, {"art_regions": [sfx_region], "blank_ids": ["murmur"]})
 
@@ -636,10 +622,10 @@ def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch
 
     async def retry(page_index, source_lang, object_ids, force=False):
         retries.append((page_index, object_ids))
-        if page_index == 0:  # b1 translated, b2 deliberately left blank (a watermark)
+        if page_index == 0:
             manifest["pages"][0]["text_objects"][0]["translation"] = "Chào"
             return {"blank_ids": ["b2"]}
-        return {"blank_ids": []}  # page 1: "a" is never answered
+        return {"blank_ids": []}
 
     monkeypatch.setattr(runner, "_translate_retry", retry)
     asyncio.run(runner._retry_untranslated(0, "en", None))
@@ -675,7 +661,6 @@ def test_a_story_blank_that_never_translates_is_restored_with_a_review_entry(mon
 
     async def retry(page_index, source_lang, object_ids, force=False):
         retries.append((page_index, object_ids))
-        # The model blanks the story box every time; the SFX is blank by choice.
         return {"blank_ids": ["story", "sfx"], "story_blank_ids": ["story"]}
 
     monkeypatch.setattr(runner, "_translate_retry", retry)
@@ -872,8 +857,6 @@ def test_unreadable_counts_only_the_ids_the_model_omitted_not_the_blanks_it_chos
         return {"source_lang": None}
 
     async def fake_translate(req, memory=None, slice_total=None, skip_seam_mirrors=False):
-        # Three empty values at commit: two the model left blank on purpose
-        # (SFX/art, restored to legible source art) and one it omitted.
         if req.page_index == 0:
             return {"translation_run": {"translated": 1, "unreadable": 3,
                                         "blank_ids": ["a", "b"], "missing_ids": ["c"],
@@ -925,7 +908,6 @@ def test_a_blank_on_a_story_box_triggers_a_retry_for_that_box_only(monkeypatch):
     assert retried == [(0, {"x"})], "a story blank is retried, not silently restored"
 
 
-# -- translate -> render -> gate-free export ---------------------------------
 
 @pytest.fixture
 def cleaned_chapter(tmp_path, monkeypatch):
@@ -994,7 +976,6 @@ def test_translate_render_and_leave_the_chapter_open_in_the_editor(cleaned_chapt
     assert not list(cleaned_chapter.glob("**/*.zip")), "A.I mode leaves exporting to the editor"
     manifest = manifests.load_manifest_raw(CHAPTER)
     assert manifest["workflow"] == {"stage": "review", "page_index": 0}
-    # The editor's export refuses until a human reviews the script, then exports the lettered pages.
     with pytest.raises(export_router.HTTPException):
         export_router.export_chapter(CHAPTER)
     manifests.save_manifest_raw(CHAPTER, {**manifest, "script_review_required": False})
@@ -1074,12 +1055,8 @@ def test_objects_left_blank_on_purpose_do_not_block_export(monkeypatch):
     assert runner._settle_blanks() == 3 and saved == [CHAPTER]
     objects = manifest["pages"][0]["text_objects"]
     assert objects[1]["editorial_disposition"] == "non_story" and objects[1]["editorial_reviewed"] is True
-    # A blank the translator never tried stays unreviewed, so export blocks on it.
     assert objects[3]["editorial_disposition"] == "untranslated" and not objects[3].get("editorial_reviewed")
-    # A blank with no evidence of any text -- no OCR, no role, no read --
-    # is a phantom, not a line: settle it instead of blocking on nothing.
     assert objects[4]["editorial_disposition"] == "non_story" and objects[4]["editorial_reviewed"] is True
-    # A seam copy carries no verdict of its own; its owner does.
     assert "editorial_disposition" not in objects[5]
     assert "editorial_disposition" not in objects[0] and "editorial_disposition" not in objects[2]
 
@@ -1107,7 +1084,7 @@ def test_a_stale_answer_still_counts_as_untranslated_and_retries(monkeypatch):
     async def fake_translate(req, memory=None, slice_total=None, skip_seam_mirrors=False):
         run = {"translated": 1, "unreadable": 0, "estimated_cost_usd": None}
         if req.page_index == 1:
-            run["stale"] = 1  # the model answered, the commit refused it
+            run["stale"] = 1
         return {"translation_run": run}
 
     monkeypatch.setattr(ocr_router, "detect_chapter_language", detected)

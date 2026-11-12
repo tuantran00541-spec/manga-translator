@@ -1,4 +1,4 @@
-// Undo and redo for text objects: edits, moves, styles, creation and deletion.
+
 (() => {
   const LIMIT = 100;
   const IDLE_MS = 700;
@@ -52,7 +52,7 @@
     notify();
   }
 
-  // Remembers how an object looks before the user starts changing it.
+  
   function watch(pageIndex, obj) {
     syncChapter();
     if (!obj?.id) return;
@@ -76,7 +76,7 @@
     [...open.keys()].forEach(commit);
   }
 
-  // Called by every save path; groups a burst of changes to one object into one step.
+  
   function touch(pageIndex, id) {
     if (applying) return;
     syncChapter();
@@ -92,7 +92,7 @@
     txn.timer = setTimeout(() => commit(key), IDLE_MS);
   }
 
-  // Runs one change over many objects as a single undo step.
+  
   function batch(targets, mutate) {
     syncChapter();
     commitAll();

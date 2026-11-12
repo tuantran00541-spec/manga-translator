@@ -1,4 +1,4 @@
-// The work runs in the background, so closing this popup does not stop a send.
+
 const button = document.getElementById("send");
 const status = document.getElementById("status");
 

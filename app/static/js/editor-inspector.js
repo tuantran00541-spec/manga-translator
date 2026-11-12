@@ -137,7 +137,7 @@ function syncStyleDataset(panel, style) {
   panel.dataset.verticalAlign = style.verticalAlign || "middle";
 }
 
-// The font the renderer will use, so AI-picked fonts show by name.
+
 function shownFontId(obj) {
   if (obj.font_selection_mode !== "user" && obj.font_ai_id) return obj.font_ai_id;
   const font = obj.style?.font;

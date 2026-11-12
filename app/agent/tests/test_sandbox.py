@@ -9,13 +9,10 @@ import pytest
 
 from app.agent import sandbox
 
-# Secret-ish names the old (_|$) regex let through.
 POC_LEAKY = ["R3_AGNES_KEY2", "R3_OPENAI_API_KEY2", "R3_KEY2", "R3_SECRET1",
              "R3_PASSWORD2", "R3_MYSECRET", "R3_OAUTH_TOKEN2", "R3_BEARER2"]
-# Control group the old regex already scrubbed.
 POC_CONTROLS = ["R3_OPENAI_API_KEY", "R3_TINYFISH_API_KEY", "R3_GITHUB_TOKEN",
                 "R3_AWS_SECRET_ACCESS_KEY", "R3_HF_TOKEN"]
-# Benign vars the fix must not over-scrub.
 BENIGN = ["PATH", "HOME", "USER", "LANG", "TERM", "PYTHONPATH", "SHELL", "PWD",
           "HOSTNAME", "DISPLAY", "TMPDIR", "DEBIAN_FRONTEND", "XDG_SESSION_TYPE",
           "LOGNAME", "TZ", "EDITOR", "JAVA_HOME", "GOPATH"]

@@ -56,7 +56,6 @@ class AIProvider:
             "model_listing": True,
             "cost_tracking": self.tracks_cost,
             "image_transport": self.image_transport,
-            # MiniRouter serves the decision model that grades translated lines.
             "judge": urlparse(self.api_base).hostname == "api.minirouter.sh",
         }
 
@@ -179,7 +178,6 @@ def validate_protocol(value: str | None) -> str:
     return protocol
 
 
-# Where each well-known host serves its OpenAI-compatible API, so a bare host or a pasted endpoint still works.
 KNOWN_API_BASES: dict[str, str] = {
     "api.openai.com": "/v1",
     "api.anthropic.com": "/v1",
@@ -238,7 +236,6 @@ def normalize_api_base(value: str | None) -> str:
     if known is not None and (not path or known.lower().startswith(lowered + "/")):
         path = known
     elif is_azure_host(host) and not lowered.endswith("/openai/v1"):
-        # Azure's v1 API needs no api-version; deployment URLs map onto it.
         path = "/openai/v1"
     scheme = (parsed.scheme or "https").lower()
     netloc = host if parsed.port in (None, 443) else f"{host}:{parsed.port}"

@@ -54,8 +54,6 @@ def test_bands_skip_unrendered_and_capless_objects():
 
 
 def test_a_ceiling_param_no_longer_sizes_anything():
-    # The chapter band is dead in the render path: the size is the
-    # source-matched size, and the old ceiling parameter changes nothing.
     draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     font = str(DEFAULT_FONT)
     ceiling = int(matching_font_px(font, 57) * SIZE_SLACK)
@@ -68,7 +66,6 @@ def test_a_ceiling_param_no_longer_sizes_anything():
 
 
 def test_a_band_hi_cap_no_longer_sizes_anything():
-    # Same, through render_text_in_box: the band hi cap is accepted and ignored.
     page = Image.new("RGB", (900, 1000), "white")
     stats: dict = {}
     render_text_in_box(page.copy(), "Khoan.", (50, 50, 850, 650),
@@ -77,7 +74,6 @@ def test_a_band_hi_cap_no_longer_sizes_anything():
 
 
 def test_a_cap_inside_its_band_renders_exactly_as_before():
-    # Slice 81's guard: banding must not move an object the band already holds.
     page = Image.new("RGB", (900, 1000), "white")
     text = "Ta đã bảo ngươi đừng gọi ta là Các Chủ."
     box = (100, 100, 700, 400)
@@ -100,9 +96,6 @@ def _render_one(obj, bands):
 
 
 def test_the_chapter_band_moves_nothing_any_more():
-    # The band module still computes bands, but the render path ignores
-    # them: every cap renders exactly as without bands, and no verdict
-    # carries a band any more.
     pages = [_page(*[_obj(38, oid=f"d{i}") for i in range(8)]),
              _page(_obj(90, oid="big"), _obj(8, oid="dots"))]
     bands = chapter_size_bands(pages)
@@ -127,6 +120,5 @@ def test_the_chapter_band_moves_nothing_any_more():
 
 
 def test_no_bands_means_no_change():
-    # render_text_objects without size_bands is the old path, untouched.
     pages = [_page(_obj(90, oid="big"))]
     assert chapter_size_bands(pages) == {}

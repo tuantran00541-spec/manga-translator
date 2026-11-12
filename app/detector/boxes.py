@@ -9,8 +9,6 @@ import numpy as np
 from app.detector.bubble_mask import MASK_ROWS, merge_bubble_masks
 from app.parameters import DETECTOR_FINAL_NMS_IOU, DETECTOR_NMS_SCORE_FLOOR
 
-# Two bubble interiors may share this much of the smaller one and still
-# be separate lobes: split pieces touch at the cut, nothing more.
 SEPARATE_LOBE_MAX_SHARED = 0.10
 
 
@@ -104,18 +102,8 @@ class BubbleBox:
     source_role: str = "unknown"
     deferred_reason: str | None = None
     verify_region_only: bool = False
-    # The letter rows alone, without outline or glow; they tell one text
-    # from another where the rectangles overlap. A plain attribute would
-    # not survive dataclasses.replace, so this is a field: the seam and
-    # shift paths rebuild boxes with replace and the fold below reads it.
     letters: np.ndarray | None = field(default=None, compare=False)
-    # The bubble interior the text is lettered into, as per-row
-    # x-intervals over the outline bbox (see app/detector/bubble_mask).
-    # A plain dict, so it survives dataclasses.replace and JSON.
     bubble_mask: dict | None = field(default=None, compare=False)
-    # The raw detector rect the box grew from, in the box's own frame.
-    # Letters the growth pulled in past it belong to the neighbour the
-    # growth reached, not this box, so coherence is judged inside it.
     core: tuple[int, int, int, int] | None = None
 
     @property
@@ -146,12 +134,6 @@ def _merge_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
     base = max(boxes, key=lambda box: float(box.confidence))
     evidence = [box for box in boxes if box.verified_mask]
     if not evidence:
-        # No verified mask anywhere: the union still spans every grouped
-        # box, or the merge silently drops the rects it was meant to fold
-        # in. The letters are dropped when the rect grows — a base-only
-        # letters array would be read against the wrong rows in the wider
-        # rect — and the mask stays the base's, unverified, so the shape
-        # check in verified_mask now fails honestly.
         x1, y1 = min(b.x1 for b in boxes), min(b.y1 for b in boxes)
         x2, y2 = max(b.x2 for b in boxes), max(b.y2 for b in boxes)
         if (x1, y1, x2, y2) == (base.x1, base.y1, base.x2, base.y2):
@@ -161,30 +143,15 @@ def _merge_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
         if cored:
             merged_core = (min(c[0] for c in cored), min(c[1] for c in cored),
                            max(c[2] for c in cored), max(c[3] for c in cored))
-        # The rect grew, so the base's bubble alone no longer
-        # describes it -- but the union of the members' bubbles does,
-        # and the waist split needs it. (The erase masks are a
-        # different story: with none verified there is nothing to union.)
         return replace(base, x1=x1, y1=y1, x2=x2, y2=y2, letters=None, core=merged_core,
                        bubble_mask=merge_bubble_masks(
                            [getattr(b, "bubble_mask", None) for b in boxes]))
-    # The base's own rect joins the union even when the base has no
-    # verified mask: the highest-confidence box is the merge's anchor,
-    # and leaving its rect out shrinks the merged box away from it.
     x1, y1 = min([base.x1] + [b.x1 for b in evidence]), min([base.y1] + [b.y1 for b in evidence])
     x2, y2 = max([base.x2] + [b.x2 for b in evidence]), max([base.y2] + [b.y2 for b in evidence])
     merged = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
     for box in evidence:
         view = merged[box.y1 - y1:box.y2 - y1, box.x1 - x1:box.x2 - x1]
         np.maximum(view, box.mask, out=view)
-    # The letters merge like the mask, into the same frame, so the merged
-    # box's letter geometry still describes its own rect; a base-only
-    # letters array would be read against the wrong rows downstream.
-    # Each member's letters are clipped to its own core first: the growth
-    # pulls a neighbour's letters in past the core, and a seam box in
-    # particular carries a fragment of the text above the cut. Carried
-    # into the union, that fragment splits the letter rows and the topmost
-    # group alone is read as the lettering.
     merged_letters = None
     lettered = [box for box in boxes if getattr(box, "letters", None) is not None]
     if lettered:
@@ -218,9 +185,6 @@ def _merge_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
         merged_core = (min(c[0] for c in cored), min(c[1] for c in cored),
                        max(c[2] for c in cored), max(c[3] for c in cored))
     mask_source = base.mask_source if base.verified_mask else max(evidence, key=lambda b: float(b.confidence)).mask_source
-    # The bubble masks union like the erase masks: the merged box's
-    # interior is the union of its members' interiors (a double bubble
-    # folded from two lobe boxes keeps both lobes, for the waist split).
     merged_bubble_mask = merge_bubble_masks([getattr(b, "bubble_mask", None) for b in boxes])
     return replace(
         base, x1=x1, y1=y1, x2=x2, y2=y2, mask=merged, mask_source=mask_source,
@@ -245,10 +209,6 @@ def _nms_group(members: list[BubbleBox], iou_threshold: float) -> list[BubbleBox
         target = max(kept, key=lambda k: box_iou(box, members[k]))
         if box_iou(box, members[target]) > iou_threshold:
             if bubble_masks_are_separate_lobes(box.bubble_mask, members[target].bubble_mask):
-                # A second lobe NMS read as the same detection twice: its
-                # rect overlaps the kept box, but its interior is the other
-                # lobe. Bucketing it would union the lobes and leave the
-                # waist split to recover them, so it stays its own box.
                 singles.append(box)
             else:
                 buckets[target].append(box)

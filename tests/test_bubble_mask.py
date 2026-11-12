@@ -148,7 +148,6 @@ def _mask_from_circles(c1, c2, r, bbox):
             "rows": rows, "kind": "bubble"}
 
 
-# ---------------------------------------------------------------- derive
 
 def test_circle_derives_bubble_with_tapered_rows():
     img = _circle()
@@ -163,17 +162,13 @@ def test_circle_derives_bubble_with_tapered_rows():
 
 
 def test_spiky_bubble_is_not_split_when_its_text_is_all_in_one_lobe():
-    # The star's outline pinches between spikes, so the shape alone
-    # shows a waist -- but both text lines sit in the lower lobe, so
-    # the split (which needs letter rows on both sides) must not fire.
-    # The mask instead trims to the lettered lobe.
     from app.detector.kiuyha_detector import _trim_bubble_mask
 
     img = _spiky()
     mask = derive_bubble_mask(img, (200, 100, 560, 460))
     assert mask["kind"] == "bubble"
     assert find_waist(mask) is not None, "the shape alone does show a pinch"
-    letters = np.zeros((360, 360), bool)  # box-local: the box stores letters in its own frame
+    letters = np.zeros((360, 360), bool)
     letters[150:171, 100:300] = True
     letters[190:211, 100:300] = True
     box = BubbleBox(200, 100, 560, 460, 0.9, mask=np.zeros((360, 360), np.uint8),
@@ -211,20 +206,14 @@ def test_mask_inscribed_rect_and_row_spans():
     mask = derive_bubble_mask(_circle(), (250, 150, 550, 450))
     x1, y1, x2, y2 = mask_inscribed_rect(mask)
     assert 0 < x2 - x1 and 0 < y2 - y1
-    # Every corner of the inscribed rectangle sits inside the mask rows
-    # (on the boundary counts: the rectangle is maximal, so its edges
-    # touch the outline). The spans are slice coords; the bottom edge
-    # is the start of the next band, so the corner reads one pixel up.
     for (x, y) in ((x1, y1), (x2, y2 - 1)):
         assert any(a <= x <= b for a, b in mask_row_spans(mask, y))
-    # The rectangle covers a real share of the bubble, not a sliver.
     assert (x2 - x1) * (y2 - y1) >= 0.35 * (mask["bbox"][2] - mask["bbox"][0]) * (mask["bbox"][3] - mask["bbox"][1])
     assert mask_row_spans(mask, mask["cy"]) != []
     assert mask_row_spans(mask, mask["bbox"][1] - 50) == []
     assert mask_row_spans(mask, mask["bbox"][3] + 50) == []
 
 
-# ---------------------------------------------------------------- waist
 
 def test_double_side_by_side_waist_fires_on_the_merged_union():
     img = _double_side()
@@ -239,8 +228,6 @@ def test_double_side_by_side_waist_fires_on_the_merged_union():
     pieces = split_bubble_mask(union, waist)
     assert pieces is not None and len(pieces) == 2
     assert pieces[0]["bbox"][2] <= waist["cut_x"] <= pieces[1]["bbox"][0]
-    # The pieces tile the union: each keeps its lobe, and together they
-    # lose only the re-quantization at the band edges (a few percent).
     union_width = sum(sum(b - a for a, b in row) for row in union["rows"])
     pieces_width = sum(sum(b - a for a, b in row)
                        for piece in pieces for row in piece["rows"])
@@ -279,13 +266,11 @@ def test_profile_waist_needs_a_real_dip():
 
 
 def test_letter_gap_waist_fires_and_a_single_oval_does_not():
-    # Two lobes offset diagonally: every row is one interval (the
-    # lobes overlap in x), so only the letter gap sees the waist.
     mask = _mask_from_circles((200, 150), (420, 250), 140, (60, 60, 560, 340))
     letters = np.zeros((280, 500), bool)
-    letters[80:94, 100 - 60:280 - 60] = True    # upper lobe line
+    letters[80:94, 100 - 60:280 - 60] = True
     letters[120:134, 100 - 60:280 - 60] = True
-    letters[180:194, 340 - 60:520 - 60] = True  # lower lobe line
+    letters[180:194, 340 - 60:520 - 60] = True
     letters[220:234, 340 - 60:520 - 60] = True
     waist = find_waist(mask, letters=letters, box=(60, 60, 560, 340))
     assert waist is not None and waist["orientation"] == "vertical"
@@ -294,28 +279,22 @@ def test_letter_gap_waist_fires_and_a_single_oval_does_not():
     assert pieces is not None and len(pieces) == 2
     assert pieces[0]["bbox"][2] <= waist["cut_x"] <= pieces[1]["bbox"][0]
 
-    # The same letters, but one line crosses the gap: no waist.
     letters[80:94, 280 - 60:340 - 60] = True
     assert find_waist(mask, letters=letters, box=(60, 60, 560, 340)) is None
 
-    # One oval, two staggered lines with a column gap between them: the
-    # profile is smooth in the middle, so the gap alone must not split it.
     oval = _mask_from_circles((310, 200), (310, 200), 140, (170, 60, 450, 340))
     letters = np.zeros((280, 280), bool)
-    letters[120:134, 190 - 170:260 - 170] = True   # upper line, left
-    letters[160:174, 280 - 170:350 - 170] = True   # lower line, right
+    letters[120:134, 190 - 170:260 - 170] = True
+    letters[160:174, 280 - 170:350 - 170] = True
     assert find_waist(oval, letters=letters, box=(170, 60, 450, 340)) is None
 
 
 def test_row_gap_waist_fires_on_diagonal_double():
-    # Two lobes offset diagonally, text stacked in rows: every column
-    # is inked (the lobes overlap in x), so only the row gap sees the
-    # waist. The upper lines sit left, the lower lines right.
     mask = _mask_from_circles((200, 150), (420, 250), 140, (60, 60, 560, 340))
     letters = np.zeros((280, 500), bool)
-    letters[80:94, 100 - 60:400 - 60] = True    # upper lobe lines
+    letters[80:94, 100 - 60:400 - 60] = True
     letters[120:134, 100 - 60:400 - 60] = True
-    letters[180:194, 200 - 60:520 - 60] = True  # lower lobe lines
+    letters[180:194, 200 - 60:520 - 60] = True
     letters[220:234, 200 - 60:520 - 60] = True
     waist = find_waist(mask, letters=letters, box=(60, 60, 560, 340))
     assert waist is not None and waist["orientation"] == "horizontal"
@@ -324,16 +303,10 @@ def test_row_gap_waist_fires_on_diagonal_double():
     assert pieces is not None and len(pieces) == 2
     assert pieces[0]["bbox"][3] <= waist["cut_y"] <= pieces[1]["bbox"][1]
 
-    # The same letters, but one line bridges the row gap: the gap left
-    # between the lines is ordinary line spacing, so no waist.
     letters[150:164, 150 - 60:450 - 60] = True
     assert find_waist(mask, letters=letters, box=(60, 60, 560, 340)) is None
 
 
-# ---------------------------------------------------------------- real crops
-# Fixtures are the bubble regions cut from the source slices (the rerun-5
-# QA instances); the letter bars are the line positions the detector
-# read on those slices, so the waist logic runs on real ink.
 
 def _fixture_lines(shape, lines):
     """A letters array with one ink bar per text line (fixture coords)."""
@@ -348,9 +321,9 @@ def test_ch42_p038_double_bubble_waist():
     img = cv2.imread(str(FIXTURES / "p038-double.png"))
     box = (184, 104, 800, 500)
     letters = _fixture_lines((396, 616), [
-        (11, 6, 163, 27), (11, 31, 163, 52),                    # left lobe, 2 lines
+        (11, 6, 163, 27), (11, 31, 163, 52),
         (177, 101, 528, 122), (177, 146, 528, 167),
-        (177, 191, 528, 212), (177, 236, 528, 257),             # right lobe, 4 lines
+        (177, 191, 528, 212), (177, 236, 528, 257),
     ])
     mask = derive_bubble_mask(img, box, letters=letters)
     assert mask["kind"] == "bubble"
@@ -376,7 +349,6 @@ def test_ch111_p005_double_bubble_waist():
     assert 305 <= waist["cut_x"] <= 330
     pieces = split_bubble_mask(mask, waist)
     assert pieces is not None and len(pieces) == 2
-    # Each piece holds its own lobe's letters and nothing of the other.
     left_letters = letters[:, :waist["cut_x"] - box[0]]
     right_letters = letters[:, waist["cut_x"] - box[0]:]
     assert left_letters.any() and right_letters.any()
@@ -405,7 +377,6 @@ def test_split_waist_boxes_splits_the_ch111_fixture_box():
         (41, 40, 264, 61), (41, 84, 264, 105), (41, 128, 264, 149), (41, 172, 264, 193),
         (282, 164, 496, 185), (282, 187, 496, 208), (282, 210, 496, 231),
     ])
-    # Letters in box-local coords, as the detector stores them.
     mask = derive_bubble_mask(img, box, letters=letters)
     bubble = BubbleBox(box[0], box[1], box[2], box[3], 0.9,
                        mask=np.zeros((250, 515), np.uint8), letters=letters,
@@ -417,7 +388,6 @@ def test_split_waist_boxes_splits_the_ch111_fixture_box():
     assert split[0].letters.sum() > 0 and split[1].letters.sum() > 0
 
 
-# ---------------------------------------------------------------- wiring
 
 class _Session:
     """One detection where the input has dark pixels (end-to-end head)."""
@@ -442,29 +412,20 @@ def ink_model(monkeypatch):
 
 
 def test_text_boxes_attaches_a_bubble_mask_to_every_box():
-    # The outline is light grey: the fake letter model reads only dark
-    # pixels, and a real letter model reads letter bodies, not the
-    # outline -- an outline read as letters would fail the coverage
-    # test and is not what the detector sees in production.
     img = _paper()
     cv2.circle(img, (400, 300), 140, (110, 110, 110), 2)
     _text_lines(img, [(260, 250, 540, 271), (260, 290, 540, 311)])
     boxes = KiuyhaTextDetector("unused", session=_Session()).text_boxes(img)
-    # The dashed lines split into several boxes; the contract is that
-    # every final box carries a mask (the bubble kind is proven by the
-    # direct derive tests and the real-crop fixtures below).
     assert boxes
     for box in boxes:
         assert isinstance(box.bubble_mask, dict)
         assert box.bubble_mask["kind"] in ("bubble", "rect", "none")
         assert len(box.bubble_mask["rows"]) == 24
-    # Free text gets a rect mask, not a missing one.
     boxes = KiuyhaTextDetector("unused", session=_Session()).text_boxes(_free_text())
     assert boxes and all(b.bubble_mask is not None and b.bubble_mask["kind"] == "rect" for b in boxes)
 
 
 def _box_with_mask(x1, y1, x2, y2, mask_bbox):
-    # The rows are narrower than the mask bbox (an interior, not the outline).
     width = max(1, (mask_bbox[2] - mask_bbox[0]) - 10)
     mask = _mask_from_widths([width] * 24, bbox=mask_bbox)
     return BubbleBox(x1, y1, x2, y2, 0.9, mask=np.zeros((y2 - y1, x2 - x1), np.uint8),
@@ -478,7 +439,6 @@ def test_merge_mask_evidence_unions_bubble_masks():
     assert merged is not None
     assert merged.bubble_mask is not None
     assert merged.bubble_mask["kind"] == "bubble"
-    # The union spans both members' interiors (their 30px-wide rows).
     assert merged.bubble_mask["bbox"] == [15, 10, 75, 50]
 
 
@@ -546,8 +506,6 @@ def test_text_object_mirror_and_seam_mirror_carry_the_mask():
     owner["translation"] = "Chào"
     set_letter_bounds(owner_page)
     assert owner["bubble_mask"] == mask
-    # The mirror is the same text seen on the next slice, whose source
-    # offset is 300px lower: its region maps to the owner's source rect.
     mirror_page = {
         "source_page": "p1",
         "stitch_core": {"source_y1": 300, "core_source_y1": 300, "core_source_y2": 1300},

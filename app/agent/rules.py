@@ -12,36 +12,26 @@ CATEGORY = {"run_command": "bash", "read_file": "read", "list_dir": "read", "sea
             "write_file": "edit", "edit_file": "edit", "replace_in_files": "edit", "move_file": "edit",
             "delete_file": "edit",
             "web_fetch": "webfetch", "web_download": "webfetch", "web_search": "websearch", "task": "task", "spawn_agent": "task", "skill": "skill"}
-# Claude Code's tool names in its settings.json permission lists.
 CLAUDE_CATEGORY = {"Bash": "bash", "Read": "read", "Edit": "edit", "Write": "edit", "WebFetch": "webfetch", "Task": "task"}
 SETTINGS = {"user": (".manga-agent/settings.json", ".claude/settings.json"),
             "workspace": (".agents/settings.json", ".claude/settings.json", ".claude/settings.local.json")}
 DEFAULT = [("read", ".env", "deny"), ("read", ".env.*", "deny"), ("read", "*.env", "deny"),
            ("edit", ".env", "deny"), ("edit", ".env.*", "deny"), ("edit", "*.env", "deny"),
            ("read", ".env.example", "allow"), ("read", ".env.sample", "allow"),
-           # /proc/<pid>/environ is the environment by another name.
            ("read", "/proc/*/environ", "deny"),
-           # Git's hooks and config run commands later, outside any sandbox.
            ("edit", ".git/*", "deny"), ("edit", "*/.git/*", "deny")] + [
-    # What can destroy work or leave the project: asked for unless the user's own rules or Auto mode say otherwise.
     ("bash", pattern, "ask") for pattern in (
         "rm *-r*", "rm *-R*", "rm *--recursive*", "git reset --hard*", "git clean*", "git push*", "git config*", "git checkout -- *",
         "git restore*", "git branch -D*", "git stash drop*", "git stash clear*", "sudo *", "kill *", "pkill*", "killall*", "chmod -R*",
         "chown*", "dd *", "mkfs*", "*secret-tool*", "*find-generic-password*", "*find-internet-password*", "*cmdkey*", "*keyring.get_*")]
-# Commands that only look; one that is a plain call of these never needs asking about.
 SAFE_COMMANDS = {"ls", "cat", "head", "tail", "wc", "pwd", "echo", "grep", "rg", "tree", "stat", "file", "du", "df", "sort", "uniq", "diff",
                  "which", "whoami", "date", "uname", "basename", "dirname", "realpath", "nl", "cut", "tr", "printf", "true", "id", "env"}
 SAFE_GIT = {"status", "log", "diff", "show", "rev-parse", "ls-files", "blame", "describe", "shortlog"}
-# Interpreters and wrappers run anything, so a saved allow for them is the exact command, never a prefix.
 WRAPPERS = {"python", "python3", "node", "bash", "sh", "zsh", "env", "xargs", "eval", "exec", "ssh", "perl", "ruby", "npx", "uv", "uvx", "pip", "npm", "make", "docker", "find", "time", "nohup", "watch"}
-# `&&` must come before `&` so a double ampersand still matches as one operator.
 SPLIT = re.compile(r"&&|\|\||&|;|\||\n")
-# Tricks that execute even inside double quotes: always scanned on the raw command.
 _SUBST_TRICKS = re.compile(r"`|\$\(|<\(|>\(")
-# Redirection / backgrounding operators are literal inside quotes: scanned on the masked command.
 _REDIRECT_OPS = re.compile(r">>|>|<<|<")
 _SHELL_OPS = re.compile(r"[><&]")
-# /proc/<pid>/environ (self, a numeric pid, or $$) exposes the process environment.
 _PROC_ENVIRON = re.compile(r"/proc/(?:self|\d+|\$\$)/environ")
 
 
@@ -178,7 +168,6 @@ def _verdict(rules: list[Rule], category: str, subject: str) -> str | None:
     return found
 
 
-# Programs that write the paths they are given, so an edit rule's deny covers them.
 WRITERS = {"cp", "mv", "rm", "ln", "touch", "tee", "chmod", "chown", "install", "truncate", "dd", "rsync", "patch", "sed", "perl", "unzip", "tar"}
 
 
@@ -243,7 +232,6 @@ def safe_readonly(command: str) -> bool:
     """True for a command that only reads: plain calls of look-only programs, no redirects, substitutions or compound tricks beyond pipes."""
     if _SUBST_TRICKS.search(command) or _REDIRECT_OPS.search(_mask_quotes(command)):
         return False
-    # /proc/<pid>/environ leaks through a "safe" reader like cat.
     if _PROC_ENVIRON.search(_dequote(command)):
         return False
     parts = [p.strip() for p in _shell_parts(command) if p.strip()]
@@ -258,7 +246,6 @@ def safe_readonly(command: str) -> bool:
     return bool(parts)
 
 
-# Flags with which a look-only program writes a file or runs another program.
 _OUTPUT_FLAG = {"sort": "o", "tree": "o"}
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import math
 
-# Named corners, not a [ymin, xmin, ...] list: models that read lists as x first put boxes on the wrong axis.
 BOX_RULE = ('Each box names its corners, normalised to 0-1000 on the image: "x1","y1" top-left and "x2","y2" '
             "bottom-right, x across the width and y down the height. ")
 BOX_KEYS = ("x1", "y1", "x2", "y2")

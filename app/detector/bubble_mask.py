@@ -32,39 +32,35 @@ import copy
 import cv2
 import numpy as np
 
-MASK_ROWS = 24  # rows over the bbox height; matches render's BAND_COUNT
-MASK_INSET_PX = 4  # ink keeps this margin inside the outline, applied at derivation
+MASK_ROWS = 24
+MASK_INSET_PX = 4
 
 _CANNY_LOW = 70
 _CANNY_HIGH = 140
-_CROP_MARGIN_SHARE = 1.0  # outline may extend well past the letter box (a letter box is far smaller than its bubble)
+_CROP_MARGIN_SHARE = 1.0
 _CROP_MIN_MARGIN = 12
-_FLOOD_MIN_BOX_SHARE = 0.15  # interior at least this share of the letter box: a seed trapped in a letter loop or in the lens between two overlapping outlines floods ~0.01-0.06x, while one lobe of a double bubble floods ~0.46x of a box spanning both lobes -- the minimum must accept a lobe, not the union
-_FLOOD_MAX_BOX_SHARE = 16.0  # interior this big is the whole panel, not the bubble
-_MIN_NONEMPTY_ROWS = 20  # a real interior fills (nearly) every row band
-_MIN_FILL_RATIO = 0.25  # interior pixels vs outline bbox area
+_FLOOD_MIN_BOX_SHARE = 0.15
+_FLOOD_MAX_BOX_SHARE = 16.0
+_MIN_NONEMPTY_ROWS = 20
+_MIN_FILL_RATIO = 0.25
 
-# A waist is a real constriction between two lobes, not a taper. The
-# numbers below are the explicit criteria a mask-level split must meet
-# (see find_waist); they were calibrated on the rerun-5 double bubbles
-# (ch42 p038, ch111 p005, MH p068) and the synthetic double-bubble tests.
-WAIST_MAX_RATIO = 0.85  # waist width at most this share of the narrower lobe: MH p068's real stacked waist is 0.77, while a spiky single bubble's shallowest dip (MH p059) is 0.97 and a single oval's (ch111) 0.96
-WAIST_MIN_HEIGHT_SHARE = 0.06  # waist band at least this share of the bbox height
+WAIST_MAX_RATIO = 0.85
+WAIST_MIN_HEIGHT_SHARE = 0.06
 WAIST_MIN_HEIGHT_PX = 6
-LOBE_MIN_HEIGHT_SHARE = 0.25  # each lobe at least this share of the bbox height
-LOBE_MIN_WIDTH_SHARE = 0.40  # each lobe at least this share of the bbox width
-SPLIT_MIN_ROWS_SHARE = 0.30  # side-by-side: two-interval rows cover this share of the height
-SPLIT_MIN_INTERVAL_RATIO = 0.35  # the smaller of two intervals vs the larger, same row
-SPLIT_MIN_GAP_RATIO = 0.15  # gap between lobes vs the narrower lobe width
-SPLIT_MAX_GAP_RATIO = 0.8  # gap wider than this is a notch between spikes, not a waist
-GAP_MIN_PX = 8  # letter-gap waist: a column gap this wide between two letter clusters
-GAP_MIN_SIDE_SHARE = 0.10  # each side of a letter gap holds at least this share of the letter pixels
-GAP_MIN_PIECE_SHARE = 0.15  # each piece of a letter-gap split is at least this share of the mask area
-GAP_MIN_CONTAINMENT = 0.70  # each side's letters inside its own piece's mask
-GAP_MAX_EXTENSION_RATIO = 0.5  # a piece's mask may not extend past its side's letters by more than this share of the letters' width, measured over the side's letter rows: a single oval cut through staggered lines fails this, a lobe does not
-GAP_MIN_STEP_RATIO = 0.15  # the mask profile must corroborate a letter gap: a step this big between adjacent middle bands (the second lobe starting), or a dip and a rise of GAP_MIN_RISE_RATIO after it -- a single oval's profile is smooth in the middle, so a gap alone never splits it
+LOBE_MIN_HEIGHT_SHARE = 0.25
+LOBE_MIN_WIDTH_SHARE = 0.40
+SPLIT_MIN_ROWS_SHARE = 0.30
+SPLIT_MIN_INTERVAL_RATIO = 0.35
+SPLIT_MIN_GAP_RATIO = 0.15
+SPLIT_MAX_GAP_RATIO = 0.8
+GAP_MIN_PX = 8
+GAP_MIN_SIDE_SHARE = 0.10
+GAP_MIN_PIECE_SHARE = 0.15
+GAP_MIN_CONTAINMENT = 0.70
+GAP_MAX_EXTENSION_RATIO = 0.5
+GAP_MIN_STEP_RATIO = 0.15
 GAP_MIN_RISE_RATIO = 0.05
-GAP_MIN_OFFSET_RATIO = 0.15  # a row-gap waist also needs the two letter clusters offset sideways by this share of the mask width: two lines of one oval sit over each other, two lobes offset diagonally do not
+GAP_MIN_OFFSET_RATIO = 0.15
 
 
 def _empty_rows() -> list[list[list[int]]]:
@@ -194,17 +190,12 @@ def derive_bubble_mask(image, box, *, seed=None, letters=None) -> dict:
     height, width = image.shape[:2]
     if x2 <= x1 or y2 <= y1 or x1 >= width or y1 >= height or x2 <= 0 or y2 <= 0:
         return _none_mask((x1, y1, x2, y2))
-    # A box hanging off the slice still derives over the part on it; the
-    # outline is cut by the slice edge, so the bbox is the on-slice part.
     cx1, cy1 = max(0, x1), max(0, y1)
     cx2, cy2 = min(width, x2), min(height, y2)
     if cx2 <= cx1 or cy2 <= cy1:
         return _none_mask((x1, y1, x2, y2))
 
     sx, sy = _seed_for((x1, y1, x2, y2), seed, letters)
-    # Try widening crops: a tight crop keeps the border test meaningful
-    # (an open outline lets the flood escape to an interior crop border),
-    # a wider one holds a bubble whose outline reaches past the letter box.
     for share in (0.5, 1.0):
         mask = _derive_from_crop(image, (x1, y1, x2, y2), (sx, sy), letters,
                                  margin_share=share)
@@ -298,29 +289,13 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
         if retval > _FLOOD_MAX_BOX_SHARE * box_area:
             continue
         interior = flooded == 127
-        # Mostly light inside: a solid ink block floods as its own
-        # outline, but it is ink throughout, not a bubble.
         if float((gray[interior] < 100).mean()) >= 0.5:
             continue
-        # Fill the letter holes before testing coverage: the flood
-        # flows around the letter strokes, so the letter pixels
-        # themselves are ink, not background -- coverage against the
-        # raw flood would be ~0 by construction. The external contour
-        # of the flood region is the bubble outline; filling it closes
-        # the letter holes (the old lettering is cleaned away before
-        # the render fits new text into these rows, so the rows must
-        # describe the bubble, not the old ink).
         filled = np.zeros(interior.shape, np.uint8)
         contours, _ = cv2.findContours(
             interior.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(filled, contours, -1, 255, -1)
         interior = filled > 0
-        # The letters must sit inside the interior, not beside it. The
-        # threshold is 0.7, not 0.9: a box can carry spurious letters
-        # outside its bubble (the detector reads building windows as
-        # letters), so a lobe holding most -- not all -- of them is
-        # still its bubble; one lobe of a double bubble holds only
-        # about half, so it still fails.
         coverage = 1.0
         if letter_points is not None:
             lx, ly = letter_points
@@ -328,10 +303,6 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
             coverage = float(inside.mean())
             if coverage < 0.7:
                 continue
-        # Escaped through a gap: the flood runs out to a crop border
-        # that is not the slice edge, or to three slice borders at
-        # once (an open outline lets it fill the whole image). A bubble
-        # cut by the slice edge touches only one or two slice borders.
         fx, fy, fw, fh = rect
         if (ox1 > 0 and fx <= 0) or (oy1 > 0 and fy <= 0):
             continue
@@ -347,8 +318,6 @@ def _derive_from_crop(image, box, seed, letters, crop=None, margin_share=None) -
         if best is None or key > best[0]:
             best = (key, interior, retval)
             if coverage >= 0.9:
-                # Nothing later can hold more of the letters; a smaller
-                # region with the same coverage is the same bubble.
                 break
     if best is None:
         return None
@@ -415,8 +384,6 @@ def mask_row_spans(mask: dict | None, y: int) -> list[list[int]]:
         return []
     if y2 <= y1 or not (y1 <= int(y) < y2) or len(rows) != MASK_ROWS:
         return []
-    # The band index must invert the integer quantisation the rows
-    # were built with (see _band_index).
     height = y2 - y1
     index = _band_index(y1, height, y)
     return [[x1 + int(a), x1 + int(b)] for a, b in rows[index]]
@@ -468,9 +435,6 @@ def mask_inscribed_rect(mask: dict | None) -> tuple[int, int, int, int]:
     if best is None:
         return (x1, y1, x2, y2)
     _, (left, top, right, bottom) = best
-    # The band edges use the same integer quantisation as the rows
-    # themselves: a float floor would put the top edge a fraction of a
-    # pixel above its band, and the corner would read the band above.
     height = y2 - y1
     return (x1 + left, y1 + (top * height) // MASK_ROWS,
             x1 + right, y1 + ((bottom + 1) * height) // MASK_ROWS)
@@ -516,24 +480,20 @@ def find_waist(mask: dict | None, letters=None, box=None) -> dict | None:
     width = x2 - x1
     row_h = height / MASK_ROWS
 
-    # --- side-by-side lobes: rows with two substantial intervals ---
     waist = _interval_waist(rows, height, width, row_h, x1, y1)
     if waist is not None:
         return waist
 
-    # --- diagonally offset lobes: a clean gap in the letter columns ---
     if letters is not None and box is not None:
         waist = _letter_gap_waist(mask, letters, box)
         if waist is not None:
             return waist
 
-    # --- diagonally offset lobes: a clean gap in the letter rows ---
     if letters is not None and box is not None:
         waist = _row_gap_waist(mask, letters, box)
         if waist is not None:
             return waist
 
-    # --- stacked lobes: a dip in the row-width profile ---
     widths = []
     for row in rows:
         if not row:
@@ -565,8 +525,6 @@ def _profile_waist(widths: list[int], height: int, width: int,
                 continue
             if (end - start) * row_h < WAIST_MIN_HEIGHT_PX:
                 continue
-            # The dip must sit between the lobes, not at a taper: the
-            # rows just outside it are wide on both sides.
             if max(above[-1], below[0]) < 0.8 * lobe_w:
                 continue
             score = (lobe_w - waist_w, end - start)
@@ -592,8 +550,6 @@ def _interval_waist(rows: list, height: int, width: int, row_h: float,
         if len(row) < 2:
             continue
         ordered = sorted((int(a), int(b)) for a, b in row)
-        # Two intervals only count when both are real lobes, not a tail
-        # or spike beside the body.
         widest = max(b - a for a, b in ordered)
         second = sorted((b - a for a, b in ordered), reverse=True)[1]
         if second < SPLIT_MIN_INTERVAL_RATIO * widest:
@@ -601,17 +557,11 @@ def _interval_waist(rows: list, height: int, width: int, row_h: float,
         split_rows.append(i)
     if len(split_rows) < SPLIT_MIN_ROWS_SHARE * MASK_ROWS:
         return None
-    # Both caps of a double bubble split: the two-interval rows sit
-    # above and below the overlap, not in one half only (a spiky
-    # outline splits rows on one side too, but not both caps).
     if min(split_rows) >= MASK_ROWS // 2 or max(split_rows) < MASK_ROWS // 2:
         return None
-    # The gap must sit at (nearly) one x across the run: the lobes are
-    # side by side, not staggered.
     gaps = []
     for i in split_rows:
         ordered = sorted((int(a), int(b)) for a, b in rows[i])
-        # The gap between the two widest intervals.
         by_width = sorted(ordered, key=lambda ab: ab[1] - ab[0], reverse=True)[:2]
         by_width.sort()
         gaps.append((by_width[0][1], by_width[1][0],
@@ -793,9 +743,6 @@ def _letter_gap_waist(mask: dict, letters, box) -> dict | None:
             continue
         if _letters_inside_mask(right_mask, xs[right], ys[right]) < GAP_MIN_CONTAINMENT:
             continue
-        # Neither half may reach far past its own letters: measure,
-        # over each side's letter rows, how far the half-mask extends
-        # beyond the letters on either side.
         for piece, side_xs, side_ys in (
                 (left_mask, xs[left], ys[left]),
                 (right_mask, xs[right], ys[right])):
@@ -892,10 +839,6 @@ def _row_gap_waist(mask: dict, letters, box) -> dict | None:
         return None
     mask_width = max(1, mx2 - mx1)
     best = None
-    # A waist gap is the widest vertical whitespace in the text: the
-    # gap between two lines of one text is ordinary line spacing, so a
-    # candidate narrower than another gap in the same letters is just
-    # a line break, not a waist. A lone gap has nothing to beat.
     gap_lens = [g[1] - g[0] + 1 for g in gaps]
     for gap_start, gap_end in gaps:
         if gap_end - gap_start + 1 < GAP_MIN_PX:
@@ -921,12 +864,6 @@ def _row_gap_waist(mask: dict, letters, box) -> dict | None:
             continue
         if _letters_inside_mask(lower_mask, xs[below], ys[below]) < GAP_MIN_CONTAINMENT:
             continue
-        # The clusters sit sideways of each other: the upper text's
-        # column centre against the lower text's, as a share of the
-        # mask width. Two lines of one bubble share a centre; two
-        # lobes offset diagonally do not. Their columns must also
-        # overlap: a line flowing across the waist reaches from one
-        # cluster's columns into the other's and ties them together.
         above_cx = (int(xs[above].min()) + int(xs[above].max())) / 2
         below_cx = (int(xs[below].min()) + int(xs[below].max())) / 2
         if abs(above_cx - below_cx) < GAP_MIN_OFFSET_RATIO * mask_width:
@@ -960,8 +897,6 @@ def split_bubble_mask(mask: dict, waist: dict) -> tuple[dict, dict] | None:
         cut = int(waist["cut_y"])
         above = [(a, b, xs) for a, b, xs in spans if b <= cut]
         below = [(a, b, xs) for a, b, xs in spans if a >= cut]
-        # Spans straddling the cut belong to neither lobe: the waist
-        # band itself is the gap, not lobe interior.
         if not above or not below:
             return None
         return (_mask_from_spans(above, mask), _mask_from_spans(below, mask))

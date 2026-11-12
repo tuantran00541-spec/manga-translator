@@ -168,7 +168,6 @@ def _fit_metrics(obj: dict, page_width: int, bands: dict | None = None) -> dict:
     return {"font_px": size, "font_px_at_800": round(size * 800 / max(1, page_width), 1), "size_source": source,
             "lines": len(lines), "wrapped": lines, "box_w": raw_w, "box_h": raw_h, "fits": fits,
             "missing_glyphs": missing_glyphs, "source_cap_px": obj.get("source_cap_px"),
-            # The wrap breaks a word apart when its lines no longer hold the text's own words.
             "split_word": bool(lines) and [w for line in lines for w in line.split()] != text.split()}
 
 
@@ -305,7 +304,6 @@ def main() -> int:
                 "SELECT status, requests, prompt_tokens, completion_tokens, cost_usd, charged_micros FROM jobs")]
         exported = None
         if job["status"] == "completed" and job.get("chapter_id"):
-            # Exported the way a user would, from the editor's export, while the app is still up.
             exported = requests.get(f"{APP}/api/export/{job['chapter_id']}.zip", timeout=600)
     finally:
         for proc in (app, gateway):
@@ -319,7 +317,6 @@ def main() -> int:
         "price_usd_per_m": {"input": float(os.environ.get("GATEWAY_PRICE_INPUT_PER_M", "0")),
                             "output": float(os.environ.get("GATEWAY_PRICE_OUTPUT_PER_M", "0"))},
         "polish": args.polish,
-        # Run times are only comparable on the same CPU type.
         "cpu": next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines()
                      if line.startswith("model name")), "unknown") if Path("/proc/cpuinfo").is_file() else "unknown",
         "status": job["status"],
@@ -371,9 +368,6 @@ def main() -> int:
         sizes = sorted(line["font_px_at_800"] for line in measured)
         report["readability"] = {
             "rendered": len(measured),
-            # font_px is a rectangle-fit reproduction on a
-            # blank image, not the size the renderer drew: measure drawn
-            # sizes from the rendered pages, never from this block.
             "font_px_basis": "reproduced rectangle fit (no image, no bubble curve, no container, no letter box)",
             "font_px_at_800": {"min": sizes[0], "p10": sizes[len(sizes) // 10], "median": sizes[len(sizes) // 2], "max": sizes[-1]},
             "under_16px": sum(size < 16 for size in sizes),

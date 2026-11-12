@@ -60,7 +60,7 @@ def test_source_ink_colour_is_measured_and_low_contrast_text_gets_an_outline():
     from app.render.source_size import source_ink_hex
 
     raw = np.full((200, 400, 3), 255, np.uint8)
-    cv2.putText(raw, "HELLO", (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 3, (30, 30, 220), 12)  # BGR red
+    cv2.putText(raw, "HELLO", (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 3, (30, 30, 220), 12)
     ink = source_ink_hex(raw, (0, 0, 400, 200))
     assert ink and int(ink[1:3], 16) > 180 and int(ink[5:7], 16) < 80, "red letters read as red"
 
@@ -104,7 +104,7 @@ def test_specks_in_the_box_do_not_shrink_the_source_size():
     rng = np.random.default_rng(6)
     image = np.full((400, 1200, 3), 200, np.uint8)
     for x, y in rng.integers((20, 20), (1180, 380), (80, 2)):
-        cv2.circle(image, (int(x), int(y)), 4, (40, 40, 40), -1)  # grit in the art
+        cv2.circle(image, (int(x), int(y)), 4, (40, 40, 40), -1)
     cv2.putText(image, "WORTH IT", (60, 260), cv2.FONT_HERSHEY_DUPLEX, 4.0, (20, 20, 20), 14)
     cap = source_cap_px(image, (0, 0, 1200, 400))
     assert cap is not None and cap >= 80, cap
@@ -112,7 +112,7 @@ def test_specks_in_the_box_do_not_shrink_the_source_size():
 
 def test_source_colour_comes_from_the_letters_not_the_art_in_the_box():
     image = _lettered(30)
-    image[220:300, :] = (64, 78, 92)  # brown art the box also holds, reaching its edge
+    image[220:300, :] = (64, 78, 92)
     assert source_ink_hex(image, (0, 0, 600, 300)) == "#000000"
 
 
@@ -134,8 +134,8 @@ def test_a_box_holding_lettering_plus_giant_sfx_reads_the_lettering_size():
     image = np.full((378, 675, 3), 255, np.uint8)
     cv2.putText(image, "I GOT IT.", (60, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 0), 3)
     for x, y, w, h in ((80, 20, 30, 137), (220, 40, 40, 172), (420, 10, 35, 201)):
-        cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 0), -1)  # SFX strokes
+        cv2.rectangle(image, (x, y), (x + w, y + h), (0, 0, 0), -1)
     for x, y in ((500, 300), (550, 320), (600, 290), (520, 330), (580, 350), (640, 310)):
-        cv2.circle(image, (x, y), 5, (0, 0, 0), -1)  # specks
+        cv2.circle(image, (x, y), 5, (0, 0, 0), -1)
     cap = source_cap_px(image, (0, 0, 675, 378))
     assert cap is not None and 30 <= cap <= 55, cap

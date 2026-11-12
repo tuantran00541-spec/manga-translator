@@ -10,18 +10,15 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
-MICROS = 1_000_000  # money is kept in millionths of a US dollar, so sums never drift
+MICROS = 1_000_000
 JOB_TTL_SECONDS = 6 * 3600
 LOGIN_CODE_TTL_SECONDS = 10 * 60
 LOGIN_CODE_RESEND_SECONDS = 60
 LOGIN_CODE_MAX_ATTEMPTS = 5
-LOGIN_CODES_PER_DAY = 10  # with the attempts per code, about 50 guesses a day at a 6-digit code
+LOGIN_CODES_PER_DAY = 10
 SESSION_TTL_SECONDS = 90 * 86400
-# Most one chapter may spend whatever the balance: a long webtoon chapter costs about $0.25.
 JOB_COST_GUARD_USD = 2.0
-# A long webtoon chapter makes about 280 A.I calls; this only stops a scripted job token.
 JOB_MAX_REQUESTS = 1000
-# Per network address and UTC day: login codes asked for, and new accounts made.
 LOGIN_STARTS_PER_IP = 30
 SIGNUPS_PER_IP = 3
 
@@ -138,7 +135,6 @@ class Store:
         self._path = str(path)
         self._clock = clock
         self._lock = threading.Lock()
-        # What the account pays on top of the A.I cost, as a share of it.
         self.fee_rate = max(0.0, float(fee_rate))
         with self._connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
@@ -146,7 +142,6 @@ class Store:
             if "plan" in columns:
                 raise RuntimeError(f"{self._path} is from the monthly-plan gateway; start the wallet on a new database")
             db.executescript(_SCHEMA)
-            # Nothing is in flight when the gateway starts.
             db.execute("UPDATE jobs SET reserved_usd = 0 WHERE reserved_usd != 0")
             db.execute("UPDATE accounts SET held_micros = 0 WHERE held_micros != 0")
 
@@ -177,12 +172,10 @@ class Store:
                 raise
             db.execute("COMMIT")
 
-    # -- accounts and login ----------------------------------------------------
     def _account_id_for_email(self, db, email: str) -> str:
         row = db.execute("SELECT id FROM accounts WHERE email = ?", (email,)).fetchone()
         if row is not None:
             return row["id"]
-        # A deleted account comes back with its balance and history.
         old = db.execute("SELECT id FROM accounts WHERE email = ?", (tombstone(email),)).fetchone()
         if old is not None:
             db.execute("UPDATE accounts SET email = ?, deleted_at = NULL WHERE id = ?", (email, old["id"]))
@@ -256,7 +249,6 @@ class Store:
                 if known is None:
                     self._count_ip(db, ip, "signup", SIGNUPS_PER_IP,
                                    "Mạng này đã tạo quá nhiều tài khoản hôm nay, hãy thử lại vào ngày mai")
-                # The code is spent; the row stays so the day's count holds.
                 db.execute("UPDATE login_codes SET code_hash = '', expires_at = 0 WHERE email = ?", (email,))
                 account_id = self._account_id_for_email(db, email)
                 token = self._new_session(db, account_id)
@@ -313,7 +305,6 @@ class Store:
             raise InvalidToken()
         return self.account(row["account_id"])
 
-    # -- wallet ----------------------------------------------------------------
     def _book(self, db, account_id: str, kind: str, delta: int, ref: str = "") -> int:
         """Move ``delta`` micro-dollars on the balance and record it; returns the new balance."""
         db.execute("UPDATE accounts SET balance_micros = balance_micros + ? WHERE id = ?", (delta, account_id))
@@ -384,7 +375,6 @@ class Store:
         return [{**{k: row[k] for k in ("provider", "amount", "currency", "status", "created_at", "paid_at")},
                  "credit_usd": usd(row["credit_micros"])} for row in rows]
 
-    # -- jobs ------------------------------------------------------------------
     def usage(self, account_id: str, since: float) -> dict:
         with self._connect() as db:
             row = db.execute(
@@ -456,7 +446,6 @@ class Store:
     def _close_job(self, db, row, status: str) -> None:
         db.execute("UPDATE jobs SET status = ? WHERE id = ?", (status, row["id"]))
         if int(row["charged_micros"]):
-            # The balance already moved request by request; the ledger gets one line per chapter.
             balance = int(db.execute("SELECT balance_micros FROM accounts WHERE id = ?",
                                      (row["account_id"],)).fetchone()[0])
             db.execute("INSERT INTO ledger (account_id, kind, delta_micros, balance_micros, ref, created_at) "
@@ -474,7 +463,6 @@ class Store:
             "prompt_tokens": int(row["prompt_tokens"]), "completion_tokens": int(row["completion_tokens"]),
         }
 
-    # -- operations ------------------------------------------------------------
     def purge(self) -> dict:
         """Drop spent sessions, codes and counters, and close jobs past their time."""
         now = self.now()
@@ -518,7 +506,6 @@ class Store:
         return {
             "days": days,
             "accounts": int(accounts[0]),
-            # Balances are owed to users: money taken in but not yet spent.
             "balances_owed_usd": usd(accounts[1]),
             "jobs": int(jobs["jobs"]),
             "requests": int(jobs["requests"]),

@@ -434,7 +434,6 @@ def update_text_object(req: UpdateTextObjectRequest) -> dict:
         changes["translation"] = req.translation
     if req.style is not None:
         changes["style"] = req.style.model_dump()
-    # An explicit null clears a font field; an omitted one leaves it untouched.
     if "font_selection_mode" in req.model_fields_set:
         changes["font_selection_mode"] = req.font_selection_mode
     if "font_match" in req.model_fields_set:

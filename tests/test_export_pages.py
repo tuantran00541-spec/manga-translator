@@ -19,8 +19,8 @@ def test_options_are_checked_and_the_default_keeps_the_old_archive():
 def test_a_tall_page_is_cut_at_a_quiet_gutter_below_the_limit():
     page = np.full((5000, 400, 3), 255, np.uint8)
     rng = np.random.default_rng(0)
-    page[:2600] = rng.integers(0, 255, (2600, 400, 3))  # busy art down to row 2600
-    page[2700:] = rng.integers(0, 255, (2300, 400, 3))  # and again from 2700: a white gutter between
+    page[:2600] = rng.integers(0, 255, (2600, 400, 3))
+    page[2700:] = rng.integers(0, 255, (2300, 400, 3))
     cuts = split_rows(page, 3000)
     assert len(cuts) == 1 and 2600 <= cuts[0] <= 2700
 

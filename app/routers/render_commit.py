@@ -98,8 +98,6 @@ def _render_snapshot(
             size_bands=size_bands,
             verdicts=verdicts,
         )
-        # Objects the floor refused are skipped, not failed: their ids
-        # travel back so the caller restores their original pixels.
         skipped = [
             str(v["id"])
             for v in verdicts
@@ -201,8 +199,6 @@ def _load_render_snapshot(req: RenderRequest) -> tuple[dict, dict, str, dict]:
         if page.get("process_required"):
             raise HTTPException(409, "Cannot render this page before processing")
         drafts = copy.deepcopy(manifest.get("drafts", {}))
-        # The chapter's own body-lettering median, so one chapter reads
-        # as one size; the manifest holds every page, this one included.
         size_bands = chapter_size_bands(pages)
         try:
             signature = render_input_signature(manifest, req.page_index)
@@ -246,11 +242,6 @@ def _commit_render(
 
 
 def _drop_stale_render_output(chapter_id: str, page_index: int, final_path: Path) -> None:
-    # A render that failed to commit leaves the previous file on disk
-    # while the manifest says not-rendered (M2): drop it, so the output
-    # dir does not claim a render exists. Kept when the manifest still
-    # says rendered -- a concurrent render may have committed a fresh
-    # file after this snapshot went stale, and that file must survive.
     try:
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)

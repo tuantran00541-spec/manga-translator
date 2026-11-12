@@ -9,14 +9,14 @@ import numpy as np
 from app.ai_mode.vision_json import request_vision_json
 from app.region_policy import overlap_share
 
-OVERLAP = 0.3  # of the smaller box; two lettered objects overlapping this much garble each other
+OVERLAP = 0.3
 MIN_SIDE_PX = 10
-MAX_AREA_RATIO = 0.4  # a box over most of a slice is a misread
+MAX_AREA_RATIO = 0.4
 MARGIN_PX = 6
-CROP_PAD_PX = 24  # background shown round an erased box, where a ghost or smear would sit
-MAX_CROP_SIDE = 900  # a bigger crop is shrunk to this; letter fragments still show
+CROP_PAD_PX = 24
+MAX_CROP_SIDE = 900
 SHEET_SIDE = 2048
-TAG_PX = 30  # strip above each crop carrying its id
+TAG_PX = 30
 GAP_PX = 8
 CLEAN_REVIEW_EFFORT = "low"
 
@@ -36,7 +36,7 @@ CLEAN_REVIEW_PROMPT = (
 class Crop:
     id: str
     page_index: int
-    rect: tuple[int, int, int, int]  # the erased box on the slice
+    rect: tuple[int, int, int, int]
     image: np.ndarray
 
 
@@ -99,7 +99,6 @@ def _covered(box, others) -> bool:
 
 def review_sheet(provider, model: str, api_key: str, sheet: np.ndarray, crops: list[Crop]) -> tuple[list[Crop], float | None]:
     """Checkpoint 3: one request per sheet; returns the crops with residue left."""
-    # This check thinks (low effort) so it looks at every crop.
     result = request_vision_json(provider, model, api_key, CLEAN_REVIEW_PROMPT, [("SHEET OF CROPS", sheet)],
                                  max_tokens=1000000, reasoning_effort=CLEAN_REVIEW_EFFORT, stage="review")
     flagged = {str(item) for item in result.data.get("residue") or [] if isinstance(item, (str, int, float))}

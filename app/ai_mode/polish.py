@@ -11,14 +11,13 @@ from app.ai_mode import decider
 from app.ai_mode.vision_json import request_vision_json
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 
-# Short titles, signs and sound effects read as broken out of context, so only speech and narration are graded.
 JUDGED_ROLES = frozenset({"dialogue", "narration", "thought", "whisper", "shout", "dark_threat", "system_ui"})
 MIN_WORDS = 3
 REWRITE_BATCH = 8
 MAX_STATE_CHARS = 2000
-MAX_SETTLED = 6  # address pairs or glossary entries shown with one line
-MIN_GAIN = 0.025  # a rewrite that gains less on the 0-1 scale is the judge's noise, not a better line
-MAX_LOSS = 0.15  # a rewrite may not lose more than this on natural or faithful to fix address or terms
+MAX_SETTLED = 6
+MIN_GAIN = 0.025
+MAX_LOSS = 0.15
 
 QUESTIONS = {
     "natural": {
@@ -38,15 +37,12 @@ QUESTIONS = {
         "criteria": ["says something else", "drops or adds part of the meaning", "keeps the meaning"],
     },
 }
-# Asked only when the chapter settled how this speaker talks or a glossary term is in the line.
 SETTLED = {
     "type": "score",
     "instructions": "Does TRANSLATION use the forms of address in ADDRESS and the terms in GLOSSARY wherever they apply?",
     "criteria": ["uses other forms or terms", "uses some of them", "uses them all"],
 }
-# A line under one is sent back; on 40 labelled lines Jev and the decider both flag no good line and 25 of 30 bad ones,
-# at any clear limit from 1.5 to 1.8, and 1.6 stops flagging sound lines that sit just under 1.8 in real chapters.
-LIMITS = {"natural": 2.0, "clear": 1.6, "faithful": 1.5, "settled": 1.0}  # settled is not calibrated yet
+LIMITS = {"natural": 2.0, "clear": 1.6, "faithful": 1.5, "settled": 1.0}
 PROBLEMS = {
     "natural": "it sounds unnatural or word-for-word in Vietnamese",
     "clear": "its meaning is unclear",
@@ -130,10 +126,7 @@ def settled(line: Line, memory: dict | None) -> tuple[list[str], list[str]]:
     for entry in [*(glossary.get("address") or []), *(memory.get("address") or [])]:
         if isinstance(entry, dict) and line.speaker and _flat(entry.get("from")).lower() == line.speaker.lower():
             pairs[_flat(entry.get("to"))] = entry
-    # The listener of a line is unknown, so only what holds for every listener is settled: one self form, and
-    # the form for the other person when the speaker talks to just one.
     source = _flat(line.source).lower()
-    # An English line names the speaker or the listener only through its pronouns; other languages are always asked.
     english = source.isascii()
     selves = {_flat(entry.get("self")) for entry in pairs.values() if _flat(entry.get("self"))}
     address = [f"self \"{selves.pop()}\""] if len(selves) == 1 and (not english or _FIRST_PERSON.search(source)) else []
@@ -174,7 +167,6 @@ def judge(provider, api_key: str, state: str, asked: dict = QUESTIONS) -> dict[s
     """One judge call; returns each question's score, missing ones left out."""
     response = requests.post(
         evaluate_url(provider), headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        # A gateway picks its own judge; MiniRouter itself is told which decision model grades.
         json={**({"model": decider.DECIDER_MODEL} if decider.available(provider, api_key) else {}),
               "state": state, "questions": asked},
         timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS), allow_redirects=False,

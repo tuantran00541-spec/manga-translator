@@ -206,7 +206,6 @@ def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_
     Image.new("RGB", (160, 120), "white").save(original)
     Image.new("RGB", (160, 120), "gray").save(clean)
     answers = iter([
-        # The model sees the objects numbered 1, 2, ... and answers with those numbers.
         '{"translations":[{"id":"1","translated_text":"Thầy ơi, em đến rồi."},{"id":"2","translated_text":"Vào đi."}],'
         '"speakers":{"1":"Ian","2":"Baldur"},'
         '"characters":[{"name":"Ian","note":"student, 17"},{"name":"Baldur","note":"Ian\'s teacher"}],'
@@ -366,23 +365,16 @@ def test_english_left_as_the_translation_is_treated_as_untranslated():
 def test_rerun3_english_returns_are_caught_even_with_confusable_punctuation():
     from app.translation.vision import _untranslated_english
 
-    # Whole bubbles returned in English in rerun-3 (ch42 p010/p015, former-supreme p063).
     assert _untranslated_english("IS THERE A PROBLEM WITH THAT?")
     assert _untranslated_english("OF COURSE NOT HE'S STILL A SKILLED SO THE SCHOOL ENDB SUSPENSION.")
     assert _untranslated_english(
         "SHAANXI MAY BE FAR, BUT IT WOULDN'T TAKE LONG TO GET THERE IF I SET MY MIND TO IT...")
-    # A short shout with no function word in it (mount-hua p018) is still English.
     assert _untranslated_english("SENIOR BROTHER!")
-    # One invisible or curly character must not shield the whole line.
     assert _untranslated_english("IS THERE A PROBLEM WITH THAT?\u00a0")
     assert _untranslated_english("IS THERE A PROBLEM WITH THAT?\u200b")
     assert _untranslated_english("OF COURSE NOT HE\u2019S STILL A SKILLED SO THE SCHOOL ENDB SUSPENSION.")
     assert _untranslated_english(
         "SHAANXI MAY BE FAR, BUT IT WOULDN\u2019T TAKE LONG TO GET THERE IF I SET MY MIND TO IT\u2026")
-    # Round 9: the same shield, from characters E1 never folded — a thin
-    # or figure space, a narrow no-break space, an ideographic space, a
-    # full-width "!", a soft hyphen, a direction mark. Each one alone used
-    # to defeat str.isascii and let the whole English line straight through.
     assert _untranslated_english("SENIOR BROTHER!\u2009")
     assert _untranslated_english("SENIOR BROTHER!\u2007")
     assert _untranslated_english("SENIOR BROTHER!\u202f")
@@ -391,7 +383,6 @@ def test_rerun3_english_returns_are_caught_even_with_confusable_punctuation():
     assert _untranslated_english("SENIOR BROTHER!\u00ad")
     assert _untranslated_english("SENIOR BROTHER!\u200e")
     assert _untranslated_english("\uff33\uff25\uff2e\uff29\uff2f\uff32 \uff22\uff32\uff2f\uff34\uff28\uff25\uff32\uff01")
-    # Names and kept titles still pass through, and a one-word grunt is out of scope.
     assert not _untranslated_english("HELMUT...?")
     assert not _untranslated_english("GAME OVER") and not _untranslated_english("FRONDIER DE ROAH!")
     assert not _untranslated_english("HELMUT VỪA RỒI PHÒNG 301...?")
@@ -403,7 +394,6 @@ def test_vietnamese_written_without_diacritics_is_treated_as_untranslated():
 
     assert _missing_diacritics("Hậu quả do năng lực\ndang tro thanh mot van de xoi hoi moi")
     assert _missing_diacritics("Toi khong the lam nhu vay")
-    # Round 9: the same exotic-character shield must not hide a diacritic-less line either.
     assert _missing_diacritics("Toi khong the lam nhu vay\uff01")
     assert _missing_diacritics("Toi khong the lam nhu vay\u2009")
     assert not _missing_diacritics("Bọn tôi không thể!") and not _missing_diacritics("Level Up! Dungeon Break")
@@ -419,14 +409,11 @@ def test_a_vision_misread_of_korean_sfx_as_latin_noise_is_treated_as_untranslate
 
     assert _latin_noise("1/10")
     assert _latin_noise("N/O/Z/N")
-    # Real SFX and real words pass through untouched.
     assert not _latin_noise("KYA AH AH!")
     assert not _latin_noise("HUFF")
     assert not _latin_noise("PHÙ...")
     assert not _latin_noise("*THỞ DÀI*")
     assert not _latin_noise("MM!")
-    # A bare ellipsis or a lone number is a pause or a count the model
-    # carried over, not a misread.
     assert not _latin_noise("...")
     assert not _latin_noise("12")
 
@@ -474,7 +461,6 @@ def test_mixed_vietnamese_and_english_splits_instead_of_passing():
 
     assert _untranslated_english("Anh ơi SENIOR BROTHER")
     assert _untranslated_english("Đúng vậy\nSENIOR BROTHER!")
-    # A lone function word that is also a Vietnamese word never counts.
     assert not _untranslated_english("Tôi to lắm")
     assert not _untranslated_english("Quả me to")
 
@@ -487,20 +473,15 @@ def test_mixed_vietnamese_and_english_splits_instead_of_passing():
 
     assert filtered("Anh ơi SENIOR BROTHER") == ("Anh ơi", "Anh ơi")
     assert filtered("Đúng vậy\nSENIOR BROTHER!") == ("Đúng vậy", "Đúng vậy")
-    # Pure English still blanks outright, including a second line with
-    # no listed word in it.
     assert filtered("SENIOR BROTHER!") == ("", None)
     assert filtered("IS THE / A PROBI / WITH TH") == ("", None)
     assert filtered("OF COURSE NOT / … ENDB / SUSPENSION.") == ("", None)
     assert filtered("WITH ITS LIFELIKE AI,\nVAST OPEN WORLD,") == ("", None)
-    # Valid Vietnamese and kept grunts/titles all still pass through untouched.
     assert filtered("Tôi to lắm") == ("Tôi to lắm", "Tôi to lắm")
     assert filtered("NGỦ") == ("NGỦ", "NGỦ")
     assert filtered("MM!") == ("MM!", "MM!")
     assert filtered("ENDB") == ("ENDB", "ENDB")
     assert filtered("GAME OVER") == ("GAME OVER", "GAME OVER")
-    # A diacritic scream is a scream, not a Vietnamese line: the diacritics
-    # are stripped before the repeated-letter check.
     assert filtered("ÁÁÁÁA!!!") == ("", None)
     assert filtered("Đúng vậy\nGAME OVER") == ("Đúng vậy\nGAME OVER", "Đúng vậy\nGAME OVER")
 
@@ -559,7 +540,6 @@ def test_other_gates_also_judge_per_line_not_per_value():
     assert filtered("Chào\n1/10") == "Chào"
     assert filtered("Chào\nAAAAA!!!") == "Chào"
     assert filtered("BÙM\nFFR", "푸르륵") == "BÙM"
-    # The misread still needs its Hangul source; without one it stays.
     assert filtered("FFR", "푸르륵") == ""
     assert filtered("FFR") == "FFR"
 
@@ -832,9 +812,6 @@ def test_lines_outside_every_box_come_back_as_pixel_boxes(tmp_path, monkeypatch)
 
 
 def test_translate_prompt_lists_map_labels_and_place_signs_as_unboxed():
-    # Former Supreme 1, slices 91/93/103: map labels and a legible place sign were left
-    # untranslated because the prompt only required dialogue/narration/captions in "unboxed"
-    # and let "signs that are only scenery" stay out; a legible place sign is not scenery.
     from app.translation.context import system_prompt
 
     prompt = system_prompt("Vietnamese", "vi")

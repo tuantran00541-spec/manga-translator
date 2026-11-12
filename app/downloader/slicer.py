@@ -37,9 +37,6 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata
         except OSError:
             pass
     if image is None:
-        # Undecodable: the page contributes no slices, like the zip path's
-        # broken-image skip — returning the path itself would hand the
-        # pipeline an undecodable "page" to translate and render.
         logger.warning("Skipping undecodable image {}", image_path)
         return []
 

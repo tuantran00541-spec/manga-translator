@@ -52,7 +52,6 @@ def usage_cost_usd(usage: dict, provider_id: str = "deepseek") -> float | None:
 
 
 def _settled_cost(value) -> float | None:
-    # A gateway-stated charge counts only as a finite, non-negative number.
     try:
         cost = float(value)
     except (TypeError, ValueError):
@@ -61,7 +60,6 @@ def _settled_cost(value) -> float | None:
 
 
 def _configured_price_usd(usage: dict, model: str) -> float | None:
-    # Prices the user supplies; an unlisted model stays unknown, never guessed.
     try:
         table = json.loads(os.getenv("MANGA_MODEL_PRICES_JSON") or "{}")
     except ValueError:

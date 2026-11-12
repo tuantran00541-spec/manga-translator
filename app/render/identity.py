@@ -55,8 +55,6 @@ def _normalized_text_object(obj: dict) -> dict:
         "letter_bounds": _normalized_optional_region(obj.get("letter_bounds")),
         "bubble_mask": copy.deepcopy(obj.get("bubble_mask"))
         if isinstance(obj.get("bubble_mask"), dict) else None,
-        # The letter bitmap is a render input: the trim reads it to see
-        # a diagonal waist, so a changed bitmap stales the render.
         "letters_mask": copy.deepcopy(obj.get("letters_mask")),
         "source_cap_px": float(cap) if isinstance(cap, (int, float)) else None,
         "typography_role": str(obj.get("typography_role") or ""),

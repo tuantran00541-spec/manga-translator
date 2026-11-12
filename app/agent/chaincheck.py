@@ -4,7 +4,6 @@ from __future__ import annotations
 import ast
 import difflib
 
-# Methods of the tools object itself, which are not tools the harness serves.
 LIBRARY = frozenset({"search", "describe", "intent", "branch", "adopt"})
 
 
@@ -19,10 +18,8 @@ def check(code: str, known: dict[str, set[str] | None], fixes=lambda name, args:
         return []
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
              and isinstance(n.func.value, ast.Name) and n.func.value.id == "tools"]
-    # A call inside a try that catches AttributeError is the chain checking whether a tool exists, so it is left alone.
     probed = {id(n) for t in ast.walk(tree) if isinstance(t, ast.Try) and any(_catches(h) for h in t.handlers)
               for stmt in t.body for n in ast.walk(stmt)}
-    # A tool made earlier in the same chain with tools.create(name="...") is reachable after it.
     made = {kw.value.value for c in calls if c.func.attr == "create" for kw in c.keywords
             if kw.arg == "name" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str)}
     problems = []

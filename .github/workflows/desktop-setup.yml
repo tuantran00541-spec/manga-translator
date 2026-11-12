@@ -1,13 +1,10 @@
 name: Desktop setup
 
-# Builds MangaTranslator-Setup.exe, installs it silently on a fresh Windows, opens the app from its desktop icon,
-# then uninstalls it keeping the chapters. Publishing a GitHub release attaches the setup to it.
 on:
   workflow_dispatch:
   release:
     types: [published]
   push:
-    # Tags are built by their release, not here.
     branches: ['**']
     paths:
       - installer/**
@@ -29,7 +26,6 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     env:
-      # The tested install takes this branch's code, or the release itself; users' setups take the latest release.
       MANGA_REF: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
@@ -97,7 +93,6 @@ jobs:
           New-Item -ItemType Directory -Force (Join-Path $home_ 'app\data\raw\c0ffee01') | Out-Null
           Set-Content (Join-Path $home_ 'app\data\raw\c0ffee01\page.txt') 'a translated chapter'
           Start-Process (Join-Path $home_ 'setup\unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
-          # The uninstaller hands over to a copy of itself; wait for it to finish.
           for ($i = 0; $i -lt 60 -and (Test-Path (Join-Path $home_ 'setup')); $i++) { Start-Sleep 2 }
           Get-ChildItem $home_ -ErrorAction SilentlyContinue
           if (Test-Path (Join-Path $home_ 'app')) { throw 'the app folder is still there' }

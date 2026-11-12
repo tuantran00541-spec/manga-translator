@@ -117,9 +117,6 @@ def externalize_page_masks(
     externalized = 0
 
     def externalize_one(box: dict, key: str, fallback_index: int) -> int:
-        # One mask value to a sidecar; the erase mask and the letters
-        # mask share the box id and differ by digest, so they never
-        # collide on a filename.
         value = box.get(key)
         if not value:
             return 0

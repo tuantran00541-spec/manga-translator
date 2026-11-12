@@ -345,9 +345,9 @@ def test_requests_in_flight_together_cannot_pass_the_cost_cap_or_the_balance(tmp
     store.begin_request(job_id, 0.8)
     store.begin_request(job_id, 0.8)
     with pytest.raises(QuotaExceeded):
-        store.begin_request(job_id, 0.8)  # nothing is billed yet, but the held cost would pass the guard
+        store.begin_request(job_id, 0.8)
     store.add_cost(job_id, 0.2, released_usd=0.8)
-    store.begin_request(job_id, 0.8)  # the real cost came in lower, so there is room again
+    store.begin_request(job_id, 0.8)
 
     other, _ = store.create_account("b@example.com")
     store.adjust(other, 1.05, "test")
@@ -356,7 +356,7 @@ def test_requests_in_flight_together_cannot_pass_the_cost_cap_or_the_balance(tmp
     assert cap == pytest.approx(1.0), "the cap is what the balance pays for after the fee"
     store.begin_request(first, 0.6)
     with pytest.raises(QuotaExceeded, match="balance"):
-        store.begin_request(second, 0.6)  # two chapters at once share one balance
+        store.begin_request(second, 0.6)
 
 
 def test_a_chapter_is_charged_at_cost_plus_the_fee_in_one_ledger_line(tmp_path):

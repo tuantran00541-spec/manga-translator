@@ -18,7 +18,6 @@ from app.agent.session import AgentSessionManager
 from app.agent.tools import Workspace
 
 
-# ---- helpers ----
 
 class _Prov:
     id = "stub"
@@ -60,7 +59,6 @@ def _fake_stdio_server(path: Path, body: str) -> None:
         encoding="utf-8")
 
 
-# ---- stdio servers must not inherit the harness process env ----
 
 def _env_probe_witness(tmp_path: Path) -> tuple[dict, Path]:
     """A stdio config whose child dumps which env vars it can see into a file."""
@@ -114,7 +112,6 @@ def test_c6_clean_config_env_allowlist():
     assert "env_allowlist" not in out
 
 
-# ---- tools/list pagination must be capped ----
 
 def test_h9_infinite_cursor_stops_at_cap(tmp_path):
     """A server returning nextCursor forever must not hang; pagination stops at the cap."""
@@ -122,7 +119,6 @@ def test_h9_infinite_cursor_stops_at_cap(tmp_path):
         tmp_path / "evil_server.py",
         "    elif method == 'tools/list':\n"
         "        reply({'tools': [], 'nextCursor': 'forever'})\n")
-    # Count tools/list requests with a wrapper transport.
     calls = {"n": 0}
     real_call = mcp.Server._call
 
@@ -167,7 +163,6 @@ def test_h9_normal_pagination_works(tmp_path):
         server.close()
 
 
-# ---- a server's self-certified readOnlyHint must not skip approval ----
 
 def _mcp_call(name: str) -> dict:
     return {"id": "m1", "name": name, "args": {}}
@@ -206,7 +201,6 @@ def test_h16_hint_ignored_not_negated(session_auto):
     assert session_auto._needs_approval(_mcp_call(get_status), None) is False
 
 
-# ---- streamable-HTTP MCP must go through the SSRF guard ----
 
 @pytest.mark.parametrize("url", [
     "http://169.254.169.254/latest/meta-data/iam/",
@@ -272,7 +266,6 @@ def test_l1_legitimate_http_server_still_works(tmp_path):
     httpd = HTTPServer(("127.0.0.1", 0), _MCPHandler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
-        # Loopback is blocked by the guard itself, so bypass it to test the transport flow.
         with mock.patch.object(mcp, "validate_url", lambda url: url):
             server = mcp.Server("h", {"type": "http",
                                       "url": f"http://127.0.0.1:{httpd.server_address[1]}/mcp"}, tmp_path)

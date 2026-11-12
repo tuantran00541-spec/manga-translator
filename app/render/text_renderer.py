@@ -55,10 +55,8 @@ def _draws_char(font_path_str: str, char: str) -> bool:
     return (mask.size, bytes(mask)) != _missing_glyph_mask(font_path_str)
 
 
-# Typographic punctuation many comic fonts lack, with the plain form they do have.
 _PUNCTUATION_FALLBACKS = {"\u2014": "-", "\u2013": "-", "\u2026": "...", "\u2022": "·", "\u00ab": '"', "\u00bb": '"',
                           "\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'",
-                          # Brackets round names and skills in webtoons and CJK sources.
                           "\u27e8": "<", "\u27e9": ">", "\u3008": "<", "\u3009": ">", "\u300a": "<", "\u300b": ">",
                           "\u300c": '"', "\u300d": '"', "\u300e": '"', "\u300f": '"'}
 
@@ -128,7 +126,7 @@ def auto_detect_text_color(image: Image.Image, box: tuple[int, int, int, int]) -
     return (0, 0, 0)
 
 
-LOW_CONTRAST_RATIO = 3.0  # below this text-to-background contrast the text gets an outline
+LOW_CONTRAST_RATIO = 3.0
 LOW_CONTRAST_STROKE_WIDTH = 3
 
 
@@ -327,7 +325,6 @@ def render_text_in_box(
 
     bg_grey = _light_background_grey(image, (x1, y1, x2, y2))
     if _contrast(text_color, (bg_grey, bg_grey, bg_grey)) < LOW_CONTRAST_RATIO:
-        # Letters close to the background colour get a thick contrasting outline.
         stroke_w = max(stroke_w, LOW_CONTRAST_STROKE_WIDTH)
 
     if stroke_color is None or stroke_color == "auto" or stroke_color == "":
@@ -348,10 +345,6 @@ def render_text_in_box(
 
     font_path_str = str(font_path)
 
-    # The mask is the bubble's interior; a bubble or spiky outline narrows
-    # toward its top and bottom, so its lines must fit the mask's rows,
-    # not the full rectangle. A mask makes the container label redundant:
-    # an unlabelled bubble with a mask still lays out on the mask.
     _mask, _mask_source = _resolve_mask(image, (x1, y1, x2, y2), container,
                                         source_letter_box, bubble_mask,
                                         letters, letters_box)
@@ -361,11 +354,6 @@ def render_text_in_box(
 
     _fixed_height_fallback = False
     if target_size is not None and curved and centred:
-        # A fixed size (usually the OCR-measured source size) never saw
-        # the fit, so its lines can cross an outline even while the fit
-        # would have shrunk them. Validate the fixed lines against the
-        # mask's rows and fall back to the fit when they do not fit; a
-        # fixed size that fits is untouched.
         _fixed_font = get_font_object(font_path_str, target_size)
         _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
         if _mask is not None and _mask.get("kind") == "bubble":
@@ -383,14 +371,6 @@ def render_text_in_box(
                         target_size = None
 
     if target_size is not None:
-        # A fixed size whose wrapped lines are taller than the box aborts
-        # the whole page (render N3): page_renderer re-raises anything
-        # that is not floor-only, and _render_one retries the same
-        # failing size. Fall back to the fit on height overflow, as Fix K
-        # does for width — the fit sizes down, or refuses at the floor
-        # and the object is skipped and restored instead of aborting.
-        # The check mirrors the draw-time height below exactly (same wrap,
-        # same line height), so a size that passes here cannot overflow there.
         _fixed_font = get_font_object(font_path_str, target_size)
         _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
         if (_calc_line_height(draw, _fixed_font, stroke_w=stroke_w)
@@ -399,8 +379,6 @@ def render_text_in_box(
             _fixed_height_fallback = True
 
     if target_size is not None:
-        # A named size below the readable floor is drawn at the floor,
-        # not refused: the floor is the smallest readable lettering.
         _readable_fixed = int(RENDER_MIN_READABLE_FONT_SIZE
                               * max(1.0, image.size[0] / REFERENCE_PAGE_WIDTH))
         if target_size < _readable_fixed:
@@ -436,24 +414,14 @@ def render_text_in_box(
                 "Translation does not fit at the minimum readable font size; "
                 "shorten the translation or enlarge the text region."
             )
-        # The fit re-reports a mask passed in as "object"; the source
-        # resolved here — object or derived — is the honest one.
         fit_stats["mask_source"] = _mask_source
         block_top = fit_stats.get("block_top")
         font = get_font_object(font_path_str, actual_size)
-        # The same number of lines, evened out so no word is left alone.
-        # Which lines are drawn is recorded: the fit sized the greedy
-        # lines, so evened lines that leave the mask's rows give way
-        # to them instead of being drawn over an outline.
         lines = _wrap_text(draw, text, font, box_w, balance=True)
         lines_source = "balanced"
         draw_spans = spans_holder if spans_holder else None
         if centred and curved:
             if draw_spans is not None:
-                # Evened lines can push a long line into a narrow row; the fitted lines stay inside.
-                # An evened wrap that changes the line count was never
-                # sized against the mask's rows at all, so it gives way
-                # to the fitted lines unconditionally.
                 if len(lines) != len(draw_spans):
                     lines = fitted_lines
                     lines_source = "fitted"
@@ -472,9 +440,6 @@ def render_text_in_box(
         stats["fit_box"] = (x1, y1, x2, y2)
         stats["fixed_size_height_fallback"] = _fixed_height_fallback
         if h_align == "center":
-            # Per-line centres only exist for a curved auto fit; every
-            # other centred path centres on the box, and the flag says
-            # which one the drawing used.
             stats["line_centring"] = "per_line" if line_centres else "box_centre"
         if target_size is None:
             stats["frame"] = fit_stats.get("frame")
@@ -509,7 +474,6 @@ def render_text_in_box(
     elif v_align == "bottom":
         start_y = y1 + pad + max(0, box_h - total_h)
     elif block_top is not None:
-        # The fit centred the block on the mask's centroid; draw it there.
         start_y = int(block_top)
     else:
         start_y = y1 + pad + max(0, (box_h - total_h) // 2)
@@ -518,13 +482,6 @@ def render_text_in_box(
 
     fill_fallback = None
     if explicit_fill:
-        # A stored fill is a suggestion, not a verdict: a pale fill on
-        # matching paper reads pale however thick its outline. The
-        # background it is judged against is the ring of pixels the
-        # glyphs will actually touch — box means and medians mix paper,
-        # outlines and art, which is what let pale fills pass before.
-        # Mottled art is judged on its lightest patches, since those are
-        # where a pale fill vanishes.
         if bg_color and bg_color not in ("transparent", "none", ""):
             local_bg = parse_color(bg_color, default=(255, 255, 255))
             if _contrast(text_color, local_bg) < LOW_CONTRAST_RATIO:
@@ -558,10 +515,6 @@ def render_text_in_box(
         if stats is not None and fill_fallback is not None:
             stats["fill_fallback"] = fill_fallback
 
-    # Where the drawn lines actually land, as their advance boxes: the
-    # ranking judges placement on ink, not on the box the fit started
-    # from, and a line's advance box slightly overestimates its glyphs,
-    # so a candidate inside the letter box is truly inside it.
     ink_box = None
     for i, line in enumerate(lines):
         start_x, line_w = _line_start_x(draw, line, font, x1=x1, pad=pad, box_w=box_w,
@@ -591,7 +544,7 @@ def render_text_in_box(
     return image
 
 
-MASK_BAND_PAD = 4  # ink keeps this margin inside a mask row, off the outline
+MASK_BAND_PAD = 4
 
 
 def _mask_bands(mask, box):
@@ -762,10 +715,6 @@ def _resolve_mask(image, box, container, letter_box, bubble_mask,
         return _trim_mask_to_letters(mask, box, letter_box, letters, letters_box), "object"
     if image is None or str(container or "").lower() not in ("bubble", "spiky"):
         return None, "none"
-    # A roomy attempt box floods the panel past its bubble, while the
-    # letter box sits inside the bubble: derive on the letter box when
-    # it lies inside the attempt box, so every attempt finds the same
-    # bubble instead of each its own flood.
     derive_box = box
     if letter_box is not None:
         lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
@@ -820,11 +769,6 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
     if source_cap_px:
         from app.render.source_size import matching_font_px
         source_match = matching_font_px(font_path_str, int(source_cap_px))
-    # The floor is the readable size, or six tenths of what the box
-    # holds at the default maximum — the fit may shrink below the
-    # source size when the translation is longer than the source, but
-    # never far below what its own box holds. The probe inside search()
-    # sets the six-tenths term; enlarge keeps its own minimum.
     if enlarge:
         floor = max(readable, enlarged_min)
     else:
@@ -851,11 +795,6 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
 
     if not use_mask and str(container or "").lower() == "screen":
-        # A system window's detection region is its outer extent, so the
-        # frame itself sits inside the fit box; lettering to the region
-        # edge paints over the border. Hold the text inside the frame.
-        # Bright border lines are measured where both sides show; any
-        # dimension without them keeps the inset guess, recorded as such.
         inset = max(24, int(0.05 * min(raw_w, raw_h)))
         ix1, iy1, ix2, iy2 = x1 + inset, y1 + inset, x2 - inset, y2 - inset
         if image is not None:
@@ -879,9 +818,6 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
 
     if not use_mask and str(container or "").lower() == "box" and not curved and image is not None:
-        # A narration box has no curved measurement, so its fit box used
-        # to be the detector region — wider than the frame it sits in.
-        # Shrink the fit to the measured rules when they show.
         measured = _box_frame(image, (x1, y1, x2, y2))
         if measured is not None:
             frame = measured
@@ -894,10 +830,6 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             fallbacks.append("frame_unmeasured")
 
     def clamp_growth(bx1, by1, bx2, by2):
-        # Growth stays inside the measured frame; where no frame was
-        # measured, a container with an outline still bounds growth to
-        # the box it was given, since that box is the outline's guess.
-        # Only frameless text has nothing to cross, so it grows freely.
         if frame_source != "region_no_frame":
             fx1, fy1, fx2, fy2 = frame
             return (max(bx1, fx1), max(by1, fy1), min(bx2, fx2), min(by2, fy2))
@@ -907,9 +839,6 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         return (bx1, by1, bx2, by2)
 
     if enlarge:
-        # Text flagged too small to read grows its area and may exceed the source size.
-        # Growth stays inside the frame: a framed text grows into its bubble,
-        # never onto the art around it. Free text has no frame, so it grows freely.
         grow_x, grow_y = int(round(raw_w * ENLARGE_GROW_RATIO)), int(round(raw_h * ENLARGE_GROW_RATIO))
         image_w, image_h = image_size
         x1, y1 = max(0, x1 - grow_x), max(0, y1 - grow_y)
@@ -935,16 +864,8 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             if bands is not None:
                 widest = max((b - a for band in bands for a, b in band), default=0)
                 if widest < 0.4 * fbw:
-                    # A fragmented mask is shading, not an interior; the
-                    # rectangle fit below is the honest fallback.
                     bands = None
                     fallbacks.append("mask_degenerate_rectangle")
-        # The probe is the largest size that fits at the default maximum:
-        # the ceiling is at least six tenths of it, so a misread source
-        # size cannot shrink the text far below what the box holds — and
-        # the floor is the same six tenths, so a translation longer than
-        # its source may still shrink to fit, down to what its own box
-        # holds. Both bounds come from the box, not the source cap.
         probe = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                           minimum_size=readable, maximum_size=maximum_size,
                           curved=bool(bands is not None or curved), bands=bands)[0]
@@ -987,10 +908,6 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
             box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
     if not fits_readably:
-        # The outline fit failed but the floor size holds inside a plain
-        # rectangle: draw there rather than refuse the block. For a mask
-        # that rectangle is its inscribed one, inside the bubble; without
-        # one it is the fit box itself.
         if use_mask and mask is not None:
             rx1, ry1, rx2, ry2 = mask_inscribed_rect(mask)
         else:
@@ -1012,8 +929,6 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
                 fallbacks.append("outline_fit_failed_floor_rect")
     block_top = None
     if fits_readably and lines and bands is not None:
-        # Each line is drawn on its own rows' interior centre, not the box
-        # centre: the fit above already sized it against those intervals.
         font_c = get_font_object(font_path_str, size)
         line_height_c = _calc_line_height(draw, font_c, stroke_w=stroke_w)
         total_c = line_height_c * len(lines)
@@ -1051,11 +966,11 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             "block_top": block_top,
         })
     return size, lines, fits_readably, (x1, y1, x2, y2)
-ENLARGE_GROW_RATIO = 0.25  # each side of a region flagged enlarge grows by this share
+ENLARGE_GROW_RATIO = 0.25
 ENLARGED_MIN_FONT_SIZE = 22
-SOURCE_FLOOR_RATIO = 0.6  # source-matched text never drops below this share of the box-fit size
-REFERENCE_PAGE_WIDTH = 800  # font size limits are for a page this wide
-SOURCE_MATCH_MAX_FONT_SIZE = 200  # large source lettering may be matched past MAX_FONT_SIZE
+SOURCE_FLOOR_RATIO = 0.6
+REFERENCE_PAGE_WIDTH = 800
+SOURCE_MATCH_MAX_FONT_SIZE = 200
 
 
 def _ellipse_line_widths(box_w: int, box_h: int, line_count: int, line_height: int) -> list[float]:
@@ -1096,7 +1011,7 @@ def _lines_fit_ellipse(draw, lines, font, box_w: int, box_h: int, stroke_w: int)
         for line, limit in zip(lines, limits))
 
 
-BOX_RULE_EXPAND = 64  # how far past a region a narration frame's rules are searched for
+BOX_RULE_EXPAND = 64
 
 
 def _box_frame(image: Image.Image, box):
@@ -1136,17 +1051,6 @@ def _box_frame(image: Image.Image, box):
     col_share = dark.mean(axis=0)
     col_groups = rule_groups(col_share)
     if len(col_groups) < 2:
-        # A rule can sit flush with the region edge: the detector
-        # region usually stops just past the rule, so the run ends
-        # at the crop edge and the 2 px guard drops a genuine rule,
-        # leaving the dimension unmeasured. The strict pass runs
-        # first, so a box that already measures keeps its frame;
-        # only a short-handed dimension retries with edge runs
-        # admitted. A run touching the edge still shows the end the
-        # frame uses — the left rule's inner end, the right rule's
-        # inner start — and the pairing geometry below (straddling
-        # the centre, interior at least half the region) is what
-        # keeps an edge artifact from becoming a frame.
         col_groups = rule_groups(col_share, edge=0)
     fx1, fx2 = cx1, cx2
     if len(col_groups) >= 2:
@@ -1162,24 +1066,6 @@ def _box_frame(image: Image.Image, box):
         top, bottom = row_groups[0], row_groups[-1]
         if top[1] < box_h // 2 < bottom[0] and bottom[0] - top[1] >= max(40, box_h // 2):
             fy1, fy2 = cy1 + top[1], cy1 + bottom[0]
-    # A region can sit inset from its frame, so a rule just past the
-    # region edge is still this box's rule — but only when the strip
-    # between rule and region is paper, which a neighbour's rule across
-    # a panel gap is not. Each dimension is searched on its own expanded
-    # crop, with the share denominator kept at the region extent, so
-    # expanding one dimension cannot unfind the other's rules.
-    # A stepped frame straddles the region edge: one rule sits inside
-    # the region while the other sits just outside it, so neither the
-    # inside-only pass nor the outside-only pairing below can pair
-    # them. A missing outside side falls back to the inside pass's
-    # outermost group on that side, converted to expanded coordinates;
-    # the paper strip is only judged where the rule lies outside the
-    # region, since the inside pass already trusts an inside rule
-    # with no strip. A rule flush with the region edge has no strip
-    # to judge, so a missing strip is skipped, not failed. The
-    # fallback runs only where the inside pass measured nothing: a
-    # dimension it already measured keeps its frame, so an outside
-    # neighbour's rule cannot widen it through the fallback.
     first_fx = (fx1, fx2)
     first_fy = (fy1, fy2)
     full_grey = np.asarray(image.convert("L"))
@@ -1201,10 +1087,6 @@ def _box_frame(image: Image.Image, box):
             first_groups = row_groups
             unmeasured = first_fy == (cy1, cy2)
         groups = rule_groups(share) if share.size else []
-        # A group belongs to a side when its bulk lies past the region
-        # edge: a rule ending a pixel past the edge still belongs to
-        # that side, while a rule inside the region belongs to neither
-        # side here and is reached through the fallback below instead.
         before = [g for g in groups if (g[0] + g[1]) // 2 < lo]
         after = [g for g in groups if (g[0] + g[1]) // 2 > hi]
         if unmeasured and not before and first_groups:
@@ -1228,11 +1110,6 @@ def _box_frame(image: Image.Image, box):
         for strip, trim_left in ((strip_a, True), (strip_b, False)):
             if strip is None:
                 continue
-            # The column hugging the rule carries the rule's own
-            # antialiased edge, not the strip: judge the strip
-            # without it, and a strip too thin to judge after the
-            # trim is no strip at all — a panel gap is wide, so a
-            # sliver cannot be the evidence that rejects the rule.
             if trim_left:
                 strip = strip[:, 1:]
             else:
@@ -1404,14 +1281,10 @@ def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     total_h = line_height * len(lines)
     widths = [draw.textbbox((0, 0), line, font=font)[2] for line in lines]
-    # A word broken across lines ("Khôn/g...") does not fit; a smaller size is tried first.
     whole = [word for line in lines for word in line.split()] == text.split()
     fits = whole and total_h <= box_h and max(widths) + 2 * stroke_w <= box_w
     if fits:
         if bands is not None:
-            # Greedy lines fill the box width, but a bent balloon's rows
-            # hold less; re-wrap at the narrowest span until the lines sit
-            # inside their rows, or no narrower wrap helps.
             for _ in range(3):
                 top = _anchored_top(box_h, line_height * len(lines), anchor_y)
                 spans = _band_line_spans(box_w, box_h, len(lines), line_height, bands, top=top)
@@ -1491,11 +1364,6 @@ def _fit_text(
         else:
             hi = mid - 1
 
-    # The rectangle fit is not monotonic in size: a short text wraps to one
-    # line too wide for the box at one size and to two lines that fit at a
-    # larger one, so the search above can stop at the one-line ceiling
-    # while a bigger size holds. Scan up for the true ceiling; the curved
-    # scan below starts from it, so a one-line failure must not cap the fit.
     hi_max = max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
     for size in range(best_size + 1, hi_max + 1):
         ok, lines = _fits(draw, text, box_w, box_h, font_path_str, size, stroke_w)
@@ -1504,10 +1372,6 @@ def _fit_text(
             best_lines = lines
 
     if (curved or bands is not None) and best_lines:
-        # The ellipse/band predicate is not monotonic in size: a word break can
-        # push a long line into a narrow chord at one size and not the next, so
-        # a binary search can land far below the largest fitting size. Scan down
-        # from the rectangle fit, which bounds every curved fit from above.
         for size in _scan_sizes(best_size, minimum_size - 1):
             ok, lines = _fits(draw, text, box_w, box_h, font_path_str, size, stroke_w,
                               curved=curved, bands=bands, anchor_y=anchor_y)
@@ -1545,7 +1409,7 @@ def _greedy_lines(draw, words: list[str], font, width: int) -> list[str]:
     return [" ".join(group) for group in _greedy_groups(draw, words, font, width)]
 
 
-_VI_WORDS = Path(__file__).with_name("vi_words.txt")  # pyvi's word list (MIT, vi_words.LICENSE.txt), 2-4 syllables
+_VI_WORDS = Path(__file__).with_name("vi_words.txt")
 _SYLLABLE = re.compile(r"(\W*)(\w+)(\W*)")
 
 
@@ -1569,7 +1433,6 @@ def _word_units(words: list[str]) -> list[str]:
             if n == 1:
                 break
             parsed = [_SYLLABLE.fullmatch(word) for word in part]
-            # Punctuation may open the first syllable and close the last, never sit inside the word.
             if all(parsed) and all(not m.group(1) for m in parsed[1:]) and all(not m.group(3) for m in parsed[:-1]) \
                     and " ".join(m.group(2) for m in parsed).lower() in known:
                 break
@@ -1587,7 +1450,7 @@ def _balanced_lines(draw, words: list[str], font, box_w: int) -> list[str]:
     units = _word_units(words)
     if len(units) < len(words) and all(draw.textbbox((0, 0), unit, font=font)[2] <= box_w for unit in units) \
             and len(_greedy_lines(draw, units, font, box_w)) == len(lines):
-        words = units  # the same number of lines with no word split, so the size still fits
+        words = units
     lo = max(draw.textbbox((0, 0), word, font=font)[2] for word in words)
     hi = box_w
     while lo < hi:
@@ -1598,9 +1461,6 @@ def _balanced_lines(draw, words: list[str], font, box_w: int) -> list[str]:
             lo = mid + 1
     groups = _greedy_groups(draw, words, font, hi)
     if len(groups) >= 2 and len(groups[-1]) == 1 and len(groups[-2]) >= 2:
-        # Even widths can still strand one word alone on the last line;
-        # moving the previous line's last word down fixes it when it
-        # still fits, and the group move never splits a joined word.
         moved = groups[-2][-1]
         new_last = " ".join([moved] + groups[-1])
         if draw.textbbox((0, 0), new_last, font=font)[2] <= box_w:
@@ -1613,8 +1473,6 @@ def _wrap_text(draw, text: str, font, box_w: int, *, balance: bool = False,
                join_lines: bool = False) -> list[str]:
     """Lines of ``text`` no wider than ``box_w``; ``balance`` evens each wrapped line at the size finally drawn."""
     if join_lines:
-        # A stored break is a guess about the box, not part of the words:
-        # joining first lets a wide line stay one line instead of two small ones.
         text = " ".join(text.split())
     raw_lines = text.splitlines()
     all_wrapped = []

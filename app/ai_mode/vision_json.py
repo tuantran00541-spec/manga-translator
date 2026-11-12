@@ -39,7 +39,6 @@ def parse_json_object(content: str) -> dict:
     try:
         data = json.loads(source)
     except (TypeError, ValueError):
-        # Some models wrap the object in prose; take the first complete object.
         start = source.find("{")
         try:
             data = json.JSONDecoder().raw_decode(source, start)[0] if start >= 0 else None
@@ -99,7 +98,6 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
     }
     payload.update(provider.chat_completion_extras())
     if reasoning_effort and provider.id == CLOUD_PROVIDER_ID:
-        # Only the Manga Cloud gateway knows which upstream models take this field.
         payload["reasoning_effort"] = reasoning_effort
     try:
         response = requests.post(

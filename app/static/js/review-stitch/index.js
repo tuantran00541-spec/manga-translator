@@ -179,7 +179,7 @@ export function mount(workspace) {
   document.addEventListener("source-lang-changed", syncLang, { signal });
   document.addEventListener("source-lang-needed", () => { more.open = true; langSelect.focus(); }, { signal });
   morePanel.addEventListener("click", (e) => { if (e.target.closest("button")) more.open = false; }, { signal });
-  // Docbar popovers (Dịch tự động, OCR, ⋯): one open at a time, closed by a click outside or Escape.
+  
   const openMenus = () => docbar.querySelectorAll("details[open]");
   docbar.addEventListener("toggle", (e) => {
     if (!(e.target instanceof HTMLDetailsElement) || !e.target.open) return;
@@ -282,7 +282,7 @@ export function mount(workspace) {
     void renderStrip(shell, items, signal);
   };
   shell._rerender = rerender;
-  // Renders pages whose lettering changed since their last render, then shows the lettered view.
+  
   const letteringSig = (page) => JSON.stringify((page.text_objects || []).filter((o) => o?.translation?.trim()));
   const showRendered = async () => {
     const pages = window.currentManifest?.pages || [];
@@ -370,7 +370,7 @@ export function mount(workspace) {
     } catch (err) { window.showToast?.("Không thể bỏ repaint: " + err.message, "error"); } finally { busy(false); }
   }, { signal });
 
-  // A finished A.I run opens on its lettering, which the server has just rendered.
+  
   if (window.openLetteredChapter && window.openLetteredChapter === window.currentChapterId) {
     window.openLetteredChapter = null;
     (window.currentManifest?.pages || []).forEach((page) => { if (page?.rendered) page._renderSig = letteringSig(page); });

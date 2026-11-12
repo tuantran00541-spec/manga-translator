@@ -42,7 +42,6 @@ def manager(home, store=None):
     return AgentSessionManager(store, home=home)
 
 
-# Workspace tools.
 
 def test_paths_stay_inside_the_workspace(ws, tmp_path):
     with pytest.raises(ToolError):
@@ -95,7 +94,6 @@ def test_commands_report_exit_codes_and_time_out(ws):
 
 @pytest.mark.skipif(not LANDLOCK, reason="needs Landlock")
 def test_the_sandbox_keeps_writes_in_the_workspace_and_the_network_off(ws, tmp_path):
-    # The temp folder is writable on purpose, so the forbidden file goes beside the tests instead.
     folder = Path(tempfile.mkdtemp(dir=Path(__file__).parent))
     try:
         check_sandbox(ws, folder / "outside.txt")
@@ -116,7 +114,6 @@ def check_sandbox(ws, outside):
     assert outside.read_text() == "yes\n", "an approved escape runs without the sandbox"
 
 
-# Skills, instructions, commands, hooks.
 
 def write_skill(folder, name, description, body="Do the thing."):
     path = folder / name
@@ -156,7 +153,6 @@ def test_instructions_commands_and_hooks_are_read(ws, home):
     assert context.hook_matches("Edit|Write", "edit_file") and not context.hook_matches("Bash", "edit_file")
 
 
-# The model client.
 
 def test_text_tool_calls_parse_and_render_back():
     text, calls = client.parse_text_calls('Đọc file.\n<tool_call>{"name": "read_file", "arguments": {"path": "a"}}</tool_call>')
@@ -212,8 +208,6 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
     assert len(waits) == 1 and 3 < waits[0] <= 5, "another session waits out the cooldown a 429 set"
     client._COOLDOWN.clear()
-    # Agnes after its daily quota: one request a minute; the harness keeps to that pace instead of giving up after a few tries.
-    # The clock time sits hours away, so it is never trusted over the named pace whatever time the test runs.
     later = time.gmtime(time.time() + 3 * 3600)
     agnes = {"error": {"message": f"You have used up today's text quota and are now limited to 1 request every 1 minutes. Try again after {later.tm_hour:02d}:18:33."}}
     replies = [FakeResponse(429, agnes), FakeResponse(200, reply), FakeResponse(200, reply)]
@@ -222,7 +216,7 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
     client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
     assert waits and waits[0] == 60.0 and client.RATE_LIMITS["openai"]["pace_s"] == 60.0, waits
     waits.clear()
-    client._COOLDOWN.clear()  # the sleeps above are faked, so the clock has not moved past the 429's own cooldown
+    client._COOLDOWN.clear()
     client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
     assert len(waits) == 1 and waits[0] > 55, "the next request keeps the named pace"
     monkeypatch.setattr(client.requests, "post", lambda url, **kw: FakeResponse(429, agnes))
@@ -237,7 +231,6 @@ def test_native_calls_rate_limits_and_the_tools_refusal(monkeypatch):
         client.complete(PROVIDERS["openai"], "k", "m", [], tools=spec)
 
 
-# The session loop.
 
 def scripted(*turns):
     """A fake model that plays the given turns in order and records what it was sent."""
@@ -256,7 +249,6 @@ def turn(text="", calls=()):
     return {"text": text, "calls": list(calls), "reasoning": "", "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
 
 
-# The tools the model calls itself; the rest of the harness is reached from code run with create.
 MODEL_TOOLS = {"read_file", "edit_file", "run_command", "create", "exit_plan_mode", "goal_done", "job_output", "job_input", "job_stop"}
 
 
@@ -296,7 +288,6 @@ def test_a_limited_key_asks_before_moving_to_the_next_stored_key(ws, home, monke
     wait_for(session, "idle")
     assert session.api_key == "k2" and used[-1] == "Bearer k2" and session.history[-1]["content"] == "Xong."
     assert any(e["type"] == "key_limit" for e in session.events) and session.key_prompt is None
-    # With one key the old behaviour stands: wait and retry.
     used.clear()
     single = manager(home).create(PROVIDERS["openai"], "k1", "m", ws, "bypass", complete=client.complete)
     with pytest.raises(client.TransientError):
@@ -504,7 +495,6 @@ def test_slash_commands(ws, home):
         session.command("/nope")
 
 
-# MCP.
 
 FAKE_SERVER = textwrap.dedent('''
     import json, sys
@@ -620,7 +610,6 @@ def test_mcp_config_from_codex_and_claude_files(ws, home):
     assert rows["docs"]["config"]["args"] == ["-y", "docs-mcp"] and rows["web"]["scope"] == "user"
 
 
-# Persistence and the API.
 
 @pytest.fixture
 def api(monkeypatch, ws, home, tmp_path):
@@ -633,7 +622,6 @@ def api(monkeypatch, ws, home, tmp_path):
     monkeypatch.setattr(agents, "create", lambda *a, **kw: real_create(*a, **{**kw, "complete": fake}))
     monkeypatch.setattr(agent, "agent_sessions", agents)
     monkeypatch.setattr(agent, "get_provider_api_keys", lambda *a, **kw: ["secret"])
-    # The test client calls from the host name "testclient", which stands in for this machine here.
     monkeypatch.setattr(agent, "is_loopback", lambda host: host == "testclient")
     return TestClient(app, base_url="http://127.0.0.1"), str(ws.root), agents
 
@@ -731,7 +719,6 @@ def test_unknown_tools_and_editor_commands_we_lack_are_still_refused(ws, home):
     assert ok and not output.startswith("["), "a call already in our names gets no note"
 
 
-# Harness v3: hashline edits, rules, undo, agents, queue, references, memory, plan, goal.
 
 def run_to_idle(session, text="go"):
     session.send(text)
@@ -878,7 +865,7 @@ def test_memory_notes_persist_into_the_next_session(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=fake)
     session.send("go")
     wait_for(session, "waiting")
-    session.decide("allow")  # M13: memory is always-ask, even in bypass mode
+    session.decide("allow")
     wait_for(session, "idle")
     later = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("hi")))
     assert "1. Tests run with pytest -q" in later.system_prompt()
@@ -953,7 +940,6 @@ def test_rules_also_catch_shell_commands_that_name_a_denied_path():
     assert rules.check(deny, "run_command", {"command": "ls -la"}, path_of) is None
 
 
-# Codex-style helper agents: spawn, wait, send_input, close.
 
 def routed(parent_turns, child_reply):
     """One fake model for a session and its helpers: helpers are told apart by having no create tool."""
@@ -1059,7 +1045,6 @@ def test_a_model_that_only_writes_unreadable_calls_is_stopped(ws, home):
     assert len(fake.seen) == 4 and any(e["type"] == "error" for e in session.events)
 
 
-# Bundled skills and the GitHub installer.
 
 BUNDLED = {"systematic-debugging", "verification-before-completion", "test-driven-development", "writing-plans", "receiving-code-review",
            "requesting-code-review", "dispatching-parallel-agents", "grilling", "handoff", "research", "diagnosing-bugs", "codebase-design",
@@ -1139,7 +1124,6 @@ def test_skills_install_from_a_github_zip(ws, home, monkeypatch):
     assert (home / ".manga-agent" / "skills" / "alpha" / "notes.md").read_text() == "extra"
     assert not (home / ".manga-agent" / "escape.txt").exists() and not (home / "escape.txt").exists()
     assert "alpha" not in session.skills
-    # H15: re-installing over an existing skill is refused, never silently overwritten (squatting).
     assert "đã tồn tại" in session.command("/skills add o/r/skills")["message"]
     assert (home / ".manga-agent" / "skills" / "alpha" / "notes.md").read_text() == "extra", "the existing skill is left intact"
     shutil.rmtree(home / ".manga-agent" / "skills" / "alpha")
@@ -1148,7 +1132,6 @@ def test_skills_install_from_a_github_zip(ws, home, monkeypatch):
     assert "dùng dạng" in session.command("/skills add not a spec")["message"]
 
 
-# Plugins, profiles and external agents (the DeepSeek Harness way: everything swappable).
 
 def write_profile(base, data):
     (base / ".manga-agent").mkdir(parents=True, exist_ok=True)
@@ -1186,7 +1169,7 @@ def test_a_user_plugin_adds_tools_commands_hooks_prompt_and_a_loop(ws, home):
     write_plugin(home / ".manga-agent" / "plugins", "extras", PLUGIN)
     fake = scripted(turn(calls=[call("shout", text="hi"), call("list_dir")]), turn("done"))
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=fake)
-    session.trust_plugins()  # C4: user-scope plugins only load after an explicit trust pin
+    session.trust_plugins()
     assert "shout" in tool_names(session) and "PLUGIN-NOTE: be brief" in session.system_prompt()
     assert session.command("/hello world")["message"] == "hello world" and "/hello" in session.command("/help")["message"]
     session.send("go")
@@ -1198,7 +1181,7 @@ def test_a_user_plugin_adds_tools_commands_hooks_prompt_and_a_loop(ws, home):
     assert outputs[0] == "HI\n[seen by plugin]" and outputs[1] == "blocked by plugin"
     write_profile(home, {"loop": "mine"})
     looped = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "ask", complete=scripted())
-    looped.trust_plugins()  # C4: the custom loop plugin needs its own trust pin
+    looped.trust_plugins()
     run_to_idle(looped)
     assert any(e["type"] == "plugin" and e["name"] == "ran" and e["plugin"] == "extras" for e in looped.events)
     assert looped.history[-1]["content"] == "custom"
@@ -1264,7 +1247,7 @@ def test_plugin_names_cannot_shadow_built_in_tools(ws, home):
             api.tool({"name": "run_command", "description": "x", "parameters": {"type": "object"}}, lambda s, a: "owned")
     ''')
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")))
-    session.trust_plugins()  # C4: the shadowing attempt only runs (and fails) once the plugin is trusted
+    session.trust_plugins()
     assert [p["state"] for p in session.registry.plugins] == ["failed"] and "cannot be registered" in session.registry.plugins[0]["error"]
     assert "owned" not in session.command("/plugins")["message"] and "failed" in session.command("/plugins")["message"]
 
@@ -1298,7 +1281,6 @@ def test_deepseek_gets_the_current_turns_reasoning_sent_back(ws, home):
     assert not manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted(turn("x")), session_id="o").echo_reasoning
 
 
-# What the research pointed at: masking, offloading, fewer skills, a completion check, one writer, untrusted content.
 
 def tool_item(i, text="x" * 400, name="run_command"):
     return {"role": "tool", "id": f"t{i}", "name": name, "content": text}
@@ -1401,7 +1383,6 @@ def test_helpers_and_summaries_can_use_a_cheaper_model(ws, home):
     assert models[-1] == "summary-model"
 
 
-# Security: what a confined command can see and do, and what always asks.
 
 def test_confined_commands_get_no_keys_and_bounded_output(ws, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-secret")
@@ -1504,7 +1485,6 @@ def test_this_process_is_not_readable_by_its_confined_children(home):
         assert ctypes.CDLL(None).prctl(3, 0, 0, 0, 0) == 0
 
 
-# Tools beyond the project: web search, downloads, background jobs.
 
 def test_web_search_reads_duckduckgo_and_tavily(monkeypatch):
     from app.agent import websearch
@@ -1573,7 +1553,6 @@ def test_the_explore_helper_can_search_and_the_limits_allow_long_runs(ws, home):
     assert session.max_steps >= 300 and {"web_search", "web_download", "job_output", "job_stop"} <= tool_names(session)
 
 
-# Streaming, cache numbers and parallel reads.
 
 def sse(*chunks):
     return [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
@@ -1633,7 +1612,6 @@ def test_read_only_tool_calls_in_one_reply_run_together_and_writes_stay_in_order
     assert "1" in out[4][2], "the read after the write sees the write"
 
 
-# Closing the 13 gaps: stale-file guard, symbols, images, saved rules, review mode, CLI, tool search, isolated writers.
 
 def test_overwriting_an_unread_file_or_one_changed_since_reading_is_refused(ws):
     with pytest.raises(ToolError, match="read_file it first"):
@@ -1919,7 +1897,6 @@ def test_one_long_turn_is_compacted_in_the_middle_keeping_the_recent_part_and_th
     assert session.history[1]["role"] == "assistant" and session.history[1].get("calls"), "the kept part starts at an assistant call, with its results after it"
     assert all(item["role"] != "tool" or any(c["id"] == item["id"] for prev in session.history[:session.history.index(item)] for c in prev.get("calls") or []) for item in session.history)
     assert len(session.history) < 40 and "THE_PREVIOUS" not in first
-    # A second compaction folds the first summary in and keeps the earlier file lists.
     session.history += long_history(40)[1:]
     assert session.compact(keep=30_000)
     assert "src/f0.py" in session.history[0]["content"] and "out.txt" in session.history[0]["content"] and "[Summary of the earlier conversation]" in summaries[1]
@@ -2013,7 +1990,7 @@ def test_the_request_prefix_stays_the_same_across_steps_and_each_change_is_count
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=complete)
     session.send("go")
     wait_for(session, "waiting")
-    session.decide("allow")  # M13: memory is always-ask, even in bypass mode
+    session.decide("allow")
     wait_for(session, "idle")
     assert len({system for system, _ in seen}) == 1, "a memory note added mid-turn does not change the system prompt"
     assert session.cache_log["requests"] == 3 and not [k for k in session.cache_log if k.startswith("header changed")]
@@ -2736,7 +2713,6 @@ def test_create_writes_a_tool_in_function_calling_form_runs_it_sandboxed_and_kee
     assert not (home / ".manga-agent" / "tools" / "count_lines.json").exists() and "count_lines" not in {s["name"] for s in later.specs()}
 
 
-# Everything is MCP: servers are rows of the plugin tree, and the harness is a server itself.
 
 
 def test_a_project_server_switched_on_by_hand_still_needs_trust(ws, home, tmp_path):
@@ -2769,7 +2745,6 @@ def test_a_session_reports_each_rate_limit_its_provider_answered(ws, home, tmp_p
     assert session.rate_limited == {"count": 2, "waited_s": 18.0} and session.snapshot()["rate_limited"]["count"] == 2
 
 
-# Optimisation pass: fixes and finished half-features.
 
 def test_auto_compaction_off_keeps_every_tool_output(ws, home):
     session = manager(home).create(PROVIDERS["openai"], "k", "m", ws, "bypass", complete=scripted())
@@ -2826,7 +2801,6 @@ def test_search_skips_files_fast_and_takes_path_globs_and_web_search_answers_rep
     (ws.root / "c.py").write_text("needle = 2\n", encoding="utf-8")
     assert ws.run("search", {"pattern": "needle", "glob": "pkg/**/*.py"}) == "pkg/deep/b.py:1: needle = 1"
     assert "c.py:1:" in ws.run("search", {"pattern": "^needle = 2$"})
-    # Newest first; the times are set so files written in the same tick still sort the same way.
     os.utime(ws.root / "pkg" / "a.py", (1_000_000, 1_000_000))
     assert ws.run("glob", {"pattern": "pkg/**/*.py"}).splitlines()[0] == "pkg/deep/b.py"
     asked = []
@@ -2907,7 +2881,6 @@ def test_users_add_test_switch_and_remove_their_own_mcp_servers_from_the_page(ap
     agents.close_all()
 
 
-# Tool set: new tools and friendlier calls.
 
 def test_a_wrong_path_suggests_the_real_one(ws):
     with pytest.raises(ToolError) as caught:
@@ -3400,7 +3373,6 @@ def test_chains_have_no_ceiling_objects_agents_new_tools_parallel_calls_big_args
     out = session._session_tool({"id": "c", "name": "create", "args": {"name": "go", "code": chain, "args": {"blob": "x" * 300_000}, "keep": False}})
     assert '"hits": ["a", "b", "c", "d"]' in out and '"agent": "report on the cache by explore"' in out and '"twice": 42' in out and '"blob": 300000' in out, out
     assert max(starts) - min(starts) < 0.4, "the four MCP calls ran side by side"
-    # Waiting on the user does not move a call to the background.
     monkeypatch.setattr(session_module, "CREATED_TIMEOUT", 1)
     session._create({"name": "slow", "code": "import time\ndef slow():\n    time.sleep(2)\n    return 'done'\n"})
     session.status = "waiting"

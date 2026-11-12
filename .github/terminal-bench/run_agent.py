@@ -16,7 +16,6 @@ NOBODY = "Nobody can answer during this run; choose what fits the task best and 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    # "-" reads it from stdin, so it is not in the command line, where `pkill -f <a word of the task>` would match this process.
     parser.add_argument("instruction")
     parser.add_argument("--base", required=True)
     parser.add_argument("--model", required=True)
@@ -25,11 +24,9 @@ def main() -> int:
     args = parser.parse_args()
     if args.instruction == "-":
         args.instruction = sys.stdin.read()
-    # The relay sits on the Docker host's private address, which the app's guard against private hosts would refuse.
     client.validate_url = lambda url: url
     provider = dataclasses.replace(PROVIDERS["openai"], id="bench", label="bench", api_base=args.base.rstrip("/"), builtin=False, tracks_cost=False)
     manager = AgentSessionManager(None, home=Path.home())
-    # The task container is the sandbox, so the harness runs with full access and nobody approves calls.
     session = manager.create(provider, "relay", args.model, Workspace(args.workspace, sandbox.Policy("full-access", True)), "bypass")
     session.set_deadline(args.minutes * 60)
     session.send(args.instruction)
@@ -40,7 +37,6 @@ def main() -> int:
             print(json.dumps(event, ensure_ascii=False, default=str), flush=True)
         seen = len(session.events)
         if session.status == "waiting" and session.pending:
-            # A question gets the answer of a person away from the keyboard; anything else that still asks is refused.
             session.decide("allow" if session.pending.get("name") == "ask_user" else "deny", NOBODY)
         if session.status == "idle" and any(e["type"] == "done" for e in session.events[-3:]):
             break

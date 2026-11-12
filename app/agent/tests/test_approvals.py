@@ -49,10 +49,8 @@ def allow_spy():
     return calls, wait
 
 
-# ---- tool/approve waterfall must validate listener returns ----
 
 
-# ---- tool/execute must not let listeners swap the approved call ----
 
 
 def test_c3_pre_tool_hook_cannot_rewrite_args(tmp_path):
@@ -72,7 +70,6 @@ def test_c3_pre_tool_hook_cannot_rewrite_args(tmp_path):
     assert not evil.exists()
 
 
-# ---- nested approvals must not steal each other's decisions ----
 
 def _bare_session():
     """A minimal AgentSession exposing the real approval machinery."""
@@ -128,7 +125,6 @@ def test_c5_decide_with_nothing_waiting_raises():
         s.decide("allow")
 
 
-# ---- approval-card mutations must not change what runs ----
 
 
 def test_h10_allow_runs_approved_command(tmp_path):
@@ -142,7 +138,6 @@ def test_h10_allow_runs_approved_command(tmp_path):
     assert asked and ok and marker.exists()
 
 
-# ---- _always_ask applies even with no subscribers ----
 
 def test_m13_always_ask_without_subscribers(tmp_path):
     """In bypass mode with no plugins, `memory` must still ask. (The `chain-`
@@ -162,7 +157,6 @@ def test_m13_always_ask_list(tmp_path):
     assert s._always_ask({"name": "memory", "args": {"action": "add"}})
     assert not s._always_ask({"name": "read_file", "args": {"path": "x"}})
     assert not s._always_ask({"name": "run_command", "args": {"command": "echo hi"}})
-    # Its run is gated like a command, so writing a chain is not always-ask; bypass mode runs it unasked.
     assert not s._always_ask({"name": "create", "args": {}})
 
 

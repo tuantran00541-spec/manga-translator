@@ -17,11 +17,11 @@ def test_a_mask_that_only_partly_covers_a_stroke_is_repaired_from_the_ink():
     from app.detector.mask_builder import build_mask
 
     image = np.full((300, 400, 3), 255, np.uint8)
-    cv2.rectangle(image, (100, 80), (130, 220), (0, 0, 0), -1)  # a stroke, mask covers only its middle
-    cv2.rectangle(image, (135, 100), (160, 280), (0, 0, 0), -1)  # art beside it, running past the box's bottom
-    cv2.rectangle(image, (280, 80), (310, 220), (0, 0, 0), -1)  # a stroke the mask never touched
+    cv2.rectangle(image, (100, 80), (130, 220), (0, 0, 0), -1)
+    cv2.rectangle(image, (135, 100), (160, 280), (0, 0, 0), -1)
+    cv2.rectangle(image, (280, 80), (310, 220), (0, 0, 0), -1)
     mask = np.zeros((200, 300), np.uint8)
-    mask[70:110, 50:80] = 255  # the segmenter found only the stroke's middle
+    mask[70:110, 50:80] = 255
     box = BubbleBox(50, 50, 350, 250, 0.9, mask, source_model="text_segmenter",
                     class_name="text", semantic_type="free_text", mask_source="text_segmenter",
                     safe_to_inpaint=True, ocr_eligible=True, source_role="text_segmenter")
@@ -98,8 +98,6 @@ def test_fold_nested_keeps_two_texts_with_separate_letter_rows_apart():
     piece of it: its letter rows, inside its own core, never meet the
     oval's, and its columns sit beside the oval's, so the fold must not
     join them even though the rect is 65% inside the oval's."""
-    # Real column ranges: the oval's letters run x 210-514, the cloud's
-    # x 515-634, so the core-clipped letter boxes are x-disjoint.
     oval = _lettered_box(135, 1346, 644, 1677, [(75, 300)], 0.88, (187, 1398, 525, 1608),
                          cols=[(75, 379)])
     cloud = _lettered_box(468, 1569, 677, 1708, [(43, 96)], 0.82, (491, 1592, 654, 1685),
@@ -154,8 +152,6 @@ def test_unauthorized_box_without_safe_flag_reaches_the_fallback_check():
     built = build_mask((300, 400), [box], None)
     assert built.shape == (300, 400)
     assert not np.any(built > 0), "an unauthorized box leaves no mask"
-    # The second call site: an authorized but mask-less box reaches the
-    # rectangle-fallback check itself, past the authorization gate.
     authorised = BubbleBox(50, 50, 150, 150, 0.9, None, source_model="kiuyha",
                            safe_to_inpaint=True)
     assert is_destructive_box_authorized(authorised) is True

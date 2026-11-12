@@ -27,7 +27,7 @@ from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD
 from app.region_policy import overlap_share, subtract_regions_from_mask
 
-STROKE_BOX_MAX_SHARE = 0.4  # a found box grown past this share of the slice has run into the art
+STROKE_BOX_MAX_SHARE = 0.4
 
 _TEXT_OBJECT_STYLE_KEYS = {
     "color", "font", "fontSize", "bold",
@@ -68,10 +68,10 @@ def _normalize_region(region: dict, w: int, h: int) -> tuple[int, int, int, int]
     return x1, y1, x2, y2
 
 
-_RESIDUE_GHOST_MARGIN = 60  # grey levels: clean ink this close to the original ink is leftover text
-_RESIDUE_FILL_SIGMA = 8.0  # blur that reads the local bubble fill past the letters
-_RESIDUE_INK_DROP = 15  # grey levels darker than the local fill that marks real ink
-_RESIDUE_MIN_COMPONENT_PX = 8  # a leftover stroke fragment smaller than this is model noise, not text
+_RESIDUE_GHOST_MARGIN = 60
+_RESIDUE_FILL_SIGMA = 8.0
+_RESIDUE_INK_DROP = 15
+_RESIDUE_MIN_COMPONENT_PX = 8
 
 
 def _paint_residue(
@@ -102,10 +102,6 @@ def _paint_residue(
         if original is not None and original.shape[:2] == mask.shape:
             (gx1, gy1, gx2, gy2), _grown, seed = letter_mask(original, rect, with_letters=True)
             if seed.any():
-                # The seed can carry fill-grey pixels beside the letters, so
-                # a seed pixel only counts as ink when it was darker than
-                # its own neighbourhood in the original; and it only counts
-                # as leftover when the clean still carries it.
                 orig_gray = (
                     cv2.cvtColor(original[gy1:gy2, gx1:gx2], cv2.COLOR_BGR2GRAY)
                     if original.ndim == 3
@@ -124,8 +120,6 @@ def _paint_residue(
                     & (clean_gray.astype(np.int32) <= orig_gray.astype(np.int32) + _RESIDUE_GHOST_MARGIN)
                 )
                 if ghost.any():
-                    # Specks are letter-model noise, not leftover strokes;
-                    # each would otherwise become its own LaMa run.
                     count, labels, stats, _ = cv2.connectedComponentsWithStats(
                         ghost.astype(np.uint8), connectivity=8
                     )
@@ -140,7 +134,7 @@ def _paint_residue(
     mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
 
 
-COVERED_SHARE = 0.3  # of the smaller box; a new box sharing this much with an old one holds the same text
+COVERED_SHARE = 0.3
 
 
 def _stroke_box(image: np.ndarray, rect: tuple[int, int, int, int]) -> dict:
@@ -149,7 +143,6 @@ def _stroke_box(image: np.ndarray, rect: tuple[int, int, int, int]) -> dict:
     from app.image_io import encode_mask
 
     grown, mask = letter_mask(image, rect)
-    # Growing over most of the slice means the letters ran into glowing art; keep the asked rectangle then.
     too_big = (grown[2] - grown[0]) * (grown[3] - grown[1]) > STROKE_BOX_MAX_SHARE * image.shape[0] * image.shape[1]
     if too_big or not mask.any():
         grown, mask = rect, None
@@ -387,7 +380,6 @@ class PipelineEditingMixin:
                     target_page = manifest["pages"][page_index]
                     target_page["preserve_regions"] = preserve_regions
                     target_page["clean"] = clean_path_posix
-                    # Sync covered objects now so export does not invalidate the render.
                     ensure_page_text_objects(target_page)
                     if bump_page_revision(target_page, "clean_revision") != target_clean_revision:
                         raise RuntimeError("Page clean revision changed while preserving regions")
@@ -437,7 +429,6 @@ class PipelineEditingMixin:
             added_preserve = [dict(zip(("x1", "y1", "x2", "y2"), r)) for r in map(clip, preserve) if r]
             new_boxes = [_stroke_box(image, r) for r in map(clip, boxes) if r]
             if skip_covered:
-                # A box that grew over the letters of a box already there would letter that text twice.
                 active = [b for b in boxes_snapshot if not b.get("removed")]
                 new_boxes = [b for b in new_boxes if not any(overlap_share(b, other) >= COVERED_SHARE for other in active)]
             preserve_regions = old_preserve + added_preserve
@@ -476,7 +467,6 @@ class PipelineEditingMixin:
                         boxes_snapshot,
                         manual_mask_posix=tmp_mask_path.as_posix() if mask is not None else manual_mask_posix,
                         manual_lama_mask_posix=manual_lama_mask_posix,
-                        # Only a new mask on the same boxes can reuse the box inpaint.
                         reuse_auto_clean=not added_preserve and not new_boxes,
                         preserve_regions=preserve_regions,
                     )
@@ -653,7 +643,7 @@ class PipelineEditingMixin:
             ) as artifact_tx:
                 restore = self._read_manual_mask(restore_path, (img_h, img_w))
                 if restore is not None and bin_mask is not None:
-                    restore[bin_mask > MANUAL_MASK_THRESHOLD] = 0  # the newest stroke wins
+                    restore[bin_mask > MANUAL_MASK_THRESHOLD] = 0
                     if np.any(restore):
                         write_image(restore_path, restore)
                     else:
@@ -978,7 +968,6 @@ class PipelineEditingMixin:
                 merged.update(cleaned)
                 obj["style"] = merged
 
-            # Font picks persist like any other edit; an explicit null clears the field.
             for key in ("font_selection_mode", "font_match", "font_ai_id"):
                 if key in changes:
                     obj[key] = changes[key]

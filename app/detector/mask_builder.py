@@ -74,8 +74,6 @@ def _repair_mask_from_ink(
     and stays out.
     """
     if crop_img is None:
-        # No image to read ink from: the repair cannot run, and the
-        # segmenter mask stands as-is (Mount Hua p075's smear stays).
         logger.warning("Skipping mask repair from ink: no crop image")
         return mask
     if not box_rects or not np.any(mask > 127):
@@ -85,7 +83,7 @@ def _repair_mask_from_ink(
         return mask
     _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     if np.count_nonzero(ink) > ink.size / 2:
-        ink = 255 - ink  # letters are the minority class
+        ink = 255 - ink
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
     near_mask = cv2.dilate((mask > 127).astype(np.uint8), kernel) > 0
     _, labels, stats, _ = cv2.connectedComponentsWithStats((ink > 0).astype(np.uint8), connectivity=8)
@@ -94,12 +92,6 @@ def _repair_mask_from_ink(
             (tuple(int(v) for v in row) for row in stats[1:]), start=1):
         if area < 12:
             continue
-        # The component belongs to a box when it sits inside it: a
-        # stroke the box cut by a few pixels still counts (the box model
-        # draws tight), but a shape that sticks out further — a hat, a
-        # bubble outline — is art continuing past the box. A component
-        # wider or taller than the box itself is likewise a shape, not
-        # a letter, however little it sticks out.
         if not any(_component_in_box(x, y, w, h, rect) for rect in box_rects):
             continue
         component = labels[y:y + h, x:x + w] == label
@@ -159,10 +151,6 @@ def build_mask(
             continue
 
         if not is_destructive_box_authorized(box):
-            # A skipped box with a mask loses the mask too, not just the
-            # rectangle fallback; today manual boxes carry confidence 1.0
-            # so the sentinel passes them, but a config change that lowers
-            # it would silently drop their masks.
             logger.warning(
                 "Skipping non-authorized destructive mask for box ({}, {}, {}, {}){}",
                 box.x1,

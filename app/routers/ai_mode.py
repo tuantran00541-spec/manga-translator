@@ -30,7 +30,6 @@ class AIModeStartRequest(BaseModel):
     story_notes: str = Field(default="", max_length=1500)
     polish: bool = False
     images_per_request: int = Field(default=2, ge=1, le=8)
-    # A second model re-translates the source lines the vision model read; unset means the vision model's wording stands.
     translate_provider: str | None = None
     translate_model: str | None = None
 
@@ -111,10 +110,6 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
             raise HTTPException(400, "chapter_id is local-only; Manga Cloud starts from a URL")
         reservation = await run_in_threadpool(cloud.reserve_job)
         provider = cloud.cloud_provider(str(reservation.get("model") or ""))
-        # The text re-translate runs through Manga Cloud too: the gateway picks its
-        # model from the retranslate stage, and the job token is its key, resolved
-        # inside the job where the cloud binding lives. A direct provider has no
-        # key on the cost-run runner, so it is refused here instead of failing per slice.
         translate_provider_id = translate_model_name = None
         if req.translate_provider and req.translate_model:
             if req.translate_provider != cloud.CLOUD_PROVIDER_ID:
@@ -124,7 +119,6 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
         settings = AIModeSettings(
             url=req.url or "", chapter_id=req.chapter_id, provider=provider.id, model=provider.default_qc_model, target_lang=req.target_lang,
             budget_usd=float(reservation.get("cost_cap_usd") or req.budget_usd), workers=req.workers,
-            # Manga Cloud reads on a free model that takes two images a request; it is not the user's to raise.
             story_notes=req.story_notes, polish=req.polish, images_per_request=2,
             translate_provider=translate_provider_id, translate_model=translate_model_name,
         )
@@ -137,8 +131,6 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
             raise HTTPException(409, str(exc)) from exc
         finally:
             unbind_cloud_job(bound)
-    # Resolve the provider and key before downloading anything, so a missing
-    # key fails in a second instead of after the chapter was fetched.
     try:
         provider = _resolve_vision_provider(req.provider)
         model = validate_model_name(req.model, default=str(provider.default_qc_model or ""))
@@ -149,7 +141,6 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
         raise HTTPException(503, str(exc)) from exc
     if not api_key:
         raise HTTPException(409, f"{provider.label} API key is not configured")
-    # Resolve the text model too, so a missing key fails in a second instead of after the chapter was fetched.
     translate_provider_id = translate_model_name = None
     if req.translate_provider and req.translate_model:
         try:

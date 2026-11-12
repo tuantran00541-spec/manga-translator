@@ -147,9 +147,6 @@ class ChapterProcessingJobManager:
                 **({"screen": job.screen} if job.screen is not None else {}),
             )
             with self._lock:
-                # Only pages that actually fired on_page_done count: skipped
-                # pages never do, so reporting the total here claimed work
-                # that never happened.
                 job.completed = min(len(completed_indices), total)
                 job.current_batch = []
                 job.updated_at = time.time()
@@ -216,7 +213,6 @@ class ChapterProcessingJobManager:
             "total": total,
             "completed": min(job.completed, total),
             "remaining": max(0, total - job.completed),
-            # Pages in the order they finished, so a caller can start on each one at once.
             "done_indices": list(job.done_indices),
             "current_batch": list(job.current_batch),
             "errors": list(job.errors),

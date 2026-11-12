@@ -19,7 +19,6 @@ def main(argv: list[str]) -> None:
         app_from_env(),
         host=os.getenv("GATEWAY_HOST", "127.0.0.1"),
         port=int(os.getenv("GATEWAY_PORT", "8100")),
-        # Only the reverse proxy named here may set the client address that the per-network limits count.
         proxy_headers=True,
         forwarded_allow_ips=os.getenv("GATEWAY_TRUSTED_PROXIES", "127.0.0.1"),
         server_header=False,

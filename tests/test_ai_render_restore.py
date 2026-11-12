@@ -108,7 +108,6 @@ def test_render_stage_leaves_a_slice_rendered_before_the_chapter_finishes_alone(
     Image.new("RGB", (900, 1000), "white").save(clean)
     page0 = {
         "original": clean.as_posix(), "clean": clean.as_posix(), "boxes": [],
-        # Untranslated while slice 1 renders, as in a job mid-translate.
         "text_objects": [{
             "id": f"d{i}", "region": {"x1": 100, "y1": 100 + i * 100, "x2": 500, "y2": 180 + i * 100},
             "translation": "", "typography_role": "dialogue", "container": "bubble",
@@ -127,7 +126,6 @@ def test_render_stage_leaves_a_slice_rendered_before_the_chapter_finishes_alone(
         "source_revision": 1, "clean_revision": 1, "render_revision": 0, "rendered": False,
     }
     manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [page0, page1]})
-    # The translate-time render: slice 0 untranslated while slice 1 renders.
     render_commit.render_page(RenderRequest(chapter_id=chapter, page_index=1, translations={}))
 
     def dots_ink() -> int:
@@ -138,7 +136,6 @@ def test_render_stage_leaves_a_slice_rendered_before_the_chapter_finishes_alone(
     small = dots_ink()
     manifest = manifests.load_manifest_raw(chapter)
     assert image_router._current_rendered_path(chapter, 1, manifest) is not None, "setup: slice 1 must be current"
-    # The rest of the chapter translates: eight 38 px dialogue caps.
     with manifests.get_manifest_lock(chapter):
         manifest = manifests.load_manifest_raw(chapter)
         for obj in manifest["pages"][0]["text_objects"]:
@@ -200,7 +197,6 @@ def test_render_stage_restores_an_unletterable_object_and_the_slice_exports(tmp_
     long_line = "Một câu dịch rất dài không thể nào vừa trong một ô nhỏ như thế này được " * 6
     manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
         "original": img_path.as_posix(), "clean": clean, "boxes": boxes,
-        # Auto object of a box the repair stage added, as in the failing run.
         "text_objects": [{"id": "tiny", "region": {"x1": 10, "y1": 10, "x2": 30, "y2": 20},
                           "translation": long_line, "source_boxes": ["b1"], "style": {},
                           "auto_generated": True, "auto_geometry": {"x1": 10, "y1": 10, "x2": 30, "y2": 20}}],
@@ -217,7 +213,6 @@ def test_render_stage_restores_an_unletterable_object_and_the_slice_exports(tmp_
     manifest = manifests.load_manifest_raw(chapter)
     assert runner.report["restored_regions"] == 1, runner.report["render_errors"]
     assert image_router._current_rendered_path(chapter, 0, manifest) is not None, "the slice must be rendered"
-    # Export re-syncs text objects first; that must not invalidate the render.
     snapshot = export_router._snapshot_export_inputs(chapter)
     assert [item["page_index"] for item in snapshot] == [0]
 

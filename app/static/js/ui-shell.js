@@ -78,12 +78,12 @@
     if (agentView) agentView.hidden = resolved !== "agent";
     setPageTitle({ home: "Trang chủ", import: "Nhập nội dung", agent: "Chaos" }[resolved]);
     if (resolved === "agent") window.openAgentView?.();
-    // Coming back home lists the chapters worked on since the page loaded.
+    
     if (resolved === "home") window.loadRecentChapters?.();
     const start = document.getElementById("start-action");
     if (start) start.textContent = "Dự án mới";
     if ((document.body.dataset.appStage || "landing") !== "landing") return;
-    // The import page has its own load button; a second one in the header confused new users.
+    
     if (start) start.hidden = resolved !== "home";
     syncSidebar("landing");
     closeSidebar();

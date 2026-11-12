@@ -14,7 +14,6 @@ from app.downloader.slicer import _find_low_content_cut, _get_row_scores
 FORMATS = {"png": ("PNG", "png"), "jpg": ("JPEG", "jpg"), "webp": ("WEBP", "webp")}
 MIN_WIDTH, MAX_WIDTH = 320, 4000
 MIN_SPLIT, MAX_SPLIT = 1000, 30000
-# A cut is looked for this far above the page height limit, at the quietest rows.
 SPLIT_SEARCH_SHARE = 0.25
 WEBP_MAX_HEIGHT = 16000
 
@@ -23,8 +22,8 @@ WEBP_MAX_HEIGHT = 16000
 class ExportOptions:
     fmt: str = "png"
     quality: int = 90
-    width: int = 0  # 0 keeps the slices' own width
-    split: int = 0  # 0 keeps each page whole; otherwise the tallest page in pixels after resizing
+    width: int = 0
+    split: int = 0
     prefix: str = "page_"
     archive: str = "zip"
 
@@ -78,7 +77,6 @@ def finish_page(image: Image.Image, options: ExportOptions) -> list[bytes]:
     if options.width and image.width != options.width:
         image = image.resize((options.width, max(1, round(image.height * options.width / image.width))), Image.LANCZOS)
     pieces = [image]
-    # WebP holds at most 16383 rows, so a taller page is always cut for it.
     limit = min(options.split or WEBP_MAX_HEIGHT, WEBP_MAX_HEIGHT) if options.fmt == "webp" else options.split
     if limit:
         array = np.asarray(image)

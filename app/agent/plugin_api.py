@@ -81,7 +81,6 @@ class Context:
     def emit(self, kind: str, **data) -> None:
         self._session.emit("plugin", plugin=self.plugin, name=str(kind)[:40], data=data)
 
-    # For a plugin loop: one model turn, running its calls, and the default loop.
 
     def turn(self) -> dict:
         return self._session._turn()

@@ -12,7 +12,6 @@ from pathlib import Path
 
 from app.agent import sandbox
 
-# Runs each script in a fresh __main__ with its output on fd 1 and 2, then puts back the folder, path and streams it found.
 WORKER = r'''import builtins, json, os, sys, time, traceback
 HOME = sys.argv[1]
 INBOX = os.path.join(HOME, "inbox")
@@ -113,7 +112,6 @@ class Run:
         if worker is None or worker.code is not None:
             return worker.code if worker is not None and worker.code else -9
         if self.out.total > sandbox.RUNAWAY_BYTES:
-            # Output past the runaway limit stops the tool, as it would stop a command.
             self.kernel.close()
             return -9
         return None
@@ -127,7 +125,6 @@ class Run:
         raise OSError("a created tool does not read input")
 
     def stop(self) -> None:
-        # A run cut short takes the kernel with it, since only killing the process stops its code.
         if self.code is None:
             self.kernel.close()
         self.final = self.code if self.code is not None else -9
@@ -176,7 +173,6 @@ class Kernel:
         else:
             command = f"{shlex.quote(sys.executable)} {shlex.quote(str(self.folder / 'worker.py'))} {shlex.quote(str(self.folder))}"
         self.job = sandbox.Job(command, policy, root, scratch=str(self.state))
-        # The worker reads its tickets from files, so its input is closed and a program a tool runs cannot wait on it.
         self.job.close_input()
 
     def _stop(self) -> None:

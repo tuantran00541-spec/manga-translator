@@ -10,11 +10,8 @@ import urllib.request
 from pathlib import Path
 
 REDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-# These are not shipped in the wheels; Python brings its own vcruntime140.dll, so that one is not listed.
 DLLS = ("msvcp140.dll", "vcruntime140_1.dll", "vcomp140.dll")
-# Code built with MSVC 14.40+ (onnxruntime among it) crashes in std::mutex on an older msvcp140.dll.
 MIN_VERSION = (14, 40)
-# Installer exit codes that leave a working runtime: done, a newer one already there, done but restart pending.
 OK_CODES = {0: "", 1638: "", 3010: "Windows cần khởi động lại để hoàn tất; app vẫn chạy được ngay."}
 CANCELLED = 1602
 
@@ -44,7 +41,7 @@ def file_version(path: Path) -> tuple[int, ...] | None:
 
 def problems(folder: Path | None = None, version_of=file_version) -> list[str]:
     """What is wrong with the runtime: missing DLLs, or one older than MIN_VERSION."""
-    if os.environ.get("MANGA_VC_ASSUME_MISSING") == "1":  # lets CI exercise the install on a machine that has it
+    if os.environ.get("MANGA_VC_ASSUME_MISSING") == "1":
         return ["msvcp140.dll (giả lập thiếu)"]
     folder = folder or system32()
     found = []
@@ -60,7 +57,6 @@ def problems(folder: Path | None = None, version_of=file_version) -> list[str]:
 
 
 SIGNER = "O=Microsoft Corporation"
-# Reads the file's Authenticode signature; the path comes in through the environment, never inside the command.
 _SIGNATURE_PS = ("$s = Get-AuthenticodeSignature -LiteralPath $env:MANGA_VC_FILE; "
                  "Write-Output ('{0}|{1}' -f $s.Status, $s.SignerCertificate.Subject)")
 
@@ -77,11 +73,11 @@ def signed_by_microsoft(path: Path) -> bool:
 
 def install() -> str:
     """Download, verify and run the official installer; returns a note for the user, raises RuntimeError on failure."""
-    folder = Path(tempfile.mkdtemp(prefix="manga-vc-"))  # unpredictable, so nothing can be planted in its place
+    folder = Path(tempfile.mkdtemp(prefix="manga-vc-"))
     target = folder / "vc_redist.x64.exe"
     try:
         try:
-            urllib.request.urlretrieve(REDIST_URL, target)  # a fixed https URL
+            urllib.request.urlretrieve(REDIST_URL, target)
         except OSError as exc:
             raise RuntimeError(f"Không tải được Visual C++ Runtime ({exc}). Tải tay tại {REDIST_URL}, cài rồi chạy lại.") from exc
         if not signed_by_microsoft(target):

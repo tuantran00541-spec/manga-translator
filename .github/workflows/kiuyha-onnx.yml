@@ -47,7 +47,6 @@ jobs:
           python -m playwright install --with-deps chromium
           python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           python -m pip install "ultralytics>=8.4" huggingface_hub onnx onnxslim
-          # ultralytics pulls opencv-python; the app needs the contrib build.
           python -m pip uninstall -y opencv-python opencv-python-headless || true
           python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
           python -c "import ultralytics, cv2; print(ultralytics.__version__, cv2.__version__)"

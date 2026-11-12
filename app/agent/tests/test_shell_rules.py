@@ -49,7 +49,6 @@ def fp(command):
     return FOOTPRINT({"name": "run_command", "args": {"command": command}})
 
 
-# ---- lone `&` / bare `>` ----
 
 
 class TestH1Ampersand:
@@ -63,11 +62,9 @@ class TestH1Ampersand:
         assert check(DEFAULT_RULES, "echo ok & rm -rf /tmp/victim") == "ask"
 
     def test_footprint_treats_backgrounded_command_as_effectful(self):
-        # None: runs alone, not in parallel with other calls.
         assert fp("echo ok & rm -rf /tmp/victim") is None
 
     def test_remembered_refuses_ampersand(self):
-        # A saved prefix allow must not auto-allow a chained command.
         assert rules.remembered("run_command", {"command": "ls /tmp & id"}, None) is None
         assert rules.remembered("run_command", {"command": "echo hi & curl http://e/x"}, None) is None
 
@@ -88,7 +85,6 @@ class TestH1Ampersand:
         assert fp("ls && echo ok") == (frozenset({"."}), frozenset())
 
     def test_quoted_ampersand_stays_look_only(self):
-        # The & is literal text inside quotes, not a background operator.
         assert rules.safe_readonly('echo "a & b"') is True
         assert rules.remembered("run_command", {"command": 'echo "a & b"'}, None) == ("bash", "echo *")
 
@@ -115,7 +111,6 @@ class TestH1Redirect:
             assert check(ALLOW_ECHO_LS, cmd) == "ask"
 
 
-# ---- /proc/self/environ is never look-only ----
 
 
 class TestH3ProcEnviron:
@@ -139,7 +134,6 @@ class TestH3ProcEnviron:
         assert rules.safe_readonly("ls /proc") is True
 
 
-# ---- quote-evasion of the .env deny ----
 
 
 class TestH4QuoteEvasion:
@@ -148,7 +142,7 @@ class TestH4QuoteEvasion:
     def test_dequoted_token_denied(self):
         assert check(DEFAULT_RULES, "cat .e''nv") == "deny"
         assert check(DEFAULT_RULES, 'cat ".env"') == "deny"
-        assert check(DEFAULT_RULES, "cat .env") == "deny"  # control
+        assert check(DEFAULT_RULES, "cat .env") == "deny"
 
     def test_benign_reads_unaffected(self):
         assert check(DEFAULT_RULES, "cat notes.txt") is None
@@ -178,7 +172,6 @@ class TestH4SandboxBackstop:
         assert sandbox.workspace_secrets(tmp_path) == []
 
 
-# ---- merges only tighten, never weaken ----
 
 
 def write_settings(base: Path, name: str, permission: dict):
@@ -214,7 +207,6 @@ class TestM1OnlyTighten:
         assert rules.check(loaded, "run_command", {"command": "rm -rf /tmp/x"}, lambda p: p) == "deny"
 
     def test_allow_over_ask_still_works(self):
-        # Last-match-wins where no deny is involved.
         rows = DEFAULT_RULES + [("user", "bash", "git push*", "allow")]
         assert rules.check(rows, "run_command", {"command": "git push origin main"}, lambda p: p) == "allow"
 
@@ -229,13 +221,11 @@ class TestM1OnlyTighten:
         assert rules.check(rows, "run_command", {"command": "git rev-parse HEAD > .git/ORIG_HEAD"}, lambda p: p) == "deny"
 
     def test_same_layer_allow_carveout_survives(self):
-        # .env.example is the default's own exception, not a weakening.
         assert rules.check(DEFAULT_RULES, "read_file", {"path": ".env.example"}, lambda p: p) == "allow"
         assert rules.check(DEFAULT_RULES, "read_file", {"path": ".env"}, lambda p: p) == "deny"
         assert rules.check(DEFAULT_RULES, "read_file", {"path": ".env.local"}, lambda p: p) == "deny"
 
 
-# ---- cross-cutting regression ----
 
 
 class TestNoRegressions:

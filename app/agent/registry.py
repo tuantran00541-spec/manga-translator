@@ -11,7 +11,6 @@ from typing import Callable
 
 from app.agent import context, plugin_api, roles
 
-# The tool each group switches, so a profile can turn whole features off (shell, web, edits, subagents...).
 GROUPS = {
     "list_dir": "files", "read_file": "files", "search": "files", "glob": "files", "symbols": "files", "view_image": "files",
     "write_file": "edit", "edit_file": "edit", "replace_in_files": "edit", "move_file": "edit",
@@ -99,7 +98,6 @@ def load_profile(workspace: Path, home: Path) -> dict:
                     profile["intent"] = data["intent"]
                 if isinstance(data.get("skills_on"), list):
                     profile["skills_on"] = [n for n in data["skills_on"][:20] if isinstance(n, str)]
-                # Any built-in tool can be served by an MCP tool instead, and an MCP tool can be given a role.
                 if isinstance(data.get("replace"), dict):
                     profile["replace"].update({k: v for k, v in data["replace"].items()
                                                if k in REPLACEABLE and isinstance(v, str) and v.startswith("mcp__")})
@@ -154,7 +152,6 @@ class Registry:
             raise ValueError(f"tool {name!r} cannot be registered: kind must be read, edit, exec or net, got {kind!r}; call register(spec, handler, kind)")
         if not callable(handler):
             raise ValueError(f"tool {name!r} cannot be registered: its handler is not a function")
-        # The model only takes name, description and a JSON schema; a spec without parameters breaks the request.
         parameters = spec.get("parameters") if isinstance(spec.get("parameters"), dict) else {"type": "object", "properties": {}}
         clean = {"name": name, "description": str(spec.get("description") or name), "parameters": parameters}
         self.tools[name] = ToolDef(clean, handler, kind, group or self._current or name, always_ask)

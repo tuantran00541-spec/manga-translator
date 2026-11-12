@@ -25,7 +25,7 @@ class _PinnedMixin:
     """Connects to the address checked at connect time, so DNS cannot swap in a private one afterwards."""
 
     def _new_conn(self):
-        if self.proxy is not None:  # the proxy resolves the target itself
+        if self.proxy is not None:
             return super()._new_conn()
         name = self._dns_host
         self._dns_host = public_address(name, self.port)
@@ -81,7 +81,7 @@ def safe_get(
     redirects = 0
 
     while True:
-        response = _session().get(  # NOSONAR
+        response = _session().get(
             current,
             headers=headers,
             timeout=timeout,
@@ -164,9 +164,6 @@ def _reject_oversized_content_length(response: requests.Response, limit_bytes: i
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        # An unparseable length is treated as no limit, not as a rejection:
-        # some servers send odd headers, and the streamed reader still
-        # enforces the byte limit. The odd header is worth a warning.
         logger.warning("Unparseable Content-Length {!r}; treating it as no limit", raw)
         return
     if value < 0:

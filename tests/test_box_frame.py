@@ -24,11 +24,6 @@ def _box_image(w, h, rules, bg="white"):
 
 
 def test_a_rule_flush_with_the_region_edge_is_measured():
-    # Pair 007: the name box's right rule ends at the region's right
-    # edge (the region stops just past it), so the strict 2 px guard
-    # dropped it and the x dimension stayed the region. The frame is
-    # the rules' inner edges, not the region. (A width-4 line at x
-    # covers x-1..x+2, so the 70 rule's inner edge is 73.)
     img = _box_image(900, 400, [
         (70, 50, 70, 350, 4), (466, 50, 466, 350, 4),
         (70, 50, 466, 50, 4), (70, 350, 466, 350, 4),
@@ -41,15 +36,10 @@ def test_a_rule_one_pixel_from_the_region_edge_is_measured():
         (70, 50, 70, 350, 4), (466, 50, 466, 350, 4),
         (70, 50, 466, 50, 4), (70, 350, 466, 350, 4),
     ])
-    # Region stops 1 px past the right rule's outer edge.
     assert _box_frame(img, (63, 40, 468, 360)) == (73, 53, 465, 349)
 
 
 def test_a_stepped_frame_straddling_the_region_edge_is_measured():
-    # Pairs 022/023: the stepped narration frame's left rule sits
-    # inside the region while the right rule sits just outside it
-    # (and the bottom rule just outside, the top rule absent). The
-    # inside rule must be allowed to pair with the outside one.
     img = _box_image(900, 600, [
         (236, 100, 236, 500, 4), (841, 100, 841, 500, 4),
         (841, 500, 236, 500, 4),
@@ -60,25 +50,17 @@ def test_a_stepped_frame_straddling_the_region_edge_is_measured():
 
 
 def test_a_neighbours_rule_across_a_dark_gap_is_not_adopted():
-    # The expanded search must not claim a neighbouring box's rule:
-    # the strip between it and the region is dark art, not paper.
-    # Left: this box's own left rule, inside the region. Right: a
-    # neighbour's rule 40 px past the region, across a dark panel gap.
     img = Image.new("RGB", (900, 400), "white")
     draw = ImageDraw.Draw(img)
     draw.rectangle((500, 0, 900, 400), fill=(40, 40, 40))
     for x1, y1, x2, y2 in [(236, 50, 236, 350), (700, 50, 700, 350),
                            (236, 50, 700, 50), (236, 350, 700, 350)]:
         draw.line((x1, y1, x2, y2), fill=(0, 0, 0), width=4)
-    # The neighbour rule is the only right-side candidate; the dark
-    # gap between region edge and rule must veto it, so x stays the region.
     frame = _box_frame(img, (187, 40, 660, 360))
     assert frame is None or frame[2] == 660, frame
 
 
 def test_a_plain_centred_box_still_measures_exactly():
-    # No regression: a region well inside its frame measures the same
-    # frame it always did.
     img = _box_image(900, 400, [
         (100, 50, 100, 350, 4), (500, 50, 500, 350, 4),
         (100, 50, 500, 50, 4), (100, 350, 500, 350, 4),

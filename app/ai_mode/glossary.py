@@ -12,8 +12,8 @@ MAX_NAMES = 40
 MAX_TERMS = 40
 MAX_ADDRESS = 30
 MAX_FIELD = 60
-SIMILAR = 0.8  # two spellings this close are one name misread
-MISREAD_VOTES = 2  # a spelling read at least this many times as often as a close one wins
+SIMILAR = 0.8
+MISREAD_VOTES = 2
 
 GLOSSARY_PROMPT = (
     "{source}"
@@ -116,7 +116,6 @@ def merge_glossaries(parts: list[dict]) -> dict:
     return {
         "names": [{"source": _winner(names[key]["spelling"]), "target": _winner(names[key]["target"]),
                    **({"note": names[key]["note"]} if names[key]["note"] else {})} for key in ranked[:MAX_NAMES]],
-        # A term that is also a name ("hero" and "Hero") keeps the name's one translation.
         "terms": [{"source": source, "target": _winner(counter)}
                   for source, counter in sorted(terms.items(), key=lambda item: -sum(item[1].values()))
                   if source not in names or source in misread][:MAX_TERMS],

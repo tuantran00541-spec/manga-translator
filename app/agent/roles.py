@@ -14,7 +14,6 @@ ROLE_NAME = re.compile(r"[a-z][a-z0-9_-]{0,30}")
 USAGE = Path(".manga-agent") / "role-usage.json"
 _BACKUP = Path(".manga-agent") / "role-usage.json.bak"
 _LOCK = threading.Lock()
-# A corrupt usage file falls back to the last good data, never a fresh zero.
 _GOOD: dict[str, dict] = {}
 
 
@@ -139,7 +138,6 @@ def price(row: dict) -> dict:
     """Dollars per million tokens from a /models row, in whichever form the provider gives them."""
     found = {}
     pricing = row.get("pricing") if isinstance(row.get("pricing"), dict) else {}
-    # Per-token prices, as MiniRouter (input/output) and OpenRouter (prompt/completion) give them.
     for ours, names in (("in", ("input", "prompt")), ("out", ("output", "completion")), ("cached", ("input_cache_read",))):
         value = next((pricing[n] for n in names if pricing.get(n) not in (None, "")), None)
         try:
@@ -162,7 +160,6 @@ def catalog(base_url: str, headers: dict, query: str = "", limit: int = 40) -> l
     rows = (data.get("data") or data.get("models")) if isinstance(data, dict) else data
     found = []
     for row in rows if isinstance(rows, list) else []:
-        # Gemini lists models under "models" with a "models/" name instead of an id.
         model = str(row.get("id") or str(row.get("name") or "").removeprefix("models/")) if isinstance(row, dict) else ""
         if not model or (row.get("type") not in (None, "language", "chat")):
             continue

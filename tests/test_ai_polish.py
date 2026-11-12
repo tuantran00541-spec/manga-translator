@@ -17,7 +17,7 @@ def test_only_translated_speech_with_a_source_and_three_words_is_graded():
     pages = [{"text_objects": [
         _obj("a", "Cút khỏi đây ngay!"),
         _obj("b", "Dám mơ ước", role="title"),
-        _obj("c", "Đi thôi"),  # two words
+        _obj("c", "Đi thôi"),
         _obj("d", "Không có gì đâu", source=""),
         _obj("e", ""),
     ]}, {"text_objects": [_obj("f", "Tôi sẽ không đi đâu cả.")]}]
@@ -86,9 +86,6 @@ def _manifest_runner(monkeypatch, manifest):
     monkeypatch.setattr(ai_job, "get_manifest_lock", lambda chapter_id: contextlib.nullcontext())
     monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: manifest)
     monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, data: None)
-    # The fixture has no chapter, so the M2 output-dir sync after the
-    # commit has nowhere to run; stub it (the sync itself is covered by
-    # the render/export suites).
     import app.dependencies as deps
     monkeypatch.setattr(deps.pipeline, "_sync_output_dir", lambda *a, **k: None)
     return runner

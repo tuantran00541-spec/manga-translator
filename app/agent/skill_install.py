@@ -122,7 +122,6 @@ def _install_archive(archive: zipfile.ZipFile, sub: str, home: Path, source: str
     if not folders:
         raise ValueError(f"không thấy SKILL.md nào trong {source}")
     target = user_dir(home)
-    # Resolve every name first: a clash fails before anything is written.
     planned = []
     for folder in folders[:MAX_SKILLS]:
         lead = folder + "/" if folder else ""

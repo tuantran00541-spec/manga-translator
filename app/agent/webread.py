@@ -13,7 +13,6 @@ SKIP = ("script", "style", "noscript", "svg", "form", "iframe", "template", "but
 CHROME = ("nav", "footer", "aside")
 JS_GATED = ("enable javascript", "javascript required", "turn on javascript", "please enable javascript", "browser not supported")
 RAW_GITHUB = "https://raw.githubusercontent.com"
-# First path parts of github.com pages that are not a user or organisation (github.com/trending/python is not a repository).
 GITHUB_PAGES = {"trending", "topics", "collections", "explore", "search", "marketplace", "orgs", "users", "settings", "sponsors", "features",
                 "about", "login", "notifications", "issues", "pulls", "apps", "enterprise", "pricing", "readme", "events", "codespaces", "new"}
 
@@ -39,7 +38,6 @@ def to_markdown(html: str, base: str = "") -> str:
         tag.decompose()
     root = soup.find("main") or soup.find("article")
     if root is None:
-        # With no <main> or <article> naming the content, only menus and footers are dropped.
         root = soup.body or soup
         for tag in root.find_all(CHROME):
             tag.decompose()

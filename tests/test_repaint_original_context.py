@@ -244,8 +244,6 @@ def test_review_fixes_apply_preserve_boxes_and_repaint_in_one_reinpaint(tmp_path
     from app.detector import ctd_mask
     from ctd_fake import InkModel
 
-    # The repaint only marks leftover ink: the original carries a black
-    # letter in the first repaint rect, the clean still carries its ghost.
     monkeypatch.setattr(ctd_mask, "_session", InkModel())
     chapter = "abcd1234"
     raw, processed, output = tmp_path / "raw", tmp_path / "processed", tmp_path / "output"

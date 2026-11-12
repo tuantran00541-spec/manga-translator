@@ -40,7 +40,6 @@ def _manifest_with_pages(pages):
     return {"pages": pages}
 
 
-# -- M1 -----------------------------------------------------------------------
 
 
 def test_sync_output_dir_materializes_skipped_page_fallback(monkeypatch, tmp_path):
@@ -94,7 +93,6 @@ def test_mark_skipped_writes_fallback_into_output_dir(monkeypatch, tmp_path):
     assert fallback.read_bytes() == original.read_bytes()
 
 
-# -- M2 -----------------------------------------------------------------------
 
 
 def test_invalidate_renders_drops_stale_output_files(monkeypatch):
@@ -113,10 +111,6 @@ def test_invalidate_renders_drops_stale_output_files(monkeypatch):
         cost_usd=None, stages={"render": {"done": 0, "total": 0, "detail": ""}},
     )
     runner = AIModeRunner(job, PROVIDERS["openai"], "key")
-    # Patch the instance _invalidate_renders actually calls (from
-    # app.dependencies import pipeline), not the class: an earlier test
-    # leaves a shadowing instance attribute on that shared object, so a
-    # class-level patch would never be reached.
     from app.dependencies import pipeline as pipeline_instance
 
     monkeypatch.setattr(
@@ -153,8 +147,6 @@ def test_failed_render_commit_drops_stale_output(monkeypatch, tmp_path):
 
 
 def test_failed_render_commit_keeps_file_when_manifest_still_says_rendered(monkeypatch, tmp_path):
-    # A concurrent render may have committed a fresh file after this
-    # snapshot went stale; that file must survive the 409.
     out_dir = tmp_path / "output"
     base = _write_png(tmp_path / "base.png")
     fresh = _write_png(out_dir / CHAPTER / "page_000.png", "blue")
@@ -176,7 +168,6 @@ def test_failed_render_commit_keeps_file_when_manifest_still_says_rendered(monke
     assert fresh.exists(), "a file the manifest still claims must not be deleted"
 
 
-# -- M3 -----------------------------------------------------------------------
 
 
 def test_rendered_image_endpoint_409s_when_no_current_render(monkeypatch, tmp_path):
@@ -209,11 +200,6 @@ def test_original_image_endpoint_still_serves(monkeypatch, tmp_path):
     assert response.status_code == 200
 
 
-# -- M2 residual: the other invalidation sites ---------------------------------
-# F's patch covered _invalidate_renders and the commit-failure path; the
-# same one-line sync belongs at every other site that invalidates a render
-# (_save_polished, _sync_seams, the automation ensure endpoint, and both
-# vision-translate invalidation sites in translation.py).
 
 
 def _sync_recorder(monkeypatch):

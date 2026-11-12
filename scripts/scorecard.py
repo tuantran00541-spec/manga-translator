@@ -14,7 +14,6 @@ from app.image_io import read_image
 from app.region_policy import page_preserve_regions, text_object_in_preserve_region
 from scripts.verify import leftovers, text_mask
 
-# Metrics where a smaller number is better; every other compared metric is better when larger.
 LOWER_IS_BETTER = {
     "clean.text_left", "clean.ghosts", "text.untranslated", "text.needs_review", "text.kept_original",
     "fit.does_not_fit", "fit.under_20px", "fit.split_word", "fit.missing_glyphs",
@@ -52,10 +51,6 @@ def clean_score(pages: list[dict], detector) -> dict:
         keep = [(int(r["x1"]), int(r["y1"]) - top, int(r["x2"]), int(r["y2"]) - top)
                 for r in page_preserve_regions(page)]
         checked += 1
-        # Detector boxes the letter model never masked (dark-on-dark lettering) are not in the
-        # manifest, so the letter blocks above cannot see them; a box the cleanup left alone
-        # is checked by comparing original with clean instead. Boxes the manifest already
-        # holds are the letter check's business, not this one's.
         raw_boxes = []
         detect = getattr(detector, "detect_slice", None)
         if callable(detect):
@@ -67,10 +62,6 @@ def clean_score(pages: list[dict], detector) -> dict:
                 shifted = (x1, y1 - top, x2, y2 - top)
                 if not any(_overlap_share(shifted, m) >= 0.5 for m in manifest):
                     raw_boxes.append(shifted)
-        # A fallback box carries no letters — the segmenter was blind there, so its
-        # whole-box mask must not count as seen letters: it would cover its own raw box
-        # in the check below and let the text escape both paths. The raw-box path
-        # judges those boxes.
         real = [b for b in detector.text_boxes(before) if getattr(b, "letters", None) is not None]
         for item in leftovers(before, after, text_mask(before.shape[:2], real), keep,
                               raw_boxes):

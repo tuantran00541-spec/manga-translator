@@ -1,6 +1,5 @@
 name: Kiuyha train
 
-# One-off: fine-tune the Kiuyha text detector on our chapters, drawn text and colour webtoon words, then score it against the old one.
 on:
   push:
     branches-ignore: [main]
@@ -16,12 +15,10 @@ env:
   OUT: audit-results/kiuyha-train/run-${{ github.run_id }}
   PYTHONPATH: "."
   PYTHONUNBUFFERED: "1"
-  # The run whose kiuyha-data artifact is reused; empty builds a new set.
   DATA_RUN: "38535523379"
 
 jobs:
   data:
-    # Skipped while DATA_RUN names a set already built (job conditions cannot read env, so this mirrors it).
     if: false
     runs-on: ubuntu-22.04
     timeout-minutes: 150
@@ -75,8 +72,6 @@ jobs:
           path: .
           run-id: ${{ env.DATA_RUN }}
           github-token: ${{ github.token }}
-      # The previously tuned weights: this run continues training our model,
-      # it does not start over from the base weights.
       - uses: actions/download-artifact@v4
         with:
           name: kiuyha-tuned-all
@@ -97,7 +92,6 @@ jobs:
           yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
             time=5.0 epochs=40 patience=100 freeze=$freeze optimizer=AdamW lr0=0.0005 cos_lr=True \
             degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
-      # Ultralytics may write elsewhere than asked, so the weights are found wherever they landed and kept before anything else runs.
       - name: Keep the weights
         if: always()
         run: |

@@ -29,7 +29,7 @@ function iconButton(icon, label, className) {
   return b;
 }
 
-// Text objects of the chapter in reading order: slice by slice, then top to bottom, left to right.
+
 export function orderedObjects(shell) {
   return ownedObjects(shell)
     .map(({ desc, pageIndex, obj }) => ({ pageIndex, obj, r: sourceRegion(desc, obj.region) }))
@@ -54,7 +54,7 @@ async function ensureCleanView(shell, pageIndex, id) {
   return false;
 }
 
-// Selects a text object on the page and scrolls it into view.
+
 export async function goTo(shell, pageIndex, id, { focusTranslation = false } = {}) {
   if (!(await ensureCleanView(shell, pageIndex, id))) return false;
   selectObject(shell, pageIndex, id);

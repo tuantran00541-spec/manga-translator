@@ -23,9 +23,9 @@ from __future__ import annotations
 import statistics
 
 BANDED_ROLES = frozenset({"dialogue", "narration", "thought"})
-BAND_LO_FACTOR = 0.65  # a body cap below 65% of its role median is measurement noise
-BAND_HI_FACTOR = 1.5  # ... and above 150% likewise (run 3: only 6 of 191 body caps sit outside)
-BAND_MIN_OBJECTS = 5  # fewer caps than this and the median is not a chapter reference
+BAND_LO_FACTOR = 0.65
+BAND_HI_FACTOR = 1.5
+BAND_MIN_OBJECTS = 5
 
 
 def _role_of(obj: dict) -> str:

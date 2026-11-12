@@ -9,8 +9,8 @@ from PIL import Image, ImageDraw
 
 from app.parameters import RENDER_AUTO_STROKE_WIDTH, RENDER_DEFAULT_PADDING, RENDER_PADDING_RATIO_MAX
 
-SIZE_SLACK = 1.15  # rendered capitals may be this much taller than the source ones
-BUDGET_SCALE = 0.85  # the character budget assumes lettering slightly smaller than the source
+SIZE_SLACK = 1.15
+BUDGET_SCALE = 0.85
 _SAMPLE = "Nhưng tôi không thể bỏ cuộc dễ dàng như vậy"
 
 
@@ -19,7 +19,6 @@ def _letter_pieces(ink: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     count, labels, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
     height, width = ink.shape[:2]
     x, y, w, h, area = (stats[:, i] for i in range(5))
-    # Letters of a one-line shout can fill most of the height.
     keep = ((area >= 12) & (h >= 5) & (h <= 0.9 * height) & (w <= 3 * h)
             & (x > 0) & (y > 0) & (x + w < width) & (y + h < height))
     keep[0] = False
@@ -44,15 +43,11 @@ def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> in
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
     _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     if np.count_nonzero(ink) > ink.size / 2:
-        ink = 255 - ink  # letters are the minority class
+        ink = 255 - ink
     _labels, stats = _letter_pieces(ink)
     pieces = sorted((int(h), int(area)) for _x, _y, _w, h, area in stats if area > 0)
     if len(pieces) < max(1, min_pieces):
         return None
-    # One art blob can carry more ink than all the letters together, so the
-    # area median reads its height, not the lettering's. Drop a tallest
-    # piece that towers over the rest, but only while a real letter set
-    # remains to read by: a lone tall piece may be the letter itself.
     while len(pieces) > max(3, min_pieces):
         rest = pieces[:-1]
         rest_ink = np.cumsum([area for _h, area in rest])
@@ -60,13 +55,6 @@ def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> in
         if pieces[-1][0] <= 3 * max(1, rest_med):
             break
         pieces = rest
-    # A box can hold two sizes at once — a bubble's lettering plus a
-    # giant SFX stroke, or lettering plus grit — and the area median
-    # then reads whichever carries more ink, not the lettering. Group
-    # the pieces by height and read the cap from the group that holds
-    # the most pieces: real lettering repeats at one size, art strokes
-    # do not. Groups an eighth the height of the tallest group or less
-    # are dust, not lettering, and are dropped first.
     if len(pieces) > 1:
         groups: list[list[tuple[int, int]]] = [[pieces[0]]]
         for piece in pieces[1:]:
@@ -84,7 +72,6 @@ def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> in
         if groups:
             group = max(groups, key=lambda g: (len(g), sum(a for _h, a in g)))
             pieces = group
-    # The height holding the middle of the ink: specks of art are many but carry little of it.
     ink = np.cumsum([area for _h, area in pieces])
     return pieces[int(np.searchsorted(ink, ink[-1] / 2))][0]
 
@@ -101,7 +88,6 @@ def source_ink_hex(raw: np.ndarray, rect) -> str | None:
         ink = 255 - ink
     labels, stats = _letter_pieces(ink)
     letters = (stats[:, 4] > 0)[labels].astype(np.uint8)
-    # Skip the anti-aliased rim so the colour comes from the letter bodies, not the outline or art the box also holds.
     body = cv2.erode(letters, np.ones((3, 3), np.uint8)) > 0
     if np.count_nonzero(body) < 20:
         return None

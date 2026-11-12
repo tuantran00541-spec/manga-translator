@@ -10,16 +10,12 @@ import requests
 
 KEY = open(sys.argv[1], encoding="utf-8").read().strip()
 STATS, PORT, UPSTREAM = sys.argv[2], int(sys.argv[3]), sys.argv[4].rstrip("/")
-# Limits keep a run polite to the provider: tokens a minute, requests at once, a dollar cap, and a stop on the first key rejection.
 LIMITS = json.loads(sys.argv[5]) if len(sys.argv) > 5 else {}
 PRICE = LIMITS.get("price") or {}
 SLOTS = threading.BoundedSemaphore(int(LIMITS.get("concurrent") or 64))
-# Agents name the run's model their own way (a short id, a provider prefix, Claude tier names), so every request goes out under the full id.
 MODEL = sys.argv[6] if len(sys.argv) > 6 else ""
-# The agent calls http://relay/v1/<path>; only these paths go on, to UPSTREAM/<path>.
 ALLOWED = {"/v1/chat/completions": "/chat/completions", "/v1/responses": "/responses", "/v1/messages": "/messages", "/v1/models": "/models"}
 MAX_BODY = 16_000_000
-# Status counts and the first 429 show whether the provider starts throttling the key.
 stats = {"requests": 0, "errors": 0, "prompt_tokens": 0, "completion_tokens": 0, "status": {}, "first_429": None, "usd": 0.0, "stopped": None, "error_samples": []}
 recent: list[tuple[float, int]] = []
 lock = threading.Lock()
@@ -124,7 +120,6 @@ class Relay(BaseHTTPRequestHandler):
         try:
             up = requests.request(self.command, UPSTREAM + ALLOWED[self.path.split("?")[0]], data=body or None, stream=True, timeout=(15, 600),
                                   headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json", "Accept": self.headers.get("Accept", "*/*"),
-                                           # The Messages API reads its version and beta flags from these headers.
                                            **{k: v for k, v in self.headers.items() if k.lower().startswith("anthropic-")}})
         except requests.RequestException as exc:
             with lock:
@@ -152,10 +147,8 @@ class Relay(BaseHTTPRequestHandler):
                 stats["first_429"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             if up.status_code >= 400:
                 stats["errors"] += 1
-                # A few error bodies say why the provider refused, which the agents' own logs often hide.
                 if len(stats["error_samples"]) < 8:
                     stats["error_samples"].append({"path": self.path, "status": up.status_code, "body": bytes(tail[:400]).decode("utf-8", "replace")})
-            # A provider can fail after a 200 has started streaming, in an error event inside the stream.
             at = tail.find(b'"type":"error"') if up.status_code < 400 else -1
             if at >= 0:
                 stats["stream_errors"] = stats.get("stream_errors", 0) + 1
@@ -167,7 +160,6 @@ class Relay(BaseHTTPRequestHandler):
             piece = piece[5:].strip() if piece.startswith("data:") else piece
             try:
                 row = json.loads(piece)
-                # Responses API events carry usage inside "response", Messages API start events inside "message".
                 usage = row.get("usage") or (row.get("response") or row.get("message") or {}).get("usage")
             except (ValueError, AttributeError):
                 continue
@@ -181,7 +173,6 @@ class Relay(BaseHTTPRequestHandler):
                     stats["cached_tokens"] = stats.get("cached_tokens", 0) + cached
                     stats["completion_tokens"] += completion
                     recent.append((time.time(), prompt + completion))
-                    # Prompt tokens the provider reports as cached are priced at the cached rate when one is given.
                     stats["usd"] += ((prompt - cached) * float(PRICE.get("input") or 0) + cached * float(PRICE.get("cached_input", PRICE.get("input")) or 0)
                                      + completion * float(PRICE.get("output") or 0))
         with lock:

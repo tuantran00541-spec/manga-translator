@@ -72,9 +72,6 @@ def get_image(chapter_id: str, page_index: int, kind: str):
         if kind == "rendered":
             path = _current_rendered_path(chapter_id, page_index, manifest)
             if path is None:
-                # No silent fallback to the base image: the review UI and
-                # QA must be able to tell "rendered" from "never rendered"
-                # (M3). The download endpoint already 409s on this state.
                 raise HTTPException(
                     409,
                     "Rendered output is stale or unavailable. Kết xuất lại trang trước khi xem.",

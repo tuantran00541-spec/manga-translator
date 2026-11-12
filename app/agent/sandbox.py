@@ -20,7 +20,6 @@ import uuid
 MODES = ("read-only", "workspace-write", "full-access")
 MAX_OUTPUT_BYTES = 8_000_000
 RUNAWAY_BYTES = 200_000_000
-# Where people keep credentials; confined commands cannot read them, whatever the model is told or tries.
 HOME_SECRETS = (".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".git-credentials", ".npmrc", ".pypirc", ".claude.json",
                 ".config/gcloud", ".config/gh", ".config/git", ".config/opencode", ".config/google-chrome", ".config/chromium",
                 ".config/BraveSoftware", ".local/share/keyrings", ".local/share/python_keyring", ".password-store", ".mozilla",
@@ -28,13 +27,8 @@ HOME_SECRETS = (".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".git-cr
                 ".config/manga-translator",
                 "Library/Keychains", "Library/Application Support/Google/Chrome")
 SYSTEM_SECRETS = ("/run/user", "/run/secrets", "/var/run/secrets")
-# More folders to keep unreadable, added by whoever stores private data (the agent's own saved sessions).
 EXTRA_DENY: list[str] = []
 SECRET_NAME = re.compile(r"(?i)(api_?key|key|token|secret|passw(or)?d|credentials?|auth|cookie|session_?id|private|bearer)")
-# Substring match without word boundaries: real secret names carry suffixes
-# (AGNES_KEY2) or embed the keyword mid-token (MYSECRET), which a boundary
-# would miss. Everyday vars (PATH, HOME, ...) contain none of these.
-# Engines that confine reads, writes and the network; low-integrity confines writes only.
 FULL = ("landlock", "seatbelt", "docker")
 DOCKER_IMAGE = "python:3.12-slim"
 DOCKER_CHECK_S = 60
@@ -54,7 +48,6 @@ def secret_paths() -> list[str]:
     return sorted({os.path.realpath(p) for p in found if p.exists()})
 
 
-# The only dotenv files left readable; every other .env* is a secret.
 DOTENV_PUBLIC = {".env.example", ".env.sample"}
 
 
@@ -63,7 +56,6 @@ def workspace_secrets(root: Path) -> list[str]:
     sandbox layer too, so a quote-evasion that slips past the rule scan still cannot read them."""
     hits, top = [], str(root)
     for folder, dirs, names in os.walk(top):
-        # Four levels down covers app/.env and services/api/.env without walking dependency trees.
         if folder[len(top):].count(os.sep) >= ENV_DEPTH:
             dirs[:] = []
         dirs[:] = [d for d in dirs if d not in ENV_SKIP]
@@ -85,7 +77,6 @@ class Policy:
             return "Commands run without a sandbox: full file and network access."
         kind = backend()
         if kind == "none":
-            # No confinement is possible on this machine: saying anything else would lie to the model.
             return ("Commands run UNSANDBOXED with the full privileges of this user: no sandbox backend is available "
                     "on this machine, so there is no file confinement, no network block, and no credential-folder "
                     "protection — treat every command as running with your user's full access.")
@@ -126,8 +117,6 @@ def save_settings(engine: str, image: str = "") -> dict:
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     with open(tmp, "w", encoding="utf-8") as handle:
         handle.write(text)
-    # Windows will not replace a read-only file, and sync or antivirus tools
-    # hold files briefly, so clear the flag and retry before giving up.
     for pause in (0.0, 0.2, 0.5, 1.0):
         if pause:
             time.sleep(pause)
@@ -201,7 +190,6 @@ def _seatbelt_profile(policy: Policy, root: Path, scratch: str) -> str:
     return " ".join(forms)
 
 
-# Commands run under bash where there is one, so time, source, [[ ]] and pipefail work as models expect.
 BASH = shutil.which("bash") if os.name == "posix" else None
 
 
@@ -229,7 +217,6 @@ def wrap(command: str, policy: Policy, root: Path, scratch: str) -> tuple[list[s
             _labelled.add(str(root))
         return [sys.executable, str(Path(__file__).with_name("win_low.py")), "--", command], False
     if kind == "landlock":
-        # The launcher runs by file path, so the user's project never sees this app on its import path.
         args = [sys.executable, str(Path(__file__).with_name("landlock_run.py"))]
         for path in writable_roots(policy, root, scratch):
             args += ["--write", path]
@@ -248,7 +235,6 @@ def _env_for(policy: Policy, scratch: str) -> dict | None:
     env = None if policy.mode == "full-access" else clean_env()
     if policy.mode == "read-only" or (env is not None and backend() == "low-integrity"):
         env = {**(env or {}), "TMPDIR": scratch, "TMP": scratch, "TEMP": scratch}
-    # A package install that asks a question, such as tzdata's time zone, would otherwise wait forever on a job's open input.
     base = env if env is not None else os.environ
     return {**base, "DEBIAN_FRONTEND": base.get("DEBIAN_FRONTEND", "noninteractive")}
 
@@ -258,12 +244,10 @@ class Job:
 
     def __init__(self, command: str, policy: Policy, root: Path, tty: bool = False, scratch: str | None = None, env: dict | None = None):
         self.command, self.started, self.outside, self.tty = command, time.time(), policy.mode == "full-access", tty and os.name == "posix"
-        # A given scratch folder is the caller's to keep, so stop leaves it in place.
         self.own_scratch = scratch is None
         self.scratch = scratch or tempfile.mkdtemp(prefix="agent-job-")
         target, shell = wrap(command, policy, root, os.path.realpath(self.scratch))
         base = _env_for(policy, self.scratch)
-        # A PATH or PYTHONPATH given here goes in front of the one already set, so the job's own programs and imports still work.
         env = {**base, **{k: os.pathsep.join(filter(None, [v, base.get(k)])) if k in ("PATH", "PYTHONPATH") else v for k, v in (env or {}).items()}}
         if tty and os.name == "posix":
             import pty
@@ -337,7 +321,6 @@ class Job:
 def run(command: str, policy: Policy, root: Path, timeout: int, stdin: str | None = None,
         split: bool = False) -> tuple[int | None, str]:
     """Run a shell command under the policy; a None exit code means it timed out, and split returns stderr alone."""
-    # Each run gets its own temp folder, the only place a read-only command may write.
     scratch = tempfile.mkdtemp(prefix="agent-run-")
     try:
         target, shell = wrap(command, policy, root, os.path.realpath(scratch))
@@ -358,7 +341,7 @@ class _Capture(threading.Thread):
         while True:
             try:
                 chunk = self.stream.read1(65536) if hasattr(self.stream, "read1") else self.stream.read(65536)
-            except OSError:  # A terminal reports EIO once the program behind it exits.
+            except OSError:
                 return
             if not chunk:
                 return
@@ -397,7 +380,6 @@ def _group_alive(pgid: int) -> bool:
 def _kill_group(proc: subprocess.Popen) -> None:
     args = proc.args if isinstance(proc.args, list) else []
     if args[:2] == ["docker", "run"] and "--name" in args:
-        # Killing the docker client leaves the container running, so it is removed by name.
         try:
             subprocess.run(["docker", "rm", "-f", args[args.index("--name") + 1]], capture_output=True, timeout=30)
         except (OSError, subprocess.TimeoutExpired):
@@ -434,7 +416,6 @@ def _execute(target, shell: bool, root: Path, timeout: int, stdin: str | None, s
         code: int | None = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         code = None
-    # Whatever the command left running, including after a clean exit, goes with it.
     _kill_group(proc)
     proc.wait()
     for reader in (out, err):

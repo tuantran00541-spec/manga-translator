@@ -15,12 +15,12 @@ MAX_RAN = 200
 class Checkpoints:
     def __init__(self):
         self.turns: list[dict[str, bytes | None]] = []
-        self.first = 0  # absolute number of turns[0]
+        self.first = 0
         self.marks: dict[str, dict] = {}
-        self.blobs: dict[str, bytes] = {}  # file contents by hash, shared by every mark that holds them
+        self.blobs: dict[str, bytes] = {}
         self.pins: dict[str, str] = {}
         self.dropped: list[dict] = []
-        self.ran: list[str] = []  # steps whose effects outside the files cannot be put back
+        self.ran: list[str] = []
         self.ran_total = 0
         self.auto_no = 0
 

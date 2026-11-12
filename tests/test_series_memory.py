@@ -68,11 +68,10 @@ def test_finish_keeps_an_editor_save_made_while_the_job_ran(monkeypatch):
     job = ai_job.AIModeJob(job_id="j", settings=AIModeSettings(url=url, provider="openai", model="m"), chapter_id="c1",
                            stage="finish", stages={"finish": {"done": 0, "total": 0, "detail": ""}})
     runner = AIModeRunner(job, PROVIDERS["openai"], "key")
-    runner._series = series_memory.load(key)  # the stale snapshot taken when translate started
+    runner._series = series_memory.load(key)
     runner._memory = ChapterMemory("", {})
     runner._memory.update(1, {"characters": [{"name": "Terna", "note": "goddess"}]}, {}, [])
     runner.report["glossary"] = {"terms": [{"source": "Avatar", "target": "Hóa Thân"}]}
-    # An editor saves a new name mid-run; finish must merge into the fresh file, not the stale snapshot.
     current = series_memory.load(key)
     current["names"].append({"source": "Editor", "target": "Biên Tập"})
     series_memory.save(key, current)

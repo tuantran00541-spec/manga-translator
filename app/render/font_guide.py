@@ -2,9 +2,6 @@
 from __future__ import annotations
 
 DEFAULT_LETTERING_FONT = "dialogue.mac-dinh-3"
-# The font follows what the text is and what it sits in, never the model's taste, with the dialogue font as
-# the fallback where a container has no entry for a role: every bubble role letters in the dialogue font,
-# since the bubble map is empty, so one role can letter differently in different containers.
 FONT_BY_ROLE = {"system_ui": "skill.exo-2", "skill_name": "skill.kanit"}
 FONT_BY_CONTAINER = {
     "bubble": {},
@@ -14,8 +11,6 @@ FONT_BY_CONTAINER = {
     "free": {"narration": "emphasis.anton", "title": "emphasis.anton", "free_text": "emphasis.anton",
              "thought": "narration.mac-dinh-2", "shout": "emphasis.bangers", "dark_threat": "emphasis.bangers"},
 }
-# The Mặc Định comic fonts carry Vietnamese and English letters only (no ñ, ç, ü, ß, ¿); other Latin languages
-# letter that text in Comic Neue, which has them.
 BASE_FONT_LANGS = frozenset({"vi", "en", "id"})
 FULL_LATIN = {"dialogue.mac-dinh-3": "thought.comic-neue", "narration.mac-dinh-2": "thought.comic-neue"}
 

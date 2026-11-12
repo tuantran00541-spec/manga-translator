@@ -120,7 +120,6 @@ def test_translate_batch_retranslates_each_batch(tmp_path, monkeypatch):
     assert retold["pairs"] == [("text_1", "Hello")]
     assert retold["model"] == TRANSLATE_MODEL
     assert answer.translations == {"text_1": "mimo wording"}, "the text model's wording replaces the vision wording"
-    # Role/container still come from the vision read, so the font does not move.
     assert answer.roles == {"text_1": "dialogue"} and answer.containers == {"text_1": "bubble"}
 
 
@@ -257,7 +256,6 @@ class _Jobs:
 def _start_cloud(monkeypatch, **overrides):
     jobs = _Jobs()
     monkeypatch.setattr(ai_mode_router, "ai_mode_jobs", jobs)
-    # URL validation does a live DNS lookup; the wiring under test starts after it.
     monkeypatch.setattr(ai_mode_router, "validate_url", lambda url: None)
     monkeypatch.setattr(ai_mode_router.cloud, "reserve_job",
                         lambda: {"job_token": "tok", "cost_cap_usd": 0.30,

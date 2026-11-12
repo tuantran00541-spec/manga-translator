@@ -20,17 +20,14 @@ REPO = "tuantran00541-spec/manga-translator"
 MARKER = BASE_DIR / ".manga-install.json"
 
 if sys.stdout is None or sys.stderr is None:
-    # Started from the desktop icon (pythonw) there is no console; the log goes to a file instead.
     (BASE_DIR / "logs").mkdir(exist_ok=True)
     _console = open(BASE_DIR / "logs" / "console.log", "a", encoding="utf-8", errors="replace", buffering=1)
     sys.stdout = sys.stdout or _console
     sys.stderr = sys.stderr or _console
 
 if os.name == "nt" and not str(Path.home()).isascii() and "PADDLE_PDX_CACHE_HOME" not in os.environ:
-    # PaddleOCR cannot load its models from a user folder with accents.
     os.environ["PADDLE_PDX_CACHE_HOME"] = str(Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "manga-translator" / "paddlex")
 
-# Only pure-Python modules load here: Windows locks loaded .pyd files, and `manga update` may replace them.
 from app.config import HOST, PORT, RELOAD, WORKERS, check_models, ensure_directories  # noqa: E402
 from app.logging_config import CONSOLE, logger  # noqa: E402
 
@@ -203,7 +200,6 @@ def _ensure_temp_dir() -> None:
         return
     except FileNotFoundError:
         pass
-    # Beside the install, not inside it: the installer purges unknown folders in the target.
     fallback = BASE_DIR.parent / "tmp"
     fallback.mkdir(parents=True, exist_ok=True)
     tempfile.tempdir = str(fallback)
@@ -311,7 +307,7 @@ def _show_window(url: str, on_ready=None) -> bool:
 
     try:
         webview.start(load_when_up if on_ready else None)
-    except Exception as exc:  # no GUI toolkit (a bare Linux box): the caller falls back to the browser
+    except Exception as exc:
         logger.warning(f"Cannot open the app window ({exc}); using the browser")
         return False
     return True

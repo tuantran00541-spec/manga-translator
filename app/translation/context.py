@@ -49,9 +49,6 @@ _VIETNAMESE = """
 </vietnamese>
 """.strip()
 
-# One register per story world. The chapter's setting is detected once (see
-# setting_question) and only that world's line is sent with each translation,
-# instead of the whole table, to keep the cached system prompt small.
 SETTING_REGISTERS = {
     "murim": 'Võ lâm / kiếm hiệp / murim: rivals and enemies "ta"/"ngươi", peers "tại hạ"/"các hạ" or "huynh"/"đệ", sects "sư phụ"/"đệ tử", "sư huynh"/"sư đệ", "đạo hữu", "bổn tọa"; never "bạn"/"tôi"/"cậu"/"tớ" or "tao"/"mày", not even to an AI/system. Letter person names AND technique/skill names in Hán Việt (Sino-Vietnamese), not Latin/English (e.g. "Thiên Ma", "Văn Quy", "Thái Kiếm Thần"); keep one Hán Việt reading per name across the chapter.',
     "cultivation": 'Tu tiên / huyền huyễn: the kiếm-hiệp pairs (ta/ngươi, sư phụ/đệ tử, đạo hữu, bổn tọa) plus Hán Việt realms (Luyện Khí, Trúc Cơ, Kim Đan…); immortals "bổn tọa"/"ngươi"; never "bạn"/"tôi"/"cậu"/"tớ" or "tao"/"mày", not even to an AI/system. Letter person names AND technique/skill names in Hán Việt (Sino-Vietnamese), not Latin/English; keep one reading per name across the chapter.',
@@ -119,7 +116,6 @@ def system_prompt(target_name: str, target_lang: str, settled: dict | None = Non
         parts.append(_VIETNAMESE.replace("@@REGISTER@@", setting_register(setting)))
     parts.append(_OUTPUT.format())
     if settled:
-        # What the chapter settled before translating sits in the system text, which the provider caches.
         parts.append("<chapter_glossary>\n" + json.dumps(settled, ensure_ascii=False, separators=(",", ":"))
                      + "\n</chapter_glossary>")
     return "\n\n".join(parts)
@@ -191,7 +187,6 @@ class ChapterMemory:
 
     def update(self, slice_number: int, data: dict, translations: dict[str, str], order: list[str]) -> None:
         speakers = data.get("speakers") if isinstance(data.get("speakers"), dict) else {}
-        # The source each box read, so a sentence running into the next slice can be finished.
         sources = {str(entry.get("id")): entry.get("source") for entry in data.get("translations") or []
                    if isinstance(entry, dict) and isinstance(entry.get("source"), str)}
         with self._lock:

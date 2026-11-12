@@ -1,9 +1,5 @@
 name: Kiuyha train S
 
-# Fine-tune the Kiuyha yolo26s (small) detector with the same recipe as the
-# yolo26n rounds: same data set, same hard cases, same hyper-parameters.
-# Round 1 starts from the base yolo26s weights; later rounds continue from the
-# previous round's kiuyha-tuned-s artifact (set START_RUN below).
 on:
   push:
     branches-ignore: [main]
@@ -19,10 +15,7 @@ env:
   OUT: audit-results/kiuyha-train-s/run-${{ github.run_id }}
   PYTHONPATH: "."
   PYTHONUNBUFFERED: "1"
-  # The run whose kiuyha-data artifact is reused.
   DATA_RUN: "38535523379"
-  # Empty = start from the base yolo26s weights; a run id = continue from that
-  # run's kiuyha-tuned-s artifact.
   START_RUN: ""
 
 jobs:
@@ -48,7 +41,6 @@ jobs:
           github-token: ${{ github.token }}
       - name: Fetch the base yolo26s weights
         run: curl --proto '=https' --tlsv1.2 -sSfL -o yolo26s.pt https://huggingface.co/Kiuyha/Manga-Bubble-YOLO/resolve/main/weights/yolo26s.pt
-      # Later rounds continue from the previous tuned-s weights, not the base.
       - name: Fetch the previous tuned-s weights
         if: env.START_RUN != ''
         uses: actions/download-artifact@v4
@@ -73,7 +65,6 @@ jobs:
           yolo detect train model=start.pt data=kiuyha-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
             time=5.0 epochs=40 patience=100 freeze=0 optimizer=AdamW lr0=0.0005 cos_lr=True \
             degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
-      # Ultralytics may write elsewhere than asked, so the weights are found wherever they landed and kept before anything else runs.
       - name: Keep the weights
         if: always()
         run: |

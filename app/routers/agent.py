@@ -35,7 +35,6 @@ def guard(request: Request, x_manga_agent: str | None = Header(default=None)) ->
     """Agent calls change files and run commands, so they need the switch on, this machine, and a header a foreign page cannot send without a preflight."""
     if not agent_enabled():
         raise HTTPException(404, "Chaos đang tắt (MANGA_AGENT_MODE=0).")
-    # MANGA_ALLOWED_HOSTS may open the app to the LAN; the agent stays on this machine.
     if not is_loopback(request.client.host if request.client else ""):
         raise HTTPException(403, "Chaos chỉ nhận yêu cầu từ máy này.")
     if x_manga_agent != AGENT_HEADER:

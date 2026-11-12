@@ -208,7 +208,7 @@ window.cancelPendingPersist = function cancelPendingPersist() {
   refreshSaveStatus();
 };
 
-// Flush pending edits when the tab closes.
+
 window.addEventListener("pagehide", () => {
   const chapterId = currentChapterId;
   if (!chapterId) return;
@@ -224,6 +224,6 @@ window.addEventListener("pagehide", () => {
       body: JSON.stringify({ chapter_id: chapterId, updates }),
     });
   } catch (_err) {
-    // Nothing more can be done while the page is going away.
+    
   }
 });

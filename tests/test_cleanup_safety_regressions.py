@@ -82,7 +82,7 @@ class _PipelineDetector:
         self.passes += 1
         leftover = self._leftover
         if not self._stubborn:
-            self._leftover = None  # the next pass finds it erased
+            self._leftover = None
         return [leftover] if leftover is not None else []
 
 

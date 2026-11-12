@@ -123,19 +123,17 @@ def test_trim_with_letters_cuts_a_diagonal_waist():
     mask = _union_mask_from_circles()
     assert find_waist(mask) is None
     letters = np.zeros((80, 420), bool)
-    letters[10:30, 0:180] = True    # left lobe lines
+    letters[10:30, 0:180] = True
     letters[40:60, 0:180] = True
-    letters[10:30, 240:420] = True  # right lobe lines
+    letters[10:30, 240:420] = True
     letters[40:60, 240:420] = True
     piece = _trim_mask_to_letters(mask, (60, 60, 560, 340), (100, 180, 280, 240),
                                   letters=letters, letters_box=(100, 170, 520, 250))
     assert piece is not mask
     assert piece["bbox"][2] <= 340
     assert piece["bbox"][0] == mask["bbox"][0] and piece["cx"] < mask["cx"]
-    # The piece centres on its own lobe, not on the union seed.
     assert (piece["cx"], piece["cy"]) == _mask_centroid(piece)
     assert piece["cy"] != mask["cy"]
-    # Trimming the piece again, with the same letters, keeps it whole.
     again = _trim_mask_to_letters(piece, (60, 60, 560, 340), (100, 180, 280, 240),
                                   letters=letters, letters_box=(100, 170, 520, 250))
     assert again is piece

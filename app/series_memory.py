@@ -22,7 +22,6 @@ MAX_CHARACTERS = 80
 MAX_FIELD = 80
 MAX_NOTES = 1500
 _KEY = re.compile(r"[^a-z0-9]+")
-# The last path parts that name one chapter rather than the series.
 _CHAPTER_PART = re.compile(r"^(chapter|chap|ch|episode|ep|c)[-_]?\d|^\d+([.-]\d+)?$", re.I)
 
 
@@ -32,10 +31,8 @@ def series_key(url: str) -> str | None:
     parts = [part for part in parsed.path.split("/") if part]
     while parts and (_CHAPTER_PART.match(parts[-1]) or parts[-1].lower() in {"chapter", "chapters", "episode"}):
         parts.pop()
-    # A URL like /chapter/<id> names a chapter without its series.
     if not parsed.hostname or not parts or (len(parts) >= 2 and parts[-2].lower() in {"chapter", "chapters", "episode"}):
         return None
-    # A trailing id on the slug ("solo-swordmaster-3ec3b16f") changes between site mirrors, so it is dropped.
     slug = re.sub(r"-[0-9a-f]{6,}$", "", parts[-1].lower())
     host = parsed.hostname.removeprefix("www.").split(".")[0]
     key = _KEY.sub("-", f"{host}-{slug}").strip("-")
@@ -154,7 +151,6 @@ def learn(series: dict, chapter_glossary: dict, characters: list[dict], address:
     return clean(merged)
 
 
-# -- the plain-text form the user edits ------------------------------------------------
 def to_text(data: dict) -> str:
     """One entry per line: 'Name = Tên', 'term: source = target', 'A -> B: self / other', 'char: Name | note'."""
     lines = [f"{e['source']} = {e['target']}" + (f"  # {e['note']}" if e.get("note") else "") for e in data["names"]]

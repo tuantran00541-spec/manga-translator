@@ -20,7 +20,6 @@ from app.downloader.http import read_response_limited, safe_get
 BROAD_FOLDERS = {"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/var", "/boot", "/dev", "/proc", "/sys", "/opt", "/root", "/home", "/Users",
                  "/System", "/Library", "/Applications", "/private", "/mnt", "/media"}
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".mypy_cache", ".pytest_cache"}
-# Chapter images, model weights and logs at the app's root would drown every listing and search.
 ROOT_SKIP_DIRS = {"data", "models", "logs"}
 MAX_READ_LINES = 2000
 MAX_OUTPUT_CHARS = 20_000
@@ -36,7 +35,6 @@ SYMBOL_LINE = re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:(?:p
 COMMAND_TIMEOUT = 120
 MAX_COMMAND_TIMEOUT = 1800
 
-# What each tool can do decides whether it waits for the user: read, edit, exec or net.
 KIND = {"list_dir": "read", "read_file": "read", "symbols": "read", "view_image": "read", "search": "read", "glob": "read", "write_file": "edit",
         "edit_file": "edit", "replace_in_files": "edit", "move_file": "edit", "delete_file": "edit", "run_command": "exec", "run_script": "exec", "web_fetch": "net", "web_search": "net", "web_download": "edit"}
 
@@ -167,15 +165,14 @@ def _checkers() -> dict:
 CHECKERS = _checkers()
 
 
-# Shell commands a built-in tool does better, each with the tool and the tip that follows the command's output when that tool is offered.
 SHELL_HINTS = ((re.compile(r"^(cat|head|tail|less|more)\s+[^|<>;&]*$"), "read_file", "read_file shows the file with line numbers and notes that you read it, which edit_file relies on"),
                (re.compile(r"^(grep\s+(-\w*r|--recursive)|rg\s|ag\s|ack\s)"), "search", "search looks through the project for a pattern, skips ignored and data folders and lists file:line"),
                (re.compile(r"^find\s.*-i?name\b"), "glob", "glob finds files by name pattern and skips ignored folders"),
                (re.compile(r"^(curl|wget)\s.*https?://"), "web_fetch", "web_fetch reads a URL (HTML as Markdown, JSON indented), keeps the page for offset and find, and marks it as web content"),
                (re.compile(r"^(sed|perl)\s+(-\w*i|--in-place)"), "edit_file", "edit_file changes text and shows what changed; after sed -i, read the file again before edit_file changes it"))
 SHELL_HINT_LIMIT = 3
-SEARCH_STREAK = 3  # Searches in a row before the result suggests reading instead.
-PAGE_CACHE_S, PAGE_CACHE_SIZE = 600, 20  # A fetched page is kept this long for offset and find.
+SEARCH_STREAK = 3
+PAGE_CACHE_S, PAGE_CACHE_SIZE = 600, 20
 
 
 MAX_SUGGEST_FILES = 20_000
@@ -206,11 +203,9 @@ class Workspace:
         self.root = root
         self.policy = policy or sandbox.Policy()
         self.read_roots = [Path(p).resolve() for p in read_roots or []]
-        # Files the agent has read or written, with their modification time then; an edit over a newer one is refused.
         self.seen: dict[Path, int] = {}
         self.hints = 0
         self.searches_in_row = 0
-        # The tools the model is offered, so a tip never points at one it does not have; None offers every tip.
         self.offered: set[str] | None = None
         self.pages: dict[str, tuple[str, list[str], float]] = {}
         self.searched: dict[str, tuple[str, float]] = {}
@@ -218,12 +213,10 @@ class Workspace:
 
     def resolve(self, path: str | None, *, write: bool = False) -> Path:
         if path and "\n" in path:
-            # A line break in a path means the call's other arguments were written into it.
             raise ToolError(f"path holds a line break, so the other arguments ended up inside it: {path.splitlines()[0]!r} … "
                             "Pass each argument (path, old_text, new_text, content) as its own field.")
         target = (self.root / (path or ".")).resolve()
         roots = [self.root] + ([] if write else self.read_roots)
-        # Without a sandbox commands reach every file, so the file tools may too; permission rules still apply.
         if self.policy.mode != "full-access" and not any(target == r or r in target.parents for r in roots):
             raise ToolError(f"{path!r} is outside the workspace")
         return target
@@ -347,7 +340,6 @@ class Workspace:
         if top.is_file():
             yield top
             return
-        # A glob with a slash (app/**/*.py) is matched against the path below top, a plain one (*.py) against the name.
         by_path = bool(name_glob) and "/" in name_glob
         for folder, dirs, names in os.walk(top):
             dirs[:] = sorted(d for d in dirs if not self.skipped(Path(folder) / d))
@@ -381,7 +373,6 @@ class Workspace:
     def _tool_read_file(self, path: str, offset: int = 1, limit: int = MAX_READ_LINES) -> str:
         target = self.resolve(path)
         if target.is_dir():
-            # Reading a folder is a request to see what is in it.
             return f"{path} is a folder; its entries:\n{self._tool_list_dir(path)}"
         if not target.is_file():
             raise self.missing(path)
@@ -463,7 +454,6 @@ class Workspace:
         flags = re.IGNORECASE if ignore_case else 0
         try:
             regex = re.compile(pattern, flags)
-            # One pass over the whole file skips the ones with no match before they are split into lines; \A and \Z mean something else there.
             whole = None if re.search(r"\\[AZ]", pattern) else re.compile(pattern, flags | re.MULTILINE)
         except re.error as exc:
             raise ToolError(f"Bad regular expression: {exc}") from exc
@@ -658,7 +648,6 @@ class Workspace:
             while len(self.pages) > PAGE_CACHE_SIZE:
                 self.pages.pop(next(iter(self.pages)))
         else:
-            # Reading on in a page (offset, find) does not download it again.
             text, notes = page[0], page[1]
         head = "".join(f"[{note}]\n" for note in notes)
         if find:
@@ -675,14 +664,12 @@ class Workspace:
         except ToolError:
             if raw == url:
                 raise
-            # A GitHub page that has no raw file (a missing README) is read as the page itself.
             raw = url
             body, kind, encoding = self._download(url)
         text, notes = webread.readable(body, kind, encoding, raw)
         text = text.strip()
         key = os.environ.get("TINYFISH_API_KEY")
         if notes and key:
-            # Only a page that needs JavaScript or is all menus goes to the browser service; a page that refused us is not sent there.
             try:
                 seen = webread.browsed(url, key)
             except requests.RequestException:
@@ -716,7 +703,6 @@ class Workspace:
             while len(self.searched) > PAGE_CACHE_SIZE:
                 self.searched.pop(next(iter(self.searched)))
         if self.searches_in_row >= SEARCH_STREAK:
-            # Searching again with longer queries rarely helps; reading the best lead does (seen on Qwen: eight searches before one fetch).
             found += (f"\n\n[Tip: this is search {self.searches_in_row} in a row. Open the most promising result with web_fetch, or fetch a page that "
                       "lists what you need (a project's docs, an index page such as https://github.com/trending/python, or an API URL), instead of "
                       "searching again. Short plain queries of 3 to 6 words work best; quotes and stacked terms often return nothing.]")

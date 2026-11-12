@@ -1,9 +1,6 @@
 ﻿; Manga Translator setup for Windows: installs with install.ps1, then the app opens from its desktop icon.
 ; Built by .github/workflows/desktop-setup.yml, which passes the version from run.py.
 
-#ifndef AppVersion
-  #define AppVersion "0.0.0"
-#endif
 
 [Setup]
 AppId={{6C7F0E52-3B8A-4E59-9D1B-7A3C2F1E8B40}

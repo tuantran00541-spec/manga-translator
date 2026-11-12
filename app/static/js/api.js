@@ -1,7 +1,7 @@
-// The open chapter; every screen reads these, so they exist before any chapter is loaded.
+
 var currentChapterId = null;
 var currentManifest = null;
-// Safe default so the inspector can render before /api/fonts resolves.
+
 let availableFonts = [];
 
 async function parseApiResponse(resp) {
@@ -68,7 +68,7 @@ async function setWorkflowCheckpoint(stage, pageIndex) {
   try {
     const resp = await fetch("/api/workflow_checkpoint", {
       method: "POST",
-      // keepalive lets the save finish when the page is being left or reloaded.
+      
       keepalive: true,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -102,7 +102,7 @@ async function setWorkflowCheckpoint(stage, pageIndex) {
     if (!_pageLeaving) console.error("Workflow checkpoint save failed:", err);
   }
 }
-// A request cut off by leaving the page is not an error worth reporting.
+
 let _pageLeaving = false;
 window.addEventListener("pagehide", () => { _pageLeaving = true; });
 window.addEventListener("pageshow", () => { _pageLeaving = false; });
@@ -243,7 +243,7 @@ async function refreshChapterManifest(chapterId) {
 }
 window.refreshChapterManifest = refreshChapterManifest;
 
-// Flush the old chapter's drafts so they never save into the chapter being opened.
+
 async function flushEditsBeforeChapterChange() {
   const chapterId = currentChapterId;
   if (!chapterId) return;
@@ -287,7 +287,7 @@ async function resumeChapter(chapterId) {
     const rawIndex = parseInt(workflow.page_index, 10) || 0;
     const pageIndex = Math.max(0, Math.min(rawIndex, Math.max(0, pages.length - 1)));
 
-    // Chapters saved at the old separate editor step open in review, where editing now lives.
+    
     if (workflow.stage === "preview") {
       window.initialPreviewCanonicalPageIndex = pageIndex;
       renderPreview();
@@ -381,7 +381,7 @@ async function toggleSkip(pageIndex, card, btn) {
   }
 }
 
-// A single-threaded worker per core, 1 to 8: faster than fewer workers with several threads each.
+
 function getWorkersSetting() {
   const cores = Number(navigator.hardwareConcurrency) || 4;
   return Math.max(1, Math.min(8, cores));

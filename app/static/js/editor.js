@@ -167,7 +167,7 @@ async function deleteTextObject(pageIndex, id) {
 }
 window.deleteTextObject = deleteTextObject;
 
-// Re-creates a deleted text object from a saved snapshot and returns its new id.
+
 async function restoreTextObject(pageIndex, snap) {
   const chapterId = currentChapterId;
   if (!chapterId || !snap?.region) return null;
@@ -393,7 +393,7 @@ function buildChapterExportButton() {
       }
       if (chapterId !== window.currentChapterId) return;
       let { response, data } = await renderChapter(chapterId, false);
-      // Unfinished text asks before exporting; the untranslated regions stay clean in the file.
+      
       forced = false;
       if (response.status === 409 && data?.detail?.code === "editorial_preflight") {
         if (!window.confirm(`${data.detail.message}\nVẫn xuất chương? Những vùng đó sẽ để trống chữ.`)) return;
@@ -431,7 +431,7 @@ function buildChapterExportButton() {
 
 window.buildChapterExportButton = buildChapterExportButton;
 
-// The editor lives inside the review workspace; opening it opens review at the same page.
+
 function renderEditor() {
   const pages = window.currentManifest?.pages || [];
   const rawIndex = Number(editorState.activePageIndex ?? window.currentManifest?.workflow?.page_index ?? 0);

@@ -117,11 +117,8 @@ def _apply_ai_font_choice(obj: dict, choice: dict | None) -> None:
 
 class TranslateVisionPageRequest(TranslateChapterRequest):
     page_index: int = Field(ge=0)
-    # Cap per request; retries use a small batch so the reply fits.
     max_objects: int | None = Field(default=None, ge=1, le=100)
-    # Only these objects (still untranslated ones); None means every untranslated object.
     object_ids: list[str] | None = Field(default=None, max_length=100)
-    # A second model re-translates the source lines the vision model read; unset means the vision model's wording stands.
     translate_provider: str | None = None
     translate_model: str | None = None
 
@@ -204,7 +201,6 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
             "id": obj_id,
             "text": str(obj.get("ocr_text") or "").strip(),
             "region": rect,
-            # The renderer letters where the source lettering was, so that is the room a translation has.
             "fit_region": list(letter_box(obj, tuple(rect)) or rect),
             "initial_translation": str(obj.get("translation") or ""),
         })
@@ -218,7 +214,7 @@ def _norm_text(value: str) -> str:
     return " ".join(str(value or "").split()).lower()
 
 
-_DUPLICATE_SOURCE_SIMILARITY = 0.85  # normalised sources this alike are the same text read twice
+_DUPLICATE_SOURCE_SIMILARITY = 0.85
 
 
 def _rects_overlap(a: list[int], b: list[int]) -> bool:
@@ -237,7 +233,6 @@ def _duplicate_reason(value: str, source: str, rect: list[int],
         return "overlap"
     a, b = _norm_text(source), _norm_text(other_source)
     if a and a == b:
-        # The same text read twice, however short (a two-syllable SFX is a word).
         return "source"
     if len(a) >= 3 and len(b) >= 3 and difflib.SequenceMatcher(None, a, b).ratio() >= _DUPLICATE_SOURCE_SIMILARITY:
         return "source"
@@ -339,11 +334,7 @@ def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
         ink = source_ink_hex(raw, candidate["region"])
         if ink:
             candidate["source_ink"] = ink
-        # A lone "!" or "?" is one or two ink pieces, too few to trust in longer text but all the letters it has.
         short = len("".join(str(candidate.get("text") or "").split())) <= 2
-        # The cap is the source lettering's size, so it is measured where
-        # the lettering was (fit_region), never over the whole region:
-        # art strokes in a roomy region read as giant letters otherwise.
         cap = source_cap_px(raw, candidate["region"], min_pieces=1 if short else 3,
                             bounds=candidate.get("fit_region"))
         if cap:
@@ -402,15 +393,12 @@ async def translate_page_in_context(
         if skip_seam_mirrors:
             from app.ai_mode.seams import seam_mirror_ids
 
-            # The slice that owns a text crossing the cut translates it; this one gets a copy.
             mirrors = seam_mirror_ids(manifest, req.page_index)
             elsewhere = [candidate["region"] for candidate in candidates if candidate["id"] in mirrors]
             candidates = [candidate for candidate in candidates if candidate["id"] not in mirrors]
         if req.object_ids is not None:
             wanted = set(req.object_ids)
             candidates = [candidate for candidate in candidates if candidate["id"] in wanted]
-        # The cap applies to what was actually asked for: a retry naming a
-        # few objects must not 400 because the slice holds more than 100.
         if len(candidates) > 100:
             raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
         total_candidates = len(candidates)
@@ -426,8 +414,6 @@ async def translate_page_in_context(
         page_number = req.page_index
 
     if ensured:
-        # The render was invalidated above: drop its stale file too (M2),
-        # so a translate/render failure below leaves no stale PNG behind.
         from app.dependencies import pipeline
         pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
 
@@ -462,8 +448,8 @@ async def translate_page_in_context(
 
     committed = stale = unreadable = review = 0
     blank_ids: list[str] = []
-    story_blank_ids: list[str] = []  # blanks the model left on a story box (any role but sfx)
-    art_regions: list[dict] = []  # sound effects left as art get their original pixels back
+    story_blank_ids: list[str] = []
+    art_regions: list[dict] = []
     duplicate_ids = _duplicate_translation_ids(candidates, translated)
     with get_manifest_lock(req.chapter_id):
         latest = load_manifest_raw(req.chapter_id)
@@ -493,14 +479,11 @@ async def translate_page_in_context(
             role = getattr(translated, "roles", {}).get(candidate["id"])
             source = getattr(translated, "sources", {}).get(candidate["id"]) or candidate["text"]
             if role == "sfx" and drawn_in_art(source):
-                value = ""  # a sound effect the artist drew stays as drawn, whatever the model wrote
+                value = ""
             duplicate_reason = duplicate_ids.get(candidate["id"])
             if duplicate_reason is not None:
-                value = ""  # the same text read twice: keep one instance
+                value = ""
             elif value:
-                # The batch dedupe only sees this call's candidates; a
-                # retry re-reading a bubble the first call translated
-                # would otherwise letter it twice.
                 duplicate_reason = _committed_duplicate(page, candidate, value, source)
                 if duplicate_reason is not None:
                     value = ""
@@ -508,21 +491,9 @@ async def translate_page_in_context(
                 unreadable += 1
                 if candidate["id"] not in getattr(translated, "missing_ids", ()):
                     blank_ids.append(candidate["id"])
-                    # Attempted and left blank on purpose; distinguishes blank-by-choice from blank-by-budget.
                     obj["translation_attempted"] = True
-                    # A blank on a story box is a failure to read, not a
-                    # choice: it is retried, not restored to source art.
-                    # Only a sound effect the artist drew is art.
-                    # A duplicate SFX is blank by decision, not by failure,
-                    # so it is kept as art and never retried.
                     if role != "sfx" and duplicate_reason is None:
                         story_blank_ids.append(candidate["id"])
-                    # Only a sound effect the artist drew is art; a watermark or a review box around missed text stays erased.
-                    # A duplicate is restored as art only when it is a
-                    # separate instance of an SFX (the same text drawn
-                    # again): an overlapping duplicate shares the keeper's
-                    # lettering, so restoring it would paint the source
-                    # text back under the keeper's translation.
                     manual = {str(box.get("id")) for box in page.get("boxes") or []
                               if isinstance(box, dict) and box.get("manual")}
                     if ((duplicate_reason == "source" and str(role or "").strip().lower() in _SFX_LIKE_ROLES)
@@ -565,16 +536,9 @@ async def translate_page_in_context(
             invalidate_page_render(latest, page_number)
             save_manifest_raw(req.chapter_id, latest)
         elif blank_ids:
-            # A blank-only run still mutates the manifest
-            # (translation_attempted), and a crash before the next save
-            # would lose it — including the all-blank page, whose run
-            # would otherwise leave no trace at all.
             save_manifest_raw(req.chapter_id, latest)
 
     if changed:
-        # The render was invalidated above: drop its stale file too (M2)
-        # before the re-render below, so a render failure leaves no stale
-        # PNG behind.
         from app.dependencies import pipeline
         pipeline._sync_output_dir(req.chapter_id, latest, [page_number])
 

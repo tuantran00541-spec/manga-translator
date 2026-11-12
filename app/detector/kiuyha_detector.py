@@ -26,30 +26,24 @@ LETTERBOX_VALUE = 114
 STRIDE = 32
 NMS_IOU = knob("detect.nms_iou")
 BOX_PAD = knob("detect.box_pad")
-COLUMN_GAP = 16  # letterbox gap between columns packed into one input
-HALVES_MIN_OVERLAP = 256  # rows the two halves of the coarse pass share at least
-PAGE_WIDTH = 400  # slice width at page scale, where the model scores big lettering highest
-PAGE_OVERLAP = 0.15  # share of a page-scale window repeated in the next one
-PAGE_CONFIDENCE = 0.45  # page-scale score a box needs; drawn sound effects score below it, lettering above
-MASKLESS_MIN_SCORE = 0.5  # a box this confident is text even when the letter model reads nothing there:
-# dark letters on a dark map score 0.7+ with the box model and ~0.0 with the letter model, so dropping
-# the box drops the text. The box is kept with a whole-box mask instead.
-MASKLESS_MIN_PIECES = 3  # ... but only when it holds several separate dark pieces: text is several letters,
-# a window lattice or logo the box model also scores is one connected shape.
-MASKLESS_PIECE_PX = 20  # a piece this small is a speck, not a letter
-MASKLESS_PIECE_SHARE = 0.25  # a piece bigger than this share of its box is a shape, not a letter
-MASKLESS_DARK_DROP = 25  # grey levels darker than the box median that count as ink
-MASKLESS_SMALL_BOX_AREA = 15000  # a box this small holds a label line, not a shape: light letters on a dark ground
-# score 0 dark pieces (the pieces test only counts dark ink), so the pieces test cannot vouch for it — the box
-# model's own score has to. A dialogue bubble is several times bigger, so the lattice/logo rejection the pieces
-# test provides still holds where it matters.
-ROTATED_MIN_SCORE = PAGE_CONFIDENCE  # a sideways box needs the same score as a page-scale one
-RESCUE_MIN_SCORE = 0.10  # a box this faint is worth a second look: the box model half-sees small map labels at 0.10-0.24
-RESCUE_WORD_MAX_W = 80  # a rescued word this wide is a lattice panel, not a label
+COLUMN_GAP = 16
+HALVES_MIN_OVERLAP = 256
+PAGE_WIDTH = 400
+PAGE_OVERLAP = 0.15
+PAGE_CONFIDENCE = 0.45
+MASKLESS_MIN_SCORE = 0.5
+MASKLESS_MIN_PIECES = 3
+MASKLESS_PIECE_PX = 20
+MASKLESS_PIECE_SHARE = 0.25
+MASKLESS_DARK_DROP = 25
+MASKLESS_SMALL_BOX_AREA = 15000
+ROTATED_MIN_SCORE = PAGE_CONFIDENCE
+RESCUE_MIN_SCORE = 0.10
+RESCUE_WORD_MAX_W = 80
 RESCUE_WORD_MAX_H = 35
-RESCUE_WORD_MIN_AREA = 100  # a welded word this small is a speck or a mountain fleck
-RESCUE_WORD_MIN_FILL = 0.35  # letters are fat; a ridge or rail fills far less of its box
-RESCUE_WORD_PAD = 8  # a rescued box is drawn round the ink it found, so it pads out to the letters' edges
+RESCUE_WORD_MIN_AREA = 100
+RESCUE_WORD_MIN_FILL = 0.35
+RESCUE_WORD_PAD = 8
 UNION_SHARE = knob("detect.union_share")
 SAME_LINE = knob("detect.same_line")
 SAME_LINE_X = knob("detect.same_line_x")
@@ -257,16 +251,10 @@ def _split_waist_box(box: BubbleBox) -> list[BubbleBox]:
     first_share, second_share = _waist_letter_shares(box, waist, own)
     if min(first_share, second_share) < GAP_MIN_SIDE_SHARE:
         return [box]
-    # The pieces take the box's own letters (inside the core), not the
-    # neighbour's letters the growth pulled in past it.
     letters = own
     pieces = split_bubble_mask(mask, waist)
     if pieces is None:
         return [box]
-    # One line height of room round each piece's rect. Line runs
-    # merge when lines touch (a lobe's lines read as one tall run),
-    # so the height comes from the runs when they separate and falls
-    # back to a line's share of the lettering otherwise.
     runs = _line_runs(letters.any(axis=1))
     run_heights = [e - s for s, e in runs]
     if len(run_heights) >= 2:
@@ -285,8 +273,6 @@ def _split_waist_box(box: BubbleBox) -> list[BubbleBox]:
         return [box]
     parts = []
     for first, piece_mask in ((True, pieces[0]), (False, pieces[1])):
-        # The side's letters, in box-local coords: rows split for a
-        # horizontal waist, columns for a vertical one.
         if horizontal:
             part_letters = letters[:cut_local] if first else letters[cut_local:]
             row_offset = 0 if first else cut_local
@@ -297,9 +283,6 @@ def _split_waist_box(box: BubbleBox) -> list[BubbleBox]:
             col_offset = 0 if first else cut_local
         if not part_letters.any():
             return [box]
-        # The side's extent is its letter bbox, not its line runs: the
-        # runs merge when a lobe's lines touch, and a side that holds
-        # less than a line of lettering is a sliver, not a lobe.
         part_rows = np.flatnonzero(part_letters.any(axis=1)) + row_offset
         part_cols = np.flatnonzero(part_letters.any(axis=0)) + col_offset
         top, bottom = int(part_rows[0]), int(part_rows[-1]) + 1
@@ -347,7 +330,7 @@ def _text_box(x1, y1, x2, y2, score, mask, source_model, letters=None, core=None
         source_model=source_model, class_name="text", semantic_type="free_text",
         mask_source="text_segmenter", safe_to_inpaint=True, ocr_eligible=True,
         source_role="text_segmenter",
-        letters=letters,  # the letters alone, without outline or glow; they show the lines
+        letters=letters,
         core=core,
     )
     return box
@@ -358,14 +341,12 @@ def _overlaps(a: list, b: list) -> bool:
     ix = min(a[2], b[2]) - max(a[0], b[0])
     iy = min(a[3], b[3]) - max(a[1], b[1])
     smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
-    # One line's fragments share a real slice of the width too; two bubbles side by
-    # side only brush at the edge, and joining them centres the text between them.
     same_line = (iy >= SAME_LINE * min(a[3] - a[1], b[3] - b[1])
                  and ix >= SAME_LINE_X * min(a[2] - a[0], b[2] - b[0]))
     return ix > 0 and iy > 0 and (same_line or ix * iy >= UNION_SHARE * max(1, smaller))
 
 
-SAME_DETECTION_IOU = 0.85  # two rects this alike are one detection seen twice, not two texts
+SAME_DETECTION_IOU = 0.85
 
 
 def _same_detection(a, b) -> bool:
@@ -397,8 +378,8 @@ def _unlettered_duplicate(a, b) -> bool:
     return ix * iy >= 0.9 * max(1, smaller)
 
 
-JOIN_STACK_GAP = 0.2  # stacked fragments of one text sit this close, as a share of the shorter lettering
-JOIN_STACK_CENTRE = 0.15  # centres this far apart, as a share of the wider lettering, are two texts
+JOIN_STACK_GAP = 0.2
+JOIN_STACK_CENTRE = 0.15
 
 
 def _letter_geometry(box: BubbleBox, core: tuple[int, int, int, int] | None = None):
@@ -530,7 +511,6 @@ def _separate(mask: np.ndarray, upper: list, lower: list) -> bool:
         cols = np.flatnonzero(mask[group[0][0]:group[-1][1]].any(axis=0))
         return float(cols[0]), float(cols[-1] + 1)
 
-    # Only two real texts part: each of two lines or more, neither a sliver beside the other.
     if len(upper) < 2 or len(lower) < 2:
         return False
     (a1, a2), (b1, b2) = extent(upper), extent(lower)
@@ -562,7 +542,6 @@ def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
     if len(lines) < 2:
         return [box]
     height = float(np.median([end - start for start, end in lines]))
-    # Rows far taller than a line are marks (a bubble edge, a drawn letter), not text; they never part texts.
     lines = [(start, end) for start, end in lines if end - start <= BLOCK_LINE_SPREAD * height]
     if len(lines) < 2:
         return [box]
@@ -572,7 +551,6 @@ def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
             groups.append([line])
         else:
             groups[-1].append(line)
-    # A wide gap alone may be a spaced bubble; two texts also sit off each other's centre or space their own lines closer.
     merged = [groups[0]]
     for group in groups[1:]:
         if _separate(letters, merged[-1], group):
@@ -581,10 +559,8 @@ def _split_blocks(box: BubbleBox) -> list[BubbleBox]:
             merged[-1] = merged[-1] + group
     if len(merged) < 2:
         return [box]
-    # Each text takes the rows up to the middle of the gaps round it, and its own columns with a line of room.
     blocks = [(group[0][0], group[-1][1]) for group in merged]
     cuts = [0] + [(upper[1] + lower[0]) // 2 for upper, lower in zip(blocks, blocks[1:])] + [letters.shape[0]]
-    # A cut through letters (two lines touching, read as one tall mark) would leave half a line in neither box.
     if rows[cuts[1:-1]].any():
         return [box]
     reach = int(height)
@@ -620,7 +596,6 @@ def _split_sideways(box: BubbleBox) -> list[BubbleBox]:
     runs = _line_runs(letters.any(axis=0))
     if len(runs) < 2:
         return [box]
-    # The widest empty gutter decides: word gaps inside one text are far narrower than a line height.
     width, left_end, right_start = max((nxt[0] - run[1], run[1], nxt[0]) for run, nxt in zip(runs, runs[1:]))
     if width < BLOCK_GAP * height:
         return [box]
@@ -631,7 +606,6 @@ def _split_sideways(box: BubbleBox) -> list[BubbleBox]:
         part_cols = np.flatnonzero(part.any(axis=0))
         sides.append((part_lines, offset + int(part_cols[0]), offset + int(part_cols[-1]) + 1))
     (left_lines, lx1, lx2), (right_lines, rx1, rx2) = sides
-    # Only two real texts part: each of two lines or more, neither a sliver beside the other.
     if len(left_lines) < 2 or len(right_lines) < 2:
         return [box]
     if min(lx2 - lx1, rx2 - rx1) < BLOCK_MIN_WIDTH * max(lx2 - lx1, rx2 - rx1):
@@ -657,7 +631,7 @@ def _rows(output: np.ndarray, conf_threshold: float) -> np.ndarray:
     if output.ndim == 3 and output.shape[-1] == 6:
         rows = output.reshape(-1, 6)
         return rows[rows[:, 4] >= conf_threshold][:, :5]
-    preds = output.reshape(output.shape[-2], output.shape[-1]).T  # anchors x (4 + C)
+    preds = output.reshape(output.shape[-2], output.shape[-1]).T
     scores = preds[:, 4:].max(axis=1)
     keep = scores >= conf_threshold
     preds, scores = preds[keep], scores[keep]
@@ -872,7 +846,6 @@ class KiuyhaTextDetector:
         judgement now (see ``_union_coherent``), not a geometry one."""
         found = self._coarse_boxes(image) + self.page_boxes(image)
         if not found:
-            # The upright passes saw nothing at all: a vertical sign reads as text only sideways.
             found = self._rotated_boxes(image)
         return found
 
@@ -893,10 +866,8 @@ class KiuyhaTextDetector:
                 if score < ROTATED_MIN_SCORE:
                     continue
                 if clockwise:
-                    # Upright (x, y) reads as turned (H-1-y, x).
                     box = (y1, h - 1 - x2, y2, h - 1 - x1)
                 else:
-                    # Upright (x, y) reads as turned (y, W-1-x).
                     box = (w - 1 - y2, x1, w - 1 - y1, x2)
                 bx1, by1, bx2, by2 = (max(0, box[0]), max(0, box[1]), min(w, box[2]), min(h, box[3]))
                 if bx2 > bx1 and by2 > by1:
@@ -955,12 +926,6 @@ class KiuyhaTextDetector:
                 if score < PAGE_CONFIDENCE:
                     continue
                 centre = (cx1 + cx2) / 2
-                # A centre in the blank letterbox gap between columns cannot
-                # be mapped to one window, so the box is dropped here; the
-                # coarse pass is the backstop for it. A box cut by an inner
-                # window edge is NOT dropped: tall text is cut by every
-                # window edge, so it is never seen whole anywhere, and the
-                # union step below reassembles the partial window rects.
                 column = next((c for c in columns if c[0] <= centre < c[0] + sw), None)
                 if column is None:
                     continue
@@ -985,13 +950,11 @@ class KiuyhaTextDetector:
         """
         h, w = image.shape[:2]
         cov = _mask_coverage(image.shape[:2], kept)
-        # A rescued word is new text, not the edge of a kept word: most of its
-        # own pixels already inside a kept mask (a little dilated for outline) gives it away.
         dilated = cv2.dilate(cov.astype(np.uint8), np.ones((17, 17), np.uint8)) > 0
         low = [box for box in self.raw_boxes(image, RESCUE_MIN_SCORE)
                if box[4] < self.conf_threshold]
         stretched = None
-        found: list[list] = []  # [x1, y1, x2, y2, score, welded]
+        found: list[list] = []
 
         def consider(rect, pixels, score, emit=None, welded=False):
             x1, y1, x2, y2 = rect
@@ -1017,7 +980,6 @@ class KiuyhaTextDetector:
                          emit=(max(0, wx1 - RESCUE_WORD_PAD), max(0, wy1 - RESCUE_WORD_PAD),
                                min(w, wx2 + RESCUE_WORD_PAD), min(h, wy2 + RESCUE_WORD_PAD)),
                          welded=True)
-        # Partial reads of one word union into it.
         merged: list[list] = []
         for rect in sorted(found, key=lambda r: (r[1], r[0])):
             for other in merged:
@@ -1034,14 +996,6 @@ class KiuyhaTextDetector:
                 merged.append(list(rect))
         boxes = []
         for x1, y1, x2, y2, score, welded in merged:
-            # A rescued word is a word: its letters stand inside the box
-            # and measure. A stroke fragment of a much bigger shape (a
-            # piece of a giant SFX the box model never saw) fills the box
-            # edge to edge, so no letter piece survives — translating it
-            # paints a tiny word on top of the art it came from (Mount
-            # Hua p021: "TẦM NHÌN" at 12px over the kept SFX). A welded
-            # word is exempt from the width test only (see
-            # _has_letter_piece): its single wide component is the word.
             if not _has_letter_piece(image, (x1, y1, x2, y2), allow_wide=welded):
                 continue
             full = np.full((y2 - y1, x2 - x1), 255, np.uint8)
@@ -1061,19 +1015,11 @@ class KiuyhaTextDetector:
             elif (score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1
                   and (_dark_pieces(image, (x1, y1, x2, y2)) >= MASKLESS_MIN_PIECES
                        or (x2 - x1) * (y2 - y1) <= MASKLESS_SMALL_BOX_AREA)):
-                # The letter model is blind here, not the box model: the box stays, masked whole,
-                # so the text is still erased and read instead of silently dropped. Downstream
-                # already copes with a box that has no letters (it falls back to the box extent).
                 full = np.full((y2 - y1, x2 - x1), 255, np.uint8)
                 boxes.append(_text_box(x1, y1, x2, y2, score, full, self.source_model, None, core=core))
                 cores.append(core)
         kept = [part for box in _join_grown(boxes, cores) for piece in _split_blocks(box) for part in _split_sideways(piece)]
         final = kept + self._rescue_boxes(image, kept)
-        # One bubble mask per final box, from the source slice, trimmed
-        # to the lobe holding its letters (see _trim_bubble_mask). The
-        # masks are derived here, not in the letter pass: the letter
-        # splitters above may still cut a box in two, and each piece
-        # needs its own mask.
         _attach_bubble_masks(image, final)
         return final
 

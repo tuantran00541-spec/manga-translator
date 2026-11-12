@@ -1,4 +1,4 @@
-// Named text styles kept on the server and applied to one or many text objects.
+
 (() => {
   let presets = [];
   let loaded = null;
@@ -58,7 +58,7 @@
     obj.font_match = null;
   }
 
-  // Applies a preset to the given objects as one undo step and saves them.
+  
   function applyPreset(preset, targets) {
     const live = targets.filter(({ pageIndex, id }) => window.findTextObject?.(pageIndex, id));
     if (!preset || !live.length) return 0;

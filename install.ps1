@@ -1,8 +1,3 @@
-# Manga Translator installer for Windows. Paste into PowerShell:
-#   powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/main/install.ps1 | iex"
-# From a clone, install.bat runs this file and installs that clone in place.
-# It installs the latest release; $env:MANGA_REF = 'main' (or a tag) installs that instead.
-# Kept ASCII-only: Windows PowerShell 5.1 misreads UTF-8 files without a BOM.
 
 & {
     $ErrorActionPreference = 'Stop'
@@ -13,13 +8,11 @@
 
     function Say($text) { Write-Host '    . ' -ForegroundColor DarkGray -NoNewline; Write-Host $text }
     function Fetch($url, $file) {
-        # A home network drops now and then; three tries before giving up.
         for ($try = 1; ; $try++) {
             try { Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $file; return }
             catch { if ($try -ge 3) { throw }; Say "mang loi, thu lai lan $($try + 1)"; Start-Sleep -Seconds (2 * $try) }
         }
     }
-    # The newest release named like V0.4.0, so a data release such as a model pack is never taken for the app.
     function LatestRelease {
         try {
             $releases = Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/$repo/releases?per_page=30"
@@ -32,7 +25,6 @@
     $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
     if ($arch -ne 'AMD64') { throw "Chi ho tro Windows 64-bit (x64); may nay la $arch." }
 
-    # Everything lives in one folder; a user folder with accents breaks PaddleOCR, so fall back to ProgramData.
     $home_ = if ($env:MANGA_HOME) { $env:MANGA_HOME } else { Join-Path $env:LOCALAPPDATA 'manga-translator' }
     if (-not $env:MANGA_HOME -and $home_ -match '[^\x00-\x7F]') { $home_ = Join-Path $env:ProgramData 'manga-translator' }
     New-Item -ItemType Directory -Force -Path $home_ | Out-Null
@@ -74,12 +66,9 @@
         Say "da tai ma nguon $ref"
     }
 
-    # Settings for this install only; the user's own session gets them back afterwards.
     $settings = @{
         UV_PYTHON_INSTALL_DIR = (Join-Path $home_ 'python')
         UV_PYTHON_PREFERENCE = 'only-managed'
-        # The library cache shares its files with the app's environment (hard links), so it costs little disk
-        # and is kept: an update then only fetches what changed.
         UV_CACHE_DIR = (Join-Path $home_ 'uv-cache')
         MANGA_UV = $uv
         MANGA_HOME = $home_
@@ -95,7 +84,6 @@
     try {
         & $uv run --no-project --python 3.12 (Join-Path $source 'scripts\install.py') --target $target
         if ($LASTEXITCODE -ne 0) { throw 'Cai dat chua xong, xem loi o tren roi chay lai lenh cai.' }
-        # Drops only what no install uses any more; uv reports on stderr, which 'Stop' would turn into an error.
         $ErrorActionPreference = 'Continue'
         & $uv cache prune 2>&1 | Out-Null
         $ErrorActionPreference = 'Stop'
@@ -104,7 +92,6 @@
         if ($work -and $work.StartsWith([IO.Path]::GetTempPath())) { Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue }
     }
 
-    # This window can use the command at once; new windows read it from the user Path.
     $bin = Join-Path $home_ 'bin'
     if (-not (($env:Path -split ';') -contains $bin)) { $env:Path = "$bin;$env:Path" }
 }

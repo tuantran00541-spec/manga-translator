@@ -10,13 +10,12 @@ def _box(x1, y1, x2, y2):
 
 
 def test_text_not_erased_yet_is_hidden_from_lama():
-    image = np.random.default_rng(3).integers(0, 255, (1000, 1000, 3), dtype=np.uint8)  # art, so no flat fill
+    image = np.random.default_rng(3).integers(0, 255, (1000, 1000, 3), dtype=np.uint8)
     inpainter = Inpainter()
     inpainter._ensure_session = lambda: None
     inpainter.dynamic_lama = True
     seen = []
     inpainter._lama_fill_single = lambda crop, mask: (seen.append(mask.copy()), crop)[1]
-    # Two texts far enough apart to be inpainted one after the other, close enough to share a crop.
     inpainter.inpaint(image, [_box(100, 100, 400, 300), _box(100, 340, 400, 380)])
     first, second = seen
     assert first[290, 200] == 255, "the second text is a hole while the first is inpainted"
@@ -31,7 +30,7 @@ def test_tiles_holding_only_hidden_text_are_not_painted():
     crop = np.zeros((600, 3000, 3), np.uint8)
     hole, own = np.zeros((600, 3000), np.uint8), np.zeros((600, 3000), np.uint8)
     own[100:200, 100:300] = 255
-    hole[100:200, 2600:2800] = 255  # another text, far right, only hidden
+    hole[100:200, 2600:2800] = 255
     inpainter._lama_fill_tiled(crop, np.maximum(hole, own), own=own)
     assert len(runs) == 1
 

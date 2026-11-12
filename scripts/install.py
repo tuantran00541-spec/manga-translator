@@ -21,10 +21,8 @@ LAMA_URL = "https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/l
 LAMA_SHA256 = "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9"
 CTD_URL = "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx"
 CTD_SHA256 = "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f"
-# The same export, prebuilt and published as a release artifact, so an install needs no torch.
 CTD_SEG_URL = "https://github.com/tuantran00541-spec/manga-translator/releases/download/models-v1/ctd_seg.onnx"
 CTD_SEG_SHA256 = "8a0820470be7a118713083de61b8ec966c106e7f53024490a01c68d889915e60"
-# Kept across updates: the environment, models, chapters and logs of the user.
 KEEP = frozenset({".venv", "models", "data", "logs", ".cache"})
 MARKER = ".manga-install.json"
 FREE_GB_NEEDED = 5
@@ -36,7 +34,7 @@ def _colour_ok() -> bool:
         return False
     if not WINDOWS:
         return True
-    try:  # Windows 10+ consoles show colour once asked to.
+    try:
         import ctypes
         kernel = ctypes.windll.kernel32
         handle, mode = kernel.GetStdHandle(-11), ctypes.c_uint32()
@@ -46,7 +44,6 @@ def _colour_ok() -> bool:
 
 
 COLOUR = _colour_ok()
-# Consolas, the old Windows console font, has no check mark.
 TICK = "√" if WINDOWS else "✓"
 
 
@@ -158,7 +155,6 @@ def sync_code(source: Path, target: Path) -> None:
     for entry in target.iterdir():
         if entry.name in KEEP or entry.name == MARKER:
             continue
-        # Never purge the tree the new code is being copied from.
         if entry.resolve() == source_root or entry.resolve() in source_root.parents:
             continue
         if entry.is_dir() and not entry.is_symlink():
@@ -166,12 +162,10 @@ def sync_code(source: Path, target: Path) -> None:
         else:
             entry.unlink()
     for entry in source.iterdir():
-        # An install carrying .git makes the updater treat it as a developer clone.
         if entry.name in (MARKER, ".git"):
             continue
         destination = target / entry.name
         if entry.is_dir():
-            # Folders the user keeps get the shipped files merged in; the rest are fresh copies.
             shutil.copytree(entry, destination, dirs_exist_ok=True)
         else:
             shutil.copy2(entry, destination)
@@ -182,7 +176,6 @@ def write_marker(target: Path, home: Path, uv: str | None, done: bool) -> None:
     (target / MARKER).write_text(json.dumps({
         "mode": "clone" if (target / ".git").exists() else "download",
         "ref": os.environ.get("MANGA_REF", "main"),
-        # "release" follows new releases on `manga update`; "ref" stays on the branch or tag asked for.
         "channel": os.environ.get("MANGA_CHANNEL", "ref"),
         "uv": uv,
         "home": str(home),
@@ -250,12 +243,10 @@ def ensure_venv(target: Path, uv: str | None) -> Path:
 def install_packages(python: Path, target: Path, uv: str | None, exact: bool) -> None:
     requirements = target / "requirements.txt"
     if uv:
-        # An app install drops what older versions needed (torch, manga-ocr); a developer clone keeps its extras.
         run(uv, "pip", "install", "-q", "--python", python, "-r", requirements, *(["--exact"] if exact else []))
     else:
         run(python, "-m", "pip", "install", "-q", "--upgrade", "pip")
         run(python, "-m", "pip", "install", "-q", "-r", requirements)
-    # Chromium only serves chapter links from script-heavy sites, so a failure here is not fatal.
     if subprocess.run([str(python), "-m", "playwright", "install", "chromium"]).returncode != 0:
         print("    Chưa cài được Chromium: vẫn dùng được ảnh/ZIP, chỉ tải chương từ vài trang web là cần nó.")
 
@@ -286,7 +277,6 @@ def build_ctd(target: Path, uv: str | None) -> None:
     python = venv_python(build)
     packages = ["numpy==1.26.4", "onnx==1.17.0", "onnx2torch==1.5.15", "onnxruntime==1.20.1"]
     if uv:
-        # A throwaway cache: torch is only needed here, so it must not stay in the kept one.
         run(uv, "venv", "--no-cache", "--clear", "--python", "3.12", build)
         run(uv, "pip", "install", "--no-cache", "--python", python, TORCH, *packages, "--torch-backend", "cpu")
     else:
@@ -313,13 +303,11 @@ def launcher_text(python: Path, entry: Path, windows: bool = WINDOWS, local_appd
         return f'#!/bin/sh\nexec "{python}" "{entry}" --link "$@"\n'
     python_s, entry_s = str(python), str(entry)
     if local_appdata and python_s.lower().startswith(local_appdata.lower() + "\\"):
-        # cmd expands the variable itself, so the user name never has to be written in a code page.
         python_s = "%LOCALAPPDATA%" + python_s[len(local_appdata):]
         entry_s = "%LOCALAPPDATA%" + entry_s[len(local_appdata):] if entry_s.lower().startswith(local_appdata.lower()) else entry_s
     line = f'"{python_s}" "{entry_s}" --link %*'
     if line.isascii():
         return f"@echo off\r\n{line}\r\n"
-    # cmd reads a batch file in the console code page; switch to UTF-8 for the path, then switch back.
     return ('@echo off\r\nfor /f "tokens=2 delims=:." %%c in (\'chcp\') do set "_mt_cp=%%c"\r\n'
             f"chcp 65001 >nul\r\n{line}\r\nchcp %_mt_cp% >nul\r\n")
 
@@ -335,14 +323,11 @@ def add_to_user_path_windows(folder: Path) -> None:
             value, kind = "", winreg.REG_EXPAND_SZ
         updated = with_dir(value, str(folder))
         if updated != value:
-            # Keep the value's type: rewriting REG_EXPAND_SZ as a plain string breaks %USERPROFILE% entries.
             winreg.SetValueEx(key, "Path", 0, kind, updated)
-    # Tell Windows the environment changed, so windows opened from now on see the command.
     ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "Environment", 0x0002, 1000, None)
 
 
 RC_LINE = 'export PATH="{folder}:$PATH"  # manga-translator'
-# The file each shell reads in a new terminal; created when missing (a new Mac account has no ~/.zshrc).
 PRIMARY_RC = {"zsh": ".zshrc", "fish": ".config/fish/config.fish",
               "bash": ".bash_profile" if sys.platform == "darwin" else ".bashrc"}
 
@@ -403,7 +388,6 @@ def install_command(python: Path, target: Path, home: Path) -> Path:
         folder.mkdir(parents=True, exist_ok=True)
         shim = folder / "manga.cmd"
         data = launcher_text(python, entry, local_appdata=os.environ.get("LOCALAPPDATA")).encode("utf-8")
-        # `manga update` runs from this very file, and cmd reads it as it goes: rewrite it only if it changes.
         if not shim.is_file() or shim.read_bytes() != data:
             shim.write_bytes(data)
         add_to_user_path_windows(folder)
@@ -421,7 +405,7 @@ def install_command(python: Path, target: Path, home: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> None:
     for stream in (sys.stdout, sys.stderr):
-        stream.reconfigure(errors="replace")  # a console that cannot show Vietnamese still gets the messages
+        stream.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", type=Path, default=ROOT, help="where the app is installed (default: this folder)")
     args = parser.parse_args(argv)
@@ -471,7 +455,6 @@ if __name__ == "__main__":
     try:
         main()
     except subprocess.CalledProcessError as exc:
-        # The failing tool has already printed why; a Python traceback on top only hides it.
         name = Path(str(exc.cmd[0])).name if exc.cmd else "?"
         sys.exit(f"\nBước vừa rồi bị lỗi ({name}, mã {exc.returncode}). Chạy lại lệnh cài; "
                  "nếu vẫn lỗi, gửi đoạn chữ phía trên để được hỗ trợ.")

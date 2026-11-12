@@ -14,7 +14,6 @@ import torch.nn.functional as F
 from onnx import numpy_helper, utils
 
 
-# Fixed paths and no arguments, so nothing from outside can steer what is read, written or removed.
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / ".cache" / "comictextdetector.pt.onnx"
 MODEL = ROOT / "models" / "ctd_seg.onnx"
@@ -57,7 +56,6 @@ def main() -> None:
     src = SOURCE
     if not src.is_file():
         raise SystemExit(f"download comictextdetector.pt.onnx to {src} first")
-    # A loaded model is shape-inferred in memory; from a path onnx2torch reopens an open temp file, which Windows refuses.
     model = swap(onnx2torch.convert(onnx.load(str(src))).eval())
     x = torch.rand(1, 3, 1024, 1024)
     MODEL.parent.mkdir(exist_ok=True)
@@ -70,7 +68,7 @@ def main() -> None:
         m = onnx.load(full)
         for init in m.graph.initializer:
             a = numpy_helper.to_array(init)
-            if a.dtype == np.float32:  # denormal weights make every CPU conv crawl
+            if a.dtype == np.float32:
                 init.CopyFrom(numpy_helper.from_array(np.where(np.abs(a) < 1.18e-38, 0, a).astype(np.float32), init.name))
         onnx.save(m, full)
         utils.extract_model(full, str(MODEL), ["images"], ["seg"])

@@ -10,7 +10,6 @@ QUIRKS: list[tuple[re.Pattern, dict]] = [
     (re.compile(r"agnes", re.I), {"prompt_extra": (
         "This provider limits requests per minute: start at most three helpers at a time and prefer fewer, larger steps.")}),
 ]
-# Dollars per million tokens; a profile's "prices" adds or replaces entries.
 PRICES: list[tuple[re.Pattern, dict]] = [(re.compile(r"agnes", re.I), {"in": 0.05, "out": 0.15, "cached": 0.05})]
 VISION = re.compile(r"(vision|[-_]vl\b|4o|gpt-5|gpt-4\.1|claude|gemini|pixtral|llava|agnes)", re.I)
 

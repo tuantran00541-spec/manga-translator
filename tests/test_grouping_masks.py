@@ -35,7 +35,6 @@ def _box(x1, y1, x2, y2, mask, letters_rows=(), letters_cols=(0, 1), conf=0.9,
                      source_model=model, source_role=role, semantic_type=sem)
 
 
-# ---------------------------------------------------------------- predicate
 
 def test_separate_lobes_side_by_side():
     a = _lobe_mask((0, 0, 100, 200), 10, 90)
@@ -63,9 +62,7 @@ def test_overlapping_masks_of_one_bubble_are_not_separate():
 
 def test_small_overlap_below_threshold_is_separate_above_is_not():
     a = _lobe_mask((0, 0, 100, 200), 10, 90)
-    # Shared 5px of an 80px interior: 0.0625 -- a sliver, still separate.
     assert _separate(a, _lobe_mask((85, 0, 185, 200), 0, 80))
-    # Shared 12px: 0.15 -- one interior, not two lobes.
     assert not _separate(a, _lobe_mask((78, 0, 178, 200), 0, 80))
 
 
@@ -87,7 +84,6 @@ def test_rect_masks_and_missing_masks_never_veto():
     assert not _separate(empty, b)
 
 
-# ---------------------------------------------------------------- _fold_nested
 
 def test_fold_refuses_a_box_whose_mask_is_the_other_lobe():
     head = _box(0, 0, 200, 200, _lobe_mask((0, 0, 100, 200), 10, 90),
@@ -105,7 +101,6 @@ def test_fold_still_merges_a_fragment_of_the_same_bubble():
     assert len(_fold_nested([head, small])) == 1
 
 
-# ---------------------------------------------------------------- NMS
 
 def test_nms_keeps_a_second_lobe_instead_of_bucketing_it():
     a = _box(0, 0, 100, 100, _lobe_mask((0, 0, 60, 100), 5, 55))
@@ -121,7 +116,6 @@ def test_nms_still_merges_the_same_detection_twice():
     assert (merged[0].x1, merged[0].x2) == (0, 140)
 
 
-# ---------------------------------------------------------------- join_stacked_lines
 
 def _mh068_objects(separate=True):
     from app.ai_mode.seams import join_stacked_lines  # noqa: F401 (import check)
@@ -154,7 +148,6 @@ def test_join_still_joins_two_lines_of_one_bubble():
     assert page["text_objects"][1]["joined_into"] == "text_upper"
 
 
-# ---------------------------------------------------------------- drop_overlapping_letters
 
 def _dup_objects(separate=True):
     keeper_mask = _lobe_mask((0, 0, 200, 100), 5, 195)
@@ -189,7 +182,6 @@ def test_drop_still_absorbs_a_half_of_the_same_bubble():
     assert page["text_objects"][0]["region"] == {"x1": 0, "y1": 0, "x2": 250, "y2": 100}
 
 
-# ---------------------------------------------------------------- end to end (synthetic ch111 split pieces)
 
 def _ch111_pieces():
     left = _box(46, 81, 319, 338, _lobe_mask((50, 83, 319, 322), 5, 264),

@@ -53,7 +53,7 @@ def chapters(model, root, plan, stats):
     for n, (url, split) in enumerate(plan):
         try:
             pages = pipeline.download_chapter(url, f"ky{n:03d}", workers=2)["pages"]
-        except Exception as exc:  # one dead chapter must not stop the set
+        except Exception as exc:
             print(f"skip {url}: {exc}", flush=True)
             continue
         slug = re.sub(r"[^a-z0-9]+", "-", url.split("/comics/")[-1].lower()).strip("-")

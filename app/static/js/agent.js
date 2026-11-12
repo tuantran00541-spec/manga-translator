@@ -1,4 +1,4 @@
-// Agent: a coding agent on any configured model, read like a conversation with its tool calls folded into one-line groups.
+
 (() => {
   const POLL_MS = 700;
   const HEAD = { "X-Manga-Agent": "1" };
@@ -12,7 +12,7 @@
     schedule_create: "Hẹn giờ", schedule_list: "Lịch hẹn", schedule_delete: "Hủy hẹn",
     use_model: "Dùng model trả phí",
   };
-  // How each kind of call is counted in a group's one-line summary: verb, noun.
+  
   const TALLY = {
     run_command: ["chạy", "lệnh"], read_file: ["đọc", "file"], edit_file: ["sửa", "file"], write_file: ["sửa", "file"],
     spawn_agent: ["tạo", "agent con"], wait_agent: ["chờ", "agent con"],
@@ -85,7 +85,7 @@
     if (stick) window.scrollTo({ top: document.documentElement.scrollHeight });
   }
 
-  // `code`, **bold** and [web links](https://…) inside a line, built as nodes so model text never becomes markup.
+  
   function inline(text) {
     const out = document.createDocumentFragment();
     String(text).split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/).forEach((part) => {
@@ -103,7 +103,7 @@
     return out;
   }
 
-  // A small Markdown reading: fenced code, headings, bullet and numbered lists, paragraphs.
+  
   function prose(text) {
     const wrap = el("div", "agent-prose");
     String(text || "").split(/```[\w-]*\n?/).forEach((part, i) => {

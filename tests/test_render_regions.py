@@ -7,7 +7,6 @@ STYLE = dict(fill="#202020", font_size=40)
 
 
 def test_a_text_crossing_the_slice_edge_is_laid_out_as_on_the_slice_that_holds_it_whole():
-    # Shadow Slave 1, slices 14 and 15: one caption, lettered by both slices across their cut.
     page = Image.new("RGB", (800, 1200), (180, 200, 230))
     whole = _render_in_region(page.copy(), "Không phải thứ đồ tổng hợp rẻ tiền tôi thường uống", (100, 700, 700, 1100), **STYLE)
     upper = _render_in_region(page.crop((0, 0, 800, 900)), "Không phải thứ đồ tổng hợp rẻ tiền tôi thường uống",
@@ -23,12 +22,6 @@ def test_lettering_goes_where_the_source_lettering_was_inside_its_region():
 
 
 def test_a_box_that_shrinks_a_short_caption_well_below_the_source_size_gives_way():
-    # Shadow Slave 1, page 16: a one-line source caption box made its longer translation small.
-    # The old share gate refused the tight box outright; the new core has
-    # no share gate — the tight box letters at its own floor, and the
-    # roomier box letters larger. Which one wins is the page renderer's
-    # ranking, not a refusal: the tight box must stay readable, never
-    # shrink past the floor the box itself holds.
     from app.render.text_renderer import render_text_in_box
 
     page = Image.new("RGB", (1600, 900), "white")
@@ -47,7 +40,6 @@ def test_a_box_that_shrinks_a_short_caption_well_below_the_source_size_gives_way
 
 
 def test_a_wrapped_line_leaves_no_word_alone():
-    # Shadow Slave 1, slice 70: "Với năng lực kỳ diệu có được" wrapped as "... CÓ" over a lone "ĐƯỢC".
     from PIL import ImageDraw
     from app.config import DEFAULT_FONT
     from app.render.text_renderer import _wrap_text, get_font_object
@@ -62,7 +54,6 @@ def test_a_wrapped_line_leaves_no_word_alone():
 
 
 def test_a_vietnamese_word_is_not_split_across_lines():
-    # Shadow Slave 1: "ĐƯỢC HUẤN / LUYỆN ĐẶC BIỆT" split "huấn luyện" between two lines.
     from PIL import ImageDraw
     from app.config import DEFAULT_FONT
     from app.render.text_renderer import _wrap_text, get_font_object
@@ -75,7 +66,6 @@ def test_a_vietnamese_word_is_not_split_across_lines():
 
 
 def test_a_narrow_box_shrinks_the_letters_before_it_breaks_a_word():
-    # Shadow Slave 1, slice 114: "Không..." in a narrow box was lettered "Khôn / g...".
     from PIL import ImageDraw
 
     from app.config import DEFAULT_FONT

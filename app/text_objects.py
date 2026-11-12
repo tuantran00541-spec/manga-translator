@@ -120,8 +120,6 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
             obj["auto_ocr_text"] = box_text
             changed = True
         changed = _sync_ocr_metadata(obj, box) or changed
-    # The bubble interior follows the box: a geometry override nulled
-    # the box's mask, so the object drops its copy too.
     if isinstance(box.get("bubble_mask"), dict):
         value = copy.deepcopy(box["bubble_mask"])
         if obj.get("bubble_mask") != value:
@@ -129,9 +127,6 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
             changed = True
     elif obj.pop("bubble_mask", None) is not None:
         changed = True
-    # The letter bitmap follows the box the same way: the render's trim
-    # needs it to see a diagonal waist, and the clean image cannot
-    # supply it. An overridden box has no letters to carry.
     if box.get("letters_mask"):
         value = copy.deepcopy(box["letters_mask"])
         if obj.get("letters_mask") != value:
@@ -156,8 +151,6 @@ def sync_existing_auto_text_object(page: dict, box: dict) -> bool:
             continue
         if box_id not in source_box_ids(obj):
             continue
-        # A seam mirror's region is the owner's lettering shifted onto this
-        # slice; re-reading its anchor box must not drag it back to the box.
         if obj.get("seam_owner"):
             continue
         changed = _sync_existing_auto_object(obj, box, region) or changed
@@ -187,9 +180,6 @@ def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
             continue
         box_id = str(box.get("id") or "")
         if box.get("ocr_eligible") is False:
-            # An overlap-context box anchors a seam mirror by design: the
-            # mirror's source box is outside this slice's core, so it is
-            # never "missing" just because no ordinary object uses it.
             anchor = covered.get(box_id) if box_id else None
             if isinstance(anchor, dict) and anchor.get("seam_owner"):
                 active_box_ids.add(box_id)

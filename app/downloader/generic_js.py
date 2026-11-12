@@ -14,8 +14,6 @@ from app.parameters import (
 )
 from app.security import browser_request_allowed, validate_url
 
-# A desktop Chrome fingerprint the stealth evasions match (sec-ch-ua and
-# userAgentData are derived from this UA, platform defaults to Win32).
 REAL_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -65,8 +63,6 @@ class GenericJsAdapter(BaseAdapter):
                 ]
             )
             try:
-                # A real desktop browser's context, not automation defaults:
-                # desktop UA + viewport, locale and timezone to match it.
                 context = browser.new_context(
                     service_workers="block",
                     user_agent=REAL_USER_AGENT,
@@ -83,12 +79,7 @@ class GenericJsAdapter(BaseAdapter):
 
                 context.route("**/*", guard_route)
                 page = context.new_page()
-                # Patch the headless tells (webdriver, plugins, languages,
-                # vendor, WebGL) before any page script runs, so a bot check
-                # sees a desktop Chrome instead of automation.
                 Stealth(chrome_runtime=True).apply_stealth_sync(page)
-                # route() does not intercept WebSocket handshakes; keep them disabled so a
-                # page cannot open an SSRF channel the HTTP guard never sees.
                 context.add_init_script(
                     "Object.defineProperty(globalThis, 'WebSocket', "
                     "{value: undefined, writable: false, configurable: false});"
@@ -98,9 +89,6 @@ class GenericJsAdapter(BaseAdapter):
                     wait_until="domcontentloaded",
                     timeout=DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS,
                 )
-                # A bot challenge serves a near-empty page first and only swaps
-                # in the real reader once its check clears; reading the images
-                # immediately would return the challenge's (empty) set.
                 try:
                     page.wait_for_function(
                         "([selector, minWidth]) => {"
@@ -113,9 +101,6 @@ class GenericJsAdapter(BaseAdapter):
                         timeout=DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS,
                     )
                 except PlaywrightTimeoutError:
-                    # No image reached the minimum width in time: the page
-                    # may be a bot challenge or a slow reader. The adapter
-                    # returns the short list it found, if any, with no error.
                     logger.warning("JS image wait timed out for {}; returning what loaded", chapter_url)
                 self._scroll_until_stable(page)
 

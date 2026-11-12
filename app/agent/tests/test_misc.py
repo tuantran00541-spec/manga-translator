@@ -22,7 +22,6 @@ from app.agent.tools import Workspace
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-# ---- fixtures ----
 
 class _Prov:
     id = "stub"
@@ -60,7 +59,6 @@ def _mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
 
 
-# ---- tools.branch run_command needs approval ----
 
 class TestH11BranchApproval:
     def _run_branch_check(self, session, command, decision):
@@ -91,7 +89,6 @@ class TestH11BranchApproval:
         assert asked, "approval path was not consulted"
         markers = list((agent_home / ".manga-agent" / "outputs").rglob("h11_ok_marker"))
         assert markers, "allowed branch run_command did not execute"
-        # The swap is unwound: the session still points at the real workspace.
         assert ask_session.workspace.root.name == "ws"
 
     def test_branch_read_file_routed_through_run_call(self, ask_session):
@@ -111,11 +108,9 @@ class TestH11BranchApproval:
             "read_file", {"path": "app.py"})
         assert ok and "v1" in out
         assert seen and seen[0]["name"] == "read_file"
-        # branch code is tool code: it reaches _run_call through the chain library
         assert seen[0]["id"].startswith("chain-")
 
 
-# ---- state files must be owner-only (0600) ----
 
 class TestL2PrivateStateFiles:
     def test_write_private_is_owner_only(self, tmp_path):
@@ -156,7 +151,6 @@ class TestL2PrivateStateFiles:
         assert out == "short"
 
 
-# ---- memory.add refuses secrets ----
 
 class TestL3MemoryRedaction:
     def test_add_refuses_secret_looking_note(self, agent_home, ws_root):
@@ -178,7 +172,6 @@ class TestL3MemoryRedaction:
         assert "concise answers" in memory.prompt(agent_home, ws_root)
 
 
-# ---- role-usage.json: atomic writes, fail-closed reads, no budget race ----
 
 class TestM8RoleBudget:
     CFG = {"daily_requests": 10, "daily_tokens": 0}
@@ -199,15 +192,14 @@ class TestM8RoleBudget:
         usage = self._usage_file(agent_home)
         assert usage.is_file()
         raw = usage.read_text(encoding="utf-8")
-        usage.write_text(raw[:len(raw) // 2], encoding="utf-8")  # kill -9 mid-write
-        # Fail closed to the last known state: still 9 used, not a reset to 0.
+        usage.write_text(raw[:len(raw) // 2], encoding="utf-8")
         assert roles.today(agent_home)["thinker"]["requests"] == 9
         assert roles.within(agent_home, "thinker", self.CFG) is True
 
     def test_corrupt_file_denies_with_no_trustworthy_copy(self, agent_home):
         """With no backup and no in-memory state, a corrupt file denies (fail closed)."""
         assert roles.add(agent_home, "thinker", 3, 10) is True
-        roles._GOOD.clear()  # fresh process: nothing trustworthy left
+        roles._GOOD.clear()
         self._usage_file(agent_home).write_text("{not json", encoding="utf-8")
         assert roles.within(agent_home, "thinker", self.CFG) is False
         assert roles.today(agent_home) == {}
@@ -215,15 +207,14 @@ class TestM8RoleBudget:
     def test_backup_recovers_last_good_state(self, agent_home):
         """A second consecutive good write leaves a backup the fail-closed read uses."""
         assert roles.add(agent_home, "thinker", 9, 100) is True
-        assert roles.add(agent_home, "thinker", 0, 5) is True  # backs up the 9-request state
+        assert roles.add(agent_home, "thinker", 0, 5) is True
         self._usage_file(agent_home).write_text("torn", encoding="utf-8")
-        # 9 of 10 used -> still within budget, from the backup, not a reset
         assert roles.within(agent_home, "thinker", self.CFG) is True
         assert roles.today(agent_home)["thinker"]["requests"] == 9
 
     def test_accounting_stays_correct(self, agent_home):
         """Legitimate behavior: budget accounting works end to end."""
-        assert roles.within(agent_home, "thinker", self.CFG) is True  # fresh home
+        assert roles.within(agent_home, "thinker", self.CFG) is True
         assert roles.add(agent_home, "thinker", 9, 100) is True
         assert roles.within(agent_home, "thinker", self.CFG) is True
         assert roles.add(agent_home, "thinker", 1, 10) is True
@@ -264,11 +255,10 @@ class TestM8RoleBudget:
         for t in threads:
             t.join(20)
         raw = self._usage_file(agent_home).read_text(encoding="utf-8")
-        data = json.loads(raw)  # raises if torn
+        data = json.loads(raw)
         assert isinstance(data.get("days"), dict)
 
 
-# ---- watch.changes() caps retained old-bytes ----
 
 class TestM9WatchCap:
     def test_changes_enforces_total_cap(self, tmp_path):
@@ -296,10 +286,9 @@ class TestM9WatchCap:
         (root / "b.txt").write_text("new", encoding="utf-8")
         changed = {p.name: old for p, old in w.changes()}
         assert changed["a.txt"] == b"before"
-        assert changed["b.txt"] is None  # new file
+        assert changed["b.txt"] is None
 
 
-# ---- export gate: untranslated content never silently drops ----
 
 class TestCExportGate:
     @pytest.fixture()
@@ -308,14 +297,11 @@ class TestCExportGate:
         import app.region_policy as rp
 
         manifest = {"pages": [{"page_index": 0, "text_objects": [
-            # Budget-skipped slice: cleaned already, translation never attempted.
             {"id": "b1", "translation": "", "ocr_text": "おはよう",
              "region": {"x": 0, "y": 0, "w": 10, "h": 10}},
-            # Translator examined it and left it blank on purpose (watermark).
             {"id": "b2", "translation": "", "ocr_text": "©2026",
              "translation_attempted": True,
              "region": {"x": 0, "y": 0, "w": 10, "h": 10}},
-            # Normally translated control.
             {"id": "b3", "translation": "hello", "ocr_text": "こんにちは",
              "region": {"x": 0, "y": 0, "w": 10, "h": 10}},
         ]}]}
@@ -345,7 +331,7 @@ class TestCExportGate:
         """a never-attempted object must NOT become
         reviewed non_story; it gets the blocking 'untranslated' disposition."""
         r, manifest, _ = runner
-        assert r._settle_blanks() == 2  # b3 is translated, skipped
+        assert r._settle_blanks() == 2
         b1 = self._objs(manifest)["b1"]
         assert b1["editorial_disposition"] == "untranslated"
         assert b1.get("editorial_reviewed") is not True
@@ -398,7 +384,6 @@ class TestCExportGate:
         assert "untranslated_object" not in kinds
 
 
-# ---- self-update verifies the ZIP before unpack/exec ----
 
 RUN_PY = REPO_ROOT / "run.py"
 
@@ -457,6 +442,6 @@ class TestDSelfUpdate:
         i_dl = src.index("urlretrieve")
         i_verify = src.index("_verify_archive")
         i_unpack = src.index("unpack_archive")
-        i_install = src.rindex("_run_installer")  # the ZIP path's installer run
+        i_install = src.rindex("_run_installer")
         assert i_dl < i_verify < i_unpack < i_install
         assert "sha256" in inspect.getsource(runmod._sha256_file).lower()

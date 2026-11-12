@@ -6,7 +6,6 @@ from pathlib import Path
 
 from fontTools.ttLib import TTFont
 
-# A font counts as Vietnamese only if it has all of these letters.
 VIETNAMESE_LETTERS = (
     "ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ"
 )

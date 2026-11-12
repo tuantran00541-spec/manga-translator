@@ -211,8 +211,6 @@ class Inpainter:
         self._recycle_fixed_session = (
             self._serialize_fixed_inference and _should_recycle_fixed_session()
         )
-        # Publish last: the lock-free fast path in _ensure_session keys off
-        # self.session, so every field a run reads must already be set.
         self.session = session
 
     def _ensure_session(self) -> None:
@@ -232,7 +230,6 @@ class Inpainter:
             logger.info("Preparing inpaint model {}", model_path)
             try:
                 try:
-                    # The dynamic model's canvas stays within 512 px, so keeping its buffers saves a fifth of each run.
                     session = make_session(
                         model_path,
                         serialize_inference=(
@@ -375,7 +372,6 @@ class Inpainter:
             crop_img = image[cy1:cy2, cx1:cx2]
             local_mask = build_mask((cy2 - cy1, cx2 - cx1), [_local_box(b, cx1, cy1) for b in cluster], crop_img)
             local_mask = self._subtract_protected_regions(local_mask, crop_box, protected_regions)
-            # Text not erased yet is a hole too, so LaMa never copies its letters.
             others = [_local_box(b, cx1, cy1) for cl in clusters for b in cl if id(b) in pending
                       and b.x1 < cx2 and b.x2 > cx1 and b.y1 < cy2 and b.y2 > cy1]
             hole = None
@@ -576,7 +572,6 @@ class Inpainter:
         near = band(SMART_FILL_RING_NEAR_PX) & ~hole
         if np.count_nonzero(near & off) > (1.0 - SMART_FILL_RING_AGREE) * np.count_nonzero(near):
             return None
-        # An off-colour run from the ring's outer edge to the hole is a line the fill would cut.
         touching = cv2.dilate(hole_u8, np.ones((3, 3), np.uint8)) > 0
         outer = grown & ~(cv2.erode(grown.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0)
         count, parts = cv2.connectedComponents(off.astype(np.uint8))
@@ -661,7 +656,6 @@ class Inpainter:
 
         fill_color = None if force_lama else self._smart_fill_color(crop, local_mask)
         if fill_color is None and not force_lama:
-            # A hole ringed by one colour of any shade (dark caption boxes fall between the rules above) needs no LaMa.
             fill_color = self._ring_fill_color(crop, local_mask)
         if fill_color is not None:
             self._metric_add("smart_fill_regions")
@@ -688,7 +682,7 @@ class Inpainter:
         min_dim = max(1, min(crop_h, crop_w))
         aspect = max_dim / min_dim
         long_crop = (
-            not self.dynamic_lama  # the dynamic model takes any shape in one downscaled pass
+            not self.dynamic_lama
             and max_dim > INPAINT_SIZE
             and aspect >= FIXED_LAMA_TILE_ASPECT
         )
@@ -779,7 +773,6 @@ class Inpainter:
             crop_resized = crop
             mask_resized = local_mask
 
-        # The dynamic model fails on a width that is an odd multiple of 8, so both sides round up to 16.
         canvas_h = max(16, ((new_h + 15) // 16) * 16)
         canvas_w = max(16, ((new_w + 15) // 16) * 16)
         pad_y = (canvas_h - new_h) // 2
@@ -790,7 +783,6 @@ class Inpainter:
         canvas = cv2.copyMakeBorder(
             crop_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
         )
-        # Pad the mask like the image so text cut by the crop edge stays masked.
         mask_canvas = cv2.copyMakeBorder(
             mask_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
         )
@@ -842,7 +834,6 @@ class Inpainter:
         mask_blob = np.ascontiguousarray(
             (mask_canvas > 127).astype(np.float32)[None, None]
         )
-        # LaMa is trained on images whose hole is zeroed; text left there bleeds into the fill.
         img_blob = np.ascontiguousarray(img_blob * (1.0 - mask_blob))
         feed = {self.image_input: img_blob, self.mask_input: mask_blob}
 
@@ -892,7 +883,6 @@ class Inpainter:
 
     def _lama_fill_tiled(self, crop: np.ndarray, local_mask: np.ndarray, own: np.ndarray | None = None) -> np.ndarray:
         h, w = crop.shape[:2]
-        # The dynamic model runs bigger tiles, so each hole keeps more of its surroundings.
         tile = DYNAMIC_LAMA_TILE if self.dynamic_lama else INPAINT_SIZE
         overlap = min(DYNAMIC_LAMA_TILE_OVERLAP if self.dynamic_lama else MANUAL_TILE_OVERLAP, tile // 4)
         step = tile - overlap
@@ -913,7 +903,6 @@ class Inpainter:
                 wx = self._tile_weight(tile_w, overlap, x0 > 0, x1 < w)
                 weight = wy[:, None] * wx[None, :]
 
-                # Tiles holding only other text hidden as context are not painted here.
                 if not np.any((tile_mask if own is None else own[y0:y1, x0:x1]) > 127):
                     output[y0:y1, x0:x1] += tile_img.astype(np.float32) * weight[:, :, None]
                     weights[y0:y1, x0:x1] += weight

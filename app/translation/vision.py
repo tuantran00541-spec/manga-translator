@@ -62,20 +62,18 @@ class VisionTranslationResult:
     font_choices: dict[str, dict] = field(default_factory=dict)
     roles: dict[str, str] = field(default_factory=dict)
     review_ids: frozenset[str] = frozenset()
-    # Objects the model did not answer for at all (as opposed to answering "").
     missing_ids: frozenset[str] = frozenset()
     enlarge_ids: frozenset[str] = frozenset()
     colors: dict[str, str] = field(default_factory=dict)
     containers: dict[str, str] = field(default_factory=dict)
-    sources: dict[str, str] = field(default_factory=dict)  # the source text the model read in each box
-    speakers: dict[str, str] = field(default_factory=dict)  # who says each box's line, or "narration"
-    unboxed: tuple[tuple[int, int, int, int], ...] = ()  # pixel boxes of lines the model saw outside every box
+    sources: dict[str, str] = field(default_factory=dict)
+    speakers: dict[str, str] = field(default_factory=dict)
+    unboxed: tuple[tuple[int, int, int, int], ...] = ()
 
 
 def _merge_translation_results(
     first: VisionTranslationResult, second: VisionTranslationResult,
 ) -> VisionTranslationResult:
-    # Halves of one batch: every per-object map unions, usage and cost add up.
     usage: dict = {}
     for part in (first.usage, second.usage):
         for key, value in (part or {}).items():
@@ -106,8 +104,6 @@ PLACEHOLDER_TRANSLATIONS = {"n/a", "na", "n/a.", "none", "none.", "null", "undef
 
 
 def collapse_repeated_lines(text: str) -> str:
-    # One box can hold two copies of the same source text; the model then
-    # translates each copy and joins them, so the same line letters twice.
     if not isinstance(text, str):
         return text
     lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -149,9 +145,7 @@ def parse_vision_translation(content: str, expected_ids: set[str], *, allow_miss
             raise RuntimeError("Vision model returned an unknown, repeated or malformed translation")
         if len(value) > 4000:
             raise RuntimeError("Vision model returned oversized text")
-        # Not every lettering font has the ellipsis glyph.
         cleaned = value.strip().replace("…", "...")
-        # A placeholder is not lettering; blank lets the preserve-original path keep the source art.
         results[obj_id] = "" if cleaned.lower() in PLACEHOLDER_TRANSLATIONS else cleaned
     if set(results) != expected_ids:
         if not allow_missing or not results:
@@ -219,7 +213,6 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
     translations = parse_vision_translation(source, expected_ids, allow_missing=True)
     if isinstance(data, dict) and isinstance(data.get("translations"), dict):
         data["translations"] = [{"id": str(k), "translated_text": v} for k, v in data["translations"].items()]
-    # The font follows each text's role and container once those are read; until then the base font.
     choices = {item_id: {"font_id": DEFAULT_LETTERING_FONT, "font_mode": "ai"} for item_id in translations}
     return translations, choices, data if isinstance(data, dict) else {}
 
@@ -241,19 +234,15 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
     ), data
 
 
-MAX_UNBOXED = 8  # lines outside every box one slice may report
+MAX_UNBOXED = 8
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
 
-# Chinese, Japanese and Korean letters never belong in a Vietnamese translation.
 _FOREIGN_SCRIPT = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]")
 
 
 _ENGLISH_WORDS = frozenset(
     "the and with you your to of is are was were its it's this that for in on my me we what i".split())
 
-# Everyday English content words: a short shout with no function word in it
-# ("SENIOR BROTHER!") is still English, but a kept title ("GAME OVER") is
-# not, so title and game words stay out of this list on purpose.
 _ENGLISH_CONTENT_WORDS = frozenset(
     "senior brother sister problem school teacher student please thanks thank sorry hello goodbye "
     "friend friends family father mother morning tonight today tomorrow yesterday people person "
@@ -262,11 +251,6 @@ _ENGLISH_CONTENT_WORDS = frozenset(
     "everyone somebody nobody where when why how which whose about after before because could "
     "should would there here then".split())
 
-# Punctuation models emit that looks ASCII but is not: curly quotes, a
-# non-breaking space, a zero-width joiner, an ellipsis. One such character
-# anywhere defeats str.isascii, so the script checks below would let an
-# English line straight through; fold them to their ASCII form first.
-# Letters (and Vietnamese diacritics) are untouched.
 _CONFUSABLES = str.maketrans({
     "‘": "'", "’": "'", "‚": "'", "“": '"', "”": '"', "„": '"',
     " ": " ", "…": "...", "—": "-", "–": "-",
@@ -280,17 +264,11 @@ def _normalize_for_script_check(text: str) -> str:
     normalized = normalized.translate(_CONFUSABLES)
     for char in _ZERO_WIDTH:
         normalized = normalized.replace(char, "")
-    # Any other invisible or spacing character a model may emit (thin
-    # space, figure space, soft hyphen, direction mark): drop it or fold
-    # it to a space, so one such character cannot shield a whole line.
     return "".join(
         " " if char.isspace() else ("" if unicodedata.category(char) == "Cf" else char)
         for char in normalized)
 
 
-# A model hides one exotic space or a full-width "!" in an otherwise
-# English line and str.isascii goes false, so the checks below look at
-# the letters, not the whole string: punctuation and spacing never decide.
 _ASCII_WORD = re.compile(r"[A-Za-z]+")
 
 
@@ -299,9 +277,6 @@ def _ascii_words(text: str) -> list[str]:
     return _ASCII_WORD.findall(unicodedata.normalize("NFKC", text or ""))
 
 
-# Maximal letter runs in any script: "Tôi" stays one word, where the
-# ASCII runs above would shred it into "T" and "i" and mistake the
-# pieces for English.
 _WORD = re.compile(r"[^\W\d_]+")
 
 
@@ -387,14 +362,11 @@ def _untranslated_english(text: str) -> bool:
     lines = str(text or "").splitlines()
     if any(_line_is_english(line) for line in lines):
         return True
-    # One word per line ("IS\nTHE"): no line trips on its own, but the
-    # value as a whole is still English.
     if lines and not any(_has_non_ascii_letter(line) for line in lines):
         return _line_is_english(" ".join(lines))
     return False
 
 
-# Common Vietnamese words written without their diacritics.
 _BARE_VIETNAMESE = frozenset(
     "khong mot nguoi cua dang duoc nhung chung toi nay that roi cung minh phai trong nhu thanh dieu ngay".split())
 
@@ -447,8 +419,6 @@ def _strip_diacritics(text: str) -> str:
 
 
 def _line_is_bare_scream(line: str) -> bool:
-    # The repeated letter may wear diacritics ("ÁÁÁÁA" for a brush H): strip
-    # them first, or _ascii_words sees one bare A and the scream passes.
     line = _strip_diacritics(line)
     words = _ascii_words(line)
     if len(words) != 1:
@@ -462,7 +432,6 @@ def _line_is_bare_scream(line: str) -> bool:
     return all(not char.isalnum() for char in rest)
 
 
-# Hangul syllables and jamo: the script a Korean sound effect is drawn in.
 _HANGUL = re.compile(r"[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]")
 _VOWELS = frozenset("aeiou")
 
@@ -507,8 +476,6 @@ def _filter_foreign_lines(value: str, source: str) -> str:
         return "\n".join(kept)
     kept = []
     ascii_lines = [line for line in lines if not _has_non_ascii_letter(line)]
-    # One word per line ("IS\nTHE"): no pure line trips on its own, but
-    # the pure lines together are still English.
     ascii_group_english = (
         bool(ascii_lines)
         and not any(_untranslated_english(line) for line in ascii_lines)
@@ -523,8 +490,6 @@ def _filter_foreign_lines(value: str, source: str) -> str:
                 continue
             kept.append(line)
         else:
-            # A diacritic line can still be a bare scream ("ÁÁÁÁA!!!"): the
-            # segment strip alone would keep it, so the scream check runs here too.
             if _bare_scream(line):
                 continue
             stripped = _strip_english_segments(line)
@@ -584,8 +549,8 @@ def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[V
     return result, data
 
 
-MARK_COLOR = (0, 0, 230)  # BGR red
-ELSEWHERE_COLOR = (128, 128, 128)  # text lettered by the neighbouring slice
+MARK_COLOR = (0, 0, 230)
+ELSEWHERE_COLOR = (128, 128, 128)
 ELSEWHERE_LABEL = "X"
 
 
@@ -599,7 +564,6 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
     boxes += [(box, ELSEWHERE_LABEL, ELSEWHERE_COLOR) for box in elsewhere]
     originals = [tuple(int(v) for v in box) for box, _, _ in boxes]
     for box, label, color in boxes:
-        # Outlined just outside the box, so the line never covers the letters the model reads.
         pad = 2 * thickness
         x1, y1, x2, y2 = (int(v) for v in box)
         x1, y1, x2, y2 = x1 - pad, y1 - pad, x2 + pad, y2 + pad
@@ -607,8 +571,6 @@ def mark_objects(image, objects: list[dict], elsewhere: list | tuple = ()):
         (tw, th), base = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
         lw, lh = tw + 4, th + base
         lx = min(max(x1, 0), max(0, width - lw))
-        # The label sits clear of the box it names, above it when there is room
-        # and below it at the top edge, so it never covers text the model reads.
         cy = (y1 + y2) // 2 - lh // 2
         candidates = [(lx, y1 - lh, lx + lw, y1), (lx, y2, lx + lw, y2 + lh),
                       (x2, cy, x2 + lw, cy + lh), (x1 - lw, cy, x1, cy + lh)]
@@ -646,8 +608,6 @@ def retranslate_text(
         if str(source_lang or "").lower() in {"", "auto"}
         else language_name(source_lang)
     )
-    # The same conventions the vision call translates under; without them the text
-    # model writes literal, unidiomatic Vietnamese (a bare "translate this" prompt).
     prompt = (
         text_system_prompt(language_name(target_lang), target_lang, settled, setting=setting)
         + "\n\n"
@@ -658,15 +618,11 @@ def retranslate_text(
         + json.dumps({"objects": [{"id": i, "source": s} for i, s in pairs]},
                      ensure_ascii=False, separators=(",", ":"))
     )
-    # Its own checkpoint: sharing "translate" would send this text-only second
-    # pass to the vision model again instead of the retranslate model.
     result = request_vision_json(provider, model, api_key, prompt, [], max_tokens=max_tokens, stage="retranslate")
     expected = {i for i, _ in pairs}
     out = {}
     translations = result.data.get("translations") or []
     if isinstance(translations, dict):
-        # A model may answer the object map instead of the list, as the
-        # vision parse does; iterating the dict would only yield its keys.
         translations = [{"id": key, "translated_text": value} for key, value in translations.items()]
     for entry in translations:
         if not isinstance(entry, dict):
@@ -685,8 +641,6 @@ class VisionPageTranslator:
         if not provider.supports_visual_qc:
             raise ValueError(f"{provider.label} cannot receive image inputs")
         self.provider, self.model = provider, model
-        # A second model re-translates the source lines the vision model read, so the
-        # wording is the text model's while role/container (which picks the font) stay the vision model's.
         self.translate_provider, self.translate_model, self.translate_api_key = (
             translate_provider, translate_model, translate_api_key,
         )
@@ -695,8 +649,6 @@ class VisionPageTranslator:
         """One cheap call per chapter: ask the model which story world this is,
         so each translation then carries only that world's address register."""
         image = _read_image(Path(original_path))
-        # Reasoning vision models spend tokens thinking before the JSON; a tiny
-        # cap truncates the answer, so give headroom and keep reasoning low.
         result = request_vision_json(self.provider, self.model, api_key, setting_question(),
                                      [("page", image)], max_tokens=2048, reasoning_effort="low",
                                      stage="setting")
@@ -724,8 +676,6 @@ class VisionPageTranslator:
             if "finish_reason=length" not in str(exc):
                 raise
             if len(items) >= 2:
-                # A reply cut off mid-list loses the whole batch when nothing salvages;
-                # halves carry half the output each, so the cut moves past the content.
                 mid = len(items) // 2
                 first = self.translate_page(
                     original_path, cleaned_path, items[:mid], api_key=api_key, source_lang=source_lang,
@@ -739,8 +689,6 @@ class VisionPageTranslator:
                 )
                 return _merge_translation_results(first, second)
             if _max_tokens < 16384:
-                # One box alone still cut off: the budget went on reasoning before
-                # the answer, so the answer itself needs more headroom, not fewer boxes.
                 return self.translate_page(
                     original_path, cleaned_path, items, api_key=api_key, source_lang=source_lang,
                     target_lang=target_lang, memory=memory, slice_number=slice_number,
@@ -759,7 +707,6 @@ class VisionPageTranslator:
         if original.shape[:2] != cleaned.shape[:2]:
             raise ValueError("Original and cleaned slices have different dimensions")
         h, w = original.shape[:2]
-        # Send short numeric ids; models copy them more reliably.
         real = {str(n): str(item["id"]) for n, item in enumerate(items, start=1)}
         objects = [{"id": alias, "source_text": item["text"], "bbox_xyxy": item["region"],
                     **({"max_chars": item["max_chars"]} if item.get("max_chars") else {})}
@@ -786,27 +733,20 @@ class VisionPageTranslator:
             + '\n\nTranslate every object above and answer with one JSON object that starts with {"translations":[. '
             + "Write translated_text in sentence case, even when the source is in capitals."
         )
-        # One image: the boxes are drawn on the raw slice, whose text the model reads.
         marked_b64 = _encode_for_gemini(mark_objects(original, objects, elsewhere))
         ids = set(real)
-        # A cap, not a target: raising it costs nothing unless the reply actually grows.
         if self.provider.protocol == "gemini":
             result, data = self._gemini(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         else:
             result, data = self._openai(system, prompt, marked_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         result, data = _unalias(result, data, real)
         ids = set(real.values())
-        # The source lines the vision model read off the image. result.sources
-        # is still empty here, and A.I mode candidates carry no OCR text, so
-        # without this the re-translate below gets empty pairs and never runs.
         read_sources = {
             str(entry.get("id")): " ".join(str(entry.get("source") or "").split())[:1000]
             for entry in data.get("translations") or []
             if isinstance(entry, dict) and str(entry.get("source") or "").strip()
         }
         if self.translate_provider is not None and self.translate_model:
-            # The vision model reads the image and judges role/container; a text model
-            # re-translates the source lines it read, so the wording is the text model's.
             pairs = [
                 (str(item["id"]), (read_sources.get(str(item["id"]))
                                    or str(item.get("text") or "").strip()))
@@ -822,11 +762,8 @@ class VisionPageTranslator:
                     setting=setting,
                 )
             except (RuntimeError, ValueError, OSError) as exc:
-                # The second pass is a wording upgrade, not the translation:
-                # its failure keeps the vision wording instead of the slice.
                 logger.warning("Re-translate failed for slice {}: {}; keeping the vision wording",
                                slice_number, str(exc)[:150])
-            # The re-translate is billed separately, so its cost and usage join the vision read's.
             usage = dict(result.usage or {})
             for key, value in (retold_usage or {}).items():
                 if isinstance(value, (int, float)):
@@ -842,9 +779,6 @@ class VisionPageTranslator:
                     if isinstance(entry, dict) and str(entry.get("id")) in retold:
                         entry["translated_text"] = retold[str(entry["id"])]
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
-            # Salvaged entries carry no source, so the gate below cannot see
-            # the Hangul behind a Latin misread; backfill it from the OCR
-            # text the candidates carried, as the re-translate pairs do.
             for entry in data.get("translations") or []:
                 if isinstance(entry, dict) and not str(entry.get("source") or "").strip():
                     ocr = next((str(item.get("text") or "")
@@ -870,15 +804,12 @@ class VisionPageTranslator:
             if str(entry.get("id")) in read_sources:
                 sources[str(entry["id"])] = read_sources[str(entry["id"])]
             elif str(entry.get("source") or "").strip():
-                # Backfilled from the candidate OCR text just before the gate.
                 sources[str(entry["id"])] = " ".join(str(entry["source"]).split())[:1000]
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
         fonts = {key: {"font_id": font_for(roles.get(key), containers.get(key), target_lang), "font_mode": "ai"}
                  for key in (result.font_choices or {})}
         if memory is not None:
-            # A doubled line in memory teaches the next slices the
-            # repetition; collapse it before the update, as the commit does.
             memory.update(slice_number or 0, data,
                           {key: collapse_repeated_lines(value) for key, value in result.translations.items()},
                           [str(item["id"]) for item in items])
@@ -904,7 +835,7 @@ class VisionPageTranslator:
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": [
                 {"type": "text", "text": "RAW SLICE WITH TEXT BOXES"},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{marked}"}},
-                {"type": "text", "text": prompt},  # the ask goes last, after the images it refers to
+                {"type": "text", "text": prompt},
             ]}],
             "response_format": {"type": "json_object"},
             "max_tokens": max_tokens,
@@ -938,7 +869,6 @@ class VisionPageTranslator:
             reason = choice.get("finish_reason") if isinstance(choice, dict) else None
             salvaged = _salvage_translations(choice, ids) if reason == "length" else {}
             if salvaged:
-                # Keep what the reply finished; the missing ids still route to retry downstream.
                 translations, font_choices, data = _parse_vision_payload(
                     json.dumps({"translations": [
                         {"id": key, "translated_text": text} for key, text in salvaged.items()

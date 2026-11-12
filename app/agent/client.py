@@ -22,7 +22,6 @@ from app.visual_qc.deepseek_region_client import _safe_error_detail
 READ_TIMEOUT = 600
 STREAM_IDLE_TIMEOUT = 120
 NETWORK_RETRIES = 10
-# How providers word a full context window (pi's list), and the words that look the same but are rate limits.
 OVERFLOW_PATTERNS = [re.compile(p, re.I) for p in (
     r"prompt (?:is )?too long", r"prompt exceeds max length", r"request_too_large", r"input is too long for requested model", r"exceeds the context window",
     r"exceeds (?:the )?(?:model'?s )?maximum context length", r"input token count.*exceeds the maximum", r"maximum prompt length is \d+",
@@ -31,24 +30,19 @@ OVERFLOW_PATTERNS = [re.compile(p, re.I) for p in (
     r"too large for model with \d+ maximum context length", r"configured context size is", r"model_context_window_exceeded", r"prompt too long; exceeded",
     r"range of input length should be", r"context[_ ]length[_ ]exceeded", r"too many tokens", r"token limit exceeded", r"context.{0,20}(?:length|window)", r"maximum context")]
 NOT_OVERFLOW = re.compile(r"rate limit|too many requests|throttl", re.I)
-# Each finds the model's window in the message; the first that matches wins.
 WINDOW_PATTERNS = [re.compile(p, re.I) for p in (
     r"maximum context length (?:is|of)? ?\(?([\d,]{4,})", r"maximum prompt length is ([\d,]{4,})", r"context (?:window|length|size|limit) (?:of|is) \(?([\d,]{4,})",
     r"context (?:length|size) \(([\d,]{4,})", r"maximum number of tokens allowed \(([\d,]{4,})", r"maximum allowed input length of ([\d,]{4,})",
     r"limit of ([\d,]{4,})", r"> ([\d,]{4,}) maximum", r"configured context size is ([\d,]{4,})")]
 RATE_LIMIT_RETRIES = 4
-# When a provider says "slow down", every session using that key waits, not just the one that was told; another key is not held back.
 _COOLDOWN: dict[str, float] = {}
-# A pace a provider asked for in words ("1 request every 1 minutes"): slot -> (seconds between requests, until when, last sent).
 _PACE: dict[str, list[float]] = {}
-PACE_HOLD_S = 900  # A pace lapses this long after the provider last asked for it.
+PACE_HOLD_S = 900
 PACE_RE = re.compile(r"(\d+) requests? (?:every|per|each) (\d+)? ?(second|sec|minute|min|hour)", re.I)
 AFTER_RE = re.compile(r"try again (?:after|at) (\d{1,2}):(\d{2})(?::(\d{2}))?", re.I)
 IN_RE = re.compile(r"(?:try again|retry) in (\d+(?:\.\d+)?) ?(ms|milliseconds?|s|secs?|seconds?|m|mins?|minutes?)\b", re.I)
-# A block may lack its closing tag when the model stops early or opens the next call.
 TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*(?:</tool_call>|(?=<tool_call>)|\Z)", re.S)
 PARAMETER_RE = re.compile(r"<parameter=(\w+)>\s*(.*?)\s*</parameter>", re.S)
-# The XML form some models write, MiniMax's among them: <invoke name="x"><parameter name="y">value</parameter></invoke>.
 INVOKE_RE = re.compile(r"<invoke\b[^>]*?\bname\s*=\s*[\"']?([\w.-]+)[\"']?[^>]*>(.*?)(?:</invoke>|\Z)", re.S | re.I)
 INVOKE_PARAM_RE = re.compile(r"<parameter\b[^>]*?\bname\s*=\s*[\"']?(\w+)[\"']?[^>]*>(.*?)</parameter>", re.S | re.I)
 INVOKE_WRAP_RE = re.compile(r"</?(?:[\w-]+:)?(?:function_calls|tool_calls?)>", re.I)
@@ -70,9 +64,7 @@ class KeyLimited(RuntimeError):
     """The key is rate limited or out of quota and the provider named no wait; another key may help."""
 
 
-# Set while the caller holds spare keys: a limit with no named wait is handed back instead of retried blindly.
 ASK_ON_LIMIT: ContextVar[bool] = ContextVar("ask_on_limit", default=False)
-# Extra request fields for the model in use, such as reasoning_effort or sampling, from profile.json "models".
 REQUEST_EXTRA: ContextVar[dict] = ContextVar("request_extra", default={})
 _REFUSED_EXTRA: set[tuple[str, str]] = set()
 
@@ -83,12 +75,10 @@ class ToolsUnsupported(RuntimeError):
 
 def chat_url(provider: AIProvider) -> str:
     if provider.protocol == "gemini":
-        # Gemini serves the same chat format under its OpenAI-compatible path.
         return f"{provider.api_base.rstrip('/')}/openai/chat/completions"
     return _FOUND_PATH.get(provider.api_base.rstrip("/"), str(provider.chat_url))
 
 
-# The chat path that answered for a custom provider whose own path said 404, by its API root.
 _FOUND_PATH: dict[str, str] = {}
 
 
@@ -229,7 +219,6 @@ def render(history: list[dict], system: str, text_mode: bool, specs: list[dict],
                 messages.append({"role": "assistant", "content": (item.get("content") or "") + blocks})
             else:
                 message = {"role": "assistant", "content": item.get("content") or ""}
-                # DeepSeek's thinking mode needs the reasoning of the current turn's tool steps sent back; "all" sends every turn's.
                 if reasoning == "all":
                     message["reasoning_content"] = item.get("reasoning") or ""
                 elif reasoning and item.get("reasoning") and index > last_user:
@@ -298,7 +287,6 @@ def _hinted_wait(text: str) -> float:
         now = time.gmtime()
         target = int(found.group(1)) * 3600 + int(found.group(2)) * 60 + int(found.group(3) or 0)
         wait = (target - (now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec)) % 86400
-        # A clock time in another zone would read as hours away; only a near one is trusted.
         return float(wait) if wait <= 900 else 0.0
     return 0.0
 
@@ -332,7 +320,6 @@ def _wait_for_pace(name: str) -> None:
     pace[2] = time.time()
 
 
-# Rate-limit answers seen per provider: how many, how long we waited, and the provider's last words, so a session can report them.
 RATE_LIMITS: dict[str, dict] = {}
 
 
@@ -388,7 +375,6 @@ def _post_to(url: str, provider: AIProvider, api_key: str, payload: dict, stream
             raise TransientError(f"{provider.label} request failed: {type(exc).__name__}") from exc
         if response.status_code != 429 or attempt == RATE_LIMIT_RETRIES:
             return response
-        # Free tiers allow a few requests a minute; wait as told (in a header or in words), or longer each time.
         try:
             words = response.text[:500]
         except Exception:
@@ -398,7 +384,6 @@ def _post_to(url: str, provider: AIProvider, api_key: str, payload: dict, stream
             _note_rate_limit(provider, response, 0.0)
             return response
         if interval:
-            # Once the provider names a slower pace, every later request keeps to it instead of failing a few times and giving up.
             _PACE[key] = [interval, time.time() + PACE_HOLD_S, time.time()]
             RATE_LIMITS.setdefault(provider.id, {"count": 0, "waited_s": 0.0, "detail": "", "first": time.time()})["pace_s"] = interval
         wait = min(900.0 if interval else 60.0, _retry_after(response) or _hinted_wait(words) or interval or 6.0 * 2 ** attempt)
@@ -413,7 +398,7 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
     """Assemble the streamed message; on_delta(live) is called as it grows and returns True to stop early."""
     text, reasoning, usage, calls, stopped = "", "", {}, {}, False
     finish, other = "", {}
-    response.encoding = "utf-8"  # An event stream without a charset is otherwise read as Latin-1 and Vietnamese text turns into mojibake.
+    response.encoding = "utf-8"
     for raw in response.iter_lines(decode_unicode=True):
         if not raw or not raw.startswith("data:"):
             continue
@@ -445,7 +430,6 @@ def _read_stream(response: requests.Response, on_delta) -> tuple[dict, dict, boo
             stopped = True
             break
     if other and not (text or reasoning or calls):
-        # Some providers put the reply in a field of their own; keep it rather than lose it.
         reasoning = "".join(other.values())
     message = {"content": text, "reasoning_content": reasoning, "_debug": {"finish": finish, "fields": sorted(other)},
                "tool_calls": [{"id": c["id"], "function": {"name": c["name"], "arguments": c["arguments"]}} for _, c in sorted(calls.items())]}
@@ -493,13 +477,11 @@ def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
     text = message.get("content") or ""
     if isinstance(text, list):
         text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
-    # Models without native tools, and some with them, write their calls into the text.
     if "<tool_call>" in text or "<invoke" in text:
         text, written = parse_text_calls(text, tools)
         if not calls:
             calls = written
         else:
-            # A native call that arrived with empty arguments takes them from the same call written in the text.
             spare = [w for w in written if w["args"] and not w.get("error")]
             for call in calls:
                 match = next((w for w in spare if w["name"] == call["name"]), None)
@@ -523,7 +505,6 @@ def _build(message: dict, usage: dict, tools: list[dict] | None = None) -> dict:
     return result
 
 
-# The largest reply each (api base, model) has accepted after refusing a larger one.
 OUTPUT_CAPS: dict[tuple[str, str], int] = {}
 
 
@@ -562,7 +543,6 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
     payload.update(extra)
     response = _post(provider, api_key, payload, bool(on_delta))
     if extra and response.status_code in (400, 422) and any(k.lower() in response.text.lower() for k in extra):
-        # A provider that refuses one of the extra fields is asked again without them.
         logger.warning("{} refused {}; asking without them from now on", provider.label, ", ".join(extra))
         _REFUSED_EXTRA.add(refused)
         for key in extra:
@@ -570,7 +550,6 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
         response.close()
         response = _post(provider, api_key, payload, bool(on_delta))
     while "max_tokens" in payload and response.status_code == 400 and re.search(r"max_(completion_)?tokens", response.text, re.I):
-        # A provider with a lower cap names it, or is asked again with half; one that takes no cap at all gets none.
         asked = payload["max_tokens"]
         named = [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", response.text[:2000])]
         lower = max((n for n in named if 256 <= n < asked), default=asked // 2)
@@ -590,8 +569,6 @@ def _complete_once(provider: AIProvider, api_key: str, model: str, messages: lis
         detail = _safe_error_detail(response, api_key)
         if tools and 400 <= response.status_code < 500 and "tool" in detail.lower():
             raise ToolsUnsupported(detail)
-        # A busy model ("at capacity, retry in a few seconds") is waited out like a server error; a spent quota or balance is not.
-        # A spent daily quota that still lets requests through at a slower pace is waited out too.
         if ASK_ON_LIMIT.get() and (response.status_code == 402 or response.status_code == 429 and not (
                 _pace_hint(detail) or _retry_after(response) or _hinted_wait(detail))):
             raise KeyLimited(f"{provider.label} HTTP {response.status_code}: {detail}")

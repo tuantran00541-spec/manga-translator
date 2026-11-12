@@ -12,7 +12,6 @@ KEY = open(sys.argv[1], encoding="utf-8").read().strip()
 STATS, PORT = sys.argv[2], int(sys.argv[3])
 ROUTES = {"/search": ("GET", "https://api.search.tinyfish.ai"), "/fetch": ("POST", "https://api.fetch.tinyfish.ai")}
 stats = {"search": 0, "fetch": 0, "errors": 0, "blocked": 0}
-# The benchmark's own tasks, tests and solutions are off limits to the agent under test.
 BLOCKED = re.compile(r"terminal[-_ ]?bench|harbor[-_ ]?framework|tbench|laude[-_ ]?institute", re.I)
 lock = threading.Lock()
 

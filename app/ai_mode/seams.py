@@ -5,8 +5,7 @@ import copy
 import re
 import unicodedata
 
-OWNER_SHARE = 0.5  # share of the smaller box two slices' boxes must share to be the same text
-# Everything that decides how a line is lettered, copied from the owning slice.
+OWNER_SHARE = 0.5
 LETTERING_KEYS = (
     "translation", "auto_translation", "translation_source", "translation_model", "translation_input_text",
     "typography_role", "container", "lettering_color", "enlarge", "source_cap_px", "font_ai_id",
@@ -111,25 +110,10 @@ def set_letter_bounds(page: dict) -> None:
                 rects.append((x1 + int(xs.min()), y1 + int(ys.min()), x1 + int(xs.max()) + 1, y1 + int(ys.max()) + 1))
             else:
                 box_rects.append((x1, y1, x2, y2))
-        # One unusable box must not erase the extent the usable boxes still prove.
-        # A detection box with no usable mask still bounds the lettering it
-        # detected; without any bounds the fit has only the region-wide
-        # attempt, so the box extent beats no bounds at all. A topmost
-        # letters group wins where it exists: a merged box can hold two
-        # texts, and only the topmost is the one translated. Mask extents
-        # win next: they are the letters, while a box may hold outline and
-        # margin round them.
         use = rects or box_rects
         if use:
             obj["letter_bounds"] = {"x1": min(r[0] for r in use), "y1": min(r[1] for r in use),
                                     "x2": max(r[2] for r in use), "y2": max(r[3] for r in use)}
-        # Otherwise keep whatever bounds the object already had: no usable
-        # box must erase an extent proven earlier.
-        # The letter bitmap follows the same boxes, framed on the
-        # object's region: the render's trim reads it to see a diagonal
-        # waist, and the clean image cannot supply it. A merged object
-        # unions its boxes' letters; an object with no usable letters
-        # keeps whatever bitmap it already had.
         import numpy as np
 
         from app.image_io import encode_mask
@@ -163,9 +147,6 @@ def set_letter_bounds(page: dict) -> None:
                     usable = True
                 if usable:
                     obj["letters_mask"] = encode_mask(union)
-        # The bubble interior follows the same boxes: an object over
-        # several boxes gets the union of their interiors, so a double
-        # bubble split into two objects keeps one lobe each.
         from app.detector.bubble_mask import merge_bubble_masks
 
         masks = [box.get("bubble_mask") for ref in source_box_ids(obj)
@@ -255,10 +236,6 @@ def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = Fals
         other_core = _core(other)
         if other.get("skipped") or other_core is None or other.get("source_page") != page.get("source_page"):
             continue
-        # The two slices may box the same text a little differently, so containment counts, not IoU.
-        # A line joined into another is lettered by that one, whose region covers it.
-        # A mirror is a copy, not a source: creating from one would chain copies
-        # across slices instead of lettering from the slice that owns the text.
         best = max(((candidate, other_rect) for candidate in other.get("text_objects") or []
                     if isinstance(candidate, dict) and not candidate.get("joined_into")
                     and not (skip_mirrors and candidate.get("seam_owner"))
@@ -268,7 +245,6 @@ def _owner(pages: list, page_index: int, obj: dict, *, skip_mirrors: bool = Fals
             continue
         if not _source_texts_agree(obj, best[0]):
             continue
-        # Both slices judge by the same whole text, so exactly one of them owns it.
         center = (min(rect[1], best[1][1]) + max(rect[3], best[1][3])) / 2
         if other_core[1] <= center < other_core[2]:
             return other_index, best[0]
@@ -297,8 +273,6 @@ def create_seam_mirrors(manifest: dict) -> list[tuple[int, str]]:
             continue
         covered = {ref for obj in page.get("text_objects") or [] if isinstance(obj, dict)
                    for ref in source_box_ids(obj)}
-        # One text, one mirror per slice: two fragment boxes of the same text
-        # would letter it twice, so only the larger fragment anchors it.
         by_owner: dict[tuple[int, str], tuple[dict, dict]] = {}
         for box in page.get("boxes") or []:
             if not isinstance(box, dict) or not box.get("overlap_context_only") or box.get("removed"):
@@ -362,7 +336,6 @@ def _norm_words(text: str) -> list[str]:
 
 def _trim_leading_words(text: str, count: int) -> str:
     """``text`` without its first ``count`` words; the continuation becomes sentence-initial."""
-    # The same punctuation-aware boundaries as _norm_words, so a contraction or hyphen counts as its parts.
     matches = list(re.finditer(r"[^\s" + re.escape(_WORD_SEPARATORS) + r"]+", text))
     if len(matches) <= count:
         return ""
@@ -456,7 +429,6 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
             continue
         core = _core(page)
         for obj in page.get("text_objects") or []:
-            # An object dropped for overlapping another stays empty, or the two would garble each other again.
             if not isinstance(obj, dict) or obj.get("joined_into") or obj.get("overlap_dropped"):
                 continue
             found = _owner(pages, page_index, obj)
@@ -466,11 +438,6 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
             shift = _core(pages[owner_page])[0] - core[0]
             region = _shifted(owner["region"], shift)
             update = {key: copy.deepcopy(owner[key]) for key in LETTERING_KEYS if key in owner}
-            # The owner's translation was gated when it was committed, but a
-            # later polish or manual edit can leave English (or CJK) in it;
-            # the copy passes the same gate, or the mirror letters the
-            # untranslated text the gate would have blanked. A copy that
-            # gates to nothing is skipped, leaving the mirror as it was.
             from app.translation.vision import VisionTranslationResult, _drop_foreign_script
 
             owner_id = str(owner.get("id"))
@@ -486,7 +453,6 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
                 update["translation"] = gated
                 if "auto_translation" in update:
                     update["auto_translation"] = gated
-            # The copy letters in exactly the area the owner does, so the two halves line up.
             if isinstance(owner.get("letter_bounds"), dict):
                 update["letter_bounds"] = _shifted(owner["letter_bounds"], shift)
             if isinstance(owner.get("bubble_mask"), dict):
@@ -511,7 +477,7 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
     return changed
 
 
-OVERLAP_KEEP = 0.5  # two lettered objects sharing this much of the smaller one garble each other
+OVERLAP_KEEP = 0.5
 
 
 def _letter_rect(obj: dict) -> tuple[int, int, int, int] | None:
@@ -543,7 +509,6 @@ def _fold_words(text: str) -> list[str]:
 
 def _lcs_len(a: list[str], b: list[str]) -> int:
     """Length of the longest common word subsequence, in order."""
-    # Dialogue is short; the quadratic table is cheaper than a fix-up.
     previous = [0] * (len(b) + 1)
     for word in a:
         current = [0] * (len(b) + 1)
@@ -578,13 +543,8 @@ def _translations_duplicate(a: str, b: str) -> bool:
     short, long = sorted((words_a, words_b), key=len)
     n = len(short)
     if short == long:
-        # Same words in the same order; below 3 words that is not
-        # proof of one text read twice ("Của tôi" vs "Của tôi!").
         return n >= 3
     if long[:n] == short:
-        # The shorter line is how the longer one starts: a truncated
-        # re-read — but only when the shared run is long enough to
-        # mean something. "Đi đi" starting "Đi đi mau" does not.
         return n >= 4
     shared = _lcs_len(short, long)
     return shared >= 5 and shared / n >= 0.8
@@ -651,15 +611,6 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
                 obj["translation"] = ""
                 obj["overlap_dropped"] = True
                 dropped.append((page_index, str(obj.get("id"))))
-                # The dropped half belonged to the keeper's bubble only when
-                # their regions touch: the detector often splits one bubble
-                # into two overlapping halves (ch42 p010), so the keeper's
-                # fit box grows to the union. A dropped object whose region
-                # sits apart is a different bubble that merely shares
-                # lettering, and the keeper must not absorb its region.
-                # Nor may it absorb the other lobe of a waist: the two
-                # halves hold different texts, and the union would letter
-                # the keeper across the waist.
                 if _regions_touch(dup_of.get("region"), obj.get("region")) and not _separate_lobes(dup_of, obj):
                     dup_of["region"] = _union_rect(dup_of.get("region"), obj.get("region"))
                     dup_of["letter_bounds"] = _union_rect(dup_of.get("letter_bounds"),
@@ -679,12 +630,11 @@ def _shared(a, b) -> float:
     return ix * iy / min(_area(a), _area(b))
 
 
-STACK_GAP = 0.2  # widest gap between stacked lines of one block, as a share of the shorter line
-STACK_TUCK = 0.5  # deepest two lines' boxes may overlap, as a share of the shorter line
-STACK_OVERLAP = 0.5  # share of the narrower line two stacked lines must share across
-# Lines of one block are centred on each other; two bubbles stacked in one balloon sit off to the sides.
+STACK_GAP = 0.2
+STACK_TUCK = 0.5
+STACK_OVERLAP = 0.5
 STACK_CENTRE = 0.15
-STACK_LETTER_GAP = 0.75  # widest empty band between two fragments' lettering, as a share of the shorter lettering
+STACK_LETTER_GAP = 0.75
 
 
 def _letters_continue(upper: dict, lower: dict) -> bool:
@@ -731,7 +681,6 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
                         and not obj.get("joined_into") and not str(obj.get("translation") or "").strip()
                         and _rect(obj, 0) is not None),
                        key=lambda obj: (_rect(obj, 0)[1], _rect(obj, 0)[0]))
-        # A block is every line linked to another by stacking, so words split side by side join too.
         group = list(range(len(lines)))
 
         def root(i: int) -> int:

@@ -74,7 +74,6 @@ FIXED_LAMA_CONCURRENT_INFERENCE = _env_bool(
 PIPELINE_DEFAULT_WORKERS = _env_int(
     "MANGA_PIPELINE_DEFAULT_WORKERS", recommended_workers(), minimum=1, maximum=32
 )
-# Each slicing thread holds about 200 MB on a 12,000 px page.
 PIPELINE_SLICE_WORKER_LIMIT = _env_int(
     "MANGA_PIPELINE_SLICE_WORKER_LIMIT", 4, minimum=1, maximum=64
 )
@@ -100,7 +99,6 @@ FIXED_LAMA_RECYCLE_MEMORY_LIMIT_BYTES = _env_int(
 TRANSLATION_CONNECT_TIMEOUT_SECONDS = _env_float(
     "MANGA_TRANSLATION_CONNECT_TIMEOUT_SECONDS", 10.0, minimum=1.0, maximum=300.0
 )
-# Reasoning models answer slowly on dense slices; the old 120s cut killed requests mid-thought.
 TRANSLATION_READ_TIMEOUT_SECONDS = _env_float(
     "MANGA_TRANSLATION_READ_TIMEOUT_SECONDS", 600.0, minimum=1.0, maximum=1800.0
 )

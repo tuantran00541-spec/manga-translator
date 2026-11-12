@@ -68,8 +68,8 @@ def test_c4_user_scope_py_loads_once_pinned(home, wsroot):
         "def register(api):\n    api.tool({'name': 'good_tool'}, lambda s, a: 'ok', kind='read')\n", encoding="utf-8")
     trust = context.TrustStore(None)
     s = _make_session(home, wsroot, trust=trust)
-    assert "good_tool" not in s.registry.tools  # unpinned on first build
-    s.trust_plugins()  # user explicitly trusts
+    assert "good_tool" not in s.registry.tools
+    s.trust_plugins()
     assert "good_tool" in s.registry.tools
 
 
@@ -88,7 +88,6 @@ def test_c4_user_scope_change_invalidates_pin(home, wsroot):
     assert row["state"] == "untrusted"
 
 
-# ---- trust-pin TOCTOU ----
 
 def test_h8_digest_comes_from_single_read(home, wsroot):
     """The digest reflects the bytes read once, not whatever is on disk later."""
@@ -100,9 +99,9 @@ def test_h8_digest_comes_from_single_read(home, wsroot):
     sources = registry.plugin_sources(wsroot, home)
     digest = registry.sources_digest(sources)
 
-    target.write_text('MARKER = "v2-evil"\ndef register(api):\n    pass\n', encoding="utf-8")  # swap after read
-    assert registry.sources_digest(sources) == digest  # still the read bytes
-    assert registry.sources_digest(registry.plugin_sources(wsroot, home)) != digest  # disk now differs
+    target.write_text('MARKER = "v2-evil"\ndef register(api):\n    pass\n', encoding="utf-8")
+    assert registry.sources_digest(sources) == digest
+    assert registry.sources_digest(registry.plugin_sources(wsroot, home)) != digest
 
 
 def test_h8_load_module_bytes_executes_read_bytes(home, wsroot):
@@ -111,7 +110,7 @@ def test_h8_load_module_bytes_executes_read_bytes(home, wsroot):
     plugdir.mkdir(parents=True)
     target = plugdir / "victim.py"
     target.write_text('MARKER = "on-disk"\n', encoding="utf-8")
-    data = target.read_bytes()  # the single read
+    data = target.read_bytes()
     target.write_text('MARKER = "swapped-after-read"\n', encoding="utf-8")
     module = registry.load_module_bytes(data, "h8_probe", str(target))
     assert module.MARKER == "on-disk"
@@ -147,7 +146,6 @@ def test_h8_load_plugins_unchanged_still_loads(home, wsroot):
     assert "h8_v1" in reg.tools
 
 
-# ---- skill squatting ----
 
 def _zip(files: dict) -> bytes:
     buf = io.BytesIO()

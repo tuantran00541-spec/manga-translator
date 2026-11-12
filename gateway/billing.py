@@ -16,7 +16,6 @@ from gateway.store import Store, usd
 VND_PER_USD = 26000
 TOPUP_VND = (20000, 50000, 100000, 200000)
 TOPUP_USD = (2, 5, 10, 20)
-# What one long webtoon chapter costs in A.I, before the fee; it only sizes the "about N chapters" hint.
 CHAPTER_ESTIMATE_USD = 0.30
 
 
@@ -59,7 +58,6 @@ class BillingConfig:
     topups_vnd: tuple = TOPUP_VND
     topups_usd: tuple = TOPUP_USD
     chapter_estimate_usd: float = CHAPTER_ESTIMATE_USD
-    # Payment-provider fees are added to what the user pays, so the balance gets the full top-up.
     payos_fee_percent: float = 0.0
     ls_fee_percent: float = 5.0
     ls_fee_fixed_usd: float = 0.50
@@ -182,7 +180,6 @@ class Billing:
         config = self.config
         if not config.lemonsqueezy_enabled:
             raise BillingError(503, "Thanh toán thẻ quốc tế chưa được cấu hình")
-        # The order id is not known until payment, so the webhook finds the top-up by this reference.
         ref = uuid.uuid4().hex
         payload = {"data": {
             "type": "checkouts",
@@ -240,7 +237,6 @@ class Billing:
         if event == "order_created":
             if attributes.get("status") != "paid":
                 return {"applied": False}
-            # A store in another currency, or a changed price, never credits the balance.
             paid = int(attributes.get("subtotal") or 0) if attributes.get("currency") == "USD" else -1
             result = self.store.complete_payment("lemonsqueezy", ref, paid)
             return {"applied": bool(result and result.get("applied"))}

@@ -34,7 +34,6 @@ def test_mask_layout_uses_row_spans_not_the_rectangle():
     ink = _ink(image, base)
     ys, xs = np.nonzero(ink)
     assert len(xs) > 0
-    # Every ink pixel sits inside the ellipse (a stroke of slack for the outline).
     assert bool((((xs - 350) / 300) ** 2 + ((ys - 200) / 150) ** 2 <= 1.05).all()), \
         "ink crossed the ellipse outline"
 
@@ -47,7 +46,7 @@ def test_block_centres_on_the_mask_centroid_not_the_box():
     mask = derive_bubble_mask(np.asarray(image)[:, :, ::-1].copy(),
                               (60, 60, 640, 340), seed=(350, 270))
     assert mask is not None and mask["kind"] == "bubble"
-    assert mask["cy"] == 270 and mask["cy"] != 200  # the mask sits low in the region
+    assert mask["cy"] == 270 and mask["cy"] != 200
     stats: dict = {}
     size, lines, fits, _box = auto_fit(
         ImageDraw.Draw(image), "Ta đã bảo ngươi đừng gọi ta là Các Chủ.",

@@ -1,4 +1,4 @@
-// Shows how to install the browser extension and whether the installed copy needs a reload.
+
 (() => {
   const guide = document.getElementById("extension-guide");
   if (!guide) return;
@@ -18,7 +18,7 @@
       const info = await (await fetch("/api/extension")).json();
       path.textContent = info.path;
       document.getElementById("extension-outdated").hidden = !info.outdated;
-    } catch (_) { /* the steps still help without the path */ }
+    } catch (_) {  }
     guide.showModal();
   }
 
@@ -30,7 +30,7 @@
     if (!reply?.ok) window.showToast?.("Không mở được thư mục, hãy sao chép đường dẫn.", "error");
   });
 
-  // A link the app cannot download is the moment the extension helps most.
+  
   window.suggestExtension = () => {
     const hint = document.getElementById("extension-hint");
     hint.firstChild.textContent = "Không tải được từ liên kết? Trang có thể chặn tải tự động. ";

@@ -22,14 +22,14 @@ def _page():
 def test_letters_still_on_the_clean_slice_are_reported():
     original = _page()
     clean = original.copy()
-    clean[:, :400] = 240  # only the first half of the line was erased
+    clean[:, :400] = 240
     found = leftovers(original, clean, original.max(axis=2) < 60)
     assert [item.kind for item in found] == ["text"]
 
 
 def test_a_clean_slice_kept_art_and_balloon_outlines_are_not_reported():
     original = _page()
-    cv2.ellipse(original, (450, 330), (300, 40), 0, 200, 340, (10, 10, 10), 4)  # one stroke of a balloon outline
+    cv2.ellipse(original, (450, 330), (300, 40), 0, 200, 340, (10, 10, 10), 4)
     clean = np.full_like(original, 240)
     cv2.ellipse(clean, (450, 330), (300, 40), 0, 200, 340, (10, 10, 10), 4)
     letters = original.max(axis=2) < 60
@@ -57,8 +57,6 @@ def _label_page():
 
 
 def test_a_detector_box_the_cleanup_never_touched_is_reported():
-    # Former Supreme 1, slice 93: SHANDONG/ANHUI/JIANGXI/FUJIAN had boxes the letter model
-    # never masked, so the letter blocks above cannot see them; the cleanup left them alone.
     original = _label_page()
     found = leftovers(original, original.copy(), np.zeros(original.shape[:2], bool),
                       raw_boxes=[(90, 150, 330, 210)])
@@ -68,7 +66,7 @@ def test_a_detector_box_the_cleanup_never_touched_is_reported():
 def test_a_detector_box_the_cleanup_repainted_is_not_reported():
     original = _label_page()
     clean = original.copy()
-    clean[150:210, 90:330] = (210, 190, 170)  # the label was erased and the map repainted
+    clean[150:210, 90:330] = (210, 190, 170)
     assert leftovers(original, clean, np.zeros(original.shape[:2], bool),
                      raw_boxes=[(90, 150, 330, 210)]) == []
 
@@ -82,14 +80,13 @@ def test_a_flat_detector_box_is_not_a_leftover():
 def test_a_raw_box_covered_by_a_letter_block_is_not_counted_twice():
     original = _page()
     clean = original.copy()
-    clean[:, :400] = 240  # only the first half of the line was erased
+    clean[:, :400] = 240
     letters = original.max(axis=2) < 60
     found = leftovers(original, clean, letters, raw_boxes=[(60, 150, 400, 210)])
     assert len(found) == 1 and found[0].kind == "text"
 
 
 def test_clean_score_flags_a_box_the_manifest_never_held(tmp_path):
-    # The scorecard end to end for a slice whose label never became a manifest box.
     import cv2 as _cv2
 
     from scripts import scorecard as _scorecard
@@ -97,7 +94,7 @@ def test_clean_score_flags_a_box_the_manifest_never_held(tmp_path):
     original = _label_page()
     orig_path, clean_path = tmp_path / "orig.png", tmp_path / "clean.png"
     _cv2.imwrite(str(orig_path), original)
-    _cv2.imwrite(str(clean_path), original.copy())  # nothing was erased
+    _cv2.imwrite(str(clean_path), original.copy())
 
     class _Detector:
         def text_boxes(self, image):
@@ -122,7 +119,7 @@ def test_clean_score_flags_a_fallback_box_with_no_letters(tmp_path):
     import numpy as np
 
     original = np.full((200, 300, 3), 220, np.uint8)
-    original[60:80, 90:190] = (70, 60, 50)  # dark label inside its box, light paper around it
+    original[60:80, 90:190] = (70, 60, 50)
     clean = original.copy()
     orig_path, clean_path = tmp_path / "orig.png", tmp_path / "clean.png"
     _cv2.imwrite(str(orig_path), original)
@@ -136,7 +133,7 @@ def test_clean_score_flags_a_fallback_box_with_no_letters(tmp_path):
 
     class FakeDetector:
         def text_boxes(self, image):
-            return [Box(60, 50, 220, 90, None)]  # fallback: whole box, no letters
+            return [Box(60, 50, 220, 90, None)]
 
         def detect_slice(self, image):
             return [(60, 50, 220, 90, 0.85)]

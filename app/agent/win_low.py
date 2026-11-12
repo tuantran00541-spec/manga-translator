@@ -7,7 +7,7 @@ import os
 import sys
 
 LOW = "S-1-16-4096"
-TOKEN_RIGHTS = 0x0001 | 0x0002 | 0x0008 | 0x0080  # assign primary, duplicate, query, adjust default
+TOKEN_RIGHTS = 0x0001 | 0x0002 | 0x0008 | 0x0080
 CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT = 0x4, 0x400
 KILL_ON_JOB_CLOSE, EXTENDED_LIMITS = 0x2000, 9
 STARTF_USESTDHANDLES, HANDLE_FLAG_INHERIT = 0x100, 0x1
@@ -55,7 +55,6 @@ def label(path: str) -> None:
     _check(advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, ctypes.byref(descriptor), None), "ConvertStringSecurityDescriptor")
     try:
         _check(advapi.GetSecurityDescriptorSacl(descriptor, ctypes.byref(present), ctypes.byref(sacl), ctypes.byref(defaulted)), "GetSecurityDescriptorSacl")
-        # LABEL_SECURITY_INFORMATION on a file object; children that inherit take the label too.
         error = advapi.SetNamedSecurityInfoW(ctypes.c_wchar_p(path), 1, 0x10, None, None, None, sacl)
         if error:
             raise OSError(f"could not label {path}: {ctypes.FormatError(error)}")
@@ -95,12 +94,10 @@ def launch(command: str) -> int:
     kernel.WaitForSingleObject(wt.HANDLE(info.hProcess), wt.DWORD(0xFFFFFFFF))
     code = wt.DWORD()
     kernel.GetExitCodeProcess(wt.HANDLE(info.hProcess), ctypes.byref(code))
-    # Exit codes are unsigned on Windows; a crash such as 0xC0000005 comes back as a negative number.
     return code.value - (1 << 32) if code.value >= 1 << 31 else code.value
 
 
 if __name__ == "__main__":
-    # Usage: win_low.py -- COMMAND
     command = " ".join(sys.argv[sys.argv.index("--") + 1:])
     try:
         sys.exit(launch(command))

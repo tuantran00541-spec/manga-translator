@@ -89,7 +89,7 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
     def attempt(label: str, adapter) -> list[str]:
         try:
             return adapter.extract_image_urls(chapter_url)
-        except Exception as exc:  # one way failing still leaves the other
+        except Exception as exc:
             failures.append(f"{label}: {getattr(exc, 'detail', None) or exc or type(exc).__name__}")
             return []
 
@@ -108,11 +108,8 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
         reason = "; ".join(str(item)[:200] for item in failures)
         raise ValueError("Không tìm thấy ảnh chương hợp lệ từ URL này" + (f" ({reason})" if reason else ""))
 
-    # Vector logos and icons are never comic pages, and a wide site logo passes the browser's width bar.
     selected = [url for url in selected if not url.lower().split("?")[0].endswith(".svg")] or selected
     paths = STATIC_ADAPTER.download_urls(selected, output_dir, referer=chapter_url)
-    # Static HTML gives no rendered sizes, so thumbnails and logos are dropped by the browser path's width bar.
-    # A corrupt download is skipped, not fatal: one bad image must not cost the whole chapter.
     def _usable_width(path: Path) -> int:
         try:
             return _image_width(path)
@@ -121,7 +118,6 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
             return -1
 
     pages = [path for path in paths if _usable_width(path) >= DOWNLOAD_JS_MIN_IMAGE_WIDTH]
-    # When every image is narrow the chapter is kept whole rather than deleted.
     if not pages:
         return paths
     for path in set(paths) - set(pages):

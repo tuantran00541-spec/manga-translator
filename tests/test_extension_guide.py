@@ -5,8 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.routers import extension
 
-# Extension code per manifest version; changing the code means bumping the version so installed copies are told to reload.
-CODE_SHA256 = {"1.1": "6f70f7a92b8ed236c150ba0c3baeaa3bfccd0b8d8dad25de3e337939b4d73ab1"}
+CODE_SHA256 = {"1.2": "71ea80feaae429945ba0520f6b5c135803933cde2586dba6f1a0c7db4f86dcdf"}
 
 
 def client(monkeypatch):

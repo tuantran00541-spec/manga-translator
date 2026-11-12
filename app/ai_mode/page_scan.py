@@ -15,16 +15,13 @@ import numpy as np
 from app.ai_mode.vision_json import request_vision_json
 from app.box_format import BOX_KEYS, BOX_RULE, scaled_box
 
-# Only confident answers change the chapter; everything else stays as is.
 CREDIT_MIN_CONFIDENCE = 0.75
-# Skipping a slice that does hold text leaves it untranslated, so this is strict.
 TEXTLESS_MIN_CONFIDENCE = 0.85
 LOGO_MIN_CONFIDENCE = 0.6
-# A "logo" covering most of a slice is a misread, not a logo.
 LOGO_MAX_AREA_RATIO = 0.5
 LOGO_MIN_SIDE_PX = 12
 LOGO_MARGIN_PX = 8
-SCAN_MAX_SIDE = 2400  # slices are cut 2400 tall; shrinking them made small text unreadable to the model
+SCAN_MAX_SIDE = 2400
 MAX_LINES = 40
 MAX_WHO = 60
 MAX_LINE = 300
@@ -126,7 +123,6 @@ def _logo_box(raw, width: int, height: int) -> tuple[int, int, int, int] | None:
     if scaled is None:
         return None
     x1, y1, x2, y2 = scaled
-    # Size limits apply to what the model saw, before the safety margin.
     if x2 - x1 < LOGO_MIN_SIDE_PX or y2 - y1 < LOGO_MIN_SIDE_PX:
         return None
     if (x2 - x1) * (y2 - y1) > LOGO_MAX_AREA_RATIO * width * height:
@@ -182,7 +178,6 @@ def parse_scan(data: dict, sizes: dict[int, tuple[int, int]], *, errors: list | 
             page_index=index,
             is_credit=is_credit,
             credit_confidence=confidence,
-            # A credit slice is skipped whole; its logos are irrelevant.
             logos=() if is_credit else logos,
             reason=str(entry.get("reason") or "")[:200],
             no_text=no_text and not logos,
@@ -216,7 +211,6 @@ def scan_slices(
     images = [(f"SLICE {index}", _thumbnail(image)) for index, image in slices]
     result = request_vision_json(
         provider, model, api_key, SCAN_PROMPT, images,
-        # Reasoning models spend this budget thinking before answering; a starved budget comes back empty.
         schema=SCAN_SCHEMA, max_tokens=1000000, stage="scan",
     )
     errors: list[dict] = []

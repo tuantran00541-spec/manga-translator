@@ -3,7 +3,6 @@ description: Download the released comic-text-detector, check it, and export mod
 runs:
   using: composite
   steps:
-    # The export never changes for the same script, so runners reuse it instead of downloading torch each time.
     - id: cache
       uses: actions/cache@v4
       with:

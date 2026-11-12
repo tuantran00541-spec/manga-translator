@@ -106,7 +106,6 @@ def test_lama_output_rounds_to_nearest_instead_of_truncating():
 
 
 def _caption_box(line: bool = False, texture: bool = False) -> tuple[np.ndarray, np.ndarray]:
-    # The World After the End 254: dark green caption boxes a few pixels from their pale border.
     image = np.full((240, 400, 3), 225, np.uint8)
     image[40:200, 40:360] = (40, 58, 30)
     if texture:

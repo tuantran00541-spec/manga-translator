@@ -375,8 +375,6 @@ def recover_page_artifact_transactions(chapter_dir: Path) -> int:
             journal_path.unlink(missing_ok=True)
             recovered += 1
         except (KeyError, TypeError, ValueError, OSError) as exc:
-            # A corrupt journal is skipped, not deleted: the file is the
-            # only evidence of what the interrupted transaction was doing.
             logger.warning("Skipping corrupt artifact journal {}: {}", journal_path.name, str(exc)[:150])
             continue
     return recovered

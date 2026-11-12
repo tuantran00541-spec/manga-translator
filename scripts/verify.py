@@ -8,22 +8,22 @@ import numpy as np
 
 from app.detector import ctd_mask
 
-JOIN_PX = 15  # letters closer than this belong to one block of text
-MIN_BLOCK_PX = 150  # smaller letter groups are specks, not text
-PAD_PX = 12  # room round a block in which leftover marks are counted
-GHOST = 0.1  # letter probability of a faint trace: a soft shadow or a redrawn outline
-LEFT_SHARE, LEFT_MIN_PX = 0.02, 40  # ink still read, as a share of the block's original ink
-GHOST_SHARE, GHOST_MIN_PX = 0.03, 200  # faint traces, as a share of the block's original ink
-MIN_PIECES, PIECE_PX = 3, 20  # text is several separate letters; a balloon outline scrap is one or two strokes
-UNCHANGED_TOL = 12  # grey levels: a pixel this close in original and clean was not repainted
-UNCHANGED_SHARE = 0.85  # share of a box's pixels unchanged that means nothing was erased there
-UNCHANGED_MIN_STD = 10  # grey spread of the original box: flat art is unchanged trivially, text is not
+JOIN_PX = 15
+MIN_BLOCK_PX = 150
+PAD_PX = 12
+GHOST = 0.1
+LEFT_SHARE, LEFT_MIN_PX = 0.02, 40
+GHOST_SHARE, GHOST_MIN_PX = 0.03, 200
+MIN_PIECES, PIECE_PX = 3, 20
+UNCHANGED_TOL = 12
+UNCHANGED_SHARE = 0.85
+UNCHANGED_MIN_STD = 10
 
 
 @dataclass(frozen=True)
 class Leftover:
     box: tuple[int, int, int, int]
-    kind: str  # "text" still reads as letters, "ghost" is a faint trace of them
+    kind: str
     px: int
     share: float
 

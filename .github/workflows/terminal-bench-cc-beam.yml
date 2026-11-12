@@ -1,8 +1,5 @@
 name: Terminal-Bench 2.1 (CommandCode beam)
 
-# CommandCode run: the full 89-task Terminal-Bench 2.1 suite through Harbor on the
-# Chaos harness, 3 shards in parallel. Settings come from .github/tb-runs/beam.json;
-# a relay on the runner holds the API key so the task containers never see it.
 on:
   push:
     branches-ignore: [main]
@@ -62,7 +59,6 @@ jobs:
           PY
 
   check:
-    # The key is tried first: the model list and one short chat, before any task runs.
     needs: config
     runs-on: ubuntu-22.04
     timeout-minutes: 20
@@ -140,7 +136,6 @@ jobs:
           sudo install -m 755 .github/terminal-bench/proxy.py /opt/relay/proxy.py
           printf '%s' "$API_KEY" | sudo -u nobody tee /opt/relay/key > /dev/null
           sudo chmod 600 /opt/relay/key
-          # No limits: no token, request or dollar ceiling on this run.
           sudo -u nobody nohup "$(which python)" /opt/relay/proxy.py /opt/relay/key /opt/relay/stats.json "$PORT" "${{ needs.config.outputs.base }}" '{}' "${{ needs.config.outputs.model }}" > /dev/null 2>&1 &
           sleep 3
           mkdir -p "$OUT"
@@ -151,7 +146,6 @@ jobs:
         env:
           TINYFISH_KEY: ${{ secrets.TINYFISH }}
         run: |
-          # Web search goes through its own relay, so the search key never reaches the task containers either.
           [ -n "$TINYFISH_KEY" ] || { echo "no TINYFISH secret; web search falls back to DuckDuckGo"; exit 0; }
           sudo install -m 755 .github/terminal-bench/search_relay.py /opt/relay/search_relay.py
           printf '%s' "$TINYFISH_KEY" | sudo -u nobody tee /opt/relay/search_key > /dev/null
@@ -199,12 +193,9 @@ jobs:
           [ -n "${SEARCH_RELAY:-}" ] && export MANGA_AGENT_SEARCH="http://$(cat /tmp/docker-gateway):$SEARCH_RELAY"
           export MANGA_AGENT_UV="$(readlink -f "$(command -v uv)")"
           TASKS="${{ needs.config.outputs.tasks }}"
-          # With no task list, each shard takes every Nth task of the sorted set so hard and easy ones spread evenly.
           [ -z "$TASKS" ] && TASKS=$(find /tmp/tb21/tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | awk -v n="${{ needs.config.outputs.shard_total }}" -v k="${{ matrix.shard }}" '(NR-1)%n==k {printf "-i %s ", $0}')
           echo "tasks in this shard: $(echo "$TASKS" | grep -o -- '-i ' | wc -l)"
-          # Large task images fill the disk, so images no container uses go once space runs low.
           (while sleep 120; do [ "$(df --output=avail -BG / | tail -1 | tr -dc 0-9)" -lt 25 ] && docker image prune -af >/dev/null; done) &
-          # Stop Harbor before the job limit so the summary and evidence steps still run.
           timeout 330m harbor run -p /tmp/tb21/tasks $TASKS --agent-import-path manga_agent:MangaAgent --model "$MANGA_AGENT_MODEL" \
             --env docker --n-concurrent "${{ needs.config.outputs.concurrent }}" --max-retries 1 \
             --jobs-dir "$PWD/jobs" --yes 2>&1 | tail -80 || true
@@ -237,12 +228,10 @@ jobs:
               for name in ("events.jsonl", "stderr.log"):
                   for src in glob.glob(f"{os.path.dirname(path)}/agent/{name}"):
                       shutil.copy(src, d)
-              # What the verifier printed, its last 20 kB per file, so a failed trial shows which test broke.
               for src in glob.glob(f"{os.path.dirname(path)}/verifier/*"):
                   if os.path.isfile(src):
                       os.makedirs(f"{d}/verifier", exist_ok=True)
                       open(f"{d}/verifier/{os.path.basename(src)}", "wb").write(open(src, "rb").read()[-20000:])
-              # A trial whose agent reached for the benchmark's own tests or pages is counted apart.
               log = open(f"{d}/events.jsonl", encoding="utf-8", errors="replace").read() if os.path.exists(f"{d}/events.jsonl") else ""
               calls = []
               for line in log.splitlines():

@@ -127,7 +127,6 @@ def _render_request_from_page(chapter_id: str, page_index: int, page: dict) -> R
         translations[oid] = str(obj.get("translation") or "")
         style = obj.get("style") or {}
         colors[oid] = str(style.get("color") or "auto")
-        # Only explicit picks are sent; auto/AI fonts must stay re-resolvable.
         mode = obj.get("font_selection_mode")
         font = style.get("font")
         if mode == "auto":
@@ -295,9 +294,6 @@ def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
 
     if len(items) == 1 and source_metadata[0] is None and source_heights[0] is None:
         if items[0].get("stitch_malformed"):
-            # A stitch_core key is present but unusable: the page was built
-            # with stitch metadata, so its absence is corruption, not a
-            # legacy chapter without any.
             raise HTTPException(
                 409,
                 f"Source page {source_page + 1} has malformed stitch metadata (slice {int(items[0]['page_index']) + 1}).",
@@ -363,11 +359,6 @@ def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
 def _snapshot_export_inputs(chapter_id: str, force: bool = False) -> list[dict]:
     with get_manifest_lock(chapter_id):
         manifest = load_manifest_raw(chapter_id)
-        # The ensured objects live in this in-memory manifest, which the
-        # gate and the snapshot below read; they are NOT saved here. This
-        # is a read path (export), and saving would mutate the chapter on
-        # every export. render_chapter is the write operation: it ensures
-        # and saves, because its render loop reloads the manifest per page.
         for page in manifest.get("pages", []):
             if not isinstance(page, dict) or page.get("skipped"):
                 continue
@@ -395,9 +386,6 @@ def _snapshot_export_inputs(chapter_id: str, force: bool = False) -> list[dict]:
                     "core_range": _core_range(page),
                     "source_core_range": source_core_range,
                     "source_height": source_height,
-                    # A stitch_core key that parses to nothing is corruption,
-                    # not a legacy chapter: the single-slice early return in
-                    # the stitch check must 409 on it, not accept it.
                     "stitch_malformed": ("stitch_core" in page
                                          and source_core_range is None and source_height is None),
                 }
@@ -523,9 +511,6 @@ def render_chapter(chapter_id: str, force: bool = False) -> dict:
             request = _render_request_from_page(chapter_id, page_index, page)
         result = render_page(request)
         rendered += 1
-        # A floor-skipped object leaves its region clean-empty; without
-        # a restore the page keeps a white hole (render N6). The job flow
-        # restores it — this path ignored render_page's return value.
         skipped_ids = [str(oid) for oid in (result.get("skipped_objects") or [])]
         if skipped_ids:
             restored, rerender_skipped, restore_error = _restore_skipped_and_rerender(

@@ -452,7 +452,7 @@ def test_without_a_window_toolkit_the_app_falls_back_to_the_browser(monkeypatch)
     monkeypatch.setitem(sys.modules, "webview", types.SimpleNamespace(
         settings={}, create_window=lambda *a, **kw: object(), start=no_gui))
     assert run._show_window("http://127.0.0.1:8000") is False
-    monkeypatch.setitem(sys.modules, "webview", None)  # not installed at all
+    monkeypatch.setitem(sys.modules, "webview", None)
     assert run._show_window("http://127.0.0.1:8000") is False
 
 

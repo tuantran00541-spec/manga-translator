@@ -1,4 +1,4 @@
-// A.I mode: paste a chapter URL, the server runs every step and hands back a ZIP.
+
 (() => {
   const POLL_MS = 1500;
   const JOB_KEY = "manga_ai_mode_job";
@@ -49,12 +49,12 @@
     const cloud = provider.value === CLOUD;
     const modelField = model.closest("label");
     if (modelField) modelField.hidden = cloud;
-    // Only DeepSeek reports token cost, so only there a budget can be enforced.
+    
     if (budgetField) budgetField.hidden = cloud || provider.value !== "deepseek";
-    // The judge runs behind the Manga Cloud gateway, or on MiniRouter for a user's own key.
+    
     const polishField = $("ai-mode-polish-field");
     if (polishField) polishField.hidden = !(cloud || window.aiProviderSettings?.[provider.value]?.capabilities?.judge);
-    // Manga Cloud picks its own reading model; the limit is for the user's own key.
+    
     const imagesField = $("ai-mode-images-field");
     if (imagesField) imagesField.hidden = cloud;
   }
@@ -358,7 +358,7 @@
     }));
   }
 
-  // Only the latest poll loop may apply responses; stale loops are discarded.
+  
   async function poll(jobId, generation) {
     if (generation === undefined) {
       generation = ++pollGeneration;
@@ -372,7 +372,7 @@
       if (job.status === "pending" || job.status === "running") {
         pollTimer = window.setTimeout(() => poll(jobId, generation), POLL_MS);
       } else if (job.status === "completed" && wasRunning && job.chapter_id) {
-        // A job finishing while watched opens its chapter; an old finished job only shows its summary.
+        
         window.showToast?.("A.I mode xong, đang mở chương.", "success");
         window.openLetteredChapter = job.chapter_id;
         window.resumeChapter?.(job.chapter_id);

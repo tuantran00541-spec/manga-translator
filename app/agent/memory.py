@@ -47,7 +47,6 @@ def add(home: Path, workspace: Path, scope: str, text: str) -> int:
     if not text:
         raise ValueError("text is empty")
     if has_secret(text):
-        # A note carrying a secret is refused, not persisted into future prompts.
         raise ValueError("not saved: the note looks like it contains a secret")
     rows = entries(home, workspace, scope)
     if text not in rows:

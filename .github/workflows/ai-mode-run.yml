@@ -1,6 +1,5 @@
 name: AI-mode run
 
-# Dispatch-only: pushing this file never starts a run by itself.
 on:
   workflow_dispatch:
     inputs:

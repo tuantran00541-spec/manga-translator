@@ -30,7 +30,7 @@ def _letters_u8(letters) -> np.ndarray | None:
     return array.astype(np.uint8)
 
 
-LEFTOVER_OUTLINE_RATIO = 1.5  # a leftover swallowing its target is the outline read as letters
+LEFTOVER_OUTLINE_RATIO = 1.5
 
 
 def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
@@ -46,14 +46,11 @@ def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
             and (box.x2 - box.x1) * (box.y2 - box.y1)
             >= LEFTOVER_OUTLINE_RATIO * max(1, (x2 - x1) * (y2 - y1))
         ):
-            # Outline read as letters: fold the mask overlap in, keep the rect tight.
             if box.mask is not None and box.mask.shape == (box.y2 - box.y1, box.x2 - box.x1):
                 mask |= box.mask[y1 - box.y1:y2 - box.y1, x1 - box.x1:x2 - box.x1]
             return
         ux1, uy1, ux2, uy2 = min(x1, box.x1), min(y1, box.y1), max(x2, box.x2), max(y2, box.y2)
         if box.mask is None or box.mask.shape != (box.y2 - box.y1, box.x2 - box.x1):
-            # No mask to fold in: the union would crash on None (or read
-            # misaligned rows), so the record stays as it was.
             logger.warning("Leftover box at ({}, {}) has no usable mask; leaving its record unfolded",
                            box.x1, box.y1)
             return
@@ -66,8 +63,8 @@ def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
                    box.x1, box.y1)
 
 
-LEFTOVER_PASSES = 3  # erase what the detector still sees after inpainting, up to this many times
-SEAM_CONTAINED = 0.5  # share of a core box inside a seam box for the two to be one text
+LEFTOVER_PASSES = 3
+SEAM_CONTAINED = 0.5
 
 
 def _contained(box: BubbleBox, seam: BubbleBox) -> bool:
@@ -93,11 +90,6 @@ def _fold_nested(boxes: list[BubbleBox]) -> list[BubbleBox]:
         b = _letter_geometry(head, getattr(head, "core", None))
         if _letters_coherent(a, b):
             return True
-        # A text flowing down into the next lobe shares its columns: the
-        # lower lines sit under the upper ones, so their letter boxes
-        # overlap in x. Two separate texts sit side by side, their columns
-        # disjoint. The veto only fires for the disjoint case; a flowing
-        # text folds, as it always did.
         if a is None or b is None:
             return True
         _, (ax1, _, ax2, _) = a
@@ -162,16 +154,10 @@ class PageProcessingMixin:
         detector_metrics = self.detector.last_metrics()
 
         if supplemental_detections:
-            # A core box inside a seam box is the same text; their masks join, as each can miss letters.
             detected = _fold_nested(apply_final_nms(
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,
             ))
-        # A box whose letters span both lobes of its bubble mask is two
-        # texts, not one: split it before the records are built, so the
-        # pieces carry their own lobe masks (the fold above cannot
-        # split, only join, and a double bubble the fold refused -- its
-        # lobes' letter columns are disjoint -- still needs dividing).
         from app.detector.kiuyha_detector import split_waist_boxes
         detected = split_waist_boxes(detected)
         detect_ms = (time.perf_counter() - detect_started_at) * 1000.0
@@ -195,7 +181,6 @@ class PageProcessingMixin:
             for b in detected
         ]
         for index in art:
-            # Art the detector took for text stays as drawn and out of translation; the editor can restore it.
             detector_records[index]["removed"] = True
             detector_records[index]["screened_art"] = True
         assign_stable_detector_box_ids(detector_records, existing_boxes)
@@ -214,7 +199,6 @@ class PageProcessingMixin:
                         record["detector_anchor"] = copy.deepcopy(old["detector_anchor"])
                     for key in ("x1", "y1", "x2", "y2"):
                         record[key] = int(old[key])
-                    # An overridden box moved: both masks belong to the old box.
                     record["_mask_array"] = None
                     record["_letters_array"] = None
                     record["bubble_mask"] = None
@@ -289,7 +273,6 @@ class PageProcessingMixin:
         second_pass_boxes = 0
         seen: set[tuple[int, int, int, int]] = set()
         for _ in range(LEFTOVER_PASSES if effective_boxes else 0):
-            # Text kept as art is never erased, and text that survived a pass unchanged will survive another.
             leftovers = [box for box in self.detector.leftover_boxes(clean_image, effective_boxes)
                          if not geometry_center_in_regions(
                              {"x1": box.x1, "y1": box.y1, "x2": box.x2, "y2": box.y2}, preserve_regions)

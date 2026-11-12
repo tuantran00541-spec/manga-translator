@@ -77,7 +77,7 @@ def test_sibling_edits_on_another_page_keep_the_render_current(tmp_path):
     before = render_input_signature(manifest, 1)
     sibling = manifest["pages"][0]["text_objects"][0]
     sibling["style"] = {"color": "#ffffff"}
-    sibling["source_cap_px"] = 40  # a sibling's own inputs do not enter this page's signature
+    sibling["source_cap_px"] = 40
     assert render_input_signature(manifest, 1) == before
 
 

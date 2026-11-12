@@ -41,7 +41,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Remove the '--' separator if present
     if args.command and args.command[0] == '--':
         args.command = args.command[1:]
 
@@ -49,7 +48,6 @@ def main():
         print("Error: No command specified to run")
         sys.exit(1)
 
-    # Parse server configurations
     if len(args.servers) != len(args.ports):
         print("Error: Number of --server and --port arguments must match")
         sys.exit(1)
@@ -61,11 +59,9 @@ def main():
     server_processes = []
 
     try:
-        # Start all servers
         for i, server in enumerate(servers):
             print(f"Starting server {i+1}/{len(servers)}: {server['cmd']}")
 
-            # Use shell=True to support commands with cd and &&
             process = subprocess.Popen(
                 server['cmd'],
                 shell=True,
@@ -74,7 +70,6 @@ def main():
             )
             server_processes.append(process)
 
-            # Wait for this server to be ready
             print(f"Waiting for server on port {server['port']}...")
             if not is_server_ready(server['port'], timeout=args.timeout):
                 raise RuntimeError(f"Server failed to start on port {server['port']} within {args.timeout}s")
@@ -83,13 +78,11 @@ def main():
 
         print(f"\nAll {len(servers)} server(s) ready")
 
-        # Run the command
         print(f"Running: {' '.join(args.command)}\n")
         result = subprocess.run(args.command)
         sys.exit(result.returncode)
 
     finally:
-        # Clean up all servers
         print(f"\nStopping {len(server_processes)} server(s)...")
         for i, process in enumerate(server_processes):
             try:

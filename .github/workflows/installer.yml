@@ -1,11 +1,8 @@
 name: Installer
 
-# Runs the real one-line install on fresh machines: a new shell finds `manga`, the heavy
-# libraries load, the app starts with every model, and `manga update` keeps the models.
 on:
   workflow_dispatch:
   push:
-    # The installer fetches a branch by name, so tags are left out.
     branches: ['**']
     paths:
       - install.ps1
@@ -40,16 +37,12 @@ jobs:
         shell: powershell
         run: |
           if ('${{ matrix.case }}' -eq 'no_vc_runtime') {
-            # The runner has the runtime; the installer is told it is missing, so it must download and run
-            # Microsoft's installer for real and then find a working runtime on its own.
             $env:MANGA_VC_ASSUME_MISSING = '1'
           }
           if ('${{ matrix.case }}' -eq 'accented_user_folder') {
-            # A user folder with accents, as many Vietnamese Windows accounts have.
             $name = 'Nguy' + [char]0x1EC5 + 'n V' + [char]0x0103 + 'n'
             $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "$name\AppData\Local"
             New-Item -ItemType Directory -Force $env:LOCALAPPDATA | Out-Null
-            # Written without a BOM: PowerShell 5.1's utf8 adds one, which would corrupt the variable name.
             [IO.File]::AppendAllText($env:GITHUB_ENV, "LOCALAPPDATA=$env:LOCALAPPDATA`n", (New-Object Text.UTF8Encoding $false))
           }
           Get-Content -Raw install.ps1 | Invoke-Expression
@@ -64,7 +57,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'manga --version failed' }
           $app = Join-Path (Split-Path (Split-Path $shim)) 'app'
           $python = Join-Path $app '.venv\Scripts\python.exe'
-          # The version reader must see the real runtime: a wrong number would send users into needless installs.
           & $python -c "import sys; sys.path.insert(0, r'$app'); from app import vc_runtime as v; print({n: v.file_version(v.system32() / n) for n in v.DLLS}, v.problems()); assert v.file_version(v.system32() / 'msvcp140.dll') >= v.MIN_VERSION and not v.problems()"
           if ($LASTEXITCODE -ne 0) { throw 'the Visual C++ runtime check is wrong on a real Windows' }
           & $python -c "import paddle, onnxruntime, cv2, paddleocr; print('paddle', paddle.__version__, 'ort', onnxruntime.__version__, onnxruntime.get_available_providers())"
@@ -118,7 +110,6 @@ jobs:
           $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + $env:Path
           $models = Join-Path (Split-Path (Split-Path (Get-Command manga).Source)) 'app\models'
           $before = (Get-Item (Join-Path $models 'lama-manga-dynamic.onnx')).LastWriteTimeUtc
-          # A package an older version needed must be gone after the update.
           $venv = Join-Path (Split-Path $models) '.venv\Scripts\python.exe'
           $uv = Join-Path (Split-Path (Split-Path $models)) 'uv\uv.exe'
           & $uv pip install --python $venv pyfiglet==1.0.2
@@ -149,13 +140,11 @@ jobs:
 
       - name: One-line install, as a user whose PATH lacks ~/.local/bin
         run: |
-          # The runner already has ~/.local/bin on PATH; a fresh user usually does not.
           export PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vx "$HOME/.local/bin" | paste -sd: -)"
           SHELL="$(command -v ${{ matrix.shell }})" sh < install.sh
 
       - name: A new terminal finds manga and the libraries load
         run: |
-          # A clean login shell of the user's kind: only its start-up files can put manga on PATH.
           env -i HOME="$HOME" TERM=dumb PATH=/usr/bin:/bin "$(command -v ${{ matrix.shell }})" -lic 'command -v manga && manga --version'
           python="$HOME/.local/share/manga-translator/app/.venv/bin/python"
           "$python" -c "import paddle, onnxruntime, cv2, paddleocr; print('paddle', paddle.__version__, 'ort', onnxruntime.__version__)"

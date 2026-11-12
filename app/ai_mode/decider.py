@@ -13,11 +13,8 @@ from app.logging_config import logger
 
 DECIDER_HOST = "api.minirouter.sh"
 DECIDER_MODEL = "perplexity/pplx-decider-v1.2"
-# Below this chance of lettering a box is left as art; on 242 bench blocks only art fell under it.
 ART_BELOW = 0.2
-# Below this chance of story text a slice is skipped; on three chapters only a "..." bubble fell under it.
 SKIP_BELOW = 0.2
-# Decision requests must fit in 32 KiB, so each image is kept well under that.
 MAX_JPEG_BYTES = 20000
 MAX_SIDE = 768
 MIN_SIDE = 160
@@ -84,7 +81,6 @@ def _all(api_base: str, api_key: str, urls: list, questions: dict) -> list:
         return list(pool.map(lambda url: ask(api_base, api_key, url, questions) if url else None, urls))
 
 
-# -- art the detector took for text ------------------------------------------------
 def screen_for(provider, api_key: str):
     """The art screen for this provider, or None when it cannot reach the decision model."""
     if not available(provider, api_key):
@@ -114,7 +110,6 @@ def art_boxes(api_base: str, api_key: str, image, boxes) -> set[int]:
     return {index for index, chance in enumerate(chances) if chance is not None and chance < ART_BELOW}
 
 
-# -- slices with no story text -------------------------------------------------------
 def tile_urls(image) -> list:
     """Square tiles down the slice, so small lettering survives the shrink; a tile too big to send is None."""
     height, width = image.shape[:2]
@@ -132,8 +127,6 @@ def story_chance(answers: dict | None) -> float | None:
         for entry in probs:
             if isinstance(entry, dict) and entry.get("choice", entry.get("name")) == "story":
                 probability = entry.get("probability")
-                # A story entry with no probability is unjudged, not storyless:
-                # defaulting to 0.0 would skip a slice the model never scored.
                 return float(probability) if isinstance(probability, (int, float)) else None
     return 1.0 if answer.get("choice") == "story" else 0.0 if answer.get("choice") else None
 
@@ -159,7 +152,6 @@ def storyless_slices(provider, api_key: str, indices: list[int], load) -> tuple[
         try:
             return slice_story(api_base, api_key, load(index))
         except Exception as exc:
-            # One unreadable slice must not abort the whole scan: keep it as unjudged.
             logger.warning("Slice {} could not be judged for story text: {}", index, exc)
             return None
 

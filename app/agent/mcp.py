@@ -25,23 +25,20 @@ from app.agent import sandbox
 
 try:
     import tomllib
-except ImportError:  # Python 3.10 has no TOML reader, so Codex's config is skipped there.
+except ImportError:
     tomllib = None
 
 PROTOCOL_VERSION = "2025-06-18"
 CLIENT_INFO = {"name": "chaos", "version": "1.0"}
 REQUEST_TIMEOUT = 120
 MAX_RESULT_CHARS = 20_000
-# A fresh nextCursor on every tools/list page would hang startup; cap the pages.
 MAX_TOOL_LIST_PAGES = 50
 KINDS = ("read", "edit", "exec", "net")
 MAX_RESTARTS = 3
-# Redirects are followed manually so each hop goes through the SSRF guard again.
 _MAX_HTTP_REDIRECTS = 5
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _ENV_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 _ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-# The harness judges read-only by tool name; a server's own readOnlyHint never skips approval.
 _READONLY_NAME_PREFIXES = ("get_", "list_", "read_", "fetch_", "search_", "describe_", "query_", "show_", "lookup_")
 _READONLY_NAMES = frozenset({"get", "list", "read", "fetch", "search", "describe", "query", "show", "status", "version", "ping", "help"})
 
@@ -130,7 +127,6 @@ def clean_config(config) -> dict:
         command, args = (command[0] if command else ""), [*command[1:], *args]
     command = str(command or "").strip()
     if command and not args and " " in command:
-        # A whole command line pasted into one field is split the way a shell would.
         parts = shlex.split(command, posix=os.name != "nt")
         command, args = parts[0], parts[1:]
     if not command:
@@ -194,7 +190,6 @@ def parse_pasted(text: str, name: str = "") -> dict[str, dict]:
         data = json.loads(text)
     except ValueError:
         try:
-            # Docs often show only the inner "name": {...} lines, sometimes with a trailing comma.
             data = json.loads("{" + text.rstrip(",") + "}")
         except ValueError as exc:
             raise ValueError("that is not JSON; paste the block from the server's docs") from exc
@@ -232,7 +227,6 @@ def _write_user(home: Path, data: dict) -> None:
     path = user_file(home)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    # Settings may hold tokens, so only this user can read the file (the sandbox keeps commands out of it too).
     with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=2, ensure_ascii=False)
     os.replace(tmp, path)
@@ -316,15 +310,11 @@ class _StdioTransport:
         command = config.get("command")
         if not command:
             raise MCPError("stdio server has no command")
-        # Scrubbed so the server never inherits the harness's provider keys and tokens.
         env = sandbox.clean_env()
-        # A server names genuinely-needed host variables in env_allowlist; the rest stays hidden.
         for name in config.get("env_allowlist") or ():
             if isinstance(name, str) and _ENV_NAME_RE.fullmatch(name) and name in os.environ:
                 env[name] = os.environ[name]
-        # Config-declared env layers on top, so declared values still reach the server.
         env.update({str(k): str(v) for k, v in (config.get("env") or {}).items()})
-        # Windows needs the full name of launchers such as npx.cmd.
         command = shutil.which(command, path=env.get("PATH")) or command
         self.proc = subprocess.Popen([command, *[str(a) for a in config.get("args") or []]], cwd=config.get("cwd") or cwd,
                                      env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -332,7 +322,6 @@ class _StdioTransport:
         self.waiting: dict[int, dict] = {}
         self.on_notify = None
         self.lock = threading.Condition()
-        # The last lines a server wrote to stderr say why it failed to start or stopped.
         self.errors: collections.deque[str] = collections.deque(maxlen=20)
         threading.Thread(target=self._read, daemon=True, name="mcp-stdio").start()
         threading.Thread(target=self._read_errors, daemon=True, name="mcp-stderr").start()
@@ -353,7 +342,6 @@ class _StdioTransport:
             except ValueError:
                 continue
             if "method" in message and "id" in message:
-                # The server asks something back (ping, roots); answer so it never waits on us.
                 result = {} if message["method"] == "ping" else {"roots": []} if message["method"] == "roots/list" else None
                 reply = {"jsonrpc": "2.0", "id": message["id"]}
                 reply.update({"result": result} if result is not None else {"error": {"code": -32601, "message": "not supported"}})
@@ -406,7 +394,6 @@ class _HttpTransport:
         self.url = config.get("url")
         if not self.url:
             raise MCPError("http server has no url")
-        # The configured URL goes through the same SSRF guard as the harness's web tools.
         try:
             validate_url(self.url)
         except HTTPException as exc:
@@ -432,7 +419,6 @@ class _HttpTransport:
                    "MCP-Protocol-Version": PROTOCOL_VERSION, **self.headers}
         if self.session_id:
             headers["Mcp-Session-Id"] = self.session_id
-        # Follow redirects manually (re-POSTing) so every hop is re-checked by the SSRF guard.
         url, redirects = self.url, 0
         while True:
             try:
@@ -498,7 +484,6 @@ class Server:
         self.name, self.cwd = name, cwd
         self.config = _expand(config)
         self.timeout = float(self.config.get("timeout") or REQUEST_TIMEOUT)
-        # Images a tool returns are saved here so the model can look at them with view_image.
         self.media_dir: Path | None = None
         self.tools_stale = False
         self.restarts = 0
@@ -541,7 +526,6 @@ class Server:
         return found
 
     def _list_tools(self) -> list[dict]:
-        # Every tool is kept for the page's switches; only the allowed ones reach the model.
         self.all_tools = self._list("tools/list", "tools")
         return [t for t in self.all_tools if offered(self.config, str(t["name"]))]
 

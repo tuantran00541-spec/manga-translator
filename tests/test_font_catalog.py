@@ -7,7 +7,6 @@ def test_catalog_contains_comic_categories_and_real_font_files():
     from app.render.font_catalog import load_font_catalog
 
     catalog = load_font_catalog()
-    # Trimmed to the majority-style set, so the floor is a sanity bound, not a target.
     assert 30 <= len(catalog.records) <= 80
     categories = {record.category for record in catalog.records}
     assert {"dialogue", "emphasis", "thought", "narration", "skill", "sfx", "horror", "romance"} <= categories
@@ -83,7 +82,6 @@ def test_punctuation_the_font_lacks_is_drawn_in_plain_form_in_the_same_font():
 def test_name_brackets_the_comic_font_lacks_become_plain_angle_brackets():
     from app.render.text_renderer import drawable, font_draws_text, get_font_path
 
-    # The World After the End 254: the translator kept the source's ⟨Illusion Tree⟩ brackets.
     dialogue = get_font_path("dialogue.mac-dinh-3")
     text = "Nhà cậu là ⟨Ảo Thụ⟩."
     assert not font_draws_text(dialogue, text)

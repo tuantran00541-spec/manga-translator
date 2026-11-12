@@ -5,14 +5,11 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 
-# Workspace folders first, so a project's own skill wins over a user one with the same name.
 WORKSPACE_DIRS = (".agents/skills", ".claude/skills", ".codex/skills")
 HOME_DIRS = (".manga-agent/skills", ".agents/skills", ".claude/skills", ".codex/skills")
-# Skills shipped with the app come last, so a project's or user's skill of the same name wins.
 BUILTIN_DIR = Path(__file__).parent / "builtin_skills"
 NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 MAX_SKILLS = 200
-# Skills are written for other harnesses too; this maps their tool names onto ours when one is loaded.
 NAMES = ("(Tool names here: TodoWrite is todo_write, Task or subagents are task or spawn_agent with wait_agent, Bash is run_command, "
          "Read, Edit and Write are read_file, edit_file and write_file, asking the user is ask_user.)")
 
@@ -87,7 +84,6 @@ def catalog(found: dict[str, Skill], paths: bool = False) -> str:
     if not paths:
         rows = "\n".join(f"- {s.name}: {_short(s.description)}" for s in shown)
         return f"Skills (load with the skill tool before a task that matches, at most three per task):\n{rows}"
-    # Each folder is named once, so the list does not repeat a long path per skill.
     groups: dict[Path, list[Skill]] = {}
     for s in shown:
         groups.setdefault(s.folder.parent, []).append(s)

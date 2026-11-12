@@ -2,7 +2,6 @@ from app import ort_utils
 
 
 def test_openvino_takes_the_text_detector_and_leaves_the_varying_inputs(monkeypatch):
-    # The scope named models removed long ago, so the text detector never ran on OpenVINO.
     monkeypatch.setenv("MANGA_ORT_PROVIDER", "openvino")
     monkeypatch.setenv("MANGA_ORT_OPENVINO_SCOPE", "detectors")
     assert ort_utils._openvino_selected("models/kiuyha-tuned-1023.onnx")

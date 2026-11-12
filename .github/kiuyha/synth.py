@@ -62,12 +62,12 @@ def _render(lines, kind, scale):
             draw.text((x, y - box[1]), line, font=font, fill=fill, stroke_width=stroke, stroke_fill=stroke_fill)
         y += box[3] - box[1] + gap
     effect = random.random()
-    if effect < 0.15:  # glow
+    if effect < 0.15:
         glow = canvas.filter(ImageFilter.GaussianBlur(size * 0.15))
         tinted = Image.new("RGBA", canvas.size, (*_colour(not light), 0))
         tinted.putalpha(glow.getchannel("A").point(lambda a: min(255, a * 3)))
         canvas = Image.alpha_composite(tinted, canvas)
-    elif effect < 0.3:  # drop shadow
+    elif effect < 0.3:
         shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
         shadow.putalpha(canvas.getchannel("A").filter(ImageFilter.GaussianBlur(2)))
         off = max(2, size // 12)
@@ -107,7 +107,7 @@ def draw_blocks(image, taken, count):
                 break
         else:
             continue
-        if kind == "dialogue" and random.random() < 0.4:  # a plain bubble behind the words
+        if kind == "dialogue" and random.random() < 0.4:
             pad = int(block.height * 0.25)
             bubble = (box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad)
             if _free(bubble, taken + added) and bubble[0] >= 0 and bubble[1] >= 0 and bubble[2] < w and bubble[3] < h:

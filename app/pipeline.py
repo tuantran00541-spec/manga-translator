@@ -137,7 +137,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             except HTTPException as exc:
                 if not from_zip:
                     raise
-                # One broken image in an archive does not sink the other pages.
                 logger.warning("Skip {} in the archive: {}", filename, exc.detail)
                 return
             out_path = raw_dir / f"{len(raw_paths):03d}{ext_map.get(fmt, '.png')}"
@@ -168,7 +167,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                             logger.warning(f"Đã đạt giới hạn tổng dung lượng {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB từ ZIP")
                             break
                         clean_name = Path(name.replace("\\", "/")).name
-                        # macOS adds __MACOSX folders and '._' resource files beside every page.
                         if name.startswith("__MACOSX/") or not clean_name or clean_name.startswith("."):
                             continue
                         if not clean_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
@@ -214,7 +212,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
 
         slice_results: dict[int, list] = {}
         if raw_paths:
-            # Slicing loads no model, so it uses the cores rather than the processing workers setting.
             max_workers = max(
                 1,
                 min(
@@ -306,11 +303,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         clipped_mask = box.mask
         if clipped_mask is not None:
             mask_h = clipped_mask.shape[0]
-            # Mask rows are top-aligned with the box: row 0 is the box's
-            # first source row. When the mask is shorter than the box (a
-            # mask from another frame), the box shrinks to the rows the
-            # mask actually covers instead of dropping the whole box; an
-            # empty intersection drops it.
             row_start = max(0, clipped_source_y1 - source_y1)
             row_end = min(mask_h, clipped_source_y2 - source_y1)
             if row_end <= row_start:
@@ -320,9 +312,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             clipped_source_y1 = source_y1 + row_start
             clipped_source_y2 = source_y1 + row_end
 
-        # The letters ride with the mask, clipped to the same rows; a
-        # letters array that does not match the mask's shape belongs to
-        # another frame and is dropped rather than read misaligned.
         clipped_letters = getattr(box, "letters", None)
         if clipped_letters is not None:
             if (box.mask is not None and clipped_letters.shape == box.mask.shape):
@@ -331,9 +320,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             else:
                 clipped_letters = None
 
-        # The core rides with the box, shifted and clipped like the mask:
-        # without the shift it still points at the strip, and the fold
-        # would judge coherence on the wrong rows.
         clipped_core = getattr(box, "core", None)
         if clipped_core is not None:
             cx1, cy1, cx2, cy2 = (int(v) for v in clipped_core)
@@ -362,8 +348,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         core = getattr(box, "core", None)
         if core is not None:
             core = (core[0], core[1] + offset_y, core[2], core[3] + offset_y)
-        # replace() carries the bubble mask as-is; its bbox and seed
-        # are slice coords, so they move with the box.
         return replace(box, y1=box.y1 + offset_y, y2=box.y2 + offset_y, core=core,
                        bubble_mask=shift_bubble_mask(getattr(box, "bubble_mask", None), 0, offset_y))
 
@@ -829,7 +813,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                         page["boxes"] = []
                         page["process_required"] = False
                     elif changed:
-                        # Only a page returning from "skipped" needs processing.
                         page["process_required"] = True
                     if changed:
                         bump_page_revision(page, "clean_revision")
@@ -840,11 +823,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
 
     @staticmethod
     def _sync_output_dir(chapter_id: str, manifest: dict, page_indices: list[int] | None = None) -> None:
-        # Sole owner of the output dir: a page's file on disk must agree
-        # with what the manifest claims about it. A skipped page ships in
-        # export as its clean-or-original fallback (M1), so the dir holds
-        # that same image instead of a hole; a page the manifest says is
-        # not rendered holds no file at all (M2), never a stale render.
         from app.config import OUTPUT_DIR
         from app.routers.image import _fallback_page_path
 

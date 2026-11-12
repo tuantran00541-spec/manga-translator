@@ -31,7 +31,7 @@ def test_the_model_sees_the_padded_box_at_full_and_half_size(ink_model):
 
 def test_an_outline_the_model_misses_is_erased_with_the_letters():
     image = np.full((400, 900, 3), (120, 140, 150), np.uint8)
-    cv2.putText(image, "WORTH", (120, 260), cv2.FONT_HERSHEY_DUPLEX, 4.0, (255, 255, 255), 40)  # thick white outline
+    cv2.putText(image, "WORTH", (120, 260), cv2.FONT_HERSHEY_DUPLEX, 4.0, (255, 255, 255), 40)
     cv2.putText(image, "WORTH", (120, 260), cv2.FONT_HERSHEY_DUPLEX, 4.0, (20, 20, 20), 12)
     box, mask = ctd_mask.letter_mask(image, (100, 120, 800, 300))
     outline = np.abs(image.astype(int) - (255, 255, 255)).sum(axis=2) < 30
@@ -58,7 +58,7 @@ def test_glow_round_letters_is_erased_to_the_background():
 def test_textured_art_below_the_letters_stays():
     rng = np.random.default_rng(4)
     image = np.empty((500, 1200, 3), np.uint8)
-    image[:170] = (225, 205, 185)  # light sky over dark trees
+    image[:170] = (225, 205, 185)
     image[170:] = np.clip(rng.normal(60, 18, (330, 1200, 3)), 0, 255).astype(np.uint8)
     for y in (200, 330):
         cv2.putText(image, "THE SLUMS", (160, y), cv2.FONT_HERSHEY_DUPLEX, 3.2, (255, 255, 255), 26)
@@ -73,7 +73,7 @@ def test_textured_art_below_the_letters_stays():
 def test_art_running_off_the_box_is_not_taken_as_glow():
     ctd_mask._session = InkModel(light_above=235)
     image = np.full((300, 800, 3), 40, np.uint8)
-    image[146:154, :] = 150  # a smooth bar of art crossing the whole panel
+    image[146:154, :] = 150
     cv2.putText(image, "GULP", (250, 190), cv2.FONT_HERSHEY_DUPLEX, 3.0, (250, 250, 250), 10)
     box, mask = ctd_mask.letter_mask(image, (230, 90, 560, 210))
     full = _full(image, box, mask)
@@ -88,7 +88,6 @@ def test_an_erased_block_is_passed_again_only_while_letters_remain():
 
 
 def test_letters_the_box_cuts_are_erased_up_to_the_end_of_the_line():
-    # Shadow Slave 1, slice 70: the detector box stopped short of "TRIALS" and "NIGHTMARE...".
     image = np.full((420, 1600, 3), 245, np.uint8)
     cv2.putText(image, "BY OVERCOMING TRIALS", (330, 180), cv2.FONT_HERSHEY_DUPLEX, 2.2, (15, 15, 15), 6)
     cv2.putText(image, "INSIDE THE NIGHTMARE...", (330, 290), cv2.FONT_HERSHEY_DUPLEX, 2.2, (15, 15, 15), 6)
@@ -97,20 +96,19 @@ def test_letters_the_box_cuts_are_erased_up_to_the_end_of_the_line():
     full = _full(image, box, mask)
     ink = image.max(axis=2) < 60
     line = ink.copy()
-    line[330:, :] = False  # the far bubble
+    line[330:, :] = False
     assert (full & line).sum() >= 0.98 * line.sum(), "the whole caption is erased, dots included"
     assert not (full & ink)[340:, 1440:].any(), "a separate text farther away is not taken"
     assert box[2] < 1440, "the box grows over the cut letters only"
 
 
 def test_every_dot_of_a_wide_ellipsis_stays_with_its_text():
-    # Shadow Slave 1, slice 70 cleaned from its core: the crop held all of "...", yet only the dot beside the E was kept.
     seed = np.zeros((120, 400), bool)
     for x in range(40, 200, 32):
-        seed[30:80, x:x + 24] = True  # letters the first box holds
+        seed[30:80, x:x + 24] = True
     for x in (212, 240, 268):
-        seed[70:80, x:x + 10] = True  # dots 18 px apart, the last two past the reach of the letters
-    seed[70:80, 380:390] = True  # a stray speck far from the text
+        seed[70:80, x:x + 10] = True
+    seed[70:80, 380:390] = True
     inside = np.zeros_like(seed)
     inside[:, :205] = True
     kept = ctd_mask._chained(seed, inside)
@@ -118,14 +116,13 @@ def test_every_dot_of_a_wide_ellipsis_stays_with_its_text():
     assert not kept[70:80, 380:390].any(), "a speck far from the text does not"
 
 def test_flecks_and_outline_scraps_beside_a_run_of_dots_do_not_join_it():
-    # 392 real text crops: a 1-4 px fleck or a bubble-outline scrap chained to the last dot grew a bite out of the outline.
     seed = np.zeros((120, 400), bool)
     for x in range(40, 200, 32):
         seed[30:80, x:x + 24] = True
     for x in (212, 240):
-        seed[70:80, x:x + 10] = True  # the dots
-    seed[72:74, 268:270] = True  # a 2 px fleck one step on
-    seed[50:80, 262:266] = True  # a thin outline scrap
+        seed[70:80, x:x + 10] = True
+    seed[72:74, 268:270] = True
+    seed[50:80, 262:266] = True
     inside = np.zeros_like(seed)
     inside[:, :205] = True
     kept = ctd_mask._chained(seed, inside)
@@ -133,7 +130,6 @@ def test_flecks_and_outline_scraps_beside_a_run_of_dots_do_not_join_it():
     assert not kept[72:74, 268:270].any() and not kept[50:80, 262:266].any(), "the fleck and the scrap do not"
 
 def test_one_image_always_gives_one_mask():
-    # The World After the End 254: a second call on the same crop grew a different mask, so LaMa painted it differently.
     ctd_mask._session = InkModel(light_above=225)
     rng = np.random.default_rng(7)
     patches = rng.integers(20, 120, (8, 20, 3)).astype(np.uint8)
@@ -146,10 +142,9 @@ def test_one_image_always_gives_one_mask():
 
 
 def test_a_soft_drop_shadow_on_a_flat_balloon_is_erased_but_the_outline_stays():
-    # Solo Swordmaster 1, slice 105: a grey blurred shadow the mask left behind came back as ghost letters.
     image = np.full((420, 1000, 3), 255, np.uint8)
-    image[:60] = (230, 200, 150)  # sky past the balloon, which makes the ring many-coloured
-    cv2.rectangle(image, (60, 90), (940, 390), (20, 20, 20), 5)  # the balloon outline
+    image[:60] = (230, 200, 150)
+    cv2.rectangle(image, (60, 90), (940, 390), (20, 20, 20), 5)
     shadow = np.zeros((420, 1000), np.uint8)
     cv2.putText(shadow, "STOP!!", (250, 290), cv2.FONT_HERSHEY_DUPLEX, 3.5, 255, 14)
     shadow = cv2.GaussianBlur(np.roll(shadow, (8, 8), (0, 1)), (0, 0), 4).astype(np.float32)[..., None] / 255
@@ -167,7 +162,7 @@ def test_a_soft_drop_shadow_on_a_flat_balloon_is_erased_but_the_outline_stays():
 def test_letters_on_a_dark_badge_are_erased_with_the_badge():
     ctd_mask._session = InkModel(light_above=200)
     image = np.full((300, 900, 3), (25, 15, 20), np.uint8)
-    cv2.rectangle(image, (60, 128), (420, 176), (150, 40, 120), -1)  # a purple scanlator badge
+    cv2.rectangle(image, (60, 128), (420, 176), (150, 40, 120), -1)
     cv2.putText(image, "SCANS.COM", (75, 165), cv2.FONT_HERSHEY_DUPLEX, 1.4, (230, 230, 230), 3)
     box, mask = ctd_mask.letter_mask(image, (70, 125, 410, 175))
     badge = np.zeros(image.shape[:2], bool)
@@ -176,9 +171,6 @@ def test_letters_on_a_dark_badge_are_erased_with_the_badge():
 
 
 def test_a_grey_gradient_bubble_keeps_its_fill():
-    # Former Supreme 1, slice 45: the crop spills out of the bubble, so the
-    # ring past it holds paper instead of the fill the letters sit on, and
-    # the mask flooded the gradient interior.
     image = np.full((400, 900, 3), 255, np.uint8)
     grad = np.repeat(np.linspace(90, 230, 300)[:, None].astype(np.uint8), 700, axis=1)
     yy, xx = np.mgrid[0:400, 0:900]
@@ -205,30 +197,30 @@ def test_a_white_bubble_round_the_letters_stays():
 
 def test_welded_glowing_letters_still_get_a_letter_tall_reach():
     seed = np.zeros((300, 600), bool)
-    seed[40:260, 50:550] = True  # glow welds three lines into one blob
+    seed[40:260, 50:550] = True
     prob = np.zeros(seed.shape, np.float32)
     for top in (50, 130, 210):
-        prob[top:top + 40, 60:540] = 1.0  # the surest pixels show the lines
+        prob[top:top + 40, 60:540] = 1.0
     assert ctd_mask.text_size(seed, prob) == 40
 
 
 def test_lines_set_close_together_are_not_read_as_one_tall_line():
     prob = np.zeros((200, 600), np.float32)
     for top in (20, 70, 120):
-        prob[top:top + 44, 60:540] = 1.0  # lines 44 px tall with 6 px leading
-        prob[top + 44:top + 50, 100:104] = 1.0  # one stroke bridges each gap
+        prob[top:top + 44, 60:540] = 1.0
+        prob[top + 44:top + 50, 100:104] = 1.0
     assert ctd_mask.text_size(prob > 0.3, prob) == 44
 
 
 def test_letter_tops_cut_by_the_image_edge_are_erased():
     full = np.full((300, 700, 3), 250, np.uint8)
-    cv2.ellipse(full, (350, 160), (320, 140), 0, 0, 360, (0, 0, 0), 4)  # a balloon outline in the ring
+    cv2.ellipse(full, (350, 160), (320, 140), 0, 0, 360, (0, 0, 0), 4)
     for y in (60, 130, 200):
         cv2.putText(full, "WHETHER WORLD", (110, y), cv2.FONT_HERSHEY_DUPLEX, 1.6, (10, 10, 10), 4)
-    image = np.ascontiguousarray(full[48:])  # the page starts through the first line
+    image = np.ascontiguousarray(full[48:])
     box, mask = ctd_mask.letter_mask(image, (100, 0, 600, 170))
     ink = image.max(axis=2) < 60
-    ink[:, :40] = ink[:, 660:] = False  # leave the outline out
+    ink[:, :40] = ink[:, 660:] = False
     top = ink[:6]
     assert (_full(image, box, mask)[:6] & top).sum() >= 0.9 * top.sum(), "letter parts at the edge go too"
 
@@ -237,8 +229,8 @@ def test_a_balloon_outline_the_model_reads_stays_out_of_the_seed():
     image = np.full((200, 300, 3), 255, np.uint8)
     cv2.ellipse(image, (150, 100), (140, 90), 0, 0, 360, (0, 0, 0), 3)
     seed = np.zeros((200, 300), bool)
-    seed[100:130, 120:180] = True  # the letters
-    seed[8:16, 120:180] = True  # a stretch of outline read as a letter
+    seed[100:130, 120:180] = True
+    seed[8:16, 120:180] = True
     image[100:130, 120:180] = 0
     kept = ctd_mask._line_art(image, seed, (0, 0))
     assert kept[110, 150] and not kept[10:14, 140:160].any()
@@ -248,5 +240,5 @@ def test_light_letters_on_a_dark_ground_are_not_taken_for_outline():
     image = np.zeros((120, 300, 3), np.uint8)
     seed = np.zeros((120, 300), bool)
     seed[40:80, 50:250] = True
-    image[50:70, 60:240] = 255  # the letters
+    image[50:70, 60:240] = 255
     assert ctd_mask._line_art(image, seed, (0, 0)).sum() == seed.sum()

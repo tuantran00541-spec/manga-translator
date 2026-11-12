@@ -13,7 +13,6 @@ def _obj(obj_id, y1, y2, translation="", **extra):
 
 
 def _chapter():
-    # The cut is at source y=2000; the bubble spans 1900-2200 with its centre (2050) in slice 1's core.
     top = _slice(0, 0, 2000, [_obj("a", 1900, 2200), _obj("solo", 100, 300, "Chào")])
     bottom = _slice(1232, 2000, 4000, [_obj("b", 668, 968, "Mẹ tôi có tâm hồn thi sĩ.",
                                             typography_role="dialogue", font_ai_id="dialogue.mac-dinh-3",
@@ -271,8 +270,6 @@ def test_review_repaint_with_original_ignores_isolated_specks(monkeypatch):
     original = np.full((400, 600, 3), 160, np.uint8)
     cv2.putText(original, "LEFT", (200, 220), cv2.FONT_HERSHEY_DUPLEX, 1.5, (0, 0, 0), 3)
     clean = np.full((400, 600, 3), 160, np.uint8)
-    # Isolated faint dots sitting on the old letters: model noise, not strokes.
-    # Grey, so the letter model reads no strokes and the ghost path decides.
     ink_y, ink_x = np.where(cv2.cvtColor(original, cv2.COLOR_BGR2GRAY) < 30)
     for y, x in list(zip(ink_y, ink_x))[::37]:
         clean[y, x] = (50, 50, 50)
@@ -282,7 +279,6 @@ def test_review_repaint_with_original_ignores_isolated_specks(monkeypatch):
 
 
 def test_both_slices_agree_on_the_owner_even_when_one_sees_the_text_cut():
-    # Slice 0 sees only the top of the bubble (1900-2050, centre in its own core); slice 1 sees it whole.
     top = _slice(0, 0, 2000, [_obj("a", 1900, 2050, "")])
     bottom = _slice(1232, 2000, 4000, [_obj("b", 668, 1168, "Chào")])
     manifest = {"pages": [top, bottom]}
@@ -296,9 +292,9 @@ def test_a_core_box_and_the_seam_box_holding_it_join_their_masks():
     from app.page_processing import _fold_nested
 
     seam = np.zeros((718, 1593), np.uint8)
-    seam[:, :900] = 255  # the seam pass missed the end of the line
+    seam[:, :900] = 255
     core = np.zeros((535, 1310), np.uint8)
-    core[:, 900:] = 255  # the core pass has it
+    core[:, 900:] = 255
     folded = _fold_nested([BubbleBox(0, 501, 1593, 1219, 0.6, seam, source_role="text_segmenter"),
                            BubbleBox(128, 768, 1438, 1303, 0.5, core, source_role="text_segmenter")])
     assert len(folded) == 1
@@ -312,9 +308,7 @@ def test_lines_split_from_one_title_become_one_object_before_translation():
     def obj(obj_id, x1, y1, x2, y2):
         return {"id": obj_id, "region": {"x1": x1, "y1": y1, "x2": x2, "y2": y2}, "translation": ""}
 
-    # Shadow Slave 1, slice 48: BY THE / NIGHTMARE / SPELL as three detector boxes.
     title = [obj("by", 441, 2857, 1100, 3136), obj("nightmare", 81, 3147, 1600, 3420), obj("spell", 521, 3456, 1092, 3720)]
-    # Two bubbles one above the other are two texts.
     bubbles = [obj("top", 200, 100, 700, 300), obj("bottom", 220, 380, 680, 560)]
     manifest = {"pages": [{"text_objects": title + bubbles}]}
     assert join_stacked_lines(manifest, [0]) == 2
@@ -356,7 +350,6 @@ def _cut_slice(source_y1, core_y1, core_y2, objects):
 def test_two_bubbles_of_one_balloon_stay_two_texts():
     from app.ai_mode.seams import join_stacked_lines
 
-    # Shadow Slave 1, slices 92, 95 and 106: each lobe of a double balloon holds its own line.
     lobes = (((477, 537, 1419, 1115), (219, 1221, 1182, 1824)), ((128, 533, 952, 1073), (375, 1135, 1459, 1711)),
              ((195, 324, 1021, 936), (272, 1047, 1435, 1726)))
     manifest = {"pages": [{"text_objects": [
@@ -368,8 +361,6 @@ def test_two_bubbles_of_one_balloon_stay_two_texts():
 def test_two_centred_bubbles_with_a_wide_letter_band_stay_two_texts():
     from app.ai_mode.seams import join_stacked_lines
 
-    # Absolute Regression 124, slice 30: two bubbles of one width, centred, 45px apart.
-    # The box tests all pass, but the lettering restarts after a 256px band holding both outlines.
     manifest = {"pages": [{"text_objects": [
         {"id": "upper", "region": {"x1": 0, "y1": 1902, "x2": 766, "y2": 2433}, "translation": "",
          "letter_bounds": {"x1": 120, "y1": 2018, "x2": 750, "y2": 2326}},
@@ -394,7 +385,6 @@ def test_fragments_of_one_block_with_a_narrow_letter_band_still_join():
 def test_a_sentence_split_by_a_slice_cut_is_lettered_once():
     from app.ai_mode.seams import join_stacked_lines, seam_mirror_ids, sync_seam_mirrors
 
-    # Shadow Slave 1, slices 5 and 6: BEFORE / OUR NIGHTMARES BECAME REALITY, cut between the two lines.
     manifest = {"pages": [
         _cut_slice(6369, 768, 3399, [("before", (443, 3132, 1150, 3471)), ("nightmares", (80, 3377, 1515, 3696))]),
         _cut_slice(9000, 768, 2857, [("before6", (447, 508, 1135, 840)), ("nightmares6", (8, 746, 1562, 1371))]),
@@ -413,9 +403,7 @@ def test_a_sentence_split_by_a_slice_cut_is_lettered_once():
 def test_a_mirror_of_a_joined_line_letters_the_block_it_joined():
     from app.ai_mode.seams import join_stacked_lines, sync_seam_mirrors
 
-    # The owner joins two stacked lines; its neighbour only sees the lower one, in the overlap.
     manifest = {"pages": [
-        # Listed lower line first, as slice 95 lists them.
         _cut_slice(0, 0, 1000, [("low", (380, 880, 1220, 1100)), ("top", (400, 700, 1200, 900))]),
         _cut_slice(700, 300, 2000, [("low_mirror", (380, 180, 1220, 400))]),
     ]}
@@ -454,7 +442,7 @@ def test_the_lettering_area_is_the_extent_the_erase_mask_covers():
     from app.image_io import encode_mask
 
     mask = np.zeros((300, 1171), np.uint8)
-    mask[40:260, 172:1201 - 165] = 255  # letters start 172 px into the padded box
+    mask[40:260, 172:1201 - 165] = 255
     page = {"boxes": [{"id": "box_a", "x1": 165, "y1": 827, "x2": 1336, "y2": 1127, "mask": encode_mask(mask)}],
             "text_objects": [{"id": "text_a", "source_boxes": ["box_a"], "region": {"x1": 165, "y1": 827, "x2": 1336, "y2": 1127}},
                              {"id": "manual", "source_boxes": [], "region": {"x1": 0, "y1": 0, "x2": 10, "y2": 10}}]}
@@ -464,7 +452,6 @@ def test_the_lettering_area_is_the_extent_the_erase_mask_covers():
 
 
 def test_a_found_box_grown_over_most_of_the_slice_keeps_its_own_rectangle(monkeypatch):
-    # Shadow Slave 1, slice 69: a found box grew over glowing art to the whole slice, and its caption was lettered there.
     import numpy as np
 
     from app.detector import kiuyha_detector
@@ -504,8 +491,6 @@ def test_an_overlap_context_box_gets_a_mirror_from_the_neighbour_that_owns_it():
     assert create_seam_mirrors(manifest) == [], "a second pass creates nothing"
     assert sync_seam_mirrors(manifest) == [0]
     assert mirror["translation"].startswith("Trọng tâm của sức mạnh Võ Lâm Minh")
-    # The copy letters where the owner does, so the two halves line up --
-    # even past this slice's bottom edge, where only drawing is clipped.
     assert mirror["region"] == {"x1": 26, "y1": 2645, "x2": 809, "y2": 3138}
 
 
@@ -520,8 +505,6 @@ def test_an_overlap_box_with_no_matching_neighbour_gets_no_mirror():
 def test_a_mirror_is_never_created_from_another_mirror():
     from app.ai_mode.seams import _owner
 
-    # Inconsistent on purpose: the only candidate in the neighbour is itself
-    # a copy, so creation must not chain copies across slices.
     owner = _obj("o", 100, 300, "Chào")
     mirror = _obj("m", 100, 300, "Chào", seam_owner={"page": 0, "id": "o"})
     manifest = {"pages": [_slice(0, 0, 2000, [owner]),
@@ -608,8 +591,6 @@ def test_a_stepped_box_repeating_its_first_sentence_is_lettered_once():
 def test_a_hyphenated_prefix_is_trimmed_by_words_not_whitespace_tokens():
     from app.ai_mode.seams import drop_duplicated_leading_text
 
-    # "It's" and "well-known" each normalise to two words, so the repeat is six
-    # words but only four whitespace tokens; trimming by tokens ate "that he".
     manifest = {"pages": [{"text_objects": [
         {"id": "upper", "region": {"x1": 100, "y1": 100, "x2": 500, "y2": 300},
          "translation": "It's a well-known fact."},
@@ -652,12 +633,12 @@ def test_distinct_short_dialogue_sharing_words_is_not_a_duplicate():
     from app.ai_mode.seams import drop_overlapping_letters
 
     pairs = [
-        ("Tôi không muốn đi", "Tôi không muốn về"),   # Jaccard 3/5 = 0.6
-        ("Anh nói gì vậy?", "Anh nói gì cơ?"),       # Jaccard 3/4 = 0.75
-        ("Đi đi", "Đi đi mau"),                      # substring / word-prefix
-        ("Anh ta...", "Anh ta đến rồi"),             # substring / word-prefix
-        ("Đừng đi", "Đừng đi mà"),                   # substring / word-prefix
-        ("Của tôi", "Của tôi!"),                     # identical words, 2-word line
+        ("Tôi không muốn đi", "Tôi không muốn về"),
+        ("Anh nói gì vậy?", "Anh nói gì cơ?"),
+        ("Đi đi", "Đi đi mau"),
+        ("Anh ta...", "Anh ta đến rồi"),
+        ("Đừng đi", "Đừng đi mà"),
+        ("Của tôi", "Của tôi!"),
     ]
     for small_text, big_text in pairs:
         manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, small_text),

@@ -23,7 +23,6 @@ from app.agent.session import AgentSession, AgentSessionManager, TOOLS_LIBRARY
 from app.agent.tools import Workspace
 
 
-# ---- helpers ----
 
 class _Prov:
     id = "stub"
@@ -69,13 +68,12 @@ def _quiet_thread_errors():
     return old, errors
 
 
-# ---- save() must survive non-serializable plugin-emitted data ----
 
 def test_h5_save_survives_nonserializable(mgr, ws):
     """an event carrying a non-JSON value must not break save()."""
     s = _make_session(mgr, ws, "0101020304050607")
     s.history.append({"role": "user", "content": "hi"})
-    s.emit("custom", payload=object())  # non-serializable payload
+    s.emit("custom", payload=object())
     s.save()
     data = json.loads(s.store.read_text(encoding="utf-8"))
     assert data["id"] == s.id
@@ -95,22 +93,19 @@ def test_h5_poisoned_turn_does_not_wedge(mgr, ws):
     s.emit("custom", payload=object())
     assert _wait_until(lambda: s.status == "idle", timeout=15), \
         f"session wedged in {s.status!r} by a save() crash"
-    # A follow-up starts a new turn instead of queueing forever.
     assert s.send("are you there?") is False
     assert _wait_until(lambda: s.status == "idle", timeout=15)
     s.close()
 
 
-# ---- concurrent save() must not tear the session file ----
 
 def test_h6_concurrent_save_no_tear(mgr, ws):
     """writers hammering save() while readers parse must tear nothing."""
     s = _make_session(mgr, ws, "0301020304050607")
-    # large payload: real overlap windows between the writers
     s.history = [{"role": "user", "content": "x" * 20000} for _ in range(80)]
     s.events = [{"seq": i, "type": "tool", "name": "read_file", "ok": True, "output": "y" * 500}
                 for i in range(200)]
-    s.save()  # prime, so readers never race the very first write
+    s.save()
     stop = threading.Event()
     failures, writes = [], [0]
 
@@ -157,7 +152,6 @@ def test_h6_save_roundtrip(mgr, ws):
     assert not leftovers, leftovers
 
 
-# ---- _start_scheduler must not double-start the tick thread ----
 
 def test_h7_start_scheduler_single_thread(mgr, ws):
     """two callers entering the check together start exactly one thread."""
@@ -170,7 +164,7 @@ def test_h7_start_scheduler_single_thread(mgr, ws):
     class Gate:
         def is_alive(self):
             entered.set()
-            time.sleep(0.3)  # let the peer enter the check too
+            time.sleep(0.3)
             return False
 
     s._scheduler = Gate()
@@ -210,7 +204,6 @@ def test_h7_tick_fires_each_schedule_once(mgr, ws):
     assert s.schedules[0]["next_at"] > time.time()
 
 
-# ---- concurrent _start_job must not collide on a job name ----
 
 def test_m5_concurrent_start_no_orphan(mgr, ws):
     """two racing starts must not orphan a job neither can stop."""
@@ -271,10 +264,9 @@ def test_m5_start_stop_job_normal(mgr, ws):
         j.stop()
 
 
-# ---- stop() during RPC answers pending .reqs; the worker times out ----
 
 class _NeverJob:
-    code = None  # never finishes on its own
+    code = None
 
 
 def test_m6_shutdown_answers_pending_req(mgr, ws, tmp_path):
@@ -285,7 +277,7 @@ def test_m6_shutdown_answers_pending_req(mgr, ws, tmp_path):
     s = _make_session(mgr, ws, "0601020304050607")
     rpc = tmp_path / "rpcA"
     rpc.mkdir(parents=True)
-    (rpc / "poison.req").write_text("{not json", encoding="utf-8")  # never answerable
+    (rpc / "poison.req").write_text("{not json", encoding="utf-8")
     t = threading.Thread(target=s._serve_chain, args=(rpc, _NeverJob()), daemon=True)
     t.start()
     time.sleep(0.3)
@@ -294,7 +286,6 @@ def test_m6_shutdown_answers_pending_req(mgr, ws, tmp_path):
     seen, res_seen = [], threading.Event()
 
     def worker():
-        # Poll exactly the way the worker's _call does.
         reply = rpc / "poison.res"
         deadline = time.time() + 8
         while not reply.exists() and time.time() < deadline:
@@ -303,8 +294,6 @@ def test_m6_shutdown_answers_pending_req(mgr, ws, tmp_path):
             res_seen.set()
         seen.append(reply.exists())
 
-    # The .res lives only between the shutdown sweep and the folder's removal;
-    # hold the removal until the worker has observed it (or 10s pass).
     real_rmtree = _shutil.rmtree
 
     def gated_rmtree(path, ignore_errors=False):
@@ -334,7 +323,7 @@ def test_m6_worker_call_eventually_times_out(tmp_path):
             self.now = time.time()
 
         def time(self):
-            self.now += 2000  # jump past the 1800s deadline on the second poll
+            self.now += 2000
             return self.now
 
         def sleep(self, s):
@@ -381,7 +370,6 @@ def test_m6_rpc_roundtrip(mgr, ws, tmp_path):
     assert isinstance(out, list) and out, out
 
 
-# ---- stop() catches jobs registered concurrently ----
 
 def test_m7_stop_catches_concurrent_register(tmp_path):
     """a job registered as stop() runs is still stopped, never leaked."""
@@ -417,8 +405,8 @@ def test_m7_stop_catches_concurrent_register(tmp_path):
             return ""
 
     class FakeJob:
-        code = 0           # finished...
-        alive = True       # ...but a child is still running: kept as a background job
+        code = 0
+        alive = True
         out = FakeOut()
         started = time.time()
         stopped = False
@@ -433,10 +421,10 @@ def test_m7_stop_catches_concurrent_register(tmp_path):
     guard = gitguard.snapshot(root)
     t = threading.Thread(target=s._await_job, args=(job, 30, guard), daemon=True)
     t.start()
-    time.sleep(0.5)  # _await_job is parked in GateDict.__setitem__, holding _usage_lock
+    time.sleep(0.5)
     stopper = threading.Thread(target=s.stop, daemon=True)
     stopper.start()
-    time.sleep(0.5)  # the stopper is parked on _usage_lock behind it
+    time.sleep(0.5)
     GateDict.gate.set()
     t.join(10)
     stopper.join(10)
@@ -456,7 +444,6 @@ def test_m7_stop_stops_background_jobs(mgr, ws):
     assert not job.alive
 
 
-# ---- _ensure_mcp must not start duplicate servers ----
 
 def _write_mcp_json(home: Path):
     mcpdir = home / ".manga-agent"
@@ -492,7 +479,6 @@ def test_m10_ensure_mcp_no_duplicate_start(mgr, ws, tmp_path):
     def fake_server(name, config, cwd):
         return _FakeServer(name, config, cwd, constructions, clock)
 
-    # The `self._mcp_ready = True` line inside _ensure_mcp, whatever its number.
     src, start = inspect.getsourcelines(AgentSession._ensure_mcp)
     set_line = start + next(i for i, l in enumerate(src) if "_mcp_ready = True" in l)
     at_set = {"A": threading.Event(), "B": threading.Event()}
@@ -504,11 +490,10 @@ def test_m10_ensure_mcp_no_duplicate_start(mgr, ws, tmp_path):
                     and frame.f_lineno == set_line):
                 at_set[name].set()
                 release.wait(timeout=15)
-                time.sleep(0.05)  # let the peer arrive before either stores
+                time.sleep(0.05)
             return tracer
         return tracer
 
-    # patch once for the whole test: a per-thread patch would restore the mock mid-run
     real_server = mcp.Server
     mcp.Server = fake_server
     try:
@@ -524,7 +509,6 @@ def test_m10_ensure_mcp_no_duplicate_start(mgr, ws, tmp_path):
         assert at_set["A"].wait(timeout=10), "thread A never reached the check"
         t2 = threading.Thread(target=go, args=("B",), daemon=True)
         t2.start()
-        # B must block on _mcp_lock, never reaching the check
         b_arrived = at_set["B"].wait(timeout=3)
         release.set()
         t1.join(15)
@@ -552,7 +536,6 @@ def test_m10_ensure_mcp_idempotent(mgr, ws, tmp_path):
     assert set(s.mcp_servers) == {"alpha", "beta"}
 
 
-# ---- job_stop releases the job's slot at once ----
 
 def test_m11_jobstop_frees_slots(mgr, ws):
     """stopping all jobs frees every MAX_JOBS slot immediately."""
@@ -574,7 +557,6 @@ def test_m11_jobstop_frees_slots(mgr, ws):
         j.stop()
 
 
-# ---- delete() during a turn stays deleted ----
 
 def test_l6_delete_during_turn_stays_deleted(mgr, ws):
     """the orphaned turn thread's save() must not resurrect the file."""
@@ -587,9 +569,9 @@ def test_l6_delete_during_turn_stays_deleted(mgr, ws):
     s.send("long task")
     assert _wait_until(lambda: s.status == "running", timeout=5)
     turn_thread = next(t for t in threading.enumerate() if t.name == f"agent-{s.id}")
-    mgr.delete(s.id)  # user deletes the session mid-turn
+    mgr.delete(s.id)
     assert not s.store.is_file(), "session file still present right after delete()"
-    turn_thread.join(15)  # the orphaned turn finishes...
+    turn_thread.join(15)
     time.sleep(0.5)
     assert not s.store.is_file(), "the orphaned turn thread's save() resurrected the session"
 
@@ -601,10 +583,9 @@ def test_l6_close_idle_session(mgr, ws):
     assert s.store.is_file()
     s.close()
     assert s.store.is_file(), "close() alone must not delete the session file"
-    s.save()  # no-op after close: must neither raise nor misbehave
+    s.save()
 
 
-# ---- _count_role counts through the atomic roles.add(cfg) ----
 
 def test_m8_count_role_atomic_budget(mgr, ws, tmp_path):
     """_count_role passes the role's cfg to roles.add: a spend that would push
@@ -621,10 +602,8 @@ def test_m8_count_role_atomic_budget(mgr, ws, tmp_path):
     try:
         s._count_role("thinker", 1, 60)
         assert _roles.today(home)["thinker"] == {"requests": 1, "tokens": 60}
-        # 60 + 50 > 100 tokens: the atomic check refuses, nothing more is counted.
         s._count_role("thinker", 1, 50)
         assert _roles.today(home)["thinker"] == {"requests": 1, "tokens": 60}
-        # The session's own tally still records the real spend.
         assert s.role_usage["thinker"] == {"requests": 2, "tokens": 110}
     finally:
         _roles._GOOD.clear()

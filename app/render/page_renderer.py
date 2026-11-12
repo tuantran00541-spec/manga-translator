@@ -58,14 +58,6 @@ def _rank_renders(rendered: list) -> list:
 
     corrected = [item for item in rendered if is_corrected(item)]
     pool = corrected if corrected else rendered
-    # A raw attempt that fits at source share beats frame-aware attempts
-    # that all fit below it: the share bar is about legibility, and a
-    # small corrected fit is not a better render than a legible raw one.
-    # The rescue needs a placed fit — a spilling raw attempt is the
-    # misplacement the share rule must not promote. A corrected attempt
-    # that spills is no better than one below share: both are failed
-    # placements, so either failure across the whole corrected pool
-    # lets a clean raw attempt back in.
     if corrected and all(stats_of(item).get("below_share")
                          or stats_of(item).get("spills_letter_box")
                          for item in corrected):
@@ -73,10 +65,6 @@ def _rank_renders(rendered: list) -> list:
                        if not is_corrected(item)
                        and not stats_of(item).get("below_share")
                        and not stats_of(item).get("spills_letter_box")]
-    # Placement first: ink mostly outside the source lettering's spot
-    # is a misplacement, and a misplaced attempt does not win on size —
-    # the share rule only ranks attempts that letter where the source
-    # was. Without a letter box every attempt ranks as placed, as before.
     pool.sort(key=lambda item: (bool(stats_of(item).get("spills_letter_box")),
                                 bool(stats_of(item).get("below_share")), item[0],
                                 -(stats_of(item).get("size") or 0), item[1]))
@@ -97,8 +85,8 @@ def _mask_bbox(mask):
     return (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
 
 
-INK_GAP = 4  # neighbouring texts keep this clear space between ink boxes
-INK_SHIFT_CAP = 64  # a nudge past this stops being a separation and starts relocating the text
+INK_GAP = 4
+INK_SHIFT_CAP = 64
 
 
 def _clearing_shift(cand_box, placed_boxes, height: int, frame=None, anchor_box=None,
@@ -182,9 +170,8 @@ def _render_region_for_text_object(obj: dict) -> dict:
     return region
 
 
-LETTER_MARGIN = 0.15  # room round the source lettering, as a share of its shorter side
-FIT_INSET = 0.04  # of the lettering width, pulled in on each side of a roomier attempt
-# A box that letters the translation below this share of the source size gives way to a roomier one.
+LETTER_MARGIN = 0.15
+FIT_INSET = 0.04
 SOURCE_SIZE_SHARE = 0.85
 
 
@@ -243,7 +230,6 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
     pixels = np.asarray(image)
     pad = ((top, bottom), (0, 0)) + (((0, 0),) if pixels.ndim == 3 else ())
     canvas = Image.fromarray(np.pad(pixels, pad, mode="edge"), mode=image.mode)
-    # The padded canvas sits `top` lower, so the mask's rows move with it.
     padded_style = style
     if top and isinstance(style.get("bubble_mask"), dict):
         padded_style = {**style, "bubble_mask": shift_bubble_mask(style["bubble_mask"], dy=top)}
@@ -252,9 +238,6 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
                         "letters_box": (style["letters_box"][0], style["letters_box"][1] + top,
                                         style["letters_box"][2], style["letters_box"][3] + top)}
     canvas = render_text_in_box(canvas, text, (x1, box[1] + top, x2, box[3] + top), **padded_style)
-    # The canvas is padded, so the ink box the fit recorded sits `top`
-    # lower than the slice it is cropped back onto — and ink past the
-    # slice edge is cropped away, not visible, so it leaves the box.
     stats = style.get("stats")
     if isinstance(stats, dict) and stats.get("ink_box") is not None:
         ix1, iy1, ix2, iy2 = stats["ink_box"]
@@ -450,13 +433,6 @@ def render_text_objects(
     placed_mask = np.zeros((img_h, img_w), dtype=bool)
     placed_boxes = []
     placed_frames: list[tuple] = []
-    # Paint in reading order, not manifest order: a block painted first
-    # owns its ink, and a later block fits around it instead of the other
-    # way round. Ties keep manifest order, so identical duplicates are
-    # unaffected by the sort. Framed blocks go before frameless text:
-    # a bubble's rays and bands measure the image it is drawn on, so a
-    # frameless glyph painted first reads as an outline to them, while
-    # a frameless fit is a rectangle fit and dodges placed ink cleanly.
     def _order_key(obj):
         region = _render_region_for_text_object(obj)
         framed = 0 if str(obj.get("container") or "").lower() in (
@@ -473,8 +449,6 @@ def render_text_objects(
         translation = style_get(req.translations, oid)
         if translation is None or translation == "":
             translation = obj.get("translation", "")
-        # Stored text can predate the record-point fix, and polish or a manual
-        # edit can rewrite a translation after it; collapse again here.
         translation = collapse_repeated_lines(translation)
         if not (translation or "").strip() or str(translation).strip().lower() in PLACEHOLDER_TRANSLATIONS:
             continue
@@ -503,21 +477,13 @@ def render_text_objects(
                 x1, y1, x2, y2, img_w, img_h,
             )
             continue
-        # The same region lettered twice with the same words is one text
-        # rendered over itself, so the second copy is skipped outright.
         dup_key = (coords_raw, translation.strip())
         if dup_key in seen_keys:
             if verdicts is not None:
                 verdicts.append({"id": oid, "guard": "dedup_exact"})
             continue
         seen_keys.add(dup_key)
-        # The layout uses the whole region even past the slice edge; only drawing is clipped.
         coords = (x1, coords_raw[1], x2, coords_raw[3])
-        # A system window cut by a slice edge is the exception: its text
-        # centred on the whole window lands on the frame's border in the
-        # cropped page, so the window is fitted to the kept part instead.
-        # A sliver of window keeps nothing: its full text lives on the
-        # neighbouring slice's page, where the kept part is bigger.
         if (obj.get("container") == "screen" and core_y1 is not None and core_y2 is not None):
             clipped_y1 = max(coords_raw[1], core_y1)
             clipped_y2 = min(coords_raw[3], core_y2)
@@ -595,10 +561,6 @@ def render_text_objects(
         bounds = obj.get("letter_bounds")
         if _valid_region(bounds):
             style["source_letter_box"] = tuple(int(bounds[k]) for k in ("x1", "y1", "x2", "y2"))
-        # The letter bitmap the trim needs to see a diagonal waist: the
-        # clean image cannot supply it, so the object carries it (framed
-        # on its region). A bitmap that no longer matches the region --
-        # a geometry override moved the box -- is ignored downstream.
         if obj.get("letters_mask"):
             from app.mask_store import decode_mask_value
 
@@ -609,29 +571,15 @@ def render_text_objects(
         fixed_size = ((isinstance(box_size, (int, float)) and box_size > 0)
                       or (isinstance(box_size, str) and box_size.isdigit()
                           and int(box_size) > 0))
-        # The lettering goes where the source lettering was, then roomier
-        # boxes; the attempt that letters fewest lines wins, ties largest.
-        # A bubble with a mask needs no ladder: the mask is the interior
-        # and the fit lays out on it, so every attempt would fit the same.
         attempts = fit_attempts(obj, coords)
         if isinstance(obj.get("bubble_mask"), dict) and obj["bubble_mask"].get("kind") == "bubble":
             attempts = [coords]
-        # Without a persisted mask the fit derives one per attempt — and
-        # the derivation follows the box: a tight box finds the bubble,
-        # a roomy one floods the panel past it. Derive once on the
-        # tightest attempt and share it, so every attempt lays out on
-        # the same bubble instead of each on its own flood.
         if (style.get("bubble_mask") is None
                 and str(obj.get("container") or "").lower() in ("bubble", "spiky")):
             from app.render.text_renderer import _derived_mask
             shared = _derived_mask(image, attempts[0], style.get("source_letter_box"))
             if isinstance(shared, dict) and shared.get("kind") == "bubble":
                 style["bubble_mask"] = shared
-        # Frameless text only: a stored break sized for a narrow box can
-        # strand a wide line as two small ones. The joined line is tried
-        # on the roomiest attempt at source share; it wins only when it
-        # fits there at share and actually drops a line, otherwise the
-        # stored breaks stand exactly as before.
         render_text = translation.strip()
         if (str(obj.get("container") or "").lower() == "free"
                 and "\n" in render_text and obj.get("source_cap_px")
@@ -661,14 +609,6 @@ def render_text_objects(
                         floor_only = False
                     last_error = exc
                     continue
-                # Ink mostly outside the source lettering's spot is a
-                # misplacement, not a size win: a roomier attempt that
-                # letters onto paper or art must not outrank the tight
-                # one that letters where the source was, however small.
-                # A longer translation may legitimately run a little
-                # past the source letters, so a sliver outside is no
-                # spill — only most of the ink being outside counts.
-                # Without a letter box there is nothing to judge against.
                 letter_spot = style.get("source_letter_box")
                 ink_box = attempt_stats.get("ink_box")
                 spills = False
@@ -681,12 +621,6 @@ def render_text_objects(
                 attempt_stats["spills_letter_box"] = spills
                 rendered.append((attempt_stats.get("lines", 0), attempt, candidate, attempt_stats))
             if not rendered:
-                # Text that fits nowhere at the readable floor is skipped,
-                # not shrunk past the floor — and it must not take the
-                # whole page down with it: the verdict below carries the
-                # object id, so the caller restores its original pixels
-                # and lists it for review, and the rest still paints.
-                # Anything else still aborts the page, as before.
                 if floor_only and last_error is not None:
                     logger.warning(
                         "Chapter {} page {} object {} below readable floor, left for review",
@@ -698,17 +632,6 @@ def render_text_objects(
                 if last_error is not None:
                     raise last_error
             else:
-                # The caller renders in place, so paint the chosen attempt
-                # back onto the image it passed in. The guard vetoes in
-                # ranked order: the first attempt whose ink pixels touch no
-                # placed ink is painted. Bounding boxes are the reader's
-                # eye in neither direction — tall blocks in overlapping
-                # bubbles share y-bands at different x, and glyphs can
-                # collide inside disjoint-looking boxes — so boxes judge
-                # nothing here, they only break ties between colliding
-                # attempts. A candidate for a frame already painted with
-                # the same words is the same text twice, whatever its
-                # region said, and gives way to the next attempt.
                 painted = False
                 best = None
                 verdict: dict = {"id": oid}
@@ -807,13 +730,6 @@ def render_text_objects(
                         })
                         painted = True
                     else:
-                        # No shift clears the ink, so the block is
-                        # re-fitted into the free part of its own frame
-                        # — below the blocking ink when the frame sits
-                        # below it, above when it sits above — instead
-                        # of being painted over its neighbour. A stacked
-                        # fit must read clear of placed ink and stay
-                        # inside the frame, or it is no fit at all.
                         stacked = None
                         if cand_frame is not None and cand_fit is not None:
                             blockers = [b for b in placed_boxes
@@ -839,13 +755,6 @@ def render_text_objects(
                                         continue
                                     sstats: dict = {"attempt_box": sbox}
                                     scandidate = None
-                                    # The sub-box is a slice of the frame, not
-                                    # the whole bubble: the mask is clipped to
-                                    # it, so this attempt fits the slice alone
-                                    # instead of refitting the whole bubble and
-                                    # colliding again. The clipped mask needs
-                                    # no trim -- and the full letters would
-                                    # re-cut it -- so it renders without them.
                                     stacked_mask = None
                                     if isinstance(style.get("bubble_mask"), dict):
                                         stacked_mask = clip_bubble_mask(
@@ -897,10 +806,6 @@ def render_text_objects(
                             })
                             painted = True
                         else:
-                            # No in-frame, order-preserving move clears
-                            # the ink, so the collision is painted and
-                            # labelled rather than hidden behind a
-                            # worse relocation.
                             logger.warning(
                                 "Chapter {} page {} object {} paints colliding ink (no clearing shift)",
                                 req.chapter_id, req.page_index, oid)
@@ -930,8 +835,6 @@ def render_text_objects(
                 if verdicts is not None:
                     verdicts.append(verdict)
                 if not painted:
-                    # Every attempt was the same frame and words as a
-                    # placed object: nothing painted, nothing counted.
                     continue
                 if painted:
                     rendered_count += 1

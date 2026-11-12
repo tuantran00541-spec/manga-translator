@@ -92,7 +92,6 @@ def restrict(writable: list[str], network: bool, deny_read: list[str] | None = N
         except OSError:
             return
         is_dir = os.path.isdir(path)
-        # Directories take every right; a lone file such as /dev/null takes the file rights only.
         granted = rights if is_dir else rights & (WRITE_FILE | TRUNCATE | READ_FILE)
         if granted:
             rule = ctypes.create_string_buffer(struct.pack("=Qi", granted, fd), 12)
@@ -106,8 +105,6 @@ def restrict(writable: list[str], network: bool, deny_read: list[str] | None = N
         allow(path, write | reads)
     for path in _allowed_siblings(deny_read or []) if deny_read else []:
         allow(path, reads)
-    # Landlock has no deny rules: a PATH_BENEATH grant on a parent covers denied files inside it.
-    # The --deny-read list is for the seatbelt/docker backends; on landlock the rule layer is the defense.
     if _libc.prctl(NO_NEW_PRIVS, 1, 0, 0, 0) != 0 or _libc.syscall(RESTRICT_SELF, ruleset, 0) < 0:
         raise OSError(ctypes.get_errno(), "landlock_restrict_self failed")
     os.close(ruleset)
@@ -123,7 +120,6 @@ class _Program(ctypes.Structure):
 
 ARCHES = {"x86_64": (0xC000003E, 41), "AMD64": (0xC000003E, 41), "aarch64": (0xC00000B7, 198), "arm64": (0xC00000B7, 198)}
 IO_URING_SETUP = 425
-# Internet, packet, Bluetooth and VM-host sockets; local Unix sockets stay possible.
 BLOCKED_DOMAINS = (2, 10, 17, 31, 40)
 SECCOMP_RET_KILL_PROCESS, SECCOMP_RET_ALLOW, SECCOMP_RET_EPERM = 0x80000000, 0x7FFF0000, 0x00050001
 
@@ -138,7 +134,6 @@ def _program(arch: int, socket_nr: int) -> list[tuple[int, int, int, int]]:
         steps.append(("label", "next"))
     steps += [("label", "allow"), ("ret", SECCOMP_RET_ALLOW), ("label", "deny"), ("ret", SECCOMP_RET_EPERM),
               ("label", "kill_x32"), ("ret", SECCOMP_RET_KILL_PROCESS)]
-    # Resolve labels: each label is the index of the instruction that follows it; "next" always means the following instruction.
     out, labels, pending = [], {}, []
     index = 0
     for step in steps:
@@ -185,7 +180,6 @@ def main(argv: list[str] | None = None) -> int:
         print(abi())
         return 0
     try:
-        # No core dumps, and no single file larger than 1 GiB: a runaway command cannot fill the disk.
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         resource.setrlimit(resource.RLIMIT_FSIZE, (1 << 30, 1 << 30))
     except (ValueError, OSError):

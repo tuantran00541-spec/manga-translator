@@ -9,7 +9,7 @@ from app.downloader import http
 def test_a_name_that_turns_private_after_the_check_is_refused(monkeypatch):
     for name in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(http, "validate_url", lambda url: url)  # the first check saw a public address
+    monkeypatch.setattr(http, "validate_url", lambda url: url)
     real = socket.getaddrinfo
 
     def rebound(host, *args, **kwargs):

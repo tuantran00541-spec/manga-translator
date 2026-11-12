@@ -60,10 +60,6 @@ def _ordered_reader_urls(candidates: list[tuple[int, str]]) -> list[str]:
         out.append(by_page[page_number])
         page_number += 1
     if by_page and page_number <= max(by_page):
-        # A gap: pages exist past the first missing number. Stopping here
-        # silently truncated the chapter at the gap, so fail loudly
-        # instead -- the registry falls through to the JS adapter on this
-        # error, which preserves DOM order and does not number pages.
         highest = max(by_page)
         logger.warning(
             "Asura chapter page list has a gap at page {}; found pages up to {}; refusing to truncate",

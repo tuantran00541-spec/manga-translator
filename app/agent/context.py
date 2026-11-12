@@ -9,16 +9,13 @@ import threading
 
 from app.agent.skills import frontmatter
 
-# Context files that restate what the code shows hurt more than they help, so only a short one is read.
 MAX_INSTRUCTIONS = 8_000
-# Instruction files the main coding agents read, in the order they are given to the model.
 WORKSPACE_INSTRUCTIONS = ("AGENTS.md", "CLAUDE.md", ".claude/CLAUDE.md")
 HOME_INSTRUCTIONS = (".manga-agent/AGENTS.md", ".codex/AGENTS.md", ".claude/CLAUDE.md")
 WORKSPACE_SETTINGS = (".agents/settings.json", ".claude/settings.json", ".claude/settings.local.json")
 HOME_SETTINGS = (".manga-agent/settings.json", ".claude/settings.json")
 WORKSPACE_COMMANDS = (".agents/commands", ".claude/commands")
 HOME_COMMANDS = (".manga-agent/commands", ".claude/commands", ".codex/prompts")
-# Claude Code's tool names, so hooks written for it match the same actions here.
 CLAUDE_NAMES = {"run_command": "Bash", "write_file": "Write", "edit_file": "Edit",
                 "read_file": "Read", "search": "Grep", "glob": "Glob", "list_dir": "LS", "web_fetch": "WebFetch",
                 "todo_write": "TodoWrite", "task": "Task"}
@@ -109,7 +106,6 @@ class TrustStore:
     """What the user allowed to start in each workspace: MCP servers and hooks, pinned to their exact config."""
 
     def __init__(self, path: Path | None):
-        # Without a file, what the user allows holds for this process only.
         self.path, self._memory = path, {}
         self._cached: tuple[int, dict] | None = None
 

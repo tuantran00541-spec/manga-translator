@@ -127,9 +127,6 @@ def test_a_fixed_size_that_crosses_a_spiky_outline_falls_back_to_the_fit():
 
 
 def test_fragmented_mask_falls_back_to_a_rectangle_fit():
-    # A mask whose rows are slivers is shading, not an interior: the
-    # fit falls back to a rectangle on the mask's bbox instead of
-    # collapsing onto the slivers.
     image = _ellipse_bubble("white")
     draw = ImageDraw.Draw(image)
     fragmented = {"bbox": [60, 60, 640, 340], "cx": 350, "cy": 200,
@@ -147,10 +144,6 @@ def _two_lobe_bubble():
     image = Image.new("RGB", (400, 600), "black")
     draw = ImageDraw.Draw(image)
     draw.ellipse([40, 40, 360, 240], fill="white", outline=(0, 0, 0), width=3)
-    # The lower lobe is roomy enough that a full-length second block fits
-    # it at a readable size on every platform's font metrics, so the
-    # stacking test exercises the clipped-mask path rather than the
-    # readable-floor boundary (which shifts between Linux and Windows).
     draw.ellipse([50, 300, 350, 560], fill="white", outline=(0, 0, 0), width=3)
     draw.rectangle([194, 235, 206, 305], fill="white")
     return image
@@ -158,8 +151,6 @@ def _two_lobe_bubble():
 
 def test_two_lobe_bubble_letters_only_the_source_lobe():
     image = _two_lobe_bubble()
-    # The union mask holds both lobes; the waist between them is real
-    # and the lettering sits in the top one, so the trim keeps the top.
     mask = derive_bubble_mask(np.asarray(image)[:, :, ::-1].copy(),
                               (40, 40, 360, 470), seed=(200, 140))
     assert mask is not None and mask["kind"] == "bubble"
@@ -225,7 +216,6 @@ def test_stacked_second_block_uses_the_clipped_mask():
     assert by_id["b"]["guard"] == "stacked", f"second block took {by_id['b']}"
     both_ink = _ink_mask(base, image)
     assert both_ink is not None
-    # The stacked ink stays inside the frame, below the first block.
     second_ink = both_ink & ~first_ink
     ys, xs = np.nonzero(second_ink)
     assert len(xs) > 0, "second block lettered nothing"
@@ -242,8 +232,6 @@ def test_placeholder_translation_is_blank_not_lettered():
 
 
 def _ink_bands(base, image):
-    # Diacritics sit a pixel or two above the cap line, so one line of
-    # Vietnamese reads as two raw bands; merge gaps under a line pitch.
     diff = (np.abs(np.asarray(image).astype(int) - np.asarray(base).astype(int)).max(axis=2) > 0)
     rows = diff.sum(axis=1)
     raw, in_band = [], False

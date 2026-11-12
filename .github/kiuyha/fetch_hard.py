@@ -30,7 +30,6 @@ def main(out):
         added = sum(1 for n in z.namelist() if n.startswith("images/"))
         z.extractall(root)
     zip_path.unlink()
-    # The zip holds flat images/ + labels/; kiuyha-data wants images/train/.
     (root / "images" / "train").mkdir(parents=True, exist_ok=True)
     (root / "labels" / "train").mkdir(parents=True, exist_ok=True)
     for p in (root / "images").glob("*.jpg"):

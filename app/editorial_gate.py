@@ -18,7 +18,6 @@ EDITORIAL_DISPOSITIONS = frozenset(
 EDITORIAL_DROP_DISPOSITIONS = frozenset(
     {"duplicate", "non_story", "noise", "preserve"}
 )
-# System-set, never human-reviewed: untranslated text blocks export instead of vanishing silently.
 UNTRANSLATED_DISPOSITION = "untranslated"
 CLEANUP_DISPOSITIONS = frozenset(
     {"manual_cleaned", "preserve_source", "false_positive", "covered_by_duplicate"}
@@ -459,11 +458,11 @@ def editorial_preflight(
             if obj.get("source_missing") or text_object_in_preserve_region(page, obj):
                 continue
             if str(obj.get("joined_into") or "") in live_ids:
-                continue  # its line is lettered by the object it joined
+                continue
             if obj.get("seam_owner"):
-                continue  # lettered by its owner; the owner carries the verdict
+                continue
             if obj.get("overlap_dropped"):
-                continue  # its text is lettered by the keeper it duplicated
+                continue
             oid = str(obj.get("id") or "")
             if oid and oid in checked_objects:
                 continue
@@ -473,7 +472,6 @@ def editorial_preflight(
                 checked_objects.add(oid)
 
             if _norm(obj.get("editorial_disposition")) == UNTRANSLATED_DISPOSITION:
-                # Fail closed: block export until the text is translated or a human reviews it.
                 _append_blocker(
                     blockers,
                     blocker_keys,
@@ -489,7 +487,6 @@ def editorial_preflight(
             source_text = str(obj.get("ocr_text") or "").strip()
             translation = str(obj.get("translation") or "").strip()
             disposition = _reviewed_disposition({}, [obj])
-            # A reviewed credit, duplicate, noise or kept-as-drawn object is not lettered, so it needs no translation.
             if disposition in EDITORIAL_DROP_DISPOSITIONS:
                 continue
             if not source_text and not translation:

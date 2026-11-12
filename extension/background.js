@@ -1,4 +1,4 @@
-// Takes the chapter images the user's own browser already shows and uploads them to the local app.
+
 const DEFAULT_SERVER = "http://127.0.0.1:8000";
 const KEPT_FORMATS = new Set(["image/png", "image/jpeg", "image/webp", "image/bmp"]);
 const REFERER_RULE = 1;
@@ -7,17 +7,17 @@ async function setStatus(status) {
   await chrome.storage.session.set({ status: { ...status, at: Date.now() } });
 }
 
-// Runs inside each frame: scrolls to wake lazy images, then lists the images and canvases in reading order.
+
 async function collectPage(autoScroll) {
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const lazy = ["data-src", "data-lazy-src", "data-original", "data-url"];
   const shown = (node) => node.getBoundingClientRect();
   const lazySrc = (node) => lazy.map((name) => node.getAttribute(name)).find(Boolean);
-  // A tall slot still showing a tiny picture is a page that has not loaded yet.
+  
   const waiting = (node) => node.tagName === "IMG" && shown(node).width >= 200 && shown(node).height >= 150
     && !lazySrc(node) && (!node.complete || node.naturalHeight < 100);
   if (autoScroll) {
-    // Readers often scroll a box of their own instead of the window.
+    
     const boxes = [...document.querySelectorAll("*")].filter((el) => el.scrollHeight > el.clientHeight + 50
       && /(auto|scroll)/.test(getComputedStyle(el).overflowY));
     const box = [document.scrollingElement || document.documentElement, ...boxes]
@@ -30,7 +30,7 @@ async function collectPage(autoScroll) {
       await sleep(250);
     }
     await sleep(800);
-    // Pages that were scrolled past before they loaded get a second look.
+    
     const gaveUp = new Set();
     for (const deadline = Date.now() + 30000; Date.now() < deadline;) {
       const pending = [...document.querySelectorAll("img")].find((node) => waiting(node) && !gaveUp.has(node));
@@ -48,7 +48,7 @@ async function collectPage(autoScroll) {
     const { width, height } = shown(node);
     if (width < 200) continue;
     if (node.tagName === "CANVAS") {
-      try { items.push({ data: node.toDataURL("image/png"), width, height }); } catch { /* a canvas drawn from another site cannot be read */ }
+      try { items.push({ data: node.toDataURL("image/png"), width, height }); } catch {  }
       continue;
     }
     let src = node.currentSrc || node.src || "";
@@ -58,7 +58,7 @@ async function collectPage(autoScroll) {
       if (height >= 150) missing.push({ width, height });
       continue;
     }
-    // A loaded strip this thin is a divider, never a page.
+    
     if (!placeholder && node.naturalHeight && node.naturalHeight < 100) continue;
     src = new URL(src, location.href).href;
     if (seen.has(src)) continue;
@@ -76,7 +76,7 @@ async function collectPage(autoScroll) {
   return { title: document.title, page: location.href, items, missing };
 }
 
-// Keeps the pages: the width most of the chapter is shown at, minus banners and thumbnails.
+
 function chapterPages(frames) {
   const all = frames.flatMap(({ frameId, result }) => (result?.items || []).map((item) => ({ ...item, frameId, page: result.page })));
   const weight = new Map();
@@ -95,12 +95,12 @@ async function findServer() {
     try {
       const reply = await fetch(`${base}/health`, { signal: AbortSignal.timeout(1500) });
       if (reply.ok && "models_missing" in (await reply.json())) return base;
-    } catch { /* not this port */ }
+    } catch {  }
   }
   return null;
 }
 
-// Tells the app which version Chrome loaded; true when the app holds a newer one.
+
 async function outdated(server) {
   try {
     const reply = await fetch(`${server}/api/extension/hello`, {
@@ -110,7 +110,7 @@ async function outdated(server) {
   } catch { return false; }
 }
 
-// Image hosts often refuse requests that do not come from the chapter page.
+
 async function sendAsPage(page) {
   if (sendAsPage.current === page) return;
   sendAsPage.current = page;
@@ -125,7 +125,7 @@ async function sendAsPage(page) {
   });
 }
 
-// Runs inside the page: fetches one image with the page's own origin and cookies.
+
 async function fetchInPage(url) {
   const blob = await (await fetch(url, { credentials: "include" })).blob();
   return new Promise((done) => { const reader = new FileReader(); reader.onload = () => done(reader.result); reader.readAsDataURL(blob); });
@@ -135,7 +135,7 @@ async function download(tabId, item) {
   try {
     const reply = await fetch(item.url || item.data, { credentials: "include" });
     if (reply.ok) return reply.blob();
-  } catch { /* try again from the page */ }
+  } catch {  }
   const [{ result }] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [item.frameId] }, func: fetchInPage, args: [item.url] });
   return (await fetch(result)).blob();
 }
@@ -180,7 +180,7 @@ async function grab(tabId, autoScroll) {
         const ext = blob.type.split("/")[1].replace("jpeg", "jpg");
         form.append("files", blob, `${String(index + 1).padStart(3, "0")}.${ext}`);
         kept++;
-      } catch { /* one broken image does not stop the chapter */ }
+      } catch {  }
     }
   } finally {
     sendAsPage.current = null;

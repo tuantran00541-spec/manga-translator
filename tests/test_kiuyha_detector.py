@@ -35,12 +35,12 @@ class _Session:
             x1, y1, x2, y2 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
             cols = np.zeros((1, 5, 400), np.float32)
             cols[0, :, 0] = [(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1, 0.9]
-            cols[0, :, 1] = [(x1 + x2) / 2 + 1, (y1 + y2) / 2, x2 - x1, y2 - y1, 0.8]  # NMS drops it
-            cols[0, :, 2] = [20, 20, 10, 10, 0.1]  # below the threshold
+            cols[0, :, 1] = [(x1 + x2) / 2 + 1, (y1 + y2) / 2, x2 - x1, y2 - y1, 0.8]
+            cols[0, :, 2] = [20, 20, 10, 10, 0.1]
             return [cols]
         rows = np.zeros((1, 300, 6), np.float32)
         rows[0, 0] = [xs.min(), ys.min(), xs.max() + 1, ys.max() + 1, 0.9, 0]
-        rows[0, 1] = [0, 0, 50, 50, 0.1, 0]  # below the threshold
+        rows[0, 1] = [0, 0, 50, 50, 0.1, 0]
         return [rows]
 
 
@@ -79,8 +79,8 @@ def _text_slice():
     import cv2
 
     image = np.full((2400, 800, 3), (250, 235, 220), np.uint8)
-    for y in (300, 1250, 2150):  # top half, the overlap, bottom half
-        cv2.putText(image, "HELLO", (180, y), cv2.FONT_HERSHEY_DUPLEX, 2.5, (255, 255, 255), 16)  # outline
+    for y in (300, 1250, 2150):
+        cv2.putText(image, "HELLO", (180, y), cv2.FONT_HERSHEY_DUPLEX, 2.5, (255, 255, 255), 16)
         cv2.putText(image, "HELLO", (180, y), cv2.FONT_HERSHEY_DUPLEX, 2.5, (40, 60, 110), 6)
     return image
 
@@ -95,7 +95,7 @@ def test_tall_slice_runs_coarse_and_page_scale_passes_and_masks_letters_with_out
     for baseline in (300, 1250, 2150):
         assert any(b.y1 < baseline - 20 and b.y2 > baseline for b in boxes), baseline
     paper = np.array((250, 235, 220))
-    ink = np.abs(image.astype(int) - paper).sum(axis=2) > 30  # letters and outline
+    ink = np.abs(image.astype(int) - paper).sum(axis=2) > 30
     covered = np.zeros(image.shape[:2], bool)
     for b in boxes:
         covered[b.y1:b.y2, b.x1:b.x2] |= b.mask > 0
@@ -117,7 +117,7 @@ class _BlobSession(_Session):
         self.blobs.append(blob)
         gray = (blob[0].transpose(1, 2, 0) * 255).astype(np.uint8)
         ink = (np.abs(gray.astype(int) - gray[0, 0].astype(int)).sum(axis=2) > 30).astype(np.uint8)
-        ink[:, :] &= (np.abs(gray.astype(int) - 114).sum(axis=2) > 10).astype(np.uint8)  # not the letterbox
+        ink[:, :] &= (np.abs(gray.astype(int) - 114).sum(axis=2) > 10).astype(np.uint8)
         count, _, stats, _ = cv2.connectedComponentsWithStats(cv2.dilate(ink, np.ones((25, 25), np.uint8)))
         cols = np.zeros((1, 5, 400), np.float32)
         for i, (x, y, w, h, _a) in enumerate(stats[1:count]):
@@ -132,7 +132,7 @@ def test_second_pass_takes_only_first_pass_boxes_the_letter_model_still_reads():
     first = detector.text_boxes(image)
     runs = len(session.blobs)
     clean = image.copy()
-    clean[1100:1400] = (250, 235, 220)  # the middle line was erased
+    clean[1100:1400] = (250, 235, 220)
     leftovers = detector.leftover_boxes(clean, first)
     assert len(leftovers) == 2 and not any(1100 <= b.y1 < 1400 for b in leftovers)
     assert len(session.blobs) == runs, "the box model is not run again"
@@ -201,8 +201,6 @@ def test_a_rescued_word_needs_a_letter_standing_inside_its_box():
     word = np.full((200, 300, 3), 255, np.uint8)
     cv2.putText(word, "HELLO", (40, 120), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 3)
     assert _has_letter_piece(word, (20, 60, 280, 160))
-    # Strokes that run off the box's edges are fragments of a bigger
-    # shape, not a word, however letter-sized the pieces look.
     strokes = np.full((200, 300, 3), 255, np.uint8)
     for x in (60, 120, 180):
         cv2.rectangle(strokes, (x, 0), (x + 25, 200), (0, 0, 0), -1)
@@ -260,8 +258,7 @@ class _WholeSession(_Session):
 
 
 def test_two_captions_in_a_staircase_of_boxes_become_two_texts():
-    # Shadow Slave 1, slice 51: one box took both captions, so one translation ran across the black between them.
-    image = np.full((1280, 1280, 3), 150, np.uint8)  # the art round the boxes, lighter than the fake model's ink
+    image = np.full((1280, 1280, 3), 150, np.uint8)
     image[100:560, 40:760] = 255
     image[520:1000, 380:1240] = 255
     for i, line in enumerate(("IT LOOKED LIKE AN", "ILLNESS THAT CAUSED", "CONSTANT FATIGUE")):
@@ -278,7 +275,6 @@ def test_two_captions_in_a_staircase_of_boxes_become_two_texts():
 
 
 def test_split_texts_keep_plain_int_coordinates():
-    # Shadow Slave 1: a gap under two lines put the numpy mid-gap row into the box, which JSON cannot save.
     letters = np.zeros((200, 300), bool)
     for top in (10, 40):
         letters[top:top + 20, 10:150] = True
@@ -293,7 +289,6 @@ def test_split_texts_keep_plain_int_coordinates():
 
 
 def test_a_stray_mark_by_a_bubble_text_stays_in_its_box():
-    # Shadow Slave 1, slice 111: a scrap of the bubble edge beside the text became a text of its own with nothing to read.
     letters = np.zeros((300, 400), bool)
     letters[5:25, 330:380] = True
     for top in (80, 110, 140):
@@ -304,7 +299,6 @@ def test_a_stray_mark_by_a_bubble_text_stays_in_its_box():
 
 
 def test_drawn_letters_under_a_text_are_not_a_second_text():
-    # Shadow Slave 1, slice 69: strokes of a drawn sound effect were cut out as texts and erased.
     letters = np.zeros((400, 400), bool)
     for top in (10, 40, 70):
         letters[top:top + 20, 20:320] = True
@@ -315,13 +309,11 @@ def test_drawn_letters_under_a_text_are_not_a_second_text():
 
 
 def test_two_touching_lines_are_never_cut_through():
-    # Solo Swordmaster 1, slice 87: 'CIVILIANS OVER THERE' touched the next line, read as one tall mark, and the
-    # split between the texts round it ran through it, so half the line was left on the page.
     letters = np.zeros((420, 700), bool)
     for top, bottom in ((98, 149), (154, 197), (318, 363)):
         letters[top:bottom, 150:520] = True
     letters[208:309, 100:600] = True
-    letters[311:312, 300:340] = True  # a speck under it
+    letters[311:312, 300:340] = True
     box = _text_box(0, 338, 700, 758, 0.9, letters.copy(), "kiuyha", letters)
     assert len(_split_blocks(box)) == 1
 
@@ -393,25 +385,19 @@ def test_two_boxes_sharing_one_union_mask_get_their_own_lobes():
                 [(20, 34, 10, 150), (60, 74, 10, 150)])
     right = _box(300, 180, 520, 300, (310, 190, 510, 290),
                  [(20, 34, 70, 200), (60, 74, 70, 200),
-                  (20, 34, 2, 8)])  # stray bar past the waist, left of the core
+                  (20, 34, 2, 8)])
     _split_shared_union_masks([left, right])
     assert left.bubble_mask["bbox"][2] <= 330
     assert right.bubble_mask["bbox"][0] >= 290
     assert left.bubble_mask["bbox"] != right.bubble_mask["bbox"]
-    # The right box's stray bar sat on the left side of the cut, so the
-    # trim rewrote its letters to its own lobe only.
     assert not np.asarray(right.letters)[:, :10].any()
     assert np.asarray(right.letters)[:, 70:200].any()
-    # The left box's letters were all on its own side: untouched.
     assert np.asarray(left.letters).sum() == 2 * 14 * 140
 
 
 def test_trim_rewrites_letters_to_the_kept_lobe():
     from app.detector.kiuyha_detector import _trim_bubble_mask
 
-    # The full letters span both lobes (growth pulled the neighbour's
-    # lines in), but the core -- inside the raw detector rect -- holds
-    # only the left lobe's text, so the trim cuts to the left lobe.
     box = _box(100, 100, 520, 300, (110, 110, 350, 290),
                [(20, 34, 10, 150), (60, 74, 10, 150),
                 (20, 34, 260, 400), (60, 74, 260, 400)])
@@ -453,8 +439,6 @@ def _blind_ctd(monkeypatch):
 
 
 def test_a_confident_box_the_letter_model_cannot_read_is_kept_whole(monkeypatch):
-    # Former Supreme 1, slice 93: SHANDONG/ANHUI/JIANGXI/FUJIAN score 0.72-0.86 with the box
-    # model and ~0.0 with the letter model, so text_boxes dropped them and the labels stayed English.
     _blind_ctd(monkeypatch)
     image = np.full((1280, 1280, 3), (200, 180, 160), np.uint8)
     cv2.putText(image, "SHANDONG", (100, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (60, 50, 40), 4)
@@ -466,8 +450,6 @@ def test_a_confident_box_the_letter_model_cannot_read_is_kept_whole(monkeypatch)
 
 
 def test_one_connected_shape_the_letter_model_cannot_read_is_still_dropped(monkeypatch):
-    # A window lattice scores 0.52 with the box model on Former Supreme 1, slice 74: one
-    # connected shape, not several letters, so the whole-box mask must not keep it.
     _blind_ctd(monkeypatch)
     image = np.full((1280, 1280, 3), (230, 220, 210), np.uint8)
     for x in range(100, 301, 40):
@@ -479,7 +461,6 @@ def test_one_connected_shape_the_letter_model_cannot_read_is_still_dropped(monke
 
 
 def test_a_faint_box_the_letter_model_cannot_read_is_still_dropped(monkeypatch):
-    # The keep-bar stays high: a 0.4 box over art the letter model cannot read is not text worth erasing.
     _blind_ctd(monkeypatch)
     image = np.full((1280, 1280, 3), (200, 180, 160), np.uint8)
     image[100:160, 100:300] = (60, 50, 40)
@@ -488,17 +469,12 @@ def test_a_faint_box_the_letter_model_cannot_read_is_still_dropped(monkeypatch):
 
 
 def test_a_vertical_sign_is_found_when_the_upright_passes_see_nothing(monkeypatch):
-    # Former Supreme 1, slice 103: the upright passes find no box at all for the vertical
-    # "ZHEJIANG PROVINCE" sign, but the sideways passes score it 0.68-0.82.
     _blind_ctd(monkeypatch)
     image = np.full((900, 300, 3), (200, 180, 160), np.uint8)
     detector = KiuyhaTextDetector("unused", session=_FixedSession([]))
-    # One upright text at (50, 699)-(150, 799): clockwise it reads as turned (100, 50)-(200, 150),
-    # counter-clockwise as turned (699, 149)-(799, 249). Both map back to the same upright box.
     sideways = iter([[(100, 50, 200, 150, 0.8)], [(699, 149, 799, 249, 0.7)]])
 
     def raw_boxes(blob_image):
-        # The sideways image is 300 tall and 900 wide; the upright one is 900 tall and 300 wide.
         if blob_image.shape[1] > blob_image.shape[0]:
             return next(sideways)
         return []
@@ -545,8 +521,6 @@ def _two_words():
 
 
 def test_a_word_in_a_low_box_is_rescued_as_its_own_box():
-    # Former Supreme 1, slice 91: the middle JIANGXI scores 0.239, just under the
-    # bar, while the letter model reads it plainly — the word must come back as its own box.
     boxes = KiuyhaTextDetector("unused", session=_GivenSession([
         (80, 100, 400, 180, 0.9), (580, 100, 900, 180, 0.15)])).text_boxes(_two_words())
     assert len(boxes) == 2
@@ -565,7 +539,6 @@ def test_a_low_box_over_a_kept_word_rescues_nothing():
 
 
 def test_a_low_box_with_no_text_rescues_nothing():
-    # A dark plate with no letters: the pieces gate stops the rescue before any letter model runs.
     image = np.full((1280, 1280, 3), (200, 180, 160), np.uint8)
     image[100:160, 100:300] = (60, 50, 40)
     boxes = KiuyhaTextDetector("unused", session=_GivenSession([(100, 100, 300, 160, 0.15)])).text_boxes(image)
@@ -575,8 +548,6 @@ def test_a_low_box_with_no_text_rescues_nothing():
 def test_welded_words_takes_a_fat_word_and_not_a_wide_panel():
     from app.detector.kiuyha_detector import _welded_words
 
-    # Letters welded into one piece, like ANHUI on slice 91: bold strokes touching
-    # each other and the ridge behind them, so no letter count can find them.
     image = np.full((400, 900, 3), (210, 190, 170), np.uint8)
     cv2.putText(image, "ANHUI", (100, 120), cv2.FONT_HERSHEY_DUPLEX, 0.7, (40, 30, 25), 3)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -586,7 +557,6 @@ def test_welded_words_takes_a_fat_word_and_not_a_wide_panel():
     assert len(words) == 1
     (x1, y1, x2, y2), _ = words[0]
     assert x1 <= 100 and x2 >= 160 and 100 <= y1 <= 120 and 115 <= y2 <= 140
-    # A lattice panel is one wide piece too, but it is a panel, not a word.
     panel = np.full((400, 900, 3), (210, 190, 170), np.uint8)
     for x in range(500, 591, 30):
         cv2.line(panel, (x, 100), (x, 141), (60, 50, 40), 4)
@@ -605,7 +575,7 @@ def test_a_welded_word_passes_the_rescue_gate():
     from app.detector.kiuyha_detector import _has_letter_piece
 
     word = np.full((100, 200, 3), 255, np.uint8)
-    cv2.rectangle(word, (60, 40), (139, 59), (0, 0, 0), -1)  # one 80x20 component
+    cv2.rectangle(word, (60, 40), (139, 59), (0, 0, 0), -1)
     assert not _has_letter_piece(word, (40, 20, 160, 80)), "the old gate kills an 80x20 word"
     assert _has_letter_piece(word, (40, 20, 160, 80), allow_wide=True)
 
@@ -737,8 +707,8 @@ def test_a_box_cut_by_an_inner_window_edge_is_kept_in_page_boxes():
     the blank letterbox gap is dropped (the coarse pass is its
     backstop)."""
     image = np.full((1200, 400, 3), 255, np.uint8)
-    image[400:500, 100:300] = 0  # cut by window 0's bottom edge
-    image[900:1000, 100:300] = 0  # ink for the later windows
+    image[400:500, 100:300] = 0
+    image[900:1000, 100:300] = 0
     session = _Session([1, 3, 416, 416])
     boxes = KiuyhaTextDetector("unused", session=session).page_boxes(image)
     rects = [tuple(box[:4]) for box in boxes]

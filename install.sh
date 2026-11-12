@@ -1,10 +1,5 @@
 #!/bin/sh
-# Manga Translator installer for Linux and macOS:
-#   curl -LsSf https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/main/install.sh | sh
-# Run from a clone (./install.sh), it installs that clone in place.
-# It installs the latest release; MANGA_REF=main (or a tag) installs that instead.
 
-# Everything is in main(), so a download cut off halfway runs nothing.
 main() {
 set -eu
 
@@ -20,7 +15,6 @@ say() { printf '    %s·%s %s\n' "$DIM" "$OFF" "$1"; }
 fail() { printf '\n%sLỖI:%s %s\n' "$RED" "$OFF" "$1" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "cần lệnh $1"; }
 fetch() { curl --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 -fLsS "$@"; }
-# The newest release named like V0.4.0, so a data release such as a model pack is never taken for the app.
 latest_release() {
   fetch -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases?per_page=30" 2>/dev/null \
     | grep -oE '"(tag_name|draft|prerelease)": *("[^"]*"|true|false)' \
@@ -76,8 +70,6 @@ else
   say "đã tải mã nguồn $REF"
 fi
 
-# The library cache shares its files with the app's environment (hard links), so it costs little disk
-# and is kept: an update then only fetches what changed.
 export UV_CACHE_DIR="$MANGA_HOME/uv-cache"
 UV_PYTHON_INSTALL_DIR="$MANGA_HOME/python" UV_PYTHON_PREFERENCE=only-managed \
   MANGA_UV="$UV" MANGA_HOME="$MANGA_HOME" MANGA_REF="${REF:-${MANGA_REF:-main}}" MANGA_CHANNEL="${CHANNEL:-ref}" \
