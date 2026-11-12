@@ -65,8 +65,9 @@ SETTING_REGISTERS = {
     "family": 'Gia đình / lãng mạn: "anh"/"em", "bố"/"mẹ"/"con", "tớ"/"cậu".',
 }
 DEFAULT_SETTING = "modern"
-_GENERAL_REGISTER = ('match the setting: martial-arts/historical worlds use "ta"/"ngươi" (king "trẫm", subject "thần"/"bệ hạ"), '
-                     'modern worlds use "tôi"/"cậu" or "tớ"/"cậu"; never mix registers.')
+_GENERAL_REGISTER = ('match the setting: martial-arts/historical worlds use "ta"/"ngươi" (king "trẫm", subject "thần"/"bệ hạ") '
+                     'and letter person and technique names in Hán Việt (Sino-Vietnamese), not Latin/English; '
+                     'modern worlds use "tôi"/"cậu" or "tớ"/"cậu" and keep source spelling for people; never mix registers.')
 
 
 def setting_register(setting: str | None) -> str:
