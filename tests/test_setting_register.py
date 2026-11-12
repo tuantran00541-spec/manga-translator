@@ -35,6 +35,14 @@ def test_text_retranslate_gets_the_same_single_register():
     assert SETTING_REGISTERS["modern"] not in prompt
 
 
+def test_murim_and_cultivation_letter_names_in_han_viet():
+    for key in ("murim", "cultivation"):
+        assert "Hán Việt" in SETTING_REGISTERS[key]
+        assert "person names AND technique/skill names" in SETTING_REGISTERS[key]
+    # modern worlds keep source spelling for people
+    assert "Hán Việt" not in SETTING_REGISTERS["modern"]
+
+
 def test_setting_question_lists_every_world():
     question = setting_question()
     for key in SETTING_REGISTERS:

@@ -30,7 +30,7 @@ ANSWER: the JSON in <output>, nothing else.
 - Stay within max_chars: it is what fits at the raw size, and longer text is lettered smaller. If a line still cannot fit, set "review": true. Set "enlarge": true when the raw text is too small to read.
 - Read the scene (speaker, listener, relationship, emotion, the lines around it) and translate the meaning. Give each character one consistent voice and add nothing the source does not say.
 - A sentence often runs on across boxes ("THEY CONQUERED THE WORLD IN THE" then "AGE OF HEROES"), and across slices: recent_lines give each earlier box's source and translation. Translate the whole sentence once, then split it over its boxes in reading order so each box ends at a natural break; never leave a box ending on a dangling word such as "trong", "của" or "và".
-- Treat <chapter_glossary> and CHAPTER MEMORY as settled and use their names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
+- Treat <chapter_glossary> and CHAPTER MEMORY as settled and use their names, terms and forms of address exactly. People's names keep their source spelling unless the setting register says otherwise (murim / cultivation letter names in Hán Việt); other names, titles and signs are translated.
 - Copy the source punctuation exactly: every "...", "?!", "!?", "!!" and "—" stays where the source has it, with both marks of "?!". Keep the tone; make jokes only where the source does.
 - List in "unboxed" every line someone says, thinks or narrates (dialogue, narration, captions, titles, system messages) that the image shows outside every red box; it is erased and translated next. Sound effects drawn into the art, signs that are only scenery and scanlator credits stay out. A sign is only scenery when it is illegible or purely decorative background lettering; a legible sign naming a place, and labels on a map or diagram, are translated — list them in "unboxed" when they have no red box. Boxes are on a 0-1000 grid of the image: "x1","y1" top-left and "x2","y2" bottom-right.
 - Leave translated_text empty for scanlator credits, watermarks, URLs and sound effects drawn into the art (role "sfx"). A sound effect lettered as plain text gets a short onomatopoeia.
@@ -53,8 +53,8 @@ _VIETNAMESE = """
 # setting_question) and only that world's line is sent with each translation,
 # instead of the whole table, to keep the cached system prompt small.
 SETTING_REGISTERS = {
-    "murim": 'Võ lâm / kiếm hiệp / murim: rivals and enemies "ta"/"ngươi", peers "tại hạ"/"các hạ" or "huynh"/"đệ", sects "sư phụ"/"đệ tử", "sư huynh"/"sư đệ", "đạo hữu", "bổn tọa"; never modern "tao"/"mày".',
-    "cultivation": 'Tu tiên / huyền huyễn: the kiếm-hiệp pairs (ta/ngươi, sư phụ/đệ tử, đạo hữu, bổn tọa) plus Hán Việt realms (Luyện Khí, Trúc Cơ, Kim Đan…); immortals "bổn tọa"/"ngươi".',
+    "murim": 'Võ lâm / kiếm hiệp / murim: rivals and enemies "ta"/"ngươi", peers "tại hạ"/"các hạ" or "huynh"/"đệ", sects "sư phụ"/"đệ tử", "sư huynh"/"sư đệ", "đạo hữu", "bổn tọa"; never modern "tao"/"mày". Letter person names AND technique/skill names in Hán Việt (Sino-Vietnamese), not Latin/English (e.g. "Thiên Ma", "Văn Quy", "Thái Kiếm Thần"); keep one Hán Việt reading per name across the chapter.',
+    "cultivation": 'Tu tiên / huyền huyễn: the kiếm-hiệp pairs (ta/ngươi, sư phụ/đệ tử, đạo hữu, bổn tọa) plus Hán Việt realms (Luyện Khí, Trúc Cơ, Kim Đan…); immortals "bổn tọa"/"ngươi". Letter person names AND technique/skill names in Hán Việt (Sino-Vietnamese), not Latin/English; keep one reading per name across the chapter.',
     "court": 'Cổ trang / cung đình Á Đông: king "trẫm"/"khanh", subject "thần"/"bệ hạ", officials "hạ quan"/"đại nhân", servants "nô tài"/"nô tì".',
     "western": 'Trung cổ / quý tộc phương Tây (knights, lords): nobles "ta"/"ngươi" or "tôi"/"ngài", knight to lord "thần"/"đức ngài"/"bệ hạ", commoner to noble "tôi"/"ngài" or "cháu"/"lão gia".',
     "modern": 'Hiện đại (đời thường, công sở, học đường, y khoa, cảnh sát): "tôi"/"cậu", "tớ"/"cậu", "anh"/"em", "chú"/"cháu", boss–staff "tôi"/"sếp", doctor–patient "tôi"/"bác sĩ"; close friends "tao"/"mày" only here.',
@@ -132,7 +132,7 @@ ANSWER: the JSON in <output>, nothing else.
 
 <rules>
 - Translate the meaning. A sentence often runs across boxes: translate the whole sentence once, then split it over its boxes in reading order so each box ends at a natural break; never leave a box ending on a dangling word such as "trong", "của" or "và".
-- Treat <chapter_glossary> and CHAPTER MEMORY as settled and use their names, terms and forms of address exactly. People's names keep their source spelling; other names, titles and signs are translated.
+- Treat <chapter_glossary> and CHAPTER MEMORY as settled and use their names, terms and forms of address exactly. People's names keep their source spelling unless the setting register says otherwise (murim / cultivation letter names in Hán Việt); other names, titles and signs are translated.
 - Copy the source punctuation exactly: every "...", "?!", "!?\", \"!!\" and \"—\" stays where the source has it. Keep the tone; make jokes only where the source does.
 - Break lines with "\\n" between phrases, with at least two words on each line and every name and word kept whole.
 </rules>
