@@ -55,6 +55,51 @@ def text_object_in_preserve_region(page: dict, obj: dict) -> bool:
     return geometry_in_preserve_regions(page, obj.get("region") if isinstance(obj, dict) else None)
 
 
+def seam_preserve_plan(manifest: dict, page_index: int, regions: list[dict]) -> dict[int, list[dict]]:
+    pages = manifest.get("pages") or []
+    if not 0 <= page_index < len(pages):
+        return {}
+    plan: dict[int, list[dict]] = {}
+
+    def add(idx: int, region: dict) -> None:
+        if not 0 <= idx < len(pages):
+            return
+        page = pages[idx]
+        if not isinstance(page, dict) or page.get("skipped") or page.get("process_required") or not page.get("clean"):
+            return
+        if geometry_center_in_regions(region, page_preserve_regions(page)):
+            return
+        bucket = plan.setdefault(idx, [])
+        if region not in bucket:
+            bucket.append(region)
+
+    for region in regions:
+        if isinstance(region, dict):
+            add(page_index, dict(region))
+    seeds = [
+        obj for obj in pages[page_index].get("text_objects") or []
+        if isinstance(obj, dict) and geometry_center_in_regions(obj.get("region"), regions)
+    ]
+    seed_ids = {str(obj.get("id")) for obj in seeds}
+    for obj in seeds:
+        owner = obj.get("seam_owner")
+        if not isinstance(owner, dict) or not isinstance(owner.get("page"), int):
+            continue
+        for target in pages[owner["page"]].get("text_objects") or []:
+            if isinstance(target, dict) and str(target.get("id")) == str(owner.get("id")):
+                if isinstance(target.get("region"), dict):
+                    add(owner["page"], dict(target["region"]))
+    for idx, page in enumerate(pages):
+        if idx == page_index or not isinstance(page, dict):
+            continue
+        for obj in page.get("text_objects") or []:
+            owner = obj.get("seam_owner") if isinstance(obj, dict) else None
+            if (isinstance(owner, dict) and owner.get("page") == page_index
+                    and str(owner.get("id")) in seed_ids and isinstance(obj.get("region"), dict)):
+                add(idx, dict(obj["region"]))
+    return plan
+
+
 def subtract_regions_from_mask(mask: np.ndarray | None, regions) -> np.ndarray | None:
     if mask is None:
         return None

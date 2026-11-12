@@ -25,7 +25,7 @@ from app.manifest_utils import (
 )
 from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD
-from app.region_policy import overlap_share, subtract_regions_from_mask
+from app.region_policy import overlap_share, seam_preserve_plan, subtract_regions_from_mask
 
 STROKE_BOX_MAX_SHARE = 0.4
 
@@ -325,6 +325,26 @@ class PipelineEditingMixin:
             return manifest
 
     def preserve_and_reinpaint(self, chapter_id: str, page_index: int, regions: list[dict]) -> dict:
+        added = [
+            {key: int(region[key]) for key in ("x1", "y1", "x2", "y2")}
+            for region in regions
+            if int(region["x2"]) > int(region["x1"]) and int(region["y2"]) > int(region["y1"])
+        ]
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                raise ValueError("Invalid page index")
+            page = manifest["pages"][page_index]
+            if page.get("skipped") or page.get("process_required") or not page.get("clean"):
+                raise ValueError("Page must be active and processed before preserving regions")
+            plan = seam_preserve_plan(manifest, page_index, added)
+        if not plan:
+            return manifest
+        for idx, regs in plan.items():
+            manifest = self._preserve_one_page(chapter_id, idx, regs)
+        return manifest
+
+    def _preserve_one_page(self, chapter_id: str, page_index: int, regions: list[dict]) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
         added = [
             {key: int(region[key]) for key in ("x1", "y1", "x2", "y2")}
