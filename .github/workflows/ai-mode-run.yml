@@ -154,5 +154,7 @@ jobs:
           path: |
             data/output/
             data/processed/*/manifest.json
+            data/processed/*/clean_*.png
+            data/processed/*/auto_clean_*.png
             server.log
           if-no-files-found: warn
