@@ -1,0 +1,144 @@
+{
+  "chapter_id": "a000001c",
+  "slices": 17,
+  "cleaned": 17,
+  "detector_misses": 1,
+  "inpaint_skips": 0,
+  "no_box_slices": [],
+  "seconds": 343.1,
+  "pages": [
+    {
+      "slice": 0,
+      "boxes": 12,
+      "min_conf": 0.28,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 1,
+      "boxes": 5,
+      "min_conf": 0.707,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 2,
+      "boxes": 11,
+      "min_conf": 0.243,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 3,
+      "boxes": 9,
+      "min_conf": 0.142,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 4,
+      "boxes": 9,
+      "min_conf": 0.455,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 5,
+      "boxes": 11,
+      "min_conf": 0.492,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 6,
+      "boxes": 7,
+      "min_conf": 0.156,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 7,
+      "boxes": 11,
+      "min_conf": 0.654,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 8,
+      "boxes": 3,
+      "min_conf": 0.721,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 9,
+      "boxes": 5,
+      "min_conf": 0.375,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 10,
+      "boxes": 8,
+      "min_conf": 0.743,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 11,
+      "boxes": 8,
+      "min_conf": 0.132,
+      "misses": 1,
+      "skips": 0
+    },
+    {
+      "slice": 12,
+      "boxes": 11,
+      "min_conf": 0.348,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 13,
+      "boxes": 7,
+      "min_conf": 0.488,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 14,
+      "boxes": 6,
+      "min_conf": 0.686,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 15,
+      "boxes": 11,
+      "min_conf": 0.699,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 16,
+      "boxes": 13,
+      "min_conf": 0.183,
+      "misses": 0,
+      "skips": 0
+    }
+  ],
+  "misses": [
+    {
+      "slice": 11,
+      "box": [
+        429,
+        828,
+        488,
+        866
+      ],
+      "px": 1612,
+      "kind": "detector_miss"
+    }
+  ],
+  "skips": []
+}
