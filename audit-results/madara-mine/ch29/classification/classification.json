@@ -1,0 +1,130 @@
+{
+  "chapter_id": "a000001d",
+  "slices": 15,
+  "cleaned": 15,
+  "detector_misses": 0,
+  "inpaint_skips": 1,
+  "no_box_slices": [],
+  "seconds": 145.3,
+  "pages": [
+    {
+      "slice": 0,
+      "boxes": 15,
+      "min_conf": 0.373,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 1,
+      "boxes": 8,
+      "min_conf": 0.681,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 2,
+      "boxes": 9,
+      "min_conf": 0.496,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 3,
+      "boxes": 7,
+      "min_conf": 0.633,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 4,
+      "boxes": 11,
+      "min_conf": 0.481,
+      "misses": 0,
+      "skips": 1
+    },
+    {
+      "slice": 5,
+      "boxes": 7,
+      "min_conf": 0.584,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 6,
+      "boxes": 8,
+      "min_conf": 0.115,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 7,
+      "boxes": 7,
+      "min_conf": 0.686,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 8,
+      "boxes": 9,
+      "min_conf": 0.731,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 9,
+      "boxes": 7,
+      "min_conf": 0.454,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 10,
+      "boxes": 8,
+      "min_conf": 0.638,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 11,
+      "boxes": 8,
+      "min_conf": 0.549,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 12,
+      "boxes": 11,
+      "min_conf": 0.549,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 13,
+      "boxes": 11,
+      "min_conf": 0.111,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 14,
+      "boxes": 21,
+      "min_conf": 0.177,
+      "misses": 0,
+      "skips": 0
+    }
+  ],
+  "misses": [],
+  "skips": [
+    {
+      "slice": 4,
+      "box": [
+        941,
+        6,
+        1122,
+        51
+      ],
+      "px": 1638,
+      "kind": "inpaint_skip"
+    }
+  ]
+}
