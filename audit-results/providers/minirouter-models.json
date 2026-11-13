@@ -130,6 +130,15 @@
   }
  },
  {
+  "id": "openai/gpt-5.2-pro",
+  "name": "GPT 5.2 ",
+  "pricing": {
+   "input": "0.00002205",
+   "output": "0.0001764",
+   "web_search": "10.5"
+  }
+ },
+ {
   "id": "bytedance/seedream-4.0",
   "name": "Seedream 4.0",
   "pricing": {
@@ -148,15 +157,6 @@
    "output_modalities": [
     "image"
    ]
-  }
- },
- {
-  "id": "openai/gpt-5.2-pro",
-  "name": "GPT 5.2 ",
-  "pricing": {
-   "input": "0.00002205",
-   "output": "0.0001764",
-   "web_search": "10.5"
   }
  },
  {
@@ -778,6 +778,15 @@
   }
  },
  {
+  "id": "thinkingmachines/inkling-2-small",
+  "name": "Inkling 2 Small",
+  "pricing": {
+   "input": "0.000000315",
+   "output": "0.00000105",
+   "input_cache_read": "0.0000000315"
+  }
+ },
+ {
   "id": "recraft/recraft-v3",
   "name": "Recraft V3",
   "pricing": {
@@ -817,15 +826,6 @@
    "output_modalities": [
     "image"
    ]
-  }
- },
- {
-  "id": "thinkingmachines/inkling-2-small",
-  "name": "Inkling 2 Small",
-  "pricing": {
-   "input": "0.000000315",
-   "output": "0.00000105",
-   "input_cache_read": "0.0000000315"
   }
  },
  {
@@ -1876,16 +1876,6 @@
   }
  },
  {
-  "id": "spacexai/grok-4.20-multi-agent",
-  "name": "Grok 4.20 Multi-Agent",
-  "pricing": {
-   "input": "0.0000013125",
-   "output": "0.000002625",
-   "input_cache_read": "0.00000021",
-   "web_search": "5.25"
-  }
- },
- {
   "id": "google/gemini-3.8-flash",
   "name": "Gemini 3.8 Flash",
   "pricing": {
@@ -1902,6 +1892,16 @@
    "input": "0",
    "output": "0",
    "speech_character": "0.0000231"
+  }
+ },
+ {
+  "id": "spacexai/grok-4.20-multi-agent",
+  "name": "Grok 4.20 Multi-Agent",
+  "pricing": {
+   "input": "0.0000013125",
+   "output": "0.000002625",
+   "input_cache_read": "0.00000021",
+   "web_search": "5.25"
   }
  },
  {
@@ -2078,6 +2078,15 @@
   }
  },
  {
+  "id": "amazon/nova-lite",
+  "name": "Nova Lite",
+  "pricing": {
+   "input": "0.000000063",
+   "output": "0.000000252",
+   "input_cache_read": "0.00000001575"
+  }
+ },
+ {
   "id": "alibaba/qwen3.7-plus",
   "name": "Qwen 3.7 Plus",
   "pricing": {
@@ -2103,15 +2112,6 @@
    "input": "0.0000021",
    "output": "0.0000063",
    "input_cache_read": "0.0000002625"
-  }
- },
- {
-  "id": "amazon/nova-lite",
-  "name": "Nova Lite",
-  "pricing": {
-   "input": "0.000000063",
-   "output": "0.000000252",
-   "input_cache_read": "0.00000001575"
   }
  },
  {
@@ -2699,12 +2699,12 @@
   }
  },
  {
-  "id": "deepseek/deepseek-v4-pro-0813",
-  "name": "DeepSeek V4 Pro 0813",
+  "id": "xiaomi/mimo-v2.6-pro",
+  "name": "MiMo V2.6 Pro",
   "pricing": {
-   "input": "0.000000693",
-   "output": "0.000002079",
-   "input_cache_read": "0.0000000693"
+   "input": "0.00000045675",
+   "output": "0.0000009135",
+   "input_cache_read": "0.00000000378"
   }
  },
  {
@@ -2730,12 +2730,12 @@
   }
  },
  {
-  "id": "xiaomi/mimo-v2.6-pro",
-  "name": "MiMo V2.6 Pro",
+  "id": "deepseek/deepseek-v4-pro-0813",
+  "name": "DeepSeek V4 Pro 0813",
   "pricing": {
-   "input": "0.00000045675",
-   "output": "0.0000009135",
-   "input_cache_read": "0.00000000378"
+   "input": "0.000000693",
+   "output": "0.000002079",
+   "input_cache_read": "0.0000000693"
   }
  },
  {
