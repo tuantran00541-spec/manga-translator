@@ -1,0 +1,136 @@
+name: Kiuyha Madara mine
+
+on:
+  workflow_dispatch:
+    inputs:
+      series_url:
+        description: "MadaraScans series page URL"
+        required: true
+        default: "https://madarascans.net/the-crazy-villain-regains-his-sanity/"
+      chapter_count:
+        description: "How many unlocked chapters to mine, newest first after skipping the 2 newest"
+        required: true
+        default: "25"
+      inpainter:
+        description: "Inpaint model for the clean step (lama, migan or mpe)"
+        required: false
+        default: "lama"
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.make.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: make
+        run: |
+          OUT=$(python3 scripts/download_madara.py --series-url "${{ inputs.series_url }}" --count "${{ inputs.chapter_count }}" --discover)
+          {
+            echo "matrix<<EOF"
+            echo "$OUT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "$OUT" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['chapter']), 'chapters')"
+
+  clean:
+    needs: setup
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_USE_DYNAMIC_LAMA: ${{ inputs.inpainter == 'mpe' && '0' || '1' }}
+      MANGA_INPAINTER: ${{ inputs.inpainter }}
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+      CHAPTER: ${{ matrix.chapter.chapter }}
+      CHAPTER_URL: ${{ matrix.chapter.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install processing runtime
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 \
+            beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 playwright-stealth==2.0.3 fastapi==0.115.0 \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.20
+
+      - name: Restore detector and inpaint models
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Use the committed Kiuyha, not the cached one
+        run: git checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx
+
+      - name: Download LaMa when the cache has expired
+        run: |
+          test -f models/lama-manga-dynamic.onnx || curl -fsSL -o models/lama-manga-dynamic.onnx \
+            https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/lama-manga-dynamic.onnx
+          echo "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9  models/lama-manga-dynamic.onnx" | sha256sum -c
+
+      - name: Download MI-GAN when selected
+        if: inputs.inpainter == 'migan'
+        run: |
+          test -f models/migan_pipeline_v2.onnx || curl -fsSL -o models/migan_pipeline_v2.onnx \
+            https://huggingface.co/andraniksargsyan/migan/resolve/main/migan_pipeline_v2.onnx
+          echo "6f1f3530a1a2324b19752018ce756088b07973cda8d7d890034ace5c8a48c40b  models/migan_pipeline_v2.onnx" | sha256sum -c
+
+      - name: Download lama_mpe when selected
+        if: inputs.inpainter == 'mpe'
+        run: |
+          curl -fsSL -o models/lama.onnx \
+            https://github.com/${{ github.repository }}/releases/download/lama-mpe-v1/lama-mpe-512.onnx
+          echo "b562e05a9abaed5379d39fd951db705690ede272158359e77667d13f2709b9b2  models/lama.onnx" | sha256sum -c
+
+      - name: Build the CTD mask model
+        uses: ./.github/actions/build-ctd
+
+      - name: Check the models are there
+        run: |
+          ls -la models
+          test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha-tuned-1023.onnx
+
+      - name: Download chapter from MadaraScans
+        run: |
+          python3 scripts/download_madara.py --chapter-url "$CHAPTER_URL" --chapter "$CHAPTER" --out "audit-results/madara-mine/ch${CHAPTER}"
+          ls -la "audit-results/madara-mine/ch${CHAPTER}"
+
+      - name: Clean the chapter
+        run: |
+          CID=$(printf "a%07x" "$((10#$CHAPTER))")
+          python scripts/clean_chapter_zip.py --zip "audit-results/madara-mine/ch${CHAPTER}/madara-ch${CHAPTER}.zip" --chapter-id "$CID" --out "audit-results/madara-mine/ch${CHAPTER}"
+
+      - name: Classify the clean
+        run: |
+          CID=$(printf "a%07x" "$((10#$CHAPTER))")
+          python scripts/classify_clean.py --chapter-id "$CID" --out "audit-results/madara-mine/ch${CHAPTER}/classification"
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/madara-mine/ch${{ matrix.chapter.chapter }}
+          message: "audit: madara mine ch${{ matrix.chapter.chapter }} (run ${{ github.run_id }})"
