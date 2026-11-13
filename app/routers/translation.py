@@ -520,15 +520,18 @@ async def translate_page_in_context(
         pipeline._sync_output_dir(req.chapter_id, latest, [page_number])
 
     rendered_pages: list[int] = []
+    render_skipped: list[str] = []
     render_error = None
     if committed:
         try:
-            await run_in_threadpool(
+            render_res = await run_in_threadpool(
                 render_page, RenderRequest(
                     chapter_id=req.chapter_id, page_index=page_number, translations={},
                 )
             )
             rendered_pages.append(page_number)
+            if isinstance(render_res, dict) and render_res.get("skipped_objects"):
+                render_skipped = [str(oid) for oid in render_res["skipped_objects"]]
         except HTTPException as exc:
             render_error = str(exc.detail)
         except Exception:
@@ -549,6 +552,7 @@ async def translate_page_in_context(
             and translated.estimated_cost_usd >= req.budget_usd
         ),
         "rendered_pages": rendered_pages, "render_error": render_error,
+        "skipped_objects": render_skipped,
         "missing_ids": sorted(getattr(translated, "missing_ids", ())),
         "blank_ids": blank_ids,
         "story_blank_ids": story_blank_ids,

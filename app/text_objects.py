@@ -120,20 +120,21 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
             obj["auto_ocr_text"] = box_text
             changed = True
         changed = _sync_ocr_metadata(obj, box) or changed
-    if isinstance(box.get("bubble_mask"), dict):
-        value = copy.deepcopy(box["bubble_mask"])
-        if obj.get("bubble_mask") != value:
-            obj["bubble_mask"] = value
+    if not obj.get("joined_lines"):
+        if isinstance(box.get("bubble_mask"), dict):
+            value = copy.deepcopy(box["bubble_mask"])
+            if obj.get("bubble_mask") != value:
+                obj["bubble_mask"] = value
+                changed = True
+        elif obj.pop("bubble_mask", None) is not None:
             changed = True
-    elif obj.pop("bubble_mask", None) is not None:
-        changed = True
-    if box.get("letters_mask"):
-        value = copy.deepcopy(box["letters_mask"])
-        if obj.get("letters_mask") != value:
-            obj["letters_mask"] = value
+        if box.get("letters_mask"):
+            value = copy.deepcopy(box["letters_mask"])
+            if obj.get("letters_mask") != value:
+                obj["letters_mask"] = value
+                changed = True
+        elif obj.pop("letters_mask", None) is not None:
             changed = True
-    elif obj.pop("letters_mask", None) is not None:
-        changed = True
 
     if obj.pop("source_missing", None) is not None:
         changed = True

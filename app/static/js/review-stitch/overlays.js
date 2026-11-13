@@ -104,7 +104,7 @@ export function installTransform(shell, overlay, desc, pageIndex, obj, signal) {
     const rect = image.getBoundingClientRect(), W0 = Number(image.dataset.sourceWidth || 0), H0 = Number(image.dataset.sourceHeight || 0);
     if (!rect.width || !rect.height || !W0 || !H0) return;
     const x = (event.clientX - rect.left) * W0 / rect.width, y = (event.clientY - rect.top) * H0 / rect.height, dx = x - drag.x, dy = y - drag.y;
-    const o = drag.original, W = desc.img.naturalWidth, minY = 0, maxY = desc.img.naturalHeight, clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const o = drag.original, W = desc.img.naturalWidth, minY = desc.localY1, maxY = desc.localY2, clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     let { x1, y1, x2, y2 } = o;
     if (drag.mode === "move") {
       const w = o.x2 - o.x1, h = o.y2 - o.y1;

@@ -121,3 +121,20 @@ def test_the_chapter_band_moves_nothing_any_more():
 def test_no_bands_means_no_change():
     pages = [_page(_obj(90, oid="big"))]
     assert chapter_size_bands(pages) == {}
+
+
+def test_chapter_band_supplies_fallback_cap_when_source_cap_px_is_missing():
+    pages = [_page(*[_obj(32, oid=f"d{i}") for i in range(8)])]
+    bands = chapter_size_bands(pages)
+    obj_no_cap = {
+        "id": "unboxed_1",
+        "translation": "Chào!",
+        "region": {"x1": 100, "y1": 100, "x2": 700, "y2": 500},
+        "container": "bubble",
+        "typography_role": "dialogue",
+        "style": {"font": "dialogue.mac-dinh-3"},
+    }
+    with_band = _render_one(obj_no_cap, bands)
+    without_band = _render_one(obj_no_cap, None)
+    assert with_band["size"] < without_band["size"]
+

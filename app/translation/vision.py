@@ -32,7 +32,8 @@ _TRANSLATIONS_SCHEMA = {
         "translations": {"type": "array", "items": {
             "type": "object",
             "properties": {"id": {"type": "string"}, "source": {"type": "string"}, "translated_text": {"type": "string"},
-                           "role": {"type": "string"}, "container": {"type": "string"}},
+                           "role": {"type": "string"}, "container": {"type": "string"},
+                           "color": {"type": "string"}, "enlarge": {"type": "boolean"}, "review": {"type": "boolean"}},
             "required": ["id", "translated_text"],
         }},
         "speakers": {"type": "object"},
@@ -90,7 +91,9 @@ def _merge_translation_results(
         font_choices={**first.font_choices, **second.font_choices},
         roles={**first.roles, **second.roles},
         review_ids=first.review_ids | second.review_ids,
-        missing_ids=first.missing_ids | second.missing_ids,
+        missing_ids=(first.missing_ids | second.missing_ids) - {
+            k for k, v in {**first.translations, **second.translations}.items() if str(v or "").strip()
+        },
         enlarge_ids=first.enlarge_ids | second.enlarge_ids,
         colors={**first.colors, **second.colors},
         containers={**first.containers, **second.containers},

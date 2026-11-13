@@ -419,9 +419,18 @@ def get_provider_config(provider_id: str) -> dict | None:
 
 def list_provider_configs() -> list[dict]:
     result: list[dict] = []
+    seen_endpoints: set[tuple[str, str]] = set()
     for provider_id in _custom_provider_ids():
         config = get_provider_config(provider_id)
         if isinstance(config, dict):
+            key = (
+                str(config.get("api_base") or "").rstrip("/").lower(),
+                str(config.get("label") or "").strip().lower(),
+            )
+            if key[0] and key in seen_endpoints:
+                continue
+            if key[0]:
+                seen_endpoints.add(key)
             result.append(config)
     return result
 

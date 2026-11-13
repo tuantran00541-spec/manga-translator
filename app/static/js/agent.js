@@ -35,6 +35,7 @@
   let pollGeneration = 0;
   let loaded = false;
   let commands = [];
+  let allSessions = [];
   let infoRev = "";
   let group = null;
 
@@ -104,31 +105,54 @@
   }
 
   
+  function codeCard(code, label = "code", extraCls = "") {
+    const clean = String(code || "").replace(/\n$/, "");
+    const card = el("div", `agent-code-card${extraCls ? ` ${extraCls}` : ""}`);
+    const bar = el("div", "agent-code-bar");
+    bar.append(el("span", "agent-code-lang", label || "code"));
+    const copyBtn = button("Sao chép", "agent-code-copy", () => {
+      navigator.clipboard?.writeText(clean).then(() => {
+        copyBtn.textContent = "Đã chép";
+        setTimeout(() => { copyBtn.textContent = "Sao chép"; }, 1400);
+      }).catch(() => {});
+    });
+    bar.append(copyBtn);
+    card.append(bar, el("pre", "agent-pre", clean));
+    return card;
+  }
+
   function prose(text) {
     const wrap = el("div", "agent-prose");
-    String(text || "").split(/```[\w-]*\n?/).forEach((part, i) => {
-      if (i % 2) {
-        wrap.append(el("pre", "agent-pre", part.replace(/\n$/, "")));
-        return;
+    const raw = String(text || "");
+    const parts = raw.split(/```([\w-]*)\n?/);
+    for (let i = 0; i < parts.length; i += 2) {
+      const chunk = parts[i];
+      if (chunk) {
+        chunk.replace(/^(#{1,4} .*)\n(?=\S)/gm, "$1\n\n").split(/\n{2,}/).forEach((block) => {
+          const lines = block.split("\n").filter((l) => l.trim());
+          if (!lines.length) return;
+          if (lines.every((l) => /^\s*[-*] /.test(l)) || lines.every((l) => /^\s*\d+[.)] /.test(l))) {
+            const list = el(/^\s*\d/.test(lines[0]) ? "ol" : "ul");
+            lines.forEach((l) => { const item = el("li"); item.append(inline(l.replace(/^\s*(?:[-*]|\d+[.)]) /, ""))); list.append(item); });
+            wrap.append(list);
+          } else if (/^#{1,4} /.test(lines[0]) && lines.length === 1) {
+            const head = el("p", "agent-prose-head");
+            head.append(inline(lines[0].replace(/^#+ /, "")));
+            wrap.append(head);
+          } else {
+            const para = el("p");
+            lines.forEach((l, n) => { if (n) para.append(el("br")); para.append(inline(l)); });
+            wrap.append(para);
+          }
+        });
       }
-      part.replace(/^(#{1,4} .*)\n(?=\S)/gm, "$1\n\n").split(/\n{2,}/).forEach((block) => {
-        const lines = block.split("\n").filter((l) => l.trim());
-        if (!lines.length) return;
-        if (lines.every((l) => /^\s*[-*] /.test(l)) || lines.every((l) => /^\s*\d+[.)] /.test(l))) {
-          const list = el(/^\s*\d/.test(lines[0]) ? "ol" : "ul");
-          lines.forEach((l) => { const item = el("li"); item.append(inline(l.replace(/^\s*(?:[-*]|\d+[.)]) /, ""))); list.append(item); });
-          wrap.append(list);
-        } else if (/^#{1,4} /.test(lines[0]) && lines.length === 1) {
-          const head = el("p", "agent-prose-head");
-          head.append(inline(lines[0].replace(/^#+ /, "")));
-          wrap.append(head);
-        } else {
-          const para = el("p");
-          lines.forEach((l, n) => { if (n) para.append(el("br")); para.append(inline(l)); });
-          wrap.append(para);
-        }
-      });
-    });
+      if (i + 2 < parts.length) {
+        const lang = parts[i + 1] || "code";
+        const body = parts[i + 2] || "";
+        wrap.append(codeCard(body, lang));
+        i += 1;
+      }
+    }
     return wrap;
   }
 
@@ -189,12 +213,13 @@
   function newGroup() {
     const box = el("details", "agent-group");
     const summary = el("summary");
+    const countBadge = el("span", "agent-group-count", "0");
     const label = el("span", "agent-group-label");
-    summary.append(label);
+    summary.append(countBadge, label);
     const list = el("div", "agent-group-list");
     box.append(summary, list);
     $("agent-log").append(box);
-    group = { box, summary, label, list, tally: {}, added: 0, removed: 0, failed: 0 };
+    group = { box, summary, countBadge, label, list, tally: {}, count: 0, added: 0, removed: 0, failed: 0 };
     return group;
   }
 
@@ -208,6 +233,7 @@
     });
     const parts = [...merged.values()].map(({ words: [verb, noun], n }) => `${verb} ${n} ${noun}`);
     const text = parts.join(", ") || "Cập nhật kế hoạch";
+    group.countBadge.textContent = `${group.count} bước`;
     group.label.textContent = text.charAt(0).toUpperCase() + text.slice(1);
     group.summary.querySelector(".agent-stats")?.remove();
     group.summary.querySelector(".agent-fail")?.remove();
@@ -218,6 +244,7 @@
   function addRow(c) {
     if (c.name === "ask_user" || c.name === "exit_plan_mode") return;
     const g = group || newGroup();
+    g.count += 1;
     const key = isMcp(c.name) ? "mcp" : c.name;
     if (TALLY[key]) g.tally[key] = (g.tally[key] || 0) + 1;
     const row = el("details", "agent-row");
@@ -367,9 +394,17 @@
   }
 
   function showTodos(items) {
-    const done = (items || []).filter((i) => i.status === "completed").length;
-    $("agent-todos").hidden = !items?.length || done === items.length;
-    $("agent-todo-list").replaceChildren(...(items || []).map((item) => el("li", `agent-todo agent-todo-${item.status}`, item.content)));
+    const list = items || [];
+    const done = list.filter((i) => i.status === "completed").length;
+    $("agent-todos").hidden = !list.length || done === list.length;
+    const head = $("agent-todos-head");
+    if (head) head.textContent = `Tiến độ kế hoạch · ${done}/${list.length} hoàn tất`;
+    const progress = $("agent-todos-progress");
+    if (progress) {
+      progress.max = Math.max(1, list.length);
+      progress.value = Math.min(list.length, done);
+    }
+    $("agent-todo-list").replaceChildren(...list.map((item) => el("li", `agent-todo agent-todo-${item.status}`, item.content)));
   }
 
   async function trust(path) {
@@ -425,21 +460,44 @@
     commands = snap.commands || commands;
   }
 
+  function formatTokens(n) {
+    const val = Number(n || 0);
+    return val >= 1000 ? `${(val / 1000).toFixed(1)}k` : String(val);
+  }
+
   function showStatus(snap) {
     const busy = snap.status === "running" || snap.status === "waiting";
     $("agent-stop").hidden = !busy;
     $("agent-send").hidden = false;
     const usage = snap.usage || {};
-    const state = { running: "Đang làm", waiting: "Chờ bạn" }[snap.status];
-    const parts = [snap.title || "Phiên mới", `${usage.prompt_tokens || 0} token vào, ${usage.completion_tokens || 0} ra`];
-    const stats = snap.stats || {};
-    if (usage.prompt_tokens) parts.push(`cache ${stats.cache_pct || 0}%`);
-    if (stats.cost != null) parts.push(`$${stats.cost}`);
-    if (stats.model_seconds || stats.tool_seconds) parts.push(`model ${stats.model_seconds}s, công cụ ${stats.tool_seconds}s`);
-    if (snap.text_tools) parts.push("gọi công cụ dạng văn bản");
-    if (snap.plan_mode) parts.push("lập kế hoạch");
-    if (snap.goal) parts.push(`mục tiêu: ${snap.goal}`);
-    $("agent-status").textContent = parts.join(" · ");
+    const state = { running: "Đang chạy", waiting: "Chờ duyệt" }[snap.status];
+    const statsData = snap.stats || {};
+    const bar = el("div", "agent-telemetry");
+
+    const statePill = el("span", `agent-badge ${busy ? "agent-badge-active" : "agent-badge-idle"}`);
+    statePill.append(el("span", "agent-dot"), el("span", "", state || "Sẵn sàng"));
+    bar.append(statePill);
+
+    const titlePill = el("span", "agent-badge agent-badge-title", snap.title || "Phiên mới");
+    bar.append(titlePill);
+
+    const detailedPerf = (store("get", "manga_agent_perf_detail") || "detailed") !== "compact";
+    if (detailedPerf) {
+      const tokenText = `${formatTokens(usage.prompt_tokens)} vào · ${formatTokens(usage.completion_tokens)} ra${usage.prompt_tokens ? ` · cache ${statsData.cache_pct || 0}%` : ""}`;
+      bar.append(el("span", "agent-badge", tokenText));
+
+      if (statsData.cost != null) {
+        bar.append(el("span", "agent-badge agent-badge-mono", `$${statsData.cost}`));
+      }
+      if (statsData.model_seconds || statsData.tool_seconds) {
+        bar.append(el("span", "agent-badge agent-badge-mono", `AI ${statsData.model_seconds || 0}s · Tool ${statsData.tool_seconds || 0}s`));
+      }
+    }
+    if (snap.plan_mode) bar.append(el("span", "agent-badge agent-badge-mode", "Chế độ /plan"));
+    if (snap.goal) bar.append(el("span", "agent-badge agent-badge-mode", `Mục tiêu: ${snap.goal}`));
+    if (snap.text_tools) bar.append(el("span", "agent-badge", "Text tools"));
+
+    $("agent-status").replaceChildren(bar);
     // A /effort typed in the chat moves the picker too.
     if (typeof snap.effort === "string" && $("agent-effort").value !== snap.effort) {
       $("agent-effort").value = snap.effort;
@@ -453,7 +511,11 @@
       const tools = live.tools.length ? `\nĐang gọi: ${live.tools.join(", ")}` : "";
       log.append(el("pre", "agent-live", live.text + tools));
     }
-    if (state) log.append(el("p", "agent-working", `${state}…`));
+    if (state) {
+      const working = el("p", "agent-working");
+      working.append(el("span", "agent-dot"), el("span", "", `${state}…`));
+      log.append(working);
+    }
     showTodos(snap.todos);
     showInfo(snap);
     showKeyPrompt(snap.key_prompt);
@@ -552,27 +614,49 @@
     }
   }
 
+  let providerModels = {};
+
   async function loadModels() {
     const provider = $("agent-provider").value;
-    $("agent-model").value = store("get", `manga_agent_model_${provider}`) || store("get", `manga_ai_model_${provider}`) || "";
+    const select = $("agent-model");
+    const saved = store("get", `manga_agent_model_${provider}`) || store("get", `manga_ai_model_${provider}`) || providerModels[provider] || "";
+    select.replaceChildren(new Option(saved || "Đang tải model…", saved));
+    if (saved) select.value = saved;
     loadEffort();
     showPicks();
-    const list = $("agent-model-list");
-    list.replaceChildren();
-    if (!provider) return;
+    if (!provider) {
+      select.replaceChildren(new Option("Chưa có nhà cung cấp", ""));
+      showPicks();
+      return;
+    }
     try {
       const data = await call(`/api/visual_qc/providers/${encodeURIComponent(provider)}/models`);
-      (data.models || []).forEach((id) => list.append(new Option(id, id)));
-    } catch (_) {}
+      const models = Array.isArray(data.models) ? [...data.models] : [];
+      if (saved && !models.includes(saved)) models.unshift(saved);
+      if (models.length) {
+        select.replaceChildren(...models.map((id) => new Option(id, id)));
+        select.value = saved && models.includes(saved) ? saved : models[0];
+        store("set", `manga_agent_model_${provider}`, select.value);
+      } else {
+        select.replaceChildren(new Option("Không có model", ""));
+      }
+    } catch (_) {
+      if (!saved) select.replaceChildren(new Option("Không tải được model", ""));
+    }
+    loadEffort();
+    showPicks();
   }
 
   async function loadProviders() {
     const response = await fetch("/api/visual_qc/settings");
     const data = await window.parseApiResponse(response);
     const ready = Object.values(data.providers || {}).filter((p) => p.configured && p.id !== "manga-cloud");
+    providerModels = Object.fromEntries(ready.map((p) => [p.id, p.model || ""]));
     $("agent-provider").replaceChildren(...ready.map((p) => new Option(p.label || p.id, p.id)));
     if (!ready.length) {
-      $("agent-status").textContent = "Chưa có API key. Thêm trong Cài đặt, mục Dịch vụ AI.";
+      $("agent-model").replaceChildren(new Option("Chưa có model", ""));
+      showPicks();
+      $("agent-status").textContent = "Chưa có nhà cung cấp nào. Thêm trong Cài đặt, mục Nhà cung cấp AI.";
       return;
     }
     const saved = store("get", "manga_agent_provider");
@@ -580,31 +664,50 @@
     await loadModels();
   }
 
+  function renderSessions() {
+    const list = $("agent-sessions");
+    if (!list) return;
+    const query = ($("agent-session-filter")?.value || "").trim().toLowerCase();
+    const filtered = allSessions.slice(0, 40).filter((row) => {
+      if (!query) return true;
+      const hay = `${row.title || ""} ${row.model || ""} ${row.workspace || ""}`.toLowerCase();
+      return hay.includes(query);
+    });
+    let folder = null;
+    const rows = filtered.flatMap((row) => {
+      const item = el("li", row.id === session?.id ? "agent-session-current" : "");
+      const open = button("", "agent-session-open", () => {
+        if (narrow()) showSide(false);
+        resume(row.id);
+      });
+      const shortModel = (row.model || "").split("/").pop() || row.provider || "";
+      open.append(
+        el("span", "agent-session-title", row.title || "(chưa có tin nhắn)"),
+        el("span", "agent-session-meta", shortModel || "Phiên làm việc")
+      );
+      open.title = `${row.model} · ${row.workspace}`;
+      const remove = button("Xóa", "agent-session-del", async () => {
+        await call(`/api/agent/sessions/${row.id}`, { method: "DELETE" }).catch(() => {});
+        if (row.id === session?.id) resetLog();
+        loadSessions();
+      });
+      item.append(open, remove);
+      const place = (row.workspace || "").split(/[\\/]/).filter(Boolean).pop() || row.workspace || "";
+      if (place === folder) return [item];
+      folder = place;
+      const head = el("li", "agent-side-head", place);
+      head.title = row.workspace || "";
+      return [head, item];
+    });
+    const emptyMsg = query ? "Không tìm thấy phiên phù hợp." : "Chưa có phiên nào.";
+    list.replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", emptyMsg)]));
+  }
+
   async function loadSessions() {
     try {
       const data = await call("/api/agent/sessions");
-      let folder = null;
-      const rows = (data.sessions || []).slice(0, 30).flatMap((row) => {
-        const item = el("li", row.id === session?.id ? "agent-session-current" : "");
-        const open = button(row.title || "(chưa có tin nhắn)", "agent-session-open", () => {
-          if (narrow()) showSide(false);
-          resume(row.id);
-        });
-        open.title = `${row.model} · ${row.workspace}`;
-        const remove = button("Xóa", "agent-session-del", async () => {
-          await call(`/api/agent/sessions/${row.id}`, { method: "DELETE" }).catch(() => {});
-          if (row.id === session?.id) resetLog();
-          loadSessions();
-        });
-        item.append(open, remove);
-        const place = (row.workspace || "").split(/[\\/]/).filter(Boolean).pop() || row.workspace || "";
-        if (place === folder) return [item];
-        folder = place;
-        const head = el("li", "agent-side-head", place);
-        head.title = row.workspace || "";
-        return [head, item];
-      });
-      $("agent-sessions").replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", "Chưa có phiên nào.")]));
+      allSessions = data.sessions || [];
+      renderSessions();
     } catch (_) {}
   }
 
@@ -619,11 +722,18 @@
       $("agent-network").checked = Boolean(snap.sandbox.network);
       $("agent-workspace").value = snap.workspace;
       showFolder();
+      if (snap.provider && [...$("agent-provider").options].some((o) => o.value === snap.provider)) {
+        $("agent-provider").value = snap.provider;
+      }
+      if (snap.model && ![...$("agent-model").options].some((o) => o.value === snap.model)) {
+        $("agent-model").append(new Option(snap.model, snap.model));
+      }
       $("agent-model").value = snap.model;
       $("agent-effort").value = snap.effort || "";
       showPicks();
       snap.events.forEach((event) => { if (event.type !== "approval") render(event); lastSeq = Math.max(lastSeq, event.seq); });
       showStatus(snap);
+      showHub(false);
       document.querySelectorAll(".agent-menu[open]").forEach((menu) => { menu.open = false; });
       follow(true);
       loadSessions();
@@ -682,9 +792,62 @@
     ]);
   }
 
+  function fillPrompt(text) {
+    const input = $("agent-input");
+    if (!input) return;
+    input.value = text;
+    autosize();
+    showHints();
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+
   function emptyState() {
     const box = el("div", "agent-empty");
-    box.append(chaosMark());
+    const sub = el("p", "agent-hero-sub", "Harness tự hành cho đọc hiểu mã nguồn, lập kế hoạch, chạy kiểm thử và tự động hóa tác vụ dài hạn.");
+    const startersData = [
+      {
+        title: "Khảo sát & Lập kế hoạch",
+        tag: "/plan",
+        desc: "Đọc kiến trúc & đề xuất từng bước",
+        prompt: "/plan Khảo sát cấu trúc dự án và lập kế hoạch thực hiện: ",
+        icon: ["M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z", "M9 3v15", "M15 6v15"],
+      },
+      {
+        title: "Kiểm toán & Sửa lỗi",
+        tag: "/tools",
+        desc: "Rà soát bug, luồng dữ liệu & đề xuất bản vá",
+        prompt: "Kiểm toán các module chính trong thư mục làm việc, liệt kê lỗi tiềm ẩn và đề xuất bản vá chi tiết.",
+        icon: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z", "M21 21l-4.35-4.35", "M11 8v6", "M8 11h6"],
+      },
+      {
+        title: "Mục tiêu tự hành",
+        tag: "/goal",
+        desc: "Tự thực thi & chạy test đến khi xong",
+        prompt: "/goal Hoàn thành mục tiêu sau và chạy kiểm thử xác nhận: ",
+        icon: ["M13 2L3 14h9l-1 8 10-12h-9l1-8z"],
+      },
+      {
+        title: "Tạo Skill & Công cụ",
+        tag: "/rules",
+        desc: "Mở rộng khả năng chuyên biệt cho Chaos",
+        prompt: "Giúp tôi thiết kế một SKILL.md hoặc công cụ plugin mới cho dự án này: ",
+        icon: ["M12 2L2 7l10 5 10-5-10-5z", "M2 17l10 5 10-5", "M2 12l10 5 10-5"],
+      },
+    ];
+    const starters = el("div", "agent-starters");
+    startersData.forEach((item) => {
+      const card = button("", "agent-starter-card", () => fillPrompt(item.prompt));
+      const iconWrap = el("span", "agent-starter-icon");
+      iconWrap.append(svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, item.icon.map((d) => svg("path", { d }))));
+      const copy = el("span", "agent-starter-copy");
+      const headRow = el("span", "agent-starter-head");
+      headRow.append(el("span", "agent-starter-title", item.title), el("span", "agent-starter-tag", item.tag));
+      copy.append(headRow, el("span", "agent-starter-desc", item.desc));
+      card.append(iconWrap, copy);
+      starters.append(card);
+    });
+    box.append(chaosMark(), sub, starters);
     return box;
   }
 
@@ -746,7 +909,7 @@
       return;
     }
     if (!$("agent-provider").value || !$("agent-model").value.trim()) {
-      window.showToast?.("Chọn dịch vụ và model.", "error");
+      window.showToast?.("Chọn nhà cung cấp và model.", "error");
       $("agent-model-menu").open = true;
       $("agent-model").focus();
       return;
@@ -1032,9 +1195,47 @@
     const about = $("agent-skill-desc").value.trim() || "(mô tả việc skill này giúp làm)";
     $("agent-input").value = `Dùng skill writing-skills để soạn một skill tên ${name}: ${about}. `
       + `Ghi nó vào .agents/skills/${name}/SKILL.md trong thư mục làm việc, với phần đầu name và description, rồi thử nó trên một ví dụ thật.`;
-    $("agent-more").open = false;
+    showHub(false);
     autosize();
     $("agent-input").focus();
+  }
+
+  let activeHubTab = "skills";
+
+  function selectHubTab(tab) {
+    activeHubTab = tab || "skills";
+    const panels = {
+      skills: $("agent-skills-menu"),
+      mcp: $("agent-mcp-menu"),
+      settings: $("agent-settings-menu"),
+    };
+    document.querySelectorAll("[data-agent-tab]").forEach((btn) => {
+      const active = btn.dataset.agentTab === activeHubTab;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-selected", String(active));
+    });
+    Object.entries(panels).forEach(([key, panel]) => {
+      if (panel) panel.hidden = key !== activeHubTab;
+    });
+    if (activeHubTab === "skills") loadSkills();
+    else if (activeHubTab === "mcp") loadMcp();
+  }
+
+  function showHub(open, tab) {
+    const hub = $("agent-hub");
+    const log = $("agent-log");
+    const dock = document.querySelector(".agent-dock");
+    const more = $("agent-more");
+    if (!hub) return;
+    hub.hidden = !open;
+    if (log) log.hidden = Boolean(open);
+    if (dock) dock.hidden = Boolean(open);
+    if (more) {
+      more.classList.toggle("is-active", Boolean(open));
+      more.setAttribute("aria-pressed", String(Boolean(open)));
+    }
+    $("agent-top-more")?.classList.toggle("is-active", Boolean(open));
+    if (open) selectHubTab(tab || activeHubTab);
   }
 
   window.openAgentView = async () => {
@@ -1057,6 +1258,15 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     if (!$("agent-view")) return;
+    const savedDefaultMode = store("get", "manga_agent_default_mode");
+    if (savedDefaultMode && [...$("agent-mode").options].some((o) => o.value === savedDefaultMode)) {
+      $("agent-mode").value = savedDefaultMode;
+    }
+    const savedDefaultSandbox = store("get", "manga_agent_default_sandbox");
+    if (savedDefaultSandbox && [...$("agent-sandbox").options].some((o) => o.value === savedDefaultSandbox)) {
+      $("agent-sandbox").value = savedDefaultSandbox;
+    }
+    showPicks();
     resetLog();
     $("agent-composer").addEventListener("submit", send);
     $("agent-input").addEventListener("keydown", (event) => {
@@ -1065,24 +1275,47 @@
     });
     $("agent-input").addEventListener("input", () => { autosize(); showHints(); });
     $("agent-stop").addEventListener("click", () => session && post(`/api/agent/sessions/${session.id}/stop`).then(poll).catch(() => {}));
-    $("agent-new").addEventListener("click", () => {
+    const startNewSession = () => {
       if (narrow()) showSide(false);
+      showHub(false);
       resetLog();
       loadSessions();
       $("agent-input").focus();
+    };
+    $("agent-new").addEventListener("click", startNewSession);
+    $("agent-top-new")?.addEventListener("click", startNewSession);
+    const toggleHub = () => {
+      if (narrow()) showSide(false);
+      showHub($("agent-hub")?.hidden !== false);
+    };
+    $("agent-more")?.addEventListener("click", toggleHub);
+    $("agent-top-more")?.addEventListener("click", toggleHub);
+    $("agent-hub-close")?.addEventListener("click", () => {
+      showHub(false);
+      $("agent-input").focus();
     });
+    document.querySelectorAll("[data-agent-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => selectHubTab(btn.dataset.agentTab));
+    });
+    $("agent-session-filter")?.addEventListener("input", renderSessions);
     showSide(!narrow() && store("get", "manga_agent_side") !== "closed");
     $("agent-side-toggle").addEventListener("click", () => showSide($("agent-view").classList.contains("agent-side-closed")));
+    $("agent-side-close")?.addEventListener("click", () => showSide(false));
     // On a narrow screen the column covers the chat, so a tap outside it folds it away.
     document.addEventListener("click", (event) => {
       if (!narrow() || $("agent-view").classList.contains("agent-side-closed")) return;
-      if (!event.target.closest("#agent-side, #agent-side-toggle")) showSide(false);
+      if (!event.target.closest("#agent-side, #agent-side-toggle, #agent-side-close")) showSide(false);
     });
-    $("agent-provider").addEventListener("change", () => { resetLog(); loadModels(); });
+    $("agent-provider").addEventListener("change", () => {
+      store("set", "manga_agent_provider", $("agent-provider").value);
+      resetLog();
+      loadModels();
+    });
+    document.addEventListener("ai-providers-updated", () => {
+      if (loaded) loadProviders();
+    });
     $("agent-workspace").addEventListener("change", () => { resetLog(); showFolder(); });
     $("agent-skill-body").value = SKILL_TEMPLATE;
-    $("agent-skills-menu").addEventListener("toggle", () => { if ($("agent-skills-menu").open) loadSkills(); });
-    $("agent-mcp-menu").addEventListener("toggle", () => { if ($("agent-mcp-menu").open) loadMcp(); });
     document.querySelectorAll('input[name="agent-mcp-kind"]').forEach((radio) => radio.addEventListener("change", showMcpKind));
     $("agent-mcp-save").addEventListener("click", saveMcp);
     $("agent-skill-install").addEventListener("click", installSkills);
@@ -1091,6 +1324,10 @@
     $("agent-skill-save").addEventListener("click", saveSkill);
     $("agent-skill-draft").addEventListener("click", draftSkill);
     $("agent-model").addEventListener("change", () => {
+      const provider = $("agent-provider").value;
+      if (provider && $("agent-model").value.trim()) {
+        store("set", `manga_agent_model_${provider}`, $("agent-model").value.trim());
+      }
       loadEffort();
       showPicks();
       syncSession({ model: $("agent-model").value.trim(), effort: $("agent-effort").value });

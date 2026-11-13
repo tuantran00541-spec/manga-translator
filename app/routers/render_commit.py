@@ -81,6 +81,10 @@ def _render_snapshot(
         if not active_text_objects:
             return 0, []
         verdicts: list[dict] = []
+        core = page.get("stitch_core") if isinstance(page.get("stitch_core"), dict) else {}
+        sy1 = int(core.get("source_y1") or 0)
+        core_y1 = int(core["core_source_y1"]) - sy1 if "core_source_y1" in core else 0
+        core_y2 = int(core["core_source_y2"]) - sy1 if "core_source_y2" in core else image.height
         rendered_count = render_text_objects(
             image,
             req,
@@ -97,6 +101,8 @@ def _render_snapshot(
             styles["vertical_aligns"],
             size_bands=size_bands,
             verdicts=verdicts,
+            core_y1=core_y1,
+            core_y2=core_y2,
         )
         skipped = [
             str(v["id"])
@@ -213,6 +219,7 @@ def _commit_render(
     snapshot_signature: str,
     tmp_path: Path,
     final_path: Path,
+    skipped_objects: list[str] | None = None,
 ) -> tuple[bool, int | None]:
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
@@ -235,6 +242,10 @@ def _commit_render(
             render_revision = bump_page_revision(page, "render_revision")
             if render_revision != target_render_revision:
                 raise RuntimeError("Page render revision changed during commit")
+            if skipped_objects:
+                page["render_skipped_objects"] = [str(oid) for oid in skipped_objects]
+            else:
+                page.pop("render_skipped_objects", None)
             stamp_render_artifact(page, input_signature=final_signature, output_path=final_path)
             save_manifest_raw(req.chapter_id, manifest)
         publish_then_commit(tmp_path, final_path, commit_manifest)
@@ -308,6 +319,7 @@ def render_page(req: RenderRequest) -> dict:
             snapshot_signature,
             tmp_path,
             final_path,
+            skipped_objects=skipped_objects,
         )
     except HTTPException:
         raise

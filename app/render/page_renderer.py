@@ -150,6 +150,10 @@ def _render_region_for_text_object(obj: dict) -> dict:
         obj.get("auto_generated")
         and region == obj.get("auto_geometry")
         and _valid_region(ocr_region)
+        and not _valid_region(obj.get("letter_bounds"))
+        and not isinstance(obj.get("bubble_mask"), dict)
+        and not obj.get("container")
+        and obj.get("source_cap_px") is None
     ):
         return ocr_region
     return region
@@ -454,19 +458,34 @@ def render_text_objects(
             coords = (x1, clipped_y1, x2, clipped_y2)
 
         obj_style = obj.get("style") or {}
+        lettering_c = obj.get("lettering_color")
+        ocr_color_default = (
+            lettering_c
+            if lettering_c in ("dark", "light", "red")
+            else (obj.get("ocr_text_color") or lettering_c)
+        )
         box_color = _resolve_ocr_style(
             style_get(colors_dict, oid),
             obj_style.get("color", "auto"),
-            obj.get("ocr_text_color") or obj.get("lettering_color"),
+            ocr_color_default,
             "auto",
         )
         box_font = style_get(fonts_dict, oid)
         if box_font is None:
             box_font = obj_style.get("font", "default")
+        effective_source_cap = obj.get("source_cap_px")
+        role_key = str(obj.get("typography_role") or "").lower()
+        if effective_source_cap is None and isinstance(size_bands, dict) and role_key in size_bands:
+            band = size_bands[role_key]
+            if isinstance(band, (list, tuple)) and len(band) == 2:
+                from app.render.size_bands import BAND_LO_FACTOR
+
+                effective_source_cap = round(float(band[0]) / BAND_LO_FACTOR)
+        ocr_size_default = None if effective_source_cap is not None else obj.get("ocr_font_size")
         box_size = _resolve_ocr_style(
             style_get(font_sizes_dict, oid),
             obj_style.get("fontSize", "auto"),
-            obj.get("ocr_font_size"),
+            ocr_size_default,
             "auto",
         )
         bold_val = style_get(bolds_dict, oid)
@@ -513,7 +532,7 @@ def render_text_objects(
             shape=obj_shape,
             horizontal_align=h_align,
             vertical_align=v_align,
-            source_cap_px=obj.get("source_cap_px"),
+            source_cap_px=effective_source_cap,
             container=obj.get("container"),
             enlarge=bool(obj.get("enlarge")),
             bubble_mask=obj.get("bubble_mask"),
@@ -527,7 +546,19 @@ def render_text_objects(
             decoded_letters = decode_mask_value(obj.get("letters_mask"))
             if decoded_letters is not None:
                 style["letters"] = decoded_letters
-                style["letters_box"] = coords_raw
+                reg = obj.get("region")
+                if _valid_region(reg) and decoded_letters.shape == (
+                    int(reg["y2"]) - int(reg["y1"]),
+                    int(reg["x2"]) - int(reg["x1"]),
+                ):
+                    style["letters_box"] = (
+                        int(reg["x1"]),
+                        int(reg["y1"]),
+                        int(reg["x2"]),
+                        int(reg["y2"]),
+                    )
+                else:
+                    style["letters_box"] = coords_raw
         fixed_size = ((isinstance(box_size, (int, float)) and box_size > 0)
                       or (isinstance(box_size, str) and box_size.isdigit()
                           and int(box_size) > 0))
@@ -537,7 +568,7 @@ def render_text_objects(
         if (style.get("bubble_mask") is None
                 and str(obj.get("container") or "").lower() in ("bubble", "spiky")):
             from app.render.text_renderer import _derived_mask
-            shared = _derived_mask(image, attempts[0], style.get("source_letter_box"))
+            shared = _derived_mask(image, coords, style.get("source_letter_box"))
             if isinstance(shared, dict) and shared.get("kind") == "bubble":
                 style["bubble_mask"] = shared
         render_text = translation.strip()

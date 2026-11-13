@@ -276,6 +276,9 @@ export function mount(workspace) {
     visiblePageFrame = requestAnimationFrame(syncVisibleReviewPage);
   }, { passive: true, signal });
   const rerender = () => {
+    if (shell._descriptors?.length) {
+      shell._savedScroll = { top: viewport.scrollTop, left: viewport.scrollLeft };
+    }
     captureSnapshot(shell);
     updateCompat();
     syncVariant();
@@ -295,11 +298,21 @@ export function mount(workspace) {
     if (todo.length && typeof window.renderTranslations === "function") {
       busy(true);
       try {
-        for (const [n, i] of todo.entries()) {
-          rendered.textContent = `Đang render ${n + 1}/${todo.length}…`;
-          const sig = letteringSig(pages[i]);
-          if (await window.renderTranslations(i)) pages[i]._renderSig = sig;
-        }
+        let done = 0;
+        const concurrency = Math.min(3, todo.length);
+        let cursor = 0;
+        rendered.textContent = `Đang render 1/${todo.length}…`;
+        const worker = async () => {
+          while (cursor < todo.length) {
+            const idx = cursor++;
+            const i = todo[idx];
+            const sig = letteringSig(pages[i]);
+            if (await window.renderTranslations(i)) pages[i]._renderSig = sig;
+            done += 1;
+            rendered.textContent = `Đang render ${Math.min(done + 1, todo.length)}/${todo.length}…`;
+          }
+        };
+        await Promise.all(Array.from({ length: concurrency }, () => worker()));
       } finally {
         rendered.textContent = "Có chữ";
         busy(false);
@@ -345,7 +358,9 @@ export function mount(workspace) {
     try {
       let affected = 0;
       for (const desc of shell._descriptors || []) {
-        if (!(shell._brushChunks || []).some((c) => chunkHasPaint(c, desc.sourceY1, desc.sourceY2))) continue;
+        const fullY1 = Math.max(0, desc.sourceY1 - desc.localY1);
+        const fullY2 = fullY1 + desc.img.naturalHeight;
+        if (!(shell._brushChunks || []).some((c) => chunkHasPaint(c, fullY1, fullY2))) continue;
         const mask = document.createElement("canvas"); mask.width = desc.img.naturalWidth; mask.height = desc.img.naturalHeight; drawBrushMask(mask.getContext("2d"), chunks, desc, mask.width);
         const form = new FormData(); form.append("chapter_id", chapterId); form.append("page_index", desc.item.canonicalIndex); form.append("mode", mode); form.append("mask", await canvasBlob(mask), "mask.png");
         const response = await fetch("/api/repaint_mask", { method: "POST", body: form }), parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response); if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);

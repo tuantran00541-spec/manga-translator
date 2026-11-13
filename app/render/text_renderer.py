@@ -299,15 +299,23 @@ def render_text_in_box(
 
     if stroke_width is None or stroke_width == "auto" or stroke_width == "":
         stroke_w = RENDER_AUTO_STROKE_WIDTH if font_path else 1
+        stroke_w_auto = True
     else:
+        stroke_w_auto = False
         try:
             stroke_w = max(0, min(RENDER_STROKE_WIDTH_MAX, int(stroke_width)))
         except (ValueError, TypeError):
             stroke_w = RENDER_AUTO_STROKE_WIDTH
+            stroke_w_auto = True
 
-    bg_grey = _light_background_grey(image, (x1, y1, x2, y2))
-    if _contrast(text_color, (bg_grey, bg_grey, bg_grey)) < LOW_CONTRAST_RATIO:
-        stroke_w = max(stroke_w, LOW_CONTRAST_STROKE_WIDTH)
+    if stroke_w_auto:
+        if bg_color and bg_color not in ("transparent", "none", ""):
+            bg_ref = parse_color(bg_color, default=(255, 255, 255))
+        else:
+            bg_grey = _light_background_grey(image, (x1, y1, x2, y2))
+            bg_ref = (bg_grey, bg_grey, bg_grey)
+        if _contrast(text_color, bg_ref) < LOW_CONTRAST_RATIO:
+            stroke_w = max(stroke_w, LOW_CONTRAST_STROKE_WIDTH)
 
     if stroke_color is None or stroke_color == "auto" or stroke_color == "":
         stroke_auto = True
@@ -335,6 +343,12 @@ def render_text_in_box(
     centred = h_align == "center" and v_align == "middle"
 
     _fixed_height_fallback = False
+    if target_size is not None:
+        _readable_fixed = int(RENDER_MIN_READABLE_FONT_SIZE
+                              * max(1.0, image.size[0] / REFERENCE_PAGE_WIDTH))
+        if target_size < _readable_fixed:
+            target_size = _readable_fixed
+
     if target_size is not None and curved and centred:
         _fixed_font = get_font_object(font_path_str, target_size)
         _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
@@ -359,12 +373,6 @@ def render_text_in_box(
                 * len(_fixed_lines) > box_h):
             target_size = None
             _fixed_height_fallback = True
-
-    if target_size is not None:
-        _readable_fixed = int(RENDER_MIN_READABLE_FONT_SIZE
-                              * max(1.0, image.size[0] / REFERENCE_PAGE_WIDTH))
-        if target_size < _readable_fixed:
-            target_size = _readable_fixed
 
     block_top = None
     if target_size is not None:
@@ -402,6 +410,13 @@ def render_text_in_box(
         lines = _wrap_text(draw, text, font, box_w, balance=True)
         lines_source = "balanced"
         draw_spans = spans_holder if spans_holder else None
+        _lh_check = _calc_line_height(draw, font, stroke_w=stroke_w)
+        if fitted_lines and (
+            _lh_check * len(lines) > box_h
+            or max((draw.textbbox((0, 0), ln, font=font)[2] for ln in lines), default=0) + 2 * stroke_w > box_w
+        ):
+            lines = fitted_lines
+            lines_source = "fitted"
         if centred and curved:
             if draw_spans is not None:
                 if len(lines) != len(draw_spans):
@@ -459,6 +474,14 @@ def render_text_in_box(
         start_y = int(block_top)
     else:
         start_y = y1 + pad + max(0, (box_h - total_h) // 2)
+    if lines:
+        first_top = draw.textbbox((0, 0), lines[0], font=font)[1] - stroke_w
+        if start_y + first_top < y1 + 1:
+            shift_down = min(
+                max(0, (y2 - pad) - (start_y + total_h)),
+                (y1 + 1) - (start_y + first_top),
+            )
+            start_y += shift_down
 
     offsets = [(0, 0), (1, 0), (0, 1), (1, 1)] if is_bold else [(0, 0)]
 
@@ -467,7 +490,8 @@ def render_text_in_box(
         if bg_color and bg_color not in ("transparent", "none", ""):
             local_bg = parse_color(bg_color, default=(255, 255, 255))
             if _contrast(text_color, local_bg) < LOW_CONTRAST_RATIO:
-                text_color = auto_detect_text_color(image, (x1, y1, x2, y2))
+                bg_lum = (local_bg[0] * 299 + local_bg[1] * 587 + local_bg[2] * 114) / 1000
+                text_color = (0, 0, 0) if bg_lum > 128 else (255, 255, 255)
                 fill_fallback = "pale_to_auto"
         else:
             iw, ih = image.size
@@ -606,7 +630,13 @@ def _trim_mask_to_letters(mask, box, letter_box, letters=None, letters_box=None)
             continue
         if letter_box is not None:
             lx1, ly1, lx2, ly2 = (int(v) for v in letter_box)
-            if not (px1 <= lx1 and ly1 >= py1 and lx2 <= px2 and ly2 <= py2):
+            margin = 6
+            if not (
+                px1 - margin <= lx1
+                and ly1 >= py1 - margin
+                and lx2 <= px2 + margin
+                and ly2 <= py2 + margin
+            ):
                 continue
         centroid = _mask_centroid(piece)
         if centroid is not None:
@@ -794,14 +824,26 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
             size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                           minimum_size=fit_floor, maximum_size=ceiling,
                                           curved=True, bands=bands, anchor_y=anchor_y)
+            if not fits and fit_floor > readable:
+                size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
+                                              minimum_size=readable, maximum_size=fit_floor,
+                                              curved=True, bands=bands, anchor_y=anchor_y)
         elif curved:
             size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                           minimum_size=fit_floor, maximum_size=ceiling,
                                           curved=True, bands=None)
+            if not fits and fit_floor > readable:
+                size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
+                                              minimum_size=readable, maximum_size=fit_floor,
+                                              curved=True, bands=None)
         else:
             size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
                                           minimum_size=fit_floor, maximum_size=ceiling,
                                           curved=False, bands=None)
+            if not fits and fit_floor > readable:
+                size, lines, fits = _fit_text(draw, text, fbw, fbh, font_path_str, stroke_w=stroke_w,
+                                              minimum_size=readable, maximum_size=fit_floor,
+                                              curved=False, bands=None)
         return size, lines, fits, bands, anchor_y, padded, ceiling, fit_floor
 
     size, lines, fits_readably, bands, anchor_y, padded, ceiling, floor = search(x1, y1, x2, y2)
@@ -1009,10 +1051,10 @@ def _box_frame(image: Image.Image, box):
         for strip, trim_left in ((strip_a, True), (strip_b, False)):
             if strip is None:
                 continue
-            if trim_left:
-                strip = strip[:, 1:]
+            if axis == "x":
+                strip = strip[:, 1:] if trim_left else strip[:, :-1]
             else:
-                strip = strip[:, :-1]
+                strip = strip[1:, :] if trim_left else strip[:-1, :]
             if strip.size == 0 or strip.shape[0] < 2 or strip.shape[1] < 2:
                 continue
             if float((strip >= 180).mean()) < 0.8:
@@ -1064,14 +1106,16 @@ def _screen_frame(image: Image.Image, box):
                 found = ga
         return found
 
-    left = side((grey[my1:my2, max(0, x1 - 16):x1 + 64] > 180).mean(axis=0),
+    left = side((grey[my1:my2, max(0, x1 - 16):min(width, x1 + 64)] > 180).mean(axis=0),
                 max(0, x1 - 16), x1, True)
-    right = side((grey[my1:my2, x2 - 64:min(width, x2 + 16)] > 180).mean(axis=0),
-                 x2 - 64, x2, False)
-    top = side((grey[max(0, y1 - 16):y1 + 64, mx1:mx2] > 180).mean(axis=1),
+    rx0 = max(0, x2 - 64)
+    right = side((grey[my1:my2, rx0:min(width, x2 + 16)] > 180).mean(axis=0),
+                 rx0, x2, False)
+    top = side((grey[max(0, y1 - 16):min(height, y1 + 64), mx1:mx2] > 180).mean(axis=1),
                max(0, y1 - 16), y1, True)
-    bottom = side((grey[y2 - 64:min(height, y2 + 16), mx1:mx2] > 180).mean(axis=1),
-                  y2 - 64, y2, False)
+    by0 = max(0, y2 - 64)
+    bottom = side((grey[by0:min(height, y2 + 16), mx1:mx2] > 180).mean(axis=1),
+                  by0, y2, False)
     fx1, fx2, measured_x = x1, x2, False
     if left is not None and right is not None and left < (x1 + x2) // 2 < right \
             and right - left >= 40:

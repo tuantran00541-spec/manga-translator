@@ -196,7 +196,14 @@ export async function renderStrip(shell, items, signal) {
 
     applyZoom(shell);
     const savedState = shell.closest(".review-workspace-shell")?._reviewRestoreState;
-    if (savedState?.chapterId !== chapterKey()) {
+    if (shell._savedScroll) {
+      const viewport = shell.querySelector(".review-document-viewport");
+      if (viewport) {
+        viewport.scrollTop = shell._savedScroll.top;
+        viewport.scrollLeft = shell._savedScroll.left;
+      }
+      delete shell._savedScroll;
+    } else if (savedState?.chapterId !== chapterKey()) {
       scrollToReviewPage(shell, shell._initialCanonicalPageIndex);
     }
     await ensureObjects(shell);

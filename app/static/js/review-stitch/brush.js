@@ -78,7 +78,7 @@ export function paintPoint(shell, x, y, radius, erase) {
   for (const chunk of shell._brushChunks || []) {
     if (y + radius < chunk.y1 || y - radius >= chunk.y2) continue;
     ensureBrushCanvas(chunk);
-    const ctx = chunk.ctx; ctx.save(); ctx.globalCompositeOperation = erase ? "destination-out" : "source-over"; ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--text-primary").trim() || "#000000"; ctx.beginPath(); ctx.arc(x, y - chunk.y1, radius, 0, Math.PI * 2); ctx.fill(); ctx.restore(); chunk.dirty = true;
+    const ctx = chunk.ctx; ctx.save(); ctx.globalCompositeOperation = erase ? "destination-out" : "source-over"; ctx.fillStyle = "#ff3b30"; ctx.beginPath(); ctx.arc(x, y - chunk.y1, radius, 0, Math.PI * 2); ctx.fill(); ctx.restore(); chunk.dirty = true;
   }
 }
 
@@ -88,9 +88,11 @@ export function paintStroke(shell, a, b, radius, erase) {
 }
 
 export function drawBrushMask(ctx, chunks, desc, width) {
+  const fullSourceY1 = Math.max(0, desc.sourceY1 - desc.localY1);
+  const fullSourceY2 = fullSourceY1 + desc.img.naturalHeight;
   for (const chunk of chunks || []) {
     if (!chunk.dirty || !chunk.canvas) continue;
-    const y1 = Math.max(chunk.y1, desc.sourceY1), y2 = Math.min(chunk.y2, desc.sourceY2);
+    const y1 = Math.max(chunk.y1, fullSourceY1), y2 = Math.min(chunk.y2, fullSourceY2);
     if (y2 <= y1) continue;
     const h = y2 - y1;
     ctx.drawImage(
@@ -100,7 +102,7 @@ export function drawBrushMask(ctx, chunks, desc, width) {
       width,
       h,
       0,
-      desc.localY1 + y1 - desc.sourceY1,
+      y1 - fullSourceY1,
       width,
       h,
     );

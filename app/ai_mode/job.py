@@ -842,7 +842,9 @@ class AIModeRunner:
             if (x2 - x1 < MIN_SIDE_PX or y2 - y1 < MIN_SIDE_PX
                     or (width and height and (x2 - x1) * (y2 - y1) > MAX_AREA_RATIO * width * height)):
                 continue
-            box = (max(0, x1 - MARGIN_PX), max(0, y1 - MARGIN_PX), x2 + MARGIN_PX, y2 + MARGIN_PX)
+            bx2 = min(width, x2 + MARGIN_PX) if width > 0 else x2 + MARGIN_PX
+            by2 = min(height, y2 + MARGIN_PX) if height > 0 else y2 + MARGIN_PX
+            box = (max(0, x1 - MARGIN_PX), max(0, y1 - MARGIN_PX), bx2, by2)
             if not _covered(box, existing + fresh):
                 fresh.append(box)
         if not fresh:
@@ -1152,7 +1154,10 @@ class AIModeRunner:
             self._progress(done, len(indices))
             manifest = self._manifest()
             page = manifest["pages"][page_index]
-            if page.get("skipped") or _current_rendered_path(chapter_id, page_index, manifest) is not None:
+            if page.get("skipped") or (
+                not page.get("render_skipped_objects")
+                and _current_rendered_path(chapter_id, page_index, manifest) is not None
+            ):
                 continue
             await self._render_one(page_index)
         self._progress(len(indices), len(indices))
