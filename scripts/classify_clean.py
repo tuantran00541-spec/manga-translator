@@ -17,6 +17,7 @@ MIN_BLOCK_PX = 150
 REMAIN_FRAC = 0.30
 DILATE_KERNEL = np.ones((15, 15), np.uint8)
 BOX_OVERLAP_FRAC = 0.20
+TIGHT_PAD = 4
 MAX_CROPS_PER_KIND = 8
 
 
@@ -78,6 +79,8 @@ def main() -> int:
             cv2.dilate(text.astype(np.uint8), DILATE_KERNEL)
         )
         rects = page.get("boxes", []) or []
+        raw_boxes = [{"x1": int(b[0]), "y1": int(b[1]), "x2": int(b[2]), "y2": int(b[3])}
+                     for b in detector.detect_slice(before)]
         confs = [b.get("confidence") for b in rects if b.get("confidence") is not None]
         row = {
             "slice": number, "boxes": len(rects),
@@ -91,13 +94,14 @@ def main() -> int:
             if (rest & block).sum() < REMAIN_FRAC * block.sum():
                 continue
             ys, xs = np.nonzero(block)
+            tight = (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))
             box = (
-                max(0, int(xs.min()) - 40), max(0, int(ys.min()) - 40),
-                min(before.shape[1], int(xs.max()) + 40),
-                min(before.shape[0], int(ys.max()) + 40),
+                max(0, tight[0] - TIGHT_PAD), max(0, tight[1] - TIGHT_PAD),
+                min(before.shape[1], tight[2] + TIGHT_PAD),
+                min(before.shape[0], tight[3] + TIGHT_PAD),
             )
             page_box = box
-            kind = "inpaint_skip" if box_overlaps_block(page_box, rects) else "detector_miss"
+            kind = "inpaint_skip" if box_overlaps_block(tight, raw_boxes) else "detector_miss"
             record = {"slice": number, "box": [int(v) for v in page_box],
                       "px": int(block.sum()), "kind": kind}
             if kind == "detector_miss":
