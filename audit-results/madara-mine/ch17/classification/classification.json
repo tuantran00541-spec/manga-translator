@@ -1,0 +1,637 @@
+{
+  "chapter_id": "a0000011",
+  "slices": 73,
+  "cleaned": 73,
+  "detector_misses": 1,
+  "inpaint_skips": 8,
+  "no_box_slices": [
+    1,
+    2,
+    3,
+    4,
+    6,
+    7,
+    32,
+    33,
+    53,
+    54,
+    55
+  ],
+  "seconds": 530.9,
+  "pages": [
+    {
+      "slice": 0,
+      "boxes": 10,
+      "min_conf": 0.344,
+      "misses": 0,
+      "skips": 1
+    },
+    {
+      "slice": 1,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 2,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 3,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 4,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 5,
+      "boxes": 3,
+      "min_conf": 0.292,
+      "misses": 1,
+      "skips": 0
+    },
+    {
+      "slice": 6,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 7,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 8,
+      "boxes": 2,
+      "min_conf": 0.429,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 9,
+      "boxes": 1,
+      "min_conf": 0.697,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 10,
+      "boxes": 3,
+      "min_conf": 0.67,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 11,
+      "boxes": 2,
+      "min_conf": 0.838,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 12,
+      "boxes": 3,
+      "min_conf": 0.2,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 13,
+      "boxes": 3,
+      "min_conf": 0.825,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 14,
+      "boxes": 3,
+      "min_conf": 0.838,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 15,
+      "boxes": 4,
+      "min_conf": 0.891,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 16,
+      "boxes": 1,
+      "min_conf": 0.703,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 17,
+      "boxes": 2,
+      "min_conf": 0.743,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 18,
+      "boxes": 2,
+      "min_conf": 0.861,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 19,
+      "boxes": 4,
+      "min_conf": 0.726,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 20,
+      "boxes": 3,
+      "min_conf": 0.584,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 21,
+      "boxes": 2,
+      "min_conf": 0.887,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 22,
+      "boxes": 3,
+      "min_conf": 0.854,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 23,
+      "boxes": 3,
+      "min_conf": 0.69,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 24,
+      "boxes": 2,
+      "min_conf": 0.882,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 25,
+      "boxes": 2,
+      "min_conf": 0.884,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 26,
+      "boxes": 1,
+      "min_conf": 0.876,
+      "misses": 0,
+      "skips": 1
+    },
+    {
+      "slice": 27,
+      "boxes": 1,
+      "min_conf": 0.883,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 28,
+      "boxes": 2,
+      "min_conf": 0.725,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 29,
+      "boxes": 2,
+      "min_conf": 0.871,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 30,
+      "boxes": 8,
+      "min_conf": 0.293,
+      "misses": 0,
+      "skips": 1
+    },
+    {
+      "slice": 31,
+      "boxes": 6,
+      "min_conf": 0.293,
+      "misses": 0,
+      "skips": 1
+    },
+    {
+      "slice": 32,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 33,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 34,
+      "boxes": 1,
+      "min_conf": 0.881,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 35,
+      "boxes": 2,
+      "min_conf": 0.848,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 36,
+      "boxes": 4,
+      "min_conf": 0.634,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 37,
+      "boxes": 3,
+      "min_conf": 0.839,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 38,
+      "boxes": 5,
+      "min_conf": 0.624,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 39,
+      "boxes": 2,
+      "min_conf": 0.893,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 40,
+      "boxes": 2,
+      "min_conf": 0.702,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 41,
+      "boxes": 1,
+      "min_conf": 0.83,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 42,
+      "boxes": 3,
+      "min_conf": 0.687,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 43,
+      "boxes": 2,
+      "min_conf": 0.682,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 44,
+      "boxes": 1,
+      "min_conf": 0.865,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 45,
+      "boxes": 4,
+      "min_conf": 0.756,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 46,
+      "boxes": 4,
+      "min_conf": 0.709,
+      "misses": 0,
+      "skips": 2
+    },
+    {
+      "slice": 47,
+      "boxes": 3,
+      "min_conf": 0.866,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 48,
+      "boxes": 2,
+      "min_conf": 0.696,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 49,
+      "boxes": 1,
+      "min_conf": 0.882,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 50,
+      "boxes": 4,
+      "min_conf": 0.403,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 51,
+      "boxes": 1,
+      "min_conf": 0.891,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 52,
+      "boxes": 1,
+      "min_conf": 0.705,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 53,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 54,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 55,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 56,
+      "boxes": 2,
+      "min_conf": 0.579,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 57,
+      "boxes": 1,
+      "min_conf": 0.876,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 58,
+      "boxes": 4,
+      "min_conf": 0.712,
+      "misses": 0,
+      "skips": 1
+    },
+    {
+      "slice": 59,
+      "boxes": 2,
+      "min_conf": 0.672,
+      "misses": 0,
+      "skips": 1
+    },
+    {
+      "slice": 60,
+      "boxes": 1,
+      "min_conf": 0.824,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 61,
+      "boxes": 3,
+      "min_conf": 0.518,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 62,
+      "boxes": 1,
+      "min_conf": 0.838,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 63,
+      "boxes": 5,
+      "min_conf": 0.642,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 64,
+      "boxes": 2,
+      "min_conf": 0.897,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 65,
+      "boxes": 1,
+      "min_conf": 0.552,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 66,
+      "boxes": 1,
+      "min_conf": 0.668,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 67,
+      "boxes": 1,
+      "min_conf": 0.677,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 68,
+      "boxes": 1,
+      "min_conf": 0.781,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 69,
+      "boxes": 1,
+      "min_conf": 0.818,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 70,
+      "boxes": 3,
+      "min_conf": 0.659,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 71,
+      "boxes": 1,
+      "min_conf": 0.592,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 72,
+      "boxes": 2,
+      "min_conf": 0.255,
+      "misses": 0,
+      "skips": 0
+    }
+  ],
+  "misses": [
+    {
+      "slice": 5,
+      "box": [
+        263,
+        946,
+        313,
+        1006
+      ],
+      "px": 689,
+      "kind": "detector_miss"
+    }
+  ],
+  "skips": [
+    {
+      "slice": 0,
+      "box": [
+        656,
+        6,
+        690,
+        37
+      ],
+      "px": 390,
+      "kind": "inpaint_skip"
+    },
+    {
+      "slice": 26,
+      "box": [
+        200,
+        4187,
+        604,
+        4301
+      ],
+      "px": 25678,
+      "kind": "inpaint_skip"
+    },
+    {
+      "slice": 30,
+      "box": [
+        60,
+        3377,
+        419,
+        3692
+      ],
+      "px": 56712,
+      "kind": "inpaint_skip"
+    },
+    {
+      "slice": 31,
+      "box": [
+        424,
+        339,
+        654,
+        405
+      ],
+      "px": 7306,
+      "kind": "inpaint_skip"
+    },
+    {
+      "slice": 46,
+      "box": [
+        69,
+        339,
+        354,
+        409
+      ],
+      "px": 12162,
+      "kind": "inpaint_skip"
+    },
+    {
+      "slice": 46,
+      "box": [
+        212,
+        603,
+        588,
+        688
+      ],
+      "px": 19240,
+      "kind": "inpaint_skip"
+    },
+    {
+      "slice": 58,
+      "box": [
+        312,
+        4580,
+        676,
+        4742
+      ],
+      "px": 37174,
+      "kind": "inpaint_skip"
+    },
+    {
+      "slice": 59,
+      "box": [
+        70,
+        666,
+        357,
+        743
+      ],
+      "px": 16748,
+      "kind": "inpaint_skip"
+    }
+  ]
+}
