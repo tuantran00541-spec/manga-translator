@@ -1,0 +1,53 @@
+{
+  "chapter_id": "a0000024",
+  "slices": 4,
+  "cleaned": 4,
+  "detector_misses": 0,
+  "inpaint_skips": 1,
+  "no_box_slices": [],
+  "seconds": 86.0,
+  "pages": [
+    {
+      "slice": 0,
+      "boxes": 19,
+      "min_conf": 0.111,
+      "misses": 0,
+      "skips": 1
+    },
+    {
+      "slice": 1,
+      "boxes": 1,
+      "min_conf": 0.551,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 2,
+      "boxes": 6,
+      "min_conf": 0.453,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 3,
+      "boxes": 3,
+      "min_conf": 0.655,
+      "misses": 0,
+      "skips": 0
+    }
+  ],
+  "misses": [],
+  "skips": [
+    {
+      "slice": 0,
+      "box": [
+        315,
+        226,
+        511,
+        313
+      ],
+      "px": 11402,
+      "kind": "inpaint_skip"
+    }
+  ]
+}
