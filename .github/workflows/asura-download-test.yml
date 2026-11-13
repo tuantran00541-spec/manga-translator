@@ -1,0 +1,45 @@
+name: Asura download test
+
+on:
+  workflow_dispatch:
+    inputs:
+      chapter_url:
+        description: "AsuraScans chapter URL"
+        required: true
+        default: "https://asurascans.com/comics/sss-class-suicide-hunter-f212c582/chapter/158"
+      chapter:
+        description: "Chapter number"
+        required: true
+        default: "158"
+      urls_file:
+        description: "Repo-relative path to harvested image URLs JSON (empty = direct page fetch only)"
+        required: false
+        default: "scripts/asura-test-urls/sss-158-urls.json"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Direct page fetch attempt
+        continue-on-error: true
+        run: |
+          python3 scripts/download_asura.py --chapter-url "${{ inputs.chapter_url }}" --chapter "${{ inputs.chapter }}" --out /tmp/asura-direct
+
+      - name: Download with harvested URLs
+        run: |
+          python3 scripts/download_asura.py --chapter-url "${{ inputs.chapter_url }}" --chapter "${{ inputs.chapter }}" --urls-file "${{ inputs.urls_file }}" --out "audit-results/asura-test/ch${{ inputs.chapter }}"
+
+      - name: Verify zip
+        run: |
+          python3 -c "import zipfile; z = zipfile.ZipFile('audit-results/asura-test/ch${{ inputs.chapter }}/asura-ch${{ inputs.chapter }}.zip'); print(len(z.namelist()), 'entries, testzip:', z.testzip())"
+          ls -l "audit-results/asura-test/ch${{ inputs.chapter }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asura-ch${{ inputs.chapter }}
+          path: audit-results/asura-test/ch${{ inputs.chapter }}/asura-ch${{ inputs.chapter }}.zip
