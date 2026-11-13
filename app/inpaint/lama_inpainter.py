@@ -13,6 +13,15 @@ from app.config import (
 )
 from app.detector.boxes import BubbleBox
 from app.inpaint.clustering import cluster_boxes, compute_crop_region, compute_manual_crop_region, split_oversized_cluster_area
+from app.inpaint.smart_fill import (
+    blend_painted,
+    match_boundary_tone,
+    quadratic_design,
+    restore_ambient_grain,
+    ring_fill_color,
+    smart_fill_color,
+    smart_fill_surface,
+)
 from app.detector.mask_builder import build_mask
 from app.logging_config import logger
 from app.model_contracts import decode_lama_output, validate_lama_session
@@ -32,34 +41,11 @@ from app.parameters import (
     INPAINT_SIZE,
     INPAINTER,
     MANUAL_DILATION_SCALE,
-    MANUAL_FEATHER_RADIUS,
     MANUAL_MAX_DILATION,
     MANUAL_MIN_DILATION,
     MANUAL_TILE_OVERLAP,
-    SMART_FILL_BLACK_EDGE_DENSITY_MAX,
-    SMART_FILL_BLACK_LEVEL,
-    SMART_FILL_BLACK_RATIO_MIN,
-    SMART_FILL_BLACK_STD_MAX,
     SMART_FILL_CANNY_HIGH,
     SMART_FILL_CANNY_LOW,
-    SMART_FILL_CHROMA_STD_MAX,
-    SMART_FILL_CLEAN_RING_MARGIN,
-    SMART_FILL_CONTEXT_MARGIN_FACTOR,
-    SMART_FILL_EDGE_DENSITY_MAX,
-    SMART_FILL_FULL_STD_MAX,
-    SMART_FILL_MIDTONE_MAX,
-    SMART_FILL_MIDTONE_MIN,
-    SMART_FILL_MIDTONE_STD_MAX,
-    SMART_FILL_RING_AGREE,
-    SMART_FILL_RING_NEAR_PX,
-    SMART_FILL_RING_PIXELS_MIN,
-    SMART_FILL_RING_TOLERANCE,
-    SMART_FILL_SURFACE_MIN_RANGE,
-    SMART_FILL_SURFACE_RESIDUAL_MAX,
-    SMART_FILL_SURFACE_SEED_TOL,
-    SMART_FILL_WHITE_LEVEL,
-    SMART_FILL_WHITE_RATIO_MIN,
-    SMART_FILL_WHITE_STD_MAX,
     USE_DYNAMIC_LAMA,
 )
 
@@ -508,124 +494,11 @@ class Inpainter:
 
     @staticmethod
     def _smart_fill_color(crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray | None:
-        mask_bool = local_mask > 127
-        if not np.any(mask_bool):
-            return None
-
-        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
-        non_mask = ~mask_bool
-        if not np.any(non_mask):
-            return None
-
-        margin = max(1, int(SMART_FILL_CLEAN_RING_MARGIN))
-        kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE, (margin * 2 + 1, margin * 2 + 1)
-        )
-        ring = (cv2.dilate(mask_bool.astype(np.uint8), kernel) > 0) & non_mask
-        if int(np.count_nonzero(ring)) < SMART_FILL_RING_PIXELS_MIN:
-            return None
-
-        context_margin = margin * SMART_FILL_CONTEXT_MARGIN_FACTOR
-        context_kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE,
-            (context_margin * 2 + 1, context_margin * 2 + 1),
-        )
-        context = (
-            cv2.dilate(mask_bool.astype(np.uint8), context_kernel) > 0
-        ) & non_mask
-
-        ring_gray = gray[ring]
-        context_gray = gray[context]
-        ring_pixels = crop[ring]
-        context_std = float(context_gray.std())
-
-        chroma_safe = True
-        if crop.ndim == 3 and crop.shape[2] == 3:
-            lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
-            ring_ab = lab[ring, 1:3].astype(np.float32, copy=False)
-            context_ab = lab[context, 1:3].astype(np.float32, copy=False)
-            ring_chroma_std = float(np.max(ring_ab.std(axis=0))) if ring_ab.size else 0.0
-            context_chroma_std = float(np.max(context_ab.std(axis=0))) if context_ab.size else 0.0
-            chroma_safe = bool(
-                ring_chroma_std <= SMART_FILL_CHROMA_STD_MAX
-                and context_chroma_std <= SMART_FILL_CHROMA_STD_MAX
-            )
-
-        edges = cv2.Canny(
-            gray,
-            SMART_FILL_CANNY_LOW,
-            SMART_FILL_CANNY_HIGH,
-            L2gradient=True,
-        ) > 0
-        context_edge_density = float(edges[context].mean())
-
-        white_ratio = float((ring_gray > SMART_FILL_WHITE_LEVEL).mean())
-        black_ratio = float((ring_gray < SMART_FILL_BLACK_LEVEL).mean())
-        ring_std = float(ring_gray.std())
-        median_gray = float(np.median(ring_gray))
-
-        if (
-            chroma_safe
-            and white_ratio >= SMART_FILL_WHITE_RATIO_MIN
-            and ring_std <= SMART_FILL_WHITE_STD_MAX
-            and context_std <= SMART_FILL_FULL_STD_MAX
-            and context_edge_density <= SMART_FILL_EDGE_DENSITY_MAX
-        ):
-            white_pixels = ring_pixels[ring_gray > SMART_FILL_WHITE_LEVEL]
-            if len(white_pixels):
-                return np.median(white_pixels, axis=0).astype(np.uint8)
-
-        if (
-            chroma_safe
-            and black_ratio >= SMART_FILL_BLACK_RATIO_MIN
-            and ring_std <= SMART_FILL_BLACK_STD_MAX
-            and context_std <= SMART_FILL_BLACK_STD_MAX
-            and context_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
-        ):
-            black_pixels = ring_pixels[ring_gray < SMART_FILL_BLACK_LEVEL]
-            if len(black_pixels):
-                return np.median(black_pixels, axis=0).astype(np.uint8)
-
-        if (
-            chroma_safe
-            and SMART_FILL_MIDTONE_MIN <= median_gray <= SMART_FILL_MIDTONE_MAX
-            and ring_std <= SMART_FILL_MIDTONE_STD_MAX
-            and context_std <= SMART_FILL_MIDTONE_STD_MAX
-            and context_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
-        ):
-            return np.median(ring_pixels, axis=0).astype(np.uint8)
-
-        return None
+        return smart_fill_color(crop, local_mask)
 
     @staticmethod
     def _ring_fill_color(crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray | None:
-        hole = local_mask > 127
-        if crop.ndim != 3 or not hole.any():
-            return None
-        hole_u8 = hole.astype(np.uint8)
-
-        def band(px: int) -> np.ndarray:
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * px + 1, 2 * px + 1))
-            return cv2.dilate(hole_u8, kernel) > 0
-
-        grown = band(SMART_FILL_CLEAN_RING_MARGIN)
-        ring = grown & ~hole
-        if int(np.count_nonzero(ring)) < SMART_FILL_RING_PIXELS_MIN:
-            return None
-        lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB).astype(np.float32)
-        diff = lab - np.median(lab[ring], axis=0)
-        off = ring & (np.einsum("...k,...k->...", diff, diff) > SMART_FILL_RING_TOLERANCE ** 2)
-        near = band(SMART_FILL_RING_NEAR_PX) & ~hole
-        if np.count_nonzero(near & off) > (1.0 - SMART_FILL_RING_AGREE) * np.count_nonzero(near):
-            return None
-        touching = cv2.dilate(hole_u8, np.ones((3, 3), np.uint8)) > 0
-        outer = grown & ~(cv2.erode(grown.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0)
-        count, parts = cv2.connectedComponents(off.astype(np.uint8))
-        for label in range(1, count):
-            part = parts == label
-            if (part & touching).any() and (part & outer).any():
-                return None
-        return np.median(crop[ring & ~off], axis=0).astype(np.uint8)
+        return ring_fill_color(crop, local_mask)
 
     @staticmethod
     def _quadratic_design(
@@ -634,11 +507,7 @@ class Inpainter:
         width: int,
         height: int,
     ) -> np.ndarray:
-        x = (xs.astype(np.float32) + 0.5) / max(1.0, float(width))
-        y = (ys.astype(np.float32) + 0.5) / max(1.0, float(height))
-        x = x * 2.0 - 1.0
-        y = y * 2.0 - 1.0
-        return np.stack((np.ones_like(x), x, y, x * x, x * y, y * y), axis=1)
+        return quadratic_design(xs, ys, width, height)
 
     @classmethod
     def _smart_fill_surface(
@@ -647,39 +516,7 @@ class Inpainter:
         local_mask: np.ndarray,
         fill_color: np.ndarray,
     ) -> np.ndarray | None:
-        mask_bool = local_mask > 127
-        margin = max(1, int(SMART_FILL_CLEAN_RING_MARGIN))
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (margin * 2 + 1, margin * 2 + 1))
-        ring = (cv2.dilate(mask_bool.astype(np.uint8), kernel) > 0) & ~mask_bool
-        ys, xs = np.nonzero(ring)
-        if xs.size < max(SMART_FILL_RING_PIXELS_MIN, 24) or crop.ndim != 3:
-            return None
-        values = crop[ring].astype(np.float32)
-        height, width = crop.shape[:2]
-        design = cls._quadratic_design(xs, ys, width, height)
-        inliers = np.max(np.abs(values - fill_color.astype(np.float32)), axis=1) <= SMART_FILL_SURFACE_SEED_TOL
-        coef = None
-        for _ in range(3):
-            if int(np.count_nonzero(inliers)) < max(24, design.shape[1] * 4):
-                return None
-            coef, *_ = np.linalg.lstsq(design[inliers], values[inliers], rcond=None)
-            residual = np.max(np.abs(design @ coef - values), axis=1)
-            refined = residual <= SMART_FILL_SURFACE_RESIDUAL_MAX * 2.0
-            if np.array_equal(refined, inliers):
-                break
-            inliers = refined
-        fit = design[inliers] @ coef
-        rms = float(np.sqrt(np.mean((fit - values[inliers]) ** 2)))
-        if rms > SMART_FILL_SURFACE_RESIDUAL_MAX:
-            return None
-        my, mx = np.nonzero(mask_bool)
-        surface = cls._quadratic_design(mx, my, width, height) @ coef
-        low = values[inliers].min(axis=0) - 1.0
-        high = values[inliers].max(axis=0) + 1.0
-        surface = np.clip(surface, low, high)
-        if float(np.max(np.ptp(surface, axis=0))) < SMART_FILL_SURFACE_MIN_RANGE:
-            return None
-        return np.clip(np.rint(surface), 0, 255).astype(np.uint8)
+        return smart_fill_surface(crop, local_mask, fill_color)
 
     def _smart_paint_region(
         self,
@@ -712,8 +549,8 @@ class Inpainter:
                 filled[mask_bool] = surface
             else:
                 filled[mask_bool] = fill_color
-            image[cy1:cy2, cx1:cx2] = filled
-            return image
+            filled = restore_ambient_grain(crop, filled, local_mask, crop_box, hole=hole)
+            return self._blend_painted(image, filled, local_mask, crop_box, feather, hole=hole)
 
         self._metric_add("lama_regions")
         return self._lama_fill(image, crop, local_mask, crop_box, feather=feather, hole=hole)
@@ -763,7 +600,9 @@ class Inpainter:
         else:
             painted = self._lama_fill_single(crop, fill_mask)
 
-        return self._blend_painted(image, painted, local_mask, crop_box, feather)
+        painted = match_boundary_tone(crop, painted, local_mask, hole=hole)
+        painted = restore_ambient_grain(crop, painted, local_mask, crop_box, hole=hole)
+        return self._blend_painted(image, painted, local_mask, crop_box, feather, hole=hole)
 
     def _migan_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple,
                     feather: bool = False, hole: np.ndarray | None = None) -> np.ndarray:
@@ -781,27 +620,20 @@ class Inpainter:
         self._metric_add("migan_regions")
         self._metric_add("migan_model_runs")
         self._metric_add("migan_model_ms", int((time.perf_counter() - started) * 1000))
-        return self._blend_painted(image, painted, local_mask, crop_box, feather)
+        painted = match_boundary_tone(crop, painted, local_mask, hole=hole)
+        painted = restore_ambient_grain(crop, painted, local_mask, crop_box, hole=hole)
+        return self._blend_painted(image, painted, local_mask, crop_box, feather, hole=hole)
 
     @staticmethod
-    def _blend_painted(image: np.ndarray, painted: np.ndarray, local_mask: np.ndarray, crop_box: tuple,
-                       feather: bool) -> np.ndarray:
-        cx1, cy1, cx2, cy2 = crop_box
-        original_crop = image[cy1:cy2, cx1:cx2]
-        if feather:
-            core = local_mask > 127
-            alpha = core.astype(np.float32)
-            if MANUAL_FEATHER_RADIUS > 0:
-                k = MANUAL_FEATHER_RADIUS * 2 + 1
-                feathered = cv2.GaussianBlur(alpha, (k, k), 0)
-                alpha = np.where(core, 1.0, feathered)
-            alpha = np.clip(alpha, 0.0, 1.0)[:, :, None]
-            blended = painted.astype(np.float32) * alpha + original_crop.astype(np.float32) * (1.0 - alpha)
-            image[cy1:cy2, cx1:cx2] = np.clip(np.rint(blended), 0, 255).astype(np.uint8)
-        else:
-            mask_3d = (local_mask > 127)[:, :, None]
-            image[cy1:cy2, cx1:cx2] = np.where(mask_3d, painted, original_crop)
-        return image
+    def _blend_painted(
+        image: np.ndarray,
+        painted: np.ndarray,
+        local_mask: np.ndarray,
+        crop_box: tuple,
+        feather: bool,
+        hole: np.ndarray | None = None,
+    ) -> np.ndarray:
+        return blend_painted(image, painted, local_mask, crop_box, feather, hole=hole)
 
     @staticmethod
     def _resize_mask_preserve_support(
