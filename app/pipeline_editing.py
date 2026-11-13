@@ -9,11 +9,8 @@ import numpy as np
 
 from app.config import PROCESSED_DIR
 from app.text_objects import ensure_page_text_objects
-from app.detector.boxes import BubbleBox
 from app.image_io import read_image, write_image
-from app.logging_config import logger
 from app.manifest_utils import (
-    PageArtifactTransaction,
     atomic_replace,
     bump_page_revision,
     get_manifest_lock,
@@ -23,8 +20,6 @@ from app.manifest_utils import (
     new_box_id,
     save_manifest_raw,
 )
-from app.mask_store import decode_mask_value
-from app.parameters import MANUAL_MASK_THRESHOLD
 from app.pipeline_masks import PipelineMasksMixin
 from app.region_policy import overlap_share, seam_preserve_plan, subtract_regions_from_mask
 

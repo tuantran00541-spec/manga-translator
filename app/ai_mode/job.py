@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
-import json
 import re
 import threading
 import time
@@ -11,7 +10,6 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-import requests
 from fastapi import HTTPException
 
 from app.ai_mode import decider
@@ -26,6 +24,8 @@ from app.logging_config import logger
 from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.security import validate_managed_path
+__all__ = ["OUTPUT_DIR"]
+
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("download", "Tải chương"),

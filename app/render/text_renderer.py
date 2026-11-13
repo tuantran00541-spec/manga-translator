@@ -3,11 +3,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from app.config import DEFAULT_FONT
 from app.detector.bubble_mask import mask_inscribed_rect
 from app.parameters import (
     MAX_FONT_SIZE,
-    MIN_FONT_SIZE,
     RENDER_AUTO_STROKE_WIDTH,
     RENDER_DEFAULT_PADDING,
     RENDER_MIN_READABLE_FONT_SIZE,
@@ -21,12 +19,9 @@ from app.render.font_metrics import (
     LOW_CONTRAST_STROKE_WIDTH,
     _calc_line_height,
     _contrast,
-    _draws_char,
     _light_background_grey,
     _line_start_x,
     _luminance,
-    _missing_glyph_mask,
-    _plain_punctuation,
     auto_detect_text_color,
     drawable,
     font_draws_text,
@@ -36,40 +31,38 @@ from app.render.font_metrics import (
     parse_color,
 )
 from app.render.text_fitting import (
-    BOX_RULE_EXPAND,
     ENLARGED_MIN_FONT_SIZE,
     ENLARGE_GROW_RATIO,
-    MASK_BAND_PAD,
     REFERENCE_PAGE_WIDTH,
     SOURCE_FLOOR_RATIO,
     SOURCE_MATCH_MAX_FONT_SIZE,
     _CURVED_CONTAINERS,
-    _DERIVED_MASK_CACHE,
     _anchored_top,
-    _balanced_lines,
     _band_line_centres,
     _band_line_spans,
     _band_line_widths,
     _box_frame,
     _derived_mask,
-    _ellipse_line_widths,
     _fit_text,
     _fits,
-    _greedy_groups,
-    _greedy_lines,
     _lines_fit_ellipse,
     _lines_fit_spans,
     _mask_bands,
     _mask_centroid,
     _resolve_mask,
-    _scan_sizes,
     _screen_frame,
     _trim_mask_to_letters,
-    _vi_words,
-    _word_units,
     _wrap_text,
-    _wrap_to_spans,
 )
+__all__ = [
+    "_derived_mask",
+    "_mask_centroid",
+    "_trim_mask_to_letters",
+    "font_draws_text",
+    "list_available_fonts",
+]
+
+
 
 
 def render_text_in_box(
