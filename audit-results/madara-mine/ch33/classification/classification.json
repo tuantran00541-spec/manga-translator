@@ -1,0 +1,81 @@
+{
+  "chapter_id": "a0000021",
+  "slices": 8,
+  "cleaned": 8,
+  "detector_misses": 0,
+  "inpaint_skips": 1,
+  "no_box_slices": [],
+  "seconds": 133.2,
+  "pages": [
+    {
+      "slice": 0,
+      "boxes": 16,
+      "min_conf": 0.107,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 1,
+      "boxes": 6,
+      "min_conf": 0.81,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 2,
+      "boxes": 1,
+      "min_conf": 0.685,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 3,
+      "boxes": 5,
+      "min_conf": 0.534,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 4,
+      "boxes": 5,
+      "min_conf": 0.293,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 5,
+      "boxes": 1,
+      "min_conf": 0.438,
+      "misses": 0,
+      "skips": 1
+    },
+    {
+      "slice": 6,
+      "boxes": 3,
+      "min_conf": 0.351,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 7,
+      "boxes": 16,
+      "min_conf": 0.144,
+      "misses": 0,
+      "skips": 0
+    }
+  ],
+  "misses": [],
+  "skips": [
+    {
+      "slice": 5,
+      "box": [
+        893,
+        1451,
+        978,
+        1482
+      ],
+      "px": 808,
+      "kind": "inpaint_skip"
+    }
+  ]
+}
