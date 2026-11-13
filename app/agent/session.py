@@ -556,7 +556,8 @@ BUILTIN_COMMANDS = {
     "intent": "Xem bản agent hình dung yêu cầu hiện tại (intent.md), viết tự động khi chuỗi đầu tiên của yêu cầu chạy",
 }
 GOAL_PROMPT = ("Goal: {text}\nKeep working across as many steps as it takes until the goal is met and its check passes. Then call goal_done "
-               "with a short report; ask the user only for a decision that is theirs.")
+               "with a short report; ask the user only for a decision that is theirs. If the goal cannot be met or its check never "
+               "passes, stop and call goal_done with a short report saying so, what was tried, and what blocks it — do not keep looping.")
 GOAL_NUDGE = """The goal is not marked done yet; keep going.
 <objective>
 {text}

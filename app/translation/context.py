@@ -86,8 +86,8 @@ def setting_question() -> str:
 
 
 SETTING_DESCRIPTIONS = {
-    "murim": "martial-arts / wuxia / murim world (swords, sects, robes, inner energy)",
-    "cultivation": "cultivation / xianxia (realms, immortals, dao)",
+    "murim": "martial-arts / wuxia / murim world (swordsmen, sects and clans fighting with blades and inner energy; no cultivation realms, no immortals, no ascension)",
+    "cultivation": "cultivation / xianxia (characters cultivate through realms toward immortality: realms, immortals, dao, ascension)",
     "court": "eastern historical court (king, mandarins, palace)",
     "western": "western medieval / fantasy nobility (knights, lords, castles)",
     "modern": "modern day (city, school, office, hospital, police)",

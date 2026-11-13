@@ -63,7 +63,7 @@ REWRITE_PROMPT = (
     "INPUT: lines of a Vietnamese comic translation. Each item has the speaker when known, the SOURCE line, the "
     "current TRANSLATION, the lines before and after it, and the problem a reviewer found.\n"
     "TASK: rewrite each TRANSLATION so it says exactly what SOURCE says, as natural Vietnamese a reader of this "
-    "comic expects.\n"
+    "comic expects. Change only what the flagged problem requires; keep the rest of each line exactly as it is.\n"
     "KEEP: the names, terms and forms of address in CHAPTER MEMORY; the source punctuation (every \"...\", "
     "\"?!\", \"!!\" and \"—\"); sentence case; the line breaks (\\n between phrases, as many lines as the current "
     "translation); max_chars when given. If the reviewer is wrong, return the translation unchanged.\n"

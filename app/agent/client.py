@@ -47,7 +47,7 @@ INVOKE_PARAM_RE = re.compile(r"<parameter\b[^>]*?\bname\s*=\s*[\"']?(\w+)[\"']?[
 INVOKE_WRAP_RE = re.compile(r"</?(?:[\w-]+:)?(?:function_calls|tool_calls?)>", re.I)
 TEXT_TOOLS_GUIDE = """To call a tool, write one block per call anywhere in your reply:
 <tool_call>{"name": "read_file", "arguments": {"path": "app/main.py"}}</tool_call>
-The results come back in <tool_result> blocks; end your reply after the calls and wait for them. Tools:
+The results come back in <tool_result> blocks; end your reply after the calls and wait for them. If a call is rejected or a tool reports an error, read the error, fix the call once, and if it fails again say what failed instead of repeating the same call. Tools:
 """
 
 
