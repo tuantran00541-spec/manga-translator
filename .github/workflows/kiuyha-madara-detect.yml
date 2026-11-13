@@ -3,62 +3,25 @@ name: Kiuyha Madara detect
 on:
   workflow_dispatch:
     inputs:
-      series_url:
-        description: "MadaraScans series page URL"
+      chapter_urls:
+        description: "MadaraScans chapter URLs, one per line"
         required: true
-        default: "https://madarascans.net/series/hero-killer/"
-      chapter_count:
-        description: "How many unlocked chapters to detect, newest first after skipping the 2 newest"
-        required: true
-        default: "25"
-      chapter_start:
-        description: "First chapter to detect in range mode (leave empty for newest-first mode)"
+        default: |
+          https://madarascans.net/hero-killer-chapter-275/
+          https://madarascans.net/hero-killer-chapter-274/
+          https://madarascans.net/hero-killer-chapter-273/
+      out_dir:
+        description: "Output directory under audit-results"
         required: false
-        default: ""
-      chapter_end:
-        description: "Last chapter to detect in range mode (leave empty for newest-first mode)"
-        required: false
-        default: ""
-      chapter_order:
-        description: "Chapter order: newest or oldest"
-        required: false
-        default: "newest"
+        default: "madara-detect"
 
 permissions:
   contents: write
 
 jobs:
-  setup:
-    runs-on: ubuntu-22.04
-    outputs:
-      matrix: ${{ steps.make.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - id: make
-        run: |
-          ARGS=(--series-url "${{ inputs.series_url }}")
-          if [ -n "${{ inputs.chapter_start }}" ] && [ -n "${{ inputs.chapter_end }}" ]; then
-            ARGS+=(--chapter-start "${{ inputs.chapter_start }}" --chapter-end "${{ inputs.chapter_end }}" --order "${{ inputs.chapter_order }}")
-          else
-            ARGS+=(--count "${{ inputs.chapter_count }}" --order "${{ inputs.chapter_order }}")
-          fi
-          OUT=$(python3 scripts/download_madara.py --discover "${ARGS[@]}")
-          {
-            echo "matrix<<EOF"
-            echo "$OUT"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-          echo "$OUT" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['chapter']), 'chapters')"
-
   detect:
-    needs: setup
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      max-parallel: 20
-      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    timeout-minutes: 360
     env:
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: "."
@@ -70,8 +33,6 @@ jobs:
       MANGA_ORT_OPENVINO_STREAMS: "1"
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       OPENBLAS_NUM_THREADS: "1"
-      CHAPTER: ${{ matrix.chapter.chapter }}
-      CHAPTER_URL: ${{ matrix.chapter.url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,7 +47,7 @@ jobs:
             beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 playwright-stealth==2.0.3 fastapi==0.115.0 \
             pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.20
 
-      - name: Restore detector and inpaint models
+      - name: Restore detector models
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -102,19 +63,30 @@ jobs:
           ls -la models
           test -f models/kiuyha-tuned-1023.onnx
 
-      - name: Download chapter from MadaraScans
+      - name: Download all chapters
         run: |
-          python3 scripts/download_madara.py --chapter-url "$CHAPTER_URL" --chapter "$CHAPTER" --out "audit-results/madara-detect/ch${CHAPTER}"
-          ls -la "audit-results/madara-detect/ch${CHAPTER}"
+          cat > /tmp/chapter-urls.txt <<'URLS_EOF'
+          ${{ inputs.chapter_urls }}
+          URLS_EOF
+          wc -l /tmp/chapter-urls.txt
+          python3 scripts/download_madara.py --urls-file /tmp/chapter-urls.txt --out "audit-results/${{ inputs.out_dir }}"
 
-      - name: Detect the chapter
+      - name: Detect all chapters
         run: |
-          CID=$(printf "a%07x" "$((10#$CHAPTER))")
-          python scripts/detect_chapter_zip.py --zip "audit-results/madara-detect/ch${CHAPTER}/madara-ch${CHAPTER}.zip" --chapter "$CHAPTER" --chapter-id "$CID" --out "audit-results/madara-detect/ch${CHAPTER}"
+          FAILED=0
+          for dir in audit-results/${{ inputs.out_dir }}/ch*/; do
+            CHAPTER=$(basename "$dir" | sed 's/^ch//')
+            CID=$(printf "a%07x" "$((10#$CHAPTER))")
+            if ! python scripts/detect_chapter_zip.py --zip "$dir/madara-ch${CHAPTER}.zip" --chapter "$CHAPTER" --chapter-id "$CID" --out "$dir"; then
+              echo "detect failed for ch$CHAPTER"
+              FAILED=1
+            fi
+          done
+          exit $FAILED
 
       - name: Save evidence to audit-evidence
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/madara-detect/ch${{ matrix.chapter.chapter }}
-          message: "audit: madara detect ch${{ matrix.chapter.chapter }} (run ${{ github.run_id }})"
+          paths: audit-results/${{ inputs.out_dir }}
+          message: "audit: madara detect batch (run ${{ github.run_id }})"
