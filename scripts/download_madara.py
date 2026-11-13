@@ -211,6 +211,44 @@ def download_chapter(chapter_url, chapter, out_dir):
     return 0
 
 
+def download_batch(urls_file, out_dir):
+    urls = []
+    seen = set()
+    for line in Path(urls_file).read_text(encoding="utf-8").splitlines():
+        url = line.strip()
+        if not url or url.startswith("#"):
+            continue
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
+    if not urls:
+        fail("no chapter URLs in %s" % urls_file)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    downloaded = []
+    failed = []
+    for url in urls:
+        slug, number = chapter_slug_and_number(url)
+        if slug is None:
+            failed.append({"chapter": None, "url": url, "error": "bad chapter URL"})
+            log("skipped bad chapter URL: %s" % url)
+            continue
+        chapter_dir = out_dir / ("ch%d" % number)
+        try:
+            download_chapter(url, number, chapter_dir)
+        except SystemExit:
+            failed.append({"chapter": number, "url": url, "error": "download failed"})
+            log("download failed for ch%d, continuing" % number)
+            continue
+        manifest = json.loads((chapter_dir / "download.json").read_text(encoding="utf-8"))
+        for name in manifest["files"]:
+            (chapter_dir / name).unlink(missing_ok=True)
+        downloaded.append(number)
+        log("ch%d done (%d/%d)" % (number, len(downloaded), len(urls)))
+    log("batch done: %d downloaded, %d failed" % (len(downloaded), len(failed)))
+    print(json.dumps({"downloaded": downloaded, "failed": failed, "out": str(out_dir)}, ensure_ascii=False))
+    return 0 if downloaded else 1
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--series-url")
@@ -221,6 +259,7 @@ def main():
     parser.add_argument("--discover", action="store_true")
     parser.add_argument("--chapter-url")
     parser.add_argument("--chapter", type=int)
+    parser.add_argument("--urls-file", type=Path)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
     if args.discover:
@@ -235,6 +274,10 @@ def main():
                 fail("--chapter-start/--chapter-end must satisfy 1 <= start <= end")
             return discover(args.series_url, args.count, args.chapter_start, args.chapter_end, args.order)
         return discover(args.series_url, args.count, order=args.order)
+    if args.urls_file is not None:
+        if args.out is None:
+            fail("batch mode needs --urls-file and --out")
+        return download_batch(args.urls_file, args.out)
     if not args.chapter_url or args.chapter is None or args.out is None:
         fail("download mode needs --chapter-url, --chapter and --out")
     if args.chapter < 1:
