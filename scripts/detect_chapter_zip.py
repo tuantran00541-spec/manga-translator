@@ -10,9 +10,16 @@ import cv2
 import numpy as np
 
 from app.config import KIUYHA_TEXT_MODEL
-from app.detector.kiuyha_detector import KiuyhaTextDetector
+from app.detector.kiuyha_detector import BOX_PAD, KiuyhaTextDetector
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+
+
+def raw_slice_boxes(detector, image):
+    height, width = image.shape[:2]
+    found = detector._raw_slice_boxes(image)
+    return [(max(0, x1 - BOX_PAD), max(0, y1 - BOX_PAD), min(width, x2 + BOX_PAD), min(height, y2 + BOX_PAD), score)
+            for x1, y1, x2, y2, score in found]
 
 
 def log(message):
@@ -43,7 +50,7 @@ def main():
             if image is None:
                 raise SystemExit("could not decode image %s in %s" % (name, zip_path))
             height, width = image.shape[:2]
-            boxes = detector.detect_slice(image)
+            boxes = raw_slice_boxes(detector, image)
             total_boxes += len(boxes)
             images.append({
                 "file": name,
@@ -56,6 +63,7 @@ def main():
         "chapter": args.chapter,
         "chapter_id": args.chapter_id,
         "model": detector.source_model,
+        "ctd": False,
         "image_count": len(images),
         "box_count": total_boxes,
         "elapsed_seconds": round(time.monotonic() - started, 1),
