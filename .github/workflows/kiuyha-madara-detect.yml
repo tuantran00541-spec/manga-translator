@@ -1,0 +1,123 @@
+name: Kiuyha Madara detect
+
+on:
+  workflow_dispatch:
+    inputs:
+      series_url:
+        description: "MadaraScans series page URL"
+        required: true
+        default: "https://madarascans.net/series/hero-killer/"
+      chapter_count:
+        description: "How many unlocked chapters to detect, newest first after skipping the 2 newest"
+        required: true
+        default: "25"
+      chapter_start:
+        description: "First chapter to detect in range mode (leave empty for newest-first mode)"
+        required: false
+        default: ""
+      chapter_end:
+        description: "Last chapter to detect in range mode (leave empty for newest-first mode)"
+        required: false
+        default: ""
+      chapter_order:
+        description: "Chapter order: newest or oldest"
+        required: false
+        default: "newest"
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.make.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: make
+        run: |
+          ARGS=(--series-url "${{ inputs.series_url }}")
+          if [ -n "${{ inputs.chapter_start }}" ] && [ -n "${{ inputs.chapter_end }}" ]; then
+            ARGS+=(--chapter-start "${{ inputs.chapter_start }}" --chapter-end "${{ inputs.chapter_end }}" --order "${{ inputs.chapter_order }}")
+          else
+            ARGS+=(--count "${{ inputs.chapter_count }}" --order "${{ inputs.chapter_order }}")
+          fi
+          OUT=$(python3 scripts/download_madara.py --discover "${ARGS[@]}")
+          {
+            echo "matrix<<EOF"
+            echo "$OUT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "$OUT" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['chapter']), 'chapters')"
+
+  detect:
+    needs: setup
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+      CHAPTER: ${{ matrix.chapter.chapter }}
+      CHAPTER_URL: ${{ matrix.chapter.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install processing runtime
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 \
+            beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 playwright-stealth==2.0.3 fastapi==0.115.0 \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.20
+
+      - name: Restore detector and inpaint models
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Use the committed Kiuyha, not the cached one
+        run: git checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx
+
+      - name: Build the CTD mask model
+        uses: ./.github/actions/build-ctd
+
+      - name: Check the models are there
+        run: |
+          ls -la models
+          test -f models/ctd_seg.onnx && test -f models/kiuyha-tuned-1023.onnx
+
+      - name: Download chapter from MadaraScans
+        run: |
+          python3 scripts/download_madara.py --chapter-url "$CHAPTER_URL" --chapter "$CHAPTER" --out "audit-results/madara-detect/ch${CHAPTER}"
+          ls -la "audit-results/madara-detect/ch${CHAPTER}"
+
+      - name: Detect the chapter
+        run: |
+          CID=$(printf "a%07x" "$((10#$CHAPTER))")
+          python scripts/detect_chapter_zip.py --zip "audit-results/madara-detect/ch${CHAPTER}/madara-ch${CHAPTER}.zip" --chapter "$CHAPTER" --chapter-id "$CID" --out "audit-results/madara-detect/ch${CHAPTER}"
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/madara-detect/ch${{ matrix.chapter.chapter }}
+          message: "audit: madara detect ch${{ matrix.chapter.chapter }} (run ${{ github.run_id }})"
