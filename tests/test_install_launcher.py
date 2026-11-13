@@ -182,7 +182,9 @@ class _Ran:
 
 
 @pytest.mark.parametrize("code, outcome", [
-    (0, ""), (1638, ""), (3010, "khởi động lại"), (1602, "từ chối quyền admin"), (1603, "mã 1603"),
+    (0, ""), (1638, ""),
+    (3010, "Windows cần khởi động lại để hoàn tất; app vẫn chạy được ngay."),
+    (1602, "từ chối quyền admin"), (1603, "mã 1603"),
 ])
 def test_every_runtime_installer_outcome_gets_a_clear_answer(code, outcome, monkeypatch):
     from app import vc_runtime
@@ -192,7 +194,7 @@ def test_every_runtime_installer_outcome_gets_a_clear_answer(code, outcome, monk
     monkeypatch.setattr(vc_runtime, "signed_by_microsoft", lambda path: True)
     monkeypatch.setattr(vc_runtime, "problems", lambda: [])
     if code in vc_runtime.OK_CODES:
-        assert outcome in vc_runtime.install()
+        assert vc_runtime.install() == outcome
     else:
         with pytest.raises(RuntimeError, match=outcome):
             vc_runtime.install()

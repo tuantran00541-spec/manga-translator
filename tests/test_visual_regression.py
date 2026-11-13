@@ -54,8 +54,9 @@ def _render_one(image, name, container="bubble"):
     ink = _ink_mask(base, image)
     box = _mask_bbox(ink)
     assert box is not None, f"{name}: bubble left empty (no ink)"
-    assert region[0] <= box[0] and box[2] <= region[2] and region[1] <= box[1] and box[3] <= region[3], \
-        f"{name}: ink escaped the bubble: {box}"
+    ys, xs = np.nonzero(ink)
+    assert bool((((xs - 350) / 300) ** 2 + ((ys - 200) / 150) ** 2 <= 1.05).all()), \
+        f"{name}: ink crossed the ellipse outline: {box}"
     stats = {}
     render_text_in_box(base.copy(), TEXT, region, font_name=FONT, source_cap_px=40,
                        bubble_mask=mask, stats=stats)
@@ -87,8 +88,13 @@ def test_spiky_bubble_letters_inside():
     base = image.copy()
     req = RenderRequest(chapter_id="vr", page_index=0, translations={"t": obj["translation"]})
     render_text_objects(image, req, [obj], *({} for _ in range(10)))
-    box = _mask_bbox(_ink_mask(base, image))
+    ink = _ink_mask(base, image)
+    box = _mask_bbox(ink)
     assert box is not None, "spiky bubble left empty"
+    star_mask = Image.new("L", (700, 400), 0)
+    ImageDraw.Draw(star_mask).polygon(star, fill=255)
+    assert not (ink & (np.asarray(star_mask) == 0)).any(), \
+        f"spiky ink escaped the star outline: {box}"
     _save(image, "spiky")
 
 
@@ -117,4 +123,9 @@ def test_double_lobe_each_lobe_lettered_not_crossed():
     assert ink is not None and ink.any(), "double bubble left empty"
     ys, xs = np.nonzero(ink)
     assert ys.min() < 240 and ys.max() > 300, "both lobes must be lettered"
+    upper = _mask_bbox(ink[:241, :])
+    assert upper is not None and upper[3] <= 240, f"upper-lobe ink crossed the waist: {upper}"
+    assert not ink[241:300, :].any(), "ink bridges the waist between the lobes"
+    lower = _mask_bbox(ink[300:, :])
+    assert lower is not None and 300 + lower[3] <= 560, f"lower-lobe ink outside the lower lobe: {lower}"
     _save(image, "double_lobe")

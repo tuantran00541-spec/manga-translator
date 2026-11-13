@@ -167,8 +167,10 @@ def test_pieces_of_one_text_from_different_passes_become_one_box():
     from app.detector.kiuyha_detector import _union_coherent
 
     image = np.full((600, 800, 3), 255, np.uint8)
-    cv2.putText(image, "HELLO WORLD", (110, 145), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
-    cv2.putText(image, "SECOND LINE", (110, 435), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
+    for x in range(110, 700, 40):
+        image[120:150, x:x + 20] = 0
+    for x in range(110, 300, 40):
+        image[415:445, x:x + 20] = 0
     pieces = [(100, 100, 400, 160, 0.9), (350, 100, 700, 160, 0.8), (100, 400, 300, 450, 0.7)]
     assert _union_coherent(image, pieces) == [(100, 100, 700, 160, 0.9), (100, 400, 300, 450, 0.7)]
     assert len(_union_coherent(image, [(0, 0, 100, 100, 0.9), (95, 95, 200, 200, 0.9)])) == 2, "a touching corner is two texts"
@@ -498,8 +500,10 @@ class _GivenSession(_Session):
 
 def _two_words():
     image = np.full((1280, 1280, 3), (250, 235, 220), np.uint8)
-    cv2.putText(image, "HELLO", (100, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (40, 30, 25), 4)
-    cv2.putText(image, "WORLD", (600, 160), cv2.FONT_HERSHEY_DUPLEX, 1.6, (40, 30, 25), 4)
+    for x in range(110, 260, 25):
+        image[122:158, x:x + 15] = (40, 30, 25)
+    for x in range(610, 760, 25):
+        image[122:158, x:x + 15] = (40, 30, 25)
     return image
 
 

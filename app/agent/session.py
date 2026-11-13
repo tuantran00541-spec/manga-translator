@@ -1978,7 +1978,7 @@ class AgentSession:
                     output, ok = (("a branch cannot branch or adopt; return what it found and choose at the top", False) if ws is not None
                                   else self._branch(args) if name == "_branch" else self._adopt(args))
                 elif ws is not None and name in BRANCH_LOCAL:
-                    output, ok = self._run_branch_tool(ws, name, self._on_copy(args, ws.root))
+                    output, ok = self._run_branch_tool(ws, name, args)
                 elif name not in targets:
                     output, ok = f"{name!r} cannot be reached from a tool; reachable: {', '.join(sorted(targets)) or 'none'}", False
                 elif name == "skill":
@@ -2042,6 +2042,7 @@ class AgentSession:
         lock = self.__dict__.setdefault("_branch_ws_lock", threading.Lock())
         with lock:
             real = self.workspace
+            call["args"] = self._on_copy(args, ws.root)
             self.workspace = ws
             try:
                 return self._run_call(call)

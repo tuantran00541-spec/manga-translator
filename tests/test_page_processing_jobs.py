@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 
 from app.page_processing_jobs import ChapterProcessingJobManager
@@ -22,11 +23,16 @@ def test_server_dispatches_full_queue_once_after_client_disconnect(monkeypatch, 
     (tmp_path / chapter_id).mkdir()
     calls = []
     completed_chapters = []
+    mid_flight = threading.Event()
+    release = threading.Event()
 
     def process_plan(chapter, pages, workers, progress_callback):
         calls.append((chapter, list(pages), workers))
         for page_index in pages:
             progress_callback(page_index)
+            if page_index == 4:
+                mid_flight.set()
+                release.wait(timeout=10)
             time.sleep(0.002)
         return {"pages": pages}
 
@@ -50,14 +56,16 @@ def test_server_dispatches_full_queue_once_after_client_disconnect(monkeypatch, 
         assert duplicate["job_id"] == job_id
         assert duplicate["reused"] is True
 
-        await asyncio.sleep(0.02)
-        reconnected = manager.latest_for_chapter(chapter_id)
-        assert reconnected is not None
-        assert reconnected["job_id"] == job_id
-        assert reconnected["status"] in {"running", "completed"}
-        if reconnected["status"] == "running":
+        assert await asyncio.to_thread(mid_flight.wait, 3.0), "job never reached mid-flight"
+        try:
+            reconnected = manager.latest_for_chapter(chapter_id)
+            assert reconnected is not None
+            assert reconnected["job_id"] == job_id
+            assert reconnected["status"] == "running"
             assert 0 < reconnected["completed"] < 40
             assert reconnected["current_batch"] == list(range(40))
+        finally:
+            release.set()
 
         return await asyncio.to_thread(_wait_for_terminal, manager, job_id)
 
