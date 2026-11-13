@@ -12,11 +12,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-CHAPTER_URL_RE = re.compile(r"^(https?://[^/]+/(.+?))-chapter-(\d+)/?$")
-CHAPTER_URL_ONLY_RE = re.compile(r"^https?://[^/]+/.+-chapter-(\d+)/?$")
+CHAPTER_URL_RE = re.compile(r"^(https?://[^/]+/(.+?))-chapter-(\d+)(?:-1)?/?$")
+CHAPTER_URL_ONLY_RE = re.compile(r"^https?://[^/]+/.+-chapter-(\d+)(?:-1)?/?$")
 LIST_ITEM_RE = re.compile(r'<li[^>]*\bdata-num="(\d+)"[^>]*>(.*?)</li>', re.S)
 ANCHOR_HREF_RE = re.compile(r'<a\b[^>]*\bhref="([^"]+)"', re.S)
-PAGE_HREF_RE = re.compile(r'href="(https?://[^"]+?-chapter-(\d+)/?)"')
+PAGE_HREF_RE = re.compile(r'href="(https?://[^"]+?-chapter-(\d+)(?:-1)?/?)"')
 READER_RE = re.compile(r"ts_reader\.run\((\{.*?\})\)\s*;", re.S)
 ALLOWED_EXTS = {"png", "jpg", "jpeg", "webp", "bmp"}
 RETRY_DELAYS = (1.0, 2.0)
@@ -55,35 +55,64 @@ def fetch_with_retries(url, referer=None, timeout=30, attempts=3):
     raise last_error
 
 
-def parse_series_page(html):
-    entries = []
+def series_slug_from_url(series_url):
+    path = urlparse(series_url).path.strip("/")
+    return path.rsplit("/", 1)[-1] if path else ""
+
+
+def prefer_url(existing, new):
+    if existing is None:
+        return new
+    if new is None:
+        return existing
+    if new.endswith("-1/") and not existing.endswith("-1/"):
+        return new
+    return existing
+
+
+def parse_series_page(html, series_slug=""):
+    entries = {}
     for match in LIST_ITEM_RE.finditer(html):
         number = int(match.group(1))
         anchor = ANCHOR_HREF_RE.search(match.group(2))
         url = None
         if anchor and CHAPTER_URL_ONLY_RE.match(anchor.group(1)):
             url = anchor.group(1)
-        entries.append((number, url))
-    if not entries:
-        seen = {}
-        for match in PAGE_HREF_RE.finditer(html):
-            seen.setdefault(int(match.group(2)), match.group(1))
-        entries = [(number, seen[number]) for number in seen]
-    deduped = {}
-    for number, url in entries:
-        if number not in deduped or (deduped[number] is None and url is not None):
-            deduped[number] = url
-    return sorted(deduped.items())
+        entries[number] = prefer_url(entries.get(number), url)
+    for match in PAGE_HREF_RE.finditer(html):
+        url = match.group(1)
+        number = int(match.group(2))
+        slug, _ = chapter_slug_and_number(url)
+        if series_slug and slug != series_slug:
+            continue
+        entries[number] = prefer_url(entries.get(number), url)
+    return sorted(entries.items())
 
 
-def discover(series_url, count):
+def discover(series_url, count, chapter_start=None, chapter_end=None, order="newest"):
     try:
         html = fetch_with_retries(series_url, timeout=30).decode("utf-8", errors="replace")
     except Exception as error:
         fail("could not fetch series page %s: %s" % (series_url, error))
-    entries = parse_series_page(html)
+    entries = parse_series_page(html, series_slug_from_url(series_url))
     if not entries:
         fail("could not parse any chapter from series page %s" % series_url)
+    by_number = dict(entries)
+    locked = [number for number, url in entries if url is None]
+    if chapter_start is not None:
+        in_range = [(number, by_number[number]) for number in range(chapter_start, chapter_end + 1)
+                    if number in by_number and by_number[number] is not None]
+        missing = [number for number in range(chapter_start, chapter_end + 1)
+                   if number not in by_number or by_number[number] is None]
+        chosen = [{"chapter": str(number), "url": url} for number, url in in_range]
+        if order == "newest":
+            chosen.reverse()
+        log("series page lists %d chapters, %d coin-locked, range ch%d-ch%d selected %d in %s order, skipped locked/empty %s"
+            % (len(entries), len(locked), chapter_start, chapter_end, len(chosen), order, missing))
+        if not chosen:
+            fail("no unlocked chapter in ch%d-ch%d on %s" % (chapter_start, chapter_end, series_url))
+        print(json.dumps({"chapter": chosen}, ensure_ascii=False, separators=(",", ":")))
+        return 0
     ordered = sorted(entries, key=lambda item: item[0], reverse=True)
     newest = [number for number, _ in ordered[:2]]
     pool = ordered[2:]
@@ -94,9 +123,10 @@ def discover(series_url, count):
         chosen.append({"chapter": str(number), "url": url})
         if len(chosen) >= count:
             break
-    locked = sum(1 for _, url in entries if url is None)
-    log("series page lists %d chapters, %d coin-locked, skipped newest %s, selected %d"
-        % (len(entries), locked, newest, len(chosen)))
+    if order == "oldest":
+        chosen.reverse()
+    log("series page lists %d chapters, %d coin-locked, skipped newest %s, selected %d in %s order"
+        % (len(entries), len(locked), newest, len(chosen), order))
     if not chosen:
         fail("no unlocked chapter left after skipping the 2 newest on %s" % series_url)
     print(json.dumps({"chapter": chosen}, ensure_ascii=False, separators=(",", ":")))
@@ -185,6 +215,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--series-url")
     parser.add_argument("--count", type=int, default=25)
+    parser.add_argument("--chapter-start", type=int, default=None)
+    parser.add_argument("--chapter-end", type=int, default=None)
+    parser.add_argument("--order", choices=("newest", "oldest"), default="newest")
     parser.add_argument("--discover", action="store_true")
     parser.add_argument("--chapter-url")
     parser.add_argument("--chapter", type=int)
@@ -195,7 +228,13 @@ def main():
             fail("--discover needs --series-url")
         if args.count < 1:
             fail("--count must be at least 1")
-        return discover(args.series_url, args.count)
+        if (args.chapter_start is None) != (args.chapter_end is None):
+            fail("--chapter-start and --chapter-end must be given together")
+        if args.chapter_start is not None:
+            if args.chapter_start < 1 or args.chapter_end < args.chapter_start:
+                fail("--chapter-start/--chapter-end must satisfy 1 <= start <= end")
+            return discover(args.series_url, args.count, args.chapter_start, args.chapter_end, args.order)
+        return discover(args.series_url, args.count, order=args.order)
     if not args.chapter_url or args.chapter is None or args.out is None:
         fail("download mode needs --chapter-url, --chapter and --out")
     if args.chapter < 1:

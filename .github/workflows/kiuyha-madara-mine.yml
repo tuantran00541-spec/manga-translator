@@ -11,6 +11,18 @@ on:
         description: "How many unlocked chapters to mine, newest first after skipping the 2 newest"
         required: true
         default: "25"
+      chapter_start:
+        description: "First chapter to mine in range mode (leave empty for newest-first mode)"
+        required: false
+        default: ""
+      chapter_end:
+        description: "Last chapter to mine in range mode (leave empty for newest-first mode)"
+        required: false
+        default: ""
+      chapter_order:
+        description: "Chapter order: newest or oldest"
+        required: false
+        default: "newest"
       inpainter:
         description: "Inpaint model for the clean step (lama, migan or mpe)"
         required: false
@@ -29,7 +41,13 @@ jobs:
 
       - id: make
         run: |
-          OUT=$(python3 scripts/download_madara.py --series-url "${{ inputs.series_url }}" --count "${{ inputs.chapter_count }}" --discover)
+          ARGS=(--series-url "${{ inputs.series_url }}")
+          if [ -n "${{ inputs.chapter_start }}" ] && [ -n "${{ inputs.chapter_end }}" ]; then
+            ARGS+=(--chapter-start "${{ inputs.chapter_start }}" --chapter-end "${{ inputs.chapter_end }}" --order "${{ inputs.chapter_order }}")
+          else
+            ARGS+=(--count "${{ inputs.chapter_count }}" --order "${{ inputs.chapter_order }}")
+          fi
+          OUT=$(python3 scripts/download_madara.py --discover "${ARGS[@]}")
           {
             echo "matrix<<EOF"
             echo "$OUT"
