@@ -65,9 +65,11 @@ def source_box_ids(obj: dict) -> set[str]:
     return {str(ref) for ref in refs if isinstance(ref, str) and ref}
 
 
-def _sync_ocr_metadata(obj: dict, box: dict) -> bool:
+def _sync_ocr_metadata(obj: dict, box: dict, *, skip_geometry: bool = False) -> bool:
     changed = False
     for key in OCR_METADATA_FIELDS:
+        if skip_geometry and key == "ocr_text_region":
+            continue
         if key in box:
             value = copy.deepcopy(box[key])
             if obj.get(key) != value:
@@ -112,6 +114,7 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
     follows_machine_text = current_text == previous_auto_text
     effective_source = box_text if follows_machine_text else current_text
     changed = invalidate_stale_machine_translation(obj, effective_source) or changed
+    merged = bool(obj.get("joined_lines") or obj.get("overlap_merged"))
     if follows_machine_text:
         if current_text != box_text:
             obj["ocr_text"] = box_text
@@ -119,8 +122,8 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
         if previous_auto_text != box_text:
             obj["auto_ocr_text"] = box_text
             changed = True
-        changed = _sync_ocr_metadata(obj, box) or changed
-    if not obj.get("joined_lines"):
+        changed = _sync_ocr_metadata(obj, box, skip_geometry=merged) or changed
+    if not merged:
         if isinstance(box.get("bubble_mask"), dict):
             value = copy.deepcopy(box["bubble_mask"])
             if obj.get("bubble_mask") != value:
@@ -242,3 +245,19 @@ def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
             changed = True
 
     return created, changed
+
+
+def clear_page_object_translations(page: dict, object_ids: set[str]) -> bool:
+    """Clear translations on restored objects so re-renders never paint over original pixels."""
+    if not object_ids or not isinstance(page, dict):
+        return False
+    changed = False
+    for item in page.get("text_objects") or []:
+        if not (isinstance(item, dict) and str(item.get("id")) in object_ids):
+            continue
+        if str(item.get("translation") or "").strip() or "auto_translation" in item:
+            item["translation"] = ""
+            item.pop("auto_translation", None)
+            item["translation_attempted"] = True
+            changed = True
+    return changed

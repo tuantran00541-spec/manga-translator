@@ -1162,6 +1162,25 @@ class AIModeRunner:
             await self._render_one(page_index)
         self._progress(len(indices), len(indices))
 
+    def _clear_restored_translations(self, page_index: int, object_ids: set[str]) -> None:
+        if not object_ids:
+            return
+        from app.text_objects import clear_page_object_translations
+
+        mem_manifest = self._manifest()
+        mem_pages = mem_manifest.get("pages") or [] if isinstance(mem_manifest, dict) else []
+        if 0 <= page_index < len(mem_pages):
+            clear_page_object_translations(mem_pages[page_index], object_ids)
+
+        chapter_id = self.job.chapter_id
+        if not (PROCESSED_DIR / chapter_id / "manifest.json").exists():
+            return
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            pages = manifest.get("pages") or []
+            if 0 <= page_index < len(pages) and clear_page_object_translations(pages[page_index], object_ids):
+                save_manifest_raw(chapter_id, manifest)
+
     async def _render_one(self, page_index: int) -> None:
         from app.dependencies import pipeline
         from app.routers.export import _render_request_from_page
@@ -1169,6 +1188,32 @@ class AIModeRunner:
 
         chapter_id = self.job.chapter_id
         await asyncio.to_thread(self._ensure_objects, page_index)
+
+        async def restore_skipped(skipped_ids: list[str]) -> tuple[bool, list[dict]]:
+            page = self._manifest()["pages"][page_index]
+            regions = []
+            objs = []
+            for item in page.get("text_objects") or []:
+                if (isinstance(item, dict) and str(item.get("id")) in skipped_ids
+                        and isinstance(item.get("region"), dict)):
+                    regions.append(dict(item["region"]))
+                    objs.append(item)
+            if not regions:
+                return True, []
+            try:
+                await asyncio.to_thread(pipeline.preserve_and_reinpaint, chapter_id, page_index, regions)
+            except (ValueError, RuntimeError, OSError) as exc:
+                _append(self.report["render_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
+                return False, objs
+            await asyncio.to_thread(self._clear_restored_translations, page_index, {str(o["id"]) for o in objs})
+            self.report["restored_regions"] += len(regions)
+            for obj in objs:
+                self._append_page_capped(self.report["review_list"], {
+                    "page": page_index + 1, "id": obj["id"],
+                    "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
+                })
+            return True, objs
+
         for attempt in range(RENDER_RESTORE_ATTEMPTS + 1):
             page = self._manifest()["pages"][page_index]
             try:
@@ -1176,34 +1221,35 @@ class AIModeRunner:
                 skipped = [str(oid) for oid in (result.get("skipped_objects") if isinstance(result, dict) else None) or []]
                 if not skipped:
                     return
-                regions = []
-                objs = []
-                for item in page.get("text_objects") or []:
-                    if (isinstance(item, dict) and str(item.get("id")) in skipped
-                            and isinstance(item.get("region"), dict)):
-                        regions.append(dict(item["region"]))
-                        objs.append(item)
-                if not regions:
+                ok, objs = await restore_skipped(skipped)
+                if not ok or not objs:
                     return
-                try:
-                    await asyncio.to_thread(pipeline.preserve_and_reinpaint, chapter_id, page_index, regions)
-                except (ValueError, RuntimeError, OSError) as exc:
-                    _append(self.report["render_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
-                    return
-                self.report["restored_regions"] += len(regions)
-                for obj in objs:
-                    self._append_page_capped(self.report["review_list"], {
-                        "page": page_index + 1, "id": obj["id"],
-                        "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
-                    })
                 if attempt == RENDER_RESTORE_ATTEMPTS:
                     page = self._manifest()["pages"][page_index]
                     rerender = await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
-                    for oid in (rerender.get("skipped_objects") if isinstance(rerender, dict) else None) or []:
-                        self._append_page_capped(self.report["review_list"], {
-                            "page": page_index + 1, "id": str(oid),
-                            "reason": "Bản dịch không vừa vùng chữ; đã hết lần thử lại — chưa giữ ảnh gốc",
-                        })
+                    rerender_skipped = [
+                        str(oid) for oid in (rerender.get("skipped_objects") if isinstance(rerender, dict) else None) or []
+                    ]
+                    if not rerender_skipped:
+                        return
+                    final_ok, final_objs = await restore_skipped(rerender_skipped)
+                    if final_ok and final_objs:
+                        page = self._manifest()["pages"][page_index]
+                        final_res = await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
+                        rem = [
+                            str(oid) for oid in (final_res.get("skipped_objects") if isinstance(final_res, dict) else None) or []
+                        ]
+                        for oid in rem:
+                            self._append_page_capped(self.report["review_list"], {
+                                "page": page_index + 1, "id": str(oid),
+                                "reason": "Bản dịch không vừa vùng chữ; đã hết lần thử lại — chưa giữ ảnh gốc",
+                            })
+                    elif not final_ok:
+                        for oid in rerender_skipped:
+                            self._append_page_capped(self.report["review_list"], {
+                                "page": page_index + 1, "id": str(oid),
+                                "reason": "Bản dịch không vừa vùng chữ; đã hết lần thử lại — chưa giữ ảnh gốc",
+                            })
                     return
                 continue
             except HTTPException as exc:
@@ -1222,6 +1268,7 @@ class AIModeRunner:
             except (ValueError, RuntimeError, OSError) as exc:
                 _append(self.report["render_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
                 return
+            await asyncio.to_thread(self._clear_restored_translations, page_index, {str(obj["id"])})
             self.report["restored_regions"] += 1
             self._append_page_capped(self.report["review_list"], {
                 "page": page_index + 1, "id": obj["id"],

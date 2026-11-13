@@ -291,7 +291,15 @@ def render_text_in_box(
     font_path, text = drawable(font_path, text)
 
     if fill is None or fill == "auto" or fill == "":
-        text_color = auto_detect_text_color(image, box)
+        bg_rgb = (
+            parse_color(bg_color, default=None)
+            if bg_color and str(bg_color).lower() not in ("transparent", "none", "")
+            else None
+        )
+        if bg_rgb is not None:
+            text_color = (255, 255, 255) if _luminance(bg_rgb) < 0.179 else (0, 0, 0)
+        else:
+            text_color = auto_detect_text_color(image, box)
         explicit_fill = False
     else:
         text_color = parse_color(fill, default=(0, 0, 0))
@@ -352,6 +360,7 @@ def render_text_in_box(
     if target_size is not None and curved and centred:
         _fixed_font = get_font_object(font_path_str, target_size)
         _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
+        _bold_extra = 1 if is_bold else 0
         if _mask is not None and _mask.get("kind") == "bubble":
             _bands = _mask_bands(_mask, (x1 + pad, y1 + pad, x2 - pad, y2 - pad))
             if _bands is not None:
@@ -362,15 +371,26 @@ def render_text_in_box(
                     _top = _anchored_top(box_h, _lh * len(_fixed_lines), _anchor)
                     _limits = _band_line_widths(box_w, box_h, len(_fixed_lines), _lh, _bands, top=_top)
                     if _limits is None or len(_limits) != len(_fixed_lines) or not all(
-                            draw.textbbox((0, 0), line, font=_fixed_font)[2] + 2 * stroke_w <= limit
+                            draw.textbbox((0, 0), line, font=_fixed_font)[2] + 2 * stroke_w + _bold_extra <= limit
                             for line, limit in zip(_fixed_lines, _limits)):
                         target_size = None
+                        _fixed_height_fallback = True
+        elif not _lines_fit_ellipse(draw, _fixed_lines, _fixed_font, box_w, box_h, stroke_w):
+            target_size = None
+            _fixed_height_fallback = True
 
     if target_size is not None:
         _fixed_font = get_font_object(font_path_str, target_size)
         _fixed_lines = _wrap_text(draw, text, _fixed_font, box_w, balance=True)
-        if (_calc_line_height(draw, _fixed_font, stroke_w=stroke_w)
-                * len(_fixed_lines) > box_h):
+        _bold_extra = 1 if is_bold else 0
+        _whole_words = [w for ln in _fixed_lines for w in ln.split()] == text.split()
+        _max_line_w = max((draw.textbbox((0, 0), line, font=_fixed_font)[2] for line in _fixed_lines), default=0)
+        if (
+            not _fixed_lines
+            or not _whole_words
+            or _calc_line_height(draw, _fixed_font, stroke_w=stroke_w) * len(_fixed_lines) > box_h
+            or _max_line_w + 2 * stroke_w + _bold_extra > box_w
+        ):
             target_size = None
             _fixed_height_fallback = True
 
@@ -411,9 +431,10 @@ def render_text_in_box(
         lines_source = "balanced"
         draw_spans = spans_holder if spans_holder else None
         _lh_check = _calc_line_height(draw, font, stroke_w=stroke_w)
+        _bold_extra = 1 if is_bold else 0
         if fitted_lines and (
             _lh_check * len(lines) > box_h
-            or max((draw.textbbox((0, 0), ln, font=font)[2] for ln in lines), default=0) + 2 * stroke_w > box_w
+            or max((draw.textbbox((0, 0), ln, font=font)[2] for ln in lines), default=0) + 2 * stroke_w + _bold_extra > box_w
         ):
             lines = fitted_lines
             lines_source = "fitted"
@@ -530,8 +551,14 @@ def render_text_in_box(
         cur_y = start_y + i * line_height
         if line_w > 0:
             bold = 1 if is_bold else 0
-            line_box = (start_x, cur_y, start_x + line_w + bold,
-                        cur_y + line_height + bold)
+            gx0, gy0, gx1, gy1 = draw.textbbox(
+                (start_x, cur_y), line, font=font, stroke_width=stroke_w)
+            line_box = (
+                min(start_x, gx0),
+                min(cur_y, gy0),
+                max(start_x + line_w, gx1) + bold,
+                max(cur_y + line_height, gy1) + bold,
+            )
             ink_box = line_box if ink_box is None else (
                 min(ink_box[0], line_box[0]), min(ink_box[1], line_box[1]),
                 max(ink_box[2], line_box[2]), max(ink_box[3], line_box[3]))
@@ -873,8 +900,13 @@ def auto_fit(draw, text: str, box, image_size, font_path_str: str, *, padding: i
         if rbw > 0 and rbh > 0:
             ok, flines = _fits(draw, text, rbw, rbh, font_path_str, floor, stroke_w,
                                curved=False, bands=None)
+            rsize = floor
+            if not ok and floor > readable:
+                rsize, flines, ok = _fit_text(
+                    draw, text, rbw, rbh, font_path_str, stroke_w=stroke_w,
+                    minimum_size=readable, maximum_size=floor, curved=False, bands=None)
             if ok:
-                size, lines, fits_readably = floor, flines, True
+                size, lines, fits_readably = rsize, flines, True
                 x1, y1, x2, y2 = rx1, ry1, rx2, ry2
                 bands, anchor_y = None, None
                 padded = (rx1 + rpad, ry1 + rpad, rx2 - rpad, ry2 - rpad)
@@ -1182,6 +1214,41 @@ def _anchored_top(box_h: int, total_h: int, anchor_y: int | None) -> int:
     return max(0, min(box_h - total_h, anchor_y - total_h // 2))
 
 
+def _wrap_to_spans(draw, text: str, font, spans: list[tuple[int, int]],
+                   stroke_w: int = 0) -> list[str] | None:
+    raw_lines = [raw for raw in text.splitlines() if raw.strip()]
+    if not raw_lines:
+        return None
+    out: list[str] = []
+    span_idx = 0
+    for raw_line in raw_lines:
+        words = raw_line.split()
+        idx = 0
+        while idx < len(words):
+            if span_idx >= len(spans):
+                return None
+            a, b = spans[span_idx]
+            span_w = int(b) - int(a) - 2 * stroke_w
+            if span_w <= 0:
+                return None
+            cur = words[idx]
+            if draw.textbbox((0, 0), cur, font=font)[2] > span_w:
+                return None
+            idx += 1
+            while idx < len(words):
+                cand = f"{cur} {words[idx]}"
+                if draw.textbbox((0, 0), cand, font=font)[2] <= span_w:
+                    cur = cand
+                    idx += 1
+                else:
+                    break
+            out.append(cur)
+            span_idx += 1
+    if [w for ln in out for w in ln.split()] != text.split():
+        return None
+    return out
+
+
 def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int,
           curved: bool = False, bands=None, anchor_y: int | None = None) -> tuple[bool, list[str]]:
     font = get_font_object(font_path_str, size)
@@ -1195,30 +1262,38 @@ def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int
     fits = whole and total_h <= box_h and max(widths) + 2 * stroke_w <= box_w
     if fits:
         if bands is not None:
-            for _ in range(3):
-                top = _anchored_top(box_h, line_height * len(lines), anchor_y)
-                spans = _band_line_spans(box_w, box_h, len(lines), line_height, bands, top=top)
-                if spans is None:
-                    fits = False
-                    break
-                widths_now = [draw.textbbox((0, 0), line, font=font)[2] for line in lines]
-                if all(w + 2 * stroke_w <= b - a for w, (a, b) in zip(widths_now, spans)):
-                    break
-                narrow = min(b - a for a, b in spans) - 2 * stroke_w
-                if narrow <= 0:
-                    fits = False
-                    break
-                new_lines = _wrap_text(draw, text, font, narrow)
-                if (not new_lines or new_lines == lines
-                        or [w for line in new_lines for w in line.split()] != text.split()):
-                    fits = False
-                    break
-                lines = new_lines
-                if line_height * len(lines) > box_h:
-                    fits = False
-                    break
+            top0 = _anchored_top(box_h, line_height * len(lines), anchor_y)
+            spans0 = _band_line_spans(box_w, box_h, len(lines), line_height, bands, top=top0)
+            if spans0 is not None and all(
+                w + 2 * stroke_w <= b - a for w, (a, b) in zip(widths, spans0)
+            ):
+                pass
             else:
-                fits = False
+                fitted_to_bands = None
+                max_lines = box_h // line_height
+                for k in range(len(lines), min(max_lines, len(lines) + 3) + 1):
+                    top = _anchored_top(box_h, line_height * k, anchor_y)
+                    spans = _band_line_spans(box_w, box_h, k, line_height, bands, top=top)
+                    if spans is None:
+                        continue
+                    cand = _wrap_to_spans(draw, text, font, spans, stroke_w)
+                    if cand is None or line_height * len(cand) > box_h:
+                        continue
+                    if len(cand) == k:
+                        fitted_to_bands = cand
+                        break
+                    ctop = _anchored_top(box_h, line_height * len(cand), anchor_y)
+                    cspans = _band_line_spans(box_w, box_h, len(cand), line_height, bands, top=ctop)
+                    if cspans is not None and all(
+                        draw.textbbox((0, 0), ln, font=font)[2] + 2 * stroke_w <= cb - ca
+                        for ln, (ca, cb) in zip(cand, cspans)
+                    ):
+                        fitted_to_bands = cand
+                        break
+                if fitted_to_bands is not None:
+                    lines = fitted_to_bands
+                else:
+                    fits = False
         elif curved:
             limits = _ellipse_line_widths(box_w, box_h, len(lines), line_height)
             fits = len(limits) == len(lines) and all(

@@ -23,6 +23,29 @@ def _letter_pieces(ink: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return labels, np.where(keep[:, None], stats, -1)
 
 
+def _fg_score(candidate: np.ndarray) -> tuple[int, int]:
+    labels, stats = _letter_pieces(candidate)
+    areas = stats[:, 4]
+    valid = (areas > 0) & (areas <= 0.25 * candidate.size)
+    valid[0] = False
+    kept_mask = valid[labels].astype(np.uint8)
+    eroded = cv2.erode(kept_mask, np.ones((3, 3), np.uint8)) > 0
+    surviving = np.unique(labels[eroded])
+    return (int(np.count_nonzero(eroded)), int(np.count_nonzero(surviving > 0)))
+
+
+def _foreground_ink(gray: np.ndarray) -> np.ndarray:
+    _, bright = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    dark = 255 - bright
+    border = np.concatenate([bright[0, :], bright[-1, :], bright[:, 0], bright[:, -1]])
+    bright_share = float(np.count_nonzero(border)) / max(1, border.size)
+    if bright_share >= 0.60:
+        return dark
+    if bright_share <= 0.40:
+        return bright
+    return bright if _fg_score(bright) > _fg_score(dark) else dark
+
+
 def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> int | None:
     x1, y1, x2, y2 = (int(v) for v in rect)
     if bounds is not None:
@@ -33,9 +56,7 @@ def source_cap_px(raw: np.ndarray, rect, min_pieces: int = 3, bounds=None) -> in
     if crop.size == 0 or min(crop.shape[:2]) < 8:
         return None
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
-    _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    if np.count_nonzero(ink) > ink.size / 2:
-        ink = 255 - ink
+    ink = _foreground_ink(gray)
     _labels, stats = _letter_pieces(ink)
     pieces = sorted((int(h), int(area)) for _x, _y, _w, h, area in stats if area > 0)
     if len(pieces) < max(1, min_pieces):
@@ -74,9 +95,7 @@ def source_ink_hex(raw: np.ndarray, rect) -> str | None:
     if crop.ndim != 3 or crop.size == 0 or min(crop.shape[:2]) < 8:
         return None
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    if np.count_nonzero(ink) > ink.size / 2:
-        ink = 255 - ink
+    ink = _foreground_ink(gray)
     labels, stats = _letter_pieces(ink)
     letters = (stats[:, 4] > 0)[labels].astype(np.uint8)
     body = cv2.erode(letters, np.ones((3, 3), np.uint8)) > 0

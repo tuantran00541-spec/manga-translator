@@ -157,16 +157,17 @@ def parse_vision_translation(content: str, expected_ids: set[str], *, allow_miss
     return results
 
 
-def _salvage_translations(choice: dict, expected_ids: set[str]) -> dict[str, str]:
+def _salvage_translation_entries(choice: dict, expected_ids: set[str]) -> list[dict]:
     message = choice.get("message") if isinstance(choice, dict) else None
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, str):
-        return {}
+        return []
     start = content.find('"translations"')
     open_bracket = content.find("[", start) if start >= 0 else -1
     if open_bracket < 0:
-        return {}
-    salvaged: dict[str, str] = {}
+        return []
+    salvaged: list[dict] = []
+    seen_ids: set[str] = set()
     depth = 0
     in_string = False
     escaped = False
@@ -196,12 +197,20 @@ def _salvage_translations(choice: dict, expected_ids: set[str]) -> dict[str, str
                     entry = None
                 if (isinstance(entry, dict) and isinstance(entry.get("id"), str)
                         and entry["id"] in expected_ids and isinstance(entry.get("translated_text"), str)
-                        and entry["id"] not in salvaged):
-                    salvaged[entry["id"]] = entry["translated_text"]
+                        and entry["id"] not in seen_ids):
+                    salvaged.append(entry)
+                    seen_ids.add(entry["id"])
                 element_start = None
         elif char == "]" and depth == 0:
             break
     return salvaged
+
+
+def _salvage_translations(choice: dict, expected_ids: set[str]) -> dict[str, str]:
+    return {
+        entry["id"]: entry["translated_text"]
+        for entry in _salvage_translation_entries(choice, expected_ids)
+    }
 
 
 def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[str, str], dict[str, dict], dict]:
@@ -243,7 +252,8 @@ _FOREIGN_SCRIPT = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u4
 
 
 _ENGLISH_WORDS = frozenset(
-    "the and with you your to of is are was were its it's this that for in on my me we what i".split())
+    "the and with you your of is are was were its it's this that for my we what i".split())
+_WEAK_ENGLISH_WORDS = frozenset("to me in on".split())
 
 _ENGLISH_CONTENT_WORDS = frozenset(
     "senior brother sister problem school teacher student please thanks thank sorry hello goodbye "
@@ -338,7 +348,9 @@ def _line_is_english(line: str) -> bool:
     if len(words) < 2:
         return False
     if not _has_non_ascii_letter(line):
-        return any(word in _ENGLISH_WORDS or word in _ENGLISH_CONTENT_WORDS for word in words)
+        if any(word in _ENGLISH_WORDS or word in _ENGLISH_CONTENT_WORDS for word in words):
+            return True
+        return sum(1 for word in words if word in _WEAK_ENGLISH_WORDS) >= 2
     return bool(_english_segment_spans(line))
 
 
@@ -387,6 +399,7 @@ def _strip_diacritics(text: str) -> str:
 
 
 def _line_is_bare_scream(line: str) -> bool:
+    raw_line = line
     line = _strip_diacritics(line)
     words = _ascii_words(line)
     if len(words) != 1:
@@ -395,6 +408,8 @@ def _line_is_bare_scream(line: str) -> bool:
     if len(word) < 3 or len(set(word)) != 1:
         return False
     if _has_non_ascii_letter(line):
+        return False
+    if _has_non_ascii_letter(raw_line) and not word.isupper():
         return False
     rest = _normalize_for_script_check(line).replace(word, "", 1)
     return all(not char.isalnum() for char in rest)
@@ -812,12 +827,10 @@ class VisionPageTranslator:
         except (TypeError, KeyError, ValueError) as exc:
             choice = (body.get("choices") or [{}])[0] if isinstance(body, dict) else {}
             reason = choice.get("finish_reason") if isinstance(choice, dict) else None
-            salvaged = _salvage_translations(choice, ids) if reason == "length" else {}
+            salvaged = _salvage_translation_entries(choice, ids) if reason == "length" else []
             if salvaged:
                 translations, font_choices, data = _parse_vision_payload(
-                    json.dumps({"translations": [
-                        {"id": key, "translated_text": text} for key, text in salvaged.items()
-                    ]}, ensure_ascii=False), ids)
+                    json.dumps({"translations": salvaged}, ensure_ascii=False), ids)
                 usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
                 cost = response_cost_usd(usage, self.provider.id, self.model, getattr(response, "headers", None))
                 return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data

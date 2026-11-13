@@ -430,27 +430,39 @@ def _restore_skipped_and_rerender(
 ) -> tuple[int, list[str], str | None]:
     from app.dependencies import pipeline
 
-    with get_manifest_lock(chapter_id):
-        page = load_manifest_raw(chapter_id)["pages"][page_index]
-        regions = [
-            dict(item["region"])
-            for item in page.get("text_objects") or []
-            if isinstance(item, dict)
-            and str(item.get("id")) in skipped
-            and isinstance(item.get("region"), dict)
-        ]
-    if not regions:
-        return 0, [], None
-    try:
-        pipeline.preserve_and_reinpaint(chapter_id, page_index, regions)
-    except (ValueError, RuntimeError, OSError) as exc:
-        return 0, [], str(exc)[:150]
-    with get_manifest_lock(chapter_id):
-        page = load_manifest_raw(chapter_id)["pages"][page_index]
-        request = _render_request_from_page(chapter_id, page_index, page)
-    rerender = render_page(request)
-    rerender_skipped = [str(oid) for oid in (rerender.get("skipped_objects") or [])]
-    return len(regions), rerender_skipped, None
+    total_restored = 0
+    pending = [str(oid) for oid in skipped]
+    for _ in range(3):
+        with get_manifest_lock(chapter_id):
+            page = load_manifest_raw(chapter_id)["pages"][page_index]
+            matched = [
+                item for item in page.get("text_objects") or []
+                if isinstance(item, dict)
+                and str(item.get("id")) in pending
+                and isinstance(item.get("region"), dict)
+            ]
+            regions = [dict(item["region"]) for item in matched]
+            matched_ids = {str(item["id"]) for item in matched}
+        if not regions:
+            return total_restored, [], None
+        try:
+            pipeline.preserve_and_reinpaint(chapter_id, page_index, regions)
+        except (ValueError, RuntimeError, OSError) as exc:
+            return total_restored, pending, str(exc)[:150]
+        total_restored += len(regions)
+        with get_manifest_lock(chapter_id):
+            from app.text_objects import clear_page_object_translations
+
+            manifest = load_manifest_raw(chapter_id)
+            page = manifest["pages"][page_index]
+            if clear_page_object_translations(page, matched_ids):
+                save_manifest_raw(chapter_id, manifest)
+            request = _render_request_from_page(chapter_id, page_index, page)
+        rerender = render_page(request)
+        pending = [str(oid) for oid in (rerender.get("skipped_objects") or [])]
+        if not pending:
+            return total_restored, [], None
+    return total_restored, pending, None
 
 
 @router.post("/render/chapter")

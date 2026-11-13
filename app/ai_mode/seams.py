@@ -17,22 +17,16 @@ def _shifted(rect: dict, shift: int) -> dict:
 
 
 def _shifted_letters(value, shift: int):
-    import numpy as np
-
+    # letters_mask is stored in box-local coordinates matching obj["region"],
+    # which already carries the slice y-offset; shifting rows by a page offset
+    # would zero out the mask. Return a validated local copy instead.
     from app.image_io import encode_mask
     from app.mask_store import decode_mask_value
 
     arr = decode_mask_value(value)
     if arr is None:
         return None
-    moved = np.zeros_like(arr)
-    if shift == 0:
-        moved = arr
-    elif 0 < shift < arr.shape[0]:
-        moved[shift:] = arr[:-shift]
-    elif -arr.shape[0] < shift < 0:
-        moved[:shift] = arr[-shift:]
-    return encode_mask(moved)
+    return encode_mask(arr.copy())
 
 
 def _top_letter_group(letters: np.ndarray, x1: int, y1: int) -> tuple[int, int, int, int] | None:
@@ -65,19 +59,90 @@ def _top_letter_group(letters: np.ndarray, x1: int, y1: int) -> tuple[int, int, 
     return (x1 + int(cols[0]), y1 + top_y1, x1 + int(cols[-1]) + 1, y1 + top_y2)
 
 
-def _is_single_oval_bubble(bmask: object) -> bool:
-    if not isinstance(bmask, dict) or bmask.get("kind") != "bubble":
+def _bubble_mask_fits_region(bmask: object, region: dict | None) -> bool:
+    if not isinstance(bmask, dict) or not isinstance(region, dict):
         return False
-    rows = [int(r[1]) - int(r[0]) for r in (bmask.get("rows") or [])
-            if isinstance(r, (list, tuple)) and len(r) == 2 and int(r[1]) > int(r[0])]
-    if len(rows) < 6:
+    bbox = bmask.get("bbox")
+    if not (isinstance(bbox, (list, tuple)) and len(bbox) == 4):
         return False
-    widest = max(rows)
-    mid = rows[len(rows) // 4: len(rows) - len(rows) // 4]
-    return bool(mid) and widest > 0 and min(mid) >= 0.55 * widest
+    try:
+        mx1, my1, mx2, my2 = (int(v) for v in bbox)
+        rx1, ry1, rx2, ry2 = (int(region[k]) for k in ("x1", "y1", "x2", "y2"))
+    except (KeyError, TypeError, ValueError):
+        return False
+    rw, rh = rx2 - rx1, ry2 - ry1
+    mw, mh = mx2 - mx1, my2 - my1
+    return rw > 0 and rh > 0 and mw >= 0.7 * rw and mh >= 0.7 * rh
+
+
+def _merge_letters_masks(old_items: list[tuple[object, object]], merged_region: dict | None):
+    if not isinstance(merged_region, dict):
+        return None
+    try:
+        rx1, ry1, rx2, ry2 = (int(merged_region[k]) for k in ("x1", "y1", "x2", "y2"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if rx2 <= rx1 or ry2 <= ry1:
+        return None
+    import numpy as np
+
+    from app.image_io import encode_mask
+    from app.mask_store import decode_mask_value
+
+    union = np.zeros((ry2 - ry1, rx2 - rx1), dtype=np.uint8)
+    usable = False
+    for rect_obj, mask_val in old_items:
+        if isinstance(rect_obj, dict):
+            try:
+                x1, y1, x2, y2 = (int(rect_obj[k]) for k in ("x1", "y1", "x2", "y2"))
+            except (KeyError, TypeError, ValueError):
+                continue
+        elif isinstance(rect_obj, (tuple, list)) and len(rect_obj) == 4:
+            x1, y1, x2, y2 = (int(v) for v in rect_obj)
+        else:
+            continue
+        letters = decode_mask_value(mask_val)
+        if letters is None or letters.shape != (y2 - y1, x2 - x1) or not letters.any():
+            continue
+        r0, r1 = max(0, y1 - ry1), min(ry2 - ry1, y2 - ry1)
+        c0, c1 = max(0, x1 - rx1), min(rx2 - rx1, x2 - rx1)
+        if r1 <= r0 or c1 <= c0:
+            continue
+        ar0, ac0 = r0 - (y1 - ry1), c0 - (x1 - rx1)
+        union[r0:r1, c0:c1] |= letters[
+            ar0:ar0 + (r1 - r0), ac0:ac0 + (c1 - c0)].astype(np.uint8)
+        usable = True
+    return encode_mask(union) if usable else None
+
+
+def _apply_merged_masks(
+    target: dict,
+    members: list[dict],
+    letter_items: list[tuple[object, object]],
+    merged_region: dict | None,
+    *,
+    pop_missing_letters: bool = True,
+) -> None:
+    merged_letters = _merge_letters_masks(letter_items, merged_region)
+    if merged_letters is not None:
+        target["letters_mask"] = merged_letters
+    elif pop_missing_letters:
+        target.pop("letters_mask", None)
+
+    from app.detector.bubble_mask import merge_bubble_masks
+
+    masks = [m["bubble_mask"] for m in members if isinstance(m.get("bubble_mask"), dict)]
+    merged_bubble = merge_bubble_masks(masks) if masks else None
+    if merged_bubble is not None and (
+        len(masks) >= len(members) or _bubble_mask_fits_region(merged_bubble, merged_region)
+    ):
+        target["bubble_mask"] = merged_bubble
+    else:
+        target.pop("bubble_mask", None)
 
 
 def set_letter_bounds(page: dict) -> None:
+    from app.detector.bubble_mask import find_waist
     from app.mask_store import decode_mask_value
     from app.text_objects import source_box_ids
 
@@ -99,10 +164,12 @@ def set_letter_bounds(page: dict) -> None:
                         refs.append(ref)
         rects = []
         box_rects = []
+        ref_boxes = []
         for ref in refs:
             box = boxes.get(ref)
             if not box:
                 continue
+            ref_boxes.append(box)
             try:
                 x1, y1, x2, y2 = (int(box[k]) for k in ("x1", "y1", "x2", "y2"))
             except (KeyError, TypeError, ValueError):
@@ -110,13 +177,21 @@ def set_letter_bounds(page: dict) -> None:
             mask = decode_mask_value(box.get("mask"))
             letters = decode_mask_value(box.get("letters_mask"))
             top = None
+            bmask = box.get("bubble_mask")
             if (
                 letters is not None
                 and letters.shape == (y2 - y1, x2 - x1)
                 and letters.any()
-                and not _is_single_oval_bubble(box.get("bubble_mask"))
+                and isinstance(bmask, dict)
+                and bmask.get("kind") == "bubble"
             ):
-                top = _top_letter_group(letters, x1, y1)
+                waist = find_waist(bmask)
+                if waist and waist.get("orientation") == "horizontal":
+                    cut_y = int(waist["cut_y"])
+                    candidate = _top_letter_group(letters, x1, y1)
+                    rel_cut = max(0, min(letters.shape[0], cut_y - y1))
+                    if candidate is not None and candidate[3] <= cut_y and letters[rel_cut:].any():
+                        top = candidate
             if top is not None:
                 rects.append(top)
             elif letters is not None and letters.shape == (y2 - y1, x2 - x1) and letters.any():
@@ -131,49 +206,9 @@ def set_letter_bounds(page: dict) -> None:
         if use:
             obj["letter_bounds"] = {"x1": min(r[0] for r in use), "y1": min(r[1] for r in use),
                                     "x2": max(r[2] for r in use), "y2": max(r[3] for r in use)}
-        import numpy as np
-
-        from app.image_io import encode_mask
-
         region = obj.get("region")
-        if isinstance(region, dict):
-            try:
-                rx1, ry1, rx2, ry2 = (int(region[k]) for k in ("x1", "y1", "x2", "y2"))
-            except (KeyError, TypeError, ValueError):
-                rx1 = ry1 = rx2 = ry2 = 0
-            if rx2 > rx1 and ry2 > ry1:
-                union = np.zeros((ry2 - ry1, rx2 - rx1), dtype=np.uint8)
-                usable = False
-                for ref in refs:
-                    box = boxes.get(ref)
-                    if not box:
-                        continue
-                    try:
-                        x1, y1, x2, y2 = (int(box[k]) for k in ("x1", "y1", "x2", "y2"))
-                    except (KeyError, TypeError, ValueError):
-                        continue
-                    letters = decode_mask_value(box.get("letters_mask"))
-                    if (letters is None or letters.shape != (y2 - y1, x2 - x1)
-                            or not letters.any()):
-                        continue
-                    r0, r1 = max(0, y1 - ry1), min(ry2 - ry1, y2 - ry1)
-                    c0, c1 = max(0, x1 - rx1), min(rx2 - rx1, x2 - rx1)
-                    ar0, ac0 = r0 - (y1 - ry1), c0 - (x1 - rx1)
-                    union[r0:r1, c0:c1] |= letters[
-                        ar0:ar0 + (r1 - r0), ac0:ac0 + (c1 - c0)].astype(np.uint8)
-                    usable = True
-                if usable:
-                    obj["letters_mask"] = encode_mask(union)
-        from app.detector.bubble_mask import merge_bubble_masks
-
-        masks = [box.get("bubble_mask") for ref in refs
-                 if (box := boxes.get(ref)) is not None
-                 and isinstance(box.get("bubble_mask"), dict)]
-        merged = merge_bubble_masks(masks) if masks else None
-        if merged is not None:
-            obj["bubble_mask"] = merged
-        else:
-            obj.pop("bubble_mask", None)
+        letter_items = [(box, box.get("letters_mask")) for box in ref_boxes]
+        _apply_merged_masks(obj, ref_boxes, letter_items, region, pop_missing_letters=False)
 
 
 def _core(page: dict) -> tuple[int, int, int] | None:
@@ -531,16 +566,17 @@ def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
                 obj["overlap_dropped"] = True
                 dropped.append((page_index, str(obj.get("id"))))
                 if _regions_touch(dup_of.get("region"), obj.get("region")) and not _separate_lobes(dup_of, obj):
-                    dup_of["region"] = _union_rect(dup_of.get("region"), obj.get("region"))
+                    letter_items = [
+                        (dup_of.get("region"), dup_of.get("letters_mask")),
+                        (obj.get("region"), obj.get("letters_mask")),
+                    ]
+                    merged_region = _union_rect(dup_of.get("region"), obj.get("region"))
+                    dup_of["region"] = merged_region
                     dup_of["letter_bounds"] = _union_rect(dup_of.get("letter_bounds"),
                                                            obj.get("letter_bounds"))
                     dup_of.pop("ocr_text_region", None)
-                    if isinstance(dup_of.get("bubble_mask"), dict) and isinstance(obj.get("bubble_mask"), dict):
-                        from app.detector.bubble_mask import merge_bubble_masks
-
-                        merged_mask = merge_bubble_masks([dup_of["bubble_mask"], obj["bubble_mask"]])
-                        if merged_mask is not None:
-                            dup_of["bubble_mask"] = merged_mask
+                    dup_of["overlap_merged"] = True
+                    _apply_merged_masks(dup_of, [dup_of, obj], letter_items, merged_region)
             else:
                 kept.append(obj)
     return dropped
@@ -620,17 +656,13 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
                 continue
             rects = [_rect(obj, 0) for obj in block]
             top = block[0]
-            top["region"] = {"x1": min(r[0] for r in rects), "y1": min(r[1] for r in rects),
+            letter_items = [(obj.get("region"), obj.get("letters_mask")) for obj in block]
+            merged_region = {"x1": min(r[0] for r in rects), "y1": min(r[1] for r in rects),
                              "x2": max(r[2] for r in rects), "y2": max(r[3] for r in rects)}
+            top["region"] = merged_region
             top["joined_lines"] = [str(obj["id"]) for obj in block[1:]]
             top.pop("ocr_text_region", None)
-            masks = [obj["bubble_mask"] for obj in block if isinstance(obj.get("bubble_mask"), dict)]
-            if len(masks) >= 2:
-                from app.detector.bubble_mask import merge_bubble_masks
-
-                merged_mask = merge_bubble_masks(masks)
-                if merged_mask is not None:
-                    top["bubble_mask"] = merged_mask
+            _apply_merged_masks(top, block, letter_items, merged_region)
             bounds = [obj.get("letter_bounds") for obj in block]
             if all(isinstance(b, dict) for b in bounds):
                 top["letter_bounds"] = {"x1": min(b["x1"] for b in bounds), "y1": min(b["y1"] for b in bounds),

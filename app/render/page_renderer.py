@@ -129,6 +129,59 @@ def _clearing_shift(cand_box, placed_boxes, height: int, frame=None, anchor_box=
     return min(options, key=abs)
 
 
+def _rerender_non_colliding(
+    image: Image.Image,
+    text: str,
+    sbox: tuple[int, int, int, int],
+    style: dict,
+    placed_mask,
+    frame_bound=None,
+):
+    if sbox[2] - sbox[0] < 16 or sbox[3] - sbox[1] < 16:
+        return None
+    sstats: dict = {"attempt_box": sbox}
+    sub_mask = None
+    if isinstance(style.get("bubble_mask"), dict):
+        sub_mask = clip_bubble_mask(style["bubble_mask"], sbox)
+        if style["bubble_mask"].get("kind") == "bubble" and sub_mask is None:
+            return None
+    sub_style = {**style, "bubble_mask": sub_mask, "letters": None,
+                 "letters_box": None, "source_letter_box": None}
+    try:
+        scandidate = _render_in_region(image.copy(), text, sbox, stats=sstats, **sub_style)
+    except ValueError:
+        return None
+    smask = _ink_mask(image, scandidate)
+    sbox_ink = _mask_bbox(smask)
+    if sbox_ink is None or int((smask & placed_mask).sum()) != 0:
+        return None
+    if frame_bound is not None and not (
+        frame_bound[0] <= sbox_ink[0]
+        and frame_bound[1] <= sbox_ink[1]
+        and sbox_ink[2] <= frame_bound[2]
+        and sbox_ink[3] <= frame_bound[3]
+    ):
+        return None
+    return (scandidate, smask, sbox_ink, sstats)
+
+
+def _stats_verdict_fields(stats: dict, frame, attempt: int) -> dict:
+    return {
+        "attempt": attempt,
+        "size": stats.get("size"),
+        "lines": stats.get("lines"),
+        "frame": frame,
+        "frame_source": stats.get("frame_source"),
+        "lobe": stats.get("lobe"),
+        "fallbacks": stats.get("fallbacks", []),
+        "stages_skipped": stats.get("stages_skipped", []),
+        "band_narrowing": stats.get("band_narrowing", {}),
+        "below_share": bool(stats.get("below_share")),
+        "spills_letter_box": bool(stats.get("spills_letter_box")),
+        "fill_fallback": stats.get("fill_fallback"),
+    }
+
+
 def _frame_iou(a, b) -> float:
     if a is None or b is None:
         return 0.0
@@ -206,11 +259,15 @@ def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, i
     canvas = Image.fromarray(np.pad(pixels, pad, mode="edge"), mode=image.mode)
     padded_style = style
     if top and isinstance(style.get("bubble_mask"), dict):
-        padded_style = {**style, "bubble_mask": shift_bubble_mask(style["bubble_mask"], dy=top)}
+        padded_style = {**padded_style, "bubble_mask": shift_bubble_mask(style["bubble_mask"], dy=top)}
     if top and isinstance(style.get("letters_box"), tuple):
         padded_style = {**padded_style,
                         "letters_box": (style["letters_box"][0], style["letters_box"][1] + top,
                                         style["letters_box"][2], style["letters_box"][3] + top)}
+    if top and isinstance(style.get("source_letter_box"), tuple):
+        sb = style["source_letter_box"]
+        padded_style = {**padded_style,
+                        "source_letter_box": (sb[0], sb[1] + top, sb[2], sb[3] + top)}
     canvas = render_text_in_box(canvas, text, (x1, box[1] + top, x2, box[3] + top), **padded_style)
     stats = style.get("stats")
     if isinstance(stats, dict) and stats.get("ink_box") is not None:
@@ -447,7 +504,14 @@ def render_text_objects(
                 verdicts.append({"id": oid, "guard": "dedup_exact"})
             continue
         seen_keys.add(dup_key)
-        coords = (x1, coords_raw[1], x2, coords_raw[3])
+        clamp_top = core_y1 is None or core_y1 <= 0
+        clamp_bottom = core_y2 is None or core_y2 >= img_h
+        coords = (
+            x1,
+            y1 if clamp_top else coords_raw[1],
+            x2,
+            y2 if clamp_bottom else coords_raw[3],
+        )
         if (obj.get("container") == "screen" and core_y1 is not None and core_y2 is not None):
             clipped_y1 = max(coords_raw[1], core_y1)
             clipped_y2 = min(coords_raw[3], core_y2)
@@ -461,7 +525,7 @@ def render_text_objects(
         lettering_c = obj.get("lettering_color")
         ocr_color_default = (
             lettering_c
-            if lettering_c in ("dark", "light", "red")
+            if lettering_c and str(lettering_c).lower() != "auto"
             else (obj.get("ocr_text_color") or lettering_c)
         )
         box_color = _resolve_ocr_style(
@@ -603,7 +667,8 @@ def render_text_objects(
                 letter_spot = style.get("source_letter_box")
                 ink_box = attempt_stats.get("ink_box")
                 spills = False
-                if letter_spot is not None and ink_box is not None:
+                if (attempt_stats.get("frame_source") != "mask"
+                        and letter_spot is not None and ink_box is not None):
                     ix1, iy1, ix2, iy2 = ink_box
                     ox1, oy1 = max(letter_spot[0], ix1), max(letter_spot[1], iy1)
                     ox2, oy2 = min(letter_spot[2], ix2), min(letter_spot[3], iy2)
@@ -693,34 +758,23 @@ def render_text_objects(
                             placed_tops=[b[1] for b in placed_boxes],
                             cand_top=box[1])
                     if box is not None and dy and abs(dy) <= INK_SHIFT_CAP:
-                        shifted = (box[0], box[1] + dy, box[2], box[3] + dy)
-                        canvas = np.asarray(image).copy()
-                        ys, xs = np.nonzero(mask)
-                        canvas[ys + dy, xs] = np.asarray(candidate)[ys, xs]
-                        image.paste(Image.fromarray(canvas))
-                        placed_boxes.append(shifted)
-                        moved = np.zeros_like(mask)
-                        moved[ys + dy, xs] = True
-                        placed_mask |= moved
-                        if cand_frame is not None:
-                            placed_frames.append((cand_frame, translation.strip()))
-                        verdict.update({
-                            "guard": "shifted", "shift_dy": dy,
-                            "attempt": best_attempt,
-                            "size": item_stats.get("size"),
-                            "lines": item_stats.get("lines"),
-                            "frame": cand_frame,
-                            "frame_source": item_stats.get("frame_source"),
-                            "lobe": item_stats.get("lobe"),
-                            "fallbacks": item_stats.get("fallbacks", []),
-                            "stages_skipped": item_stats.get("stages_skipped", []),
-                            "band_narrowing": item_stats.get("band_narrowing", {}),
-                            "below_share": bool(item_stats.get("below_share")),
-                            "spills_letter_box": bool(item_stats.get("spills_letter_box")),
-                            "fill_fallback": item_stats.get("fill_fallback"),
-                        })
-                        painted = True
-                    else:
+                        base_box = item_stats.get("attempt_box") or cand_fit or cand_frame or box
+                        shift_box = (base_box[0], base_box[1] + dy,
+                                     base_box[2], base_box[3] + dy)
+                        shifted_res = _rerender_non_colliding(
+                            image, render_text, shift_box, style, placed_mask)
+                        if shifted_res is not None:
+                            scandidate, smask, sbox_ink, sstats = shifted_res
+                            image.paste(scandidate)
+                            placed_boxes.append(sbox_ink)
+                            placed_mask |= smask
+                            sframe = sstats.get("frame") or cand_frame
+                            if sframe is not None:
+                                placed_frames.append((sframe, translation.strip()))
+                            verdict.update({"guard": "shifted", "shift_dy": dy})
+                            verdict.update(_stats_verdict_fields(sstats, sframe, best_attempt))
+                            painted = True
+                    if not painted:
                         stacked = None
                         if cand_frame is not None and cand_fit is not None:
                             blockers = [b for b in placed_boxes
@@ -741,38 +795,21 @@ def render_text_objects(
                                              + max(b[3] for b in blockers)) // 2
                                 if frame_mid < block_mid:
                                     tries.reverse()
+                                left_end = min(b[0] for b in blockers) - INK_GAP
+                                right_start = max(b[2] for b in blockers) + INK_GAP
+                                if cand_frame[0] < left_end:
+                                    tries.append((cand_frame[0], cand_frame[1],
+                                                  left_end, cand_frame[3]))
+                                if right_start < cand_frame[2]:
+                                    tries.append((right_start, cand_frame[1],
+                                                  cand_frame[2], cand_frame[3]))
                                 for sbox in tries:
-                                    if sbox[2] - sbox[0] < 16 or sbox[3] - sbox[1] < 16:
-                                        continue
-                                    sstats: dict = {"attempt_box": sbox}
-                                    scandidate = None
-                                    stacked_mask = None
-                                    if isinstance(style.get("bubble_mask"), dict):
-                                        stacked_mask = clip_bubble_mask(
-                                            style["bubble_mask"], sbox)
-                                    stacked_style = {**style, "bubble_mask": stacked_mask,
-                                                     "letters": None, "letters_box": None}
-                                    try:
-                                        scandidate = _render_in_region(
-                                            image.copy(), render_text, sbox,
-                                            stats=sstats, **stacked_style)
-                                    except ValueError:
-                                        scandidate = None
-                                    if scandidate is None:
-                                        continue
-                                    smask = _ink_mask(image, scandidate)
-                                    sbox_ink = _mask_bbox(smask)
-                                    if sbox_ink is None:
-                                        continue
-                                    if int((smask & placed_mask).sum()) != 0:
-                                        continue
-                                    if not (cand_frame[0] <= sbox_ink[0]
-                                            and cand_frame[1] <= sbox_ink[1]
-                                            and sbox_ink[2] <= cand_frame[2]
-                                            and sbox_ink[3] <= cand_frame[3]):
-                                        continue
-                                    stacked = (scandidate, smask, sbox_ink, sstats)
-                                    break
+                                    res = _rerender_non_colliding(
+                                        image, render_text, sbox, style,
+                                        placed_mask, frame_bound=cand_frame)
+                                    if res is not None:
+                                        stacked = res
+                                        break
                         if stacked is not None:
                             scandidate, smask, sbox_ink, sstats = stacked
                             image.paste(scandidate)
@@ -780,49 +817,21 @@ def render_text_objects(
                             placed_mask |= smask
                             sframe = sstats.get("frame") or cand_frame
                             placed_frames.append((sframe, translation.strip()))
-                            verdict.update({
-                                "guard": "stacked",
-                                "attempt": best_attempt,
-                                "size": sstats.get("size"),
-                                "lines": sstats.get("lines"),
-                                "frame": sframe,
-                                "frame_source": sstats.get("frame_source"),
-                                "lobe": sstats.get("lobe"),
-                                "fallbacks": sstats.get("fallbacks", []),
-                                "stages_skipped": sstats.get("stages_skipped", []),
-                                "band_narrowing": sstats.get("band_narrowing", {}),
-                                "below_share": bool(sstats.get("below_share")),
-                                "spills_letter_box": bool(sstats.get("spills_letter_box")),
-                                "fill_fallback": sstats.get("fill_fallback"),
-                            })
+                            verdict.update({"guard": "stacked"})
+                            verdict.update(_stats_verdict_fields(sstats, sframe, best_attempt))
                             painted = True
                         else:
                             logger.warning(
-                                "Chapter {} page {} object {} paints colliding ink (no clearing shift)",
+                                "Chapter {} page {} object {} skipped due to unresolvable collision",
                                 req.chapter_id, req.page_index, oid)
-                            image.paste(candidate)
-                            if box is not None:
-                                placed_boxes.append(box)
-                            placed_mask |= mask
-                            if cand_frame is not None:
-                                placed_frames.append((cand_frame, translation.strip()))
                             verdict.update({
-                                "guard": "painted_colliding",
-                                "attempt": best_attempt,
-                                "size": item_stats.get("size"),
-                                "lines": item_stats.get("lines"),
-                                "frame": cand_frame,
-                                "frame_source": item_stats.get("frame_source"),
-                                "lobe": item_stats.get("lobe"),
-                                "fallbacks": (item_stats.get("fallbacks", [])
-                                              + ["painted_colliding"]),
-                                "stages_skipped": item_stats.get("stages_skipped", []),
-                                "band_narrowing": item_stats.get("band_narrowing", {}),
-                                "below_share": bool(item_stats.get("below_share")),
-                            "spills_letter_box": bool(item_stats.get("spills_letter_box")),
-                                "fill_fallback": item_stats.get("fill_fallback"),
+                                "guard": "skipped_collision",
+                                "review": True,
                             })
-                            painted = True
+                            verdict.update(_stats_verdict_fields(item_stats, cand_frame, best_attempt))
+                            verdict["fallbacks"] = (
+                                list(verdict.get("fallbacks") or []) + ["skipped_collision"]
+                            )
                 if verdicts is not None:
                     verdicts.append(verdict)
                 if not painted:
