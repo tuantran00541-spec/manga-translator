@@ -1,0 +1,146 @@
+{
+  "chapter_id": "a0000026",
+  "slices": 17,
+  "cleaned": 17,
+  "detector_misses": 0,
+  "inpaint_skips": 1,
+  "no_box_slices": [
+    7
+  ],
+  "seconds": 228.3,
+  "pages": [
+    {
+      "slice": 0,
+      "boxes": 13,
+      "min_conf": 0.155,
+      "misses": 0,
+      "skips": 1
+    },
+    {
+      "slice": 1,
+      "boxes": 3,
+      "min_conf": 0.575,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 2,
+      "boxes": 15,
+      "min_conf": 0.151,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 3,
+      "boxes": 17,
+      "min_conf": 0.145,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 4,
+      "boxes": 8,
+      "min_conf": 0.304,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 5,
+      "boxes": 3,
+      "min_conf": 0.452,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 6,
+      "boxes": 5,
+      "min_conf": 0.722,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 7,
+      "boxes": 0,
+      "min_conf": null,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 8,
+      "boxes": 10,
+      "min_conf": 0.479,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 9,
+      "boxes": 9,
+      "min_conf": 0.558,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 10,
+      "boxes": 2,
+      "min_conf": 0.761,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 11,
+      "boxes": 6,
+      "min_conf": 0.33,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 12,
+      "boxes": 6,
+      "min_conf": 0.229,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 13,
+      "boxes": 10,
+      "min_conf": 0.163,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 14,
+      "boxes": 10,
+      "min_conf": 0.256,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 15,
+      "boxes": 9,
+      "min_conf": 0.164,
+      "misses": 0,
+      "skips": 0
+    },
+    {
+      "slice": 16,
+      "boxes": 13,
+      "min_conf": 0.143,
+      "misses": 0,
+      "skips": 0
+    }
+  ],
+  "misses": [],
+  "skips": [
+    {
+      "slice": 0,
+      "box": [
+        315,
+        226,
+        511,
+        313
+      ],
+      "px": 11378,
+      "kind": "inpaint_skip"
+    }
+  ]
+}
