@@ -66,9 +66,12 @@ class PairsDataset(Dataset):
         ids = enc_f["input_ids"][0]
         labels = ids.clone()
         labels[: enc_p["input_ids"].shape[1]] = -100
-        return {"input_ids": ids, "labels": labels,
+        item = {"input_ids": ids, "labels": labels,
                 "pixel_values": enc_f["pixel_values"][0],
                 "image_grid_thw": enc_f["image_grid_thw"][0]}
+        if "mm_token_type_ids" in enc_f:
+            item["mm_token_type_ids"] = enc_f["mm_token_type_ids"][0]
+        return item
 
 
 def collate(batch, pad_id):
@@ -82,11 +85,17 @@ def collate(batch, pad_id):
                                  torch.full((n,), -100, dtype=torch.long)]))
         attn.append(torch.cat([torch.ones(len(b["input_ids"]), dtype=torch.long),
                                torch.zeros(n, dtype=torch.long)]))
-    return {"input_ids": torch.stack(input_ids),
+    out = {"input_ids": torch.stack(input_ids),
             "labels": torch.stack(labels),
             "attention_mask": torch.stack(attn),
             "pixel_values": torch.stack([b["pixel_values"] for b in batch]),
             "image_grid_thw": torch.stack([b["image_grid_thw"] for b in batch])}
+    if "mm_token_type_ids" in batch[0]:
+        out["mm_token_type_ids"] = torch.stack([
+            torch.cat([b["mm_token_type_ids"],
+                       torch.zeros(maxlen - len(b["input_ids"]), dtype=torch.long)])
+            for b in batch])
+    return out
 
 
 def main():
