@@ -35,7 +35,7 @@ jobs:
           python-version: "3.12"
       - name: Install training deps
         run: |
-          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install --quiet "transformers>=4.57" peft accelerate pillow
           python3 -c "import torch, transformers, peft; print('torch', torch.__version__, 'transformers', transformers.__version__, 'peft', peft.__version__)"
       - name: Download pairs artifacts from data-build run
