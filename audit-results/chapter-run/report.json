@@ -1,21 +1,21 @@
 {
  "url": "nano-machine-ch001.zip",
  "slices": 49,
- "cpu": "AMD EPYC 9V45 96-Core Processor",
- "download_s": 3.0,
- "process_s": 71.6,
- "per_slice_s": 1.46,
+ "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+ "download_s": 2.7,
+ "process_s": 120.3,
+ "per_slice_s": 2.46,
  "time_s": {
-  "read_s": 2.1,
-  "detect_s": 182.8,
+  "read_s": 2.5,
+  "detect_s": 304.6,
   "screen_s": 0.0,
-  "auto_inpaint_s": 88.2,
+  "auto_inpaint_s": 152.5,
   "manual_inpaint_s": 0.0,
-  "write_s": 3.0,
-  "total_s": 276.2,
-  "text_model_s": 182.7,
+  "write_s": 4.1,
+  "total_s": 463.8,
+  "text_model_s": 304.4,
   "second_pass_boxes": 0.0,
-  "lama_model_s": 65.6,
+  "lama_model_s": 111.0,
   "lama_model_runs": 32.0,
   "lama_regions": 32.0,
   "smart_fill_regions": 101.0,
@@ -25,10 +25,21 @@
   "seam_failures": 0.0,
   "seam_wall_s": 0.0,
   "seam_text_model_s": 0.0,
-  "wall_s": 71.5,
+  "wall_s": 120.2,
   "workers": 4.0
  },
  "blocks": 147,
- "blocks_left": 0,
- "left": []
+ "blocks_left": 1,
+ "left": [
+  {
+   "slice": 30,
+   "box": [
+    246,
+    2209,
+    361,
+    2327
+   ],
+   "px": 1404
+  }
+ ]
 }
