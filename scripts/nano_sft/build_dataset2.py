@@ -38,14 +38,20 @@ MATCH_W = 360
 MATCH_SCALE = 4
 
 def garbage(text):
-    """OCR-garbage guard for SFT targets: digit runs, stray symbols."""
     if re.search(r"\d{2,}", text):
         return True
-    if any(c in text for c in "¬`~|<>^_"):
+    if any(c in text for c in "¬`~|<>^_¿¡«»§¶†‡°"):
         return True
     digits = sum(1 for c in text if c.isdigit())
     if digits / max(1, len(text)) > 0.15:
         return True
+    for w in re.findall(r"[A-Za-zÀ-ỹ]+", text):
+        if len(w) < 3:
+            continue
+        transitions = sum(1 for a, b in zip(w, w[1:])
+                          if a.isupper() != b.isupper())
+        if transitions >= 2:
+            return True
     return False
 
 def letter_ratio(t):
