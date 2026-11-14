@@ -1,0 +1,94 @@
+name: Nano SFT text stage (CPU)
+on:
+  workflow_dispatch:
+    inputs:
+      data_run_id:
+        description: "nano-sft-data-build run id whose artifacts hold the pairs"
+        required: true
+        type: string
+      max_pairs:
+        description: "pairs to train on (0 = all)"
+        required: false
+        default: "0"
+        type: string
+      epochs:
+        description: "epochs over the text pairs"
+        required: false
+        default: "3"
+        type: string
+      init_adapter_run_id:
+        description: "run id holding a nano-sft-text adapter to continue from (empty = from base)"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  text:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    env:
+      PYTHONPATH: "."
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "4"
+      HF_HUB_ENABLE_HF_TRANSFER: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install training deps
+        run: |
+          pip install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet "transformers>=4.57" peft accelerate pillow
+          python3 -c "import torch, transformers, peft; print('torch', torch.__version__, 'transformers', transformers.__version__, 'peft', peft.__version__)"
+      - name: Download pairs artifacts from data-build run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p pairs2
+          ids=$(gh api "repos/${{ github.repository }}/actions/runs/${{ inputs.data_run_id }}/artifacts" --jq '.artifacts[] | select(.name | startswith("nano-sft-ch")) | .id')
+          echo "artifact ids: $ids"
+          [ -n "$ids" ] || { echo "no nano-sft-ch artifacts on run ${{ inputs.data_run_id }}"; exit 1; }
+          for id in $ids; do
+            gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > "a-$id.zip"
+            unzip -o -q "a-$id.zip" -d .
+          done
+          echo "pair files:"; ls ch*.jsonl | wc -l
+      - name: Download init adapter (optional)
+        if: ${{ inputs.init_adapter_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          id=$(gh api "repos/${{ github.repository }}/actions/runs/${{ inputs.init_adapter_run_id }}/artifacts" --jq '.artifacts[] | select(.name == "nano-sft-text") | .id')
+          [ -n "$id" ] || { echo "no nano-sft-text artifact on run ${{ inputs.init_adapter_run_id }}"; exit 1; }
+          gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > adapter.zip
+          mkdir -p init-adapter
+          unzip -o -q adapter.zip -d init-adapter
+          ls init-adapter/
+      - name: Text stage train
+        run: |
+          extra=""
+          [ -d init-adapter/text-out ] && extra="--init-adapter init-adapter/text-out"
+          python3 scripts/nano_sft/train_text.py \
+            --pairs ch*.jsonl \
+            --model huihui-ai/Huihui-Qwen3.5-0.8B-abliterated \
+            --out text-out \
+            --max-pairs "${{ inputs.max_pairs }}" \
+            --epochs "${{ inputs.epochs }}" \
+            --batch 1 --accum 4 --lora-r 16 --lr 1e-4 \
+            --dtype float32 $extra 2>&1 | tee text-train.log
+          echo "--- text report ---"
+          cat text-out/text-report.json
+      - name: Upload text adapter + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nano-sft-text
+          path: |
+            text-out/
+            text-train.log
+          retention-days: 30
