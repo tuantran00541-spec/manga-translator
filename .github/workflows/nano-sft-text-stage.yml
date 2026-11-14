@@ -3,8 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       data_run_id:
-        description: "nano-sft-data-build run id whose artifacts hold the pairs"
-        required: true
+        description: "nano-sft-data-build run id whose artifacts hold the pairs (empty = use data_file)"
+        required: false
+        default: ""
+        type: string
+      data_file:
+        description: "repo path of a pairs jsonl to train on (e.g. scripts/nano_sft/data/distilled-vision-v2.jsonl); empty = use data_run_id artifacts"
+        required: false
+        default: ""
         type: string
       max_pairs:
         description: "pairs to train on (0 = all)"
@@ -44,8 +50,9 @@ jobs:
           pip install --quiet "transformers>=4.57" peft accelerate pillow
           python3 -c "import torch, transformers, peft; print('torch', torch.__version__, 'transformers', transformers.__version__, 'peft', peft.__version__)"
       - name: Download pairs artifacts from data-build run
+        if: ${{ inputs.data_run_id != '' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           mkdir -p pairs2
@@ -60,7 +67,7 @@ jobs:
       - name: Download init adapter (optional)
         if: ${{ inputs.init_adapter_run_id != '' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           id=$(gh api "repos/${{ github.repository }}/actions/runs/${{ inputs.init_adapter_run_id }}/artifacts" --jq '.artifacts[] | select(.name == "nano-sft-text") | .id')
@@ -73,8 +80,13 @@ jobs:
         run: |
           extra=""
           [ -d init-adapter/text-out ] && extra="--init-adapter init-adapter/text-out"
+          if [ -n "${{ inputs.data_file }}" ]; then
+            pairs="${{ inputs.data_file }}"
+          else
+            pairs="ch*.jsonl"
+          fi
           python3 scripts/nano_sft/train_text.py \
-            --pairs ch*.jsonl \
+            --pairs $pairs \
             --model huihui-ai/Huihui-Qwen3.5-0.8B-abliterated \
             --out text-out \
             --max-pairs "${{ inputs.max_pairs }}" \
