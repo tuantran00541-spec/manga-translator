@@ -9,6 +9,7 @@ Usage: python3 download_vi_chapter.py <chapter> <out_dir>
 import os
 import re
 import sys
+import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -17,12 +18,19 @@ BASE = "https://nettruyen15s.com"
 IMG_RE = re.compile(r'src="(https://i\d+\.netcdn\.one[^"]*\.webp[^"]*)"')
 
 
-def fetch(url, referer=None):
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    if referer:
-        req.add_header("Referer", referer)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read()
+def fetch(url, referer=None, tries=3):
+    last = None
+    for attempt in range(tries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            if referer:
+                req.add_header("Referer", referer)
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.read()
+        except Exception as e:
+            last = e
+            time.sleep(5 * (attempt + 1))
+    raise last
 
 
 def valid_image(path):
