@@ -3,8 +3,19 @@ on:
   workflow_dispatch:
     inputs:
       data_run_id:
-        description: "nano-sft-data-build run id whose artifacts hold the pairs"
-        required: true
+        description: "nano-sft-data-build run id whose artifacts hold the pairs (empty = use data_file)"
+        required: false
+        default: ""
+        type: string
+      data_file:
+        description: "repo path of a pairs jsonl to train on (e.g. scripts/nano_sft/data/vision-trial-pairs.jsonl); empty = use data_run_id artifacts"
+        required: false
+        default: ""
+        type: string
+      crops_zip:
+        description: "repo path of a zip holding the crops for data_file (unzipped at repo root); empty = none"
+        required: false
+        default: ""
         type: string
       max_pairs:
         description: "pairs to train on (pilot)"
@@ -39,6 +50,7 @@ jobs:
           pip install --quiet "transformers>=4.57" peft accelerate pillow
           python3 -c "import torch, transformers, peft; print('torch', torch.__version__, 'transformers', transformers.__version__, 'peft', peft.__version__)"
       - name: Download pairs artifacts from data-build run
+        if: ${{ inputs.data_run_id != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -52,10 +64,20 @@ jobs:
             unzip -o -q "a-$id.zip" -d .
           done
           echo "pair files:"; ls ch*.jsonl | wc -l
+      - name: Unzip trial crops (optional)
+        if: ${{ inputs.crops_zip != '' }}
+        run: |
+          unzip -o -q "${{ inputs.crops_zip }}" -d .
+          ls crops/ | wc -l
       - name: LoRA pilot train
         run: |
+          if [ -n "${{ inputs.data_file }}" ]; then
+            pairs="${{ inputs.data_file }}"
+          else
+            pairs="ch*.jsonl"
+          fi
           python3 scripts/nano_sft/train_pilot.py \
-            --pairs ch*.jsonl \
+            --pairs $pairs \
             --model huihui-ai/Huihui-Qwen3.5-0.8B-abliterated \
             --out pilot-out \
             --max-pairs "${{ inputs.max_pairs }}" \
