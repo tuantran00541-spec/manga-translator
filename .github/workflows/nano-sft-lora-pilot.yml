@@ -1,0 +1,76 @@
+name: Nano SFT LoRA pilot (CPU)
+on:
+  workflow_dispatch:
+    inputs:
+      data_run_id:
+        description: "nano-sft-data-build run id whose artifacts hold the pairs"
+        required: true
+        type: string
+      max_pairs:
+        description: "pairs to train on (pilot)"
+        required: false
+        default: "150"
+        type: string
+      epochs:
+        description: "epochs over the pilot pairs"
+        required: false
+        default: "2"
+        type: string
+
+jobs:
+  pilot:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    env:
+      PYTHONPATH: "."
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "4"
+      HF_HUB_ENABLE_HF_TRANSFER: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install training deps
+        run: |
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet "transformers>=4.57" peft accelerate pillow
+          python3 -c "import torch, transformers, peft; print('torch', torch.__version__, 'transformers', transformers.__version__, 'peft', peft.__version__)"
+      - name: Download pairs artifacts from data-build run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p pairs2
+          ids=$(gh api "repos/${{ github.repository }}/actions/runs/${{ inputs.data_run_id }}/artifacts" --jq '.artifacts[] | select(.name | startswith("nano-sft-ch")) | .id')
+          echo "artifact ids: $ids"
+          [ -n "$ids" ] || { echo "no nano-sft-ch artifacts on run ${{ inputs.data_run_id }}"; exit 1; }
+          for id in $ids; do
+            gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > "a-$id.zip"
+            unzip -o -q "a-$id.zip" -d .
+          done
+          ls pairs2/
+          echo "pair files:"; ls pairs2/*.jsonl | wc -l
+      - name: LoRA pilot train
+        run: |
+          python3 scripts/nano_sft/train_pilot.py \
+            --pairs pairs2/ch*.jsonl \
+            --model huihui-ai/Huihui-Qwen3.5-0.8B-abliterated \
+            --out pilot-out \
+            --max-pairs "${{ inputs.max_pairs }}" \
+            --epochs "${{ inputs.epochs }}" \
+            --batch 1 --accum 4 --lora-r 16 --lr 1e-4 \
+            --dtype float32 2>&1 | tee pilot-train.log
+          echo "--- pilot report ---"
+          cat pilot-out/pilot-report.json
+      - name: Upload pilot adapter + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nano-sft-pilot
+          path: |
+            pilot-out/
+            pilot-train.log
+          retention-days: 30
