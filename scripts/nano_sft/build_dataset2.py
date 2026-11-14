@@ -13,7 +13,7 @@ v2 fixes (v1 verdict: naive sequence pairing produces garbage):
 Usage: <venv python> build_dataset2.py <chapter> [--limit N] [--out DIR]
 """
 import sys, os, json, re, subprocess, tempfile, zipfile, argparse
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, REPO_ROOT)
 os.environ.setdefault("MANGA_PROCESSING_PIPELINE", "fast")
 os.environ.setdefault("MANGA_ORT_PROVIDER", "openvino")
