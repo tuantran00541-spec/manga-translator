@@ -51,12 +51,11 @@ jobs:
             gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > "a-$id.zip"
             unzip -o -q "a-$id.zip" -d .
           done
-          ls pairs2/
-          echo "pair files:"; ls pairs2/*.jsonl | wc -l
+          echo "pair files:"; ls ch*.jsonl | wc -l
       - name: LoRA pilot train
         run: |
           python3 scripts/nano_sft/train_pilot.py \
-            --pairs pairs2/ch*.jsonl \
+            --pairs ch*.jsonl \
             --model huihui-ai/Huihui-Qwen3.5-0.8B-abliterated \
             --out pilot-out \
             --max-pairs "${{ inputs.max_pairs }}" \
