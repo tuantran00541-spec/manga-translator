@@ -15,7 +15,7 @@ env:
   OUT: audit-results/kiuyha-train/run-${{ github.run_id }}
   PYTHONPATH: "."
   PYTHONUNBUFFERED: "1"
-  DATA_RELEASE: "kiuyha-data-r3-v1"
+  DATA_RELEASE: "kiuyha-data-r4-v1"
 
 jobs:
   data:
@@ -54,7 +54,7 @@ jobs:
 
   tune:
     runs-on: ubuntu-latest
-    timeout-minutes: 345
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -68,20 +68,20 @@ jobs:
           python-version: "3.12"
       - name: Fetch the full kiuyha-data set (release parts)
         run: |
-          for i in 00 01 02 03 04 05; do
-            curl --proto '=https' --tlsv1.2 -sSfL -o "kiuyha-data-r3-v1.zip.$i" "https://github.com/tuantran00541-spec/manga-translator/releases/download/${{ env.DATA_RELEASE }}/kiuyha-data-r3-v1.zip.$i"
+          for i in 00 01 02 03 04 05 06 07 08; do
+            curl --proto '=https' --tlsv1.2 -sSfL -o "kiuyha-data-r4-v1.zip.$i" "https://github.com/tuantran00541-spec/manga-translator/releases/download/${{ env.DATA_RELEASE }}/kiuyha-data-r4-v1.zip.$i"
           done
-          cat kiuyha-data-r3-v1.zip.0* > kiuyha-data-r3-v1.zip
-          echo "6e1b83b2c07a74154f0b06ee82eb1f9594a7427b5ccb7408b9df2188849ad46f  kiuyha-data-r3-v1.zip" | sha256sum -c -
-          unzip -q kiuyha-data-r3-v1.zip
-          rm kiuyha-data-r3-v1.zip*
+          cat kiuyha-data-r4-v1.zip.0* > kiuyha-data-r4-v1.zip
+          echo "b0b8fede304601c4787cc91a26fa4b45df646c2071450a80c58a5afa5c1b6386  kiuyha-data-r4-v1.zip" | sha256sum -c -
+          unzip -q kiuyha-data-r4-v1.zip
+          rm kiuyha-data-r4-v1.zip*
           test -f kiuyha-data/data.yaml
-          python -c "import json; s=json.load(open('kiuyha-data/stats.json')); print(s); assert s['train'] >= 8000, s"
+          python -c "import json; s=json.load(open('kiuyha-data/stats.json')); print(s); assert s['train'] >= 11000, s"
       - uses: actions/download-artifact@v4
         with:
           name: kiuyha-tuned-all
           path: .
-          run-id: 43243484985
+          run-id: 43348189051
           github-token: ${{ github.token }}
       - name: Install Ultralytics on CPU torch
         run: |
@@ -95,7 +95,7 @@ jobs:
           freeze=0
           [ "${{ matrix.arm }}" = frozen ] && freeze=10
           yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
-            time=5.0 epochs=40 patience=100 freeze=$freeze optimizer=AdamW lr0=0.0005 cos_lr=True \
+            time=5.5 epochs=40 patience=100 freeze=$freeze optimizer=AdamW lr0=0.0005 cos_lr=True \
             degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
       - name: Keep the weights
         if: always()
