@@ -1,5 +1,5 @@
 name: Kiuyha train S
-# round-8 S (2026-11-15): OPTIMIZED - imgsz 640 + epochs 2 (cos_lr anneals over real run length) + batch 16 + workers 4; chain from round-7 S (run 43689846160, 1 ep, mAP50-95 0.673)
+# round-9 S (2026-11-16): chain from round-8 S (run 43719608281, 2 ep, mAP50-95 0.785 NEW BEST); same 640 recipe (imgsz 640, epochs 2, batch 16, workers 4)
 
 on:
   push:
@@ -17,7 +17,7 @@ env:
   PYTHONPATH: "."
   PYTHONUNBUFFERED: "1"
   DATA_RELEASE: "kiuyha-data-r4-v1"
-  START_RUN: "43689846160"
+  START_RUN: "43719608281"
 
 jobs:
   tune:
