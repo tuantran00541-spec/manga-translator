@@ -27,7 +27,13 @@
     const label = document.getElementById("theme-control-label");
     if (label) label.textContent = MODE_LABELS[mode] || MODE_LABELS.system;
     const icon = document.querySelector(".theme-control-icon");
-    if (icon) icon.innerHTML = MODE_ICONS[mode] || MODE_ICONS.system;
+    if (icon) {
+      const parsed = new DOMParser().parseFromString(
+        `<svg xmlns="http://www.w3.org/2000/svg">${MODE_ICONS[mode] || MODE_ICONS.system}</svg>`,
+        "image/svg+xml",
+      );
+      icon.replaceChildren(...parsed.documentElement.childNodes);
+    }
   }
 
   function applyMode(mode, persist = true) {

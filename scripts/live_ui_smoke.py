@@ -549,6 +549,7 @@ def _exercise_editing(page: Page, base_url: str, artifacts: Path) -> None:
     page.locator(".review-proof-close").click()
     page.locator(f'.review-text-object-overlay[data-object-id="{a_id}"]').click()
     page.locator(".review-floating-inspector summary", has_text="Kiểu chữ").click()
+    page.locator(".style-preset-add").click()
     page.locator(".style-preset-name").fill("Hiệu ứng")
     page.locator(".style-preset-store").click()
     expect(page.locator(".style-preset-select option")).to_have_count(2)
