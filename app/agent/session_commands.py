@@ -438,13 +438,15 @@ class AgentCommandsMixin:
                 if self.status != "idle":
                     raise RuntimeError("The agent is still working")
             done = [self.workspace.rel(Path(p)) for p in self.checkpoints.undo()]
+            skipped = [self.workspace.rel(Path(p)) for p in self.checkpoints.last_undo_skipped]
+            warning = " Không thể hoàn tác file vượt giới hạn checkpoint: " + ", ".join(skipped) if skipped else ""
             self.workspace.seen.clear()
             if not done:
-                return {"message": "Không có gì để hoàn tác (chỉ hoàn tác file do công cụ sửa file đã đổi, không gồm lệnh shell)."}
+                return {"message": "Không có gì để hoàn tác (chỉ hoàn tác file do công cụ sửa file đã đổi, không gồm lệnh shell)." + warning}
             self.history.append({"role": "user", "content": "[The user undid your last turn's file changes: " + ", ".join(done) + "]"})
             self.history.append({"role": "assistant", "content": "Understood; those files are back as they were.", "calls": []})
             self.emit("notice", text="Đã hoàn tác: " + ", ".join(done))
-            return {"message": "Đã hoàn tác " + ", ".join(done)}
+            return {"message": "Đã hoàn tác " + ", ".join(done) + warning}
         if name == "memory":
             return {"message": self._memory_command(args)}
         if name == "agents":

@@ -1,20 +1,39 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
+
+
+def _git_dirs(root: Path) -> tuple[Path, Path] | None:
+    git = root / '.git'
+    try:
+        if git.is_file():
+            line = git.read_text(encoding='utf-8').strip()
+            if not line.startswith('gitdir: '):
+                return None
+            git = (root / line[8:]).resolve()
+        if not git.is_dir():
+            return None
+        common_file = git / 'commondir'
+        common = (git / common_file.read_text(encoding='utf-8').strip()).resolve() if common_file.is_file() else git
+        return git, common
+    except OSError:
+        return None
 
 
 def _watched(root: Path) -> dict[str, bytes]:
-    git = root / ".git"
-    if not git.is_dir():
+    dirs = _git_dirs(root)
+    if dirs is None:
         return {}
+    git, common = dirs
     found: dict[str, bytes] = {}
-    paths = [git / "config", git / "info" / "attributes"]
-    hooks = git / "hooks"
+    paths = [common / "config", git / "config.worktree", common / "info" / "attributes"]
+    hooks = common / "hooks"
     if hooks.is_dir():
         paths += [p for p in hooks.iterdir() if p.is_file() and not p.name.endswith(".sample")]
     for path in paths:
         try:
-            found[str(path.relative_to(root))] = path.read_bytes()
+            found[os.path.relpath(path, root)] = path.read_bytes()
         except OSError:
             continue
     return found
@@ -25,7 +44,7 @@ def snapshot(root: Path) -> dict[str, bytes]:
 
 
 def restore(root: Path, before: dict[str, bytes]) -> list[str]:
-    if not (root / ".git").is_dir():
+    if _git_dirs(root) is None:
         return []
     after, touched = _watched(root), []
     for name, data in before.items():

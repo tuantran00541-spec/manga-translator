@@ -14,6 +14,8 @@ MAX_RAN = 200
 class Checkpoints:
     def __init__(self):
         self.turns: list[dict[str, bytes | None]] = []
+        self.skipped: list[set[str]] = []
+        self.last_undo_skipped: list[str] = []
         self.first = 0
         self.marks: dict[str, dict] = {}
         self.blobs: dict[str, bytes] = {}
@@ -25,19 +27,23 @@ class Checkpoints:
 
     def begin(self) -> None:
         self.turns.append({})
+        self.skipped.append(set())
         extra = max(0, len(self.turns) - MAX_TURNS)
         if extra:
             del self.turns[:extra]
+            del self.skipped[:extra]
             self.first += extra
             self._keep(lambda m: m["turn"] >= self.first)
 
     def save(self, path: Path) -> None:
-        if not self.turns or str(path) in self.turns[-1]:
+        if not self.turns or str(path) in self.turns[-1] or str(path) in self.skipped[-1]:
             return
         try:
             if path.is_file():
                 if path.stat().st_size <= MAX_FILE_BYTES:
                     self.turns[-1][str(path)] = path.read_bytes()
+                else:
+                    self.skipped[-1].add(str(path))
             elif not path.exists():
                 self.turns[-1][str(path)] = None
         except OSError:
@@ -51,10 +57,13 @@ class Checkpoints:
         return dict(self.turns[-1]) if self.turns else {}
 
     def undo(self) -> list[str]:
-        while self.turns and not self.turns[-1]:
+        self.last_undo_skipped = []
+        while self.turns and not self.turns[-1] and not self.skipped[-1]:
             self.turns.pop()
+            self.skipped.pop()
         if not self.turns:
             return []
+        self.last_undo_skipped = sorted(self.skipped.pop())
         done = []
         for name, data in self.turns.pop().items():
             if _write(Path(name), data):

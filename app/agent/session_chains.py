@@ -82,7 +82,7 @@ class AgentChainsMixin:
             copy = top / (re.sub(r"[^A-Za-z0-9_-]", "_", name)[:40] or "b")
             base = isolate.snapshot(self.workspace.root, copy)
             if base is None:
-                return name, copy, None, "the workspace is too big to copy", "", ""
+                return name, copy, None, "the workspace cannot be copied completely (size limit or symlink)", "", ""
             ws = Workspace(copy, self.workspace.policy)
             out = self._branch_run(ws, code)
             verdict = self._branch_run(ws, check) if check.strip() else "(no check given)"
@@ -93,6 +93,8 @@ class AgentChainsMixin:
         self._branches = {name: (copy, base) for name, copy, base, *_ in rows if base is not None}
         table = "\n\n".join(f"== branch {name} ==\n[changes]\n{diff or '(none)'}\n[output]\n{clip(out, 3000)}\n[check]\n{clip(verdict, 3000)}"
                             for name, _, _, out, verdict, diff in rows)
+        if not self._branches:
+            return table + "\n\nNo branches were created; nothing can be adopted.", False
         return (table + "\n\nNothing was applied. Compare the branches against every requirement, then tools.adopt('<name>') (adopt <name> in the shell) "
                 "the one to keep or write new attempts, and run the check again on the real workspace before you finish."), True
 

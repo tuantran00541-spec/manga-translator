@@ -305,7 +305,9 @@ class AgentSubagentsMixin:
             if not name:
                 raise ToolError("save needs a name")
             held = cp.mark(name, str(args.get("note") or ""))
-            return f"Saved mark {name} ({held} changed files so far)."
+            skipped = sorted(cp.skipped[-1])
+            warning = f" Files too large to restore: {', '.join(skipped)}." if skipped else ""
+            return f"Saved mark {name} ({held} changed files so far)." + warning
         if action == "pin":
             paths = args.get("paths") or ([path] if path else [])
             if not paths:

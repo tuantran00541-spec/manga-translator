@@ -32,13 +32,18 @@ def _hash(path: Path) -> str | None:
 def snapshot(root: Path, dest: Path) -> dict[str, str] | None:
     base: dict[str, str] = {}
     total = 0
+    for folder, dirs, names in os.walk(root):
+        at_root = Path(folder) == root
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and d != CONFLICTS and not (at_root and d in ROOT_SKIP_DIRS)]
+        if any((Path(folder) / name).is_symlink() for name in dirs + names):
+            return None
     for path in _files(root):
         try:
             size = path.stat().st_size
         except OSError:
             continue
         if size > MAX_FILE_BYTES:
-            continue
+            return None
         total += size
         if total > MAX_TOTAL_BYTES:
             return None
