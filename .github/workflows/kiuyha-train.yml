@@ -1,5 +1,5 @@
 name: Kiuyha train
-# round-6 (2026-11-15): chain from round-4 weights again - round-5 N regressed (0.729 < 0.767), S incomplete (1 ep, 6h cap)
+# round-7 (2026-11-15): chain N from round-6 N weights - round-6 N tied round-4 (0.767 = 0.767)
 
 on:
   push:
@@ -82,7 +82,7 @@ jobs:
         with:
           name: kiuyha-tuned-all
           path: .
-          run-id: 43569822702
+          run-id: 43660073915
           github-token: ${{ github.token }}
       - name: Install Ultralytics on CPU torch
         run: |
