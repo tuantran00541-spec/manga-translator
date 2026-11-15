@@ -107,7 +107,7 @@ jobs:
           nohup llama-b12389/llama-server \
             -m qwen-local/qwen3.5-0.8b-ablate-e2-opus46-postopus-runtime.Q4_K_M.gguf \
             --mmproj qwen-local/mmproj-Qwen3.5-0.8B-F16.gguf \
-            --host 127.0.0.1 --port 8080 --alias qwen3.5-0.8b --ctx-size 16384 --image-min-tokens 1024 \
+            --host 127.0.0.1 --port 8080 --alias qwen3.5-0.8b --ctx-size 32768 --image-min-tokens 1024 \
             > llama.log 2>&1 &
           for i in $(seq 1 60); do
             curl -fsS http://127.0.0.1:8080/health >/dev/null && break
