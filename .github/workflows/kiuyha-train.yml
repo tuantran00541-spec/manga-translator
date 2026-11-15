@@ -1,5 +1,5 @@
 name: Kiuyha train
-# round-9 N (2026-11-16): chain from round-7 N weights (run 43687328875, 0.807 BEST) - NOT round-8 N (0.75 regressed); OPTIMIZED imgsz 640 + epochs 3 + batch 16 + workers 4 (640 proved on S round-8: 2 ep fit, new best 0.785)
+# round-9 N (2026-11-16, user order): chain from round-8 N weights (run 43719608287, 2 ep, mAP50-95 0.75); OPTIMIZED imgsz 640 + epochs 3 + batch 16 + workers 4 (640 proved on S round-8: 2 ep fit, new best 0.785)
 
 on:
   push:
@@ -82,7 +82,7 @@ jobs:
         with:
           name: kiuyha-tuned-all
           path: .
-          run-id: 43687328875
+          run-id: 43719608287
           github-token: ${{ github.token }}
       - name: Install Ultralytics on CPU torch
         run: |
