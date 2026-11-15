@@ -55,6 +55,12 @@ def main():
     ch_url = f"{BASE}/read-1/{slug}/{slug}-chapter-{ch}/"
     html = fetch(ch_url).decode("utf-8", "replace")
     imgs = IMG_RE.findall(html) or IMG_RE2.findall(html)
+    if not imgs:
+        # Older series (e.g. Northern Blade) use the short form
+        # .../chapter-<n>/ instead of .../<slug>-chapter-<n>/.
+        ch_url = f"{BASE}/read-1/{slug}/chapter-{ch}/"
+        html = fetch(ch_url).decode("utf-8", "replace")
+        imgs = IMG_RE.findall(html) or IMG_RE2.findall(html)
     seen, uniq = set(), []
     for u in imgs:
         if u not in seen:

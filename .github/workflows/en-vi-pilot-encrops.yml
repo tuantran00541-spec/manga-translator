@@ -15,6 +15,10 @@ on:
         description: "MangaOwl series slug"
         required: true
         default: "heavenly-demon-cultivation-simulation"
+      en_host:
+        description: "EN host: mangaowl or mangace"
+        required: false
+        default: "mangaowl"
       pairs_prefix:
         description: "Pairs file prefix under scripts/nano_sft/data/"
         required: true
@@ -44,8 +48,13 @@ jobs:
         run: |
           python -m pip install --only-binary :all: Pillow==10.4.0
 
-      - name: Download EN chapter (MangaOwl)
-        run: python3 scripts/nano_sft/download_en_mangaowl.py ${{ inputs.en_slug }} ${{ matrix.chapter }} en-zips
+      - name: Download EN chapter
+        run: |
+          if [ "${{ inputs.en_host }}" = "mangace" ]; then
+            python3 scripts/nano_sft/download_en_mangace.py ${{ inputs.en_slug }} ${{ matrix.chapter }} en-zips
+          else
+            python3 scripts/nano_sft/download_en_mangaowl.py ${{ inputs.en_slug }} ${{ matrix.chapter }} en-zips
+          fi
 
       - name: Cut EN crops
         run: |
