@@ -5,7 +5,8 @@ Inputs: pairs jsonl from the en-vi-pilot-build run (one chapter) + the
 chapter's VI images (downloaded on the runner by download_vi_series.py).
 Outputs: VI crops named <ch>_<stem>_<x1>_<y1>.png (same convention as
 cut_fresh_crops.py) + vi_sizes.json {vi_img: [w, h]} for the re-pair step.
-Usage: cut_vi_crops.py <pairs_jsonl> <vi_chapter_dir> <out_dir>
+Usage: cut_vi_crops.py <pairs_jsonl> <vi_chapter_dir> <out_dir> <chapter>
+Chapter is a CLI arg (builder pairs jsonl has no chapter field).
 """
 import json
 import os
@@ -15,14 +16,13 @@ from PIL import Image
 
 
 def main():
-    pairs_path, vi_dir, out_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+    pairs_path, vi_dir, out_dir, ch = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
     crops_dir = os.path.join(out_dir, "vi-crops")
     os.makedirs(crops_dir, exist_ok=True)
     pairs = [json.loads(l) for l in open(pairs_path, encoding="utf-8") if l.strip()]
     sizes = {}
     n_cut = 0
     for p in pairs:
-        ch = str(p.get("chapter", ""))
         vi_img = p["vi_img"]
         x1, y1, x2, y2 = [int(v) for v in p["vi_box"]]
         stem = os.path.splitext(vi_img)[0]

@@ -18,6 +18,10 @@ on:
         description: "NetTruyen series slug"
         required: true
         default: "thien-ma-phi-thang-truyen"
+      pairs_prefix:
+        description: "If set, cut crops from scripts/nano_sft/data/<prefix>-ch<N>.jsonl instead of the run artifact (e.g. pilot-repaired)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -44,6 +48,7 @@ jobs:
           python -m pip install --only-binary :all: Pillow==10.4.0
 
       - name: Download pairs artifact for this chapter
+        if: inputs.pairs_prefix == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -60,10 +65,14 @@ jobs:
 
       - name: Cut VI crops + record sizes
         run: |
-          PAIRS=$(find pairs -name "ch${{ matrix.chapter }}.jsonl" | head -1)
-          [ -n "$PAIRS" ] || { echo "pairs jsonl not found under pairs/"; find pairs; exit 1; }
+          if [ -n "${{ inputs.pairs_prefix }}" ]; then
+            PAIRS="scripts/nano_sft/data/${{ inputs.pairs_prefix }}-ch${{ matrix.chapter }}.jsonl"
+          else
+            PAIRS=$(find pairs -name "ch${{ matrix.chapter }}.jsonl" | head -1)
+          fi
+          [ -n "$PAIRS" ] && [ -f "$PAIRS" ] || { echo "pairs jsonl not found: $PAIRS"; find pairs scripts/nano_sft/data 2>/dev/null; exit 1; }
           echo "pairs file: $PAIRS"
-          python3 scripts/nano_sft/cut_vi_crops.py "$PAIRS" vi/ch${{ matrix.chapter }} vicrops
+          python3 scripts/nano_sft/cut_vi_crops.py "$PAIRS" vi/ch${{ matrix.chapter }} vicrops ${{ matrix.chapter }}
 
       - name: Upload VI crops + sizes
         uses: actions/upload-artifact@v4
