@@ -29,12 +29,12 @@ __all__ = ["OUTPUT_DIR"]
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("download", "Tải chương"),
-    ("scan", "Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo"),
-    ("clean", "Checkpoint 2: Clean ảnh"),
-    ("review", "Checkpoint 3: AI so ảnh gốc và ảnh clean"),
-    ("translate", "Checkpoint 4: Dịch và chọn font"),
-    ("polish", "Nâng cao: soát câu dịch"),
-    ("render", "Render"),
+    ("scan", "Bước 1: Lọc trang giới thiệu, trang trống và giữ biểu trưng"),
+    ("clean", "Bước 2: Tẩy nền và làm sạch ảnh"),
+    ("review", "Bước 3: Đối chiếu ảnh gốc và nền sạch"),
+    ("translate", "Bước 4: Dịch thuật và chọn phông chữ"),
+    ("polish", "Nâng cao: Hiệu đính câu dịch"),
+    ("render", "Kết xuất ảnh"),
     ("finish", "Hoàn tất"),
 )
 SCAN_CONCURRENCY = 4
@@ -379,7 +379,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         self.report["logo_regions"] = logos
         self._transcripts = {scan.page_index: scan.lines for scan in scans if scan.page_index not in credits}
         self._progress(len(active), len(active),
-                       f"{len(credits)} lát credit, {len(textless)} lát không chữ, {logos} logo")
+                       f"{len(credits)} trang giới thiệu, {len(textless)} lát không chữ, {logos} biểu trưng")
 
     async def clean(self) -> None:
         from app.routers.chapters import chapter_processing_jobs
@@ -388,7 +388,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         self._glossary_task = asyncio.create_task(self._read_glossary(indices))
         try:
             if not indices:
-                self._progress(0, 0, "Không có lát nào cần clean")
+                self._progress(0, 0, "Không có lát nào cần tẩy nền")
                 return
             screen = self._art_screen()
             snapshot = chapter_processing_jobs.start(
@@ -412,7 +412,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
                 await asyncio.sleep(POLL_SECONDS)
             if snapshot["status"] == "failed":
                 errors = "; ".join(str(item.get("message")) for item in snapshot.get("errors") or [])
-                raise AIModeFailed(f"Clean thất bại: {errors or 'lỗi không rõ'}")
+                raise AIModeFailed(f"Tẩy nền thất bại: {errors or 'lỗi không xác định'}")
             self._check_cancel()
         except BaseException:
             await _cancel_and_wait(self._glossary_task)
@@ -537,7 +537,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
                     found, cost = await _ai_call(checkpoints.review_sheet, self.provider, self.settings.model,
                                                  self.api_key, sheet, placed)
                 except (RuntimeError, ValueError, OSError) as exc:
-                    _append(self.report["qc_errors"], f"Tờ crop: {_detail(exc)[:200]}")
+                    _append(self.report["qc_errors"], f"Bảng ảnh đối chiếu: {_detail(exc)[:200]}")
                     return []
                 self._add_cost(cost)
                 return found
@@ -604,7 +604,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         await self._review_task
         self._check_cancel()
         self._progress(len(indices), len(indices),
-                       f"{self.report.get('review_sheets', 0)} tờ crop, repaint {self.report['repainted_regions']}")
+                       f"{self.report.get('review_sheets', 0)} bảng đối chiếu, đã vá nền {self.report['repainted_regions']} vùng")
 
     async def translate(self) -> None:
         from app.ocr.language_detect import site_language_hint

@@ -270,6 +270,8 @@ def configured(workspace: Path, home: Path | None = None) -> list[dict]:
 
     def add(servers: dict, source: str, scope: str) -> None:
         for name, config in servers.items():
+            if source == "~/.codex/config.toml" and str(name) == "node_repl":
+                continue
             if isinstance(config, dict) and re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", str(name)) and name not in rows:
                 rows[name] = {"name": name, "config": config, "source": source, "scope": scope}
 

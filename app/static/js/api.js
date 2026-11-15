@@ -611,9 +611,9 @@ async function loadFonts() {
     if (!resp.ok) {
       throw new Error(getErrorMessage(resp.status, data));
     }
-    availableFonts = Array.isArray(data) ? data : [{ id: "default", name: "Mặc định (Comic)" }];
+    availableFonts = Array.isArray(data) ? data : [{ id: "default", name: "Mặc định (Truyện tranh)" }];
   } catch (e) {
-    availableFonts = [{ id: "default", name: "Mặc định (Comic)" }];
+    availableFonts = [{ id: "default", name: "Mặc định (Truyện tranh)" }];
     showToast("Không thể tải danh sách phông chữ, dùng phông mặc định.", "info");
   }
 }

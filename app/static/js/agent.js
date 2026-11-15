@@ -3,7 +3,7 @@
   const UI = window._AgentUI;
   const {
     VERBS, TALLY, SANDBOX_TEXT, $, store, call, post, showEngine, el, button,
-    nearBottom, follow, prose, isMcp, target, editPairs, diffStats, stats, formatTokens,
+    nearBottom, follow, prose, isMcp, target, rowTarget, toolBadge, editPairs, diffStats, stats, formatTokens,
     SKILL_TEMPLATE, showMcpKind, saveMcp, installSkills, uploadSkills,
     saveSkill, draftSkill, selectHubTab, showHub,
   } = UI;
@@ -16,17 +16,24 @@
   let allSessions = [];
   let infoRev = "";
   let group = null;
+  let soloStep = null;
 
-  function newGroup() {
+  function clearStepGroup() {
+    group = null;
+    soloStep = null;
+  }
+
+  function newGroup(anchor) {
     const box = el("details", "agent-group");
     const summary = el("summary");
     const countBadge = el("span", "agent-group-count", "0");
     const label = el("span", "agent-group-label");
-    summary.append(countBadge, label);
+    summary.append(label, countBadge);
     const list = el("div", "agent-group-list");
     box.append(summary, list);
-    $("agent-log").append(box);
-    group = { box, summary, countBadge, label, list, tally: {}, count: 0, added: 0, removed: 0, failed: 0 };
+    if (anchor) anchor.replaceWith(box);
+    else $("agent-log").append(box);
+    group = { box, summary, countBadge, label, list, tally: {}, count: 0, thinks: 0, added: 0, removed: 0, failed: 0 };
     return group;
   }
 
@@ -39,8 +46,9 @@
       merged.set(id, { words, n: (merged.get(id)?.n || 0) + n });
     });
     const parts = [...merged.values()].map(({ words: [verb, noun], n }) => `${verb} ${n} ${noun}`);
-    const text = parts.join(", ") || "Cập nhật kế hoạch";
-    group.countBadge.textContent = `${group.count} bước`;
+    const text = parts.join(", ") || (group.thinks ? "Quá trình suy luận" : "Cập nhật kế hoạch");
+    const countText = group.count ? `${group.count} bước` : `${group.thinks} lượt`;
+    group.countBadge.textContent = countText;
     group.label.textContent = text.charAt(0).toUpperCase() + text.slice(1);
     group.summary.querySelector(".agent-stats")?.remove();
     group.summary.querySelector(".agent-fail")?.remove();
@@ -48,54 +56,100 @@
     if (group.failed) group.summary.append(el("span", "agent-fail", `${group.failed} lỗi`));
   }
 
-  function addRow(c) {
-    if (c.name === "ask_user" || c.name === "exit_plan_mode") return;
-    const g = group || newGroup();
-    g.count += 1;
-    const key = isMcp(c.name) ? "mcp" : c.name;
-    if (TALLY[key]) g.tally[key] = (g.tally[key] || 0) + 1;
+  function buildRow(c) {
     const row = el("details", "agent-row");
     row.dataset.callId = c.id;
     const head = el("summary");
-    head.append(el("span", "agent-verb", isMcp(c.name) ? "MCP" : VERBS[c.name] || c.name), el("code", "agent-target", target(c)));
+    const verb = isMcp(c.name) ? "MCP" : VERBS[c.name] || c.name;
+    const fullTarget = target(c);
+    const displayTarget = el("span", "agent-target", rowTarget(c));
+    displayTarget.title = fullTarget;
+    head.append(toolBadge(c), el("span", "agent-verb", verb), displayTarget);
     const diff = diffStats(c);
-    if (diff) {
-      head.append(stats(diff[0], diff[1]));
-      g.added += diff[0];
-      g.removed += diff[1];
-    }
+    if (diff) head.append(stats(diff[0], diff[1]));
     row.append(head);
     const a = c.args || {};
     const body = el("div", "agent-row-body");
     if (c.name === "edit_file") editPairs(a).forEach((e) => body.append(el("pre", "agent-pre agent-old", (e && e.old_text) || ""), el("pre", "agent-pre agent-new", (e && e.new_text) || "")));
     else if (c.name === "write_file") body.append(el("pre", "agent-pre agent-new", a.content || ""));
+    else if (c.name === "create") body.append(el("pre", "agent-pre", a.code || ""));
     else if (c.name === "task") body.append(el("pre", "agent-pre", a.prompt || ""));
     else if (c.name === "run_script") body.append(el("pre", "agent-pre", a.code || ""));
     else if (c.name === "fan_out") body.append(el("pre", "agent-pre", (Array.isArray(a.jobs) ? a.jobs : []).map((j, n) => `${n + 1}. ${j.description || ""}\n${j.prompt || ""}`).join("\n\n") + (a.schema ? `\n\nschema: ${JSON.stringify(a.schema)}` : "")));
     else if (c.name === "spawn_agent" || c.name === "send_input") body.append(el("pre", "agent-pre", a.message || ""));
     else if (isMcp(c.name)) body.append(el("pre", "agent-pre", JSON.stringify(a, null, 2)));
     row.append(body);
-    g.list.append(row);
+    return { row, diff };
+  }
+
+  function recordStep(g, meta) {
+    if (!meta) return;
+    if (meta.kind === "think") {
+      g.thinks += 1;
+      return;
+    }
+    if (!meta.call) return;
+    const c = meta.call;
+    g.count += 1;
+    const key = isMcp(c.name) ? "mcp" : c.name;
+    if (TALLY[key]) g.tally[key] = (g.tally[key] || 0) + 1;
+    if (meta.diff) {
+      g.added += meta.diff[0];
+      g.removed += meta.diff[1];
+    }
+    if (meta.failed) g.failed += 1;
+  }
+
+  function pushStep(node, meta) {
+    if (!group && !soloStep) {
+      $("agent-log").append(node);
+      soloStep = { node, meta };
+      return;
+    }
+    if (!group && soloStep) {
+      const first = soloStep;
+      soloStep = null;
+      const g = newGroup(first.node);
+      g.list.append(first.node);
+      const firstMeta = first.meta ? { ...first.meta, failed: first.node.classList?.contains("agent-row-failed") } : null;
+      recordStep(g, firstMeta);
+    }
+    group.list.append(node);
+    recordStep(group, meta);
     refreshGroup();
+  }
+
+  function addRow(c) {
+    if (c.name === "ask_user" || c.name === "exit_plan_mode") return;
+    const { row, diff } = buildRow(c);
+    pushStep(row, { kind: "tool", call: c, diff });
   }
 
   function render(event) {
     const log = $("agent-log");
     log.querySelector(".agent-empty")?.remove();
     if (event.type === "user") {
-      group = null;
+      clearStepGroup();
       const bubble = el("div", "agent-user", event.text);
       if (event.refs?.length) bubble.append(el("span", "agent-refs", `Đính kèm: ${event.refs.join(", ")}`));
       if (event.queued) bubble.append(el("span", "agent-refs", "Đã xếp hàng, đọc ở bước sau"));
       log.append(bubble);
     } else if (event.type === "assistant") {
       if (event.reasoning) {
-        const think = el("details", "agent-think");
-        think.append(el("summary", "", "Suy luận"), el("pre", "agent-pre", event.reasoning));
-        log.append(think);
+        const container = group ? group.list : log;
+        const prev = container.lastElementChild;
+        if (prev?.classList?.contains("agent-think")) {
+          prev.querySelector(".agent-think-body")?.append(prose(event.reasoning));
+        } else {
+          const think = el("details", "agent-think");
+          const body = el("div", "agent-think-body");
+          body.append(prose(event.reasoning));
+          think.append(el("summary", "", "Suy luận"), body);
+          pushStep(think, { kind: "think" });
+        }
       }
       if (event.text) {
-        group = null;
+        clearStepGroup();
         log.append(prose(event.text));
       }
       (event.calls || []).forEach(addRow);
@@ -104,7 +158,7 @@
       if (row) {
         row.classList.add(event.ok ? "agent-row-ok" : "agent-row-failed");
         row.querySelector(".agent-row-body").append(el("pre", "agent-pre agent-out", event.output));
-        if (!event.ok && group) {
+        if (!event.ok && group && row.closest(".agent-group") === group.box) {
           group.failed += 1;
           refreshGroup();
         }
@@ -114,13 +168,21 @@
       const row = log.querySelector(`.agent-row[data-call-id="${CSS.escape(event.call.id)}"]`);
       if (row) {
         row.open = true;
-        row.closest(".agent-group").open = true;
+        const parentGroup = row.closest(".agent-group");
+        if (parentGroup) parentGroup.open = true;
       }
       log.append(approvalCard(event.call));
     } else if (event.type === "subagent" && event.state === "done") {
-      log.append(el("p", "agent-note", `Agent con ${event.agent || ""} xong: ${event.description} · ${event.tools} lệnh gọi`));
-    } else if (event.type === "notice" || event.type === "error") {
-      log.append(el("p", event.type === "error" ? "agent-note agent-error" : "agent-note", event.text));
+      const note = el("p", "agent-note", `Tác vụ con ${event.agent || ""} hoàn tất: ${event.description} · ${event.tools} lệnh gọi`);
+      if (group || soloStep) pushStep(note, { kind: "note" });
+      else log.append(note);
+    } else if (event.type === "notice") {
+      const note = el("p", "agent-note", event.text);
+      if (group || soloStep) pushStep(note, { kind: "note" });
+      else log.append(note);
+    } else if (event.type === "error") {
+      clearStepGroup();
+      log.append(el("p", "agent-note agent-error", event.text));
     }
   }
 
@@ -175,7 +237,7 @@
     if (c.name === "exit_plan_mode") return planCard(c);
     const card = el("div", "agent-approval");
     const title = el("p", "agent-approval-title");
-    title.append(document.createTextNode(c.agent ? `Agent con ${c.agent} muốn ` : "Cho phép "), el("strong", "", (isMcp(c.name) ? "gọi MCP" : VERBS[c.name] || c.name).toLowerCase()),
+    title.append(document.createTextNode(c.agent ? `Tác vụ con ${c.agent} yêu cầu ` : "Cho phép "), el("strong", "", (isMcp(c.name) ? "gọi MCP" : VERBS[c.name] || c.name).toLowerCase()),
       document.createTextNode(" "), el("code", "", target(c)), document.createTextNode("?"));
     const note = el("input", "agent-approval-note");
     note.placeholder = "Lý do từ chối (tùy chọn)";
@@ -193,7 +255,7 @@
     card.append(title);
     if (c.name === "plugin_write" && !c.args?.remove) {
       // A plugin runs inside the harness with its full rights, so its whole code is shown before it is allowed.
-      card.append(el("p", "agent-muted", "Plugin chạy với toàn quyền, không qua sandbox. Đọc kỹ code trước khi cho phép."),
+      card.append(el("p", "agent-muted", "Phần mở rộng chạy với toàn quyền, không qua cơ chế cô lập. Vui lòng kiểm tra kỹ mã nguồn trước khi cho phép."),
         el("pre", "agent-pre agent-plugin-code", String(c.args?.code || "")));
     }
     card.append(actions);
@@ -229,12 +291,12 @@
     const box = el("div", "agent-info");
     const sb = snap.sandbox || {};
     $("agent-sandbox-info").textContent = sb.mode === "full-access"
-      ? "Sandbox tắt: lệnh có toàn quyền."
+      ? "Đã tắt cơ chế cô lập: lệnh có toàn quyền thực thi."
       : `${SANDBOX_TEXT[sb.backend] || ""} Mạng ${sb.network ? "bật" : "tắt"}.`;
     const named = snap.agents || [];
-    if (named.length) box.append(el("p", "agent-muted", `Agent con: ${named.map((a) => a.name).join(", ")}. Lệnh: /rules, /memory, /undo, /plan, /goal.`));
+    if (named.length) box.append(el("p", "agent-muted", `Tác vụ con: ${named.map((a) => a.name).join(", ")}. Lệnh: /rules, /memory, /undo, /plan, /goal.`));
     const skills = snap.skills || [];
-    box.append(el("p", "agent-muted", skills.length ? `Skill: ${skills.map((s) => s.name).join(", ")}` : "Chưa có skill."));
+    box.append(el("p", "agent-muted", skills.length ? `Kỹ năng: ${skills.map((s) => s.name).join(", ")}` : "Chưa có kỹ năng nào."));
     (snap.mcp || []).forEach((server) => {
       const state = { running: `${server.tools} công cụ`, untrusted: "chưa cho phép", failed: `lỗi: ${server.error}`, disabled: "tắt", stopped: "đã dừng" }[server.state] || server.state;
       const row = el("p", "agent-muted agent-info-row", `MCP ${server.name} · ${state}`);
@@ -245,7 +307,7 @@
     const plug = snap.plugins || {};
     (plug.rows || []).forEach((row) => {
       const state = { loaded: "đã nạp", untrusted: "chưa cho phép", failed: `lỗi: ${row.error}` }[row.state] || row.state;
-      const line = el("p", "agent-muted agent-info-row", `Plugin ${row.name} (${row.scope}) · ${state}`);
+      const line = el("p", "agent-muted agent-info-row", `Phần mở rộng ${row.name} (${row.scope}) · ${state}`);
       if (row.state === "untrusted" && !box.querySelector(".agent-plugin-trust")) line.append(button("Cho phép", "agent-btn agent-plugin-trust", () => trust("plugins")));
       box.append(line);
     });
@@ -292,12 +354,12 @@
         bar.append(el("span", "agent-badge agent-badge-mono", `$${statsData.cost}`));
       }
       if (statsData.model_seconds || statsData.tool_seconds) {
-        bar.append(el("span", "agent-badge agent-badge-mono", `AI ${statsData.model_seconds || 0}s · Tool ${statsData.tool_seconds || 0}s`));
+        bar.append(el("span", "agent-badge agent-badge-mono", `Mô hình ${statsData.model_seconds || 0}s · Công cụ ${statsData.tool_seconds || 0}s`));
       }
     }
-    if (snap.plan_mode) bar.append(el("span", "agent-badge agent-badge-mode", "Chế độ /plan"));
+    if (snap.plan_mode) bar.append(el("span", "agent-badge agent-badge-mode", "Chế độ lập kế hoạch (/plan)"));
     if (snap.goal) bar.append(el("span", "agent-badge agent-badge-mode", `Mục tiêu: ${snap.goal}`));
-    if (snap.text_tools) bar.append(el("span", "agent-badge", "Text tools"));
+    if (snap.text_tools) bar.append(el("span", "agent-badge", "Công cụ văn bản"));
 
     $("agent-status").replaceChildren(bar);
     // A /effort typed in the chat moves the picker too.
@@ -326,15 +388,219 @@
 
   // The composer's two menus name what is picked inside them.
   const MODE_SHORT = { ask: "Hỏi trước", edits: "Tự sửa", bypass: "Tự động" };
-  const SANDBOX_SHORT = { "read-only": "chỉ đọc", "workspace-write": "ghi thư mục", "full-access": "không sandbox" };
-  const EFFORT_SHORT = { low: "suy luận thấp", medium: "suy luận vừa", high: "suy luận cao", xhigh: "suy luận tối đa" };
+  const SANDBOX_SHORT = { "read-only": "chỉ đọc", "workspace-write": "ghi thư mục", "full-access": "không cô lập" };
+  const EFFORT_PILL = { low: "Thấp", medium: "Vừa", high: "Cao", xhigh: "Tối đa" };
+  const EFFORT_CHOICES = [
+    { value: "", label: "Mặc định", sub: "Theo thiết lập gốc của mô hình" },
+    { value: "low", label: "Thấp" },
+    { value: "medium", label: "Vừa", tag: "Khuyên dùng" },
+    { value: "high", label: "Cao" },
+    { value: "xhigh", label: "Tối đa" },
+  ];
+
+  function splitModelId(id) {
+    const raw = String(id || "").trim();
+    const slash = raw.indexOf("/");
+    return slash > 0 ? { name: raw.slice(slash + 1), org: raw.slice(0, slash) } : { name: raw, org: "" };
+  }
+
+  function svgCheck() {
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("class", "agent-opt-check");
+    icon.setAttribute("viewBox", "0 0 16 16");
+    icon.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M3.5 8.5L6.5 11.5L12.5 4.5");
+    icon.append(path);
+    return icon;
+  }
+
+  function buildMenuOption({ title, sub, tag, selected, disabled, onClick }) {
+    const btn = el("button", `agent-model-opt${selected ? " is-selected" : ""}`);
+    btn.type = "button";
+    btn.role = "menuitemradio";
+    btn.setAttribute("aria-checked", String(Boolean(selected)));
+    if (disabled) btn.disabled = true;
+    const copy = el("span", "agent-model-opt-copy");
+    const head = el("span", "agent-model-opt-head");
+    head.append(el("span", "agent-model-opt-title", title));
+    if (tag) head.append(el("span", "agent-opt-tag", tag));
+    copy.append(head);
+    if (sub) copy.append(el("span", "agent-model-opt-sub", sub));
+    btn.append(copy);
+    if (selected) btn.append(svgCheck());
+    if (onClick) btn.addEventListener("click", (event) => { event.stopPropagation(); onClick(event); });
+    return btn;
+  }
+
+  function buildSubmenu({ title, valueText, buildPanel }) {
+    const wrap = el("div", "agent-submenu-wrap");
+    const trigger = el("button", "agent-submenu-trigger");
+    trigger.type = "button";
+    trigger.setAttribute("aria-haspopup", "menu");
+    const right = el("span", "agent-submenu-meta");
+    right.append(el("span", "agent-submenu-val", valueText || ""), el("span", "agent-submenu-arrow", "›"));
+    trigger.append(el("span", "agent-submenu-label", title), right);
+    const panel = el("div", "agent-subpop");
+    panel.role = "menu";
+    buildPanel(panel);
+    const openThis = () => {
+      wrap.parentElement?.querySelectorAll(".agent-submenu-wrap.is-open").forEach((other) => {
+        if (other !== wrap) other.classList.remove("is-open");
+      });
+      wrap.classList.add("is-open");
+    };
+    wrap.addEventListener("mouseenter", openThis);
+    trigger.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const willOpen = !wrap.classList.contains("is-open");
+      wrap.parentElement?.querySelectorAll(".agent-submenu-wrap.is-open").forEach((other) => other.classList.remove("is-open"));
+      if (willOpen) wrap.classList.add("is-open");
+    });
+    wrap.append(trigger, panel);
+    return wrap;
+  }
+
+  function selectControlValue(control, value, closeMenu = true) {
+    control.value = value;
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+    if (closeMenu) $("agent-model-menu").open = false;
+  }
+
+  function renderModelMenu() {
+    const sheet = $("agent-model-sheet");
+    if (!sheet) return;
+    const providerSelect = $("agent-provider");
+    const modelSelect = $("agent-model");
+    const effortSelect = $("agent-effort");
+    const currentProvider = providerSelect.value;
+    const providerLabel = providerSelect.selectedOptions[0]?.textContent || "Chưa chọn";
+    const currentModel = modelSelect.value.trim();
+    const currentEffort = effortSelect.value;
+    const models = [...modelSelect.options]
+      .filter((o) => o.value.trim())
+      .map((o) => ({ value: o.value, ...splitModelId(o.value) }));
+
+    let featured = models;
+    let extra = [];
+    if (models.length > 6) {
+      const picked = models.find((m) => m.value === currentModel);
+      featured = (picked ? [picked] : []).concat(models.filter((m) => m.value !== currentModel).slice(0, 4));
+      const shown = new Set(featured.map((m) => m.value));
+      extra = models.filter((m) => !shown.has(m.value));
+    }
+
+    const list = el("div", "agent-model-list");
+    if (featured.length) {
+      featured.forEach((m) => {
+        list.append(buildMenuOption({
+          title: m.name,
+          sub: m.org || providerLabel,
+          selected: m.value === currentModel,
+          onClick: () => selectControlValue(modelSelect, m.value, true),
+        }));
+      });
+    } else {
+      const fallback = modelSelect.options[0]?.textContent || "Chưa có mô hình";
+      list.append(buildMenuOption({ title: fallback, disabled: true }));
+    }
+
+    const nodes = [list, el("div", "agent-menu-sep")];
+
+    nodes.push(buildSubmenu({
+      title: "Mức độ suy luận",
+      valueText: EFFORT_PILL[currentEffort] || "Mặc định",
+      buildPanel: (panel) => {
+        panel.append(el("p", "agent-subpop-note", "Suy luận càng sâu, câu trả lời càng kỹ nhưng thời gian chờ và mức tiêu hao sẽ cao hơn."));
+        const choices = el("div", "agent-subpop-list");
+        EFFORT_CHOICES.forEach((opt) => {
+          choices.append(buildMenuOption({
+            title: opt.label,
+            sub: opt.sub,
+            tag: opt.tag,
+            selected: opt.value === currentEffort,
+            onClick: () => selectControlValue(effortSelect, opt.value, true),
+          }));
+        });
+        panel.append(choices);
+      },
+    }));
+
+    if (extra.length) {
+      nodes.push(buildSubmenu({
+        title: "Thêm mô hình",
+        valueText: `${extra.length}`,
+        buildPanel: (panel) => {
+          const itemsBox = el("div", "agent-subpop-list");
+          const renderItems = (query = "") => {
+            const q = query.trim().toLowerCase();
+            const filtered = q ? extra.filter((m) => m.value.toLowerCase().includes(q)) : extra;
+            itemsBox.replaceChildren(...(filtered.length
+              ? filtered.map((m) => buildMenuOption({
+                  title: m.name,
+                  sub: m.org,
+                  selected: m.value === currentModel,
+                  onClick: () => selectControlValue(modelSelect, m.value, true),
+                }))
+              : [el("p", "agent-subpop-empty", "Không tìm thấy mô hình phù hợp.")]));
+          };
+          if (extra.length > 8) {
+            const search = el("input", "agent-subpop-search");
+            search.type = "search";
+            search.placeholder = "Tìm mô hình…";
+            search.addEventListener("click", (e) => e.stopPropagation());
+            search.addEventListener("input", () => renderItems(search.value));
+            panel.append(search);
+          }
+          renderItems();
+          panel.append(itemsBox);
+        },
+      }));
+    }
+
+    const providers = [...providerSelect.options].map((o) => ({ value: o.value, label: o.textContent }));
+    nodes.push(buildSubmenu({
+      title: "Nhà cung cấp",
+      valueText: providerLabel,
+      buildPanel: (panel) => {
+        const itemsBox = el("div", "agent-subpop-list");
+        if (providers.length) {
+          providers.forEach((p) => {
+            itemsBox.append(buildMenuOption({
+              title: p.label,
+              selected: p.value === currentProvider,
+              onClick: () => selectControlValue(providerSelect, p.value, false),
+            }));
+          });
+        } else {
+          itemsBox.append(el("p", "agent-subpop-empty", "Chưa có nhà cung cấp nào được cấu hình."));
+        }
+        panel.append(itemsBox);
+      },
+    }));
+
+    sheet.replaceChildren(...nodes);
+  }
+
   function showPicks() {
     const network = $("agent-network").checked ? " · mạng" : "";
     $("agent-perm-label").textContent = `${MODE_SHORT[$("agent-mode").value] || ""} · ${SANDBOX_SHORT[$("agent-sandbox").value] || ""}${network}`;
     const provider = $("agent-provider").selectedOptions[0]?.textContent || "";
     const model = $("agent-model").value.trim();
-    const effort = EFFORT_SHORT[$("agent-effort").value] ? ` · ${EFFORT_SHORT[$("agent-effort").value]}` : "";
-    $("agent-model-label").textContent = (model ? (provider ? `${model} · ${provider}` : model) : (provider ? `${provider} · chọn model` : "Chọn model")) + effort;
+    const effortText = EFFORT_PILL[$("agent-effort").value] || "";
+    const shortModel = model ? splitModelId(model).name : "";
+    const labelEl = $("agent-model-label");
+    if (labelEl) {
+      const parts = [el("span", "agent-model-name", shortModel || (provider ? `${provider} · chọn mô hình` : "Chọn mô hình"))];
+      if (effortText) parts.push(el("span", "agent-model-effort", effortText));
+      labelEl.replaceChildren(...parts);
+    }
+    const summary = $("agent-model-menu")?.querySelector("summary");
+    if (summary) {
+      summary.title = [provider, model || "Chọn mô hình", effortText ? `Suy luận: ${effortText}` : ""].filter(Boolean).join(" · ");
+    }
+    renderModelMenu();
   }
 
   // The effort picked for a model comes back when that model is chosen again.
@@ -375,7 +641,7 @@
           window.showToast?.(error.message, "error");
         });
     };
-    const next = el("button", "agent-btn agent-btn-primary", `Đổi sang key ${prompt.next}`);
+    const next = el("button", "agent-btn agent-btn-primary", `Đổi sang khóa API ${prompt.next}`);
     next.type = "button";
     next.addEventListener("click", () => answer("next"));
     const stop = el("button", "agent-btn", "Dừng");
@@ -384,9 +650,9 @@
     const actions = el("div", "agent-approval-actions");
     actions.append(stop, next);
     keyDialog.replaceChildren(
-      el("p", "agent-key-title", `Key ${prompt.index}/${prompt.count} (${prompt.provider}) bị giới hạn`),
+      el("p", "agent-key-title", `Khóa API ${prompt.index}/${prompt.count} (${prompt.provider}) bị giới hạn`),
       el("p", "agent-key-detail", prompt.detail || "Không rõ thời gian chờ."),
-      el("p", "agent-key-ask", `Đổi sang key ${prompt.next}/${prompt.count} và chạy tiếp?`),
+      el("p", "agent-key-ask", `Chuyển sang khóa API ${prompt.next}/${prompt.count} và tiếp tục?`),
       actions,
     );
     if (!keyDialog.open) keyDialog.showModal();
@@ -422,7 +688,7 @@
     const provider = $("agent-provider").value;
     const select = $("agent-model");
     const saved = store("get", `manga_agent_model_${provider}`) || store("get", `manga_ai_model_${provider}`) || providerModels[provider] || "";
-    select.replaceChildren(new Option(saved || "Đang tải model…", saved));
+    select.replaceChildren(new Option(saved || "Đang tải mô hình…", saved));
     if (saved) select.value = saved;
     loadEffort();
     showPicks();
@@ -440,10 +706,10 @@
         select.value = saved && models.includes(saved) ? saved : models[0];
         store("set", `manga_agent_model_${provider}`, select.value);
       } else {
-        select.replaceChildren(new Option("Không có model", ""));
+        select.replaceChildren(new Option("Không có mô hình", ""));
       }
     } catch (_) {
-      if (!saved) select.replaceChildren(new Option("Không tải được model", ""));
+      if (!saved) select.replaceChildren(new Option("Không tải được mô hình", ""));
     }
     loadEffort();
     showPicks();
@@ -456,7 +722,7 @@
     providerModels = Object.fromEntries(ready.map((p) => [p.id, p.model || ""]));
     $("agent-provider").replaceChildren(...ready.map((p) => new Option(p.label || p.id, p.id)));
     if (!ready.length) {
-      $("agent-model").replaceChildren(new Option("Chưa có model", ""));
+      $("agent-model").replaceChildren(new Option("Chưa có mô hình", ""));
       showPicks();
       $("agent-status").textContent = "Chưa có nhà cung cấp nào. Thêm trong Cài đặt, mục Nhà cung cấp AI.";
       return;
@@ -606,7 +872,6 @@
 
   function emptyState() {
     const box = el("div", "agent-empty");
-    const sub = el("p", "agent-hero-sub", "Harness tự hành cho đọc hiểu mã nguồn, lập kế hoạch, chạy kiểm thử và tự động hóa tác vụ dài hạn.");
     const startersData = [
       {
         title: "Khảo sát & Lập kế hoạch",
@@ -618,22 +883,22 @@
       {
         title: "Kiểm toán & Sửa lỗi",
         tag: "/tools",
-        desc: "Rà soát bug, luồng dữ liệu & đề xuất bản vá",
-        prompt: "Kiểm toán các module chính trong thư mục làm việc, liệt kê lỗi tiềm ẩn và đề xuất bản vá chi tiết.",
+        desc: "Rà soát lỗi, luồng dữ liệu & đề xuất bản vá",
+        prompt: "Kiểm toán các mô-đun chính trong thư mục làm việc, liệt kê lỗi tiềm ẩn và đề xuất bản vá chi tiết.",
         icon: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z", "M21 21l-4.35-4.35", "M11 8v6", "M8 11h6"],
       },
       {
         title: "Mục tiêu tự hành",
         tag: "/goal",
-        desc: "Tự thực thi & chạy test đến khi xong",
+        desc: "Tự động thực thi & kiểm thử đến khi hoàn tất",
         prompt: "/goal Hoàn thành mục tiêu sau và chạy kiểm thử xác nhận: ",
         icon: ["M13 2L3 14h9l-1 8 10-12h-9l1-8z"],
       },
       {
-        title: "Tạo Skill & Công cụ",
+        title: "Tạo Kỹ năng & Công cụ",
         tag: "/rules",
         desc: "Mở rộng khả năng chuyên biệt cho Chaos",
-        prompt: "Giúp tôi thiết kế một SKILL.md hoặc công cụ plugin mới cho dự án này: ",
+        prompt: "Hãy hỗ trợ thiết kế một tệp SKILL.md hoặc công cụ mở rộng mới cho dự án này: ",
         icon: ["M12 2L2 7l10 5 10-5-10-5z", "M2 17l10 5 10-5", "M2 12l10 5 10-5"],
       },
     ];
@@ -649,7 +914,7 @@
       card.append(iconWrap, copy);
       starters.append(card);
     });
-    box.append(chaosMark(), sub, starters);
+    box.append(starters);
     return box;
   }
 
@@ -659,7 +924,7 @@
     session = null;
     lastSeq = 0;
     infoRev = "";
-    group = null;
+    clearStepGroup();
     $("agent-log").replaceChildren(emptyState());
     $("agent-stop").hidden = true;
     $("agent-send").hidden = false;
@@ -713,9 +978,9 @@
       return;
     }
     if (!$("agent-provider").value || !$("agent-model").value.trim()) {
-      window.showToast?.("Chọn nhà cung cấp và model.", "error");
+      window.showToast?.("Vui lòng chọn nhà cung cấp và mô hình.", "error");
       $("agent-model-menu").open = true;
-      $("agent-model").focus();
+      $("agent-model-sheet")?.querySelector("button")?.focus();
       return;
     }
     $("agent-send").disabled = true;
@@ -793,6 +1058,8 @@
     if (savedDefaultSandbox && [...$("agent-sandbox").options].some((o) => o.value === savedDefaultSandbox)) {
       $("agent-sandbox").value = savedDefaultSandbox;
     }
+    const brand = $("agent-header-brand");
+    if (brand && !brand.firstChild) brand.replaceChildren(chaosMark());
     showPicks();
     resetLog();
     $("agent-composer").addEventListener("submit", send);
@@ -869,7 +1136,7 @@
     const saveEngine = async () => {
       try {
         const engine = await post("/api/agent/sandbox/engine", { engine: $("agent-engine").value, image: $("agent-engine-image").value.trim() });
-        if (engine.engine === "docker" && !engine.docker) window.showToast?.("Không thấy Docker, dùng sandbox hệ điều hành.", "error");
+        if (engine.engine === "docker" && !engine.docker) window.showToast?.("Không tìm thấy Docker, chuyển sang cơ chế cô lập của hệ điều hành.", "error");
         showEngine(engine);
         $("agent-sandbox-info").textContent = SANDBOX_TEXT[engine.backend] || "";
       } catch (error) {
@@ -882,7 +1149,30 @@
     $("agent-network").addEventListener("change", () => syncSession({ network: $("agent-network").checked }));
     ["agent-mode", "agent-sandbox", "agent-network"].forEach((id) => $(id).addEventListener("change", showPicks));
     document.querySelectorAll(".agent-menu").forEach((menu) => menu.addEventListener("toggle", () => {
-      if (menu.open) document.querySelectorAll(".agent-menu[open]").forEach((other) => { if (other !== menu) other.open = false; });
+      if (menu.open) {
+        document.querySelectorAll(".agent-menu[open]").forEach((other) => { if (other !== menu) other.open = false; });
+        if (menu.id === "agent-model-menu") {
+          const pop = $("agent-model-pop");
+          if (pop) {
+            requestAnimationFrame(() => {
+              const rect = pop.getBoundingClientRect();
+              pop.classList.toggle("agent-subpop-left", rect.right + 260 > window.innerWidth);
+            });
+          }
+        }
+      } else {
+        menu.querySelectorAll(".agent-submenu-wrap.is-open").forEach((w) => w.classList.remove("is-open"));
+      }
     }));
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest(".agent-menu")) {
+        document.querySelectorAll(".agent-menu[open]").forEach((menu) => { menu.open = false; });
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        document.querySelectorAll(".agent-menu[open]").forEach((menu) => { menu.open = false; });
+      }
+    });
   });
 })();

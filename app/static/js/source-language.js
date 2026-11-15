@@ -56,7 +56,7 @@
     }
     if (lang) return lang;
     document.dispatchEvent(new CustomEvent("source-lang-needed"));
-    throw new Error("Chưa nhận diện được ngôn ngữ gốc. Hãy chọn ở mục Ngôn ngữ gốc trong menu ⋯");
+    throw new Error("Chưa nhận diện được ngôn ngữ gốc. Vui lòng chọn tại mục Ngôn ngữ gốc trong trình đơn tùy chọn (⋯).");
   };
 
   window.setSourceLang = async (lang) => {

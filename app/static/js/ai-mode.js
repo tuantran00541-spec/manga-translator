@@ -90,8 +90,8 @@
     if (!canBuy) return;
     const note = document.createElement("p");
     note.className = "ai-mode-topup-note";
-    note.textContent = `Trả đúng chi phí A.I + ${topups.fee_percent}% phí; một chương dài khoảng `
-      + `${formatMoney(topups.chapter_estimate_usd, "USD")}. Dùng key A.I của bạn thì miễn phí.`;
+    note.textContent = `Thanh toán theo đúng chi phí AI + ${topups.fee_percent}% phí; một chương dài ước tính khoảng `
+      + `${formatMoney(topups.chapter_estimate_usd, "USD")}. Miễn phí hoàn toàn khi sử dụng khóa API cá nhân.`;
     const buttons = [];
     const add = (provider, quote, via) => {
       const paid = quote.pay !== quote.credit ? ` (trả ${formatMoney(quote.pay, quote.currency)})` : "";
@@ -115,9 +115,9 @@
     bar.hidden = !account?.tiers;
     if (!account?.tiers) return;
     const signedIn = account.signed_in && !account.invalid_token;
-    let text = "Đăng nhập để dùng Manga Cloud, hoặc chọn nhà cung cấp khác và dùng key A.I của bạn (miễn phí).";
-    if (account.invalid_token) text = "Phiên đăng nhập đã hết — đăng nhập lại.";
-    else if (account.offline) text = "Không kết nối được Manga Cloud — vẫn dùng được key A.I của bạn.";
+    let text = "Đăng nhập để sử dụng Manga Cloud, hoặc chọn nhà cung cấp khác với khóa API cá nhân (miễn phí).";
+    if (account.invalid_token) text = "Phiên đăng nhập đã hết hạn — vui lòng đăng nhập lại.";
+    else if (account.offline) text = "Không thể kết nối Manga Cloud — vẫn có thể sử dụng khóa API cá nhân.";
     else if (signedIn && typeof account.balance_usd === "number") {
       text = `${account.email} · Số dư ${formatMoney(account.balance_usd, "USD")}`;
       if (typeof account.chapters_left === "number") text += ` (≈ ${account.chapters_left} chương)`;
@@ -213,14 +213,14 @@
   }
 
   async function deleteAccount() {
-    const warning = "Xoá tài khoản Manga Cloud? Email và phiên đăng nhập bị xoá. "
-      + "Số dư còn lại được giữ và trở lại nếu bạn đăng nhập lại bằng đúng email này.";
+    const warning = "Xóa tài khoản Manga Cloud? Địa chỉ email và phiên đăng nhập sẽ bị xóa. "
+      + "Số dư còn lại vẫn được bảo lưu và khôi phục khi bạn đăng nhập lại bằng đúng email này.";
     if (!window.confirm(warning)) return;
     try {
       account = await requestJson("/api/account", { method: "DELETE" });
-      window.showToast?.("Đã xoá tài khoản", "success");
+      window.showToast?.("Đã xóa tài khoản", "success");
     } catch (err) {
-      window.showToast?.("Không xoá được: " + err.message, "error");
+      window.showToast?.("Không thể xóa tài khoản: " + err.message, "error");
     }
     resetLogin();
     renderAccount();
@@ -230,7 +230,7 @@
     const list = $("ai-mode-payment-list");
     try {
       const { ledger } = await requestJson("/api/account/ledger");
-      const kinds = { topup: "Nạp tiền", chapter: "Chương A.I mode", refund: "Hoàn tiền", adjust: "Điều chỉnh" };
+      const kinds = { topup: "Nạp tiền", chapter: "Chương Chế độ AI", refund: "Hoàn tiền", adjust: "Điều chỉnh" };
       list.replaceChildren(...(ledger.length ? ledger : [null]).map((line) => {
         const item = document.createElement("li");
         const sign = line && line.amount_usd > 0 ? "+" : line && line.amount_usd < 0 ? "−" : "";
@@ -279,36 +279,36 @@
   function reportLines(job) {
     const r = job.report || {};
     const lines = [];
-    if (r.credit_pages?.length) lines.push(`Bỏ qua ${r.credit_pages.length} lát credit: lát ${r.credit_pages.map((i) => i + 1).join(", ")}`);
-    if (r.credit_rejected?.length) lines.push(`AI coi ${r.credit_rejected.length} lát là credit — quá nhiều nên không bỏ lát nào`);
-    if (r.textless_pages?.length) lines.push(`Bỏ qua ${r.textless_pages.length} lát không có chữ (giữ ảnh gốc)`);
-    if (r.logo_regions) lines.push(`Giữ nguyên ${r.logo_regions} vùng logo`);
-    if (r.series?.chapters) lines.push(`Bộ nhớ bộ truyện: ${r.series.names} tên, ${r.series.terms} thuật ngữ, ${r.series.address} cặp xưng hô từ ${r.series.chapters} chương trước`);
-    if (r.skip_kept?.length) lines.push(`Không bỏ qua ${r.skip_kept.length} lát vì vẫn thấy chữ truyện: lát ${r.skip_kept.map((i) => i + 1).join(", ")}`);
-    if (r.art_kept) lines.push(`Giữ nguyên ${r.art_kept} ô hình vẽ bị nhận nhầm là chữ`);
-    if (r.kept_regions) lines.push(`Trả lại ${r.kept_regions} vùng hình vẽ bị xoá nhầm`);
-    if (r.missed_added) lines.push(`Thêm ${r.missed_added} vùng chữ bị sót rồi xoá và dịch`);
+    if (r.credit_pages?.length) lines.push(`Đã loại bỏ ${r.credit_pages.length} lát giới thiệu nhóm dịch: lát ${r.credit_pages.map((i) => i + 1).join(", ")}`);
+    if (r.credit_rejected?.length) lines.push(`AI xác định ${r.credit_rejected.length} lát là trang giới thiệu — vượt ngưỡng an toàn nên giữ nguyên toàn bộ`);
+    if (r.textless_pages?.length) lines.push(`Bỏ qua ${r.textless_pages.length} lát không chứa chữ (giữ nguyên ảnh gốc)`);
+    if (r.logo_regions) lines.push(`Giữ nguyên ${r.logo_regions} vùng biểu trưng (logo)`);
+    if (r.series?.chapters) lines.push(`Bộ nhớ bộ truyện: ${r.series.names} tên riêng, ${r.series.terms} thuật ngữ, ${r.series.address} cặp xưng hô từ ${r.series.chapters} chương trước`);
+    if (r.skip_kept?.length) lines.push(`Không bỏ qua ${r.skip_kept.length} lát vì vẫn phát hiện lời thoại: lát ${r.skip_kept.map((i) => i + 1).join(", ")}`);
+    if (r.art_kept) lines.push(`Giữ nguyên ${r.art_kept} vùng hình vẽ bị nhận diện nhầm là chữ`);
+    if (r.kept_regions) lines.push(`Khôi phục ${r.kept_regions} vùng hình vẽ bị xóa nhầm`);
+    if (r.missed_added) lines.push(`Bổ sung ${r.missed_added} vùng chữ bị bỏ sót rồi tiến hành tẩy nền và dịch`);
     if (r.retried_pages?.length) lines.push(`Dịch lại ${r.retried_pages.length} lát theo lô nhỏ`);
     if (r.restored_regions) {
       const pages = [...new Set((r.review_list || []).map((item) => item.page))].slice(0, 8);
-      lines.push(`${r.restored_regions} vùng AI không dịch được, đã giữ ảnh gốc${pages.length ? ` (lát ${pages.join(", ")})` : ""}`);
+      lines.push(`${r.restored_regions} vùng AI không thể dịch, đã khôi phục ảnh gốc${pages.length ? ` (lát ${pages.join(", ")})` : ""}`);
     }
-    if (r.repainted_regions) lines.push(`Repaint ${r.repainted_regions} vùng AI thấy còn sót ở ${r.repaint_pages?.length || 0} lát`);
+    if (r.repainted_regions) lines.push(`Đã vá nền bổ sung ${r.repainted_regions} vùng còn sót tại ${r.repaint_pages?.length || 0} lát`);
     if (r.residue_left?.length) {
       const pages = [...new Set(r.residue_left.map((item) => item.page))].slice(0, 8);
-      lines.push(`${r.residue_left.length} vùng vẫn còn chữ sau 2 lần xóa, nên xem lại (lát ${pages.join(", ")})`);
+      lines.push(`${r.residue_left.length} vùng vẫn còn dấu vết chữ sau 2 lần xóa, cần kiểm tra lại (lát ${pages.join(", ")})`);
     }
     if (r.source_lang) lines.push(`Ngôn ngữ gốc: ${window.SOURCE_LANG_LABELS?.[r.source_lang] || r.source_lang}`);
-    if (r.translated || r.unreadable) lines.push(`Dịch ${r.translated || 0} vùng chữ${r.unreadable ? `, ${r.unreadable} vùng AI không đọc được` : ""}`);
+    if (r.translated || r.unreadable) lines.push(`Đã dịch ${r.translated || 0} vùng chữ${r.unreadable ? `, ${r.unreadable} vùng AI không đọc được` : ""}`);
     const polish = r.polish || {};
-    if (polish.judged) lines.push(`Bộ chấm chấm ${polish.judged} câu, gắn cờ ${polish.flagged || 0}, AI viết lại ${polish.rewritten || 0}${polish.still_flagged ? `, còn ${polish.still_flagged} câu nên xem lại` : ""}`);
+    if (polish.judged) lines.push(`Bộ hiệu đính đã rà soát ${polish.judged} câu, gắn cờ ${polish.flagged || 0}, AI biên tập lại ${polish.rewritten || 0}${polish.still_flagged ? `, còn ${polish.still_flagged} câu cần kiểm tra lại` : ""}`);
     if (r.editorial_blockers) {
       const pages = [...new Set((r.blocker_samples || []).map((b) => b.page))].slice(0, 8);
-      lines.push(`${r.editorial_blockers} chỗ nên xem lại bằng mắt${pages.length ? ` (ví dụ lát ${pages.join(", ")})` : ""}`);
+      lines.push(`${r.editorial_blockers} vị trí cần kiểm tra thủ công${pages.length ? ` (ví dụ lát ${pages.join(", ")})` : ""}`);
     }
     const errors = [
-      ["quét credit/logo", r.scan_errors], ["so ảnh gốc và clean", r.qc_errors],
-      ["dịch", r.translate_errors], ["render", r.render_errors], ["soát câu", polish.errors],
+      ["quét trang giới thiệu/biểu trưng", r.scan_errors], ["đối chiếu ảnh gốc và nền sạch", r.qc_errors],
+      ["dịch thuật", r.translate_errors], ["kết xuất", r.render_errors], ["hiệu đính câu", polish.errors],
     ].filter(([, list]) => list?.length);
     errors.forEach(([label, list]) => {
       const first = typeof list[0] === "string" ? list[0] : list[0]?.error || "";
@@ -339,10 +339,10 @@
     const running = job.status === "pending" || job.status === "running";
     const cost = job.cost_usd == null ? "" : ` · chi phí ~$${Number(job.cost_usd).toFixed(4)}`;
     const summary = $("ai-mode-summary");
-    if (running) summary.textContent = (job.cancel_requested ? "Đang hủy sau bước hiện tại…" : "AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.") + cost;
-    else if (job.status === "completed") summary.textContent = "Xong! Chương đã có chữ, mở ra để xem, sửa và xuất." + cost;
-    else if (job.status === "cancelled") summary.textContent = "Đã hủy. Những gì đã làm vẫn được lưu trong chương." + cost;
-    else summary.textContent = `Dừng vì lỗi: ${job.error || "không rõ"}` + cost;
+    if (running) summary.textContent = (job.cancel_requested ? "Đang hủy sau bước hiện tại…" : "AI đang xử lý, bạn có thể giữ trang này mở hoặc quay lại sau.") + cost;
+    else if (job.status === "completed") summary.textContent = "Hoàn tất! Chương đã được chèn chữ và sẵn sàng để kiểm tra, chỉnh sửa và xuất bản." + cost;
+    else if (job.status === "cancelled") summary.textContent = "Đã hủy. Kết quả đã thực hiện vẫn được lưu trong chương." + cost;
+    else summary.textContent = `Dừng do lỗi: ${job.error || "không xác định"}` + cost;
 
     const open = $("ai-mode-open");
     open.hidden = running || !job.chapter_id;
@@ -373,7 +373,7 @@
         pollTimer = window.setTimeout(() => poll(jobId, generation), POLL_MS);
       } else if (job.status === "completed" && wasRunning && job.chapter_id) {
         
-        window.showToast?.("A.I mode xong, đang mở chương.", "success");
+        window.showToast?.("Chế độ AI đã hoàn tất, đang mở chương.", "success");
         window.openLetteredChapter = job.chapter_id;
         window.resumeChapter?.(job.chapter_id);
       }
@@ -417,7 +417,7 @@
       if (provider === CLOUD) loadAccount();
     } catch (err) {
       setRunning(false);
-      window.showToast?.("Không chạy được A.I mode: " + err.message, "error");
+      window.showToast?.("Không thể chạy Chế độ AI: " + err.message, "error");
     }
   }
 
@@ -430,7 +430,7 @@
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }),
       });
       box.value = data.text;
-      box.placeholder = data.chapters ? "" : "Bộ truyện này chưa có chương nào chạy A.I mode; có thể nhập trước tên và xưng hô.";
+      box.placeholder = data.chapters ? "" : "Bộ truyện này chưa có chương nào chạy Chế độ AI; bạn có thể nhập trước tên riêng và cách xưng hô.";
     } catch (err) {
       box.value = "";
       box.placeholder = "Không đọc được bộ nhớ: " + err.message;
@@ -439,7 +439,7 @@
 
   async function saveSeries() {
     const url = $("ai-mode-url")?.value.trim();
-    if (!url) return window.showToast?.("Dán URL chương trước.", "error");
+    if (!url) return window.showToast?.("Vui lòng dán liên kết chương trước.", "error");
     try {
       const data = await requestJson("/api/ai_mode/series/save", {
         method: "POST", headers: { "Content-Type": "application/json" },

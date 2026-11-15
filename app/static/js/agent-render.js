@@ -2,35 +2,36 @@
   const HEAD = { "X-Manga-Agent": "1" };
   const VERBS = {
     "": "Lệnh lỗi",
-    list_dir: "Xem thư mục", read_file: "Đọc", search: "Tìm", glob: "Tìm file", write_file: "Ghi", edit_file: "Sửa",
-    run_command: "Chạy", web_fetch: "Tải trang", skill: "Skill", todo_write: "Kế hoạch",
-    plugin_write: "Ghi plugin", task: "Agent con", spawn_agent: "Tạo agent con", wait_agent: "Chờ agent con",
-    send_input: "Nhắn agent con", close_agent: "Đóng agent con", memory: "Ghi nhớ", ask_user: "Hỏi bạn",
-    exit_plan_mode: "Kế hoạch", goal_done: "Xong mục tiêu",
-    symbols: "Tìm ký hiệu", web_search: "Tìm web", web_download: "Tải về", view_image: "Xem ảnh",
-    tool_search: "Tìm công cụ", run_script: "Chạy script", fan_out: "Chạy song song",
+    list_dir: "Xem thư mục", read_file: "Đọc", search: "Tìm", glob: "Tìm tệp", write_file: "Ghi", edit_file: "Sửa",
+    run_command: "Chạy", web_fetch: "Tải trang", skill: "Kỹ năng", todo_write: "Kế hoạch",
+    plugin_write: "Ghi phần mở rộng", task: "Tác vụ con", spawn_agent: "Tạo tác vụ con", wait_agent: "Chờ tác vụ con",
+    send_input: "Nhắn tác vụ con", close_agent: "Đóng tác vụ con", memory: "Ghi nhớ", ask_user: "Hỏi người dùng",
+    exit_plan_mode: "Kế hoạch", goal_done: "Hoàn tất mục tiêu",
+    symbols: "Tìm ký hiệu", web_search: "Tìm kiếm web", web_download: "Tải về", view_image: "Xem ảnh",
+    tool_search: "Tìm công cụ", create: "Tạo công cụ", run_script: "Chạy tập lệnh", fan_out: "Chạy song song",
     job_output: "Đọc tác vụ", job_input: "Nhập vào tác vụ", job_stop: "Dừng tác vụ",
     context_notes: "Ghi chú", new_context: "Ngữ cảnh mới",
     schedule_create: "Hẹn giờ", schedule_list: "Lịch hẹn", schedule_delete: "Hủy hẹn",
-    use_model: "Dùng model trả phí",
+    use_model: "Dùng mô hình trả phí",
   };
 
   const TALLY = {
-    run_command: ["chạy", "lệnh"], read_file: ["đọc", "file"], edit_file: ["sửa", "file"], write_file: ["sửa", "file"],
-    spawn_agent: ["tạo", "agent con"], wait_agent: ["chờ", "agent con"],
-    send_input: ["nhắn", "agent con"], close_agent: ["đóng", "agent con"], memory: ["ghi nhớ", "mục"],
+    run_command: ["chạy", "lệnh"], read_file: ["đọc", "tệp"], edit_file: ["sửa", "tệp"], write_file: ["sửa", "tệp"],
+    create: ["chạy", "công cụ"],
+    spawn_agent: ["tạo", "tác vụ con"], wait_agent: ["chờ", "tác vụ con"],
+    send_input: ["nhắn", "tác vụ con"], close_agent: ["đóng", "tác vụ con"], memory: ["ghi nhớ", "mục"],
     list_dir: ["xem", "thư mục"], search: ["tìm", "lần"], glob: ["tìm", "lần"], symbols: ["tìm", "lần"],
-    web_fetch: ["tải", "trang"], skill: ["mở", "skill"], task: ["chạy", "agent con"], mcp: ["gọi", "công cụ MCP"],
-    run_script: ["chạy", "script"], fan_out: ["chạy", "lô song song"], job_input: ["nhập vào", "tác vụ"],
+    web_fetch: ["tải", "trang"], skill: ["mở", "kỹ năng"], task: ["chạy", "tác vụ con"], mcp: ["gọi", "công cụ MCP"],
+    run_script: ["chạy", "tập lệnh"], fan_out: ["chạy", "lô song song"], job_input: ["nhập vào", "tác vụ"],
     job_output: ["đọc", "tác vụ"], job_stop: ["dừng", "tác vụ"],
     schedule_create: ["hẹn", "lượt"], web_search: ["tìm web", "lần"],
   };
 
   const SANDBOX_TEXT = {
-    landlock: "Sandbox Landlock (Linux).", seatbelt: "Sandbox Seatbelt (macOS).",
-    docker: "Container Docker, chỉ thấy /workspace.",
-    "low-integrity": "Windows integrity thấp: chỉ ghi trong thư mục làm việc, vẫn đọc file và dùng mạng nên cần duyệt.",
-    none: "Không có sandbox: mọi lệnh cần duyệt, trừ chế độ Tự động.",
+    landlock: "Cơ chế cô lập Landlock (Linux).", seatbelt: "Cơ chế cô lập Seatbelt (macOS).",
+    docker: "Container Docker, chỉ truy cập được /workspace.",
+    "low-integrity": "Windows mức toàn vẹn thấp: chỉ được ghi trong thư mục làm việc; thao tác đọc tệp và truy cập mạng vẫn cần phê duyệt.",
+    none: "Không bật cơ chế cô lập: mọi lệnh đều cần phê duyệt, trừ khi bật chế độ Tự động.",
   };
 
   const $ = (id) => document.getElementById(id);
@@ -103,10 +104,10 @@
     const clean = String(code || "").replace(/\n$/, "");
     const card = el("div", `agent-code-card${extraCls ? ` ${extraCls}` : ""}`);
     const bar = el("div", "agent-code-bar");
-    bar.append(el("span", "agent-code-lang", label || "code"));
+    bar.append(el("span", "agent-code-lang", label || "mã nguồn"));
     const copyBtn = button("Sao chép", "agent-code-copy", () => {
       navigator.clipboard?.writeText(clean).then(() => {
-        copyBtn.textContent = "Đã chép";
+        copyBtn.textContent = "Đã sao chép";
         setTimeout(() => { copyBtn.textContent = "Sao chép"; }, 1400);
       }).catch(() => {});
     });
@@ -165,6 +166,7 @@
     if (c.name === "symbols") return a.name || a.path || ".";
     if (c.name === "view_image") return a.path || "";
     if (c.name === "tool_search") return a.query || "";
+    if (c.name === "create") return a.name ? `${a.name}${a.keep === false ? " (chạy một lần)" : ""}` : ".";
     if (c.name === "task") return a.description || "";
     if (c.name === "spawn_agent") return `${a.agent || "explore"}: ${String(a.message || "").slice(0, 80)}`;
     if (c.name === "wait_agent") return (a.ids || []).join(", ") || "tất cả";
@@ -183,6 +185,71 @@
     if (c.name === "schedule_create") return `sau ${a.in_minutes || "?"} phút${a.every_minutes ? `, mỗi ${a.every_minutes} phút` : ""}: ${String(a.prompt || "").slice(0, 50)}`;
     if (isMcp(c.name)) return c.name.replace(/^mcp__/, "").replace("__", ": ");
     return a.path || ".";
+  }
+
+  function shortPath(path) {
+    const raw = String(path || "").trim();
+    if (!raw || raw === ".") return raw || ".";
+    const parts = raw.replace(/[\\/]+$/, "").split(/[\\/]/).filter(Boolean);
+    return parts.pop() || raw;
+  }
+
+  function svgIcon(paths, vb = "0 0 16 16") {
+    const ns = "http://www.w3.org/2000/svg";
+    const icon = document.createElementNS(ns, "svg");
+    icon.setAttribute("class", "agent-row-svg");
+    icon.setAttribute("viewBox", vb);
+    icon.setAttribute("aria-hidden", "true");
+    paths.forEach((d) => {
+      const p = document.createElementNS(ns, "path");
+      p.setAttribute("d", d);
+      icon.append(p);
+    });
+    return icon;
+  }
+
+  function toolBadge(c) {
+    const name = c.name || "";
+    const path = String((c.args || {}).path || "");
+    const dot = path.lastIndexOf(".");
+    const ext = dot > -1 ? path.slice(dot + 1).toLowerCase() : "";
+    const wrap = el("span", "agent-row-icon");
+    if ((name === "edit_file" || name === "write_file" || name === "read_file" || name === "plugin_write") && ext && /^[a-z0-9]{1,4}$/.test(ext)) {
+      wrap.append(el("span", "agent-ext-badge", ext.toUpperCase()));
+      return wrap;
+    }
+    if (name === "run_command" || name === "run_script" || /^job_/.test(name)) {
+      wrap.append(svgIcon(["M3 4.5L6.5 8L3 11.5", "M8 11.5H13"]));
+    } else if (name === "create") {
+      wrap.append(svgIcon(["M5.5 4.5L2 8L5.5 11.5", "M10.5 4.5L14 8L10.5 11.5", "M9 3.5L7 12.5"]));
+    } else if (name === "edit_file" || name === "write_file" || name === "plugin_write") {
+      wrap.append(svgIcon(["M10.8 2.8L13.2 5.2L5.8 12.6L2.8 13.2L3.4 10.2Z"]));
+    } else if (name === "read_file" || name === "view_image") {
+      wrap.append(svgIcon(["M4 2.5H9.5L12.5 5.5V13.5H4Z", "M9.5 2.5V5.5H12.5"]));
+    } else if (name === "search" || name === "glob" || name === "symbols" || name === "tool_search" || name === "web_search") {
+      wrap.append(svgIcon(["M7 3A4 4 0 1 0 7 11A4 4 0 1 0 7 3", "M10.2 10.2L13.5 13.5"]));
+    } else {
+      wrap.append(svgIcon(["M8 3.5A4.5 4.5 0 1 0 8 12.5A4.5 4.5 0 1 0 8 3.5"]));
+    }
+    return wrap;
+  }
+
+  function rowTarget(c) {
+    const a = c.args || {};
+    if (c.name === "read_file" || c.name === "edit_file" || c.name === "write_file" || c.name === "view_image") {
+      const base = shortPath(a.path);
+      if (c.name === "read_file" && a.start_line && a.end_line) return `${base} #L${a.start_line}-${a.end_line}`;
+      if (c.name === "read_file" && a.offset && a.limit) return `${base} #L${a.offset}-${Number(a.offset) + Number(a.limit) - 1}`;
+      return base;
+    }
+    if (c.name === "run_command") {
+      const clean = String(a.command || "")
+        .replace(/^(?:cd(?:\s+\/d)?\s+(?:"[^"]+"|[^\s&]+)\s*&&\s*)+/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      return `${clean || String(a.command || "").trim()}${a.outside_sandbox ? " (ngoài sandbox)" : ""}`;
+    }
+    return String(target(c)).replace(/\s+/g, " ").trim();
   }
 
   function editPairs(a) {
@@ -226,6 +293,8 @@
     prose,
     isMcp,
     target,
+    rowTarget,
+    toolBadge,
     editPairs,
     diffStats,
     stats,

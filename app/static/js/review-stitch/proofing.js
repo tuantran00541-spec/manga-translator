@@ -148,8 +148,14 @@ function mountProofPanel(shell, signal) {
   title.textContent = "Soát chữ";
   const count = document.createElement("span");
   count.className = "review-proof-count";
+  const replaceToggle = document.createElement("button");
+  replaceToggle.type = "button";
+  replaceToggle.className = "ui-btn ui-btn-ghost ui-btn-compact review-proof-replace-toggle";
+  replaceToggle.textContent = "Thay thế";
+  replaceToggle.title = "Tìm và thay thế (Ctrl+H)";
+  replaceToggle.setAttribute("aria-pressed", "false");
   const close = iconButton("close", "Đóng bảng soát chữ", "review-proof-close");
-  header.append(title, count, close);
+  header.append(title, count, replaceToggle, close);
 
   const search = document.createElement("div");
   search.className = "review-proof-search";
@@ -173,6 +179,7 @@ function mountProofPanel(shell, signal) {
 
   const replaceRow = document.createElement("div");
   replaceRow.className = "review-proof-replace";
+  replaceRow.hidden = true;
   const replaceInput = document.createElement("input");
   replaceInput.className = "ui-input review-proof-replace-input";
   replaceInput.placeholder = "Thay bằng (Ctrl+H)…";
@@ -203,6 +210,7 @@ function mountProofPanel(shell, signal) {
   const presetApply = document.createElement("button");
   presetApply.type = "button";
   presetApply.className = "ui-btn ui-btn-ghost ui-btn-compact review-proof-preset-apply";
+  presetApply.title = "Áp kiểu chữ mẫu cho các vùng đã chọn";
   tools.append(checkAllLabel, untranslatedLabel, presetSelect, presetApply);
 
   const list = document.createElement("ul");
@@ -232,10 +240,10 @@ function mountProofPanel(shell, signal) {
   const syncPresetControls = () => {
     const presets = window.stylePresets?.list() || [];
     const selected = presetSelect.value;
-    presetSelect.replaceChildren(new Option(presets.length ? "Kiểu mẫu…" : "Chưa có kiểu mẫu", ""));
+    presetSelect.replaceChildren(new Option(presets.length ? "Kiểu mẫu…" : "Chưa có mẫu", ""));
     presets.forEach((p) => presetSelect.add(new Option(p.name, p.name)));
     if (presets.some((p) => p.name === selected)) presetSelect.value = selected;
-    presetApply.textContent = `Áp cho ${checked.size} vùng`;
+    presetApply.textContent = checked.size ? `Áp (${checked.size})` : "Áp";
     presetApply.disabled = !presetSelect.value || !checked.size;
   };
 
@@ -334,12 +342,19 @@ function mountProofPanel(shell, signal) {
     syncCount();
   };
 
+  const setReplaceOpen = (show) => {
+    replaceRow.hidden = !show;
+    replaceToggle.setAttribute("aria-pressed", String(show));
+    replaceToggle.classList.toggle("active", show);
+  };
+
   const setOpen = (open, focus = "find") => {
     panel.hidden = !open;
     shell.classList.toggle("review-proof-open", open);
     toggle.setAttribute("aria-pressed", String(open));
     toggle.classList.toggle("ui-btn-primary", open);
     if (!open) return;
+    if (focus === "replace") setReplaceOpen(true);
     window.stylePresets?.load();
     rebuild();
     (focus === "replace" ? replaceInput : find).focus();
@@ -356,6 +371,11 @@ function mountProofPanel(shell, signal) {
   toggle.setAttribute("aria-label", "Soát chữ toàn chương");
   toggle.append(window.createUiIcon("list"), toggleLabel);
   toggle.addEventListener("click", () => setOpen(panel.hidden), { signal });
+  replaceToggle.addEventListener("click", () => {
+    const next = replaceRow.hidden;
+    setReplaceOpen(next);
+    if (next) replaceInput.focus();
+  }, { signal });
   close.addEventListener("click", () => setOpen(false), { signal });
 
   let searchTimer = 0;

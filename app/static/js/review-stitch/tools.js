@@ -32,16 +32,16 @@ export function mountToolRail(shell, signal) {
   const rail = document.createElement("div");
   rail.className = "review-tool-rail";
   rail.setAttribute("role", "toolbar");
-  rail.setAttribute("aria-label", "Công cụ chỉnh sửa ảnh và lettering");
+  rail.setAttribute("aria-label", "Công cụ chỉnh sửa ảnh và trình bày chữ");
 
   const main = document.createElement("div");
   main.className = "review-tool-group";
   [
     ["select","cursor","Chọn","Chọn, kéo và thay đổi kích thước vùng chữ."],
-    ["rectangle","rect-select","Vùng chữ nhật","Kéo quanh bong bóng để tạo vùng OCR."],
-    ["ellipse","ellipse-select","Vùng elip","Kéo quanh bong bóng tròn để tạo vùng OCR."],
-    ["brush","brush","Cọ Inpaint","Tô vùng cần xóa, hoặc vùng bị xóa ẩu cần khôi phục ảnh gốc, rồi chọn cách xử lý."],
-    ["eraser","eraser","Tẩy mask","Xóa phần mask inpaint đã tô nhầm."],
+    ["rectangle","rect-select","Vùng chữ nhật","Kéo quanh bong bóng thoại để tạo vùng nhận dạng chữ."],
+    ["ellipse","ellipse-select","Vùng elip","Kéo quanh bong bóng thoại tròn để tạo vùng nhận dạng chữ."],
+    ["brush","brush","Cọ tẩy nền","Tô vùng cần xóa chữ hoặc vùng cần khôi phục ảnh gốc, sau đó chọn phương thức xử lý."],
+    ["eraser","eraser","Tẩy vùng tô","Xóa phần vùng tô đã đánh dấu nhầm."],
     ["hand","hand","Bàn tay","Kéo trang tự do theo mọi hướng."],
     ["zoom","zoom","Thu phóng","Nhấp để phóng to, Alt + nhấp để thu nhỏ."],
   ].forEach((x) => main.appendChild(toolButton(shell, signal, ...x)));

@@ -121,7 +121,7 @@ class AIModeSeamsMixin:
         stats["still_flagged"] = sum(bool(polish.problems(line.scores)) for line in lines if line.scores)
         if stats["rewritten"]:
             await self._sync_seams()
-        self._progress(len(lines), len(lines), f"Chấm {stats['judged']} câu, sửa {stats['rewritten']}")
+        self._progress(len(lines), len(lines), f"Rà soát {stats['judged']} câu, biên tập {stats['rewritten']} câu")
 
     def _save_polished(self, lines) -> tuple[set[str], int]:
         from app.dependencies import pipeline
@@ -378,14 +378,14 @@ class AIModeSeamsMixin:
                     self._art_restore_reviewed.add(key)
                     self._append_page_capped(self.report["review_list"], {
                         "page": page_index + 1, "id": obj.get("id"),
-                        "reason": "Model bỏ trống (SFX/nghệ thuật); đã giữ ảnh gốc",
+                        "reason": "Mô hình bỏ trống (SFX/chữ nghệ thuật); đã khôi phục ảnh gốc",
                     })
         except (ValueError, RuntimeError, OSError) as exc:
             _j("_append")(self.report["translate_errors"], f"Lát {page_index + 1}: giữ SFX thất bại: {_j('_detail')(exc)[:150]}")
             for obj in restored:
                 self._append_page_capped(self.report["review_list"], {
                     "page": page_index + 1, "id": obj.get("id"),
-                    "reason": "Model bỏ trống (SFX/nghệ thuật); giữ ảnh gốc thất bại — vùng này vẫn trống",
+                    "reason": "Mô hình bỏ trống (SFX/chữ nghệ thuật); khôi phục ảnh gốc thất bại — vùng này vẫn trống",
                 })
 
     def _join_stacked_lines(self, indices: list[int]) -> None:

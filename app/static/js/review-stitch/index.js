@@ -74,7 +74,7 @@ export function mount(workspace) {
   viewSwitch.className = "review-view-switch";
   viewSwitch.setAttribute("role", "group");
   viewSwitch.setAttribute("aria-label", "Ảnh đang xem");
-  const clean = button(null, "Sau inpaint");
+  const clean = button(null, "Đã tẩy nền");
   const rendered = button(null, "Có chữ");
   const original = button(null, "Ảnh gốc");
   viewSwitch.append(clean, rendered, original);
@@ -100,7 +100,7 @@ export function mount(workspace) {
   const clearMask = document.createElement("button");
   clearMask.type = "button";
   clearMask.className = "ui-btn ui-btn-ghost ui-btn-compact clear-brush-btn";
-  clearMask.textContent = "Xóa mask";
+  clearMask.textContent = "Xóa vùng tô";
 
   const sizeWrap = document.createElement("label");
   sizeWrap.className = "ui-range-field brush-size-control review-docbar-brush-size";
@@ -119,12 +119,12 @@ export function mount(workspace) {
   const brushBar = document.createElement("div");
   brushBar.className = "review-brush-bar";
   brushBar.setAttribute("role", "toolbar");
-  brushBar.setAttribute("aria-label", "Tùy chọn cọ inpaint");
+  brushBar.setAttribute("aria-label", "Tùy chọn cọ tẩy nền");
   brushBar.hidden = true;
   const undoRepaint = document.createElement("button");
   undoRepaint.type = "button";
   undoRepaint.className = "ui-btn ui-btn-ghost ui-btn-compact undo-repaint-btn";
-  undoRepaint.textContent = "Bỏ repaint lát này";
+  undoRepaint.textContent = "Khôi phục nền tự động";
   undoRepaint.title = "Xóa mọi vùng đã làm sạch bằng cọ trên lát ở giữa màn hình, trả lại kết quả xử lý tự động";
   brushBar.append(sizeWrap, clearMask, submit, undoRepaint);
 
@@ -301,7 +301,7 @@ export function mount(workspace) {
         let done = 0;
         const concurrency = Math.min(3, todo.length);
         let cursor = 0;
-        rendered.textContent = `Đang render 1/${todo.length}…`;
+        rendered.textContent = `Đang kết xuất 1/${todo.length}…`;
         const worker = async () => {
           while (cursor < todo.length) {
             const idx = cursor++;
@@ -309,7 +309,7 @@ export function mount(workspace) {
             const sig = letteringSig(pages[i]);
             if (await window.renderTranslations(i)) pages[i]._renderSig = sig;
             done += 1;
-            rendered.textContent = `Đang render ${Math.min(done + 1, todo.length)}/${todo.length}…`;
+            rendered.textContent = `Đang kết xuất ${Math.min(done + 1, todo.length)}/${todo.length}…`;
           }
         };
         await Promise.all(Array.from({ length: concurrency }, () => worker()));
@@ -381,8 +381,8 @@ export function mount(workspace) {
       const parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response);
       if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
       if (data.pages?.[pageIndex]) window.currentManifest.pages[pageIndex] = data.pages[pageIndex];
-      window.showToast?.(`Đã bỏ repaint trên lát ${pageIndex + 1}.`, "success"); rerender();
-    } catch (err) { window.showToast?.("Không thể bỏ repaint: " + err.message, "error"); } finally { busy(false); }
+      window.showToast?.(`Đã khôi phục nền tự động trên lát ${pageIndex + 1}.`, "success"); rerender();
+    } catch (err) { window.showToast?.("Không thể khôi phục nền tự động: " + err.message, "error"); } finally { busy(false); }
   }, { signal });
 
   

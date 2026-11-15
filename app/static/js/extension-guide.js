@@ -9,7 +9,7 @@
       await navigator.clipboard.writeText(text);
       window.showToast?.("Đã sao chép.", "success");
     } catch (_) {
-      window.showToast?.("Không sao chép được, hãy chọn và chép tay.", "error");
+      window.showToast?.("Không thể sao chép tự động, vui lòng chọn và sao chép thủ công.", "error");
     }
   };
 

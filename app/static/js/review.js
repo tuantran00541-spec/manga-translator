@@ -91,13 +91,13 @@ function chooseRepaintMode() {
     );
     const lamaOption = createOption(
       "lama",
-      "Tái inpaint bằng LaMa",
+      "Vá nền chuyên sâu bằng LaMa",
       "Bỏ qua Smart Fill và buộc LaMa tái tạo toàn bộ vùng đã đánh dấu. Phương án này có thể mất nhiều thời gian hơn."
     );
     const restoreOption = createOption(
       "restore",
       "Khôi phục ảnh gốc",
-      "Trả vùng đã tô về đúng ảnh gốc, dùng khi inpaint lỡ xóa mất tranh. Vùng này giữ nguyên qua các lần xử lý sau."
+      "Trả vùng đã tô về đúng ảnh gốc, dùng khi quá trình tẩy nền vô tình xóa mất chi tiết tranh. Vùng này được giữ nguyên qua các lần xử lý sau."
     );
     options.append(standardOption, lamaOption, restoreOption);
     selectMode(selectedMode);

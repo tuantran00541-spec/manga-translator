@@ -111,5 +111,5 @@ export function drawBrushMask(ctx, chunks, desc, width) {
 
 export function canvasBlob(canvas) {
   if (typeof window.canvasToBlob === "function") return window.canvasToBlob(canvas);
-  return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Không thể mã hóa mask")), "image/png"));
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Không thể mã hóa dữ liệu vùng tô")), "image/png"));
 }

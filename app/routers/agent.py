@@ -128,7 +128,7 @@ def _session(session_id: str):
 
 async def _provider_and_key(provider_id: str):
     if provider_id == CLOUD_PROVIDER_ID:
-        raise HTTPException(400, "Manga Cloud chỉ dùng cho A.I mode.")
+        raise HTTPException(400, "Manga Cloud chỉ dùng cho Chế độ AI.")
     try:
         provider = await run_in_threadpool(_resolve_configured_provider, provider_id)
         api_keys = await run_in_threadpool(get_provider_api_keys, provider.id, provider_label=provider.label)
@@ -137,7 +137,7 @@ async def _provider_and_key(provider_id: str):
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     if not api_keys:
-        raise HTTPException(409, f"Chưa có API key cho {provider.label}.")
+        raise HTTPException(409, f"Chưa cấu hình khóa API cho {provider.label}.")
     return provider, api_keys
 
 
@@ -315,9 +315,9 @@ async def test_mcp(name: str, workspace: str = "") -> dict:
     root = Path(workspace.strip() or BASE_DIR)
     row = next((r for r in mcp.configured(root, agent_sessions.home) if r["name"] == name), None)
     if row is None:
-        raise HTTPException(404, "Không tìm thấy MCP server.")
+        raise HTTPException(404, "Không tìm thấy máy chủ MCP.")
     if row["scope"] == "workspace":
-        raise HTTPException(400, "Server của dự án chỉ chạy sau khi được cho phép trong phiên.")
+        raise HTTPException(400, "Máy chủ của dự án chỉ chạy sau khi được cấp phép trong phiên.")
     try:
         tools = await run_in_threadpool(mcp.probe, name, row["config"], root)
     except Exception as exc:
@@ -330,7 +330,7 @@ async def switch_mcp(name: str, req: McpSwitch, workspace: str = "") -> dict:
     try:
         await run_in_threadpool(mcp.set_user_enabled, _skill_home(), name, req.enabled)
     except KeyError as exc:
-        raise HTTPException(404, "Chỉ bật/tắt được server trong ~/.manga-agent/mcp.json.") from exc
+        raise HTTPException(404, "Chỉ có thể bật hoặc tắt máy chủ trong ~/.manga-agent/mcp.json.") from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     await run_in_threadpool(_mcp_changed)
@@ -342,7 +342,7 @@ async def switch_mcp_tool(name: str, tool: str, req: McpSwitch, workspace: str =
     try:
         await run_in_threadpool(mcp.set_user_tool, _skill_home(), name, tool, req.enabled)
     except KeyError as exc:
-        raise HTTPException(404, "Chỉ bật/tắt được server trong ~/.manga-agent/mcp.json.") from exc
+        raise HTTPException(404, "Chỉ có thể bật hoặc tắt máy chủ trong ~/.manga-agent/mcp.json.") from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     await run_in_threadpool(_mcp_changed)
@@ -354,7 +354,7 @@ async def delete_mcp(name: str, workspace: str = "") -> dict:
     try:
         await run_in_threadpool(mcp.remove_user, _skill_home(), name)
     except KeyError as exc:
-        raise HTTPException(404, "Chỉ xóa được server trong ~/.manga-agent/mcp.json.") from exc
+        raise HTTPException(404, "Chỉ có thể xóa máy chủ trong ~/.manga-agent/mcp.json.") from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     await run_in_threadpool(_mcp_changed)
@@ -407,7 +407,7 @@ async def trust_mcp(session_id: str, name: str) -> dict:
     try:
         await run_in_threadpool(session.trust_mcp, name)
     except (KeyError, StopIteration) as exc:
-        raise HTTPException(404, "Không tìm thấy MCP server.") from exc
+        raise HTTPException(404, "Không tìm thấy máy chủ MCP.") from exc
     return session.snapshot(len(session.events))
 
 

@@ -49,7 +49,7 @@
     const total = Number(snapshot.total) || 0;
     const done = Number(snapshot.completed) + Number(snapshot.stale) + Number(snapshot.failed);
     const status = statusLabel(snapshot.status);
-    return `${status}: ${done}/${total} · có chữ ${snapshot.recognized || 0} · rỗng ${snapshot.empty || 0} · cache ${snapshot.cached || 0} · stale ${snapshot.stale || 0} · lỗi ${snapshot.failed || 0}`;
+    return `${status}: ${done}/${total} · có chữ ${snapshot.recognized || 0} · trống ${snapshot.empty || 0} · bộ nhớ đệm ${snapshot.cached || 0} · cần cập nhật ${snapshot.stale || 0} · lỗi ${snapshot.failed || 0}`;
   }
 
   function renderPanel(workspace) {
@@ -171,7 +171,7 @@
       state.snapshot = snapshot;
       renderAll();
       if (isRunning(snapshot)) {
-        if (auto) showToast("Đang nhận dạng chữ gốc của cả chương, xem tiến độ ở menu ba chấm góc phải.", "info");
+        if (auto) showToast("Đang nhận dạng chữ gốc toàn chương, xem tiến độ tại trình đơn tùy chọn (⋯) ở góc phải.", "info");
         schedulePoll(snapshot.job_id, generation);
       }
     } catch (err) {

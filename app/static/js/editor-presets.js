@@ -81,6 +81,13 @@
     apply.type = "button";
     apply.className = "ui-btn ui-btn-ghost ui-btn-compact style-preset-apply";
     apply.textContent = "Áp dụng";
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "ui-icon-btn ui-btn-ghost ui-btn-compact style-preset-add";
+    addBtn.setAttribute("aria-label", "Lưu kiểu chữ hiện tại thành mẫu");
+    addBtn.setAttribute("aria-pressed", "false");
+    addBtn.title = "Lưu kiểu hiện tại thành mẫu";
+    addBtn.append(window.createUiIcon("plus"));
     const remove_ = document.createElement("button");
     remove_.type = "button";
     remove_.className = "ui-icon-btn ui-btn-ghost ui-btn-compact style-preset-delete";
@@ -89,23 +96,36 @@
     remove_.append(window.createUiIcon("trash"));
     const saveRow = document.createElement("div");
     saveRow.className = "ui-control-row style-preset-save-row";
+    saveRow.hidden = true;
     const name = document.createElement("input");
     name.className = "ui-input style-preset-name";
-    name.placeholder = "Tên mẫu: Lời thoại, Dẫn truyện…";
+    name.placeholder = "Tên mẫu (vd: Lời thoại)…";
     name.maxLength = 40;
     name.setAttribute("aria-label", "Tên kiểu chữ mẫu mới");
     const store = document.createElement("button");
     store.type = "button";
-    store.className = "ui-btn ui-btn-ghost ui-btn-compact style-preset-store";
-    store.textContent = "Lưu kiểu này";
+    store.className = "ui-btn ui-btn-primary ui-btn-compact style-preset-store";
+    store.textContent = "Lưu";
     store.title = "Lưu kiểu chữ của vùng đang chọn thành mẫu";
 
-    const fill = () => {
-      select.replaceChildren(new Option(presets.length ? "Chọn kiểu mẫu…" : "Chưa có kiểu mẫu", ""));
-      presets.forEach((p, i) => select.add(new Option(i < 9 ? `${i + 1}. ${p.name}` : p.name, p.name)));
-      apply.disabled = remove_.disabled = true;
+    const syncButtons = () => {
+      const hasVal = Boolean(select.value);
+      apply.disabled = !hasVal;
+      remove_.hidden = !hasVal;
+      remove_.disabled = !hasVal;
     };
-    select.addEventListener("change", () => { apply.disabled = remove_.disabled = !select.value; });
+    const fill = () => {
+      select.replaceChildren(new Option(presets.length ? "Chọn kiểu mẫu…" : "Chưa có mẫu", ""));
+      presets.forEach((p, i) => select.add(new Option(i < 9 ? `${i + 1}. ${p.name}` : p.name, p.name)));
+      syncButtons();
+    };
+    select.addEventListener("change", syncButtons);
+    addBtn.addEventListener("click", () => {
+      const open = saveRow.hidden;
+      saveRow.hidden = !open;
+      addBtn.setAttribute("aria-pressed", String(open));
+      if (open) name.focus();
+    });
     apply.addEventListener("click", () => {
       const preset = presets.find((p) => p.name === select.value);
       if (!applyPreset(preset, [{ pageIndex, id: obj.id }])) return;
@@ -124,21 +144,27 @@
     });
     const doStore = async () => {
       try {
-        await saveFrom(name.value, obj);
-        window.showToast?.(`Đã lưu kiểu "${name.value.trim()}".`, "success");
+        const clean = name.value.trim();
+        await saveFrom(clean, obj);
+        window.showToast?.(`Đã lưu kiểu "${clean}".`, "success");
         name.value = "";
+        saveRow.hidden = true;
+        addBtn.setAttribute("aria-pressed", "false");
       } catch (err) {
         window.showToast?.("Không lưu được kiểu mẫu: " + err.message, "error");
       }
     };
     store.addEventListener("click", doStore);
-    name.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); doStore(); } });
+    name.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); doStore(); }
+      else if (event.key === "Escape") { event.preventDefault(); saveRow.hidden = true; addBtn.setAttribute("aria-pressed", "false"); }
+    });
     const onChange = () => { if (!select.isConnected) { document.removeEventListener("style-presets-changed", onChange); return; } fill(); };
     document.addEventListener("style-presets-changed", onChange);
 
     fill();
     load();
-    row.append(select, apply, remove_);
+    row.append(select, apply, addBtn, remove_);
     saveRow.append(name, store);
     body.append(row, saveRow);
   }

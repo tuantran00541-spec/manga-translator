@@ -323,7 +323,7 @@ function buildExportOptions() {
   details.className = "chapter-export-options";
   const summary = document.createElement("summary");
   summary.textContent = "Tùy chọn xuất";
-  summary.title = "Định dạng, bề rộng, cắt trang và tên file khi xuất chương";
+  summary.title = "Định dạng, bề rộng, cắt trang và tiền tố tên tệp khi xuất chương";
   details.appendChild(summary);
   const panel = document.createElement("div");
   panel.className = "chapter-export-panel";
@@ -345,7 +345,7 @@ function buildExportOptions() {
     panel.appendChild(field);
   }
   const prefixField = document.createElement("label");
-  prefixField.textContent = "Tên file bắt đầu bằng";
+  prefixField.textContent = "Tiền tố tên tệp";
   const prefix = document.createElement("input");
   prefix.dataset.export = "prefix";
   prefix.maxLength = 40;

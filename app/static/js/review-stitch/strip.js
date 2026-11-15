@@ -68,7 +68,7 @@ export async function renderStrip(shell, items, signal) {
     ? "Đang tải ảnh gốc…"
     : state.variant === "rendered"
       ? "Đang tải ảnh có chữ…"
-      : "Đang tải ảnh sau inpaint…";
+      : "Đang tải ảnh đã tẩy nền…";
   image.appendChild(loading);
 
   try {
@@ -186,8 +186,8 @@ export async function renderStrip(shell, items, signal) {
       state.variant === "original"
         ? "Ảnh gốc"
         : state.variant === "rendered"
-          ? "Bản đã render"
-          : "Sau inpaint"
+          ? "Bản đã kết xuất"
+          : "Đã tẩy nền"
     }`;
     if (fallbackSlices) {
       warning.hidden = false;

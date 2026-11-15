@@ -297,7 +297,7 @@ export function mountTextInspector(workspace, shell, signal) {
 
   const host = document.createElement("section");
   host.className = "translation-panel-host review-text-inspector-host";
-  host.setAttribute("aria-label", "Chỉnh OCR, bản dịch và typography");
+  host.setAttribute("aria-label", "Chỉnh sửa chữ gốc, bản dịch và kiểu chữ");
   host.innerHTML = '<div class="ui-empty-state">Chọn một vùng chữ trên ảnh để chỉnh sửa.</div>';
 
   floating.append(header, host);

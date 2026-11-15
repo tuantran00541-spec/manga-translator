@@ -72,7 +72,7 @@ async function uploadChapter(files) {
       body: formData,
     });
     const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => (await r.json().catch(() => ({})));
-    const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Server trả về lỗi ${s}`;
+    const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Máy chủ trả về lỗi ${s}`;
     const data = await parse(resp);
     if (!resp.ok) {
       throw new Error(getErr(resp.status, data));

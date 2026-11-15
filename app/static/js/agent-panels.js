@@ -12,10 +12,13 @@
 
   function showMcpKind() {
     const kind = mcpKind();
+    const nameField = $("agent-mcp-name")?.closest(".agent-field");
+    if (nameField && kind === "http") $("agent-mcp-http")?.prepend(nameField);
+    else if (nameField && kind === "stdio") $("agent-mcp-stdio")?.querySelector(".agent-mcp-grid")?.prepend(nameField);
+    if (nameField) nameField.hidden = kind === "json";
     $("agent-mcp-stdio").hidden = kind !== "stdio";
     $("agent-mcp-http").hidden = kind !== "http";
     $("agent-mcp-json").hidden = kind !== "json";
-    $("agent-mcp-name").placeholder = kind === "json" ? "chỉ cần khi JSON là một server" : "context7";
   }
 
   function pairs(text, separator) {
@@ -28,29 +31,33 @@
   }
 
   function showMcp(data) {
-    $("agent-mcp-file").textContent = data.file ? `Lưu ở ${data.file} (agent không đọc được).` : "";
-    const rows = (data.servers || []).map((server) => {
+    $("agent-mcp-file").textContent = data.file ? `Lưu ở ${data.file}` : "";
+    const servers = data.servers || [];
+    const count = $("agent-mcp-count");
+    if (count) count.textContent = String(servers.length);
+    const rows = servers.map((server) => {
       const item = el("li");
-      const title = el("span");
+      const title = el("span", "agent-mcp-head");
       const where = server.scope === "workspace" ? "của dự án" : server.editable ? "của bạn" : server.source;
-      title.append(el("b", "", server.name), el("span", "agent-skill-tag", ` · ${server.type} · ${where}`));
+      title.append(el("b", "", server.name), el("span", "agent-skill-tag", server.type), el("span", "agent-skill-tag", where));
       const actions = el("span", "agent-skill-row");
-      if (server.scope !== "workspace") actions.append(button("Thử", "agent-btn", () => testMcp(server.name, state)));
+      const label = server.disabled ? "đã tắt" : server.state ? `${MCP_STATE[server.state] || server.state}${server.state === "running" ? `, ${server.tools} công cụ` : ""}` : "";
+      const state = el("span", `agent-mcp-state${server.state === "running" ? " ok" : server.state === "failed" ? " bad" : ""}`, label + (server.error ? `: ${server.error}` : ""));
+      if (server.scope !== "workspace") actions.append(button("Thử", "agent-btn agent-skill-act", () => testMcp(server.name, state)));
       if (server.editable) {
         actions.append(
-          button(server.disabled ? "Bật" : "Tắt", "agent-btn", () => switchMcp(server.name, server.disabled)),
-          button("Xóa", "agent-btn", () => removeMcp(server.name)),
+          button(server.disabled ? "Bật" : "Tắt", "agent-btn agent-skill-act", () => switchMcp(server.name, server.disabled)),
+          button("Xóa", "agent-btn agent-skill-act", () => removeMcp(server.name)),
         );
       }
       const secrets = [...Object.keys(server.env || {}), ...Object.keys(server.headers || {})];
-      const about = el("span", "agent-muted", server.target + (secrets.length ? ` · ${secrets.join(", ")}` : ""));
-      const label = server.disabled ? "đã tắt" : server.state ? `${MCP_STATE[server.state] || server.state}${server.state === "running" ? `, ${server.tools} công cụ` : ""}` : "";
-      const state = el("span", `agent-mcp-state${server.state === "running" ? " ok" : server.state === "failed" ? " bad" : ""}`, label + (server.error ? `: ${server.error}` : ""));
+      const about = el("span", "agent-mcp-target", server.target + (secrets.length ? ` · ${secrets.length} biến` : ""));
+      about.title = server.target + (secrets.length ? `\n${secrets.join(", ")}` : "");
       item.append(title, actions, about, state);
       if ((server.tool_list || []).length) item.append(mcpTools(server));
       return item;
     });
-    $("agent-mcp-list").replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", "Chưa có MCP server nào.")]));
+    $("agent-mcp-list").replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", "Chưa có máy chủ MCP nào.")]));
   }
 
   function mcpTools(server) {
@@ -88,7 +95,7 @@
   }
 
   async function testMcp(name, label) {
-    label.textContent = "đang thử…";
+    label.textContent = "đang kiểm tra…";
     label.className = "agent-mcp-state";
     try {
       const data = await post(`/api/agent/mcp/${encodeURIComponent(name)}/test${mcpQuery()}`);
@@ -119,7 +126,7 @@
       for (const added of data.added || []) {
         const row = [...$("agent-mcp-list").children].find((item) => item.querySelector("b")?.textContent === added);
         const label = row?.querySelector(".agent-mcp-state");
-        if (label) window.showToast?.(await testMcp(added, label) ? `Đã thêm ${added}, dùng từ lượt sau.` : `Đã lưu ${added}, chưa kết nối được.`, "info");
+        if (label) window.showToast?.(await testMcp(added, label) ? `Đã thêm ${added}, có hiệu lực từ lượt tiếp theo.` : `Đã lưu ${added}, hiện chưa thể kết nối.`, "info");
       }
     } catch (error) {
       window.showToast?.(error.message, "error");
@@ -137,7 +144,7 @@
   }
 
   async function removeMcp(name) {
-    if (!window.confirm(`Xóa MCP server ${name}?`)) return;
+    if (!window.confirm(`Xóa máy chủ MCP ${name}?`)) return;
     try {
       showMcp(await call(`/api/agent/mcp/${encodeURIComponent(name)}${mcpQuery()}`, { method: "DELETE" }));
       window.showToast?.(`Đã xóa ${name}.`, "success");
@@ -153,21 +160,28 @@
   // The skills panel: what the agent can load here, plus loading, writing and removing your own.
   async function loadSkills() {
     const list = $("agent-skill-list");
+    const count = $("agent-skill-count");
     try {
       const data = await call(`/api/agent/skills?workspace=${encodeURIComponent($("agent-workspace").value.trim())}`);
-      const rows = (data.skills || []).map((skill) => {
+      const skills = data.skills || [];
+      if (count) count.textContent = String(skills.length);
+      const rows = skills.map((skill) => {
         const item = el("li");
-        const title = el("span");
-        title.append(el("b", "", skill.name), el("span", "agent-skill-tag", ` · ${SKILL_SCOPE[skill.scope] || skill.scope}`));
-        const actions = el("span", "agent-skill-row");
-        if (skill.scope === "user") actions.append(button("Sửa", "agent-btn", () => editSkill(skill.name)), button("Xóa", "agent-btn", () => removeSkill(skill.name)));
-        const about = el("span", "agent-muted", skill.description.length > 180 ? `${skill.description.slice(0, 180)}…` : skill.description);
-        about.title = skill.path;
-        item.append(title, actions, about);
+        item.title = [skill.description, skill.path].filter(Boolean).join("\n");
+        const name = el("b", "agent-skill-name", `/${skill.name}`);
+        const badge = el("span", "agent-skill-tag", SKILL_SCOPE[skill.scope] || skill.scope);
+        const about = el("span", "agent-skill-desc", skill.description || "");
+        item.append(name, badge, about);
+        if (skill.scope === "user") {
+          const actions = el("span", "agent-skill-actions");
+          actions.append(button("Sửa", "agent-btn agent-skill-act", () => editSkill(skill.name)), button("Xóa", "agent-btn agent-skill-act", () => removeSkill(skill.name)));
+          item.append(actions);
+        }
         return item;
       });
-      list.replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", "Chưa có skill nào.")]));
+      list.replaceChildren(...(rows.length ? rows : [el("li", "agent-muted", "Chưa có kỹ năng nào.")]));
     } catch (error) {
+      if (count) count.textContent = "0";
       list.replaceChildren(el("li", "agent-muted", error.message));
     }
   }
@@ -187,7 +201,7 @@
   function installSkills() {
     const source = $("agent-skill-source").value.trim();
     if (!source) return;
-    skillsChanged(post("/api/agent/skills/install", { source }), (names) => `Đã cài ${names.join(", ")}. Nên đọc SKILL.md trước khi dùng.`)
+    skillsChanged(post("/api/agent/skills/install", { source }), (names) => `Đã cài đặt ${names.join(", ")}. Vui lòng đọc SKILL.md trước khi sử dụng.`)
       .then((ok) => { if (ok) $("agent-skill-source").value = ""; });
   }
 
@@ -218,14 +232,14 @@
   }
 
   function removeSkill(name) {
-    if (!window.confirm(`Xóa skill ${name}?`)) return;
+    if (!window.confirm(`Xóa kỹ năng ${name}?`)) return;
     skillsChanged(call(`/api/agent/skills/${encodeURIComponent(name)}`, { method: "DELETE" }), () => `Đã xóa ${name}.`);
   }
 
   function saveSkill() {
     const name = $("agent-skill-name").value.trim();
     const body = { name, description: $("agent-skill-desc").value.trim(), body: $("agent-skill-body").value.trim(), replace: editingSkill === name };
-    skillsChanged(post("/api/agent/skills", body), () => `Đã lưu skill ${name}.`).then((ok) => {
+    skillsChanged(post("/api/agent/skills", body), () => `Đã lưu kỹ năng ${name}.`).then((ok) => {
       if (!ok) return;
       editingSkill = "";
       $("agent-skill-name").value = $("agent-skill-desc").value = "";
@@ -234,10 +248,10 @@
   }
 
   function draftSkill() {
-    const name = $("agent-skill-name").value.trim() || "ten-skill";
-    const about = $("agent-skill-desc").value.trim() || "(mô tả việc skill này giúp làm)";
-    $("agent-input").value = `Dùng skill writing-skills để soạn một skill tên ${name}: ${about}. `
-      + `Ghi nó vào .agents/skills/${name}/SKILL.md trong thư mục làm việc, với phần đầu name và description, rồi thử nó trên một ví dụ thật.`;
+    const name = $("agent-skill-name").value.trim() || "ten-ky-nang";
+    const about = $("agent-skill-desc").value.trim() || "(mô tả chức năng của kỹ năng này)";
+    $("agent-input").value = `Sử dụng kỹ năng writing-skills để biên soạn một kỹ năng có tên ${name}: ${about}. `
+      + `Lưu tệp tại .agents/skills/${name}/SKILL.md trong thư mục làm việc, kèm phần mở đầu (frontmatter) name và description, sau đó kiểm chứng trên một ví dụ thực tế.`;
     showHub(false);
     UI.onDraftSkill?.();
     $("agent-input").focus();

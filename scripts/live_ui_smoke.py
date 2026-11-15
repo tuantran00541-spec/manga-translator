@@ -138,7 +138,7 @@ def _exercise_desktop(page: Page) -> None:
     image = page.locator(".review-stitched-image")
     expect(image).to_have_attribute("data-strip-slices", "3")
     expect(image).to_have_attribute("data-source-height", "4800")
-    expect(page.get_by_role("button", name="Sau inpaint", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Đã tẩy nền", exact=True)).to_be_visible()
     expect(page.get_by_role("button", name="Có chữ", exact=True)).to_be_visible()
     expect(page.get_by_role("button", name="Ảnh gốc", exact=True)).to_be_visible()
     expect(page.locator(".review-strip-meta")).to_have_count(0)
@@ -175,7 +175,7 @@ def _exercise_desktop(page: Page) -> None:
     page.wait_for_function(
         "() => document.querySelector('.review-workspace-shell')?.classList.contains('review-readonly-document')"
     )
-    page.get_by_role("button", name="Sau inpaint", exact=True).click()
+    page.get_by_role("button", name="Đã tẩy nền", exact=True).click()
     page.wait_for_function(
         "() => !document.querySelector('.review-workspace-shell')?.classList.contains('review-readonly-document')"
     )

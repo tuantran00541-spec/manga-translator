@@ -87,7 +87,7 @@
     const tabModelsBtn = button("", "settings-nav-item is-active");
     tabModelsBtn.append(
       svgIcon(["M4 6c0 1.66 3.58 3 8 3s8-1.34 8-3-3.58-3-8-3-8 1.34-8 3Z", "M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6", "M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"]),
-      el("span", "", "Models"),
+      el("span", "", "Mô hình AI"),
     );
     nav.append(tabGeneralBtn, tabModelsBtn);
 
@@ -118,7 +118,7 @@
     });
 
     const sandboxSelect = el("select", "ui-select settings-row-select");
-    [["read-only", "Chỉ đọc"], ["workspace-write", "Ghi trong thư mục"], ["full-access", "Không sandbox"]].forEach(([v, l]) => sandboxSelect.add(new Option(l, v)));
+    [["read-only", "Chỉ đọc"], ["workspace-write", "Ghi trong thư mục"], ["full-access", "Không giới hạn cô lập"]].forEach(([v, l]) => sandboxSelect.add(new Option(l, v)));
     sandboxSelect.value = localStorage.getItem("manga_agent_default_sandbox") || document.getElementById("agent-sandbox")?.value || "workspace-write";
     sandboxSelect.addEventListener("change", () => {
       localStorage.setItem("manga_agent_default_sandbox", sandboxSelect.value);
@@ -170,11 +170,11 @@
     perfSelect.addEventListener("change", () => localStorage.setItem("manga_agent_perf_detail", perfSelect.value));
 
     generalPanel.append(
-      settingRow("Quyền thực thi", "Chọn chế độ duyệt mặc định cho phiên làm việc mới", permSelect),
+      settingRow("Quyền hạn thực thi", "Chọn chế độ phê duyệt mặc định cho phiên làm việc mới", permSelect),
       settingRow("Phạm vi truy cập tệp (Sandbox)", "Giới hạn thư mục mà các lệnh được phép ghi", sandboxSelect),
       themeSection,
       settingRow("Tự động thu gọn bước chạy", "Chọn thời điểm tự đóng chi tiết công cụ trong Chaos", collapseSelect),
-      settingRow("Hiệu năng & mức dùng", "Mức độ hiển thị thông tin token, cache và thời gian chạy", perfSelect),
+      settingRow("Hiệu năng và mức sử dụng", "Mức độ hiển thị thông tin token, bộ nhớ đệm và thời gian thực thi", perfSelect),
     );
 
     const status = el("span", "ai-provider-status ai-settings-summary", "Đang kiểm tra cấu hình…");
@@ -191,22 +191,22 @@
     const topBar = el("div", "settings-models-topbar");
     topBar.append(providerTabsBar, defaultRow);
 
-    const customNote = el("p", "settings-intro-note", "Kết nối relay, server tự host hoặc bất kỳ endpoint tương thích OpenAI / Gemini nào qua Base URL, giao thức và danh sách model.");
-    const customId = input("acme-gateway", "Mã nhà cung cấp (Provider ID)");
+    const customNote = el("p", "settings-intro-note", "Kết nối dịch vụ trung gian, máy chủ tự lưu trữ hoặc điểm cuối tương thích OpenAI / Gemini thông qua URL gốc, giao thức và danh sách mô hình.");
+    const customId = input("acme-gateway", "Mã định danh nhà cung cấp");
     customId.pattern = "[a-z0-9][a-z0-9_-]{0,63}";
     const customLabel = input("Tên hiển thị (VD: MiniRouter)", "Tên hiển thị");
-    const customBase = input("https://gateway.example/v1", "Base URL");
+    const customBase = input("https://gateway.example/v1", "URL gốc (Base URL)");
     const customProtocol = el("select", "ui-select");
     customProtocol.setAttribute("aria-label", "Giao thức API");
     customProtocol.add(new Option("OpenAI Chat Completions", "openai"));
     customProtocol.add(new Option("Gemini API", "gemini"));
-    const customKey = input("Nhập API key của bạn", "API key", "password", "ui-input api-key-input");
+    const customKey = input("Nhập khóa API của bạn", "Khóa API", "password", "ui-input api-key-input");
     customKey.autocomplete = "new-password";
 
     const customStatus = el("span", "ai-provider-status");
     const customSave = button("Lưu nhà cung cấp", "ui-btn ui-btn-primary ui-btn-compact");
-    const customAdd = button("Thêm key");
-    customAdd.title = "Giữ các key đã lưu và thêm key này vào sau";
+    const customAdd = button("Thêm khóa");
+    customAdd.title = "Giữ lại các khóa đã lưu và bổ sung thêm khóa này";
     const customClear = button("Xóa nhà cung cấp", "ai-link-btn");
     customClear.hidden = true;
     const customActions = el("div", "ai-provider-actions");
@@ -215,11 +215,11 @@
     customActions.append(leftActions, customStatus);
 
     const modelsHeader = el("div", "settings-models-head");
-    const modelsTitle = el("strong", "settings-field-label", "Models");
-    const fetchModelsBtn = button("Tải danh sách model", "settings-fetch-btn");
+    const modelsTitle = el("strong", "settings-field-label", "Danh sách mô hình");
+    const fetchModelsBtn = button("Tải danh sách mô hình", "settings-fetch-btn");
     modelsHeader.append(modelsTitle, fetchModelsBtn);
 
-    const modelsFilter = input("Tìm nhanh model…", "Tìm model trong danh sách");
+    const modelsFilter = input("Tìm nhanh mô hình…", "Tìm mô hình trong danh sách");
     modelsFilter.className = "ui-input settings-models-filter";
     modelsFilter.hidden = true;
     const modelsBox = el("div", "settings-models-box");
@@ -227,11 +227,11 @@
     modelsPanel.append(
       topBar,
       customNote,
-      fieldBlock("Provider ID", customId, "Định danh chữ thường (a-z, 0-9, -), dùng để định danh nhà cung cấp trong request và kho khóa bảo mật."),
+      fieldBlock("Mã định danh nhà cung cấp", customId, "Định danh viết thường (a-z, 0-9, -), dùng để phân biệt nhà cung cấp trong yêu cầu và kho khóa bảo mật."),
       fieldBlock("Tên hiển thị", customLabel),
-      fieldBlock("Base URL", customBase),
+      fieldBlock("URL gốc (Base URL)", customBase),
       fieldBlock("Giao thức API", customProtocol),
-      fieldBlock("API key", customKey),
+      fieldBlock("Khóa API", customKey),
       customActions,
       modelsHeader,
       modelsFilter,
@@ -280,7 +280,7 @@
       if (!filtered.length) {
         modelsBox.className = "settings-models-box is-empty";
         modelsBox.replaceChildren(
-          el("p", "settings-models-empty", currentModelsList.length ? "Không tìm thấy model phù hợp." : "Chưa có model nào được tải. Lưu nhà cung cấp hoặc bấm 'Tải danh sách model' để lấy danh sách từ endpoint."),
+          el("p", "settings-models-empty", currentModelsList.length ? "Không tìm thấy mô hình phù hợp." : "Chưa có mô hình nào được tải. Lưu nhà cung cấp hoặc chọn 'Tải danh sách mô hình' để lấy danh sách từ máy chủ."),
         );
         return;
       }
@@ -307,25 +307,25 @@
         const typesRow = el("div", "settings-model-row");
         typesRow.append(el("span", "settings-field-help", "Loại đầu vào hỗ trợ:"));
         const checks = el("div", "settings-model-checks");
-        ["Text", "Image"].forEach((t) => {
+        [["Text", "Văn bản"], ["Image", "Hình ảnh"]].forEach(([, labelText]) => {
           const lb = el("label", "settings-check-label");
           const cb = document.createElement("input");
           cb.type = "checkbox";
           cb.checked = true;
-          lb.append(cb, el("span", "", t));
+          lb.append(cb, el("span", "", labelText));
           checks.append(lb);
         });
         typesRow.append(checks);
 
         const effortRow = el("div", "settings-model-row");
-        effortRow.append(el("span", "settings-field-help", "Mức suy luận (Reasoning level):"));
+        effortRow.append(el("span", "settings-field-help", "Mức độ suy luận:"));
         const effortSelect = el("select", "ui-select settings-row-select");
         [
-          ["", "off — Mặc định của model"],
-          ["low", "low — Thấp"],
-          ["medium", "medium — Vừa"],
-          ["high", "high — Cao"],
-          ["xhigh", "xhigh — Tối đa"],
+          ["", "Mặc định của mô hình"],
+          ["low", "Thấp (low)"],
+          ["medium", "Vừa (medium)"],
+          ["high", "Cao (high)"],
+          ["xhigh", "Tối đa (xhigh)"],
         ].forEach(([val, text]) => effortSelect.add(new Option(text, val)));
         const effortKey = `manga_agent_effort_${providerId}_${modelId}`;
         effortSelect.value = localStorage.getItem(effortKey) || "";
@@ -361,13 +361,13 @@
           localStorage.setItem(`manga_translation_vision_model_${providerId}`, models[0]);
         }
         renderModelsBox(providerId, models);
-        if (!silent) window.showToast?.(`Đã tải ${models.length} model.`, "success");
+        if (!silent) window.showToast?.(`Đã tải ${models.length} mô hình.`, "success");
       } catch (err) {
         renderModelsBox(providerId, []);
-        if (!silent) window.showToast?.("Không thể tải model: " + err.message, "error");
+        if (!silent) window.showToast?.("Không thể tải danh sách mô hình: " + err.message, "error");
       } finally {
         fetchModelsBtn.disabled = false;
-        fetchModelsBtn.textContent = "Tải danh sách model";
+        fetchModelsBtn.textContent = "Tải danh sách mô hình";
       }
     };
     fetchModelsBtn.addEventListener("click", () => fetchProviderModels(customProviderId(), false));
@@ -382,7 +382,7 @@
         customBase.value = "";
         customProtocol.value = "openai";
         customKey.value = "";
-        customKey.placeholder = "Nhập API key của bạn";
+        customKey.placeholder = "Nhập khóa API của bạn";
         customStatus.textContent = "";
         customClear.hidden = true;
         modelsFilter.value = "";
@@ -396,8 +396,8 @@
         customBase.value = info.api_base || "";
         customProtocol.value = info.protocol || "openai";
         customKey.value = "";
-        customKey.placeholder = info.configured ? "Đã lưu key — nhập key mới nếu muốn thay hoặc thêm" : "Nhập API key của bạn";
-        customStatus.textContent = info.configured ? (info.count > 1 ? `Đã kết nối · ${info.count} key` : "Đã kết nối") : "Chưa có key";
+        customKey.placeholder = info.configured ? "Đã lưu khóa — nhập khóa mới nếu muốn thay thế hoặc bổ sung" : "Nhập khóa API của bạn";
+        customStatus.textContent = info.configured ? (info.count > 1 ? `Đã kết nối · ${info.count} khóa` : "Đã kết nối") : "Chưa có khóa";
         customStatus.classList.toggle("configured", Boolean(info.configured));
         customClear.hidden = false;
         modelsFilter.value = "";
@@ -410,9 +410,9 @@
 
     const saveCustom = async (append) => {
       const id = customProviderId();
-      if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) return window.showToast?.("Provider ID dùng chữ thường, số, dấu gạch ngang hoặc gạch dưới.", "error");
+      if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) return window.showToast?.("Mã định danh nhà cung cấp chỉ gồm chữ thường, số, dấu gạch ngang hoặc gạch dưới.", "error");
       if (!customLabel.value.trim() || !customBase.value.trim() || !customKey.value.trim()) {
-        return window.showToast?.("Nhập Tên hiển thị, Base URL và API key.", "error");
+        return window.showToast?.("Vui lòng nhập Tên hiển thị, URL gốc và Khóa API.", "error");
       }
       customSave.disabled = customAdd.disabled = true;
       try {
@@ -426,7 +426,7 @@
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
         selectedProviderId = id;
-        window.showToast?.(`Đã lưu nhà cung cấp ${customLabel.value.trim()} (${data.api_base || ""}, ${data.count || 1} key).`, "success");
+        window.showToast?.(`Đã lưu nhà cung cấp ${customLabel.value.trim()} (${data.api_base || ""}, ${data.count || 1} khóa).`, "success");
         await refresh();
       } catch (err) {
         window.showToast?.("Không thể lưu nhà cung cấp: " + err.message, "error");

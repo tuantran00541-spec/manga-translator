@@ -171,7 +171,7 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   const zoomResetBtn = document.createElement("button");
   zoomResetBtn.className = "ui-btn ui-btn-compact zoom-btn zoom-reset";
   zoomResetBtn.textContent = "1:1";
-  zoomResetBtn.title = "Đặt lại zoom";
+  zoomResetBtn.title = "Đặt lại thu phóng";
   zoomBar.append(zoomOutBtn, zoomLevelText, zoomInBtn, zoomResetBtn);
   header.appendChild(zoomBar);
   card.appendChild(header);

@@ -87,7 +87,7 @@ def _snapshot_or_404(job_id: str) -> dict:
     try:
         return ai_mode_jobs.snapshot(job_id)
     except KeyError as exc:
-        raise HTTPException(404, "A.I mode job not found") from exc
+        raise HTTPException(404, "Không tìm thấy tác vụ Chế độ AI.") from exc
 
 
 def _cloud_finish_hook(job_token: str):
@@ -104,16 +104,16 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
     else:
         await run_in_threadpool(validate_url, req.url)
     if ai_mode_jobs.active_job() is not None:
-        raise HTTPException(409, "An A.I mode job is already running")
+        raise HTTPException(409, "Một tác vụ Chế độ AI khác đang chạy.")
     if req.provider == cloud.CLOUD_PROVIDER_ID:
         if req.chapter_id:
-            raise HTTPException(400, "chapter_id is local-only; Manga Cloud starts from a URL")
+            raise HTTPException(400, "chapter_id chỉ dùng cục bộ; Manga Cloud bắt đầu từ URL.")
         reservation = await run_in_threadpool(cloud.reserve_job)
         provider = cloud.cloud_provider(str(reservation.get("model") or ""))
         translate_provider_id = translate_model_name = None
         if req.translate_provider and req.translate_model:
             if req.translate_provider != cloud.CLOUD_PROVIDER_ID:
-                raise HTTPException(400, "A.I mode on Manga Cloud re-translates through Manga Cloud")
+                raise HTTPException(400, "Chế độ AI trên Manga Cloud sẽ dịch lại thông qua Manga Cloud.")
             translate_provider_id = cloud.CLOUD_PROVIDER_ID
             translate_model_name = validate_model_name(req.translate_model, default="")
         settings = AIModeSettings(
@@ -140,7 +140,7 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     if not api_key:
-        raise HTTPException(409, f"{provider.label} API key is not configured")
+        raise HTTPException(409, f"Chưa cấu hình khóa API cho {provider.label}.")
     translate_provider_id = translate_model_name = None
     if req.translate_provider and req.translate_model:
         try:
@@ -152,7 +152,7 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
         except SecretStoreUnavailable as exc:
             raise HTTPException(503, str(exc)) from exc
         if not text_api_key:
-            raise HTTPException(409, f"{text_provider.label} API key is not configured")
+            raise HTTPException(409, f"Chưa cấu hình khóa API cho {text_provider.label}.")
         translate_provider_id = text_provider.id
     settings = AIModeSettings(
         url=req.url or "", chapter_id=req.chapter_id, provider=provider.id, model=model, target_lang=req.target_lang,
@@ -182,7 +182,7 @@ async def cancel_ai_mode_job(job_id: str) -> dict:
     try:
         return ai_mode_jobs.cancel(job_id)
     except KeyError as exc:
-        raise HTTPException(404, "A.I mode job not found") from exc
+        raise HTTPException(404, "Không tìm thấy tác vụ Chế độ AI.") from exc
 
 
 class SeriesMemoryRequest(BaseModel):
