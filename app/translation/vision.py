@@ -11,7 +11,7 @@ import requests
 
 from app.ai_mode.vision_json import request_vision_json, stage_headers
 from app.box_format import scaled_box
-from app.ai_providers import AIProvider, auth_headers
+from app.ai_providers import AIProvider, auth_headers, local_provider_bypass
 from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
@@ -782,7 +782,8 @@ class VisionPageTranslator:
         if not url:
             raise ValueError("Provider does not have chat completions")
         if not self.provider.builtin:
-            validate_url(url)
+            if not local_provider_bypass(self.provider.id):
+                validate_url(url)
         payload = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": [

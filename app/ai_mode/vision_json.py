@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 
 import numpy as np
 import requests
 
-from app.ai_providers import CLOUD_PROVIDER_ID, AIProvider, auth_headers
+from app.ai_providers import CLOUD_PROVIDER_ID, AIProvider, auth_headers, local_provider_bypass
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.translation.cost import usage_cost_usd
@@ -77,7 +76,7 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
     if not url:
         raise ValueError("Provider does not have chat completions")
     if not provider.builtin:
-        if not (os.getenv("MANGA_ALLOW_LOCAL_PROVIDER") == "1" and provider.id == "qwen-local"):
+        if not local_provider_bypass(provider.id):
             validate_url(url)
     content: list[dict] = [{"type": "text", "text": prompt}]
     for label, data in encoded:

@@ -12,6 +12,7 @@ from app.ai_providers import (
     api_base_candidates,
     auth_headers,
     cloud_job_provider,
+    local_provider_bypass,
     normalize_provider_id,
     resolve_provider,
     validate_provider_label,
@@ -87,6 +88,8 @@ def _discover_api_base(provider, api_key: str):
 
 def _validate_custom_remote(provider) -> None:
     if provider.builtin:
+        return
+    if local_provider_bypass(provider.id):
         return
     if provider.chat_url is None:
         raise ValueError(

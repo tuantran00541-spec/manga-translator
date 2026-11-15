@@ -11,6 +11,7 @@ from app.config import PROCESSED_DIR, RAW_DIR
 from app.ai_providers import (
     PROVIDERS,
     cloud_job_provider,
+    local_provider_bypass,
     normalize_provider_id,
     resolve_provider,
     validate_model_name,
@@ -148,7 +149,8 @@ def _resolve_vision_provider(provider_id: str):
             normalized, label=stored.get("label"), protocol=stored.get("protocol"),
             api_base=stored.get("api_base"),
         )
-        validate_url(str(provider.chat_url))
+        if not local_provider_bypass(normalized):
+            validate_url(str(provider.chat_url))
     if not provider.supports_visual_qc:
         raise ValueError(f"{provider.label} does not support image inputs")
     return provider
@@ -169,7 +171,8 @@ def _resolve_text_provider(provider_id: str):
             normalized, label=stored.get("label"), protocol=stored.get("protocol"),
             api_base=stored.get("api_base"),
         )
-        validate_url(str(provider.chat_url))
+        if not local_provider_bypass(normalized):
+            validate_url(str(provider.chat_url))
     return provider
 
 

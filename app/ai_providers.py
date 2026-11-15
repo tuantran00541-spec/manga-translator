@@ -257,6 +257,10 @@ def auth_headers(provider: "AIProvider", api_key: str) -> dict:
     return headers
 
 
+def local_provider_bypass(provider_id: str) -> bool:
+    return os.getenv("MANGA_ALLOW_LOCAL_PROVIDER") == "1" and provider_id == "qwen-local"
+
+
 def _local_provider_allowed(parsed) -> bool:
     return (
         os.getenv("MANGA_ALLOW_LOCAL_PROVIDER") == "1"
