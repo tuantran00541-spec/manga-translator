@@ -1,0 +1,177 @@
+name: AI-mode run (Qwen local)
+
+on:
+  workflow_dispatch:
+    inputs:
+      chapter_url:
+        description: "Chapter URL to translate (exactly one of chapter_url and chapter_zip)"
+        required: false
+        default: "https://madarascans.net/logging-out-is-too-hard-chapter-19/"
+      chapter_zip:
+        description: "Repo-relative path to a chapter zip of page images (exactly one of chapter_url and chapter_zip)"
+        required: false
+        default: ""
+      provider:
+        description: "Vision provider (reads the images)"
+        required: false
+        default: "qwen-local"
+      model:
+        description: "Model id (vision: reads the images, judges role/container for font choice)"
+        required: false
+        default: "qwen3.5-0.8b"
+      translate_provider:
+        description: "Second provider that re-translates the source lines (unset = vision model's wording stands)"
+        required: false
+        default: "qwen-local"
+      translate_model:
+        description: "Second model id for re-translation"
+        required: false
+        default: "qwen3.5-0.8b"
+      target_lang:
+        description: "Target language"
+        required: false
+        default: "vi"
+      budget_usd:
+        description: "Budget in USD (custom providers do not track cost)"
+        required: false
+        default: "0.30"
+      images_per_request:
+        description: "Slices per vision request"
+        required: false
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+      MANGA_ALLOW_LOCAL_PROVIDER: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime
+        run: |
+          python -m pip install --only-binary :all: -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Restore detector and inpaint models
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Use the committed Kiuyha, not the cached one
+        run: git checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx
+
+      - name: Download LaMa when the cache has expired
+        run: |
+          test -f models/lama-manga-dynamic.onnx || curl -fsSL -o models/lama-manga-dynamic.onnx \
+            https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/lama-manga-dynamic.onnx
+          echo "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9  models/lama-manga-dynamic.onnx" | sha256sum -c
+
+      - name: Build the CTD mask model
+        uses: ./.github/actions/build-ctd
+
+      - name: Start local Qwen server
+        run: |
+          curl -fsSL -o llama.tar.gz \
+            https://github.com/ggml-org/llama.cpp/releases/download/b12389/llama-b12389-bin-ubuntu-x64.tar.gz
+          tar -xzf llama.tar.gz
+          ls llama-b12389-bin-ubuntu-x64/bin/llama-server
+          mkdir -p qwen-local
+          curl -fsSL -o qwen-local/mmproj-Qwen3.5-0.8B-F16.gguf \
+            https://huggingface.co/amkkk/Qwen3.5-0.8B-GGUF-uncensored-opus-distill/resolve/main/mmproj-Qwen3.5-0.8B-F16.gguf
+          curl -fsSL -o qwen-local/qwen3.5-0.8b-ablate-e2-opus46-postopus-runtime.Q4_K_M.gguf \
+            https://huggingface.co/amkkk/Qwen3.5-0.8B-GGUF-uncensored-opus-distill/resolve/main/qwen3.5-0.8b-ablate-e2-opus46-postopus-runtime.Q4_K_M.gguf
+          ls -la qwen-local/
+          nohup llama-b12389-bin-ubuntu-x64/bin/llama-server \
+            -m qwen-local/qwen3.5-0.8b-ablate-e2-opus46-postopus-runtime.Q4_K_M.gguf \
+            --mmproj qwen-local/mmproj-Qwen3.5-0.8B-F16.gguf \
+            --host 127.0.0.1 --port 8080 --alias qwen3.5-0.8b --ctx-size 16384 \
+            > llama.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8080/health >/dev/null && break
+            sleep 5
+          done
+          curl -fsS http://127.0.0.1:8080/v1/models
+
+      - name: Smoke-test the local Qwen vision call
+        env:
+          CHAPTER_URL: ${{ inputs.chapter_url }}
+        run: python scripts/smoke_qwen_local.py --url "$CHAPTER_URL"
+
+      - name: Wire the local Qwen provider
+        run: python scripts/wire_qwen_local_provider.py
+
+      - name: Start the app server
+        env:
+          PROVIDER: ${{ inputs.provider }}
+          TRANSLATE_PROVIDER: ${{ inputs.translate_provider }}
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8000/api/visual_qc/settings >/dev/null && break
+            sleep 5
+          done
+          curl -fsS http://127.0.0.1:8000/api/visual_qc/settings | python -c "
+          import sys, json, os
+          d = json.load(sys.stdin)
+          prov = os.environ['PROVIDER']; tr = os.environ['TRANSLATE_PROVIDER']
+          ok = d['providers'][prov]['configured'] and (not tr or d['providers'][tr]['configured'])
+          print(prov, 'configured:', d['providers'][prov]['configured'])
+          print(tr, 'configured:', d['providers'][tr]['configured'] if tr else 'n/a')
+          sys.exit(0 if ok else 1)
+          "
+
+      - name: Run the chapter
+        env:
+          CHAPTER_ZIP: ${{ inputs.chapter_zip }}
+          CHAPTER_URL: ${{ inputs.chapter_url }}
+          PROVIDER: ${{ inputs.provider }}
+          MODEL: ${{ inputs.model }}
+          TARGET_LANG: ${{ inputs.target_lang }}
+          BUDGET_USD: ${{ inputs.budget_usd }}
+          IMAGES_PER_REQUEST: ${{ inputs.images_per_request }}
+          TRANSLATE_PROVIDER: ${{ inputs.translate_provider }}
+          TRANSLATE_MODEL: ${{ inputs.translate_model }}
+        run: |
+          if [ -n "$CHAPTER_ZIP" ]; then
+            SRC_ARGS=(--chapter-zip "$CHAPTER_ZIP")
+          else
+            SRC_ARGS=(--url "$CHAPTER_URL")
+          fi
+          python scripts/ai_mode_run.py "${SRC_ARGS[@]}" --provider "$PROVIDER" --model "$MODEL" --target-lang "$TARGET_LANG" --budget-usd "$BUDGET_USD" --images-per-request "$IMAGES_PER_REQUEST" --translate-provider "$TRANSLATE_PROVIDER" --translate-model "$TRANSLATE_MODEL"
+
+      - name: Upload rendered chapter
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-mode-chapter
+          path: |
+            data/output/
+            data/processed/*/manifest.json
+            data/processed/*/clean_*.png
+            data/processed/*/auto_clean_*.png
+            server.log
+            llama.log
+          if-no-files-found: warn
