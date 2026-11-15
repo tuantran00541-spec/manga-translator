@@ -138,12 +138,12 @@ def main():
     ch = args.chapter
     vi_paths = sorted(os.path.join(VI_DIR, f"ch{ch}", f)
                       for f in os.listdir(os.path.join(VI_DIR, f"ch{ch}"))
-                      if f.endswith((".webp", ".jpg", ".png")))
+                      if f.endswith((".webp", ".jpg", ".jpeg", ".png")))
     zf = zipfile.ZipFile(os.path.join(EN_ZIPS, f"nano-machine-ch{int(ch):03d}.zip"))
     tmpd = tempfile.mkdtemp(prefix=f"en-ch{ch}-")
     zf.extractall(tmpd)
     en_paths = sorted(os.path.join(tmpd, f) for f in os.listdir(tmpd)
-                      if f.lower().endswith((".webp", ".jpg", ".png")))
+                      if f.lower().endswith((".webp", ".jpg", ".jpeg", ".png")))
     if args.limit:
         vi_paths, en_paths = vi_paths[:args.limit], en_paths[:args.limit]
     print(f"ch{ch}: VI {len(vi_paths)} imgs, EN {len(en_paths)} imgs", flush=True)
