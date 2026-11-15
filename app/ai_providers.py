@@ -257,6 +257,14 @@ def auth_headers(provider: "AIProvider", api_key: str) -> dict:
     return headers
 
 
+def _local_provider_allowed(parsed) -> bool:
+    return (
+        os.getenv("MANGA_ALLOW_LOCAL_PROVIDER") == "1"
+        and parsed.scheme == "http"
+        and (parsed.hostname or "") in {"127.0.0.1", "localhost", "::1"}
+    )
+
+
 def validate_api_base(value: str | None) -> str:
     try:
         pasted = urlparse((value or "").strip() if "://" in (value or "") else "https://" + (value or "").strip())
@@ -272,7 +280,8 @@ def validate_api_base(value: str | None) -> str:
     except ValueError as exc:
         raise ValueError("AI API base URL is invalid") from exc
     if parsed.scheme != "https" or not parsed.hostname:
-        raise ValueError("AI API base URL must be a public HTTPS URL")
+        if not _local_provider_allowed(parsed):
+            raise ValueError("AI API base URL must be a public HTTPS URL")
     return api_base
 
 

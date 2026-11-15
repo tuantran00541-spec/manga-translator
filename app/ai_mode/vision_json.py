@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -76,7 +77,8 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
     if not url:
         raise ValueError("Provider does not have chat completions")
     if not provider.builtin:
-        validate_url(url)
+        if not (os.getenv("MANGA_ALLOW_LOCAL_PROVIDER") == "1" and provider.id == "qwen-local"):
+            validate_url(url)
     content: list[dict] = [{"type": "text", "text": prompt}]
     for label, data in encoded:
         content.append({"type": "text", "text": label})
