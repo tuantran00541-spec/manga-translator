@@ -40,6 +40,9 @@ from app.parameters import (
     INPAINT_NATIVE_TILE_MASK_AREA_MIN,
     INPAINT_SIZE,
     INPAINTER,
+    LAMA_MASK_DILATE_MAX,
+    LAMA_MASK_DILATE_MIN,
+    LAMA_MASK_DILATE_SCALE,
     MANUAL_DILATION_SCALE,
     MANUAL_MAX_DILATION,
     MANUAL_MIN_DILATION,
@@ -559,6 +562,13 @@ class Inpainter:
                    feather: bool = False, hole: np.ndarray | None = None) -> np.ndarray:
         if self._use_migan:
             return self._migan_fill(image, crop, local_mask, crop_box, feather=feather, hole=hole)
+        if hole is None:
+            ys, xs = np.where(local_mask > 127)
+            if len(ys):
+                side = min(int(ys.max()) - int(ys.min()) + 1, int(xs.max()) - int(xs.min()) + 1)
+                radius = int(np.clip(round(side * LAMA_MASK_DILATE_SCALE), LAMA_MASK_DILATE_MIN, LAMA_MASK_DILATE_MAX))
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
+                local_mask = cv2.dilate(local_mask, kernel, iterations=1)
         self._ensure_session()
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]

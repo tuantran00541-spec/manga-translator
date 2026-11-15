@@ -36,6 +36,7 @@ MASKLESS_PIECE_PX = 20
 MASKLESS_PIECE_SHARE = 0.25
 MASKLESS_DARK_DROP = 25
 MASKLESS_SMALL_BOX_AREA = 15000
+MASKLESS_MIN_COVERAGE = 0.02
 ROTATED_MIN_SCORE = PAGE_CONFIDENCE
 RESCUE_MIN_SCORE = 0.10
 RESCUE_WORD_MAX_W = 80
@@ -865,7 +866,7 @@ class KiuyhaTextDetector:
         for x1, y1, x2, y2, score in self._raw_slice_boxes(image):
             core = (x1, y1, x2, y2)
             (x1, y1, x2, y2), mask, letters = letter_mask(image, core, with_letters=True)
-            if mask.any():
+            if mask.any() and float(mask.sum()) / max(1, mask.size) >= MASKLESS_MIN_COVERAGE:
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model, letters, core=core))
                 cores.append(core)
             elif (score >= MASKLESS_MIN_SCORE and y2 > y1 and x2 > x1
