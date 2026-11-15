@@ -38,13 +38,38 @@ def fetch(url, referer=None, tries=3):
     raise last
 
 
+def valid_image(data):
+    """Magic-byte check: a throttled image fetch can return an HTML error
+    page (HTTP 200) or truncated bytes, which only crashes later in
+    build_dataset2.py (PIL UnidentifiedImageError). Catch it here.
+    """
+    if not data or len(data) < 12:
+        return False
+    if data[:3] == b"\xff\xd8\xff":
+        return True
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return True
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return True
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return True
+    return False
+
+
 def fetch_one(args):
     url, referer = args
-    try:
-        return fetch(url, referer)
-    except Exception as e:
-        print(f"  FAIL {url}: {e}", flush=True)
-        return None
+    for attempt in range(3):
+        try:
+            data = fetch(url, referer)
+        except Exception as e:
+            print(f"  FAIL {url}: {e}", flush=True)
+            data = None
+        if data and valid_image(data):
+            return data
+        print(f"  RETRY {url}: bad image bytes (attempt {attempt + 1}/3)", flush=True)
+        time.sleep(5 * (attempt + 1))
+    print(f"  FAIL {url}: image never validated", flush=True)
+    return None
 
 
 def main():
