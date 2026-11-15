@@ -1,0 +1,63 @@
+name: EN+VI pilot EN crops
+
+# Follow-up to the DP re-pair: cut EN crops for pairs whose EN boxes the
+# build workflow never cut (it only crops its own greedy pairs). Re-downloads
+# the EN chapter on the runner (MangaOwl) and cuts from the committed
+# DP-repaired pairs file.
+on:
+  workflow_dispatch:
+    inputs:
+      chapters_json:
+        description: "Chapter numbers as a JSON array, e.g. [1,2,3]"
+        required: true
+        default: "[1,2,3,4,5,6,7,8,9,10]"
+      en_slug:
+        description: "MangaOwl series slug"
+        required: true
+        default: "heavenly-demon-cultivation-simulation"
+      pairs_prefix:
+        description: "Pairs file prefix under scripts/nano_sft/data/"
+        required: true
+        default: "pilot-repaired"
+
+permissions:
+  contents: read
+
+jobs:
+  encrops:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        chapter: ${{ fromJSON(inputs.chapters_json) }}
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: |
+          python -m pip install --only-binary :all: Pillow==10.4.0
+
+      - name: Download EN chapter (MangaOwl)
+        run: python3 scripts/nano_sft/download_en_mangaowl.py ${{ inputs.en_slug }} ${{ matrix.chapter }} en-zips
+
+      - name: Cut EN crops
+        run: |
+          PAIRS="scripts/nano_sft/data/${{ inputs.pairs_prefix }}-ch${{ matrix.chapter }}.jsonl"
+          [ -f "$PAIRS" ] || { echo "pairs file missing: $PAIRS"; exit 1; }
+          python3 scripts/nano_sft/cut_en_crops.py "$PAIRS" en-zips/nano-machine-ch$(printf "%03d" ${{ matrix.chapter }}).zip encrops ${{ matrix.chapter }}
+
+      - name: Upload EN crops
+        uses: actions/upload-artifact@v4
+        with:
+          name: en-vi-pilot-encrops-ch${{ matrix.chapter }}
+          path: |
+            encrops/en-crops/
+          if-no-files-found: error
+          retention-days: 30
