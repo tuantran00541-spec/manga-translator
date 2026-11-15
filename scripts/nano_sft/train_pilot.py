@@ -102,6 +102,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pairs", nargs="+", required=True)
     ap.add_argument("--model", default="huihui-ai/Huihui-Qwen3.5-0.8B-abliterated")
+    ap.add_argument("--init-adapter", default="")
     ap.add_argument("--out", default="pilot-out")
     ap.add_argument("--epochs", type=float, default=2.0)
     ap.add_argument("--batch", type=int, default=1)
@@ -122,12 +123,16 @@ def main():
     model.config.use_cache = False
     print(f"model loaded in {time.time() - t0:.0f}s", flush=True)
 
-    from peft import LoraConfig, get_peft_model
-    cfg = LoraConfig(r=args.lora_r, lora_alpha=args.lora_r * 2,
-                     lora_dropout=0.0, bias="none", task_type="CAUSAL_LM",
-                     target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                                     "gate_proj", "up_proj", "down_proj"])
-    model = get_peft_model(model, cfg)
+    from peft import LoraConfig, get_peft_model, PeftModel
+    if args.init_adapter:
+        model = PeftModel.from_pretrained(model, args.init_adapter, is_trainable=True)
+        print(f"continued from adapter {args.init_adapter}", flush=True)
+    else:
+        cfg = LoraConfig(r=args.lora_r, lora_alpha=args.lora_r * 2,
+                         lora_dropout=0.0, bias="none", task_type="CAUSAL_LM",
+                         target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                                         "gate_proj", "up_proj", "down_proj"])
+        model = get_peft_model(model, cfg)
     model.print_trainable_parameters()
     for name, p in model.named_parameters():
         if "vision_tower" in name or "multi_modal_projector" in name:

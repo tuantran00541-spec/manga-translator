@@ -17,6 +17,11 @@ on:
         required: false
         default: ""
         type: string
+      init_adapter_run_id:
+        description: "nano-sft-text-stage run id whose nano-sft-text artifact holds the stage-1 adapter (empty = fresh LoRA)"
+        required: false
+        default: ""
+        type: string
       max_pairs:
         description: "pairs to train on (pilot)"
         required: false
@@ -69,6 +74,18 @@ jobs:
         run: |
           unzip -o -q "${{ inputs.crops_zip }}" -d .
           ls crops/ | wc -l
+      - name: Download stage-1 adapter (optional)
+        if: ${{ inputs.init_adapter_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          id=$(gh api "repos/${{ github.repository }}/actions/runs/${{ inputs.init_adapter_run_id }}/artifacts" --jq '.artifacts[] | select(.name == "nano-sft-text") | .id')
+          [ -n "$id" ] || { echo "no nano-sft-text artifact on run ${{ inputs.init_adapter_run_id }}"; exit 1; }
+          gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > init-adapter.zip
+          mkdir -p init-adapter
+          unzip -o -q init-adapter.zip -d init-adapter
+          ls init-adapter/text-out/
       - name: LoRA pilot train
         run: |
           if [ -n "${{ inputs.data_file }}" ]; then
@@ -76,9 +93,14 @@ jobs:
           else
             pairs="ch*.jsonl"
           fi
+          init_arg=""
+          if [ -n "${{ inputs.init_adapter_run_id }}" ]; then
+            init_arg="--init-adapter init-adapter/text-out"
+          fi
           python3 scripts/nano_sft/train_pilot.py \
             --pairs $pairs \
             --model huihui-ai/Huihui-Qwen3.5-0.8B-abliterated \
+            $init_arg \
             --out pilot-out \
             --max-pairs "${{ inputs.max_pairs }}" \
             --epochs "${{ inputs.epochs }}" \
