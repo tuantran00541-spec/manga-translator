@@ -52,7 +52,7 @@ jobs:
       - name: Install training deps
         run: |
           pip install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install --quiet "transformers>=4.57" peft accelerate pillow
+          pip install --quiet "transformers==5.23.0" peft accelerate pillow
           python3 -c "import torch, transformers, peft; print('torch', torch.__version__, 'transformers', transformers.__version__, 'peft', peft.__version__)"
       - name: Download pairs artifacts from data-build run
         if: ${{ inputs.data_run_id != '' }}
@@ -104,7 +104,7 @@ jobs:
             --out pilot-out \
             --max-pairs "${{ inputs.max_pairs }}" \
             --epochs "${{ inputs.epochs }}" \
-            --batch 1 --accum 4 --lora-r 16 --lr 1e-4 \
+            --batch 1 --accum 8 --lr 5e-5 \
             --dtype float32 2>&1 | tee pilot-train.log
           echo "--- pilot report ---"
           cat pilot-out/pilot-report.json
