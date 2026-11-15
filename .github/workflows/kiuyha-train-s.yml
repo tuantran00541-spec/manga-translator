@@ -1,5 +1,5 @@
 name: Kiuyha train S
-# round-7 S (2026-11-15): chain from round-6 S weights (run 43660073959, 1 ep, mAP50-95 0.611)
+# round-8 S (2026-11-15): OPTIMIZED - imgsz 640 + epochs 2 (cos_lr anneals over real run length) + batch 16 + workers 4; chain from round-7 S (run 43689846160, 1 ep, mAP50-95 0.673)
 
 on:
   push:
@@ -17,7 +17,7 @@ env:
   PYTHONPATH: "."
   PYTHONUNBUFFERED: "1"
   DATA_RELEASE: "kiuyha-data-r4-v1"
-  START_RUN: "43660073959"
+  START_RUN: "43689846160"
 
 jobs:
   tune:
@@ -68,8 +68,8 @@ jobs:
       - name: Tune
         run: |
           sed -i "s#^path: .*#path: $PWD/kiuyha-data#" kiuyha-data/data.yaml
-          yolo detect train model=start.pt data=kiuyha-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
-            time=5.5 epochs=40 patience=100 freeze=0 optimizer=AdamW lr0=0.0005 cos_lr=True \
+          yolo detect train model=start.pt data=kiuyha-data/data.yaml imgsz=640 batch=16 workers=4 device=cpu \
+            time=5.5 epochs=2 patience=100 freeze=0 optimizer=AdamW lr0=0.0005 cos_lr=True \
             degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
       - name: Keep the weights
         if: always()
