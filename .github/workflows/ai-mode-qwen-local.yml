@@ -97,14 +97,14 @@ jobs:
           curl -fsSL -o llama.tar.gz \
             https://github.com/ggml-org/llama.cpp/releases/download/b12389/llama-b12389-bin-ubuntu-x64.tar.gz
           tar -xzf llama.tar.gz
-          ls llama-b12389-bin-ubuntu-x64/bin/llama-server
+          ls llama-b12389/llama-server
           mkdir -p qwen-local
           curl -fsSL -o qwen-local/mmproj-Qwen3.5-0.8B-F16.gguf \
             https://huggingface.co/amkkk/Qwen3.5-0.8B-GGUF-uncensored-opus-distill/resolve/main/mmproj-Qwen3.5-0.8B-F16.gguf
           curl -fsSL -o qwen-local/qwen3.5-0.8b-ablate-e2-opus46-postopus-runtime.Q4_K_M.gguf \
             https://huggingface.co/amkkk/Qwen3.5-0.8B-GGUF-uncensored-opus-distill/resolve/main/qwen3.5-0.8b-ablate-e2-opus46-postopus-runtime.Q4_K_M.gguf
           ls -la qwen-local/
-          nohup llama-b12389-bin-ubuntu-x64/bin/llama-server \
+          nohup llama-b12389/llama-server \
             -m qwen-local/qwen3.5-0.8b-ablate-e2-opus46-postopus-runtime.Q4_K_M.gguf \
             --mmproj qwen-local/mmproj-Qwen3.5-0.8B-F16.gguf \
             --host 127.0.0.1 --port 8080 --alias qwen3.5-0.8b --ctx-size 16384 \
