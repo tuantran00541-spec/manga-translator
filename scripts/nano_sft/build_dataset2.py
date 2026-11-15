@@ -158,6 +158,7 @@ def main():
         print(f"  VI {os.path.basename(vi_paths[vi_i])} -> EN {os.path.basename(en_paths[en_i])} y0={y0} score={sc:.2f}", flush=True)
     pairs = []
     unpaired = 0
+    vi_sizes = [Image.open(p).size for p in vi_paths]
     for vi_i, (en_i, y0, sc) in sorted(matches.items()):
         vw, vh = vi_sizes[vi_i]
         vi_items = vi[vi_i]
@@ -190,7 +191,6 @@ def main():
     os.makedirs(crops_dir, exist_ok=True)
     # image sizes for the scaled re-pair step (VI pages vary in width;
     # the re-pair scales VI boxes by en_w/vi_w, so it needs both widths)
-    vi_sizes = [Image.open(p).size for p in vi_paths]
     en_sizes = [Image.open(p).size for p in en_paths]
     for p in pairs:
         ep = os.path.join(tmpd, p["en_img"])
