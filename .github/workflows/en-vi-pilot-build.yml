@@ -22,6 +22,10 @@ on:
         description: "MangaOwl series slug"
         required: true
         default: "heavenly-demon-cultivation-simulation"
+      en_host:
+        description: "EN host: mangaowl or mangace"
+        required: false
+        default: "mangaowl"
 
 permissions:
   contents: read
@@ -73,8 +77,13 @@ jobs:
       - name: Use the committed Kiuyha
         run: git checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx
 
-      - name: Download EN chapter (MangaOwl)
-        run: python3 scripts/nano_sft/download_en_mangaowl.py ${{ inputs.en_slug }} ${{ matrix.chapter }} en-zips
+      - name: Download EN chapter
+        run: |
+          if [ "${{ inputs.en_host }}" = "mangace" ]; then
+            python3 scripts/nano_sft/download_en_mangace.py ${{ inputs.en_slug }} ${{ matrix.chapter }} en-zips
+          else
+            python3 scripts/nano_sft/download_en_mangaowl.py ${{ inputs.en_slug }} ${{ matrix.chapter }} en-zips
+          fi
 
       - name: Download VI chapter (NetTruyen ajax)
         run: python3 scripts/nano_sft/download_vi_series.py ${{ inputs.vi_slug }} ${{ matrix.chapter }} vi
