@@ -1,0 +1,97 @@
+name: EN+VI pilot data build
+
+# One series, first N chapters, both sides:
+#   VI: NetTruyen ajax POST /ajax/image/list/chap/<id> (series-page lookup)
+#   EN: MangaOwl Madara chapter pages (wp-manga-chapter-img srcs, zipped
+#       under the nano-machine-chNNN.zip name so build_dataset2.py is reused
+#       unchanged)
+# Then Kiuyha detect + tesseract placeholder text + visual page matching,
+# exactly like the Nano build. Vision reads / re-pair / verify run locally.
+on:
+  workflow_dispatch:
+    inputs:
+      chapters_json:
+        description: "Chapter numbers as a JSON array, e.g. [1,2,3]"
+        required: true
+        default: "[1,2,3,4,5,6,7,8,9,10]"
+      vi_slug:
+        description: "NetTruyen series slug"
+        required: true
+        default: "thien-ma-phi-thang-truyen"
+      en_slug:
+        description: "MangaOwl series slug"
+        required: true
+        default: "heavenly-demon-cultivation-simulation"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        chapter: ${{ fromJSON(inputs.chapters_json) }}
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install processing runtime
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 \
+            beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 playwright-stealth==2.0.3 fastapi==0.115.0 \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.20
+
+      - name: Install tesseract (vie+eng)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-vie tesseract-ocr-eng
+
+      - name: Restore detector models
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Use the committed Kiuyha
+        run: git checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx
+
+      - name: Download EN chapter (MangaOwl)
+        run: python3 scripts/nano_sft/download_en_mangaowl.py ${{ inputs.en_slug }} ${{ matrix.chapter }} en-zips
+
+      - name: Download VI chapter (NetTruyen ajax)
+        run: python3 scripts/nano_sft/download_vi_series.py ${{ inputs.vi_slug }} ${{ matrix.chapter }} vi
+
+      - name: Build pairs
+        env:
+          NANO_VI_DIR: vi
+          NANO_EN_ZIPS: en-zips
+        run: python3 scripts/nano_sft/build_dataset2.py ${{ matrix.chapter }} --out pairs2
+
+      - name: Upload pairs + crops
+        uses: actions/upload-artifact@v4
+        with:
+          name: en-vi-pilot-ch${{ matrix.chapter }}
+          path: |
+            pairs2/ch${{ matrix.chapter }}.jsonl
+            pairs2/ch${{ matrix.chapter }}-debug.json
+            pairs2/crops/${{ matrix.chapter }}/
+          if-no-files-found: error
+          retention-days: 30
