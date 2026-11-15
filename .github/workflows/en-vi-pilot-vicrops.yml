@@ -1,0 +1,75 @@
+name: EN+VI pilot VI crops
+
+# Follow-up to en-vi-pilot-build (run id in data_run_id): for each chapter,
+# download that run's pairs artifact + re-download the VI chapter images on
+# the runner, cut VI crops per pair, record VI image sizes for the re-pair
+# step. VI images never touch the VM (NetTruyen throttles VM egress).
+on:
+  workflow_dispatch:
+    inputs:
+      data_run_id:
+        description: "Run id of the en-vi-pilot-build run (e.g. 43668908460)"
+        required: true
+      chapters_json:
+        description: "Chapter numbers as a JSON array, e.g. [1,2,3]"
+        required: true
+        default: "[1,2,3,4,5,6,7,8,9,10]"
+      vi_slug:
+        description: "NetTruyen series slug"
+        required: true
+        default: "thien-ma-phi-thang-truyen"
+
+permissions:
+  contents: read
+
+jobs:
+  vicrops:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        chapter: ${{ fromJSON(inputs.chapters_json) }}
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: python -m pip install --only-binary :all: Pillow==10.4.0
+
+      - name: Download pairs artifact for this chapter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          id=$(gh api "repos/${{ github.repository }}/actions/runs/${{ inputs.data_run_id }}/artifacts" --jq '.artifacts[] | select(.name == "en-vi-pilot-ch${{ matrix.chapter }}") | .id')
+          [ -n "$id" ] || { echo "no en-vi-pilot-ch${{ matrix.chapter }} artifact on run ${{ inputs.data_run_id }}"; exit 1; }
+          gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > a.zip
+          mkdir -p pairs
+          unzip -o -q a.zip -d pairs
+          ls pairs
+
+      - name: Download VI chapter (NetTruyen ajax)
+        run: python3 scripts/nano_sft/download_vi_series.py ${{ inputs.vi_slug }} ${{ matrix.chapter }} vi
+
+      - name: Cut VI crops + record sizes
+        run: |
+          PAIRS=$(find pairs -name "ch${{ matrix.chapter }}.jsonl" | head -1)
+          [ -n "$PAIRS" ] || { echo "pairs jsonl not found under pairs/"; find pairs; exit 1; }
+          echo "pairs file: $PAIRS"
+          python3 scripts/nano_sft/cut_vi_crops.py "$PAIRS" vi/ch${{ matrix.chapter }} vicrops
+
+      - name: Upload VI crops + sizes
+        uses: actions/upload-artifact@v4
+        with:
+          name: en-vi-pilot-vicrops-ch${{ matrix.chapter }}
+          path: |
+            vicrops/vi-crops/
+            vicrops/vi_sizes.json
+          if-no-files-found: error
+          retention-days: 30
