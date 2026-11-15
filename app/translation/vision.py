@@ -206,13 +206,6 @@ def _salvage_translation_entries(choice: dict, expected_ids: set[str]) -> list[d
     return salvaged
 
 
-def _salvage_translations(choice: dict, expected_ids: set[str]) -> dict[str, str]:
-    return {
-        entry["id"]: entry["translated_text"]
-        for entry in _salvage_translation_entries(choice, expected_ids)
-    }
-
-
 def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[str, str], dict[str, dict], dict]:
     source = str(content or "").strip()
     if source.startswith(chr(96) * 3):

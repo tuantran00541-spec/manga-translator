@@ -343,10 +343,28 @@ def check_undefined_python_names() -> None:
         "__loader__", "__cached__", "__builtins__", "__path__",
     }
     failures: list[str] = []
+    # The agent mixins share public constants through this module. Resolve its
+    # wildcard imports statically instead of treating every imported name as
+    # undefined (and without executing application code during the check).
+    config_tree = ast.parse(Path("app/agent/session_config.py").read_text(encoding="utf-8"))
+    config_exports: set[str] = set()
+    for item in config_tree.body:
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            config_exports.add(item.name)
+        elif isinstance(item, (ast.Assign, ast.AnnAssign)):
+            targets = item.targets if isinstance(item, ast.Assign) else [item.target]
+            config_exports.update(node.id for target in targets for node in ast.walk(target)
+                                  if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store))
+        elif isinstance(item, (ast.Import, ast.ImportFrom)):
+            config_exports.update(alias.asname or alias.name.split(".")[0] for alias in item.names if alias.name != "*")
+    config_exports = {name for name in config_exports if not name.startswith("_")}
     for path in PYTHON_PATHS:
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(path))
         defined = _defined_names(tree)
+        if any(isinstance(node, ast.ImportFrom) and node.module == "app.agent.session_config"
+               and any(alias.name == "*" for alias in node.names) for node in ast.walk(tree)):
+            defined.update(config_exports)
         for node in ast.walk(tree):
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                 if node.id not in defined and node.id not in allowed:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 
 from fastapi import HTTPException
 
+from app.ai_mode.job_compat import _j
 from app import series_memory
 from app.config import OUTPUT_DIR, PROCESSED_DIR
 from app.manifest_utils import (
@@ -14,13 +14,6 @@ from app.manifest_utils import (
     load_manifest_raw,
     save_manifest_raw,
 )
-
-
-def _j(name: str, fallback=None):
-    job_mod = sys.modules.get("app.ai_mode.job")
-    if job_mod is not None and hasattr(job_mod, name):
-        return getattr(job_mod, name)
-    return fallback
 
 
 class AIModeRenderingMixin:

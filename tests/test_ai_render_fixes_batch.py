@@ -27,7 +27,6 @@ from app.translation.vision import (
     _line_is_bare_scream,
     _line_is_english,
     _salvage_translation_entries,
-    _salvage_translations,
 )
 
 FONT = "dialogue.mac-dinh-3"
@@ -557,7 +556,7 @@ def test_vision_salvage_entries_preserves_metadata_and_language_filters_protect_
     assert entries[0]["container"] == "spiky"
     assert entries[0]["color"] == "red"
     assert entries[0]["enlarge"] is True
-    assert _salvage_translations({"message": {"content": truncated}}, {"b1", "b2"}) == {"b1": "Khoan đã!"}
+    assert {entry["id"]: entry["translated_text"] for entry in entries} == {"b1": "Khoan đã!"}
 
     assert _line_is_english("CON TO") is False
     assert _line_is_english("BA ME") is False

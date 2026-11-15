@@ -70,9 +70,12 @@ def check_runtime_geometry() -> None:
         mask = np.zeros(image.shape[:2], np.uint8)
         mask[60:140, 40:680] = 255
         painted = painter._lama_fill(image.copy(), image.copy(), mask, (0, 0, 716, 203))
-        assert len(calls) == 2 and all(w == 512 for h, w in calls)
+        if dynamic:
+            assert len(calls) == 1 and max(calls[0]) == 512, "Dynamic LaMa must scale this flat crop in one pass"
+        else:
+            assert len(calls) == 2 and all(w == 512 for h, w in calls), "Fixed LaMa must tile this long crop"
         assert np.array_equal(painted[mask == 0], image[mask == 0])
-        assert np.all(painted[mask > 127] >= 200), "Tiled blend left an unpainted seam"
+        assert np.all(painted[64:136, 44:676] >= 200), "Painted mask interior contains an unpainted seam"
         calls.clear()
         with patch.object(painter, "_lama_fill_tiled", side_effect=AssertionError("Small crop tiled")):
             painter._lama_fill(image[:, :400].copy(), image[:, :400].copy(),
@@ -91,7 +94,7 @@ def _require(path: str, *needles: str) -> None:
 
 def main() -> None:
     _require(
-        "app/pipeline_editing.py",
+        "app/pipeline_masks.py",
         "if overlap_context_only and not geometry_overridden:",
         "if not (safe_to_inpaint or geometry_overridden or explicit_manual):",
         "safe_to_inpaint=safe_to_inpaint",

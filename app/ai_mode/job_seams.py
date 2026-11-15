@@ -1,25 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 
 import requests
 from fastapi import HTTPException
 
 from app.ai_mode.checkpoints import _covered
+from app.ai_mode.job_compat import _j
 from app.manifest_utils import (
     get_manifest_lock,
     invalidate_page_render,
     load_manifest_raw,
     save_manifest_raw,
 )
-
-
-def _j(name: str, fallback=None):
-    job_mod = sys.modules.get("app.ai_mode.job")
-    if job_mod is not None and hasattr(job_mod, name):
-        return getattr(job_mod, name)
-    return fallback
 
 
 class AIModeSeamsMixin:

@@ -56,8 +56,8 @@ assert(shell.includes('window.createAIProviderSettings?.()'), 'AI provider setti
 assert(!review.includes('  refreshSrcData();\n\n  img.addEventListener("load"'), 'Review must not decode full source pixels on every page mount');
 assert(!review.includes('setupGeminiQCSettings'), 'legacy Gemini-only settings path must be removed');
 assert(!reviewWorkspace.includes('mountGeminiSettings'), 'multi-provider settings must not retain a Gemini-only mount path');
-assert(reviewWorkspace.includes('ai-custom-provider-form'), 'Settings must expose a custom provider form');
-assert(reviewWorkspace.includes('Mã này đã dành riêng'), 'custom provider form must reject built-in provider IDs');
+assert(reviewWorkspace.includes('const customBase = input(') && reviewWorkspace.includes('customSave.addEventListener("click"'), 'Settings must expose and save a custom provider form');
+assert(reviewWorkspace.includes('if (builtinProviders.includes(id)) id = `${id}-custom`'), 'custom provider IDs must not overwrite built-in providers');
 assert(reviewWorkspace.includes('provider_api_base'), 'custom provider settings must save its OpenAI-compatible API root');
 assert(reviewWorkspace.includes('remove_config=true'), 'custom provider settings must support removing its configuration');
 assert(reviewWorkspace.includes('syncAIProviderSelects'), 'custom providers must be synchronized into feature selectors');
