@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import os
+import threading
+import time
 from dataclasses import replace
 
 import requests
@@ -33,6 +36,22 @@ from app.security import validate_url
 from app.visual_qc.gemini import DEFAULT_GEMINI_MODEL
 
 router = APIRouter(prefix="/api/visual_qc", tags=["visual-qc"])
+
+_MODELS_CACHE_TTL_SECONDS = 300.0
+_MODELS_CACHE_MAX_ENTRIES = 64
+_MODELS_CACHE_LOCK = threading.Lock()
+_MODELS_CACHE: dict[tuple[str, str, str, str], tuple[float, dict]] = {}
+
+
+def clear_models_cache(provider_id: str | None = None) -> None:
+    """Clear cached provider model lists, all entries or for one provider."""
+    with _MODELS_CACHE_LOCK:
+        if not provider_id:
+            _MODELS_CACHE.clear()
+            return
+        normalized = normalize_provider_id(provider_id)
+        for key in [k for k in _MODELS_CACHE if k[0] == normalized]:
+            _MODELS_CACHE.pop(key, None)
 
 
 def _resolve_configured_provider(provider_id: str):
@@ -196,6 +215,7 @@ def save_provider_key(provider_id: str, req: VisualQCKeyRequest) -> dict:
         raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
+    clear_models_cache(normalized)
     result = {
         "configured": True,
         "source": "os_secure_storage",
@@ -236,6 +256,7 @@ def clear_provider_key(
         raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
+    clear_models_cache(normalized)
     return {
         "configured": False,
         "source": "none",
@@ -244,7 +265,7 @@ def clear_provider_key(
 
 
 @router.get("/providers/{provider_id}/models")
-def list_provider_models(provider_id: str) -> dict:
+def list_provider_models(provider_id: str, refresh: bool = False) -> dict:
     try:
         provider = _resolve_configured_provider(provider_id)
         api_key = get_provider_api_key(
@@ -257,6 +278,20 @@ def list_provider_models(provider_id: str) -> dict:
         raise HTTPException(503, str(exc)) from exc
     if not api_key:
         raise HTTPException(409, f"{provider.label} API key is not configured")
+
+    key_digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+    cache_key = (provider.id, provider.models_url or "", provider.protocol, key_digest)
+    now = time.monotonic()
+    if not refresh:
+        with _MODELS_CACHE_LOCK:
+            cached = _MODELS_CACHE.get(cache_key)
+            if cached and (now - cached[0]) < _MODELS_CACHE_TTL_SECONDS:
+                entry = cached[1]
+                return {
+                    "provider": entry["provider"],
+                    "provider_label": entry["provider_label"],
+                    "models": list(entry["models"]),
+                }
 
     headers = {"Accept": "application/json"}
     if provider.protocol == "gemini":
@@ -303,8 +338,21 @@ def list_provider_models(provider_id: str) -> dict:
             model_id = model_id[7:]
         if model_id:
             models.append(model_id)
-    return {
+    result = {
         "provider": provider.id,
         "provider_label": provider.label,
         "models": sorted(set(models))[:500],
     }
+    with _MODELS_CACHE_LOCK:
+        if len(_MODELS_CACHE) >= _MODELS_CACHE_MAX_ENTRIES:
+            oldest_key = min(_MODELS_CACHE, key=lambda k: _MODELS_CACHE[k][0])
+            _MODELS_CACHE.pop(oldest_key, None)
+        _MODELS_CACHE[cache_key] = (
+            time.monotonic(),
+            {
+                "provider": result["provider"],
+                "provider_label": result["provider_label"],
+                "models": tuple(result["models"]),
+            },
+        )
+    return result

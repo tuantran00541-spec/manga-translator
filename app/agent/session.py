@@ -218,6 +218,8 @@ class AgentSessionManager:
         self.list_providers = None
         self.trust = trust or context.TrustStore(store_dir / "trust.json" if store_dir else None)
         self.sessions: dict[str, AgentSession] = {}
+        self._listing_lock = threading.Lock()
+        self._meta_cache: dict[str, tuple[str, int, int, dict]] = {}
         _harden_process()
         if store_dir is not None:
             sandbox.EXTRA_DENY.append(str(store_dir))
@@ -252,26 +254,107 @@ class AgentSessionManager:
             raise KeyError(session_id)
         return json.loads(path.read_text(encoding="utf-8"))
 
+    def saved_snapshot(self, session_id: str, provider_label: str = "") -> dict:
+        data = self.saved(session_id)
+        mode, network = (data.get("sandbox") or ["workspace-write", False])[:2]
+        usage = data.get("usage") or {}
+        prompt = int(usage.get("prompt_tokens") or 0)
+        cached = int(usage.get("cached_tokens") or 0)
+        model = str(data.get("model") or "")
+        provider_id = str(data.get("provider") or "")
+        goal = data.get("goal")
+        return {
+            "id": str(data.get("id") or session_id),
+            "status": "idle",
+            "saved_only": True,
+            "provider": provider_id,
+            "provider_label": provider_label or provider_id,
+            "model": model,
+            "mode": data.get("mode") if data.get("mode") in MODES else "edits",
+            "workspace": str(data.get("workspace") or ""),
+            "title": str(data.get("title") or ""),
+            "sandbox": {"mode": mode, "network": bool(network), "backend": sandbox.backend()},
+            "text_tools": bool(data.get("text_tools")),
+            "usage": dict(usage),
+            "stats": {
+                "model_seconds": 0,
+                "tool_seconds": 0,
+                "cache_pct": round(100 * cached / prompt) if prompt else 0,
+                "cost": None,
+            },
+            "live": None,
+            "pending": None,
+            "todos": list(data.get("todos") or []),
+            "key_prompt": None,
+            "keys": 1,
+            "plan_mode": bool(data.get("plan_mode")),
+            "effort": str(data.get("effort") or ""),
+            "goal": str(goal.get("text", "")) if isinstance(goal, dict) else None,
+            "queued": 0,
+            "rate_limited": {},
+            "info_rev": "",
+            "events": list(data.get("events") or []),
+        }
+
     def listing(self) -> list[dict]:
         rows = {s.id: {"id": s.id, "title": s.title, "model": s.model, "status": s.status, "updated_at": s.updated_at,
                        "workspace": str(s.workspace.root), "live": True} for s in self.sessions.values()}
         folder = self.store_dir / "sessions" if self.store_dir else None
-        for path in sorted(folder.glob("*.json")) if folder and folder.is_dir() else []:
-            if path.name.endswith(".meta.json") or path.stem in rows:
-                continue
-            meta = path.with_name(path.stem + ".meta.json")
+        if folder and folder.is_dir():
+            session_entries: dict[str, os.DirEntry] = {}
+            meta_entries: dict[str, os.DirEntry] = {}
             try:
-                data = json.loads((meta if meta.is_file() else path).read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            rows[path.stem] = {"id": path.stem, "title": data.get("title", ""), "model": data.get("model", ""), "status": "saved",
-                               "updated_at": data.get("updated_at", 0), "workspace": data.get("workspace", ""), "live": False}
+                with os.scandir(folder) as it:
+                    for entry in it:
+                        name = entry.name
+                        if not name.endswith(".json"):
+                            continue
+                        if name.endswith(".meta.json"):
+                            meta_entries[name[:-10]] = entry
+                        else:
+                            session_entries[name[:-5]] = entry
+            except OSError:
+                session_entries = {}
+            candidates = []
+            for sid, entry in session_entries.items():
+                if sid in rows:
+                    continue
+                meta_entry = meta_entries.get(sid)
+                try:
+                    entry_stat = entry.stat()
+                    meta_stat = meta_entry.stat() if meta_entry is not None else None
+                except OSError:
+                    continue
+                mtime_ns = max(entry_stat.st_mtime_ns, meta_stat.st_mtime_ns if meta_stat else 0)
+                candidates.append((mtime_ns, sid, meta_entry or entry, meta_stat or entry_stat))
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            for _, sid, target_entry, target_stat in candidates[:150]:
+                sig = (target_entry.name, target_stat.st_mtime_ns, target_stat.st_size)
+                with self._listing_lock:
+                    cached = self._meta_cache.get(sid)
+                if cached and cached[:3] == sig:
+                    rows[sid] = dict(cached[3])
+                    continue
+                try:
+                    data = json.loads(Path(target_entry.path).read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                row = {"id": sid, "title": data.get("title", ""), "model": data.get("model", ""), "status": "saved",
+                       "updated_at": data.get("updated_at", 0), "workspace": data.get("workspace", ""), "live": False}
+                with self._listing_lock:
+                    self._meta_cache[sid] = (*sig, row)
+                rows[sid] = dict(row)
+            with self._listing_lock:
+                for stale_id in [k for k in self._meta_cache if k not in session_entries]:
+                    self._meta_cache.pop(stale_id, None)
         return sorted(rows.values(), key=lambda r: r["updated_at"], reverse=True)[:100]
 
     def delete(self, session_id: str) -> None:
         session = self.sessions.pop(session_id, None)
         if session is not None:
             session.close()
+        with self._listing_lock:
+            self._meta_cache.pop(session_id, None)
         path = self._path(session_id)
         if session_id.isalnum():
             shutil.rmtree((self.home if self.home is not None else Path.home()) / ".manga-agent" / "outputs" / session_id, ignore_errors=True)

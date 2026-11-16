@@ -245,6 +245,22 @@ async def create_session(req: SessionRequest) -> dict:
     return session.snapshot()
 
 
+@router.get("/sessions/{session_id}/view")
+def view_session(session_id: str) -> dict:
+    if session_id in agent_sessions.sessions:
+        return agent_sessions.sessions[session_id].snapshot()
+    try:
+        snap = agent_sessions.saved_snapshot(session_id)
+    except (KeyError, OSError, ValueError) as exc:
+        raise HTTPException(404, "Không tìm thấy phiên đã lưu.") from exc
+    if snap.get("provider"):
+        try:
+            snap["provider_label"] = _resolve_configured_provider(snap["provider"]).label
+        except ValueError:
+            pass
+    return snap
+
+
 @router.post("/sessions/{session_id}/resume")
 async def resume_session(session_id: str) -> dict:
     if session_id in agent_sessions.sessions:

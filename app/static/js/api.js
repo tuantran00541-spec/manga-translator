@@ -721,3 +721,91 @@ async function flushPreserveRegionSaves(chapterId = currentChapterId, pageIndex)
 }
 window.flushPreserveRegionSaves = flushPreserveRegionSaves;
 
+(() => {
+  const CACHE_PREFIX = "manga_models_cache_v1_";
+  const CACHE_TTL_MS = 5 * 60 * 1000;
+  const inflight = new Map();
+
+  function readEntry(provider) {
+    if (!provider) return null;
+    try {
+      const raw = localStorage.getItem(`${CACHE_PREFIX}${provider}`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.models)) return null;
+      const age = Date.now() - Number(parsed.ts || 0);
+      return { models: parsed.models, fresh: age >= 0 && age < CACHE_TTL_MS };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeEntry(provider, models) {
+    if (!provider || !Array.isArray(models)) return;
+    try {
+      localStorage.setItem(`${CACHE_PREFIX}${provider}`, JSON.stringify({
+        models,
+        ts: Date.now(),
+      }));
+    } catch (_) {}
+  }
+
+  function sameList(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  async function requestFromServer(provider, force) {
+    const key = `${provider}:${force ? "1" : "0"}`;
+    if (inflight.has(key)) return inflight.get(key);
+    const job = (async () => {
+      const url = `/api/visual_qc/providers/${encodeURIComponent(provider)}/models${force ? "?refresh=1" : ""}`;
+      const resp = await fetch(url);
+      const data = await parseApiResponse(resp);
+      if (!resp.ok) throw new Error(getErrorMessage(resp.status, data));
+      const models = Array.isArray(data.models) ? data.models : [];
+      writeEntry(provider, models);
+      return models;
+    })().finally(() => {
+      inflight.delete(key);
+    });
+    inflight.set(key, job);
+    return job;
+  }
+
+  async function fetchModels(provider, { force = false, onFresh } = {}) {
+    if (!provider) return [];
+    const cached = force ? null : readEntry(provider);
+    if (cached) {
+      if (!cached.fresh) {
+        requestFromServer(provider, false)
+          .then((freshModels) => {
+            if (typeof onFresh === "function" && !sameList(cached.models, freshModels)) {
+              onFresh(freshModels);
+            }
+          })
+          .catch(() => {});
+      }
+      return cached.models;
+    }
+    return requestFromServer(provider, force);
+  }
+
+  function invalidate(provider) {
+    if (!provider) return;
+    try {
+      localStorage.removeItem(`${CACHE_PREFIX}${provider}`);
+    } catch (_) {}
+  }
+
+  window.aiModelCache = {
+    getCached: readEntry,
+    fetchModels,
+    invalidate,
+  };
+})();
+
+

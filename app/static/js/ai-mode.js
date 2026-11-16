@@ -19,6 +19,8 @@
   let discoveredChapters = [];
   let scopeMode = "single";
   let account = null;
+  const visionModelsCache = {};
+  let visionModelsLoading = "";
 
   const $ = (id) => document.getElementById(id);
 
@@ -49,15 +51,233 @@
     return null;
   }
 
+  function splitModelId(id) {
+    const raw = String(id || "").trim();
+    const slash = raw.indexOf("/");
+    return slash > 0 ? { name: raw.slice(slash + 1), org: raw.slice(0, slash) } : { name: raw, org: "" };
+  }
+
+  function buildCheckIcon() {
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("class", "agent-opt-check");
+    icon.setAttribute("viewBox", "0 0 16 16");
+    icon.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M3.5 8.5L6.5 11.5L12.5 4.5");
+    icon.append(path);
+    return icon;
+  }
+
+  function buildModelOption({ title, sub, selected, onClick }) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.role = "menuitemradio";
+    btn.className = `agent-model-opt${selected ? " is-selected" : ""}`;
+    btn.setAttribute("aria-checked", String(Boolean(selected)));
+    const copy = document.createElement("span");
+    copy.className = "agent-model-opt-copy";
+    const head = document.createElement("span");
+    head.className = "agent-model-opt-head";
+    const t = document.createElement("span");
+    t.className = "agent-model-opt-title";
+    t.textContent = title;
+    head.append(t);
+    copy.append(head);
+    if (sub) {
+      const s = document.createElement("span");
+      s.className = "agent-model-opt-sub";
+      s.textContent = sub;
+      copy.append(s);
+    }
+    btn.append(copy);
+    if (selected) btn.append(buildCheckIcon());
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+    return btn;
+  }
+
+  function updateVisionTriggerLabel() {
+    const model = $("ai-mode-model");
+    const trigger = $("ai-mode-model-trigger");
+    const label = $("ai-mode-model-trigger-label");
+    if (!model || !label) return;
+    const val = model.value.trim();
+    if (!val) {
+      label.textContent = "Mặc định";
+      if (trigger) trigger.title = "Dùng mô hình thị giác mặc định trong Cài đặt";
+      return;
+    }
+    const { name } = splitModelId(val);
+    label.textContent = name || val;
+    if (trigger) trigger.title = val;
+  }
+
+  function closeVisionModelMenu() {
+    const pop = $("ai-mode-model-pop");
+    const trigger = $("ai-mode-model-trigger");
+    if (pop) pop.hidden = true;
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  }
+
+  function selectVisionModel(value) {
+    const provider = $("ai-mode-provider")?.value || "";
+    const model = $("ai-mode-model");
+    if (!model) return;
+    model.value = String(value || "").trim();
+    if (provider) storage("set", "manga_translation_vision_model_" + provider, model.value);
+    updateVisionTriggerLabel();
+    closeVisionModelMenu();
+  }
+
+  function renderVisionModelMenu() {
+    const pop = $("ai-mode-model-pop");
+    const provider = $("ai-mode-provider")?.value || "";
+    const current = ($("ai-mode-model")?.value || "").trim();
+    if (!pop) return;
+
+    const search = document.createElement("input");
+    search.type = "search";
+    search.className = "agent-subpop-search";
+    search.placeholder = "Tìm hoặc nhập ID mô hình…";
+    search.addEventListener("click", (e) => e.stopPropagation());
+
+    const list = document.createElement("div");
+    list.className = "agent-subpop-list";
+
+    const info = window.aiProviderSettings?.[provider];
+    const cached = Array.isArray(visionModelsCache[provider]) ? [...visionModelsCache[provider]] : [];
+    const defaultModel = String(info?.model || "").trim();
+    if (defaultModel && !cached.includes(defaultModel)) cached.unshift(defaultModel);
+    if (current && !cached.includes(current)) cached.unshift(current);
+
+    const drawList = (query = "") => {
+      const q = query.trim();
+      const qLower = q.toLowerCase();
+      const rows = [];
+
+      if (!qLower || "mặc định".includes(qLower) || defaultModel.toLowerCase().includes(qLower)) {
+        rows.push(buildModelOption({
+          title: "Mặc định",
+          sub: defaultModel ? `Theo cài đặt (${defaultModel})` : "Theo thiết lập của nhà cung cấp",
+          selected: !current,
+          onClick: () => selectVisionModel(""),
+        }));
+      }
+
+      const filtered = qLower ? cached.filter((id) => id.toLowerCase().includes(qLower)) : cached;
+      if (rows.length && filtered.length) {
+        const sep = document.createElement("div");
+        sep.className = "agent-menu-sep";
+        rows.push(sep);
+      }
+
+      filtered.forEach((id) => {
+        const { name, org } = splitModelId(id);
+        rows.push(buildModelOption({
+          title: name || id,
+          sub: org || info?.label || provider,
+          selected: id === current,
+          onClick: () => selectVisionModel(id),
+        }));
+      });
+
+      if (q && !cached.some((id) => id.toLowerCase() === qLower)) {
+        rows.push(buildModelOption({
+          title: `Dùng: ${q}`,
+          sub: "Nhập mô hình tùy chỉnh",
+          selected: q === current,
+          onClick: () => selectVisionModel(q),
+        }));
+      }
+
+      if (!rows.length) {
+        const msg = visionModelsLoading === provider
+          ? "Đang tải danh sách mô hình…"
+          : "Không tìm thấy mô hình phù hợp.";
+        const empty = document.createElement("p");
+        empty.className = "agent-subpop-empty";
+        empty.textContent = msg;
+        rows.push(empty);
+      } else if (!filtered.length && visionModelsLoading === provider && !q) {
+        const loadingNote = document.createElement("p");
+        loadingNote.className = "agent-subpop-empty";
+        loadingNote.textContent = "Đang tải danh sách mô hình…";
+        rows.push(loadingNote);
+      }
+
+      list.replaceChildren(...rows);
+    };
+
+    search.addEventListener("input", () => drawList(search.value));
+    search.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && search.value.trim()) {
+        event.preventDefault();
+        const exact = cached.find((id) => id.toLowerCase() === search.value.trim().toLowerCase());
+        selectVisionModel(exact || search.value.trim());
+      } else if (event.key === "Escape") {
+        closeVisionModelMenu();
+      }
+    });
+
+    drawList("");
+    pop.replaceChildren(search, list);
+  }
+
+  async function loadVisionModels(providerId) {
+    const provider = String(providerId || "").trim();
+    if (!provider || provider === CLOUD) return;
+    const info = window.aiProviderSettings?.[provider];
+    if (info && !info.configured) {
+      visionModelsCache[provider] = [];
+      if (!$("ai-mode-model-pop")?.hidden) renderVisionModelMenu();
+      return;
+    }
+    const cacheApi = window.aiModelCache;
+    const cached = cacheApi?.getCached?.(provider);
+    if (cached) {
+      visionModelsCache[provider] = cached.models;
+      if (!$("ai-mode-model-pop")?.hidden) renderVisionModelMenu();
+      if (cached.fresh) return;
+    } else if (Array.isArray(visionModelsCache[provider])) {
+      return;
+    }
+    if (visionModelsLoading === provider) return;
+    visionModelsLoading = cached ? "" : provider;
+    if (!cached && !$("ai-mode-model-pop")?.hidden) renderVisionModelMenu();
+    try {
+      const models = cacheApi?.fetchModels
+        ? await cacheApi.fetchModels(provider, {
+            onFresh: (freshModels) => {
+              visionModelsCache[provider] = freshModels;
+              if (!$("ai-mode-model-pop")?.hidden && $("ai-mode-provider")?.value === provider) {
+                renderVisionModelMenu();
+              }
+            },
+          })
+        : ((await requestJson(`/api/visual_qc/providers/${encodeURIComponent(provider)}/models`)).models || []);
+      visionModelsCache[provider] = Array.isArray(models) ? models : [];
+    } catch (_) {
+      if (!cached) visionModelsCache[provider] = [];
+    } finally {
+      if (visionModelsLoading === provider) visionModelsLoading = "";
+      if (!$("ai-mode-model-pop")?.hidden) renderVisionModelMenu();
+    }
+  }
+
   function syncProviderFields() {
     const provider = $("ai-mode-provider");
     const model = $("ai-mode-model");
     const budgetField = $("ai-mode-budget-field");
     if (!provider || !model) return;
     model.value = storage("get", "manga_translation_vision_model_" + provider.value) || "";
+    updateVisionTriggerLabel();
     const cloud = provider.value === CLOUD;
-    const modelField = model.closest("label");
+    const modelField = $("ai-mode-model-field") || model.closest("label");
     if (modelField) modelField.hidden = cloud;
+    if (cloud) closeVisionModelMenu();
+    else void loadVisionModels(provider.value);
     
     if (budgetField) budgetField.hidden = cloud || provider.value !== "deepseek";
     
@@ -813,8 +1033,28 @@
     $("ai-mode-signout-all").addEventListener("click", signOutEverywhere);
     $("ai-mode-delete-account").addEventListener("click", deleteAccount);
     $("ai-mode-payments").addEventListener("click", showPayments);
-    $("ai-mode-model").addEventListener("change", (event) => {
-      storage("set", "manga_translation_vision_model_" + provider.value, event.target.value.trim());
+    $("ai-mode-model-trigger")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const pop = $("ai-mode-model-pop");
+      const trigger = $("ai-mode-model-trigger");
+      if (!pop || !trigger) return;
+      const willOpen = pop.hidden;
+      if (willOpen) {
+        renderVisionModelMenu();
+        pop.hidden = false;
+        trigger.setAttribute("aria-expanded", "true");
+        void loadVisionModels(provider.value);
+        pop.querySelector("input")?.focus();
+      } else {
+        closeVisionModelMenu();
+      }
+    });
+    document.addEventListener("click", (event) => {
+      const field = $("ai-mode-model-field");
+      if (field && !field.contains(event.target)) closeVisionModelMenu();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeVisionModelMenu();
     });
     form.addEventListener("submit", start);
     $("ai-mode-cancel").addEventListener("click", async () => {

@@ -23,7 +23,7 @@
     soloStep = null;
   }
 
-  function newGroup(anchor) {
+  function newGroup(anchor, targetLog) {
     const box = el("details", "agent-group");
     const summary = el("summary");
     const countBadge = el("span", "agent-group-count", "0");
@@ -32,7 +32,7 @@
     const list = el("div", "agent-group-list");
     box.append(summary, list);
     if (anchor) anchor.replaceWith(box);
-    else $("agent-log").append(box);
+    else (targetLog || $("agent-log")).append(box);
     group = { box, summary, countBadge, label, list, tally: {}, count: 0, thinks: 0, added: 0, removed: 0, failed: 0 };
     return group;
   }
@@ -100,16 +100,16 @@
     if (meta.failed) g.failed += 1;
   }
 
-  function pushStep(node, meta) {
+  function pushStep(node, meta, targetLog) {
     if (!group && !soloStep) {
-      $("agent-log").append(node);
+      (targetLog || $("agent-log")).append(node);
       soloStep = { node, meta };
       return;
     }
     if (!group && soloStep) {
       const first = soloStep;
       soloStep = null;
-      const g = newGroup(first.node);
+      const g = newGroup(first.node, targetLog);
       g.list.append(first.node);
       const firstMeta = first.meta ? { ...first.meta, failed: first.node.classList?.contains("agent-row-failed") } : null;
       recordStep(g, firstMeta);
@@ -119,14 +119,14 @@
     refreshGroup();
   }
 
-  function addRow(c) {
+  function addRow(c, targetLog) {
     if (c.name === "ask_user" || c.name === "exit_plan_mode") return;
     const { row, diff } = buildRow(c);
-    pushStep(row, { kind: "tool", call: c, diff });
+    pushStep(row, { kind: "tool", call: c, diff }, targetLog);
   }
 
-  function render(event) {
-    const log = $("agent-log");
+  function render(event, targetLog) {
+    const log = targetLog || $("agent-log");
     log.querySelector(".agent-empty")?.remove();
     if (event.type === "user") {
       clearStepGroup();
@@ -145,14 +145,14 @@
           const body = el("div", "agent-think-body");
           body.append(prose(event.reasoning));
           think.append(el("summary", "", "Suy luận"), body);
-          pushStep(think, { kind: "think" });
+          pushStep(think, { kind: "think" }, targetLog);
         }
       }
       if (event.text) {
         clearStepGroup();
         log.append(prose(event.text));
       }
-      (event.calls || []).forEach(addRow);
+      (event.calls || []).forEach((c) => addRow(c, targetLog));
     } else if (event.type === "tool") {
       const row = log.querySelector(`.agent-row[data-call-id="${CSS.escape(event.id)}"]`);
       if (row) {
@@ -174,11 +174,11 @@
       log.append(approvalCard(event.call));
     } else if (event.type === "subagent" && event.state === "done") {
       const note = el("p", "agent-note", `Tác vụ con ${event.agent || ""} hoàn tất: ${event.description} · ${event.tools} lệnh gọi`);
-      if (group || soloStep) pushStep(note, { kind: "note" });
+      if (group || soloStep) pushStep(note, { kind: "note" }, targetLog);
       else log.append(note);
     } else if (event.type === "notice") {
       const note = el("p", "agent-note", event.text);
-      if (group || soloStep) pushStep(note, { kind: "note" });
+      if (group || soloStep) pushStep(note, { kind: "note" }, targetLog);
       else log.append(note);
     } else if (event.type === "error") {
       clearStepGroup();
@@ -661,7 +661,7 @@
 
   async function poll(generation) {
     clearTimeout(pollTimer);
-    if (!session) return;
+    if (!session || session.saved_only) return;
     // Only the latest poll loop may apply responses; a fresh poll() (send,
     // approval, session open) supersedes any loop still awaiting a reply.
     if (generation === undefined) generation = ++pollGeneration;
@@ -684,12 +684,30 @@
 
   let providerModels = {};
 
+  function applyModelOptions(select, models, saved) {
+    const list = Array.isArray(models) ? [...models] : [];
+    if (saved && !list.includes(saved)) list.unshift(saved);
+    if (list.length) {
+      select.replaceChildren(...list.map((id) => new Option(id, id)));
+      select.value = saved && list.includes(saved) ? saved : list[0];
+      store("set", `manga_agent_model_${$("agent-provider").value}`, select.value);
+    } else {
+      select.replaceChildren(new Option("Không có mô hình", ""));
+    }
+  }
+
   async function loadModels() {
     const provider = $("agent-provider").value;
     const select = $("agent-model");
     const saved = store("get", `manga_agent_model_${provider}`) || store("get", `manga_ai_model_${provider}`) || providerModels[provider] || "";
-    select.replaceChildren(new Option(saved || "Đang tải mô hình…", saved));
-    if (saved) select.value = saved;
+    const cacheApi = window.aiModelCache;
+    const cached = provider ? cacheApi?.getCached?.(provider) : null;
+    if (cached) {
+      applyModelOptions(select, cached.models, saved);
+    } else {
+      select.replaceChildren(new Option(saved || "Đang tải mô hình…", saved));
+      if (saved) select.value = saved;
+    }
     loadEffort();
     showPicks();
     if (!provider) {
@@ -697,27 +715,34 @@
       showPicks();
       return;
     }
+    if (cached?.fresh) return;
     try {
-      const data = await call(`/api/visual_qc/providers/${encodeURIComponent(provider)}/models`);
-      const models = Array.isArray(data.models) ? [...data.models] : [];
-      if (saved && !models.includes(saved)) models.unshift(saved);
-      if (models.length) {
-        select.replaceChildren(...models.map((id) => new Option(id, id)));
-        select.value = saved && models.includes(saved) ? saved : models[0];
-        store("set", `manga_agent_model_${provider}`, select.value);
-      } else {
-        select.replaceChildren(new Option("Không có mô hình", ""));
-      }
+      const models = cacheApi?.fetchModels
+        ? await cacheApi.fetchModels(provider, {
+            onFresh: (freshModels) => {
+              if ($("agent-provider").value !== provider) return;
+              const currentSaved = store("get", `manga_agent_model_${provider}`) || saved;
+              applyModelOptions(select, freshModels, currentSaved);
+              loadEffort();
+              showPicks();
+            },
+          })
+        : ((await call(`/api/visual_qc/providers/${encodeURIComponent(provider)}/models`)).models || []);
+      if ($("agent-provider").value !== provider) return;
+      applyModelOptions(select, models, saved);
     } catch (_) {
-      if (!saved) select.replaceChildren(new Option("Không tải được mô hình", ""));
+      if (!cached && !saved) select.replaceChildren(new Option("Không tải được mô hình", ""));
     }
     loadEffort();
     showPicks();
   }
 
-  async function loadProviders() {
-    const response = await fetch("/api/visual_qc/settings");
-    const data = await window.parseApiResponse(response);
+  async function loadProviders(prefetchedSettings) {
+    let data = prefetchedSettings;
+    if (!data || typeof data !== "object") {
+      const response = await fetch("/api/visual_qc/settings");
+      data = await window.parseApiResponse(response);
+    }
     const ready = Object.values(data.providers || {}).filter((p) => p.configured && p.id !== "manga-cloud");
     providerModels = Object.fromEntries(ready.map((p) => [p.id, p.model || ""]));
     $("agent-provider").replaceChildren(...ready.map((p) => new Option(p.label || p.id, p.id)));
@@ -779,17 +804,24 @@
     } catch (_) {}
   }
 
+  function showSandboxLine(sb) {
+    if (!sb) return;
+    $("agent-sandbox-info").textContent = sb.mode === "full-access"
+      ? "Đã tắt cơ chế cô lập: lệnh có toàn quyền thực thi."
+      : `${SANDBOX_TEXT[sb.backend] || ""} Mạng ${sb.network ? "bật" : "tắt"}.`;
+  }
+
   async function resume(id) {
     try {
-      const snap = await post(`/api/agent/sessions/${id}/resume`);
+      const snap = await call(`/api/agent/sessions/${encodeURIComponent(id)}/view`);
       resetLog();
       session = snap;
-      $("agent-log").replaceChildren();
       $("agent-mode").value = snap.mode;
       $("agent-sandbox").value = snap.sandbox.mode;
       $("agent-network").checked = Boolean(snap.sandbox.network);
       $("agent-workspace").value = snap.workspace;
       showFolder();
+      showSandboxLine(snap.sandbox);
       if (snap.provider && [...$("agent-provider").options].some((o) => o.value === snap.provider)) {
         $("agent-provider").value = snap.provider;
       }
@@ -799,12 +831,16 @@
       $("agent-model").value = snap.model;
       $("agent-effort").value = snap.effort || "";
       showPicks();
-      snap.events.forEach((event) => { if (event.type !== "approval") render(event); lastSeq = Math.max(lastSeq, event.seq); });
+      const frag = document.createDocumentFragment();
+      snap.events.forEach((event) => { if (event.type !== "approval") render(event, frag); lastSeq = Math.max(lastSeq, event.seq); });
+      $("agent-log").replaceChildren(frag);
       showStatus(snap);
       showHub(false);
       document.querySelectorAll(".agent-menu[open]").forEach((menu) => { menu.open = false; });
       follow(true);
-      loadSessions();
+      renderSessions();
+      if (!allSessions.some((row) => row.id === snap.id)) loadSessions();
+      if (!snap.saved_only && snap.status !== "idle") poll();
     } catch (error) {
       window.showToast?.(error.message, "error");
     }
@@ -926,14 +962,24 @@
     infoRev = "";
     clearStepGroup();
     $("agent-log").replaceChildren(emptyState());
+    $("agent-tools-info")?.replaceChildren();
     $("agent-stop").hidden = true;
     $("agent-send").hidden = false;
     $("agent-status").textContent = "";
     showTodos([]);
   }
 
+  async function hydrateSession() {
+    if (!session?.saved_only) return session;
+    const hydrated = await post(`/api/agent/sessions/${encodeURIComponent(session.id)}/resume`);
+    hydrated.saved_only = false;
+    session = hydrated;
+    showInfo(hydrated);
+    return session;
+  }
+
   async function ensureSession() {
-    if (session) return session;
+    if (session) return hydrateSession();
     const body = {
       provider: $("agent-provider").value, model: $("agent-model").value.trim(), mode: $("agent-mode").value, effort: $("agent-effort").value,
       workspace: $("agent-workspace").value.trim(), sandbox: $("agent-sandbox").value, network: $("agent-network").checked,
@@ -1006,6 +1052,7 @@
   async function syncSession(changes) {
     if (!session) return;
     try {
+      await hydrateSession();
       showStatus(await post(`/api/agent/sessions/${session.id}`, changes, "PATCH"));
     } catch (error) {
       window.showToast?.(error.message, "error");
@@ -1034,14 +1081,21 @@
     if (loaded) return;
     loaded = true;
     try {
-      const config = await call("/api/agent/config");
+      const hintProvider = store("get", "manga_agent_provider") || store("get", "manga_ai_active_provider") || "";
+      if (hintProvider && hintProvider !== "manga-cloud") {
+        window.aiModelCache?.fetchModels?.(hintProvider).catch(() => {});
+      }
+      const [config, settingsData] = await Promise.all([
+        call("/api/agent/config"),
+        fetch("/api/visual_qc/settings").then((r) => window.parseApiResponse(r)).catch(() => null),
+        loadSessions(),
+      ]);
       $("agent-workspace").value = launchFolder || store("get", "manga_agent_workspace") || config.workspace;
       if (launchFolder) store("set", "manga_agent_workspace", launchFolder);
       showFolder();
       $("agent-sandbox-info").textContent = SANDBOX_TEXT[config.sandbox_backend] || "";
       showEngine(config.engine || {});
-      await loadProviders();
-      loadSessions();
+      await loadProviders(settingsData);
     } catch (error) {
       loaded = false;
       $("agent-status").textContent = error.message;

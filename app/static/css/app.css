@@ -243,6 +243,13 @@
   .ai-mode-form .ai-mode-polish input { flex: 0 0 auto; width: 16px; height: 16px; min-height: 0; margin: 1px 0 0; }
   .ai-mode-form .ui-field { gap: 4px; font-size: 12px; }
   .ai-mode-form :is(select, input) { width: 100%; min-width: 0; }
+  .ai-mode-model-wrap { position: relative; min-width: 0; }
+  .ai-mode-model-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: var(--control-height); padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-input); color: var(--text-primary); font: inherit; font-weight: 400; text-align: left; cursor: pointer; }
+  .ai-mode-model-trigger:disabled { opacity: .55; cursor: not-allowed; }
+  .ai-mode-model-trigger > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ai-mode-model-caret { flex: 0 0 auto; width: 14px; height: 14px; fill: none; stroke: var(--text-secondary); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .ai-mode-model-pop { left: 0; width: min(320px, 88vw); padding: 8px; gap: 6px; z-index: var(--z-popover); }
+  .ai-mode-model-pop .agent-subpop-list { max-height: 260px; }
   .ai-mode-form :is(.ai-mode-polish, .ai-mode-continue-error) input { flex: 0 0 auto; width: 16px; height: 16px; min-height: 0; }
   .ai-mode-form .ai-mode-continue-error input { margin: 0; }
   .ai-mode-range-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); background: var(--surface-quiet); font-size: 12px; color: var(--text-secondary); }
