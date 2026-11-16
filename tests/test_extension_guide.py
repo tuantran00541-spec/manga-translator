@@ -1,4 +1,6 @@
 import hashlib
+import io
+import zipfile
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -39,3 +41,22 @@ def test_only_the_app_page_can_open_the_extension_folder(monkeypatch):
     assert opened == []
     assert http.post("/api/extension/open", headers={"Origin": "http://testserver"}).status_code == 200
     assert opened == [["xdg-open", str(extension.EXTENSION_DIR)]]
+
+
+def test_extension_download_returns_clean_zip(monkeypatch):
+    http = client(monkeypatch)
+    res = http.get("/api/extension/download")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("application/zip")
+    with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
+        names = set(zf.namelist())
+        assert {
+            "manga-translator-extension/manifest.json",
+            "manga-translator-extension/background.js",
+            "manga-translator-extension/popup.html",
+            "manga-translator-extension/popup.js",
+            "manga-translator-extension/icon128.png",
+        }.issubset(names)
+        assert zf.read("manga-translator-extension/manifest.json") == (
+            extension.EXTENSION_DIR / "manifest.json"
+        ).read_bytes()

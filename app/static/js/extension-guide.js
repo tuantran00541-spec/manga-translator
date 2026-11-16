@@ -2,7 +2,6 @@
 (() => {
   const guide = document.getElementById("extension-guide");
   if (!guide) return;
-  const path = document.getElementById("extension-path");
 
   const copy = async (text) => {
     try {
@@ -16,21 +15,14 @@
   async function openGuide() {
     try {
       const info = await (await fetch("/api/extension")).json();
-      path.textContent = info.path;
       document.getElementById("extension-outdated").hidden = !info.outdated;
-    } catch (_) {  }
+    } catch (_) { }
     guide.showModal();
   }
 
   document.getElementById("extension-guide-open").addEventListener("click", openGuide);
   document.getElementById("extension-copy-page").addEventListener("click", () => copy("chrome://extensions"));
-  document.getElementById("extension-copy-path").addEventListener("click", () => copy(path.textContent));
-  document.getElementById("extension-open-folder").addEventListener("click", async () => {
-    const reply = await fetch("/api/extension/open", { method: "POST" }).catch(() => null);
-    if (!reply?.ok) window.showToast?.("Không mở được thư mục, hãy sao chép đường dẫn.", "error");
-  });
 
-  
   window.suggestExtension = () => {
     const hint = document.getElementById("extension-hint");
     hint.firstChild.textContent = "Không tải được từ liên kết? Trang có thể chặn tải tự động. ";

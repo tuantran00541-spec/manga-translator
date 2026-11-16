@@ -1,10 +1,12 @@
+import io
 import json
-import os
 import subprocess
 import sys
+import zipfile
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.config import BASE_DIR
@@ -44,12 +46,31 @@ def open_extension_folder(request: Request) -> dict:
     origin = request.headers.get("origin")
     if origin and urlsplit(origin).netloc != request.headers.get("host"):
         raise HTTPException(403, "Only the app itself can open this folder")
+    if not EXTENSION_DIR.is_dir():
+        raise HTTPException(404, f"Không tìm thấy thư mục extension tại: {EXTENSION_DIR}")
     try:
         if sys.platform == "win32":
-            os.startfile(EXTENSION_DIR)  # type: ignore[attr-defined]
+            subprocess.Popen(["explorer.exe", str(EXTENSION_DIR)])
         else:
             subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(EXTENSION_DIR)],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError as exc:
         raise HTTPException(409, f"Không mở được thư mục: {exc}") from exc
     return {"path": str(EXTENSION_DIR)}
+
+
+@router.get("/api/extension/download")
+def download_extension_zip() -> Response:
+    if not EXTENSION_DIR.is_dir():
+        raise HTTPException(404, f"Không tìm thấy thư mục extension tại: {EXTENSION_DIR}")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(EXTENSION_DIR.iterdir()):
+            if not path.is_file() or path.name.startswith("."):
+                continue
+            zf.write(path, arcname=f"manga-translator-extension/{path.name}")
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="manga-translator-extension.zip"'},
+    )

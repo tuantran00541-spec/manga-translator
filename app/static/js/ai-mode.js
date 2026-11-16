@@ -2,13 +2,22 @@
 (() => {
   const POLL_MS = 1500;
   const JOB_KEY = "manga_ai_mode_job";
+  const QUEUE_KEY = "manga_ai_mode_queue";
+  const MAX_QUEUE_URLS = 500;
+  const RANGE_STEP = 30;
   const STATUS_TEXT = {
-    pending: "Chờ", running: "Đang chạy", done: "Xong", failed: "Lỗi", cancelled: "Đã hủy",
+    pending: "Chờ", running: "Đang chạy", done: "Xong",
+    completed: "Xong", completed_with_blockers: "Cần rà",
+    completed_with_errors: "Xong (có lỗi)",
+    failed: "Lỗi", cancelled: "Đã hủy", skipped: "Bỏ qua",
   };
   const CLOUD = "manga-cloud";
   let pollTimer = null;
   let pollGeneration = 0;
   let currentJob = null;
+  let currentQueue = null;
+  let discoveredChapters = [];
+  let scopeMode = "single";
   let account = null;
 
   const $ = (id) => document.getElementById(id);
@@ -269,11 +278,79 @@
     }, 3000);
   }
 
-  function setRunning(running) {
+  function parseQueueUrls() {
+    const raw = $("ai-mode-queue-urls")?.value || "";
+    const out = [];
+    const seen = new Set();
+    raw.split(/\r?\n/).forEach((line) => {
+      const clean = line.trim();
+      if (!clean) return;
+      const key = clean.replace(/\/+$/, "");
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(clean);
+    });
+    return out;
+  }
+
+  function updateQueueCount() {
+    const urls = parseQueueUrls();
+    const countEl = $("ai-mode-queue-count");
+    if (countEl) countEl.textContent = String(urls.length);
+    const runBtn = $("ai-mode-run");
+    if (runBtn && scopeMode === "queue") {
+      runBtn.textContent = urls.length ? `Chạy hàng đợi (${Math.min(urls.length, MAX_QUEUE_URLS)} chương)` : "Chạy hàng đợi";
+    } else if (runBtn) {
+      runBtn.textContent = "Chạy Chế độ AI";
+    }
+  }
+
+  function setScopeMode(nextMode) {
+    scopeMode = nextMode === "queue" ? "queue" : "single";
+    const isQueue = scopeMode === "queue";
+    const singleBtn = $("ai-mode-scope-single");
+    const queueBtn = $("ai-mode-scope-queue");
+    if (singleBtn) {
+      singleBtn.classList.toggle("is-active", !isQueue);
+      singleBtn.setAttribute("aria-pressed", String(!isQueue));
+    }
+    if (queueBtn) {
+      queueBtn.classList.toggle("is-active", isQueue);
+      queueBtn.setAttribute("aria-pressed", String(isQueue));
+    }
+    const singleField = $("ai-mode-single-url-field");
+    const urlInput = $("ai-mode-url");
+    const queueBox = $("ai-mode-queue-box");
+    if (singleField) singleField.hidden = isQueue;
+    if (urlInput) urlInput.required = !isQueue;
+    if (queueBox) queueBox.hidden = !isQueue;
+    updateQueueCount();
+  }
+
+  function currentSeriesUrl() {
+    if (scopeMode === "queue") {
+      return parseQueueUrls()[0] || $("ai-mode-toc-url")?.value.trim() || "";
+    }
+    return $("ai-mode-url")?.value.trim() || "";
+  }
+
+  function shortChapterLabel(url) {
+    try {
+      const u = new URL(url);
+      const parts = u.pathname.split("/").filter(Boolean);
+      return parts.length ? parts.slice(-2).join("/") : u.hostname;
+    } catch (_) {
+      return String(url || "");
+    }
+  }
+
+  function setRunning(running, { isQueue = false } = {}) {
     const form = $("ai-mode-form");
-    form?.querySelectorAll("input, select, button").forEach((el) => { el.disabled = running; });
+    form?.querySelectorAll("input, select, textarea, button").forEach((el) => { el.disabled = running; });
     const cancel = $("ai-mode-cancel");
-    if (cancel) cancel.hidden = !running;
+    if (cancel) cancel.hidden = !running || isQueue;
+    const queueCancel = $("ai-mode-queue-cancel");
+    if (queueCancel) queueCancel.hidden = !running || !isQueue;
   }
 
   function reportLines(job) {
@@ -317,12 +394,13 @@
     return lines;
   }
 
-  function render(job) {
-    currentJob = job;
-    const status = $("ai-mode-status");
-    if (!status || !job) return;
-    status.hidden = false;
+  function renderStageList(job) {
     const stages = $("ai-mode-stages");
+    if (!stages) return;
+    if (!job?.stages?.length) {
+      stages.replaceChildren();
+      return;
+    }
     stages.replaceChildren(...job.stages.map((stage) => {
       const item = document.createElement("li");
       item.className = `ai-mode-stage is-${stage.status}`;
@@ -335,6 +413,17 @@
       item.append(label, state);
       return item;
     }));
+  }
+
+  function render(job) {
+    currentQueue = null;
+    currentJob = job;
+    const status = $("ai-mode-status");
+    if (!status || !job) return;
+    status.hidden = false;
+    const queuePanel = $("ai-mode-queue-panel");
+    if (queuePanel) queuePanel.hidden = true;
+    renderStageList(job);
 
     const running = job.status === "pending" || job.status === "running";
     const cost = job.cost_usd == null ? "" : ` · chi phí ~$${Number(job.cost_usd).toFixed(4)}`;
@@ -346,7 +435,7 @@
 
     const open = $("ai-mode-open");
     open.hidden = running || !job.chapter_id;
-    setRunning(running);
+    setRunning(running, { isQueue: false });
 
     const report = $("ai-mode-report");
     const lines = reportLines(job);
@@ -358,43 +447,170 @@
     }));
   }
 
-  
-  async function poll(jobId, generation) {
+  function formatQueueError(errText) {
+    return String(errText || "").replace(/^Download chapter failed:\s*/i, "Tải chương thất bại: ");
+  }
+
+  function queueStatusIndicator(status) {
+    const wrap = document.createElement("span");
+    wrap.className = "ai-mode-queue-indicator";
+    wrap.setAttribute("aria-hidden", "true");
+    if (status === "completed" || status === "completed_with_blockers" || status === "failed") {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 16 16");
+      const done = status !== "failed";
+      svg.setAttribute("class", `ai-mode-queue-icon ${done ? "is-done" : "is-failed"}`);
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", done ? "M3.5 8.5 6.5 11.5 12.5 4.5" : "M4 4l8 8M12 4l-8 8");
+      svg.append(path);
+      wrap.append(svg);
+      return wrap;
+    }
+    const dot = document.createElement("span");
+    dot.className = status === "running" ? "ai-mode-queue-dot is-running" : "ai-mode-queue-dot";
+    wrap.append(dot);
+    return wrap;
+  }
+
+  function renderQueue(queue) {
+    currentJob = null;
+    currentQueue = queue;
+    const status = $("ai-mode-status");
+    const queuePanel = $("ai-mode-queue-panel");
+    if (!status || !queuePanel || !queue) return;
+    status.hidden = false;
+    queuePanel.hidden = false;
+
+    const running = queue.status === "pending" || queue.status === "running";
+    const cost = queue.total_cost_usd == null ? "" : ` · chi phí ~$${Number(queue.total_cost_usd).toFixed(4)}`;
+    const currentPos = queue.current_index >= 0 ? `chương ${queue.current_index + 1}/${queue.total}` : `${queue.completed_count}/${queue.total} hoàn tất`;
+    const summaryEl = $("ai-mode-queue-summary");
+    if (running) {
+      summaryEl.textContent = (queue.cancel_requested ? "Đang hủy hàng đợi sau chương hiện tại…" : `Đang chạy ${currentPos}`) + cost;
+    } else if (queue.status === "completed") {
+      summaryEl.textContent = `Hàng đợi hoàn tất (${queue.completed_count}/${queue.total} chương)` + cost;
+    } else if (queue.status === "completed_with_errors") {
+      summaryEl.textContent = `Hoàn tất ${queue.completed_count}/${queue.total} chương · ${queue.failed_count} lỗi` + cost;
+    } else if (queue.status === "cancelled") {
+      summaryEl.textContent = `Đã hủy hàng đợi (${queue.completed_count}/${queue.total} chương đã xong)` + cost;
+    } else {
+      summaryEl.textContent = `Hàng đợi dừng do lỗi (${queue.completed_count}/${queue.total})` + cost;
+    }
+
+    const itemsEl = $("ai-mode-queue-items");
+    itemsEl.replaceChildren(...(queue.items || []).map((item) => {
+      const li = document.createElement("li");
+      li.className = `ai-mode-queue-item is-${item.status}`;
+      li.append(queueStatusIndicator(item.status));
+      const info = document.createElement("div");
+      info.className = "ai-mode-queue-meta";
+      const title = document.createElement("strong");
+      title.textContent = `#${item.index + 1} · ${shortChapterLabel(item.url)}`;
+      title.title = item.url;
+      const detailParts = [STATUS_TEXT[item.status] || item.status];
+      if (item.cost_usd != null) detailParts.push(`~$${Number(item.cost_usd).toFixed(4)}`);
+      if (item.error) detailParts.push(formatQueueError(item.error));
+      else if (item.status === "skipped") detailParts.push("Dừng do chương trước gặp lỗi");
+      const sub = document.createElement("span");
+      sub.textContent = detailParts.join(" · ");
+      info.append(title, sub);
+      li.append(info);
+
+      if (item.chapter_id) {
+        const openBtn = document.createElement("button");
+        openBtn.type = "button";
+        openBtn.className = "ui-btn ui-btn-compact";
+        openBtn.textContent = "Mở chương";
+        openBtn.addEventListener("click", () => {
+          if (item.status === "completed") window.openLetteredChapter = item.chapter_id;
+          window.resumeChapter?.(item.chapter_id);
+        });
+        li.append(openBtn);
+      }
+      return li;
+    }));
+
+    const retryBtn = $("ai-mode-queue-retry");
+    const retryable = !running && (queue.items || []).some((i) => ["failed", "cancelled", "skipped"].includes(i.status));
+    if (retryBtn) retryBtn.hidden = !retryable;
+
+    if (queue.active_job) {
+      renderStageList(queue.active_job);
+      $("ai-mode-summary").textContent = `Đang xử lý chương #${queue.current_index + 1}: ${shortChapterLabel(queue.active_job.url)}`;
+    } else {
+      renderStageList(null);
+      $("ai-mode-summary").textContent = "";
+    }
+    const open = $("ai-mode-open");
+    if (open) open.hidden = true;
+    const report = $("ai-mode-report");
+    if (report) report.hidden = true;
+    setRunning(running, { isQueue: true });
+  }
+
+  async function pollTarget(config, id, generation, schedule) {
     if (generation === undefined) {
       generation = ++pollGeneration;
       window.clearTimeout(pollTimer);
     }
     try {
-      const wasRunning = currentJob?.job_id === jobId && (currentJob.status === "pending" || currentJob.status === "running");
-      const job = await requestJson(`/api/ai_mode/jobs/${encodeURIComponent(jobId)}`);
+      const wasRunning = config.wasRunning(id);
+      const data = await requestJson(config.url(id));
       if (generation !== pollGeneration) return;
-      render(job);
-      if (job.status === "pending" || job.status === "running") {
-        pollTimer = window.setTimeout(() => poll(jobId, generation), POLL_MS);
-      } else if (job.status === "completed" && wasRunning && job.chapter_id) {
-        
-        window.showToast?.("Chế độ AI đã hoàn tất, đang mở chương.", "success");
-        window.openLetteredChapter = job.chapter_id;
-        window.resumeChapter?.(job.chapter_id);
+      config.render(data);
+      if (data.status === "pending" || data.status === "running") {
+        pollTimer = window.setTimeout(() => schedule(generation), POLL_MS);
+      } else if (wasRunning) {
+        config.onFinish(data);
       }
     } catch (err) {
       if (generation !== pollGeneration) return;
       if (err.status === 404) {
-        storage("remove", JOB_KEY);
-        setRunning(false);
+        storage("remove", config.storageKey);
+        setRunning(false, { isQueue: config.isQueue });
         return;
       }
-      pollTimer = window.setTimeout(() => poll(jobId, generation), POLL_MS * 2);
+      pollTimer = window.setTimeout(() => schedule(generation), POLL_MS * 2);
     }
   }
 
-  async function start(event) {
-    event.preventDefault();
-    const url = $("ai-mode-url")?.value.trim();
-    if (!url) return;
+  function poll(jobId, generation) {
+    return pollTarget({
+      url: (id) => `/api/ai_mode/jobs/${encodeURIComponent(id)}`,
+      wasRunning: (id) => currentJob?.job_id === id && (currentJob.status === "pending" || currentJob.status === "running"),
+      render,
+      storageKey: JOB_KEY,
+      isQueue: false,
+      onFinish: (job) => {
+        if (job.status === "completed" && job.chapter_id) {
+          window.showToast?.("Chế độ AI đã hoàn tất, đang mở chương.", "success");
+          window.openLetteredChapter = job.chapter_id;
+          window.resumeChapter?.(job.chapter_id);
+        }
+      },
+    }, jobId, generation, (generation) => poll(jobId, generation));
+  }
+
+  function pollQueue(queueId, generation) {
+    return pollTarget({
+      url: (id) => `/api/ai_mode/queue/${encodeURIComponent(id)}`,
+      wasRunning: (id) => currentQueue?.queue_id === id && (currentQueue.status === "pending" || currentQueue.status === "running"),
+      render: renderQueue,
+      storageKey: QUEUE_KEY,
+      isQueue: true,
+      onFinish: (queue) => {
+        if (queue.status === "completed") {
+          window.showToast?.(`Hàng đợi hoàn tất ${queue.completed_count}/${queue.total} chương.`, "success");
+        } else if (queue.status === "completed_with_errors") {
+          window.showToast?.(`Hàng đợi xong ${queue.completed_count}/${queue.total} chương (${queue.failed_count} lỗi).`, "info");
+        }
+      },
+    }, queueId, generation, (generation) => pollQueue(queueId, generation));
+  }
+
+  function buildPayloadOptions() {
     const provider = $("ai-mode-provider").value;
-    const payload = {
-      url,
+    return {
       provider,
       model: $("ai-mode-model").value.trim() || null,
       target_lang: $("ai-mode-target").value,
@@ -404,25 +620,116 @@
       polish: provider === CLOUD && Boolean($("ai-mode-polish")?.checked),
       images_per_request: Math.min(8, Math.max(1, Math.round(Number($("ai-mode-images")?.value) || 2))),
     };
-    setRunning(true);
+  }
+
+  function applyDiscoveredRange(fromOne, toOne) {
+    if (!discoveredChapters.length) return;
+    const total = discoveredChapters.length;
+    const start = Math.max(1, Math.min(total, Math.round(Number(fromOne) || 1)));
+    let end = Math.max(start, Math.min(total, Math.round(Number(toOne) || total)));
+    if (end - start + 1 > MAX_QUEUE_URLS) end = start + MAX_QUEUE_URLS - 1;
+    const slice = discoveredChapters.slice(start - 1, end);
+    const fromInput = $("ai-mode-range-from");
+    const toInput = $("ai-mode-range-to");
+    if (fromInput) {
+      fromInput.max = String(total);
+      fromInput.value = String(start);
+    }
+    if (toInput) {
+      toInput.max = String(total);
+      toInput.value = String(end);
+    }
+    const info = $("ai-mode-range-info");
+    if (info) info.textContent = `Đã quét ${total} chương · đang chọn ${start}–${end}`;
+    const box = $("ai-mode-queue-urls");
+    if (box) {
+      box.value = slice.map((c) => c.url).join("\n");
+      updateQueueCount();
+    }
+  }
+
+  async function discoverChapters() {
+    const url = $("ai-mode-toc-url")?.value.trim() || "";
+    if (!url) {
+      window.showToast?.("Vui lòng dán liên kết trang mục lục truyện trước.", "error");
+      return;
+    }
+    const btn = $("ai-mode-discover-btn");
+    if (btn) btn.disabled = true;
     try {
-      const job = await requestJson("/api/ai_mode/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const data = await postJson("/api/ai_mode/queue/discover", { url });
+      const chapters = data.chapters || [];
+      if (!chapters.length) {
+        window.showToast?.("Không tìm thấy liên kết chương nào từ trang này.", "info");
+        return;
+      }
+      discoveredChapters = chapters;
+      const rangeBar = $("ai-mode-range-bar");
+      if (rangeBar) rangeBar.hidden = chapters.length <= 1;
+      const defaultEnd = Math.min(chapters.length, MAX_QUEUE_URLS);
+      applyDiscoveredRange(1, defaultEnd);
+      const extraNote = chapters.length > MAX_QUEUE_URLS
+        ? ` (đang nạp ${defaultEnd} chương đầu; dùng thanh Từ/Đến bên dưới để chọn các chương tiếp theo)`
+        : "";
+      window.showToast?.(`Tìm thấy ${chapters.length} chương đúng của bộ truyện${extraNote}.`, "success");
+      if ($("ai-mode-series")?.open) loadSeries();
+    } catch (err) {
+      window.showToast?.("Không quét được mục lục: " + err.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function start(event) {
+    event.preventDefault();
+    const base = buildPayloadOptions();
+    if (scopeMode === "queue") {
+      const urls = parseQueueUrls();
+      if (!urls.length) {
+        window.showToast?.("Vui lòng dán ít nhất 1 liên kết chương.", "error");
+        return;
+      }
+      if (urls.length > MAX_QUEUE_URLS) {
+        window.showToast?.(`Mỗi hàng đợi tối đa ${MAX_QUEUE_URLS} chương (hiện đang có ${urls.length}).`, "error");
+        return;
+      }
+      setRunning(true, { isQueue: true });
+      try {
+        const queue = await postJson("/api/ai_mode/queue/start", {
+          ...base,
+          urls,
+          continue_on_error: Boolean($("ai-mode-continue-on-error")?.checked ?? true),
+        });
+        storage("remove", JOB_KEY);
+        storage("set", QUEUE_KEY, queue.queue_id);
+        renderQueue(queue);
+        pollQueue(queue.queue_id);
+        if (base.provider === CLOUD) loadAccount();
+      } catch (err) {
+        setRunning(false, { isQueue: true });
+        window.showToast?.("Không thể chạy hàng đợi AI: " + err.message, "error");
+      }
+      return;
+    }
+
+    const url = $("ai-mode-url")?.value.trim();
+    if (!url) return;
+    setRunning(true, { isQueue: false });
+    try {
+      const job = await postJson("/api/ai_mode/start", { url, ...base });
+      storage("remove", QUEUE_KEY);
       storage("set", JOB_KEY, job.job_id);
       render(job);
       poll(job.job_id);
-      if (provider === CLOUD) loadAccount();
+      if (base.provider === CLOUD) loadAccount();
     } catch (err) {
-      setRunning(false);
+      setRunning(false, { isQueue: false });
       window.showToast?.("Không thể chạy Chế độ AI: " + err.message, "error");
     }
   }
 
   async function loadSeries() {
-    const url = $("ai-mode-url")?.value.trim();
+    const url = currentSeriesUrl();
     const box = $("ai-mode-series-text");
     if (!url || !box) return;
     try {
@@ -438,7 +745,7 @@
   }
 
   async function saveSeries() {
-    const url = $("ai-mode-url")?.value.trim();
+    const url = currentSeriesUrl();
     if (!url) return window.showToast?.("Vui lòng dán liên kết chương trước.", "error");
     try {
       const data = await requestJson("/api/ai_mode/series/save", {
@@ -455,6 +762,12 @@
   async function restore() {
     try {
       const active = await requestJson("/api/ai_mode/active");
+      const queueId = active.queue?.queue_id || storage("get", QUEUE_KEY);
+      if (active.queue?.queue_id || (!active.job?.job_id && queueId)) {
+        setScopeMode("queue");
+        pollQueue(queueId);
+        return;
+      }
       const jobId = active.job?.job_id || storage("get", JOB_KEY);
       if (jobId) poll(jobId);
     } catch (_) {}
@@ -473,6 +786,24 @@
     provider.addEventListener("ai-providers-updated", () => {
       ensureCloudOption();
       syncProviderFields();
+    });
+    $("ai-mode-scope-single")?.addEventListener("click", () => setScopeMode("single"));
+    $("ai-mode-scope-queue")?.addEventListener("click", () => setScopeMode("queue"));
+    $("ai-mode-queue-urls")?.addEventListener("input", updateQueueCount);
+    $("ai-mode-discover-btn")?.addEventListener("click", discoverChapters);
+    $("ai-mode-range-apply")?.addEventListener("click", () => {
+      applyDiscoveredRange($("ai-mode-range-from")?.value, $("ai-mode-range-to")?.value);
+    });
+    $("ai-mode-range-next")?.addEventListener("click", () => {
+      if (!discoveredChapters.length) return;
+      const curFrom = Math.max(1, Math.round(Number($("ai-mode-range-from")?.value) || 1));
+      const curTo = Math.max(curFrom, Math.round(Number($("ai-mode-range-to")?.value) || discoveredChapters.length));
+      const nextFrom = (curTo - curFrom + 1) > RANGE_STEP ? 1 : (curTo >= discoveredChapters.length ? 1 : curTo + 1);
+      applyDiscoveredRange(nextFrom, Math.min(discoveredChapters.length, nextFrom + RANGE_STEP - 1));
+    });
+    $("ai-mode-range-all")?.addEventListener("click", () => {
+      if (!discoveredChapters.length) return;
+      applyDiscoveredRange(1, Math.min(discoveredChapters.length, MAX_QUEUE_URLS));
     });
     $("ai-mode-series")?.addEventListener("toggle", (event) => { if (event.target.open) loadSeries(); });
     $("ai-mode-url")?.addEventListener("change", () => { if ($("ai-mode-series")?.open) loadSeries(); });
@@ -494,12 +825,33 @@
         window.showToast?.("Không hủy được: " + err.message, "error");
       }
     });
+    $("ai-mode-queue-cancel")?.addEventListener("click", async () => {
+      if (!currentQueue) return;
+      try {
+        renderQueue(await postJson(`/api/ai_mode/queue/${encodeURIComponent(currentQueue.queue_id)}/cancel`));
+      } catch (err) {
+        window.showToast?.("Không hủy được hàng đợi: " + err.message, "error");
+      }
+    });
+    $("ai-mode-queue-retry")?.addEventListener("click", () => {
+      if (!currentQueue) return;
+      const failedUrls = (currentQueue.items || [])
+        .filter((i) => ["failed", "cancelled", "skipped"].includes(i.status))
+        .map((i) => i.url);
+      if (!failedUrls.length) return;
+      setScopeMode("queue");
+      const box = $("ai-mode-queue-urls");
+      if (box) box.value = failedUrls.join("\n");
+      updateQueueCount();
+      window.showToast?.(`Đã nạp lại ${failedUrls.length} chương chưa hoàn tất.`, "info");
+    });
     $("ai-mode-open").addEventListener("click", () => {
       if (!currentJob?.chapter_id) return;
       if (currentJob.status === "completed") window.openLetteredChapter = currentJob.chapter_id;
       window.resumeChapter?.(currentJob.chapter_id);
     });
     syncProviderFields();
+    setScopeMode("single");
     window.syncAIProviderSelects?.();
     loadAccount().then(watchReturnFromCheckout);
     restore();

@@ -216,6 +216,15 @@
   .ai-mode-panel { grid-column: 1 / -1; }
   .ai-mode-panel [hidden] { display: none !important; }
   .ai-mode-form { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; gap: 8px 10px; }
+  .ai-mode-scope { grid-column: 1 / -1; justify-self: start; display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-quiet); }
+  .ai-mode-scope .ui-btn { width: auto; min-height: 26px; height: 26px; padding: 0 10px; border-color: transparent; background: transparent; color: var(--text-secondary); font-size: 12px; }
+  .ai-mode-scope .ui-btn.is-active { border-color: var(--border-strong); background: var(--surface-panel); color: var(--text-primary); }
+  .ai-mode-queue-box { grid-column: 1 / -1; display: grid; gap: 8px; }
+  .ai-mode-toc-row { display: flex; align-items: stretch; gap: 8px; }
+  .ai-mode-toc-field { flex: 1 1 auto; min-width: 0; }
+  .ai-mode-toc-row .ui-btn { flex: 0 0 auto; width: auto; min-height: var(--control-height); padding: 0 12px; white-space: nowrap; }
+  .ai-mode-queue-field textarea { width: 100%; resize: vertical; font: 12.5px/1.45 var(--font-mono); }
+  .ai-mode-continue-error { display: inline-flex; justify-self: start; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
   .ai-mode-form .ai-mode-url, .ai-mode-form .ai-mode-notes { grid-column: 1 / -1; }
   .ai-mode-notes textarea { width: 100%; resize: vertical; font: inherit; }
   .ai-mode-form .ai-mode-series { grid-column: 1 / -1; }
@@ -234,7 +243,35 @@
   .ai-mode-form .ai-mode-polish input { flex: 0 0 auto; width: 16px; height: 16px; min-height: 0; margin: 1px 0 0; }
   .ai-mode-form .ui-field { gap: 4px; font-size: 12px; }
   .ai-mode-form :is(select, input) { width: 100%; min-width: 0; }
+  .ai-mode-form :is(.ai-mode-polish, .ai-mode-continue-error) input { flex: 0 0 auto; width: 16px; height: 16px; min-height: 0; }
+  .ai-mode-form .ai-mode-continue-error input { margin: 0; }
+  .ai-mode-range-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); background: var(--surface-quiet); font-size: 12px; color: var(--text-secondary); }
+  .ai-mode-range-info { margin-right: auto; font-weight: 600; color: var(--text-primary); }
+  .ai-mode-range-bar label { display: inline-flex; align-items: center; gap: 5px; }
+  .ai-mode-range-bar input[type="number"] { width: 72px; min-height: 28px; height: 28px; padding: 0 8px; }
+  .ai-mode-range-bar .ui-btn { width: auto; min-height: 28px; height: 28px; padding: 0 9px; font-size: 11px; }
+  .extension-download-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .extension-download-row a.ui-btn { display: inline-flex; align-items: center; text-decoration: none; }
+  .ai-mode-form #ai-mode-run { grid-column: 1 / -1; justify-self: start; width: auto; min-width: max-content; }
   .ai-mode-status { grid-column: 1 / -1; display: grid; gap: 10px; }
+  .ai-mode-queue-panel { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-quiet); }
+  .ai-mode-queue-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; }
+  .ai-mode-queue-items { display: grid; gap: 4px; max-height: 240px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+  .ai-mode-queue-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); background: var(--surface-panel); font-size: 12px; }
+  .ai-mode-queue-item.is-running { border-color: var(--accent); }
+  .ai-mode-queue-item.is-completed, .ai-mode-queue-item.is-completed_with_blockers { border-color: var(--border-strong); }
+  .ai-mode-queue-item.is-failed { border-color: var(--danger); }
+  .ai-mode-queue-indicator { flex: 0 0 18px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }
+  .ai-mode-queue-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+  .ai-mode-queue-dot.is-running { background: hsl(213 92% 58%); animation: ai-queue-pulse 1.3s ease-in-out infinite; }
+  .ai-mode-queue-icon { width: 15px; height: 15px; fill: none; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+  .ai-mode-queue-icon.is-done { stroke: hsl(142 71% 45%); }
+  .ai-mode-queue-icon.is-failed { stroke: hsl(0 84% 58%); }
+  @keyframes ai-queue-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .28; transform: scale(.86); } }
+  .ai-mode-queue-meta { flex: 1 1 auto; display: grid; gap: 2px; min-width: 0; }
+  .ai-mode-queue-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ai-mode-queue-meta span { color: var(--text-muted); overflow-wrap: anywhere; }
+  .ai-mode-queue-item .ui-btn { flex: 0 0 auto; min-height: 26px; height: 26px; padding: 0 8px; font-size: 11px; }
   .ai-mode-plan { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
   .ai-mode-login { display: flex; flex-wrap: wrap; gap: 6px; }
   .ai-mode-upgrade summary { list-style: none; cursor: pointer; }
