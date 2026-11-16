@@ -32,6 +32,16 @@ on:
         required: false
         default: "2"
         type: string
+      prompts_file:
+        description: "repo path of a prompts file (one prompt per line, rotated per example); empty = single default prompt"
+        required: false
+        default: ""
+        type: string
+      holdout_file:
+        description: "repo path of a holdout file (one crop basename per line, forced into holdout); empty = positional holdout"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   pilot:
@@ -97,14 +107,24 @@ jobs:
           if [ -n "${{ inputs.init_adapter_run_id }}" ]; then
             init_arg="--init-adapter init-adapter/text-out"
           fi
+          prompts_arg=""
+          if [ -n "${{ inputs.prompts_file }}" ]; then
+            prompts_arg="--prompts-file ${{ inputs.prompts_file }}"
+          fi
+          holdout_arg=""
+          if [ -n "${{ inputs.holdout_file }}" ]; then
+            holdout_arg="--holdout-crops ${{ inputs.holdout_file }}"
+          fi
           python3 scripts/nano_sft/train_pilot.py \
             --pairs $pairs \
             --model huihui-ai/Huihui-Qwen3.5-0.8B-abliterated \
             $init_arg \
+            $prompts_arg \
+            $holdout_arg \
             --out pilot-out \
             --max-pairs "${{ inputs.max_pairs }}" \
             --epochs "${{ inputs.epochs }}" \
-            --batch 1 --accum 8 --lr 5e-5 \
+            --batch 1 --accum 8 --lr 1e-4 \
             --dtype float32 2>&1 | tee pilot-train.log
           echo "--- pilot report ---"
           cat pilot-out/pilot-report.json

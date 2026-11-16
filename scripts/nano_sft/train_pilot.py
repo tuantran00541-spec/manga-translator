@@ -25,7 +25,8 @@ PROMPT = "Dịch chữ trong ảnh sang tiếng Việt."
 
 
 class PairsDataset(Dataset):
-    def __init__(self, paths, processor, max_pairs=0, holdout=0):
+    def __init__(self, paths, processor, max_pairs=0, holdout=0,
+                 holdout_crops=None, prompts=None):
         self.rows = []
         for p in paths:
             base = os.path.dirname(os.path.abspath(p))
@@ -47,8 +48,16 @@ class PairsDataset(Dataset):
         random.Random(0).shuffle(self.rows)
         if max_pairs:
             self.rows = self.rows[:max_pairs]
-        self.holdout_rows = self.rows[:holdout] if holdout else []
-        self.rows = self.rows[holdout:] if holdout else self.rows
+        if holdout_crops:
+            import os as _os
+            self.holdout_rows = [r for r in self.rows
+                                 if _os.path.basename(r[0]) in holdout_crops]
+            self.rows = [r for r in self.rows
+                         if _os.path.basename(r[0]) not in holdout_crops]
+        else:
+            self.holdout_rows = self.rows[:holdout] if holdout else []
+            self.rows = self.rows[holdout:] if holdout else self.rows
+        self.prompts = prompts or [PROMPT]
         self.processor = processor
 
     def __len__(self):
@@ -59,7 +68,7 @@ class PairsDataset(Dataset):
         image = Image.open(crop).convert("RGB")
         msgs = [{"role": "user", "content": [
             {"type": "image", "image": image},
-            {"type": "text", "text": PROMPT}]}]
+            {"type": "text", "text": self.prompts[i % len(self.prompts)]}]}]
         prompt = self.processor.apply_chat_template(
             msgs, tokenize=False, add_generation_prompt=True)
         full = prompt + vi + self.processor.tokenizer.eos_token
@@ -156,8 +165,10 @@ def main():
     ap.add_argument("--batch", type=int, default=1)
     ap.add_argument("--accum", type=int, default=8)
     ap.add_argument("--lora-r", type=int, default=16)
-    ap.add_argument("--lr", type=float, default=5e-5)
+    ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--holdout", type=int, default=48)
+    ap.add_argument("--holdout-crops", default="")
+    ap.add_argument("--prompts-file", default="")
     ap.add_argument("--time-budget-minutes", type=float, default=330.0)
     ap.add_argument("--dtype", default="float32", choices=["float32", "bfloat16"])
     ap.add_argument("--max-steps", type=int, default=0)
@@ -180,18 +191,32 @@ def main():
     else:
         cfg = LoraConfig(r=args.lora_r, lora_alpha=args.lora_r * 2,
                          lora_dropout=0.05, bias="none", task_type="CAUSAL_LM",
-                         target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                                         "gate_proj", "up_proj", "down_proj",
-                                         "in_proj_qkv", "in_proj_z", "in_proj_b",
-                                         "in_proj_a", "out_proj"])
+                         target_modules="all-linear")
         model = get_peft_model(model, cfg)
     model.print_trainable_parameters()
+    buckets = {"vision": 0, "projector": 0, "llm": 0}
     for name, p in model.named_parameters():
-        if "vision_tower" in name or "multi_modal_projector" in name:
-            p.requires_grad = False
+        if not p.requires_grad:
+            continue
+        if "merger" in name:
+            buckets["projector"] += p.numel()
+        elif "visual" in name:
+            buckets["vision"] += p.numel()
+        else:
+            buckets["llm"] += p.numel()
+    print(f"trainable by bucket: {buckets}", flush=True)
 
+    holdout_crops = None
+    if args.holdout_crops:
+        with open(args.holdout_crops) as f:
+            holdout_crops = {l.strip() for l in f if l.strip()}
+    prompts = None
+    if args.prompts_file:
+        with open(args.prompts_file) as f:
+            prompts = [l.strip() for l in f if l.strip()]
     ds = PairsDataset(args.pairs, processor, max_pairs=args.max_pairs,
-                      holdout=args.holdout)
+                      holdout=args.holdout, holdout_crops=holdout_crops,
+                      prompts=prompts)
     print(f"dataset: {len(ds)} train pairs + {len(ds.holdout_rows)} holdout",
           flush=True)
     if len(ds) == 0:
@@ -215,6 +240,8 @@ def main():
               "train_pairs": len(ds), "holdout_pairs": len(ds.holdout_rows),
               "epochs": args.epochs, "lora_r": args.lora_r, "lr": args.lr,
               "accum": args.accum, "epoch_evals": [], "best_epoch": None,
+              "prompts": len(prompts) if prompts else 1,
+              "holdout_crops": len(holdout_crops) if holdout_crops else 0,
               "time_budget_stop": None}
 
     def save_ckpt(sub):
