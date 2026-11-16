@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import requests
 
+from app import api_proxy
 from app.ai_mode import decider
 from app.ai_mode.vision_json import request_vision_json
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
@@ -158,14 +159,21 @@ def evaluate_url(provider) -> str:
 
 
 def judge(provider, api_key: str, state: str, asked: dict = QUESTIONS) -> dict[str, float]:
-    response = requests.post(
-        evaluate_url(provider), headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={**({"model": decider.DECIDER_MODEL} if decider.available(provider, api_key) else {}),
-              "state": state, "questions": asked},
-        timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS), allow_redirects=False,
+    response, _, _ = api_proxy.proxy_post(
+        url=evaluate_url(provider),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        payload={**({"model": decider.DECIDER_MODEL} if decider.available(provider, api_key) else {}),
+                 "state": state, "questions": asked},
+        provider=None,
+        api_key=api_key,
+        caller="ai_mode:polish_judge",
+        timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
+        stream=False,
+        is_gemini=False,
+        post_fn=requests.post,
     )
     if not response.ok:
-        raise RuntimeError(f"Judge HTTP {response.status_code}: {response.text[:200]}")
+        raise RuntimeError(f"Judge HTTP {response.status_code}: {getattr(response, 'text', '')[:200]}")
     answers = response.json().get("answers") or {}
     scores = {}
     for key in asked:

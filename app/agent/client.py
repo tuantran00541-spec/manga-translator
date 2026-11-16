@@ -12,6 +12,7 @@ from email.utils import parsedate_to_datetime
 import requests
 from fastapi import HTTPException
 
+from app import api_proxy
 from app.ai_providers import AIProvider, auth_headers
 from app.logging_config import logger
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS
@@ -510,63 +511,208 @@ def complete(provider: AIProvider, api_key: str, model: str, messages: list[dict
 
 def _complete_once(provider: AIProvider, api_key: str, model: str, messages: list[dict], *, tools: list[dict] | None, on_delta=None,
                    max_tokens: int | None = None) -> dict:
-    payload = {"model": model, "messages": messages, "stream": bool(on_delta)}
+    started = time.monotonic()
+    stream_active = bool(on_delta)
+    payload = {"model": model, "messages": messages, "stream": stream_active}
     payload.update(provider.chat_completion_extras())
     if tools:
         payload["tools"] = native_tools(tools)
-    if on_delta:
+    if stream_active:
         payload["stream_options"] = {"include_usage": True}
     if max_tokens:
         payload["max_tokens"] = min(int(max_tokens), output_cap(provider, model) or int(max_tokens))
     refused = (provider.api_base, model)
     extra = {} if refused in _REFUSED_EXTRA else {k: v for k, v in REQUEST_EXTRA.get().items() if k not in ("model", "messages", "stream", "tools")}
     payload.update(extra)
-    response = _post(provider, api_key, payload, bool(on_delta))
-    if extra and response.status_code in (400, 422) and any(k.lower() in response.text.lower() for k in extra):
-        logger.warning("{} refused {}; asking without them from now on", provider.label, ", ".join(extra))
-        _REFUSED_EXTRA.add(refused)
-        for key in extra:
-            payload.pop(key, None)
-        response.close()
-        response = _post(provider, api_key, payload, bool(on_delta))
-    while "max_tokens" in payload and response.status_code == 400 and re.search(r"max_(completion_)?tokens", response.text, re.I):
-        asked = payload["max_tokens"]
-        named = [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", response.text[:2000])]
-        lower = max((n for n in named if 256 <= n < asked), default=asked // 2)
-        response.close()
-        if lower < 1024:
-            payload.pop("max_tokens")
-        else:
-            payload["max_tokens"] = OUTPUT_CAPS[(provider.api_base, model)] = lower
-        response = _post(provider, api_key, payload, bool(on_delta))
-    if on_delta and response.status_code == 400 and "stream_options" in response.text.lower():
-        payload.pop("stream_options")
-        response.close()
-        response = _post(provider, api_key, payload, True)
-    if 300 <= response.status_code < 400:
-        raise RuntimeError(f"{provider.label} redirected the request")
-    if not response.ok:
-        detail = _safe_error_detail(response, api_key)
-        if tools and 400 <= response.status_code < 500 and "tool" in detail.lower():
-            raise ToolsUnsupported(detail)
-        if ASK_ON_LIMIT.get() and (response.status_code == 402 or response.status_code == 429 and not (
-                _pace_hint(detail) or _retry_after(response) or _hinted_wait(detail))):
-            raise KeyLimited(f"{provider.label} HTTP {response.status_code}: {detail}")
-        busy = response.status_code == 429 and (not re.search(r"quota|billing|insufficient|balance|credit", detail, re.I) or bool(_pace_hint(detail)))
-        retry = response.headers.get("x-should-retry", "").lower()
-        error = TransientError if (response.status_code >= 500 or response.status_code in (408, 409) or busy or retry == "true") and retry != "false" else RuntimeError
-        raise error(f"{provider.label} HTTP {response.status_code}: {detail}")
-    if on_delta:
-        try:
-            message, usage, _ = _read_stream(response, on_delta)
-        except requests.RequestException as exc:
-            raise TransientError(f"{provider.label} stream broke: {type(exc).__name__}") from exc
-        finally:
+
+    base_url_key = str(provider.api_base or "").rstrip("/")
+    payload, stream_active, pre_wrapped, wrapped_chat = api_proxy.apply_wrapped_rules(
+        payload,
+        api_base=base_url_key,
+        model=model,
+        stream=stream_active,
+        is_gemini=False,
+    )
+    if wrapped_chat and base_url_key:
+        _FOUND_PATH[base_url_key] = wrapped_chat
+
+    errors_seen: list[dict] = []
+    rescues_applied: list[str] = list(pre_wrapped)
+    rescue_types: list[str] = ["auto_wrapped"] if pre_wrapped else []
+    downsize_attempts = 0
+    response = None
+
+    for attempt in range(1, 7):
+        response = _post(provider, api_key, payload, stream_active)
+        if extra and response.status_code in (400, 422) and any(k.lower() in response.text.lower() for k in extra):
+            logger.warning("{} refused {}; asking without them from now on", provider.label, ", ".join(extra))
+            _REFUSED_EXTRA.add(refused)
+            for key in extra:
+                payload.pop(key, None)
+            errors_seen.append({"attempt": attempt, "status": response.status_code, "category": "unsupported_field", "detail": response.text[:200]})
+            rescues_applied.append(f"Gỡ extra refused: {', '.join(extra)}")
+            rescue_types.append("unsupported_field")
             response.close()
-        return _build(message, usage, tools)
-    try:
-        body = response.json()
-        message = {**body["choices"][0]["message"], "_debug": {"finish": body["choices"][0].get("finish_reason") or "", "fields": sorted(body["choices"][0]["message"])}}
-    except (ValueError, KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError(f"{provider.label} returned no message") from exc
-    return _build(message, body.get("usage") or {}, tools)
+            continue
+
+        if response.status_code == 400 and any(k in payload for k in ("max_tokens", "max_completion_tokens")) and re.search(r"max_(completion_)?tokens", response.text, re.I):
+            fixed = api_proxy.adjust_token_limit(payload, response.text, is_gemini=False)
+            if fixed is not None:
+                payload, desc = fixed
+                if "max_tokens" in payload and isinstance(payload["max_tokens"], int):
+                    OUTPUT_CAPS[(provider.api_base, model)] = payload["max_tokens"]
+                errors_seen.append({"attempt": attempt, "status": response.status_code, "category": "token_limit", "detail": response.text[:200]})
+                rescues_applied.append(desc)
+                rescue_types.append("token_limit")
+                response.close()
+                continue
+
+        if stream_active and response.status_code == 400 and "stream_options" in response.text.lower():
+            payload.pop("stream_options", None)
+            errors_seen.append({"attempt": attempt, "status": 400, "category": "unsupported_field", "detail": response.text[:200]})
+            rescues_applied.append("Gỡ stream_options")
+            rescue_types.append("unsupported_field")
+            response.close()
+            continue
+
+        if 300 <= response.status_code < 400:
+            api_proxy.record_event(
+                caller="chaos_agent", provider=provider.label, model=model, status="failed", attempts=attempt,
+                latency_ms=round((time.monotonic() - started) * 1000), errors_seen=errors_seen, rescues_applied=rescues_applied,
+                detail=f"{provider.label} redirected the request",
+            )
+            raise RuntimeError(f"{provider.label} redirected the request")
+
+        if not response.ok:
+            detail = _safe_error_detail(response, api_key)
+            cat = api_proxy.classify_http_error(response.status_code, detail, payload, is_gemini=False)
+            errors_seen.append({"attempt": attempt, "status": response.status_code, "category": cat, "detail": detail[:220]})
+
+            if cat == "quota_or_limit" and (response.status_code == 402 or response.status_code == 429):
+                api_proxy.record_event(
+                    caller="chaos_agent", provider=provider.label, model=model, status="skipped_quota", attempts=attempt,
+                    latency_ms=round((time.monotonic() - started) * 1000), errors_seen=errors_seen,
+                    rescues_applied=[*rescues_applied, "Bỏ qua 429 / hết quota"], detail=detail,
+                )
+            elif attempt < 6:
+                rescued_msg = ""
+                wrap_kw: dict = {}
+                if cat == "too_many_tools" and isinstance(payload.get("tools"), list) and len(payload["tools"]) > 1:
+                    before = len(payload["tools"])
+                    trimmed, target = api_proxy.trim_openai_tools(payload["tools"], detail)
+                    payload["tools"] = trimmed
+                    rescued_msg = f"Cắt tools {before} → {target}"
+                    rescue_types.append("too_many_tools")
+                    wrap_kw["tool_cap"] = target
+                elif cat == "too_many_images":
+                    res = api_proxy.rescue_payload_images_limit(payload, detail, is_gemini=False)
+                    if res is not None:
+                        payload, rescued_msg = res
+                        rescue_types.append("too_many_images")
+                        img_cap = api_proxy.extract_limit_number(detail, r"images?", api_proxy.count_payload_images(payload) + 1)
+                        if img_cap is not None:
+                            wrap_kw["image_cap"] = img_cap
+                elif cat == "payload_too_large":
+                    downsize_attempts += 1
+                    new_payload, did = api_proxy.downsize_payload_images(payload, attempt=downsize_attempts, is_gemini=False)
+                    if did:
+                        payload = new_payload
+                        rescued_msg = f"Nén ảnh quá cỡ (lần {downsize_attempts})"
+                        rescue_types.append("payload_too_large")
+                elif cat == "stream_unsupported" and stream_active:
+                    stream_active = False
+                    payload["stream"] = False
+                    payload.pop("stream_options", None)
+                    rescued_msg = "Chuyển stream → non-stream"
+                    rescue_types.append("stream_unsupported")
+                    wrap_kw["force_non_stream"] = True
+                elif cat == "system_role_unsupported":
+                    new_payload, did = api_proxy.fold_system_messages(payload)
+                    if did:
+                        payload = new_payload
+                        rescued_msg = "Gộp system prompt vào user message"
+                        rescue_types.append("system_role_unsupported")
+                        wrap_kw["fold_system"] = True
+                elif cat == "token_or_context_limit":
+                    new_payload, did = api_proxy.compact_payload_context(payload, is_gemini=False)
+                    if did:
+                        payload = new_payload
+                        rescued_msg = "Nén lịch sử ngữ cảnh vượt giới hạn"
+                        rescue_types.append("context_overflow")
+                elif cat == "unsupported_field":
+                    new_payload, removed = api_proxy.strip_rejected_fields(payload, detail, api_base=provider.api_base, model=model, is_gemini=False)
+                    if removed:
+                        payload = new_payload
+                        rescued_msg = f"Gỡ trường bị từ chối: {', '.join(removed)}"
+                        rescue_types.append("unsupported_field")
+                        wrap_kw["refused_fields"] = removed
+                if rescued_msg:
+                    rescues_applied.append(rescued_msg)
+                    api_proxy.wrap_target(
+                        base_url_key, model, url=chat_url(provider), provider_id=provider.id,
+                        provider_label=provider.label, api_key=api_key, error_detail=detail,
+                        rescue_note=rescued_msg, **wrap_kw,
+                    )
+                    response.close()
+                    continue
+
+            if tools and 400 <= response.status_code < 500 and "tool" in detail.lower() and not api_proxy.is_tools_limit_error(detail, len(payload.get("tools") or [])):
+                api_proxy.record_event(
+                    caller="chaos_agent", provider=provider.label, model=model, status="failed", attempts=attempt,
+                    latency_ms=round((time.monotonic() - started) * 1000), errors_seen=errors_seen, rescues_applied=rescues_applied, detail=detail,
+                )
+                raise ToolsUnsupported(detail)
+            if ASK_ON_LIMIT.get() and (response.status_code == 402 or response.status_code == 429 and not (
+                    _pace_hint(detail) or _retry_after(response) or _hinted_wait(detail))):
+                raise KeyLimited(f"{provider.label} HTTP {response.status_code}: {detail}")
+            busy = response.status_code == 429 and (not re.search(r"quota|billing|insufficient|balance|credit", detail, re.I) or bool(_pace_hint(detail)))
+            retry = response.headers.get("x-should-retry", "").lower()
+            error = TransientError if (response.status_code >= 500 or response.status_code in (408, 409) or busy or retry == "true") and retry != "false" else RuntimeError
+            if response.status_code not in (402, 429):
+                api_proxy.record_event(
+                    caller="chaos_agent", provider=provider.label, model=model, status="failed", attempts=attempt,
+                    latency_ms=round((time.monotonic() - started) * 1000), errors_seen=errors_seen, rescues_applied=rescues_applied, detail=detail,
+                )
+            raise error(f"{provider.label} HTTP {response.status_code}: {detail}")
+
+        if stream_active:
+            try:
+                message, usage, _ = _read_stream(response, on_delta)
+            except requests.RequestException as exc:
+                errors_seen.append({"attempt": attempt, "status": 200, "category": "stream_broke", "detail": type(exc).__name__})
+                if attempt < 5:
+                    stream_active = False
+                    payload["stream"] = False
+                    payload.pop("stream_options", None)
+                    rescues_applied.append("Stream đứt giữa chừng → chuyển non-stream")
+                    rescue_types.append("stream_unsupported")
+                    continue
+                raise TransientError(f"{provider.label} stream broke: {type(exc).__name__}") from exc
+            finally:
+                response.close()
+            api_proxy.record_event(
+                caller="chaos_agent", provider=provider.label, model=model,
+                status="rescued" if rescues_applied else "ok", attempts=attempt,
+                latency_ms=round((time.monotonic() - started) * 1000),
+                errors_seen=errors_seen, rescues_applied=rescues_applied, rescue_types=rescue_types,
+            )
+            return _build(message, usage, tools)
+
+        try:
+            body = response.json()
+            message = {**body["choices"][0]["message"], "_debug": {"finish": body["choices"][0].get("finish_reason") or "", "fields": sorted(body["choices"][0]["message"])}}
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            api_proxy.record_event(
+                caller="chaos_agent", provider=provider.label, model=model, status="failed", attempts=attempt,
+                latency_ms=round((time.monotonic() - started) * 1000), errors_seen=errors_seen, rescues_applied=rescues_applied,
+                detail=f"{provider.label} returned no message",
+            )
+            raise RuntimeError(f"{provider.label} returned no message") from exc
+        api_proxy.record_event(
+            caller="chaos_agent", provider=provider.label, model=model,
+            status="rescued" if rescues_applied else "ok", attempts=attempt,
+            latency_ms=round((time.monotonic() - started) * 1000),
+            errors_seen=errors_seen, rescues_applied=rescues_applied, rescue_types=rescue_types,
+        )
+        return _build(message, body.get("usage") or {}, tools)
+    raise RuntimeError(f"{provider.label} rescue loop exceeded")

@@ -89,21 +89,37 @@
       svgIcon(["M4 6c0 1.66 3.58 3 8 3s8-1.34 8-3-3.58-3-8-3-8 1.34-8 3Z", "M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6", "M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"]),
       el("span", "", "Mô hình AI"),
     );
-    nav.append(tabGeneralBtn, tabModelsBtn);
+    const tabProxyBtn = button("", "settings-nav-item");
+    tabProxyBtn.append(
+      svgIcon(["M12 3l7 4v5c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V7l7-4Z", "M9 12l2 2 4-4"]),
+      el("span", "", "Proxy API"),
+    );
+    nav.append(tabGeneralBtn, tabModelsBtn, tabProxyBtn);
 
     const generalPanel = el("section", "settings-panel");
     generalPanel.hidden = true;
     const modelsPanel = el("section", "settings-panel");
+    const proxyPanel = el("section", "settings-panel");
+    proxyPanel.hidden = true;
+    const proxyMonitorHost = el("div", "proxy-monitor-host");
+    proxyMonitorHost.id = "proxy-monitor-host";
+    proxyPanel.append(proxyMonitorHost);
 
     const switchSettingsTab = (tab) => {
       const isGeneral = tab === "general";
+      const isModels = tab === "models";
+      const isProxy = tab === "proxy";
       tabGeneralBtn.classList.toggle("is-active", isGeneral);
-      tabModelsBtn.classList.toggle("is-active", !isGeneral);
+      tabModelsBtn.classList.toggle("is-active", isModels);
+      tabProxyBtn.classList.toggle("is-active", isProxy);
       generalPanel.hidden = !isGeneral;
-      modelsPanel.hidden = isGeneral;
+      modelsPanel.hidden = !isModels;
+      proxyPanel.hidden = !isProxy;
+      if (isProxy) window.refreshProxyMonitor?.(true);
     };
     tabGeneralBtn.addEventListener("click", () => switchSettingsTab("general"));
     tabModelsBtn.addEventListener("click", () => switchSettingsTab("models"));
+    tabProxyBtn.addEventListener("click", () => switchSettingsTab("proxy"));
 
     const permSelect = el("select", "ui-select settings-row-select");
     [["ask", "Hỏi trước"], ["edits", "Tự sửa và chạy"], ["bypass", "Tự động"]].forEach(([v, l]) => permSelect.add(new Option(l, v)));
@@ -238,7 +254,7 @@
       modelsBox,
     );
 
-    contentHost.append(generalPanel, modelsPanel);
+    contentHost.append(generalPanel, modelsPanel, proxyPanel);
     config.append(nav, contentHost);
 
     let selectedProviderId = "";

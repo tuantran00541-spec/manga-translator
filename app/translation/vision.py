@@ -9,6 +9,7 @@ from pathlib import Path
 import cv2
 import requests
 
+from app import api_proxy
 from app.ai_mode.vision_json import request_vision_json, stage_headers
 from app.box_format import scaled_box
 from app.ai_providers import AIProvider, auth_headers
@@ -777,6 +778,26 @@ class VisionPageTranslator:
             enlarge_ids=frozenset(enlarge), colors=colors, containers=containers, sources=sources, speakers=speakers,
         )
 
+    def _parse_with_repair(self, answer: str, ids: frozenset[str]):
+        try:
+            return _parse_vision_payload(answer, ids)
+        except (ValueError, RuntimeError):
+            repaired = api_proxy.repair_json_object(answer)
+            if not repaired:
+                raise
+            parsed = _parse_vision_payload(json.dumps(repaired, ensure_ascii=False), ids)
+            api_proxy.record_external_rescue(
+                caller="translation",
+                provider=self.provider.label,
+                model=self.model,
+                status="rescued",
+                error_detail="JSON translation output malformed or truncated",
+                error_category="malformed_json",
+                rescue_action="Tự sửa JSON dịch bị lỗi/cắt",
+                rescue_type="json_repair",
+            )
+            return parsed
+
     def _openai(self, system, prompt, marked, *, api_key, ids, max_tokens):
         url = str(self.provider.chat_url or "")
         if not url:
@@ -796,13 +817,18 @@ class VisionPageTranslator:
         }
         payload.update(self.provider.chat_completion_extras())
         try:
-            response = requests.post(
-                url,
+            response, _, _ = api_proxy.proxy_post(
+                url=url,
                 headers={**auth_headers(self.provider, api_key), "Content-Type": "application/json",
                          **stage_headers(self.provider, "translate")},
-                json=payload,
+                payload=payload,
+                provider=self.provider,
+                api_key=api_key,
+                caller="translation",
                 timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
-                allow_redirects=False,
+                stream=False,
+                is_gemini=False,
+                post_fn=requests.post,
             )
         except requests.RequestException as exc:
             raise RuntimeError(f"{self.provider.label} vision request failed") from exc
@@ -828,7 +854,7 @@ class VisionPageTranslator:
                 cost = response_cost_usd(usage, self.provider.id, self.model, getattr(response, "headers", None))
                 return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
             raise RuntimeError(f"{self.provider.label} returned no translation text ({exc}; finish_reason={reason})") from exc
-        translations, font_choices, data = _parse_vision_payload(answer, ids)
+        translations, font_choices, data = self._parse_with_repair(answer, ids)
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
         cost = response_cost_usd(usage, self.provider.id, self.model, getattr(response, "headers", None))
         return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
@@ -846,12 +872,17 @@ class VisionPageTranslator:
             "generation_config": {"thinking_level": "low", "max_output_tokens": max_tokens},
         }
         try:
-            response = requests.post(
-                GEMINI_INTERACTIONS_URL,
+            response, _, _ = api_proxy.proxy_post(
+                url=GEMINI_INTERACTIONS_URL,
                 headers={"Content-Type": "application/json", "x-goog-api-key": api_key.strip(), "Api-Revision": "2026-05-20"},
-                json=payload,
+                payload=payload,
+                provider=None,
+                api_key=api_key,
+                caller="translation:gemini",
                 timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
-                allow_redirects=False,
+                stream=False,
+                is_gemini=True,
+                post_fn=requests.post,
             )
         except requests.RequestException as exc:
             raise RuntimeError("Gemini vision translation failed") from exc
@@ -862,7 +893,7 @@ class VisionPageTranslator:
             answer = gemini_output_text(body)
         except (TypeError, KeyError, ValueError) as exc:
             raise RuntimeError("Gemini returned no translation text") from exc
-        translations, font_choices, data = _parse_vision_payload(answer, ids)
+        translations, font_choices, data = self._parse_with_repair(answer, ids)
         return VisionTranslationResult(
             translations, self.model,
             body.get("usage", {}) if isinstance(body.get("usage"), dict) else {}, None,

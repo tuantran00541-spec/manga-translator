@@ -251,6 +251,7 @@
     document.getElementById("app").inert = true;
     document.getElementById("settings-toggle")?.setAttribute("aria-expanded", "true");
     document.getElementById("settings-close")?.focus();
+    document.dispatchEvent(new CustomEvent("settings-opened"));
   }
 
   function closeSettings() {
@@ -263,6 +264,7 @@
     document.getElementById("app").inert = false;
     document.getElementById("settings-toggle")?.setAttribute("aria-expanded", "false");
     document.getElementById("settings-toggle")?.focus();
+    document.dispatchEvent(new CustomEvent("settings-closed"));
   }
 
   function onShellKeydown(event) {

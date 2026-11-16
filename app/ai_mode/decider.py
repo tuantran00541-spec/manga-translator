@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import cv2
 import requests
 
+from app import api_proxy
 from app.logging_config import logger
 
 DECIDER_HOST = "api.minirouter.sh"
@@ -54,10 +55,17 @@ def data_url(image) -> str | None:
 
 def ask(api_base: str, api_key: str, url: str, questions: dict) -> dict | None:
     try:
-        response = requests.post(
-            f"{api_base}/evaluate", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": DECIDER_MODEL, "state": [{"type": "image_url", "image_url": {"url": url}}], "questions": questions},
-            timeout=TIMEOUT, allow_redirects=False,
+        response, _, _ = api_proxy.proxy_post(
+            url=f"{api_base}/evaluate",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            payload={"model": DECIDER_MODEL, "state": [{"type": "image_url", "image_url": {"url": url}}], "questions": questions},
+            provider=None,
+            api_key=api_key,
+            caller="ai_mode:decider",
+            timeout=TIMEOUT,
+            stream=False,
+            is_gemini=False,
+            post_fn=requests.post,
         )
         if not response.ok:
             return None

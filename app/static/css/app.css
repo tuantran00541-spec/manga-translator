@@ -698,6 +698,35 @@
   .agent-hints li:hover { background: var(--surface-quiet); }
   .agent-hint { flex: 0 0 auto; padding: 2px 6px; border: 0; border-radius: 6px; background: var(--surface-canvas); color: var(--text-primary); font: 600 12px ui-monospace, Menlo, Consolas, monospace; cursor: pointer; }
   .agent-command { white-space: pre-wrap; }
+  .proxy-monitor-host { margin-top: 0; }
+  .proxy-monitor-card { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-raised); }
+  .proxy-monitor-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+  .proxy-monitor-title-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .proxy-monitor-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .proxy-monitor-pill { padding: 2px 8px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--surface-quiet); color: var(--text-secondary); font-size: 11px; font-weight: 500; }
+  .proxy-monitor-actions { display: flex; align-items: center; gap: 6px; }
+  .proxy-monitor-endpoint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-canvas); font-size: 12px; }
+  .proxy-monitor-ep-label { color: var(--text-quiet); }
+  .proxy-monitor-code { flex: 1 1 auto; overflow-wrap: anywhere; font-family: var(--font-mono); color: var(--text-primary); font-size: 11.5px; }
+  .proxy-monitor-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .proxy-stat-cell { display: grid; gap: 2px; padding: 10px 8px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-canvas); text-align: center; }
+  .proxy-stat-val { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+  .proxy-stat-label { font-size: 11px; color: var(--text-quiet); }
+  .proxy-monitor-log { display: grid; gap: 6px; min-height: 180px; max-height: 400px; overflow: auto; }
+  .proxy-wrapped-section { display: grid; gap: 6px; }
+  .proxy-wrapped-heading { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+  .proxy-wrapped-row { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface-canvas); font-size: 12px; }
+  .proxy-wrapped-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .proxy-monitor-empty { margin: 0; padding: 12px 4px; color: var(--text-quiet); font-size: 12.5px; text-align: center; }
+  .proxy-log-row { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--border-subtle); border-left: 2px solid var(--border-strong); border-radius: 8px; background: var(--surface-canvas); font-size: 12px; }
+  .proxy-log-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .proxy-log-badge { padding: 1px 6px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--surface-quiet); color: var(--text-primary); font-size: 11px; font-weight: 600; }
+  .proxy-log-caller { color: var(--text-secondary); font-weight: 500; }
+  .proxy-log-model { color: var(--text-primary); font-weight: 600; }
+  .proxy-log-meta { margin-left: auto; color: var(--text-quiet); font-size: 11px; }
+  .proxy-log-err, .proxy-log-rescue { margin: 0; overflow-wrap: anywhere; font-size: 11.5px; }
+  .proxy-log-err { color: var(--text-quiet); }
+  .proxy-log-rescue { color: var(--text-primary); font-weight: 500; }
   @media (max-width: 640px) {
     .agent-main { padding: 0 12px; }
     .agent-bar .agent-pick > span { max-width: 140px; }

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 import requests
 
+from app import api_proxy
 from app.ai_providers import CLOUD_PROVIDER_ID, AIProvider, auth_headers
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
@@ -36,13 +37,60 @@ def parse_json_object(content: str) -> dict:
         start = source.find("{")
         try:
             data = json.JSONDecoder().raw_decode(source, start)[0] if start >= 0 else None
-        except ValueError as exc:
-            raise RuntimeError("Vision model returned invalid JSON") from exc
+        except ValueError:
+            data = api_proxy.repair_json_object(source)
+            if data is not None:
+                api_proxy.record_external_rescue(
+                    caller="ai_mode",
+                    provider="",
+                    model="",
+                    status="rescued",
+                    error_detail="JSON output malformed or truncated",
+                    error_category="malformed_json",
+                    rescue_action="Tự sửa JSON lỗi / bị cắt từ phản hồi model",
+                    rescue_type="json_repair",
+                )
         if data is None:
             raise RuntimeError("Vision model returned invalid JSON")
     if not isinstance(data, dict):
         raise RuntimeError("Vision model must return a JSON object")
     return data
+
+
+def _merge_json_dicts(parts: list[dict]) -> dict:
+    merged: dict = {}
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        for key, value in part.items():
+            if isinstance(value, list):
+                merged.setdefault(key, [])
+                if isinstance(merged[key], list):
+                    merged[key].extend(value)
+                else:
+                    merged[key] = list(value)
+            elif isinstance(value, dict):
+                existing = merged.get(key)
+                merged[key] = _merge_json_dicts([existing, value]) if isinstance(existing, dict) else dict(value)
+            elif key not in merged or merged[key] in (None, "", []):
+                merged[key] = value
+    return merged
+
+
+def _merge_vision_results(parts: list[VisionJSONResult]) -> VisionJSONResult:
+    usage: dict = {}
+    costs: list[float] = []
+    for part in parts:
+        for key, value in (part.usage or {}).items():
+            if isinstance(value, (int, float)):
+                usage[key] = usage.get(key, 0) + value
+        if part.estimated_cost_usd is not None:
+            costs.append(part.estimated_cost_usd)
+    return VisionJSONResult(
+        _merge_json_dicts([part.data for part in parts]),
+        usage,
+        round(sum(costs), 6) if costs else None,
+    )
 
 
 def request_vision_json(
@@ -60,11 +108,59 @@ def request_vision_json(
     key = str(api_key or "").strip()
     if not key:
         raise ValueError(f"{provider.label} API key is not configured")
-    encoded = [(label, _encode_for_gemini(image)) for label, image in images]
-    if provider.protocol == "gemini":
-        return _gemini(model, key, prompt, encoded, schema=schema, max_tokens=max_tokens)
-    return _openai(provider, model, key, prompt, encoded, max_tokens=max_tokens, reasoning_effort=reasoning_effort,
-                   stage=stage)
+    wrapped_cap = api_proxy.get_wrapped_image_cap(str(provider.api_base or "").rstrip("/"), model)
+    if wrapped_cap and len(images) > wrapped_cap:
+        chunks = [images[idx : idx + wrapped_cap] for idx in range(0, len(images), wrapped_cap)]
+        api_proxy.record_external_rescue(
+            caller=f"ai_mode:{stage}" if stage else "ai_mode",
+            provider=provider.label,
+            model=model,
+            status="rescued",
+            error_category="auto_wrapped",
+            rescue_action=f"Bọc sẵn — tự chia {len(images)} ảnh thành {len(chunks)} đợt (≤{wrapped_cap} ảnh)",
+            rescue_type="too_many_images",
+        )
+        return _merge_vision_results([
+            request_vision_json(
+                provider, model, key, prompt, chunk,
+                schema=schema, max_tokens=max_tokens, reasoning_effort=reasoning_effort, stage=stage,
+            )
+            for chunk in chunks
+        ])
+    try:
+        encoded = [(label, _encode_for_gemini(image)) for label, image in images]
+        if provider.protocol == "gemini":
+            return _gemini(model, key, prompt, encoded, schema=schema, max_tokens=max_tokens)
+        return _openai(
+            provider,
+            model,
+            key,
+            prompt,
+            encoded,
+            max_tokens=max_tokens,
+            reasoning_effort=reasoning_effort,
+            stage=stage,
+        )
+    except api_proxy.ImageLimitExceeded as exc:
+        if len(images) <= 1:
+            raise RuntimeError(f"{provider.label} rejected image payload: {exc.detail}") from exc
+        cap = exc.limit if exc.limit and 1 <= exc.limit < len(images) else max(1, len(images) // 2)
+        chunks = [images[idx : idx + cap] for idx in range(0, len(images), cap)]
+        results = [
+            request_vision_json(
+                provider,
+                model,
+                key,
+                prompt,
+                chunk,
+                schema=schema,
+                max_tokens=max_tokens,
+                reasoning_effort=reasoning_effort,
+                stage=stage,
+            )
+            for chunk in chunks
+        ]
+        return _merge_vision_results(results)
 
 
 def stage_headers(provider: AIProvider, stage: str | None) -> dict:
@@ -92,13 +188,19 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
     if reasoning_effort and provider.id == CLOUD_PROVIDER_ID:
         payload["reasoning_effort"] = reasoning_effort
     try:
-        response = requests.post(
-            url,
+        response, _, _ = api_proxy.proxy_post(
+            url=url,
             headers={**auth_headers(provider, api_key), "Content-Type": "application/json",
                      **stage_headers(provider, stage)},
-            json=payload,
+            payload=payload,
+            provider=provider,
+            api_key=api_key,
+            caller=f"ai_mode:{stage}" if stage else "ai_mode",
             timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
-            allow_redirects=False,
+            stream=False,
+            is_gemini=False,
+            raise_on_image_split=len(encoded) > 1,
+            post_fn=requests.post,
         )
     except requests.RequestException as exc:
         raise RuntimeError(f"{provider.label} vision request failed") from exc
@@ -138,12 +240,18 @@ def _gemini(model, api_key, prompt, encoded, *, schema, max_tokens) -> VisionJSO
         "generation_config": {"thinking_level": _thinking_level(model), "max_output_tokens": max_tokens},
     }
     try:
-        response = requests.post(
-            GEMINI_INTERACTIONS_URL,
+        response, _, _ = api_proxy.proxy_post(
+            url=GEMINI_INTERACTIONS_URL,
             headers={"Content-Type": "application/json", "x-goog-api-key": api_key, "Api-Revision": "2026-05-20"},
-            json=payload,
+            payload=payload,
+            provider=None,
+            api_key=api_key,
+            caller="ai_mode:gemini",
             timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS),
-            allow_redirects=False,
+            stream=False,
+            is_gemini=True,
+            raise_on_image_split=len(encoded) > 1,
+            post_fn=requests.post,
         )
     except requests.RequestException as exc:
         raise RuntimeError("Gemini vision request failed") from exc
