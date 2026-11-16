@@ -1,5 +1,5 @@
 name: Kiuyha train
-# round-10 N-1024 (2026-11-16, user order): chain from round-9 N weights (run 43777226816, mAP50-95 0.804); back to imgsz 1024 + batch 8 + workers 3 (round-7 recipe, best 0.807)
+# round-10 N-640 (2026-11-16, user order): chain from round-9 N weights (run 43777226816, mAP50-95 0.804); imgsz 640 + batch 16 + workers 4
 
 on:
   push:
@@ -95,7 +95,7 @@ jobs:
           sed -i "s#^path: .*#path: $PWD/kiuyha-data#" kiuyha-data/data.yaml
           freeze=0
           [ "${{ matrix.arm }}" = frozen ] && freeze=10
-          yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
+          yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=640 batch=16 workers=4 device=cpu \
             time=5.5 epochs=3 patience=100 freeze=$freeze optimizer=AdamW lr0=0.0005 cos_lr=True \
             degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
       - name: Keep the weights
