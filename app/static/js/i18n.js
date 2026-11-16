@@ -345,7 +345,7 @@
     "Chưa có mô hình": "No models",
     "Chưa có nhà cung cấp": "No providers",
     "Chưa có nhà cung cấp nào được cấu hình.": "No configured providers.",
-    "Chưa có nhà cung cấp nào. Thêm trong Cài đặt, mục Nhà cung cấp AI.": "No providers configured. Add one in Settings → AI Models.",
+    "Chưa có nhà cung cấp nào. Thêm trong Cài đặt, mục Nhà cung cấp AI.": "No providers configured. Add one in Settings > AI Models.",
     "Không có mô hình": "No models available",
     "Không tải được mô hình": "Failed to load models",
     "Dừng": "Stop",
