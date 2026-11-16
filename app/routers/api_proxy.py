@@ -261,6 +261,7 @@ async def proxy_chat_completions(request: Request):
                 stream=want_stream,
                 is_gemini=False,
                 allow_tool_strip=True,
+                allow_local=provider.builtin,
             )
         )
     except Exception as exc:

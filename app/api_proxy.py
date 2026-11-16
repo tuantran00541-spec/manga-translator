@@ -788,8 +788,8 @@ def adjust_token_limit(payload: dict, detail: str, *, is_gemini: bool = False) -
         if not isinstance(val, int):
             continue
         named = [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", detail)]
-        lower_val = max((n for n in named if 128 <= n < val), default=val // 2)
-        if lower_val < 256:
+        lower_val = max((n for n in named if 256 <= n < val), default=val // 2)
+        if lower_val < 1024:
             updated.pop(key, None)
             return updated, f"Bỏ trường {key} ({val})"
         updated[key] = lower_val
@@ -954,12 +954,14 @@ def proxy_post(
     allow_tool_strip: bool = True,
     raise_on_image_split: bool = False,
     post_fn: Callable | None = None,
+    allow_local: bool = False,
 ) -> tuple[requests.Response, dict, dict]:
     """Send a model API request with full error listening, 429/quota skipping, and auto-rescue.
 
     Returns ``(response, final_payload, meta)`` where ``meta`` holds latency, errors seen, and rescues.
     """
-    validate_url(url)
+    if not allow_local:
+        validate_url(url)
     sender = post_fn or requests.post
     started = time.monotonic()
     provider_id = provider.id if provider else ""

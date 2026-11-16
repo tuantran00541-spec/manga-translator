@@ -727,6 +727,7 @@
   .proxy-log-err, .proxy-log-rescue { margin: 0; overflow-wrap: anywhere; font-size: 11.5px; }
   .proxy-log-err { color: var(--text-quiet); }
   .proxy-log-rescue { color: var(--text-primary); font-weight: 500; }
+  .proxy-log-rescue .ui-icon { width: 12px; height: 12px; vertical-align: -2px; }
   @media (max-width: 640px) {
     .agent-main { padding: 0 12px; }
     .agent-bar .agent-pick > span { max-width: 140px; }

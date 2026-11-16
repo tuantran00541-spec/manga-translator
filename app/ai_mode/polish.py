@@ -171,6 +171,7 @@ def judge(provider, api_key: str, state: str, asked: dict = QUESTIONS) -> dict[s
         stream=False,
         is_gemini=False,
         post_fn=requests.post,
+        allow_local=provider.builtin,
     )
     if not response.ok:
         raise RuntimeError(f"Judge HTTP {response.status_code}: {getattr(response, 'text', '')[:200]}")

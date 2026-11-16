@@ -829,6 +829,7 @@ class VisionPageTranslator:
                 stream=False,
                 is_gemini=False,
                 post_fn=requests.post,
+                allow_local=self.provider.builtin,
             )
         except requests.RequestException as exc:
             raise RuntimeError(f"{self.provider.label} vision request failed") from exc

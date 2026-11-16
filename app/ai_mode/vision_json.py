@@ -201,6 +201,7 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_
             is_gemini=False,
             raise_on_image_split=len(encoded) > 1,
             post_fn=requests.post,
+            allow_local=provider.builtin,
         )
     except requests.RequestException as exc:
         raise RuntimeError(f"{provider.label} vision request failed") from exc

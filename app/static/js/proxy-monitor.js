@@ -163,7 +163,13 @@
           row.append(el("p", "proxy-log-err", `Lỗi: ${(firstErr?.detail || ev.detail || "").slice(0, 180)}`));
         }
         if (Array.isArray(ev.rescues_applied) && ev.rescues_applied.length) {
-          row.append(el("p", "proxy-log-rescue", `Cứu: ${ev.rescues_applied.join(" → ")}`));
+          const rescue = el("p", "proxy-log-rescue");
+          rescue.append(document.createTextNode("Cứu: "));
+          ev.rescues_applied.forEach((name, idx) => {
+            if (idx) rescue.append(window.createUiIcon("chevron-right", "proxy-log-sep"));
+            rescue.append(document.createTextNode(name));
+          });
+          row.append(rescue);
         }
         list.append(row);
       });
