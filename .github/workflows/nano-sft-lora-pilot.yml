@@ -22,6 +22,16 @@ on:
         required: false
         default: ""
         type: string
+      init_pilot_run_id:
+        description: "nano-sft-pilot run id whose nano-sft-pilot artifact holds a prior pilot adapter to continue from (empty = none)"
+        required: false
+        default: ""
+        type: string
+      init_pilot_epoch:
+        description: "epoch dir inside the prior pilot-out/ to continue from (e.g. epoch-1)"
+        required: false
+        default: "epoch-1"
+        type: string
       max_pairs:
         description: "pairs to train on (pilot)"
         required: false
@@ -96,6 +106,19 @@ jobs:
           mkdir -p init-adapter
           unzip -o -q init-adapter.zip -d init-adapter
           ls init-adapter/text-out/
+      - name: Download prior pilot adapter (optional)
+        if: ${{ inputs.init_pilot_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          id=$(gh api "repos/${{ github.repository }}/actions/runs/${{ inputs.init_pilot_run_id }}/artifacts" --jq '.artifacts[] | select(.name == "nano-sft-pilot") | .id')
+          [ -n "$id" ] || { echo "no nano-sft-pilot artifact on run ${{ inputs.init_pilot_run_id }}"; exit 1; }
+          gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > init-pilot.zip
+          mkdir -p init-pilot
+          unzip -o -q init-pilot.zip -d init-pilot
+          ls "init-pilot/pilot-out/${{ inputs.init_pilot_epoch }}/"
+          test -f "init-pilot/pilot-out/${{ inputs.init_pilot_epoch }}/adapter_model.safetensors"
       - name: LoRA pilot train
         run: |
           if [ -n "${{ inputs.data_file }}" ]; then
@@ -106,6 +129,9 @@ jobs:
           init_arg=""
           if [ -n "${{ inputs.init_adapter_run_id }}" ]; then
             init_arg="--init-adapter init-adapter/text-out"
+          fi
+          if [ -n "${{ inputs.init_pilot_run_id }}" ]; then
+            init_arg="--init-adapter init-pilot/pilot-out/${{ inputs.init_pilot_epoch }}"
           fi
           prompts_arg=""
           if [ -n "${{ inputs.prompts_file }}" ]; then
