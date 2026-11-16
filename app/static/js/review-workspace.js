@@ -185,7 +185,17 @@
     perfSelect.value = localStorage.getItem("manga_agent_perf_detail") || "detailed";
     perfSelect.addEventListener("change", () => localStorage.setItem("manga_agent_perf_detail", perfSelect.value));
 
+    const langSelect = el("select", "ui-select settings-row-select");
+    langSelect.setAttribute("data-ui-lang-select", "1");
+    [["vi", "Tiếng Việt (VI)"], ["en", "English (EN)"]].forEach(([v, l]) => langSelect.add(new Option(l, v)));
+    langSelect.value = window.getUiLang?.() || localStorage.getItem("manga_ui_lang") || "vi";
+    langSelect.addEventListener("change", () => window.setUiLang?.(langSelect.value));
+    window.addEventListener("app-lang-change", (e) => {
+      if (e.detail?.lang && langSelect.value !== e.detail.lang) langSelect.value = e.detail.lang;
+    });
+
     generalPanel.append(
+      settingRow("Ngôn ngữ ứng dụng", "Chọn ngôn ngữ hiển thị toàn bộ giao diện ứng dụng", langSelect),
       settingRow("Quyền hạn thực thi", "Chọn chế độ phê duyệt mặc định cho phiên làm việc mới", permSelect),
       settingRow("Phạm vi truy cập tệp (Sandbox)", "Giới hạn thư mục mà các lệnh được phép ghi", sandboxSelect),
       themeSection,

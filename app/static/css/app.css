@@ -89,6 +89,8 @@
 }
 
 @layer studio {
+  .lang-toggle { display: inline-flex; height: 30px; min-width: 40px; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--surface-panel); color: var(--text-primary); font: 600 12px/1 var(--font-mono); letter-spacing: 0.04em; cursor: pointer; transition: background var(--motion-fast), border-color var(--motion-fast); }
+  .lang-toggle:hover, .lang-toggle:focus-visible { border-color: var(--border-strong); background: var(--surface-raised); }
   .theme-control { position: relative; display: inline-flex; height: 30px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--surface-panel); color: var(--text-primary); font-size: 12px; font-weight: 550; cursor: pointer; transition: background var(--motion-fast), border-color var(--motion-fast); }
   .theme-control:hover, .theme-control:focus-within { border-color: var(--border-strong); background: var(--surface-raised); }
   .theme-control > svg { width: 14px; height: 14px; flex: 0 0 auto; }
