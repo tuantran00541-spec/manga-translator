@@ -116,6 +116,15 @@ jobs:
           echo "detected OK: $OK / $(wc -l < /tmp/ch-dirs.txt)"
           [ "$OK" -gt 0 ]
 
+      - name: Drop raw chapter zips from evidence (keep detections only)
+        if: always()
+        run: |
+          OUT="audit-results/${{ inputs.out_dir }}"
+          rm -f "$OUT"/ch*/rawkuma-ch*.zip
+          echo "evidence size after dropping zips:"
+          du -sh "$OUT"
+          echo "files left: $(find "$OUT" -type f | wc -l)"
+
       - name: Save evidence to audit-evidence
         if: always()
         uses: ./.github/actions/save-evidence
