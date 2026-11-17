@@ -64,27 +64,6 @@
   }
  },
  {
-  "id": "recraft/recraft-v3",
-  "name": "Recraft V3",
-  "pricing": {
-   "currency": "USD",
-   "unit": "image",
-   "basis": "reservation_estimate",
-   "image": "0.084",
-   "image_input": "0",
-   "text_input": "0"
-  },
-  "architecture": {
-   "modality": "text->image",
-   "input_modalities": [
-    "text"
-   ],
-   "output_modalities": [
-    "image"
-   ]
-  }
- },
- {
   "id": "abliteration/abliterated-model",
   "name": "Abliterated Model",
   "pricing": {
@@ -150,41 +129,6 @@
    ],
    "output_modalities": [
     "image"
-   ]
-  }
- },
- {
-  "id": "klingai/kling-v2.6-t2v",
-  "name": "Kling v2.6 Text-to-Video",
-  "pricing": {
-   "currency": "USD",
-   "unit": "second",
-   "basis": "list_price_per_output_second",
-   "prices": [
-    {
-     "tier": "720p",
-     "audio": false,
-     "usd_per_second": "0.0441"
-    },
-    {
-     "tier": "1080p",
-     "audio": false,
-     "usd_per_second": "0.0735"
-    },
-    {
-     "tier": "1080p",
-     "audio": true,
-     "usd_per_second": "0.147"
-    }
-   ]
-  },
-  "architecture": {
-   "modality": "text->video",
-   "input_modalities": [
-    "text"
-   ],
-   "output_modalities": [
-    "video"
    ]
   }
  },
@@ -483,8 +427,8 @@
   }
  },
  {
-  "id": "klingai/kling-v3.0-i2v",
-  "name": "Kling v3.0 Image-to-Video",
+  "id": "alibaba/wan-v2.7-t2v",
+  "name": "Wan v2.7 Text-to-Video",
   "pricing": {
    "currency": "USD",
    "unit": "second",
@@ -493,34 +437,32 @@
     {
      "tier": "720p",
      "audio": false,
-     "usd_per_second": "0.1764"
-    },
-    {
-     "tier": "720p",
-     "audio": true,
-     "usd_per_second": "0.2646"
+     "usd_per_second": "0.105"
     },
     {
      "tier": "1080p",
      "audio": false,
-     "usd_per_second": "0.2352"
-    },
-    {
-     "tier": "1080p",
-     "audio": true,
-     "usd_per_second": "0.3528"
+     "usd_per_second": "0.1575"
     }
    ]
   },
   "architecture": {
-   "modality": "text+image->video",
+   "modality": "text->video",
    "input_modalities": [
-    "text",
-    "image"
+    "text"
    ],
    "output_modalities": [
     "video"
    ]
+  }
+ },
+ {
+  "id": "prism-ml/ternary-bonsai-2-27b",
+  "name": "Bonsai 2 27B",
+  "pricing": {
+   "input": "0.00000007875",
+   "output": "0.000000525",
+   "request": "0.000105"
   }
  },
  {
@@ -566,15 +508,6 @@
   }
  },
  {
-  "id": "prism-ml/ternary-bonsai-2-27b",
-  "name": "Bonsai 2 27B",
-  "pricing": {
-   "input": "0.00000007875",
-   "output": "0.000000525",
-   "request": "0.000105"
-  }
- },
- {
   "id": "alibaba/wan-v2.5-t2v-preview",
   "name": "Wan v2.5 Text-to-Video Preview",
   "pricing": {
@@ -605,25 +538,6 @@
   }
  },
  {
-  "id": "alibaba/qwen3.8-flash",
-  "name": "Qwen 3.8 Flash",
-  "pricing": {
-   "input": "0.0000001575",
-   "output": "0.0000004935",
-   "input_cache_read": "0.0000000168",
-   "input_cache_write": "0.00000021"
-  }
- },
- {
-  "id": "elorian/glimpse",
-  "name": "Glimpse",
-  "pricing": {
-   "input": "0.00000063",
-   "output": "0.00000315",
-   "input_cache_read": "0.000000063"
-  }
- },
- {
   "id": "recraft/recraft-v4.1-pro",
   "name": "Recraft V4.1 Pro",
   "pricing": {
@@ -645,23 +559,54 @@
   }
  },
  {
-  "id": "google/gemini-3.1-flash-lite",
-  "name": "Gemini 3.1 Flash Lite",
+  "id": "google/veo-3.1-generate-001",
+  "name": "Veo 3.1",
   "pricing": {
-   "input": "0.0000002625",
-   "output": "0.000001575",
-   "input_cache_read": "0.0000000315",
-   "web_search": "14.7"
-  }
- },
- {
-  "id": "google/gemini-3.5-flash",
-  "name": "Gemini 3.5 Flash",
-  "pricing": {
-   "input": "0.000001575",
-   "output": "0.00000945",
-   "input_cache_read": "0.0000001575",
-   "web_search": "14.7"
+   "currency": "USD",
+   "unit": "second",
+   "basis": "list_price_per_output_second",
+   "prices": [
+    {
+     "tier": "720p",
+     "audio": false,
+     "usd_per_second": "0.21"
+    },
+    {
+     "tier": "720p",
+     "audio": true,
+     "usd_per_second": "0.42"
+    },
+    {
+     "tier": "1080p",
+     "audio": false,
+     "usd_per_second": "0.21"
+    },
+    {
+     "tier": "1080p",
+     "audio": true,
+     "usd_per_second": "0.42"
+    },
+    {
+     "tier": "4k",
+     "audio": false,
+     "usd_per_second": "0.42"
+    },
+    {
+     "tier": "4k",
+     "audio": true,
+     "usd_per_second": "0.63"
+    }
+   ]
+  },
+  "architecture": {
+   "modality": "text+image->video",
+   "input_modalities": [
+    "text",
+    "image"
+   ],
+   "output_modalities": [
+    "video"
+   ]
   }
  },
  {
@@ -742,6 +687,16 @@
    "input": "0.00000315",
    "output": "0.00001575",
    "input_cache_read": "0.000000315"
+  }
+ },
+ {
+  "id": "alibaba/qwen3.8-flash",
+  "name": "Qwen 3.8 Flash",
+  "pricing": {
+   "input": "0.0000001575",
+   "output": "0.0000004935",
+   "input_cache_read": "0.0000000168",
+   "input_cache_write": "0.00000021"
   }
  },
  {
@@ -982,44 +937,26 @@
   }
  },
  {
-  "id": "meta/muse-spark-1.2",
-  "name": "Muse Spark 1.2",
-  "pricing": {
-   "input": "0.0000013125",
-   "output": "0.0000044625",
-   "input_cache_read": "0.0000001575"
-  }
- },
- {
-  "id": "alibaba/qwen-3-235b",
-  "name": "Qwen3 235B A22B",
-  "pricing": {
-   "input": "0.000000231",
-   "output": "0.000000924"
-  }
- },
- {
-  "id": "meta/muse-spark-1.3",
-  "name": "Muse Spark 1.3",
-  "pricing": {
-   "input": "0.0000013125",
-   "output": "0.0000044625",
-   "input_cache_read": "0.0000001575"
-  }
- },
- {
-  "id": "openai/gpt-4o-mini-fast",
-  "name": "GPT-4o mini (Fast)",
+  "id": "google/gemini-3.1-flash-lite",
+  "name": "Gemini 3.1 Flash Lite",
   "pricing": {
    "input": "0.0000002625",
-   "output": "0.00000105",
-   "input_cache_read": "0.00000013125",
-   "web_search": "10.5"
+   "output": "0.000001575",
+   "input_cache_read": "0.0000000315",
+   "web_search": "14.7"
   }
  },
  {
-  "id": "alibaba/wan-v2.7-t2v",
-  "name": "Wan v2.7 Text-to-Video",
+  "id": "nvidia/nemotron-nano-9b-v2",
+  "name": "Nvidia Nemotron Nano 9B V2",
+  "pricing": {
+   "input": "0.000000063",
+   "output": "0.0000002415"
+  }
+ },
+ {
+  "id": "klingai/kling-v2.6-t2v",
+  "name": "Kling v2.6 Text-to-Video",
   "pricing": {
    "currency": "USD",
    "unit": "second",
@@ -1028,12 +965,17 @@
     {
      "tier": "720p",
      "audio": false,
-     "usd_per_second": "0.105"
+     "usd_per_second": "0.0441"
     },
     {
      "tier": "1080p",
      "audio": false,
-     "usd_per_second": "0.1575"
+     "usd_per_second": "0.0735"
+    },
+    {
+     "tier": "1080p",
+     "audio": true,
+     "usd_per_second": "0.147"
     }
    ]
   },
@@ -1048,32 +990,31 @@
   }
  },
  {
-  "id": "mistral/mistral-small",
-  "name": "Mistral Small",
+  "id": "google/gemini-3.5-flash",
+  "name": "Gemini 3.5 Flash",
   "pricing": {
-   "input": "0.0000001575",
-   "output": "0.00000063",
-   "input_cache_read": "0.00000001575"
+   "input": "0.000001575",
+   "output": "0.00000945",
+   "input_cache_read": "0.0000001575",
+   "web_search": "14.7"
   }
  },
  {
-  "id": "anthropic/claude-haiku-5.5",
-  "name": "Claude Haiku 5.5",
+  "id": "meta/muse-spark-1.2",
+  "name": "Muse Spark 1.2",
   "pricing": {
-   "input": "0.000000105",
-   "output": "0.000000525",
-   "input_cache_read": "0.0000000105",
-   "input_cache_write": "0.00000013125",
-   "web_search": "10.5"
+   "input": "0.0000013125",
+   "output": "0.0000044625",
+   "input_cache_read": "0.0000001575"
   }
  },
  {
-  "id": "inception/mercury-3",
-  "name": "Mercury 3",
+  "id": "meta/muse-spark-1.3",
+  "name": "Muse Spark 1.3",
   "pricing": {
-   "input": "0.000000105",
-   "output": "0.0000003675",
-   "input_cache_read": "0.0000000105"
+   "input": "0.0000013125",
+   "output": "0.0000044625",
+   "input_cache_read": "0.0000001575"
   }
  },
  {
@@ -1086,38 +1027,8 @@
   }
  },
  {
-  "id": "microsoft/mai-voice-2.1-flash",
-  "name": "MAI-Voice-2.1-Flash",
-  "pricing": {
-   "input": "0",
-   "output": "0",
-   "speech_character": "0.00001575"
-  }
- },
- {
-  "id": "openai/gpt-4.1-nano",
-  "name": "GPT-4.1 nano",
-  "pricing": {
-   "input": "0.000000105",
-   "output": "0.00000042",
-   "input_cache_read": "0.0000000315",
-   "web_search": "14.7"
-  }
- },
- {
-  "id": "openai/gpt-6-luna",
-  "name": "GPT-6 Luna",
-  "pricing": {
-   "input": "0.000000105",
-   "output": "0.000000525",
-   "input_cache_read": "0.0000000105",
-   "input_cache_write": "0.00000013125",
-   "web_search": "10.5"
-  }
- },
- {
-  "id": "google/veo-3.1-generate-001",
-  "name": "Veo 3.1",
+  "id": "klingai/kling-v3.0-i2v",
+  "name": "Kling v3.0 Image-to-Video",
   "pricing": {
    "currency": "USD",
    "unit": "second",
@@ -1126,32 +1037,22 @@
     {
      "tier": "720p",
      "audio": false,
-     "usd_per_second": "0.21"
+     "usd_per_second": "0.1764"
     },
     {
      "tier": "720p",
      "audio": true,
-     "usd_per_second": "0.42"
+     "usd_per_second": "0.2646"
     },
     {
      "tier": "1080p",
      "audio": false,
-     "usd_per_second": "0.21"
+     "usd_per_second": "0.2352"
     },
     {
      "tier": "1080p",
      "audio": true,
-     "usd_per_second": "0.42"
-    },
-    {
-     "tier": "4k",
-     "audio": false,
-     "usd_per_second": "0.42"
-    },
-    {
-     "tier": "4k",
-     "audio": true,
-     "usd_per_second": "0.63"
+     "usd_per_second": "0.3528"
     }
    ]
   },
@@ -1167,12 +1068,23 @@
   }
  },
  {
-  "id": "alibaba/qwen3-coder",
-  "name": "Qwen3 Coder 480B A35B Instruct",
+  "id": "anthropic/claude-haiku-5.5",
+  "name": "Claude Haiku 5.5",
   "pricing": {
-   "input": "0.000000231",
-   "output": "0.00000189",
-   "input_cache_read": "0.0000000231"
+   "input": "0.000000105",
+   "output": "0.000000525",
+   "input_cache_read": "0.0000000105",
+   "input_cache_write": "0.00000013125",
+   "web_search": "10.5"
+  }
+ },
+ {
+  "id": "elorian/glimpse",
+  "name": "Glimpse",
+  "pricing": {
+   "input": "0.00000063",
+   "output": "0.00000315",
+   "input_cache_read": "0.000000063"
   }
  },
  {
@@ -1285,21 +1197,12 @@
   }
  },
  {
-  "id": "openai/gpt-oss-safeguard-20b",
-  "name": "GPT OSS Safeguard 20B",
+  "id": "inception/mercury-3",
+  "name": "Mercury 3",
   "pricing": {
-   "input": "0.0000000735",
-   "output": "0.00000021"
-  }
- },
- {
-  "id": "openai/gpt-5-codex",
-  "name": "GPT-5-Codex",
-  "pricing": {
-   "input": "0.0000013125",
-   "output": "0.0000105",
-   "input_cache_read": "0.0000001365",
-   "web_search": "14.7"
+   "input": "0.000000105",
+   "output": "0.0000003675",
+   "input_cache_read": "0.0000000105"
   }
  },
  {
@@ -1321,11 +1224,12 @@
   }
  },
  {
-  "id": "alibaba/qwen3-next-80b-a3b-thinking",
-  "name": "Qwen3 Next 80B A3B Thinking",
+  "id": "microsoft/mai-voice-2.1-flash",
+  "name": "MAI-Voice-2.1-Flash",
   "pricing": {
-   "input": "0.0000001575",
-   "output": "0.00000126"
+   "input": "0",
+   "output": "0",
+   "speech_character": "0.00001575"
   }
  },
  {
@@ -1340,12 +1244,13 @@
   }
  },
  {
-  "id": "stepfun/step-3.7-flash",
-  "name": "Step 3.7 Flash",
+  "id": "openai/gpt-4o-mini-fast",
+  "name": "GPT-4o mini (Fast)",
   "pricing": {
-   "input": "0.00000021",
-   "output": "0.0000012075",
-   "input_cache_read": "0.000000042"
+   "input": "0.0000002625",
+   "output": "0.00000105",
+   "input_cache_read": "0.00000013125",
+   "web_search": "10.5"
   }
  },
  {
@@ -1389,21 +1294,20 @@
   }
  },
  {
-  "id": "openai/gpt-5-mini",
-  "name": "GPT-5 mini",
-  "pricing": {
-   "input": "0.0000002625",
-   "output": "0.0000021",
-   "input_cache_read": "0.00000002625",
-   "web_search": "10.5"
-  }
- },
- {
   "id": "microsoft/microsoft-decision-1",
   "name": "Decision-1",
   "pricing": {
    "input": "0.0000000462",
    "output": "0"
+  }
+ },
+ {
+  "id": "mistral/mistral-small",
+  "name": "Mistral Small",
+  "pricing": {
+   "input": "0.0000001575",
+   "output": "0.00000063",
+   "input_cache_read": "0.00000001575"
   }
  },
  {
@@ -1498,13 +1402,13 @@
   }
  },
  {
-  "id": "openai/gpt-5.1-codex-mini",
-  "name": "GPT 5.1 Codex Mini",
+  "id": "openai/gpt-5-mini",
+  "name": "GPT-5 mini",
   "pricing": {
    "input": "0.0000002625",
    "output": "0.0000021",
-   "input_cache_read": "0.0000000315",
-   "web_search": "14.7"
+   "input_cache_read": "0.00000002625",
+   "web_search": "10.5"
   }
  },
  {
@@ -1571,6 +1475,16 @@
    "input": "0.000000084",
    "output": "0.0000001365",
    "request": "0.000105"
+  }
+ },
+ {
+  "id": "openai/gpt-4.1-nano",
+  "name": "GPT-4.1 nano",
+  "pricing": {
+   "input": "0.000000105",
+   "output": "0.00000042",
+   "input_cache_read": "0.0000000315",
+   "web_search": "14.7"
   }
  },
  {
@@ -1661,6 +1575,14 @@
   }
  },
  {
+  "id": "moonshotai/kimi-k2",
+  "name": "Kimi K2 Instruct",
+  "pricing": {
+   "input": "0.0000005985",
+   "output": "0.000002415"
+  }
+ },
+ {
   "id": "google/gemini-3.8-flash",
   "name": "Gemini 3.8 Flash",
   "pricing": {
@@ -1677,14 +1599,6 @@
    "input": "0",
    "output": "0",
    "speech_character": "0.0000231"
-  }
- },
- {
-  "id": "moonshotai/kimi-k2",
-  "name": "Kimi K2 Instruct",
-  "pricing": {
-   "input": "0.0000005985",
-   "output": "0.000002415"
   }
  },
  {
@@ -1784,13 +1698,13 @@
   }
  },
  {
-  "id": "openai/gpt-5.3-codex-fast",
-  "name": "GPT 5.3 Codex (Fast)",
+  "id": "openai/gpt-5-codex",
+  "name": "GPT-5-Codex",
   "pricing": {
-   "input": "0.000003675",
-   "output": "0.0000294",
-   "input_cache_read": "0.0000003675",
-   "web_search": "10.5"
+   "input": "0.0000013125",
+   "output": "0.0000105",
+   "input_cache_read": "0.0000001365",
+   "web_search": "14.7"
   }
  },
  {
@@ -1841,12 +1755,22 @@
   }
  },
  {
-  "id": "openai/gpt-5.5",
-  "name": "GPT 5.5",
+  "id": "openai/gpt-5.1-codex-mini",
+  "name": "GPT 5.1 Codex Mini",
   "pricing": {
-   "input": "0.00000525",
-   "output": "0.0000315",
-   "input_cache_read": "0.000000525",
+   "input": "0.0000002625",
+   "output": "0.0000021",
+   "input_cache_read": "0.0000000315",
+   "web_search": "14.7"
+  }
+ },
+ {
+  "id": "openai/gpt-5.3-codex-fast",
+  "name": "GPT 5.3 Codex (Fast)",
+  "pricing": {
+   "input": "0.000003675",
+   "output": "0.0000294",
+   "input_cache_read": "0.0000003675",
    "web_search": "10.5"
   }
  },
@@ -2195,24 +2119,23 @@
   }
  },
  {
-  "id": "openai/gpt-6-luna-fast",
-  "name": "GPT-6 Luna (Fast)",
+  "id": "openai/gpt-5.5",
+  "name": "GPT 5.5",
   "pricing": {
-   "input": "0.00000021",
-   "output": "0.00000105",
-   "input_cache_read": "0.000000021",
-   "input_cache_write": "0.0000002625",
+   "input": "0.00000525",
+   "output": "0.0000315",
+   "input_cache_read": "0.000000525",
    "web_search": "10.5"
   }
  },
  {
-  "id": "openai/gpt-6-sol",
-  "name": "GPT-6 Sol",
+  "id": "openai/gpt-6-luna",
+  "name": "GPT-6 Luna",
   "pricing": {
-   "input": "0.0000021",
-   "output": "0.0000105",
-   "input_cache_read": "0.00000021",
-   "input_cache_write": "0.000002625",
+   "input": "0.000000105",
+   "output": "0.000000525",
+   "input_cache_read": "0.0000000105",
+   "input_cache_write": "0.00000013125",
    "web_search": "10.5"
   }
  },
@@ -2266,24 +2189,24 @@
   }
  },
  {
-  "id": "openai/gpt-6-sol-fast",
-  "name": "GPT-6 Sol (Fast)",
+  "id": "openai/gpt-6-luna-fast",
+  "name": "GPT-6 Luna (Fast)",
   "pricing": {
-   "input": "0.0000042",
-   "output": "0.000021",
-   "input_cache_read": "0.00000042",
-   "input_cache_write": "0.00000525",
+   "input": "0.00000021",
+   "output": "0.00000105",
+   "input_cache_read": "0.000000021",
+   "input_cache_write": "0.0000002625",
    "web_search": "10.5"
   }
  },
  {
-  "id": "openai/gpt-6.1-terra",
-  "name": "GPT-6.1 Terra",
+  "id": "openai/gpt-6-sol",
+  "name": "GPT-6 Sol",
   "pricing": {
-   "input": "0.00000105",
-   "output": "0.00000525",
-   "input_cache_read": "0.0000000525",
-   "input_cache_write": "0.0000013125",
+   "input": "0.0000021",
+   "output": "0.0000105",
+   "input_cache_read": "0.00000021",
+   "input_cache_write": "0.000002625",
    "web_search": "10.5"
   }
  },
@@ -2383,12 +2306,14 @@
   }
  },
  {
-  "id": "sakana/fugu-max",
-  "name": "Fugu Max",
+  "id": "openai/gpt-6-sol-fast",
+  "name": "GPT-6 Sol (Fast)",
   "pricing": {
-   "input": "0.0000021",
-   "output": "0.0000063",
-   "input_cache_read": "0.0000002625"
+   "input": "0.0000042",
+   "output": "0.000021",
+   "input_cache_read": "0.00000042",
+   "input_cache_write": "0.00000525",
+   "web_search": "10.5"
   }
  },
  {
@@ -2616,6 +2541,28 @@
   }
  },
  {
+  "id": "openai/gpt-6.1-terra",
+  "name": "GPT-6.1 Terra",
+  "pricing": {
+   "input": "0.00000105",
+   "output": "0.00000525",
+   "input_cache_read": "0.0000000525",
+   "input_cache_write": "0.0000013125",
+   "web_search": "10.5"
+  }
+ },
+ {
+  "id": "openai/gpt-6.2-astra",
+  "name": "GPT-6.2 Astra",
+  "pricing": {
+   "input": "0.0000084",
+   "output": "0.000042",
+   "input_cache_read": "0.00000042",
+   "input_cache_write": "0.0000105",
+   "web_search": "10.5"
+  }
+ },
+ {
   "id": "amazon/nova-2-lite",
   "name": "Nova 2 Lite",
   "pricing": {
@@ -2718,6 +2665,15 @@
   }
  },
  {
+  "id": "deepseek/deepseek-v4-pro-0813",
+  "name": "DeepSeek V4 Pro 0813",
+  "pricing": {
+   "input": "0.000000693",
+   "output": "0.000002079",
+   "input_cache_read": "0.0000000693"
+  }
+ },
+ {
   "id": "anthropic/claude-sonnet-4.6",
   "name": "Claude Sonnet 4.6",
   "pricing": {
@@ -2740,15 +2696,6 @@
   }
  },
  {
-  "id": "thinkingmachines/inkling-small",
-  "name": "Inkling Small",
-  "pricing": {
-   "input": "0.0000004725",
-   "output": "0.00000126",
-   "input_cache_read": "0.000000105"
-  }
- },
- {
   "id": "anthropic/claude-sonnet-5.5",
   "name": "Claude Sonnet 5.5",
   "pricing": {
@@ -2757,25 +2704,6 @@
    "input_cache_read": "0.000000105",
    "input_cache_write": "0.000002625",
    "web_search": "10.5"
-  }
- },
- {
-  "id": "deepseek/deepseek-v4-pro-0813",
-  "name": "DeepSeek V4 Pro 0813",
-  "pricing": {
-   "input": "0.000000693",
-   "output": "0.000002079",
-   "input_cache_read": "0.0000000693"
-  }
- },
- {
-  "id": "spacexai/grok-4.20-multi-agent-beta",
-  "name": "Grok 4.20 Multi Agent Beta",
-  "pricing": {
-   "input": "0.0000013125",
-   "output": "0.000002625",
-   "input_cache_read": "0.00000021",
-   "web_search": "5.25"
   }
  },
  {
@@ -2806,11 +2734,24 @@
   }
  },
  {
-  "id": "nvidia/nemotron-nano-9b-v2",
-  "name": "Nvidia Nemotron Nano 9B V2",
+  "id": "openai/gpt-6.2-sol",
+  "name": "GPT-6.2 Sol",
   "pricing": {
-   "input": "0.000000063",
-   "output": "0.0000002415"
+   "input": "0.0000021",
+   "output": "0.0000105",
+   "input_cache_read": "0.000000105",
+   "input_cache_write": "0.000002625",
+   "web_search": "10.5"
+  }
+ },
+ {
+  "id": "openai/o3-mini",
+  "name": "o3-mini",
+  "pricing": {
+   "input": "0.000001155",
+   "output": "0.00000462",
+   "input_cache_read": "0.0000005775",
+   "web_search": "14.7"
   }
  },
  {
@@ -2872,16 +2813,6 @@
   }
  },
  {
-  "id": "openai/o3-mini",
-  "name": "o3-mini",
-  "pricing": {
-   "input": "0.000001155",
-   "output": "0.00000462",
-   "input_cache_read": "0.0000005775",
-   "web_search": "14.7"
-  }
- },
- {
   "id": "amazon/nova-lite",
   "name": "Nova Lite",
   "pricing": {
@@ -2899,21 +2830,21 @@
   }
  },
  {
-  "id": "deepseek/deepseek-v3.1",
-  "name": "DeepSeek V3.1",
-  "pricing": {
-   "input": "0.0000002625",
-   "output": "0.0000009975",
-   "input_cache_read": "0.0000001365"
-  }
- },
- {
   "id": "deepseek/deepseek-v4-flash-0731",
   "name": "DeepSeek V4 Flash 0731",
   "pricing": {
    "input": "0.0000001365",
    "output": "0.000000273",
    "input_cache_read": "0.0000000294"
+  }
+ },
+ {
+  "id": "deepseek/deepseek-v3.1",
+  "name": "DeepSeek V3.1",
+  "pricing": {
+   "input": "0.0000002625",
+   "output": "0.0000009975",
+   "input_cache_read": "0.0000001365"
   }
  },
  {
@@ -2945,11 +2876,11 @@
   }
  },
  {
-  "id": "typesafe-ai/jev-1.13.0",
-  "name": "Jev 1.13.0",
+  "id": "openai/gpt-oss-safeguard-20b",
+  "name": "GPT OSS Safeguard 20B",
   "pricing": {
-   "input": "0.0000000462",
-   "output": "0"
+   "input": "0.0000000735",
+   "output": "0.00000021"
   }
  },
  {
@@ -2972,20 +2903,21 @@
   }
  },
  {
-  "id": "zai/glm-5",
-  "name": "GLM 5",
+  "id": "sakana/fugu-max",
+  "name": "Fugu Max",
   "pricing": {
-   "input": "0.00000105",
-   "output": "0.00000336"
+   "input": "0.0000021",
+   "output": "0.0000063",
+   "input_cache_read": "0.0000002625"
   }
  },
  {
-  "id": "zai/glm-5.3-flashx-legal",
-  "name": "GLM 5.3 FlashX Legal",
+  "id": "stepfun/step-3.7-flash",
+  "name": "Step 3.7 Flash",
   "pricing": {
-   "input": "0.0000003885",
-   "output": "0.0000013125",
-   "input_cache_read": "0.00000007875"
+   "input": "0.00000021",
+   "output": "0.0000012075",
+   "input_cache_read": "0.000000042"
   }
  },
  {
@@ -3027,6 +2959,15 @@
   }
  },
  {
+  "id": "thinkingmachines/inkling-small",
+  "name": "Inkling Small",
+  "pricing": {
+   "input": "0.0000004725",
+   "output": "0.00000126",
+   "input_cache_read": "0.000000105"
+  }
+ },
+ {
   "id": "deepseek/deepseek-v4-flash-vision-exp",
   "name": "DeepSeek V4 Flash Vision Exp",
   "pricing": {
@@ -3054,6 +2995,40 @@
   }
  },
  {
+  "id": "deepseek/deepseek-v4.1-flash-1017-fast",
+  "name": "DeepSeek V4.1 Flash 1017 Fast",
+  "pricing": {
+   "input": "0.00000063",
+   "output": "0.00000252",
+   "input_cache_read": "0.0000000147"
+  }
+ },
+ {
+  "id": "stepfun/step-5-preview",
+  "name": "Step 5 Preview",
+  "pricing": {
+   "input": "0.00000105",
+   "output": "0.000002835",
+   "input_cache_read": "0.000000105"
+  }
+ },
+ {
+  "id": "typesafe-ai/jev-1.13.0",
+  "name": "Jev 1.13.0",
+  "pricing": {
+   "input": "0.0000000462",
+   "output": "0"
+  }
+ },
+ {
+  "id": "zai/glm-4.7-flash",
+  "name": "GLM 4.7 Flash",
+  "pricing": {
+   "input": "0.0000000735",
+   "output": "0.00000042"
+  }
+ },
+ {
   "id": "deepseek/deepseek-v4.1-flash",
   "name": "DeepSeek V4.1 Flash",
   "pricing": {
@@ -3063,12 +3038,13 @@
   }
  },
  {
-  "id": "deepseek/deepseek-v4.1-flash-1017-fast",
-  "name": "DeepSeek V4.1 Flash 1017 Fast",
+  "id": "spacexai/grok-4.20-multi-agent-beta",
+  "name": "Grok 4.20 Multi Agent Beta",
   "pricing": {
-   "input": "0.00000063",
-   "output": "0.00000252",
-   "input_cache_read": "0.0000000147"
+   "input": "0.0000013125",
+   "output": "0.000002625",
+   "input_cache_read": "0.00000021",
+   "web_search": "5.25"
   }
  },
  {
@@ -3113,14 +3089,6 @@
   }
  },
  {
-  "id": "zai/glm-4.7-flash",
-  "name": "GLM 4.7 Flash",
-  "pricing": {
-   "input": "0.0000000735",
-   "output": "0.00000042"
-  }
- },
- {
   "id": "openai/o1",
   "name": "o1",
   "pricing": {
@@ -3138,24 +3106,6 @@
    "output": "0.000002625",
    "input_cache_read": "0.00000021",
    "web_search": "5.25"
-  }
- },
- {
-  "id": "zai/glm-4.5v",
-  "name": "GLM 4.5V",
-  "pricing": {
-   "input": "0.00000063",
-   "output": "0.00000189",
-   "input_cache_read": "0.0000001155"
-  }
- },
- {
-  "id": "zai/glm-4.6",
-  "name": "GLM 4.6",
-  "pricing": {
-   "input": "0.00000063",
-   "output": "0.00000231",
-   "input_cache_read": "0.0000001155"
   }
  },
  {
@@ -3210,6 +3160,24 @@
   }
  },
  {
+  "id": "zai/glm-4.5v",
+  "name": "GLM 4.5V",
+  "pricing": {
+   "input": "0.00000063",
+   "output": "0.00000189",
+   "input_cache_read": "0.0000001155"
+  }
+ },
+ {
+  "id": "zai/glm-4.6",
+  "name": "GLM 4.6",
+  "pricing": {
+   "input": "0.00000063",
+   "output": "0.00000231",
+   "input_cache_read": "0.0000001155"
+  }
+ },
+ {
   "id": "recraft/recraft-v4",
   "name": "Recraft V4",
   "pricing": {
@@ -3237,27 +3205,6 @@
    "input": "0.00000007875",
    "output": "0.000000231",
    "input_cache_read": "0.00000001575"
-  }
- },
- {
-  "id": "recraft/recraft-v4.1-utility-pro",
-  "name": "Recraft V4.1 Utility Pro",
-  "pricing": {
-   "currency": "USD",
-   "unit": "image",
-   "basis": "reservation_estimate",
-   "image": "0.315",
-   "image_input": "0",
-   "text_input": "0"
-  },
-  "architecture": {
-   "modality": "text->image",
-   "input_modalities": [
-    "text"
-   ],
-   "output_modalities": [
-    "image"
-   ]
   }
  },
  {
@@ -3325,14 +3272,6 @@
   }
  },
  {
-  "id": "liquid/d1",
-  "name": "Liquid d1",
-  "pricing": {
-   "input": "0.000000022",
-   "output": "0"
-  }
- },
- {
   "id": "openai/gpt-5.2-pro",
   "name": "GPT 5.2 ",
   "pricing": {
@@ -3367,6 +3306,14 @@
    "input": "0.000000147",
    "output": "0.000000609",
    "input_cache_read": "0.00000003675"
+  }
+ },
+ {
+  "id": "liquid/d1",
+  "name": "Liquid d1",
+  "pricing": {
+   "input": "0.000000022",
+   "output": "0"
   }
  },
  {
@@ -3471,16 +3418,6 @@
   }
  },
  {
-  "id": "alibaba/qwen3.6-plus",
-  "name": "Qwen 3.6 Plus",
-  "pricing": {
-   "input": "0.000000525",
-   "output": "0.00000315",
-   "input_cache_read": "0.0000000525",
-   "input_cache_write": "0.00000065625"
-  }
- },
- {
   "id": "openai/gpt-5.5-pro",
   "name": "GPT 5.5 Pro",
   "pricing": {
@@ -3500,14 +3437,30 @@
   }
  },
  {
-  "id": "anthropic/claude-haiku-4.5",
-  "name": "Claude Haiku 4.5",
+  "id": "zai/glm-5",
+  "name": "GLM 5",
   "pricing": {
    "input": "0.00000105",
-   "output": "0.00000525",
-   "input_cache_read": "0.000000105",
-   "input_cache_write": "0.0000013125",
-   "web_search": "10.5"
+   "output": "0.00000336"
+  }
+ },
+ {
+  "id": "zai/glm-5.3-flashx-legal",
+  "name": "GLM 5.3 FlashX Legal",
+  "pricing": {
+   "input": "0.0000003885",
+   "output": "0.0000013125",
+   "input_cache_read": "0.00000007875"
+  }
+ },
+ {
+  "id": "alibaba/qwen3.6-plus",
+  "name": "Qwen 3.6 Plus",
+  "pricing": {
+   "input": "0.000000525",
+   "output": "0.00000315",
+   "input_cache_read": "0.0000000525",
+   "input_cache_write": "0.00000065625"
   }
  },
  {
@@ -3517,6 +3470,27 @@
    "input": "0.00000252",
    "output": "0.00001008",
    "input_cache_read": "0.0000000504"
+  }
+ },
+ {
+  "id": "recraft/recraft-v3",
+  "name": "Recraft V3",
+  "pricing": {
+   "currency": "USD",
+   "unit": "image",
+   "basis": "reservation_estimate",
+   "image": "0.084",
+   "image_input": "0",
+   "text_input": "0"
+  },
+  "architecture": {
+   "modality": "text->image",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "image"
+   ]
   }
  },
  {
@@ -3531,22 +3505,6 @@
   }
  },
  {
-  "id": "alibaba/qwen3.6-35b-a3b",
-  "name": "Qwen 3.6 35B A3B",
-  "pricing": {
-   "input": "0.00000039375",
-   "output": "0.0000023625"
-  }
- },
- {
-  "id": "deepseek/deepseek-v3.2",
-  "name": "DeepSeek V3.2",
-  "pricing": {
-   "input": "0.000000651",
-   "output": "0.0000019425"
-  }
- },
- {
   "id": "google/gemma-4-26b-a4b-it",
   "name": "Google Gemma 4 26B A4B",
   "pricing": {
@@ -3556,11 +3514,40 @@
   }
  },
  {
+  "id": "recraft/recraft-v4.1-utility-pro",
+  "name": "Recraft V4.1 Utility Pro",
+  "pricing": {
+   "currency": "USD",
+   "unit": "image",
+   "basis": "reservation_estimate",
+   "image": "0.315",
+   "image_input": "0",
+   "text_input": "0"
+  },
+  "architecture": {
+   "modality": "text->image",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "image"
+   ]
+  }
+ },
+ {
   "id": "interfaze/interfaze-beta",
   "name": "Interfaze Beta",
   "pricing": {
    "input": "0.000001575",
    "output": "0.000003675"
+  }
+ },
+ {
+  "id": "alibaba/qwen3.6-35b-a3b",
+  "name": "Qwen 3.6 35B A3B",
+  "pricing": {
+   "input": "0.00000039375",
+   "output": "0.0000023625"
   }
  },
  {
@@ -3618,6 +3605,25 @@
   }
  },
  {
+  "id": "anthropic/claude-haiku-4.5",
+  "name": "Claude Haiku 4.5",
+  "pricing": {
+   "input": "0.00000105",
+   "output": "0.00000525",
+   "input_cache_read": "0.000000105",
+   "input_cache_write": "0.0000013125",
+   "web_search": "10.5"
+  }
+ },
+ {
+  "id": "deepseek/deepseek-v3.2",
+  "name": "DeepSeek V3.2",
+  "pricing": {
+   "input": "0.000000651",
+   "output": "0.0000019425"
+  }
+ },
+ {
   "id": "google/gemini-4-argon",
   "name": "Gemini 4 Argon",
   "pricing": {
@@ -3658,6 +3664,23 @@
   }
  },
  {
+  "id": "meta/llama-4-maverick",
+  "name": "Llama 4 Maverick 17B Instruct",
+  "pricing": {
+   "input": "0.000000252",
+   "output": "0.0000010185"
+  }
+ },
+ {
+  "id": "microsoft/mai-transcribe-2",
+  "name": "MAI-Transcribe 2",
+  "pricing": {
+   "input": "0",
+   "output": "0",
+   "transcription_second": "0.000029169"
+  }
+ },
+ {
   "id": "google/gemini-4-carbon",
   "name": "Gemini 4 Carbon",
   "pricing": {
@@ -3674,23 +3697,6 @@
    "input": "0.000000315",
    "output": "0.000000945",
    "input_cache_read": "0.000000063"
-  }
- },
- {
-  "id": "meta/llama-4-maverick",
-  "name": "Llama 4 Maverick 17B Instruct",
-  "pricing": {
-   "input": "0.000000252",
-   "output": "0.0000010185"
-  }
- },
- {
-  "id": "microsoft/mai-transcribe-2",
-  "name": "MAI-Transcribe 2",
-  "pricing": {
-   "input": "0",
-   "output": "0",
-   "transcription_second": "0.000029169"
   }
  },
  {
@@ -3738,14 +3744,6 @@
   }
  },
  {
-  "id": "deepseek/deepseek-r1",
-  "name": "DeepSeek-R1",
-  "pricing": {
-   "input": "0.0000014175",
-   "output": "0.00000567"
-  }
- },
- {
   "id": "minimax/minimax-m2",
   "name": "MiniMax M2",
   "pricing": {
@@ -3784,13 +3782,11 @@
   }
  },
  {
-  "id": "minimax/minimax-m2.1-lightning",
-  "name": "MiniMax M2.1 Lightning",
+  "id": "deepseek/deepseek-r1",
+  "name": "DeepSeek-R1",
   "pricing": {
-   "input": "0.000000315",
-   "output": "0.00000252",
-   "input_cache_read": "0.0000000315",
-   "input_cache_write": "0.00000039375"
+   "input": "0.0000014175",
+   "output": "0.00000567"
   }
  },
  {
@@ -3820,6 +3816,16 @@
   }
  },
  {
+  "id": "minimax/minimax-m2.1-lightning",
+  "name": "MiniMax M2.1 Lightning",
+  "pricing": {
+   "input": "0.000000315",
+   "output": "0.00000252",
+   "input_cache_read": "0.0000000315",
+   "input_cache_write": "0.00000039375"
+  }
+ },
+ {
   "id": "morph/morph-v3-large",
   "name": "Morph V3 Large",
   "pricing": {
@@ -3836,15 +3842,6 @@
    "input_cache_read": "0.0000021",
    "input_cache_write": "0.00002625",
    "web_search": "10.5"
-  }
- },
- {
-  "id": "stepfun/step-5-preview",
-  "name": "Step 5 Preview",
-  "pricing": {
-   "input": "0.00000105",
-   "output": "0.000002835",
-   "input_cache_read": "0.000000105"
   }
  },
  {
@@ -4023,16 +4020,6 @@
   }
  },
  {
-  "id": "openai/gpt-5.3-codex",
-  "name": "GPT 5.3 Codex",
-  "pricing": {
-   "input": "0.0000018375",
-   "output": "0.0000147",
-   "input_cache_read": "0.00000018375",
-   "web_search": "10.5"
-  }
- },
- {
   "id": "openai/gpt-5.6-sol-fast",
   "name": "GPT 5.6 Sol (Fast)",
   "pricing": {
@@ -4066,23 +4053,12 @@
   }
  },
  {
-  "id": "openai/gpt-5.4-mini-fast",
-  "name": "GPT 5.4 Mini (Fast)",
+  "id": "openai/gpt-5.3-codex",
+  "name": "GPT 5.3 Codex",
   "pricing": {
-   "input": "0.000001575",
-   "output": "0.00000945",
-   "input_cache_read": "0.0000001575",
-   "web_search": "10.5"
-  }
- },
- {
-  "id": "openai/gpt-6.1-terra-fast",
-  "name": "GPT-6.1 Terra (Fast)",
-  "pricing": {
-   "input": "0.0000021",
-   "output": "0.0000105",
-   "input_cache_read": "0.000000105",
-   "input_cache_write": "0.000002625",
+   "input": "0.0000018375",
+   "output": "0.0000147",
+   "input_cache_read": "0.00000018375",
    "web_search": "10.5"
   }
  },
@@ -4102,6 +4078,27 @@
    "input": "0.00000003675",
    "output": "0.000000147525",
    "input_cache_read": "0.000000001575"
+  }
+ },
+ {
+  "id": "openai/gpt-5.4-mini-fast",
+  "name": "GPT 5.4 Mini (Fast)",
+  "pricing": {
+   "input": "0.000001575",
+   "output": "0.00000945",
+   "input_cache_read": "0.0000001575",
+   "web_search": "10.5"
+  }
+ },
+ {
+  "id": "openai/gpt-6.1-terra-fast",
+  "name": "GPT-6.1 Terra (Fast)",
+  "pricing": {
+   "input": "0.0000021",
+   "output": "0.0000105",
+   "input_cache_read": "0.000000105",
+   "input_cache_write": "0.000002625",
+   "web_search": "10.5"
   }
  },
  {
@@ -4172,17 +4169,6 @@
   }
  },
  {
-  "id": "openai/gpt-5.6-luna-fast",
-  "name": "GPT 5.6 Luna (Fast)",
-  "pricing": {
-   "input": "0.00000042",
-   "output": "0.00000252",
-   "input_cache_read": "0.000000042",
-   "input_cache_write": "0.000000525",
-   "web_search": "10.5"
-  }
- },
- {
   "id": "openai/gpt-5.6-terra",
   "name": "GPT 5.6 Terra",
   "pricing": {
@@ -4215,25 +4201,14 @@
   }
  },
  {
-  "id": "bfl/flux-kontext-pro",
-  "name": "FLUX.1 Kontext Pro",
+  "id": "openai/gpt-5.6-luna-fast",
+  "name": "GPT 5.6 Luna (Fast)",
   "pricing": {
-   "currency": "USD",
-   "unit": "image",
-   "basis": "reservation_estimate",
-   "image": "0.042",
-   "image_input": "0",
-   "text_input": "0"
-  },
-  "architecture": {
-   "modality": "text+image->image",
-   "input_modalities": [
-    "text",
-    "image"
-   ],
-   "output_modalities": [
-    "image"
-   ]
+   "input": "0.00000042",
+   "output": "0.00000252",
+   "input_cache_read": "0.000000042",
+   "input_cache_write": "0.000000525",
+   "web_search": "10.5"
   }
  },
  {
@@ -4264,11 +4239,33 @@
   }
  },
  {
+  "id": "bfl/flux-kontext-pro",
+  "name": "FLUX.1 Kontext Pro",
+  "pricing": {
+   "currency": "USD",
+   "unit": "image",
+   "basis": "reservation_estimate",
+   "image": "0.042",
+   "image_input": "0",
+   "text_input": "0"
+  },
+  "architecture": {
+   "modality": "text+image->image",
+   "input_modalities": [
+    "text",
+    "image"
+   ],
+   "output_modalities": [
+    "image"
+   ]
+  }
+ },
+ {
   "id": "alibaba/qwen3-next-80b-a3b-instruct",
   "name": "Qwen3 Next 80B A3B Instruct",
   "pricing": {
-   "input": "0.0000001575",
-   "output": "0.00000126"
+   "input": "0.0000000945",
+   "output": "0.000001155"
   }
  },
  {
@@ -4358,6 +4355,24 @@
   }
  },
  {
+  "id": "openai/o4-mini",
+  "name": "o4-mini",
+  "pricing": {
+   "input": "0.000001155",
+   "output": "0.00000462",
+   "input_cache_read": "0.00000028875",
+   "web_search": "14.7"
+  }
+ },
+ {
+  "id": "perplexity/pplx-decider-flash-v1.2",
+  "name": "Decider Flash V1.2 4B",
+  "pricing": {
+   "input": "0.000000011",
+   "output": "0"
+  }
+ },
+ {
   "id": "bfl/flux-pro-1.1",
   "name": "FLUX1.1 [pro]",
   "pricing": {
@@ -4379,48 +4394,12 @@
   }
  },
  {
-  "id": "openai/o4-mini",
-  "name": "o4-mini",
-  "pricing": {
-   "input": "0.000001155",
-   "output": "0.00000462",
-   "input_cache_read": "0.00000028875",
-   "web_search": "14.7"
-  }
- },
- {
-  "id": "perplexity/pplx-decider-flash-v1.2",
-  "name": "Decider Flash V1.2 4B",
-  "pricing": {
-   "input": "0.000000011",
-   "output": "0"
-  }
- },
- {
   "id": "xiaomi/mimo-v2.6-pro-ultraspeed",
   "name": "MiMo V2.6 Pro UltraSpeed",
   "pricing": {
    "input": "0.0000045675",
    "output": "0.000009135",
    "input_cache_read": "0.0000000378"
-  }
- },
- {
-  "id": "openai/gpt-5.4-mini",
-  "name": "GPT 5.4 Mini",
-  "pricing": {
-   "input": "0.0000007875",
-   "output": "0.000004725",
-   "input_cache_read": "0.00000007875",
-   "web_search": "10.5"
-  }
- },
- {
-  "id": "openai/gpt-oss-20b",
-  "name": "GPT OSS 20B",
-  "pricing": {
-   "input": "0.0000000315",
-   "output": "0.000000147"
   }
  },
  {
@@ -4442,12 +4421,21 @@
   }
  },
  {
-  "id": "openai/gpt-5.4-pro",
-  "name": "GPT 5.4 Pro",
+  "id": "openai/gpt-5.4-mini",
+  "name": "GPT 5.4 Mini",
   "pricing": {
-   "input": "0.0000315",
-   "output": "0.000189",
+   "input": "0.0000007875",
+   "output": "0.000004725",
+   "input_cache_read": "0.00000007875",
    "web_search": "10.5"
+  }
+ },
+ {
+  "id": "openai/gpt-oss-20b",
+  "name": "GPT OSS 20B",
+  "pricing": {
+   "input": "0.0000000315",
+   "output": "0.000000147"
   }
  },
  {
@@ -4483,6 +4471,15 @@
   "pricing": {
    "input": "0.0000000462",
    "output": "0"
+  }
+ },
+ {
+  "id": "openai/gpt-5.4-pro",
+  "name": "GPT 5.4 Pro",
+  "pricing": {
+   "input": "0.0000315",
+   "output": "0.000189",
+   "web_search": "10.5"
   }
  },
  {
@@ -4569,16 +4566,6 @@
   }
  },
  {
-  "id": "alibaba/qwen3.8-max-prime",
-  "name": "Qwen 3.8 Max Prime",
-  "pricing": {
-   "input": "0.0000042",
-   "output": "0.0000126",
-   "input_cache_read": "0.000000525",
-   "input_cache_write": "0.00000525"
-  }
- },
- {
   "id": "zai/glm-4.7",
   "name": "GLM 4.7",
   "pricing": {
@@ -4605,22 +4592,13 @@
   }
  },
  {
-  "id": "thinkingmachines/inkling",
-  "name": "Inkling",
+  "id": "alibaba/qwen3.8-max-prime",
+  "name": "Qwen 3.8 Max Prime",
   "pricing": {
-   "input": "0.00000105",
-   "output": "0.0000042525",
-   "input_cache_read": "0.0000001785"
-  }
- },
- {
-  "id": "spacexai/grok-4.20-non-reasoning-beta",
-  "name": "Grok 4.20 Beta Non-Reasoning",
-  "pricing": {
-   "input": "0.0000013125",
-   "output": "0.000002625",
-   "input_cache_read": "0.00000021",
-   "web_search": "5.25"
+   "input": "0.0000042",
+   "output": "0.0000126",
+   "input_cache_read": "0.000000525",
+   "input_cache_write": "0.00000525"
   }
  },
  {
@@ -4644,12 +4622,22 @@
   }
  },
  {
-  "id": "thinkingmachines/inkling-2-small",
-  "name": "Inkling 2 Small",
+  "id": "thinkingmachines/inkling",
+  "name": "Inkling",
   "pricing": {
-   "input": "0.000000315",
-   "output": "0.00000105",
-   "input_cache_read": "0.0000000315"
+   "input": "0.00000105",
+   "output": "0.0000042525",
+   "input_cache_read": "0.0000001785"
+  }
+ },
+ {
+  "id": "spacexai/grok-4.20-non-reasoning-beta",
+  "name": "Grok 4.20 Beta Non-Reasoning",
+  "pricing": {
+   "input": "0.0000013125",
+   "output": "0.000002625",
+   "input_cache_read": "0.00000021",
+   "web_search": "5.25"
   }
  },
  {
@@ -4679,6 +4667,15 @@
    "input": "0.00000147",
    "output": "0.00000462",
    "input_cache_read": "0.000000273"
+  }
+ },
+ {
+  "id": "thinkingmachines/inkling-2-small",
+  "name": "Inkling 2 Small",
+  "pricing": {
+   "input": "0.000000315",
+   "output": "0.00000105",
+   "input_cache_read": "0.0000000315"
   }
  },
  {
