@@ -1,5 +1,5 @@
 name: Kiuyha train
-# round-14 N-640 (2026-11-17, standing order): chain from round-13 N-640 weights (run 44016031624, mAP50-95 0.82928); imgsz 640 + batch 16 + workers 4
+# round-15 N-1024 (2026-11-18, user order): chain from round-14 N-640 weights (run 44062433861, mAP50-95 0.83096); imgsz 1024 + batch 8 + workers 3
 
 on:
   push:
@@ -82,7 +82,7 @@ jobs:
         with:
           name: kiuyha-tuned-all
           path: .
-          run-id: 44016031624
+          run-id: 44062433861
           github-token: ${{ github.token }}
       - name: Install Ultralytics on CPU torch
         run: |
@@ -90,21 +90,29 @@ jobs:
           python -m pip install "ultralytics==8.4.164" onnx onnxslim
       - name: Add hard-case data (Total-Text hard + webtoon + AnimeText hard)
         run: python .github/kiuyha/fetch_hard.py kiuyha-data
-      - name: Add nano-miss v2 (TRANSIENT title)
+      - name: Add nano-miss v3 (TRANSIENT title, tight box 5x)
         run: |
-          curl --proto '=https' --tlsv1.2 -sSfL -o kiuyha-nano-miss-v2.zip "https://github.com/tuantran00541-spec/manga-translator/releases/download/kiuyha-nano-miss-v2/kiuyha-nano-miss-v2.zip"
-          echo "a22a6facd5f23c54851d486447c88646533ca7d5e7c9f7666c981d215e0f9d13  kiuyha-nano-miss-v2.zip" | sha256sum -c -
-          unzip -q -o kiuyha-nano-miss-v2.zip -d kiuyha-data
-          rm kiuyha-nano-miss-v2.zip
-          test -f kiuyha-data/images/train/nano-miss-ch337-013_04.jpg
-          test -f kiuyha-data/labels/train/nano-miss-ch337-013_04.txt
-          python -c "import json, pathlib; p=pathlib.Path('kiuyha-data/stats.json'); s=json.loads(p.read_text()); s['train']=len(list(pathlib.Path('kiuyha-data/images/train').glob('*.jpg'))); s['train_nano_miss_v2_slices']=1; p.write_text(json.dumps(s, indent=1)); print('train images after v2:', s['train'])"
+          curl --proto '=https' --tlsv1.2 -sSfL -o kiuyha-nano-miss-v3.zip "https://github.com/tuantran00541-spec/manga-translator/releases/download/kiuyha-nano-miss-v3/kiuyha-nano-miss-v3.zip"
+          echo "e67fc4981e4e12986f553665d0487b32ed23f1221dc91aac1be1ad27596a7c43  kiuyha-nano-miss-v3.zip" | sha256sum -c -
+          unzip -q -o kiuyha-nano-miss-v3.zip -d kiuyha-data
+          rm kiuyha-nano-miss-v3.zip
+          test -f kiuyha-data/images/train/nano-miss-ch337-013_04-x1.jpg
+          test -f kiuyha-data/images/train/nano-miss-ch337-013_04-x2.jpg
+          test -f kiuyha-data/images/train/nano-miss-ch337-013_04-x3.jpg
+          test -f kiuyha-data/images/train/nano-miss-ch337-013_04-x4.jpg
+          test -f kiuyha-data/images/train/nano-miss-ch337-013_04-x5.jpg
+          test -f kiuyha-data/labels/train/nano-miss-ch337-013_04-x1.txt
+          test -f kiuyha-data/labels/train/nano-miss-ch337-013_04-x2.txt
+          test -f kiuyha-data/labels/train/nano-miss-ch337-013_04-x3.txt
+          test -f kiuyha-data/labels/train/nano-miss-ch337-013_04-x4.txt
+          test -f kiuyha-data/labels/train/nano-miss-ch337-013_04-x5.txt
+          python -c "import json, pathlib; p=pathlib.Path('kiuyha-data/stats.json'); s=json.loads(p.read_text()); s['train']=len(list(pathlib.Path('kiuyha-data/images/train').glob('*.jpg'))); s['train_nano_miss_v3_slices']=5; p.write_text(json.dumps(s, indent=1)); print('train images after v3:', s['train'])"
       - name: Tune
         run: |
           sed -i "s#^path: .*#path: $PWD/kiuyha-data#" kiuyha-data/data.yaml
           freeze=0
           [ "${{ matrix.arm }}" = frozen ] && freeze=10
-          yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=640 batch=16 workers=4 device=cpu \
+          yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
             time=5.5 epochs=3 patience=100 freeze=$freeze optimizer=AdamW lr0=0.0005 cos_lr=True \
             degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
       - name: Keep the weights
