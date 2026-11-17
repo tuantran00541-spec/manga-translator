@@ -1,0 +1,19 @@
+{
+ "train": 15613,
+ "real": 207,
+ "synth": 207,
+ "webval": 300,
+ "art": 300,
+ "train_nano_miss_slices": 93,
+ "train_nano_miss_merged": 0,
+ "train_nano_miss_label_lines": 477,
+ "train_advince_slices": 222,
+ "train_advince_boxes": 590,
+ "train_hard_slices": 49,
+ "train_hard_oversample": 5,
+ "train_hard_copies": 196,
+ "train_r4_distilled_slices": 2205,
+ "train_r4_distilled_boxes": 15186,
+ "train_r4_tight_fallback": 304,
+ "train_hard_added": 4256
+}
