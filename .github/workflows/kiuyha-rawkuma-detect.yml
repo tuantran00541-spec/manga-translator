@@ -1,0 +1,124 @@
+name: Kiuyha RawKuma detect
+
+on:
+  workflow_dispatch:
+    inputs:
+      chapter_urls:
+        description: "RawKuma chapter URLs, one per line"
+        required: true
+        default: |
+          https://rawkuma.net/manga/bleach/chapter-1.429315/
+          https://rawkuma.net/manga/bleach/chapter-2.429320/
+          https://rawkuma.net/manga/bleach/chapter-3.429324/
+      out_dir:
+        description: "Output directory under audit-results"
+        required: false
+        default: "rawkuma-detect"
+
+permissions:
+  contents: write
+
+jobs:
+  detect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install processing runtime
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 \
+            beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 playwright-stealth==2.0.3 fastapi==0.115.0 \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.20
+
+      - name: Restore detector models
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Use the committed Kiuyha, not the cached one
+        run: git checkout -- models/kiuyha-tuned-1023.onnx && md5sum models/kiuyha-tuned-1023.onnx
+
+      - name: Check the models are there
+        run: |
+          ls -la models
+          test -f models/kiuyha-tuned-1023.onnx
+
+      - name: Download all chapters (4-way parallel)
+        run: |
+          cat > /tmp/chapter-urls.txt <<'URLS_EOF'
+          ${{ inputs.chapter_urls }}
+          URLS_EOF
+          grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*#' /tmp/chapter-urls.txt > /tmp/urls-clean.txt
+          echo "chapters: $(wc -l < /tmp/urls-clean.txt)"
+          OUT="audit-results/${{ inputs.out_dir }}"
+          mkdir -p "$OUT"
+          rm -f /tmp/urls-part-*
+          split -n l/4 -d /tmp/urls-clean.txt /tmp/urls-part-
+          PIDS=""
+          i=0
+          for part in /tmp/urls-part-*; do
+            [ -s "$part" ] || continue
+            n=$(wc -l < "$part")
+            start=$((i + 1))
+            python3 scripts/download_rawkuma.py --urls-file "$part" --out "$OUT" --index-start "$start" > "/tmp/dl-$start.log" 2>&1 &
+            PIDS="$PIDS $!"
+            i=$((i + n))
+          done
+          FAILED=0
+          for pid in $PIDS; do wait "$pid" || FAILED=1; done
+          grep -h "batch done" /tmp/dl-*.log || true
+          ls -d "$OUT"/ch* 2>/dev/null | wc -l
+          [ "$FAILED" = 0 ] || echo "some download chunks had failures (see /tmp/dl-*.log); continuing with what downloaded"
+
+      - name: Detect all chapters (4-way parallel, 270-min start budget)
+        run: |
+          OUT="audit-results/${{ inputs.out_dir }}"
+          START=$(date +%s)
+          BUDGET=16200
+          export START BUDGET
+          find "$OUT" -maxdepth 1 -type d -name 'ch*' | sort -V > /tmp/ch-dirs.txt
+          echo "chapter dirs: $(wc -l < /tmp/ch-dirs.txt)"
+          detect_one() {
+            dir="$1"
+            now=$(date +%s)
+            if [ $((now - START)) -ge $BUDGET ]; then echo "past 270-min budget, skipping $dir"; return 0; fi
+            CHAPTER=$(basename "$dir" | sed 's/^ch//')
+            CID=$(printf "a%07x" "$((10#$CHAPTER))")
+            if ! MANGA_ORT_OPENVINO_THREADS=1 python scripts/detect_chapter_zip.py --zip "$dir/rawkuma-ch${CHAPTER}.zip" --chapter "$CHAPTER" --chapter-id "$CID" --out "$dir"; then
+              echo "detect failed for ch$CHAPTER"
+              return 1
+            fi
+            touch "$dir/.detect-ok"
+          }
+          export -f detect_one
+          xargs -P4 -I{} bash -c 'detect_one "$@"' _ {} < /tmp/ch-dirs.txt || true
+          OK=$(find "$OUT" -maxdepth 2 -name '.detect-ok' | wc -l)
+          echo "detected OK: $OK / $(wc -l < /tmp/ch-dirs.txt)"
+          [ "$OK" -gt 0 ]
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/${{ inputs.out_dir }}
+          message: "audit: rawkuma detect batch (run ${{ github.run_id }})"
