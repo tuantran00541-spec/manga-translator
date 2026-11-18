@@ -71,7 +71,7 @@ def main() -> int:
             ],
         }],
         "response_format": {"type": "json_object"},
-        "max_tokens": 1024,
+        "max_tokens": 8192,
         "stream": False,
     }
     req = urllib.request.Request(

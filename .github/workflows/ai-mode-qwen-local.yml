@@ -6,7 +6,7 @@ on:
       chapter_url:
         description: "Chapter URL to translate (exactly one of chapter_url and chapter_zip)"
         required: false
-        default: "https://madarascans.net/logging-out-is-too-hard-chapter-19/"
+        default: "https://asurascans.com/comics/nano-machine-7ba78ec7/chapter/338"
       chapter_zip:
         description: "Repo-relative path to a chapter zip of page images (exactly one of chapter_url and chapter_zip)"
         required: false
@@ -99,14 +99,15 @@ jobs:
           tar -xzf llama.tar.gz
           ls llama-b12389/llama-server
           mkdir -p qwen-local
-          curl -fsSL -o qwen-local/mmproj-Qwen3.5-0.8B-F16.gguf \
-            https://huggingface.co/amkkk/Qwen3.5-0.8B-GGUF-uncensored-opus-distill/resolve/main/mmproj-Qwen3.5-0.8B-F16.gguf
-          curl -fsSL -o qwen-local/qwen3.5-0.8b-ablate-e2-opus46-postopus-runtime.Q4_K_M.gguf \
-            https://huggingface.co/amkkk/Qwen3.5-0.8B-GGUF-uncensored-opus-distill/resolve/main/qwen3.5-0.8b-ablate-e2-opus46-postopus-runtime.Q4_K_M.gguf
+          curl -fsSL -o qwen-local/mmproj-qwen3.5-0.8b-sft-r13b.F16.gguf \
+            https://github.com/tuantran00541-spec/manga-translator/releases/download/qwen35-sft-r13b/mmproj-qwen3.5-0.8b-sft-r13b.F16.gguf
+          curl -fsSL -o qwen-local/qwen3.5-0.8b-sft-r13b.Q4_K_M.gguf \
+            https://github.com/tuantran00541-spec/manga-translator/releases/download/qwen35-sft-r13b/qwen3.5-0.8b-sft-r13b.Q4_K_M.gguf
           ls -la qwen-local/
           nohup llama-b12389/llama-server \
-            -m qwen-local/qwen3.5-0.8b-ablate-e2-opus46-postopus-runtime.Q4_K_M.gguf \
-            --mmproj qwen-local/mmproj-Qwen3.5-0.8B-F16.gguf \
+            -m qwen-local/qwen3.5-0.8b-sft-r13b.Q4_K_M.gguf \
+            --mmproj qwen-local/mmproj-qwen3.5-0.8b-sft-r13b.F16.gguf \
+            --chat-template-file scripts/qwen-no-think-chat-template.jinja \
             --host 127.0.0.1 --port 8080 --alias qwen3.5-0.8b --ctx-size 32768 --image-min-tokens 1024 \
             > llama.log 2>&1 &
           for i in $(seq 1 60); do
