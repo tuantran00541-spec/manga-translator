@@ -1,7 +1,7 @@
 name: Kiuyha train
-# transient-only N-1024 (2026-11-18, user order): train Kiuyha N on EXACTLY ONE image (the TRANSIENT tile)
+# transient-only N-640 (2026-11-18, user order): train Kiuyha N on EXACTLY ONE image (the TRANSIENT tile)
 # and test whether it learns TRANSIENT. Start weights: round-15 N-640 (run 44203027210, kiuyha-tuned-all).
-# imgsz 1024 + batch 1 + workers 2, epochs=1 (NO time= — with 1 image time-based re-estimation would run for hours).
+# imgsz 640 + batch 1 + workers 2, epochs=1 (NO time= — with 1 image time-based re-estimation would run for hours).
 
 on:
   push:
@@ -131,7 +131,7 @@ jobs:
         run: |
           sed -i "s#^path: .*#path: $PWD/kiuyha-data#" kiuyha-data/data.yaml
           cat kiuyha-data/data.yaml
-          yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=1024 batch=1 workers=2 device=cpu epochs=1 patience=100 freeze=0 optimizer=AdamW lr0=0.0005 cos_lr=True degrees=0 translate=0 scale=0 shear=0 perspective=0 fliplr=0.0 flipud=0.0 mosaic=0.0 mixup=0.0 copy_paste=0.0 hsv_h=0.0 hsv_s=0.0 hsv_v=0.0 erasing=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
+          yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=640 batch=1 workers=2 device=cpu epochs=1 patience=100 freeze=0 optimizer=AdamW lr0=0.0005 cos_lr=True degrees=0 translate=0 scale=0 shear=0 perspective=0 fliplr=0.0 flipud=0.0 mosaic=0.0 mixup=0.0 copy_paste=0.0 hsv_h=0.0 hsv_s=0.0 hsv_v=0.0 erasing=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
       - name: Keep the weights
         if: always()
         run: |
