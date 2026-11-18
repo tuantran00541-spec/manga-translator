@@ -1,4 +1,7 @@
 name: Kiuyha train
+# transient-only N-1024 (2026-11-18, user order): train Kiuyha N on EXACTLY ONE image (the TRANSIENT tile)
+# and test whether it learns TRANSIENT. Start weights: round-15 N-640 (run 44203027210, kiuyha-tuned-all).
+# imgsz 1024 + batch 1 + workers 2, epochs=10 (NO time= — with 1 image time-based re-estimation would run for hours).
 
 on:
   push:
@@ -15,7 +18,7 @@ env:
   OUT: audit-results/kiuyha-train/run-${{ github.run_id }}
   PYTHONPATH: "."
   PYTHONUNBUFFERED: "1"
-  DATA_RUN: "38535523379"
+  DATA_RELEASE: "kiuyha-data-r4-v1"
 
 jobs:
   data:
@@ -33,7 +36,7 @@ jobs:
         run: |
           python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
             onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 \
-            beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 \
+            beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 playwright-stealth==2.0.3 fastapi==0.115.0 \
             pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.20 pyarrow
           python -m playwright install --with-deps chromium
           python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
@@ -54,7 +57,7 @@ jobs:
 
   tune:
     runs-on: ubuntu-latest
-    timeout-minutes: 345
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -66,32 +69,69 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: actions/download-artifact@v4
-        with:
-          name: kiuyha-data
-          path: .
-          run-id: ${{ env.DATA_RUN }}
-          github-token: ${{ github.token }}
+      - name: Fetch the full kiuyha-data set (release parts)
+        run: |
+          for i in 00 01 02 03 04 05 06 07 08; do
+            curl --proto '=https' --tlsv1.2 -sSfL -o "kiuyha-data-r4-v1.zip.$i" "https://github.com/tuantran00541-spec/manga-translator/releases/download/${{ env.DATA_RELEASE }}/kiuyha-data-r4-v1.zip.$i"
+          done
+          cat kiuyha-data-r4-v1.zip.0* > kiuyha-data-r4-v1.zip
+          echo "b0b8fede304601c4787cc91a26fa4b45df646c2071450a80c58a5afa5c1b6386  kiuyha-data-r4-v1.zip" | sha256sum -c -
+          unzip -q kiuyha-data-r4-v1.zip
+          rm kiuyha-data-r4-v1.zip*
+          test -f kiuyha-data/data.yaml
+          python -c "import json; s=json.load(open('kiuyha-data/stats.json')); print(s); assert s['train'] >= 11000, s"
       - uses: actions/download-artifact@v4
         with:
           name: kiuyha-tuned-all
           path: .
-          run-id: 38672322338
+          run-id: 44203027210
           github-token: ${{ github.token }}
+      - name: Verify start weights are round-15 N-640
+        run: |
+          echo "046d6d19d402e7180f3fbeffc98950b1  kiuyha-tuned.pt" | md5sum -c -
+          ls -la kiuyha-tuned.pt
       - name: Install Ultralytics on CPU torch
         run: |
           python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           python -m pip install "ultralytics==8.4.164" onnx onnxslim
-      - name: Add hard-case data (Total-Text hard + webtoon + AnimeText hard)
-        run: python .github/kiuyha/fetch_hard.py kiuyha-data
+      - name: Replace train with ONLY the TRANSIENT tile (1 image, nothing else)
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL -o kiuyha-nano-miss-v3.zip "https://github.com/tuantran00541-spec/manga-translator/releases/download/kiuyha-nano-miss-v3/kiuyha-nano-miss-v3.zip"
+          echo "e67fc4981e4e12986f553665d0487b32ed23f1221dc91aac1be1ad27596a7c43  kiuyha-nano-miss-v3.zip" | sha256sum -c -
+          mkdir -p v3stage
+          unzip -q -o kiuyha-nano-miss-v3.zip -d v3stage
+          unzip -l kiuyha-nano-miss-v3.zip
+          test -f v3stage/images/train/nano-miss-ch337-013_04-x1.jpg
+          test -f v3stage/labels/train/nano-miss-ch337-013_04-x1.txt
+          echo "9283ec4191b5bfcba022ac59c1611eaa  v3stage/images/train/nano-miss-ch337-013_04-x1.jpg" | md5sum -c -
+          cat v3stage/labels/train/nano-miss-ch337-013_04-x1.txt
+          rm -rf kiuyha-data/images/train kiuyha-data/labels/train
+          mkdir -p kiuyha-data/images/train kiuyha-data/labels/train
+          cp v3stage/images/train/nano-miss-ch337-013_04-x1.jpg kiuyha-data/images/train/
+          cp v3stage/labels/train/nano-miss-ch337-013_04-x1.txt kiuyha-data/labels/train/
+          rm -rf v3stage kiuyha-nano-miss-v3.zip
+          echo "--- train images:"; ls kiuyha-data/images/train/
+          echo "--- train labels:"; ls kiuyha-data/labels/train/
+          python -c "
+          import json, pathlib
+          imgs = sorted(pathlib.Path('kiuyha-data/images/train').glob('*.jpg'))
+          txts = sorted(pathlib.Path('kiuyha-data/labels/train').glob('*.txt'))
+          assert len(imgs) == 1 and len(txts) == 1, (imgs, txts)
+          assert imgs[0].name == 'nano-miss-ch337-013_04-x1.jpg', imgs
+          assert txts[0].name == 'nano-miss-ch337-013_04-x1.txt', txts
+          val = sorted(pathlib.Path('kiuyha-data/images/synth').glob('*.jpg'))
+          assert len(val) == 207, len(val)
+          print('train: 1 image, val (synth): 207 images, val untouched')
+          p = pathlib.Path('kiuyha-data/stats.json'); s = json.loads(p.read_text())
+          s['train'] = 1; s['train_transient_only'] = 1
+          p.write_text(json.dumps(s, indent=1)); print('stats.json train =', s['train'])
+          "
+          echo "--- data.yaml:"; cat kiuyha-data/data.yaml
       - name: Tune
         run: |
           sed -i "s#^path: .*#path: $PWD/kiuyha-data#" kiuyha-data/data.yaml
-          freeze=0
-          [ "${{ matrix.arm }}" = frozen ] && freeze=10
-          yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=1024 batch=8 workers=3 device=cpu \
-            time=5.0 epochs=40 patience=100 freeze=$freeze optimizer=AdamW lr0=0.0005 cos_lr=True \
-            degrees=5 fliplr=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
+          cat kiuyha-data/data.yaml
+          yolo detect train model=kiuyha-tuned.pt data=kiuyha-data/data.yaml imgsz=1024 batch=1 workers=2 device=cpu epochs=10 patience=100 freeze=0 optimizer=AdamW lr0=0.0005 cos_lr=True degrees=0 translate=0 scale=0 shear=0 perspective=0 fliplr=0.0 flipud=0.0 mosaic=0.0 mixup=0.0 copy_paste=0.0 hsv_h=0.0 hsv_s=0.0 hsv_v=0.0 erasing=0.0 plots=False project=$PWD/runs name=tune exist_ok=True 2>&1 | grep -v "it/s\]\|s/it\]" | tee train.log
       - name: Keep the weights
         if: always()
         run: |
@@ -133,4 +173,4 @@ jobs:
         if: always()
         with:
           paths: ${{ env.OUT }}/${{ matrix.arm }}
-          message: "audit: Kiuyha tuned (${{ matrix.arm }}, run ${{ github.run_id }})"
+          message: "audit: Kiuyha tuned transient-only (${{ matrix.arm }}, run ${{ github.run_id }})"
