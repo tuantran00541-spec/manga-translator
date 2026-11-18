@@ -1,0 +1,28 @@
+{
+  "total_pairs": 7777,
+  "skipped_unreadable": 9,
+  "verified": 7768,
+  "match": 5568,
+  "nomatch": 2200,
+  "merged": 5568,
+  "distilled_dialogue": 4497,
+  "sfx_held": 140,
+  "rescued_by_relaxed_en": 353,
+  "drops": {
+    "unreadable_vi_unreadable": 4,
+    "unreadable_en_unreadable": 5,
+    "nomatch": 2200
+  },
+  "distill_drop_reasons": {
+    "length_mismatch": 88,
+    "fragment": 221,
+    "vi_mojibake": 36,
+    "dupe": 388,
+    "low_match": 99,
+    "en_garbage": 83,
+    "vi_repeat": 9,
+    "watermark": 4,
+    "en_repeat": 2,
+    "empty": 1
+  }
+}
