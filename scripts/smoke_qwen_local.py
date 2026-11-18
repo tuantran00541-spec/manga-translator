@@ -8,7 +8,20 @@ import sys
 import urllib.request
 
 LLAMA = "http://127.0.0.1:8080/v1/chat/completions"
-UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"}
+# Full browser header set: AsuraScan's Cloudflare 403s a bare User-Agent
+# (proven on the runner 2026-11-18); the full set passes.
+UA = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate",
+    "Referer": "https://asurascans.com/",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+}
 
 
 def _get(url: str, timeout: int = 120) -> bytes:
@@ -47,13 +60,29 @@ def chapter_images(url: str) -> list[str]:
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--url", required=True)
+    p.add_argument("--url", default=None)
+    p.add_argument("--chapter-zip", default=None)
     p.add_argument("--model", default="qwen3.5-0.8b")
     args = p.parse_args()
 
-    images = chapter_images(args.url)
-    print(f"chapter lists {len(images)} images; smoking first: {images[0]}", flush=True)
-    raw = _get(images[0])
+    if bool(args.url) == bool(args.chapter_zip):
+        print("provide exactly one of --url and --chapter-zip", file=sys.stderr)
+        return 2
+
+    if args.chapter_zip:
+        import zipfile
+
+        with zipfile.ZipFile(args.chapter_zip) as z:
+            names = sorted(n for n in z.namelist() if n.lower().endswith((".webp", ".png", ".jpg", ".jpeg")))
+            if not names:
+                print("chapter zip lists zero images", file=sys.stderr)
+                return 2
+            print(f"chapter zip lists {len(names)} images; smoking first: {names[0]}", flush=True)
+            raw = z.read(names[0])
+    else:
+        images = chapter_images(args.url)
+        print(f"chapter lists {len(images)} images; smoking first: {images[0]}", flush=True)
+        raw = _get(images[0])
     from PIL import Image
 
     with Image.open(io.BytesIO(raw)) as img:

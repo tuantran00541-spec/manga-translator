@@ -6,11 +6,11 @@ on:
       chapter_url:
         description: "Chapter URL to translate (exactly one of chapter_url and chapter_zip)"
         required: false
-        default: "https://asurascans.com/comics/nano-machine-7ba78ec7/chapter/338"
+        default: ""
       chapter_zip:
         description: "Repo-relative path to a chapter zip of page images (exactly one of chapter_url and chapter_zip)"
         required: false
-        default: ""
+        default: "chapters/nano-machine-338.zip"
       provider:
         description: "Vision provider (reads the images)"
         required: false
@@ -118,8 +118,14 @@ jobs:
 
       - name: Smoke-test the local Qwen vision call
         env:
+          CHAPTER_ZIP: ${{ inputs.chapter_zip }}
           CHAPTER_URL: ${{ inputs.chapter_url }}
-        run: python scripts/smoke_qwen_local.py --url "$CHAPTER_URL"
+        run: |
+          if [ -n "$CHAPTER_ZIP" ]; then
+            python scripts/smoke_qwen_local.py --chapter-zip "$CHAPTER_ZIP"
+          else
+            python scripts/smoke_qwen_local.py --url "$CHAPTER_URL"
+          fi
 
       - name: Wire the local Qwen provider
         run: python scripts/wire_qwen_local_provider.py
