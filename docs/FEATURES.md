@@ -44,7 +44,7 @@ Everything on the cleanup path is a small ONNX model on the CPU. Nothing needs a
 3. **Review** each raw and clean slice pair: erase missed text, repaint leftovers, restore art erased by mistake.
 4. **Translate** each slice from its raw image with the glossary, naming each text's role and container; the font follows them, so one kind of text always looks the same.
 
-An optional **Jev** pass grades every translated line and rewrites the weak ones.
+The selected vision model checks candidate regions before cleaning. Inconclusive regions stay available for review. Optional translation polish uses the selected model for direct providers. Manga Cloud uses its configured text judge when available.
 
 Across five chapters of five series, A.I mode cost about **$0.07** of model calls per chapter.
 

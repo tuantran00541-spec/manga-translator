@@ -48,7 +48,7 @@ def test_the_stage_keeps_a_rewrite_only_when_the_judge_grades_it_better(monkeypa
               "Tôi đi ngay bây giờ.": {"natural": 1.2, "clear": 2.0, "faithful": 2.0},
               "Cút khỏi đây ngay!": {"natural": 2.8, "clear": 2.0, "faithful": 2.0},
               "Tôi đi luôn đây.": {"natural": 0.5, "clear": 1.0, "faithful": 1.0}}
-    monkeypatch.setattr(polish, "judge", lambda provider, key, state, asked: graded[state.split("\n")[1].split(": ", 1)[1]])
+    monkeypatch.setattr(polish, "judge", lambda provider, key, state, asked, model, cost: graded[state.split("\n")[1].split(": ", 1)[1]])
     monkeypatch.setattr(polish, "rewrite", lambda *a: ({"a": "Cút khỏi đây ngay!", "b": "Tôi đi luôn đây."}, None))
     job = AIModeJob("j", AIModeSettings(url="u", provider="openai", model="m", polish=True))
     job.stages = {"polish": {}}
@@ -133,7 +133,7 @@ def test_the_stage_drops_a_judge_approved_rewrite_the_script_gate_trips(monkeypa
     manifest = {"pages": pages}
     graded = {"Ngươi hãy ra khỏi nơi này lập tức!": {"natural": 1.0, "clear": 2.0, "faithful": 2.0},
               "SENIOR BROTHER!": {"natural": 2.8, "clear": 2.0, "faithful": 2.0}}
-    monkeypatch.setattr(polish, "judge", lambda provider, key, state, asked: graded[state.split("\n")[1].split(": ", 1)[1]])
+    monkeypatch.setattr(polish, "judge", lambda provider, key, state, asked, model, cost: graded[state.split("\n")[1].split(": ", 1)[1]])
     monkeypatch.setattr(polish, "rewrite", lambda *a: ({"a": "SENIOR BROTHER!"}, None))
     runner = _manifest_runner(monkeypatch, manifest)
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)

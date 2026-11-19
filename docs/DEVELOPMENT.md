@@ -27,7 +27,7 @@ app/
   inpaint/        LaMa, flat fill and mask geometry safety
   ocr/            MangaOCR + PP-OCRv6
   translation/    text and two-image vision translation
-  ai_mode/        A.I checkpoints, chapter queue, glossary and Jev pass
+  ai_mode/        A.I checkpoints, chapter queue, glossary and translation polish
   render/         typography, font catalog and lettering fonts
   visual_qc/      Gemini and DeepSeek image helpers used by A.I mode
   routers/        FastAPI API surface (15 routers incl. api_proxy, agent, extension)

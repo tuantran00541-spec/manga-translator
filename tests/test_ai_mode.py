@@ -205,6 +205,9 @@ def _scan_stage(monkeypatch, scans, pages=8, provider=None):
 
     job = ai_job.AIModeJob(job_id="j", settings=replace(SETTINGS, images_per_request=4), chapter_id=CHAPTER,
                            stage="scan", stages={"scan": {"done": 0, "total": 0, "detail": ""}})
+    if provider is None:
+        monkeypatch.setattr(ai_job.decider, "storyless_slices", lambda provider, key, indices, load, model, cost:
+                            (list(indices), dict.fromkeys(indices, 0.0)))
     runner = AIModeRunner(job, provider or PROVIDERS["deepseek"], "key")
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
     asyncio.run(runner.scan())
@@ -280,7 +283,7 @@ def test_with_a_decider_only_agreement_skips_a_slice(monkeypatch):
     from app.ai_mode import decider
     from app.ai_providers import resolve_provider
 
-    monkeypatch.setattr(decider, "storyless_slices", lambda provider, key, indices, load: (
+    monkeypatch.setattr(decider, "storyless_slices", lambda provider, key, indices, load, model, cost: (
         [3, 4, 7], {**{i: 0.9 for i in indices}, 3: 0.05, 4: 0.01, 6: None, 7: 0.0}))
     minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
     runner, skipped, _ = _scan_stage(monkeypatch, [
@@ -317,14 +320,14 @@ def test_decide_skips_reports_single_judge_decisions_when_the_decider_never_runs
     assert decision["judge_available"] is True and decision["single_judge_skips"] == []
 
 
-def test_scan_stage_reports_the_judge_unavailable_on_a_non_minirouter_provider(monkeypatch):
+def test_scan_stage_reports_second_judge_on_deepseek(monkeypatch):
     runner, skipped, _ = _scan_stage(monkeypatch, [
         SliceScan(2, False, 0.0, (), no_text=True), SliceScan(5, False, 0.0, (), no_text=True),
     ])
     assert skipped == [2, 5]
-    assert runner.report["judge"]["available"] is False
+    assert runner.report["judge"]["available"] is True
     assert runner.report["judge"]["provider"] == "api.deepseek.com"
-    assert runner.report["single_judge_skips"] == [3, 6]
+    assert runner.report["single_judge_skips"] == []
 
 
 def test_scan_parse_requires_a_confident_textless_answer():
@@ -463,7 +466,8 @@ def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
     reviewed_while_cleaning = []
 
     class Jobs:
-        def start(self, chapter_id, page_indices, workers):
+        def start(self, chapter_id, page_indices, workers, screen=None):
+            assert callable(screen)
             return {"job_id": "clean"}
 
         def snapshot(self, job_id):
@@ -1070,3 +1074,10 @@ def test_a_stale_answer_still_counts_as_untranslated_and_retries(monkeypatch):
     monkeypatch.setattr(runner, "_retry_untranslated", retry)
     asyncio.run(runner.translate())
     assert retried == [(1, None)], "a stale slice retries every object, like a failed one"
+
+
+def test_unconfirmed_box_stays_covered_but_out_of_repaint(monkeypatch):
+    box = {"x1": 0, "y1": 0, "x2": 5, "y2": 5, "deferred_reason": "lettering_unconfirmed"}
+    runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [box]}]})
+    assert runner._page_boxes(0) == [(0, 0, 5, 5)]
+    assert runner._page_boxes(0, for_repaint=True) == []

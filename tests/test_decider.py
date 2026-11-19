@@ -1,5 +1,7 @@
 import asyncio
-import base64
+from types import SimpleNamespace
+
+import pytest
 
 import cv2
 import numpy as np
@@ -16,34 +18,22 @@ def _box(x1, y1, x2, y2):
                      source_role="text_segmenter", semantic_type="free_text", safe_to_inpaint=True)
 
 
-def test_only_minirouter_with_a_key_gets_a_screen():
-    minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
-    assert decider.screen_for(minirouter, "k") is not None
-    assert decider.screen_for(minirouter, "") is None
-    assert decider.screen_for(PROVIDERS["openai"], "k") is None
+@pytest.mark.parametrize("provider", [
+    *PROVIDERS.values(),
+    resolve_provider("custom", protocol="openai", api_base="https://example.com/v1"),
+])
+def test_screen_uses_selected_vision_model(monkeypatch, provider):
+    calls = []
+    def vision(p, model, key, prompt, images, **kwargs):
+        calls.append((p, model, key, images[0][1].shape))
+        return SimpleNamespace(data={"kind": "art"}, estimated_cost_usd=None)
 
-
-def test_judge_status_names_the_provider_and_the_reason_it_cannot_judge():
-    minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
-    assert decider.judge_status(minirouter, "k") == {"available": True, "provider": "api.minirouter.sh", "reason": None}
-    assert decider.judge_status(minirouter, "")["available"] is False
-    status = decider.judge_status(PROVIDERS["openai"], "k")
-    assert status["available"] is False and status["provider"] == "api.openai.com"
-    assert "api.minirouter.sh" in status["reason"]
-
-
-def test_a_crop_of_a_huge_noisy_box_still_fits_one_request():
-    image = np.random.default_rng(0).integers(0, 255, (3000, 1600, 3), dtype=np.uint8)
-    url = decider.crop_url(image, _box(0, 0, 1600, 3000))
-    assert len(base64.b64decode(url.split(",", 1)[1])) < decider.MAX_JPEG_BYTES
-
-
-def test_only_boxes_the_model_is_sure_about_are_art(monkeypatch):
-    chances = iter([0.05, 0.3, None, 0.99])
-    monkeypatch.setattr(decider, "WORKERS", 1)
-    monkeypatch.setattr(decider, "ask", lambda *_a: None if (c := next(chances)) is None else {"any": {"probability": c}})
-    image = np.full((100, 100, 3), 200, np.uint8)
-    assert decider.art_boxes("https://api.minirouter.sh/v1", "k", image, [_box(10, 10, 30, 30)] * 4) == {0}
+    monkeypatch.setattr(decider, "request_vision_json", vision)
+    assert decider.screen_for(provider, "", "chosen") is None
+    screen = decider.screen_for(provider, "key", "chosen")
+    image = np.zeros((1600, 1600, 3), np.uint8)
+    assert screen(image, [_box(100, 100, 1500, 1500)]) == {0}
+    assert calls == [(provider, "chosen", "key", (768, 768, 3))]
 
 
 class _Detector:
@@ -111,65 +101,62 @@ def test_the_processing_job_hands_the_screen_to_the_plan():
     assert seen["screen"] is screen
 
 
-def _kind(story):
-    return {"kind": {"type": "choice", "choice": "story" if story >= 0.5 else "none",
-                     "probabilities": {"story": story, "credit": 0.0, "none": 1 - story}}}
+@pytest.mark.parametrize("answer", ["uncertain", "invalid", None, "error"])
+def test_unconfirmed_box_is_deferred_in_pipeline(monkeypatch, tmp_path, answer):
+    def vision(*args, **kwargs):
+        if answer == "error":
+            raise RuntimeError("provider offline")
+        return SimpleNamespace(data={"kind": answer}, estimated_cost_usd=None)
+
+    monkeypatch.setattr(decider, "request_vision_json", vision)
+    pipeline = ChapterPipeline.__new__(ChapterPipeline)
+    pipeline._detector, pipeline._inpainter = _Detector(), _Inpainter()
+    image_path = tmp_path / "page.png"
+    cv2.imwrite(str(image_path), np.zeros((60, 80, 3), np.uint8))
+    result = pipeline._process_page(image_path, tmp_path, screen=decider.screen_for(PROVIDERS["openai"], "k", "m"))
+    assert pipeline._inpainter.erased == []
+    assert len(result["boxes"]) == 2
+    assert all(b["needs_review"] and b["deferred_reason"] == "lettering_unconfirmed" for b in result["boxes"])
 
 
-def test_a_slice_is_cut_into_square_tiles_and_stops_at_the_first_with_story(monkeypatch):
-    asked = []
-    replies = iter([_kind(0.01), _kind(0.9), _kind(0.01)])
-    monkeypatch.setattr(decider, "ask", lambda *_a: asked.append(1) or next(replies))
-    image = np.full((2700, 900, 3), 200, np.uint8)
-    assert len(decider.tile_urls(image)) == 3
-    assert decider.slice_story("b", "k", image) == 0.9 and len(asked) == 2
-
-
-def test_a_slice_with_an_unanswered_tile_is_never_skipped(monkeypatch):
-    replies = {0: [_kind(0.01), _kind(0.01)], 1: [_kind(0.01), None], 2: [_kind(0.5)]}
-    images = {i: np.full((1800 if i < 2 else 900, 900, 3), i, np.uint8) for i in replies}
+def test_story_tiles_keep_unanswered_slice_and_stop_on_story(monkeypatch):
+    answers = iter(["none", "story", "none", None, "credit", "none", "none"])
     monkeypatch.setattr(decider, "WORKERS", 1)
-    queue = [r for i in sorted(replies) for r in replies[i]]
-    monkeypatch.setattr(decider, "ask", lambda *_a: queue.pop(0))
-    minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
-    skip, chances = decider.storyless_slices(minirouter, "k", [0, 1, 2], images.__getitem__)
-    assert skip == [0] and chances[1] is None and chances[2] == 0.5
+    monkeypatch.setattr(decider, "request_vision_json", lambda *a, **kw:
+                        SimpleNamespace(data={"kind": next(answers)}, estimated_cost_usd=None))
+    image = np.zeros((2700, 900, 3), np.uint8)
+    skips, chances = decider.storyless_slices(PROVIDERS["gemini"], "k", [0, 1, 2], lambda _: image, "model")
+    assert skips == [2] and chances == {0: 1.0, 1: None, 2: 0.0}
 
 
-def test_the_series_title_is_story_not_credit():
-    criteria = decider.STORY["kind"]["criteria"]
-    assert "series title" in criteria["story"]
-    assert "watermark" not in criteria["credit"] and "logo" not in criteria["credit"]
+def test_polish_uses_selected_model_and_requires_valid_scores(monkeypatch):
+    from app.ai_mode import polish
+    provider = PROVIDERS["openai"]
+    replies = iter([{"natural": 2.5}, {"natural": 7}])
+    def vision(p, model, key, prompt, images, **kwargs):
+        assert (p, model, key, images) == (provider, "selected", "k", [])
+        return SimpleNamespace(data=next(replies), estimated_cost_usd=None)
+    monkeypatch.setattr(polish, "request_vision_json", vision)
+    asked = {"natural": polish.QUESTIONS["natural"]}
+    assert polish.judge(provider, "k", "passage", asked, "selected") == {"natural": 2.5}
+    with pytest.raises(ValueError):
+        polish.judge(provider, "k", "passage", asked, "selected")
 
 
-def test_story_chance_reads_list_and_choice_answers():
-    assert decider.story_chance({"kind": {"probabilities": [{"choice": "story", "probability": 0.3}]}}) == 0.3
-    assert decider.story_chance({"kind": {"choice": "credit"}}) == 0.0
-    assert decider.story_chance({"kind": {}}) is None and decider.story_chance(None) is None
-
-
-def test_the_judge_names_the_decider_only_on_minirouter(monkeypatch):
+@pytest.mark.parametrize("native_scores", [None, {"clear": 1.5}])
+def test_cloud_polish_uses_gateway_judge_or_selected_model(monkeypatch, native_scores):
+    from app import cloud
     from app.ai_mode import polish
 
-    sent = []
+    provider = cloud.cloud_provider("cloud-model")
+    calls = []
+    monkeypatch.setattr(polish, "_cloud_judge", lambda *args: native_scores)
 
-    class Reply:
-        ok = True
+    def fallback(p, model, key, prompt, images, **kwargs):
+        calls.append((p.id, model, key))
+        return SimpleNamespace(data={"clear": 2}, estimated_cost_usd=None)
 
-        @staticmethod
-        def json():
-            return {"answers": {"natural": {"score": 2.5}}}
-
-    monkeypatch.setattr(polish.requests, "post", lambda url, **kw: sent.append((url, kw["json"])) or Reply())
-    minirouter = resolve_provider("mr", label="MiniRouter", protocol="openai", api_base="https://api.minirouter.sh/v1")
-    assert polish.judge(minirouter, "k", "s") == {"natural": 2.5}
-    assert sent[-1] == ("https://api.minirouter.sh/v1/evaluate", {"model": decider.DECIDER_MODEL, "state": "s", "questions": polish.QUESTIONS})
-    polish.judge(PROVIDERS["openai"], "k", "s")
-    assert "model" not in sent[-1][1]
-    assert minirouter.public_capabilities()["judge"] and not PROVIDERS["openai"].public_capabilities()["judge"]
-
-
-def test_a_story_entry_without_a_probability_is_unjudged_not_storyless():
-    assert decider.story_chance({"kind": {"probabilities": [{"choice": "story"}]}}) is None
-    assert decider.story_chance({"kind": {"probabilities": [{"choice": "story", "probability": 0.2}]}}) == 0.2
-    assert decider.story_chance({"kind": {"probabilities": [{"choice": "credit", "probability": 0.9}]}}) is None
+    monkeypatch.setattr(polish, "request_vision_json", fallback)
+    result = polish.judge(provider, "job-token", "passage", {"clear": polish.QUESTIONS["clear"]}, "cloud-model")
+    assert result == (native_scores or {"clear": 2})
+    assert calls == ([] if native_scores else [("manga-cloud", "cloud-model", "job-token")])

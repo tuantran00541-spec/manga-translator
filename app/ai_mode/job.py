@@ -176,6 +176,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         self.job = job
         self.provider = provider
         self.api_key = api_key
+        self._cost_lock = threading.Lock()
         self.settings = job.settings
         self.report = job.report
         self.report.update({
@@ -222,10 +223,11 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         self.job.updated_at = time.time()
 
     def _add_cost(self, cost: float | None) -> None:
-        if cost is None:
-            self.job.cost_usd = None
-        elif self.job.cost_usd is not None:
-            self.job.cost_usd += float(cost)
+        with self._cost_lock:
+            if cost is None:
+                self.job.cost_usd = None
+            elif self.job.cost_usd is not None:
+                self.job.cost_usd += float(cost)
 
     def _remaining_budget(self) -> float | None:
         if not self.provider.tracks_cost or self.job.cost_usd is None:
@@ -324,7 +326,10 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
         judge_status = decider.judge_status(self.provider, self.api_key)
         judge = None
         if judge_status["available"]:
-            judge = asyncio.ensure_future(asyncio.to_thread(decider.storyless_slices, self.provider, self.api_key, active, load))
+            judge = asyncio.create_task(asyncio.to_thread(
+                decider.storyless_slices, self.provider, self.api_key, active, load,
+                self.settings.model, self._add_cost,
+            ))
         else:
             logger.warning("Decider judge unavailable (provider {}: {}); the scan alone decides skips",
                            judge_status["provider"], judge_status["reason"])
@@ -423,7 +428,7 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
     def _art_screen(self):
         from app.ai_mode.decider import screen_for
 
-        screen = screen_for(self.provider, self.api_key)
+        screen = screen_for(self.provider, self.api_key, self.settings.model, self._add_cost)
         if screen is None:
             status = decider.judge_status(self.provider, self.api_key)
             logger.warning("Decider art screen unavailable (provider {}: {}); "
@@ -498,10 +503,12 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
             return tuple(boxes)
         return tuple(box for box in boxes if top <= (box[1] + box[3]) / 2 < bottom)
 
-    def _page_boxes(self, page_index: int) -> list[tuple[int, int, int, int]]:
+    def _page_boxes(self, page_index: int, *, for_repaint: bool = False) -> list[tuple[int, int, int, int]]:
         boxes = self._manifest()["pages"][page_index].get("boxes") or []
         return [(int(b["x1"]), int(b["y1"]), int(b["x2"]), int(b["y2"])) for b in boxes
-                if isinstance(b, dict) and not b.get("removed") and all(k in b for k in ("x1", "y1", "x2", "y2"))]
+                if isinstance(b, dict) and not b.get("removed")
+                and not (for_repaint and b.get("deferred_reason"))
+                and all(k in b for k in ("x1", "y1", "x2", "y2"))]
 
     def _start_review(self, total: int) -> None:
         self._review_queue = asyncio.Queue()
@@ -515,7 +522,8 @@ class AIModeRunner(AIModeSeamsMixin, AIModeRenderingMixin):
 
         def cut(page_index: int) -> list:
             original, clean = self._images(page_index, "clean", PROCESSED_DIR)
-            return checkpoints.crops_for(page_index, original, clean, self._in_core(page_index, self._page_boxes(page_index)))
+            boxes = self._page_boxes(page_index, for_repaint=True)
+            return checkpoints.crops_for(page_index, original, clean, self._in_core(page_index, boxes))
 
         self._progress(0, total, stage="review")
         while (page_index := await self._review_queue.get()) is not None:

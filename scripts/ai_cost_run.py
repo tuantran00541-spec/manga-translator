@@ -219,7 +219,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--balance", type=float, default=5.0, help="USD credited to the test account")
     parser.add_argument("--timeout-min", type=float, default=60)
-    parser.add_argument("--polish", action="store_true", help="let the Jev judge grade and send back weak lines")
+    parser.add_argument("--polish", action="store_true", help="grade translations and rewrite weak lines")
     parser.add_argument("--translate-provider", default="manga-cloud",
                         help="provider for the text re-translate (Manga Cloud picks its model per stage)")
     parser.add_argument("--translate-model", default="xiaomi/mimo-v2.6-flash",

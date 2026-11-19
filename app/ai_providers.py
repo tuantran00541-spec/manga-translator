@@ -56,7 +56,9 @@ class AIProvider:
             "model_listing": True,
             "cost_tracking": self.tracks_cost,
             "image_transport": self.image_transport,
-            "judge": urlparse(self.api_base).hostname == "api.minirouter.sh",
+            "judge": self.supports_visual_qc,
+            "vision_judge": self.supports_visual_qc,
+            "text_judge": self.supports_visual_qc or self.supports_translation,
         }
 
 

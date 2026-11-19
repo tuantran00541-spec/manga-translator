@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import functools
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
@@ -9,153 +8,99 @@ import cv2
 import requests
 from fastapi import HTTPException
 
-from app import api_proxy
+from app.ai_mode.vision_json import request_vision_json
 from app.logging_config import logger
 
-DECIDER_HOST = "api.minirouter.sh"
-DECIDER_MODEL = "perplexity/pplx-decider-v1.2"
-ART_BELOW = 0.2
-SKIP_BELOW = 0.2
-MAX_JPEG_BYTES = 20000
-MAX_SIDE = 768
-MIN_SIDE = 160
+
 WORKERS = 8
-TIMEOUT = (5, 60)
-LETTERING = {"any": {"type": "boolean", "instructions": "Are there any letters, words or parts of letters visible in this image, even faint or smeared?"}}
-STORY = {"kind": {"type": "choice", "instructions": "What lettering does this webtoon panel show?",
-                  "criteria": {"story": "Dialogue, narration, thoughts, signs, game/system windows, or the series title itself — lettering a reader needs translated",
-                               "credit": "Only scanlator credits, a staff or recruitment notice, or a website address added by the uploader",
-                               "none": "No lettering at all, or only sound effects drawn into the art"}}}
+MAX_SIDE = 768
+LETTERING = (
+    'Classify the candidate inside the marked rectangle. Ignore lettering outside it. '
+    'Return a JSON object with one field "kind", one of "text", "art", "uncertain". Count letters, words and parts of letters, '
+    'even if faint or smeared, as text. Choose art only for a confident non-lettering drawing.'
+)
+STORY = (
+    'Return a JSON object with "kind" set to "story", "credit", "none" or "uncertain". Dialogue, narration, thoughts, '
+    'signs, game/system windows and the series title are story. Choose credit only for scanlator '
+    'credits, recruitment notices or uploader URLs. Choose none for no lettering or only drawn sound effects.'
+)
 
 
 def judge_status(provider, api_key: str) -> dict:
-    hostname = urlparse(str(provider.api_base)).hostname
-    if hostname != DECIDER_HOST:
-        return {"available": False, "provider": hostname,
-                "reason": f"decision model only served at {DECIDER_HOST}"}
-    if not api_key:
-        return {"available": False, "provider": hostname, "reason": "no api key"}
-    return {"available": True, "provider": hostname, "reason": None}
+    reason = None
+    if not provider.supports_visual_qc:
+        reason = "provider does not support image inputs"
+    elif not api_key:
+        reason = "no api key"
+    return {"available": reason is None, "provider": urlparse(str(provider.api_base)).hostname, "reason": reason}
 
 
-def available(provider, api_key: str) -> bool:
-    return judge_status(provider, api_key)["available"]
-
-
-def data_url(image) -> str | None:
-    side, quality = MAX_SIDE, 80
-    while side >= MIN_SIDE:
-        scale = min(1.0, side / max(image.shape[:2]))
-        small = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else image
-        ok, data = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, quality])
-        if ok and len(data) < MAX_JPEG_BYTES:
-            return "data:image/jpeg;base64," + base64.b64encode(data.tobytes()).decode()
-        side, quality = int(side * 0.85), max(40, quality - 8)
-    return None
-
-
-def ask(api_base: str, api_key: str, url: str, questions: dict) -> dict | None:
-    response = None
+def _classify(provider, model, api_key, image, prompt, stage, add_cost):
+    if not image.size:
+        return None
+    scale = min(1.0, MAX_SIDE / max(image.shape[:2]))
+    if scale < 1:
+        height, width = image.shape[:2]
+        image = cv2.resize(image, (max(1, round(width * scale)), max(1, round(height * scale))),
+                           interpolation=cv2.INTER_AREA)
     try:
-        response, _, _ = api_proxy.proxy_post(
-            url=f"{api_base}/evaluate",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            payload={"model": DECIDER_MODEL, "state": [{"type": "image_url", "image_url": {"url": url}}], "questions": questions},
-            provider=None,
-            api_key=api_key,
-            caller="ai_mode:decider",
-            timeout=TIMEOUT,
-            stream=False,
-            is_gemini=False,
-            post_fn=requests.post,
-        )
-        if not api_proxy.is_success_response(response):
-            return None
-        body = response.json()
-        if not isinstance(body, dict):
-            return None
-        answers = body.get("answers")
-        return answers if isinstance(answers, dict) else None
-    except (requests.RequestException, HTTPException, ValueError, TypeError, AttributeError):
+        reply = request_vision_json(provider, model, api_key, prompt, [("Candidate", image)],
+                                    stage=stage, max_tokens=512)
+    except (RuntimeError, ValueError, OSError, HTTPException, requests.RequestException):
         return None
-    finally:
-        if response is not None and hasattr(response, "close"):
-            response.close()
+    if add_cost is not None:
+        add_cost(reply.estimated_cost_usd)
+    return reply.data.get("kind")
 
 
-def _all(api_base: str, api_key: str, urls: list, questions: dict) -> list:
+def screen_for(provider, api_key: str, model: str, add_cost=None):
+    if not judge_status(provider, api_key)["available"]:
+        return None
+    return functools.partial(art_boxes, provider, model, api_key, add_cost=add_cost)
+
+
+def art_boxes(provider, model, api_key, image, boxes, *, add_cost=None) -> set[int]:
+    height, width = image.shape[:2]
+
+    def classify(box):
+        pad = max(16, min(96, int(0.3 * max(box.x2 - box.x1, box.y2 - box.y1))))
+        x, y = max(0, box.x1 - pad), max(0, box.y1 - pad)
+        crop = image[y:min(height, box.y2 + pad), x:min(width, box.x2 + pad)].copy()
+        if crop.size:
+            cv2.rectangle(crop, (box.x1 - x - 1, box.y1 - y - 1),
+                          (box.x2 - x, box.y2 - y), (0, 255, 0), 1)
+        return _classify(provider, model, api_key, crop, LETTERING, "review", add_cost)
+
+    art = set()
     with ThreadPoolExecutor(WORKERS) as pool:
-        return list(pool.map(lambda url: ask(api_base, api_key, url, questions) if url else None, urls))
+        for index, kind in enumerate(pool.map(classify, boxes)):
+            if kind == "art":
+                art.add(index)
+            elif kind != "text":
+                box = boxes[index]
+                box.safe_to_inpaint = False
+                box.ocr_eligible = False
+                box.needs_review = True
+                box.deferred_reason = box.deferred_reason or "lettering_unconfirmed"
+    return art
 
 
-def screen_for(provider, api_key: str):
-    if not available(provider, api_key):
-        return None
-    return functools.partial(art_boxes, str(provider.api_base).rstrip("/"), api_key)
-
-
-def crop_url(image, box) -> str | None:
-    height, width = image.shape[:2]
-    pad = max(16, min(96, int(0.3 * max(box.x2 - box.x1, box.y2 - box.y1))))
-    crop = image[max(0, box.y1 - pad):min(height, box.y2 + pad), max(0, box.x1 - pad):min(width, box.x2 + pad)]
-    return data_url(crop) if crop.size else None
-
-
-def lettering_chance(answers: dict | None) -> float | None:
-    chance = ((answers or {}).get("any") or {}).get("probability")
-    return float(chance) if isinstance(chance, (int, float)) else None
-
-
-def art_boxes(api_base: str, api_key: str, image, boxes) -> set[int]:
-    chances = [lettering_chance(a) for a in _all(api_base, api_key, [crop_url(image, box) for box in boxes], LETTERING)]
-    failed = sum(chance is None for chance in chances)
-    if failed:
-        logger.warning("Art screen could not judge {} of {} boxes; they are erased as usual", failed, len(boxes))
-    return {index for index, chance in enumerate(chances) if chance is not None and chance < ART_BELOW}
-
-
-def tile_urls(image) -> list:
-    height, width = image.shape[:2]
-    return [data_url(image[y:min(height, y + width + 60)]) for y in range(0, height, width)]
-
-
-def story_chance(answers: dict | None) -> float | None:
-    answer = (answers or {}).get("kind")
-    if not isinstance(answer, dict):
-        return None
-    probs = answer.get("probabilities")
-    if isinstance(probs, dict) and isinstance(probs.get("story"), (int, float)):
-        return float(probs["story"])
-    if isinstance(probs, list):
-        for entry in probs:
-            if isinstance(entry, dict) and entry.get("choice", entry.get("name")) == "story":
-                probability = entry.get("probability")
-                return float(probability) if isinstance(probability, (int, float)) else None
-    return 1.0 if answer.get("choice") == "story" else 0.0 if answer.get("choice") else None
-
-
-def slice_story(api_base: str, api_key: str, image) -> float | None:
-    best = 0.0
-    for url in tile_urls(image):
-        chance = story_chance(ask(api_base, api_key, url, STORY)) if url else None
-        if chance is None:
-            return None
-        best = max(best, chance)
-        if best >= SKIP_BELOW:
-            break
-    return best
-
-
-def storyless_slices(provider, api_key: str, indices: list[int], load) -> tuple[list[int], dict[int, float | None]]:
-    api_base = str(provider.api_base).rstrip("/")
-
-    def judge(index: int) -> float | None:
+def storyless_slices(provider, api_key, indices, load, model, add_cost=None):
+    def judge(index):
         try:
-            return slice_story(api_base, api_key, load(index))
+            image = load(index)
+            height, width = image.shape[:2]
+            for y in range(0, height, width):
+                kind = _classify(provider, model, api_key, image[y:y + width + 60], STORY, "scan", add_cost)
+                if kind == "story":
+                    return 1.0
+                if kind not in ("credit", "none"):
+                    return None
+            return 0.0 if height else None
         except Exception as exc:
             logger.warning("Slice {} could not be judged for story text: {}", index, exc)
             return None
 
     with ThreadPoolExecutor(WORKERS) as pool:
         chances = dict(zip(indices, pool.map(judge, indices)))
-    return sorted(index for index, chance in chances.items() if chance is not None and chance < SKIP_BELOW), chances
+    return sorted(index for index, chance in chances.items() if chance == 0.0), chances

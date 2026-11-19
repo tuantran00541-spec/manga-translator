@@ -53,7 +53,7 @@ class AIModeSeamsMixin:
                     return await ai_call(
                         polish.judge, self.provider, self.api_key,
                         polish.line_state(line, text, memory, language),
-                        polish.questions(line, memory, language),
+                        polish.questions(line, memory, language), self.settings.model, self._add_cost,
                     )
                 except (RuntimeError, ValueError, OSError, requests.RequestException) as exc:
                     append_fn(stats["errors"], detail_fn(exc)[:200])

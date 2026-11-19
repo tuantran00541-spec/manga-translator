@@ -294,7 +294,7 @@
     if (budgetField) budgetField.hidden = cloud || provider.value !== "deepseek";
     
     const polishField = $("ai-mode-polish-field");
-    if (polishField) polishField.hidden = !(cloud || window.aiProviderSettings?.[provider.value]?.capabilities?.judge);
+    if (polishField) polishField.hidden = !(cloud || window.aiProviderSettings?.[provider.value]?.capabilities?.text_judge);
     
     const imagesField = $("ai-mode-images-field");
     if (imagesField) imagesField.hidden = cloud;
@@ -849,7 +849,7 @@
       budget_usd: Number($("ai-mode-budget").value || 0.3),
       workers: typeof window.getWorkersSetting === "function" ? window.getWorkersSetting() : 2,
       story_notes: $("ai-mode-notes")?.value.trim() || "",
-      polish: (provider === CLOUD || Boolean(window.aiProviderSettings?.[provider]?.capabilities?.judge)) && Boolean($("ai-mode-polish")?.checked),
+      polish: (provider === CLOUD || Boolean(window.aiProviderSettings?.[provider]?.capabilities?.text_judge)) && Boolean($("ai-mode-polish")?.checked),
       images_per_request: Math.min(8, Math.max(1, Math.round(Number($("ai-mode-images")?.value) || 2))),
     };
   }
